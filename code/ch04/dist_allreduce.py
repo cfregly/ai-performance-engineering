@@ -42,7 +42,9 @@ def main():
         print(f"Failed to initialize process group: {e}", flush=True)
         print("Running single-process benchmark instead.", flush=True)
         # Single process benchmark
-        device = "cuda" if args.backend == "nccl" and torch.cuda.is_available() else "cpu"
+        device = f"cuda:{rank}" if args.backend == "nccl" else "cpu"
+        if args.backend == "nccl":
+            torch.cuda.set_device(rank)
         tensor = torch.ones(args.data_size, dtype=torch.float32, device=device)
         
         start = time.time()
@@ -59,7 +61,9 @@ def main():
     world_size = dist.get_world_size()
     
     # Allocate a large tensor
-    device = "cuda" if args.backend == "nccl" else "cpu"
+    device = f"cuda:{rank}" if args.backend == "nccl" else "cpu"
+    if args.backend == "nccl":
+        torch.cuda.set_device(rank)
     tensor = torch.ones(args.data_size, dtype=torch.float32, device=device)
     
     # Warm up and barrier
