@@ -161,6 +161,7 @@ class ExpectationEntry:
     best_optimization_name: Optional[str] = None
     best_optimization_file: Optional[str] = None
     best_optimization_technique: Optional[str] = None
+    minimum_required_speedup: Optional[float] = None
 
     @property
     def best_speedup(self) -> float:
@@ -269,6 +270,8 @@ class ExpectationEntry:
             result["metadata"]["best_optimization_file"] = self.best_optimization_file
         if self.best_optimization_technique:
             result["metadata"]["best_optimization_technique"] = self.best_optimization_technique
+        if self.minimum_required_speedup is not None:
+            result["metadata"]["minimum_required_speedup"] = float(self.minimum_required_speedup)
         # Store speedup in metadata for compatibility (derived from times)
         result["metadata"]["best_optimization_speedup"] = self.best_speedup
         result["metadata"]["best_optimization_time_ms"] = self.best_optimized_time_ms
@@ -316,6 +319,7 @@ class ExpectationEntry:
             best_optimization_name=metadata.get("best_optimization"),
             best_optimization_file=metadata.get("best_optimization_file"),
             best_optimization_technique=metadata.get("best_optimization_technique"),
+            minimum_required_speedup=metadata.get("minimum_required_speedup"),
         )
 
 
@@ -1101,6 +1105,8 @@ class ExpectationsStore:
             meta["best_optimization_file"] = metadata["best_optimization_file"]
         if metadata.get("best_optimization_time_ms") is not None:
             meta["best_optimization_time_ms"] = metadata["best_optimization_time_ms"]
+        if metadata.get("minimum_required_speedup") is not None:
+            meta["minimum_required_speedup"] = metadata["minimum_required_speedup"]
         if metadata.get("git_commit"):
             meta["git_commit"] = metadata["git_commit"]
 
