@@ -35,6 +35,7 @@ from core.harness.run_benchmarks import (
     INFORMATIONAL_BENCHMARKS,
     _collect_current_run_benchmark_orphan_pids,
     _collect_stale_benchmark_orphan_pids,
+    _reap_benchmark_process_leftovers,
     _reap_run_descendants,
 )
 
@@ -644,6 +645,36 @@ def test_run_benchmarks_reaps_current_run_descendants() -> None:
             time.sleep(0.05)
 
         assert process.poll() is not None
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+
+
+def test_benchmark_leftover_cleanup_does_not_kill_unmarked_current_descendants() -> None:
+    process = subprocess.Popen(
+        ["python", "-c", "import time; time.sleep(60)"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        time.sleep(0.2)
+        assert process.poll() is None
+
+        _reap_benchmark_process_leftovers(
+            "unit_test_preserve_unmarked_descendant",
+            current_run_id="unit-test-run",
+            current_owner_pid=999999,
+            repo_root=REPO_ROOT,
+        )
+
+        time.sleep(0.5)
+        assert process.poll() is None
     finally:
         if process.poll() is None:
             process.terminate()

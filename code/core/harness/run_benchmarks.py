@@ -3752,8 +3752,14 @@ def _reap_benchmark_process_leftovers(
     current_owner_pid: int,
     repo_root: Path,
 ) -> None:
-    """Clear benchmark-owned leftovers before the next benchmark phase starts."""
-    _reap_run_descendants(reason)
+    """Clear owner-marked benchmark leftovers before the next benchmark phase starts.
+
+    This helper runs at many example/phase boundaries. It must avoid killing
+    arbitrary descendants of the benchmark runner, because profiler helpers and
+    unrelated child processes can share the same parent while not belonging to a
+    leaked benchmark execution. Broad descendant cleanup remains available at
+    coarse run lifecycle boundaries (run start/end, fatal preflight failures).
+    """
     _reap_current_run_benchmark_orphans(
         reason,
         current_run_id=current_run_id,
