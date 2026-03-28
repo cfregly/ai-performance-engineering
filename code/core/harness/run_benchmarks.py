@@ -1041,6 +1041,13 @@ def _coerce_positive_float(value: Any) -> Optional[float]:
 _MIN_SPEEDUP_FOR_SUCCESS = 1.05
 
 
+def _resolve_min_speedup_for_success(result_entry: Dict[str, Any]) -> float:
+    configured = _coerce_finite_float(result_entry.get("minimum_required_speedup"))
+    if configured is None or configured <= 0:
+        return _MIN_SPEEDUP_FOR_SUCCESS
+    return configured
+
+
 def _should_fail_no_speedup(result_entry: Dict[str, Any]) -> bool:
     optimization_goal = str(result_entry.get("optimization_goal") or "speed").strip().lower()
     if optimization_goal != "speed":
@@ -1048,15 +1055,16 @@ def _should_fail_no_speedup(result_entry: Dict[str, Any]) -> bool:
     best_speedup = _coerce_finite_float(result_entry.get("best_speedup"))
     if best_speedup is None:
         return False
-    return best_speedup < _MIN_SPEEDUP_FOR_SUCCESS
+    return best_speedup < _resolve_min_speedup_for_success(result_entry)
 
 
 def _format_failed_no_speedup(result_entry: Dict[str, Any]) -> str:
     best_speedup = _coerce_finite_float(result_entry.get("best_speedup"))
     rendered_speedup = f"{best_speedup:.2f}x" if best_speedup is not None else "n/a"
+    required_speedup = _resolve_min_speedup_for_success(result_entry)
     return (
         f"Best speedup {rendered_speedup} below required "
-        f"{_MIN_SPEEDUP_FOR_SUCCESS:.2f}x threshold for speed-goal benchmark"
+        f"{required_speedup:.2f}x threshold for speed-goal benchmark"
     )
 
 
@@ -1179,6 +1187,9 @@ def build_expectation_metadata(
         "type": result_entry.get("type", "python"),
         "optimization_goal": result_entry.get("optimization_goal", "speed"),
     }
+    required_speedup = _coerce_finite_float(result_entry.get("minimum_required_speedup"))
+    if required_speedup is not None and required_speedup > 0:
+        metadata["minimum_required_speedup"] = required_speedup
     if git_commit:
         metadata["git_commit"] = git_commit
     if best_opt:
@@ -5302,6 +5313,7 @@ def _test_chapter_impl(
                 'best_speedup': 1.0,
                 'best_memory_savings_pct': 0.0,  # Memory reduction percentage
                 'optimization_goal': 'speed',  # Primary goal: speed, memory, throughput
+                'minimum_required_speedup': None,
                 'status': 'failed_error',
                 'error': None,
             }
@@ -6093,6 +6105,10 @@ def _test_chapter_impl(
                     if optimized_benchmark is not None:
                         opt_goal = optimized_benchmark.get_optimization_goal()
                         result_entry['optimization_goal'] = opt_goal
+                        min_speedup = optimized_benchmark.get_min_speedup_for_success()
+                        min_speedup_f = _coerce_finite_float(min_speedup)
+                        if min_speedup_f is not None and min_speedup_f > 0:
+                            result_entry['minimum_required_speedup'] = min_speedup_f
                 except AttributeError:
                     pass  # Old benchmarks without get_optimization_goal()
                 

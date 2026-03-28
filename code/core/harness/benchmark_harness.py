@@ -1958,6 +1958,15 @@ class BaseBenchmark:
             - "latency": Lower is better (baseline_latency / optimized_latency)
         """
         return "speed"
+
+    def get_min_speedup_for_success(self) -> Optional[float]:
+        """Return an explicit minimum speedup contract for speed-goal benchmarks.
+
+        Override this on benchmarks whose local success criteria differ from the
+        harness-wide fallback threshold. Return ``None`` to use the shared
+        default threshold in the benchmark runner.
+        """
+        return None
     
     def _record_start(self) -> float:
         """Return a high-resolution timestamp for chunk-level timing."""
