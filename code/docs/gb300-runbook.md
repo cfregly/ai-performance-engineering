@@ -1017,19 +1017,28 @@ SoL framing (B), measured 2026-06-09:
   found their wins. Remaining headroom is upstream-blocked (Triton 3.7 tcgen05, torch._int_mm on sm_103)
   or deep multi-day kernel work (a hand-written tcgen05 fp4 GEMM for nvfp4_group_gemm).
 
-- BANK (B28, nvfp4_group_gemm, DATA-BACKED close of the last single-GPU lever): a same-shape GB300
-  config sweep (default BLOCK_M=8/BLOCK_N=32/KPACK_TILE=64, vs KPACK_TILE=128, vs WS_UNROLL2_MMA=1)
-  measured the custom tcgen05 grouped-GEMM kernel at a flat 0.924-0.925x vs the cuBLAS scaled_mm
-  baseline (optimized 0.3635-0.3648 ms vs baseline 0.336 ms, g2_n3072_k4096). cuBLAS is ~8% FASTER and
-  the env-config knobs are inert (<0.5% spread). This upgrades the earlier "thin headroom" guess (B22d)
-  to a measured verdict: on GB300 the B200-tuned tcgen05 path REGRESSES vs cuBLAS, and the bottleneck is
-  structural (the core MMA/TMA pipeline), not in the swept knobs. To clear the 1.05x gate the kernel
-  must drop 0.364 -> 0.320 ms (a 12% structural gain that BEATS NVIDIA's own arch-tuned library) -- a
-  K4/R4/H4/P4 deep rewrite, the lowest-EV class of win. Closed: cuBLAS-bound, config-inert; the named
-  next lever is a hand-written GB300 tcgen05 fp4 grouped GEMM (multi-day, beats-cuBLAS frontier), not a
-  config tweak. With this, the single-GPU frontier is data-backed harvested (6 wins) and distributed is
-  separately harvested (ch04 12 wins + train_distributed banked low-value/high-cost), so the whole repo
-  is harvested; remaining levers are upstream-toolchain (not self-fixable) or this deep P4 kernel.
+- CORRECTION + REOPEN (B28, nvfp4_group_gemm): SUPERSEDES the original B28 bank, which had a WRONG
+  premise. An ncu --set full roofline diagnosis (lab dir NCU-DIAGNOSIS.md) overturned it: the committed
+  baseline_nvfp4_group_gemm.py imports the SAME custom tcgen05 kernel with a different config (UNROLL_N=1)
+  -- it is a config-A/B SELF-comparison, NOT cuBLAS (verified by reading the baseline file). So the
+  measured 0.924x is the optimized config (UNROLL_N=2, B200-tuned) REGRESSING vs the baseline config
+  (UNROLL_N=1) on GB300, not "cuBLAS 8% faster". The env-config-inert finding stays correct
+  (BLOCK_M/BLOCK_N/KPACK are scalar-path knobs that do not tune the tcgen05 path), but the cuBLAS
+  attribution + the P4-dead-end verdict were wrong. Corrected ncu picture (vs gb300_nvl72 15.0 PFLOPS FP4
+  / 8.0 TB/s HBM): the custom fused kernel is 5.7% FP4-SoL, 15.1% HBM-SoL, 11% tensor-pipe, 6.24%
+  occupancy (smem-capped to 2 CTAs/SM, Block Limit Shared Mem), top stall a 46.6% CTA-barrier (the
+  warp-specialized bar.sync handoff). The genuine cuBLAS FP4 path (nvjet_sm103) is ALSO far below roof
+  (3.8-6.2% FP4-SoL) and cannot batch: torch._scaled_grouped_mm REFUSES NVFP4 (FP8/MXFP8 only), so the
+  library forces 30 separate _scaled_mm launches and the custom fused kernel BEATS it 3.1x wall / 1.14x
+  GPU on the batched workload (cuBLAS wins 2.6x only on a single isolated grouped call). VERDICT REVISED:
+  (b) VIABLE, not a dead-end. The shape (M=192/320, AI ~707 FLOP/byte vs the 1875 ridge) is
+  memory-latency + occupancy bound; the reachable ceiling is ~34-38% FP4-SoL (HBM-bound for this AI, not
+  100%), and the kernel sits at 15% HBM with ~6.6x latency-hiding headroom blocked by occupancy, not
+  bytes/FLOPs. Next lever (in progress): (1) cut per-CTA smem to raise occupancy above the 2-CTA cap,
+  (2) replace the bar.sync handoff with mbarrier async pipelining to attack the 46.6% barrier stall. This
+  is a deepen-toward-SoL lever on the kernel, NOT a beat-cuBLAS frontier. Lesson: ALWAYS verify what the
+  "baseline" actually IS before banking an A/B (the original B28 assumed cuBLAS without checking the
+  baseline file).
 
 - WIN (B29, ch15:speculative_decoding 1.013x -> 1.258x, verify-pass, status succeeded): UNBANKS B25b.
   The B25b bank ("data-dependent control flow makes the cudagraph lever N/A") was too aggressive: it
