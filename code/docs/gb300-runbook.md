@@ -958,6 +958,16 @@ SoL framing (B), measured 2026-06-09:
   warmup=15/iters=10 measures the true 2.099x. Env-gated (AISP_NVFP4_GEMV_USE_DEQUANT_GEMV=1 default),
   legacy paths kept as fallback. Lesson: torch.compile can fuse a quant-dequant prologue into a GEMV
   reduction, turning a materialized 0.31x into a fused 2.1x; budget the compile warmup before timing.
+- WIN (B25, ch15:inference_monolithic 1.046x -> 7.029x, verify-pass, ~6.7x): the batch=1 autoregressive
+  decode (128 tokens x 8 tiny Linear layers = ~2048 tiny kernel launches) is pure launch overhead. The
+  original optimized only reused an output buffer (1.046x). Fix: compile the WHOLE decode loop with
+  reduce-overhead so inductor cudagraphs it -- kv_cache is the STABLE graph input (no per-step cudagraph
+  re-record, unlike regional_compile B23), collapsing the 2048 launches into one graph replay. Probe:
+  eager 25.8ms, default 1.12x, reduce-overhead 7.376x; harness 7.029x. Needed warmup=10 for the cudagraph
+  capture. The canonical batch=1-decode cudagraph win, and the inverse of B23: there the regional input
+  was unstable so cudagraphs had to be AVOIDED; here the loop input is stable so cudagraph the whole loop.
+  Also surveyed ch15-19: awq_gptq_smoothquant 0.149x and medusa_eagle_speculative 0.302x are intentional
+  (get_optimization_goal memory / throughput; awq uses torch._int_mm = the B20 sm_103 slow path).
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
