@@ -997,8 +997,16 @@ SoL framing (B), measured 2026-06-09:
   coherent C2C, keep data GPU-resident and operate in-place; explicit host staging is the anti-pattern
   (cf. B22a prefetch-thread, and the marginal memory_transfer / pageable_copy near-misses are the same
   pattern, candidates for the same zero-copy fix).
-
-Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
+- BANK (B27b, ch02:memory_transfer 1.024x + ch03:pageable_copy 1.015x): NOT zero-copy candidates after
+  all (correcting the B27 note). These are transfer-MEASUREMENT benchmarks: memory_transfer's benchmark_fn
+  is a pure per-iter H2D copy (no compute), and pageable_copy copies a CONSTANT host tensor per-iter then
+  sums it. The per-iter transfer IS the measured workload, so skipping/caching it via coherence would game
+  the benchmark (unlike grace_coherent_memory, whose data CHANGES each iter via f(x)=2x+1 and is
+  legitimately kept GPU-resident -- the transfer there is incidental to an on-GPU compute pipeline). The
+  legit lever here is only the copy TECHNIQUE (pinned vs pageable), which on coherent C2C is marginal
+  (pinned ~= pageable) -> 1.01-1.02x is inherent. The distinction: zero-copy is a legit win when the
+  transfer is incidental to a compute that can stay GPU-resident; it is gaming when the transfer itself is
+  the measured quantity.
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
 headroom; memory-movement opts near-tie on GB300's abundant bandwidth). (3) FP4, cuBLASLt NVFP4
