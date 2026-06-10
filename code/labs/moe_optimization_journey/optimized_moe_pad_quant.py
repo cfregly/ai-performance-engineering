@@ -54,10 +54,15 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model.eval()
         # get_optimal_compile_mode keeps max-autotune on the pinned toolchain but
         # falls back to "default" on sm_103 + Triton >= 3.6 (where max-autotune
-        # emits an unloadable tcgen05.wait.st kernel).
-        self.compiled = torch.compile(
-            self.model, mode=get_optimal_compile_mode("max-autotune")
-        )
+        # emits an unloadable tcgen05.wait.st kernel). On that sm_103 fallback,
+        # "default" leaves this small launch-bound MoE (1024 tokens) at ~1.27x vs
+        # eager; cudagraph capture ("reduce-overhead") cuts the per-kernel launch
+        # overhead to ~2.2x and still avoids the tcgen05 bug. Static shapes here
+        # (batch=8, seq=128) make cudagraphs safe.
+        compile_mode = get_optimal_compile_mode("max-autotune")
+        if compile_mode == "default":
+            compile_mode = "reduce-overhead"
+        self.compiled = torch.compile(self.model, mode=compile_mode)
         self.inputs = torch.randint(
             0, self.vocab_size, (self.batch, self.seq_len), device=self.device
         )

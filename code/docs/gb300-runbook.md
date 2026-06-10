@@ -898,6 +898,17 @@ SoL framing (B), measured 2026-06-09:
   tiny GEMVs). The baseline (torch._scaled_mm, N padded 1->128) is ~143x off the HBM roofline (127/128
   of the N is wasted), so real headroom exists but needs a FUSED fp4 GEMV kernel (the fp4 cast
   device-asserts; a materialized dequant moves 4x the bytes of the fp4-direct path). Deep, deferred.
+- WIN (B22c, moe_optimization_journey:moe_pad_quant 1.019x -> 1.927x, verify-pass): the optimization is
+  torch.compile, but get_optimal_compile_mode falls back to "default" on sm_103 (max-autotune emits the
+  tcgen05.wait.st bug). For this small launch-bound MoE (1024 tokens, many tiny kernels) "default" leaves
+  it at ~1.27x vs eager. Compile-mode probe vs eager: default 1.268x, max-autotune-no-cudagraphs 1.456x,
+  reduce-overhead (cudagraphs) 2.194x. Fix: on the sm_103 "default" fallback use "reduce-overhead"
+  (cudagraph capture cuts the per-kernel launch overhead and still avoids tcgen05; static shapes here make
+  it safe). Surgical + portable: B200 keeps max-autotune, only the sm_103 fallback flips default ->
+  reduce-overhead, in this lab (not the global get_optimal_compile_mode, which stays "default" since some
+  labs have dynamic shapes cudagraphs cannot capture). Generalizable lever (banked): other launch-bound
+  sm_103 labs on the "default" fallback may similarly prefer reduce-overhead, gated by per-lab cudagraph
+  safety.
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
