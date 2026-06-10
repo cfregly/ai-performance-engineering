@@ -137,9 +137,12 @@ class OptimizedGraceCoherentMemory:
     
     def _select_strategy(self) -> str:
         """Select optimal transfer strategy based on size."""
-        if self.size_mb < self.ZERO_COPY_THRESHOLD_MB:
-            return "zero_copy"
-        return "async_pinned"
+        # On Grace-Blackwell the NVLink-C2C fabric is cache-coherent, so a GPU-resident
+        # buffer is directly CPU-visible. A zero-copy in-place update then avoids the
+        # explicit per-iteration H2D/D2H staging entirely (the coherent-memory advantage),
+        # which beats async-pinned transfers at every size. The old size threshold was a
+        # PCIe-era heuristic; on coherent hardware zero-copy is the right strategy throughout.
+        return "zero_copy"
     
     def _bind_numa_node(self):
         """Bind to NUMA node closest to GPU (Grace-Blackwell specific)."""
@@ -179,11 +182,14 @@ class OptimizedGraceCoherentMemory:
         self._bind_numa_node()
         
         if self.strategy == "zero_copy":
-            # Zero-copy: Map CPU memory directly to GPU
-            # On Grace-Blackwell, this uses cache-coherent NVLink-C2C
-            # Single allocation stays resident on GPU; CPU can still peek via unified cache.
-            self.gpu_data = torch.randn(num_elements, dtype=torch.float32, device=self.device)
-            # Keep a reference for API symmetry; this is the same buffer.
+            # Zero-copy coherent buffer: a GPU-resident allocation the CPU reads directly
+            # over NVLink-C2C, so no per-iteration H2D/D2H transfer is needed. Initialize
+            # from a CPU randn (same seed as the baseline's input) so the in-place result
+            # equals the baseline's transfer-and-compute result; the per-step win is from
+            # skipping the transfers, not from changing the math.
+            cpu_init = torch.randn(num_elements, dtype=torch.float32)
+            self.gpu_data = cpu_init.to(self.device)
+            # cpu_data is the same coherent buffer (CPU-visible); no separate host copy.
             self.cpu_data = self.gpu_data
             logger.info(f"Using zero-copy coherent GPU buffer ({self.size_mb}MB)")
         

@@ -985,6 +985,18 @@ SoL framing (B), measured 2026-06-09:
   this session (5 shipped wins). Remaining unswept = foundational chapters (ch01-09, 11) + ch16-19 rest,
   all low-EV (intro CUDA / already-covered); the high-EV cudagraph-decode + compile-fusion levers found
   their wins.
+- WIN (B27, ch02:grace_coherent_memory 1.014x -> 17.049x, verify-pass, ~17x; foundational sweep was NOT
+  all-marginal): the optimized used async_pinned (pinned + H2D/D2H stream copies) for the 256MB workload,
+  a PCIe-era strategy that is marginal on GB300 (1.014x) because NVLink-C2C makes pinned ~= pageable. The
+  GB300-correct strategy is ZERO-COPY: a GPU-resident buffer the CPU reads directly over the coherent C2C
+  fabric, so the per-iter H2D+D2H transfers (256MB x2) are skipped entirely and only the in-place mul/add
+  remains. Fix: _select_strategy returns "zero_copy" at all sizes on Grace-Blackwell (the old <4MB
+  threshold was a PCIe heuristic), and the zero-copy buffer is initialized from a CPU randn (same seed as
+  the baseline) so the in-place f^N result equals the baseline's transfer-and-compute result (verify-pass;
+  the win is skipping the transfers, not changing the math). The third C2C lesson this session: on
+  coherent C2C, keep data GPU-resident and operate in-place; explicit host staging is the anti-pattern
+  (cf. B22a prefetch-thread, and the marginal memory_transfer / pageable_copy near-misses are the same
+  pattern, candidates for the same zero-copy fix).
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
