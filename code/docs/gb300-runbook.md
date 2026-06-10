@@ -935,6 +935,18 @@ SoL framing (B), measured 2026-06-09:
   the original. The cudagraph rule cuts both ways across these three labs: moe_pad_quant static shapes
   WANT cudagraphs (B22c); regional_compile's unstable regional input must AVOID them (B23); regional_triton's
   cudagraph is fine and the lab is just a marginal-thesis loss (B23b).
+- BANK + survey close (B23c): ch14:model_compile_reduced_precision 1.015x is compute-bound, not a
+  reduce-overhead candidate. A SimpleTransformer at batch=24/seq=1536 (36864 tokens) is cuBLAS-GEMM-bound,
+  so eager is near-optimal and ALL compile modes add ~1.5% (eager 2.725ms; default / reduce-overhead /
+  max-autotune-no-cudagraphs all ~2.68ms); max-autotune (which would autotune the GEMMs) is
+  tcgen05-blocked on sm_103. Inherently ~1.015x, no mode clears the gate. This sharpens the B22c lever:
+  reduce-overhead helps LAUNCH-bound labs (moe_pad_quant 1024-token MoE -> 1.93x), not compute-bound ones.
+  Rest of the survey all-pass: nanochat 2.365x, moe_compiled 2.168x, graph_break 1.145x, and the 9
+  moe-journey variants win big (moe 44.7x, moe_bmm_fusion 37.7x, moe_fused/memefficient/permuted ~6.3x,
+  moe_streams 5.8x, moe_sorted 5.0x, moe_grouped 3.2x, moe_batched 1.7x); torchao_quantization_compiled
+  skips (dependency/HW). Net this session: 3 shipped GB300 wins (paged_kv_offload_prefetch 0.57->1.22x,
+  moe_pad_quant 1.02->1.93x, regional_compile 0.09->1.10x). The compile/inference/moe frontier is
+  harvested; the remaining headroom is the deep nvfp4_gemv fused fp4 GEMV (~143x off the HBM roofline).
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
