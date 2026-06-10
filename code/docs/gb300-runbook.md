@@ -947,6 +947,17 @@ SoL framing (B), measured 2026-06-09:
   skips (dependency/HW). Net this session: 3 shipped GB300 wins (paged_kv_offload_prefetch 0.57->1.22x,
   moe_pad_quant 1.02->1.93x, regional_compile 0.09->1.10x). The compile/inference/moe frontier is
   harvested; the remaining headroom is the deep nvfp4_gemv fused fp4 GEMV (~143x off the HBM roofline).
+- WIN (B24, nvfp4_gemv 0.22x -> 2.099x, verify-pass bit-exact, ~9.5x; RESOLVES the B22b bank): instead
+  of a hand-written Triton fp4 kernel, a torch.compile-fused dequant GEMV. Unpack the fp4 (e2m1) matrix
+  from uint8 nibbles via a 16-entry LUT (lo nibble = even k), apply the per-16 e4m3 block scale
+  (repeat_interleave 16), and reduce against the dequantized vector; INDUCTOR FUSES THE DEQUANT INTO THE
+  GEMV REDUCTION (no [m,k] fp16 materialization), which beats the legacy gemm_v3b (a GEMM kernel on a
+  GEMV) / scaled_mm (pads N=1 to 128). Bit-exact to the scaled_mm reference (max abs diff 0.0). Eager is
+  0.31x (the materialization dominates); torch.compile(default) is 2.57x (probe). KEY GOTCHA: it needs
+  warmup -- the original warmup=5/iters=4 measured only 1.050x (residual JIT in the few iters);
+  warmup=15/iters=10 measures the true 2.099x. Env-gated (AISP_NVFP4_GEMV_USE_DEQUANT_GEMV=1 default),
+  legacy paths kept as fallback. Lesson: torch.compile can fuse a quant-dequant prologue into a GEMV
+  reduction, turning a materialized 0.31x into a fused 2.1x; budget the compile warmup before timing.
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
