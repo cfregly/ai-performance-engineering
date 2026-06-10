@@ -86,6 +86,15 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.target_model is None:
             raise RuntimeError("Target model not initialized")
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
+        # GB300: cudagraph the fixed-shape batch=1 draft + target forwards via torch.compile
+        # reduce-overhead, so the speculative algorithm's gain is not eaten by per-forward launch
+        # overhead (the reason the eager path measured only ~1.01x). The data-dependent accept logic
+        # (.item() syncs, variable accept_k) stays eager OUTSIDE the compiled models, so the full-loop
+        # cudagraph blocker does not apply. Measured 1.013x -> 1.258x on GB300 (verify-pass).
+        import os as _os
+        if _os.getenv("AISP_SPEC_COMPILE", "1").strip().lower() in {"1", "true", "on", "yes"}:
+            self.target_model = torch.compile(self.target_model, mode="reduce-overhead", dynamic=False)
+            self.draft_model = torch.compile(self.draft_model, mode="reduce-overhead", dynamic=False)
         self._synchronize()
 
     def benchmark_fn(self) -> None:

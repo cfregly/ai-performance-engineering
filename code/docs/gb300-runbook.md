@@ -1031,6 +1031,19 @@ SoL framing (B), measured 2026-06-09:
   separately harvested (ch04 12 wins + train_distributed banked low-value/high-cost), so the whole repo
   is harvested; remaining levers are upstream-toolchain (not self-fixable) or this deep P4 kernel.
 
+- WIN (B29, ch15:speculative_decoding 1.013x -> 1.258x, verify-pass, status succeeded): UNBANKS B25b.
+  The B25b bank ("data-dependent control flow makes the cudagraph lever N/A") was too aggressive: it
+  banked the FULL-LOOP cudagraph (the outer while loop has .item() syncs + a variable accept_k), but the
+  SUB-PIECES are fixed-shape and cudagraph-able. The draft's k-step forward loop and the target verify
+  forward are both batch=1 launch-bound. Compiling JUST the draft + target models with
+  torch.compile(mode="reduce-overhead", dynamic=False) cudagraphs those forwards while the accept logic
+  stays eager OUTSIDE the compiled models, so the full-loop blocker never applies. The eager path
+  measured 1.013x because per-forward launch overhead ate the speculative gain (baseline greedy 38.39 ms
+  vs speculative-eager ~37.9 ms); removing it lands speculative at 30.52 ms = 1.258x. Durable lesson
+  (Grind Mandate, never prematurely close): a "data-dependent control flow" bank applies to the FULL
+  loop ONLY -- always check whether the fixed-shape sub-pieces (here the draft gen + the verify forward)
+  are separately cudagraph-able. 7th GB300 win, found by re-opening a too-aggressive bank.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
