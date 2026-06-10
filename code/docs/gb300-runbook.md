@@ -968,6 +968,13 @@ SoL framing (B), measured 2026-06-09:
   was unstable so cudagraphs had to be AVOIDED; here the loop input is stable so cudagraph the whole loop.
   Also surveyed ch15-19: awq_gptq_smoothquant 0.149x and medusa_eagle_speculative 0.302x are intentional
   (get_optimization_goal memory / throughput; awq uses torch._int_mm = the B20 sm_103 slow path).
+- BANK (B25b, ch15:speculative_decoding 1.013x): the B25 full-loop cudagraph lever does NOT apply. The
+  speculative path has data-dependent control flow (variable accept_k via a per-round mismatch[0].item()
+  GPU->CPU sync, and a while-loop with pos += accept_k), so it cannot be captured as one graph. A partial
+  cudagraph of just the fixed k-step draft loop is possible (static input buffer + over-draft to a fixed
+  k like inference_monolithic), but the per-round .item() syncs plus the eager verify/accept bound the
+  win. Medium-effort, deferred. Distinction: inference_monolithic's decode loop is data-INDEPENDENT (fixed
+  128 steps) so it cudagraphs whole; speculative decode's accept logic is data-DEPENDENT so it cannot.
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
