@@ -1044,6 +1044,18 @@ SoL framing (B), measured 2026-06-09:
   loop ONLY -- always check whether the fixed-shape sub-pieces (here the draft gen + the verify forward)
   are separately cudagraph-able. 7th GB300 win, found by re-opening a too-aggressive bank.
 
+- RE-AUDIT (B30, bank re-examination prompted by the B29 mis-bank): swept every prior bank for the same
+  "missed sub-piece cudagraph" pattern. ch15:speculative_decoding was the SOLE mis-bank (fixed, B29). The
+  rest are sound: labs/speculative_decode already passes 2.18x eager (its workload lets the speculative
+  algorithm win without compile); ch15:medusa_eagle is a passing throughput/acceptance STUDY
+  (get_optimization_goal=throughput, no speed gate, no_speedup=0); ch17:prefill_decode_disagg passes via
+  its CUDA-stream prefill/decode overlap; labs/decode_optimization is compute-bound (its best cudagraph
+  variant graph/ultimate is marginal, B26) and already ships those cudagraph variants; nvfp4_group_gemm
+  is data-backed cuBLAS-bound (B28). Net: 7 GB300 wins this campaign; the batch=1 launch-bound-loop lever
+  is fully harvested across the speculative, monolithic, disagg, persistent-decode, and decode families;
+  no further single-GPU mis-bank remains. Remaining headroom is upstream-toolchain or the deep P4
+  cuBLAS-beating kernel.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
