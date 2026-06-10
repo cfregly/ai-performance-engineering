@@ -920,6 +920,21 @@ SoL framing (B), measured 2026-06-09:
   that remain are deep (nvfp4_gemv fused fp4 GEMV), intentional (nvfp4_mlp memory), or thin-frontier
   (nvfp4_group_gemm). The reduce-overhead lever (B22c) is the reusable takeaway. The "reopened frontier"
   was the operator's OWN committed Jun 9 GB300-enablement, not an active competitor (B22).
+- WIN (B23, ch13:regional_compile 0.0917x -> 1.103x, verify-pass, 12x): two compounding GB300 bugs.
+  (1) mode="reduce-overhead" cudagraph THRASHED -- the region is fed the EAGER attention output (a fresh
+  tensor address each call) with the seq length cycling [256..1536], so the cudagraph has no stable input
+  and re-records every call (0.0917x = 11x slower than the whole-block-compiled baseline). (2) dynamic=True
+  added dynamic-shape guard overhead. Fix: mode="default" (drops the cudagraph) + dynamic=False (a static
+  MLP kernel per bucket) -> 1.103x, clearing the gate. The mode change alone (dynamic=True default) was
+  1.033x (sub-gate); dynamic=False static-per-bucket kernels were the difference.
+- BANK (B23b, ch14:regional_triton 0.680x inherently losing on GB300, reverted): same MLP-only regional
+  structure but mode="max-autotune" (which bundles cudagraphs). Here cudagraphs HELP (smaller shapes
+  [128..512] let the regional cudagraph stabilize) -- max-autotune-no-cudagraphs measured 0.602x (WORSE),
+  so there is NO thrash to fix; regional just loses to the whole-block baseline on GB300 (the eager-MHA
+  bottleneck: nn.MultiheadAttention eager is competitive with the baseline's compiled attn). Reverted to
+  the original. The cudagraph rule cuts both ways across these three labs: moe_pad_quant static shapes
+  WANT cudagraphs (B22c); regional_compile's unstable regional input must AVOID them (B23); regional_triton's
+  cudagraph is fine and the lab is just a marginal-thesis loss (B23b).
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,

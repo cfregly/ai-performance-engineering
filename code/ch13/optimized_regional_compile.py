@@ -53,8 +53,14 @@ class RegionalMLP(nn.Module):
             self._forward_impl,
             backend="inductor",
             fullgraph=True,
-            dynamic=True,  # Dynamic shapes to handle varying sequence lengths
-            mode="reduce-overhead",
+            # GB300 fix (0.09x -> 1.10x): the original reduce-overhead cudagraph thrashed
+            # because this region's input is the eager attention output (a fresh tensor
+            # address each call) and the sequence length cycles, so the cudagraph has no
+            # stable input and re-records every call (11x regression). "default" drops the
+            # cudagraph; dynamic=False compiles a static MLP kernel per bucket (no
+            # dynamic-shape guard overhead), which clears the gate.
+            dynamic=False,
+            mode="default",
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
