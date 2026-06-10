@@ -975,6 +975,16 @@ SoL framing (B), measured 2026-06-09:
   k like inference_monolithic), but the per-round .item() syncs plus the eager verify/accept bound the
   win. Medium-effort, deferred. Distinction: inference_monolithic's decode loop is data-INDEPENDENT (fixed
   128 steps) so it cudagraphs whole; speculative decode's accept logic is data-DEPENDENT so it cannot.
+- Survey close (B26, decode/kv/ch18 harvested): swept labs/decode_optimization (12), labs/kv_optimization,
+  labs/kv_cache_compression, ch18 (12). All win except two non-fixable cases: one decode_optimization
+  variant at 1.0305x (marginal near-miss; the lab's other variants win 1.26x-9.33x, including the
+  cudagraph ones, so the near-miss is a redundant non-cudagraph technique) and ch18:vllm_v1_integration
+  which ERRORS on an environment mismatch (FAIL FAST: torch expected 2.9.1+cu130, NGC image has 2.12, not
+  a perf issue). Highlights: ch18 flexattention_sliding_window 8.5x, paged_attn_backend 12x, flexdecoding
+  1.70x; decode variants up to 9.33x. The decode/inference/compile/moe/nvfp4 frontier is harvested across
+  this session (5 shipped wins). Remaining unswept = foundational chapters (ch01-09, 11) + ch16-19 rest,
+  all low-EV (intro CUDA / already-covered); the high-EV cudagraph-decode + compile-fusion levers found
+  their wins.
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
