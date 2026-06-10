@@ -1114,6 +1114,22 @@ SoL framing (B), measured 2026-06-09:
   = PHYSICAL GPU0 (ignores CUDA_VISIBLE_DEVICES), so a non-contending sibling on GPU0 trips it; set
   AISP_FOREIGN_GPU_PROCESS_MIN_MB above the sibling's footprint when running off-GPU0.
 
+- HONEST NEGATIVE (B34, moe_pad_quant deepen): docs/gb300-moe-roofline.md. No in-scope surgical lever;
+  the shipped cudagraph win (1.686x, a host-overhead win already captured) stands, .py untouched. After
+  the cudagraph win the call is 67% GPU-busy / 33% host-gap, but the GPU-busy time is dominated by the
+  MoE ROUTER (32x aten::nonzero + 32x Memcpy DtoH + cub/gather, ~43% of GPU time), NOT the per-expert
+  GEMMs (~19%) -- routing-bound + host-bound, not expert-GEMM-bound. Expert dtype is BF16 (the "quant"
+  is INT8 fake-quant in the pad/finalize tail, not the GEMM), so the FP8 _scaled_grouped_mm lever does
+  NOT apply. ncu --set full on the dominant per-expert GEMM: Compute(SM) 16.3%, DRAM 4.3%, theoretical
+  occupancy 12.5% (register-bound, 255 reg/thread), 0.63 waves/SM -- latency/occupancy-bound, far from
+  the 3.75 PFLOPS BF16 roofline, but only ~0.38ms of a ~3ms wall, so a GEMM win is end-to-end-capped.
+  The BF16 torch._grouped_mm analog caps at ~1.1x (GEMMs are ~12% of wall). The real lever is a
+  non-surgical ROUTER rewrite (the 32x nonzero loop lives in moe_model.py / ch19.mxfp8_moe_common.py,
+  outside the optimized_moe_pad_quant.py edit scope) -- deferred. META-PATTERN (B33 + B34): the shipped
+  GB300 wins are SURGICAL (config / cudagraph / case-routing); the remaining DEEP kernel levers are
+  end-to-end-capped because the calls are host/routing-bound (a kernel win on a host-bound call does not
+  move the wall), or deep-out-of-scope. The surgical frontier is harvested.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
