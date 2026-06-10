@@ -1065,6 +1065,19 @@ SoL framing (B), measured 2026-06-09:
   no further single-GPU mis-bank remains. Remaining headroom is upstream-toolchain or the deep P4
   cuBLAS-beating kernel.
 
+- SoL-GROUNDING (B31, all 7 shipped wins, ncu --set full): docs/gb300-sol-roofline.md. 6 of 7 are
+  AT-CEILING or latency/transfer-moot (the config wins removed launch/transfer overhead; residual kernels
+  at peak, latency-scale at batch=1, or fabric/HBM-bound): regional_compile BF16 nvjet MLP GEMM 94-99%
+  tensor (at-ceiling); inference_monolithic + speculative_decoding latency-moot at batch=1; paged_kv
+  host/transfer; grace transfer-eliminated; moe_pad_quant launch/occupancy-bound (modest). The ONE with
+  real headroom is nvfp4_gemv: the torch.compile-fused dequant GEMV is 3.8% HBM-SoL (0% tensor, 18% FMA)
+  -- an H1 (no-tensor-core) kernel on a K3 op burning the SM on int64 LUT-gather + nibble-interleave +
+  fp32 reduce. Lever (in progress): a purpose-built HBM-bound fp4 GEMV -- in-register e2m1 bit-decode +
+  fp16 accumulate (FMA fix, ~6-13x kernel toward 25-50% HBM-SoL) or a tensor-core CUTLASS NVFP4 MMA
+  (~8-26x). Safe verify-passing first step: route case0 (l=1, k=16384) to the existing tensor-core
+  scaled_mm path (1.26x, 346->276us, bit-exact). Caveat: clocks not locked (read-only), absolute us/%SoL
+  directional; verdicts from --set full achieved tensor/DRAM throughput, not --set basic SM-busy.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
