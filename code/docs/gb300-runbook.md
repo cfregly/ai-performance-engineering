@@ -1096,6 +1096,24 @@ SoL framing (B), measured 2026-06-09:
   out of single-session scope). The kernel still remains the fastest grouped-NVFP4 option (no library
   grouped NVFP4 exists; it beats per-group _scaled_mm 3.1x, B28). .cu pristine, verify PASS.
 
+- WIN + CORRECTION (B33, nvfp4_gemv deepen): step 1 SHIPPED, step 2 reverted, + a B24 magnitude fix.
+  Step 1 (case0 routing, KEPT): route case0 (l=1, k=16384) to the tensor-core scaled_mm path -- 2.87x on
+  case0 (339->118us, bit-exact maxdiff=0) AND fixes a latent GB300 CRASH (the old case0 gemm_v3b path
+  hits cudaErrorNoKernelImageForDevice, not built for sm_103). The big-K NVFP4 tensor-core GEMM amortizes
+  the N=1->128 pad; the dequant is SM-ALU-bound at this shape. case1/case2 stay on the dequant (best
+  there). Step 2 (in-register e2m1 decode, REVERTED): bit-exact but SLOWER (fused 24.7->36us, microbench
+  +35%) -- inductor already lowers the 16-entry LUT gather to an efficient indexed load, so arithmetic
+  decode ADDS net SM-ALU work; the GEMV stays bound on inductor's reduction codegen (stack-interleave +
+  repeat_interleave broadcast), which a torch-level edit cannot move. The real lever is a hand-written
+  @triton.jit fp4 GEMV (vectorized packed-byte loads, in-register decode, no interleave materialization,
+  HBM-bound) -- deferred (larger, higher-risk). B24 MAGNITUDE CORRECTION: the lab measures case2 only
+  (m=7168, k=2048, l=4), which is HOST-BOUND (CUDA ~200us of a ~520us call) + noisy; the committed
+  "2.099x" is the high end of a ~1.05-2.1x range and does NOT reliably reproduce on this GB300 (steady
+  ~1.05-1.07x). The win is real (verify-pass, clears the 1.05x gate) but host-bound, so its magnitude is
+  noise-wide. Harness note: the validity gate's foreign-process check calls nvmlDeviceGetHandleByIndex(0)
+  = PHYSICAL GPU0 (ignores CUDA_VISIBLE_DEVICES), so a non-contending sibling on GPU0 trips it; set
+  AISP_FOREIGN_GPU_PROCESS_MIN_MB above the sibling's footprint when running off-GPU0.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

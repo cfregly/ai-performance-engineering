@@ -311,6 +311,21 @@ def custom_kernel(data: input_t) -> output_t:
     _, _, l = c_ref.shape
     k = int(a_ref.shape[1]) * 2
 
+    # GB300 case0 (l=1, k=16384): the tensor-core scaled_mm path is ~2.8x faster than the
+    # dequant GEMV at this large-k shape (measured 339->121 us same-process, bit-exact
+    # maxdiff=0): the big-K NVFP4 tensor-core GEMM amortizes the N=1->128 pad while the
+    # dequant is SM-ALU-bound. case1/case2 stay on the dequant GEMV (best there).
+    if (
+        int(l) == 1
+        and int(k) == 16384
+        and os.getenv("AISP_NVFP4_GEMV_CASE0_SCALED_MM", "1").strip().lower()
+        in {"1", "true", "on", "yes"}
+    ):
+        try:
+            return _run_scaled_mm(data)
+        except Exception:
+            pass
+
     # GB300: a torch.compile-fused dequant GEMV beats the scaled_mm / gemm_v3b paths here
     # (those pad N=1 to 128 or run a GEMM kernel on a GEMV). Bit-exact; ~2.5x. Falls through
     # to the legacy paths on any error or when explicitly disabled.
