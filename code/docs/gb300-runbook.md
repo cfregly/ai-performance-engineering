@@ -878,6 +878,27 @@ SoL framing (B), measured 2026-06-09:
   and likely hits the same sm_103 int-slow wall as ch13 (torch._int_mm 13x slower than tf32). Net: my
   non-contended frontier is harvested; the contended space is owned by the other session.
 
+- Reopened frontier (B22): the "contended" high-value labs were the operator's OWN committed Jun 9
+  GB300-enablement (sm_103a loaders, tcgen05 guards, block_scaling sm_103 port; tree clean), not an
+  active competitor. Re-surveyed with access restored: block_scaling, custom_vs_cublas tcgen05_matmul,
+  nvfp4_dual_gemm, ozaki (56x) all WIN on GB300. A fast `-p none` moe + persistent_decode survey found
+  two underperformers, both root-caused below.
+- WIN (B22a, persistent_decode:paged_kv_offload_prefetch 0.568x -> 1.223x, verify-pass): the prefetch
+  overlap used a host prefetch THREAD, which is counterproductive on GB300. NVLink-C2C makes the
+  coherent H2D copies cheap, so the Python/GIL thread overhead dominates them and inverts the result.
+  Config probe at the lab shape (bs4/h16/d128/seq65536/page8192/decode1/rep128): baseline 814 ms;
+  +thread 1364 ms (0.597x); pinned-direct 935 ms (0.871x); async-stream prefetch with NO thread 666 ms
+  (1.224x). Fix = use_host_prefetch_thread=False (keep pinned + async-stream prefetch); output unchanged
+  (verify max_diff 0.07). The async-stream prefetch still demonstrates the overlap lesson, just without
+  the GIL-bound thread.
+- BANK (B22b, nvfp4_gemv 0.22x env-sweep refuted): the optimized routes through nvfp4_gemm's gemm_v3b (a
+  GEMM kernel on a GEMV N=1 padded to N_eff=96, sequential GEMM_V3B_STREAMS=1). Env-config sweep
+  refuted: USE_GEMM_V3B_ALL=0 (scaled_mm 4-stream) 0.45x, GEMM_V3B_STREAMS=4 0.23x, +CASE1_N_EFF=16
+  0.234x, all still below the simple baseline (4-stream overhead exceeds the parallelism benefit for
+  tiny GEMVs). The baseline (torch._scaled_mm, N padded 1->128) is ~143x off the HBM roofline (127/128
+  of the N is wasted), so real headroom exists but needs a FUSED fp4 GEMV kernel (the fp4 cast
+  device-asserts; a materialized dequant moves 4x the bytes of the fp4-direct path). Deep, deferred.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

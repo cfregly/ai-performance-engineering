@@ -1,7 +1,11 @@
-"""Optimized paged KV-cache prefetch benchmark (pinned async + host prefetch + prefetch).
+"""Optimized paged KV-cache prefetch benchmark (pinned async-stream prefetch).
 
-- Uses a host staging thread plus pinned buffers with an async copy stream.
-- Prefetches the next page to overlap H2D copies with compute.
+- Pinned buffers plus an async copy stream prefetch the next page to overlap H2D
+  copies with compute.
+- GB300 note: the host prefetch THREAD is counterproductive here. On NVLink-C2C
+  the coherent H2D copies are already cheap, so the Python/GIL thread overhead
+  dominates them and inverts the result to ~0.57x. Async-stream prefetch without
+  the thread wins (~1.22x), so use_host_prefetch_thread is False.
 - Uses a pinned host cache (memmap disabled) to isolate overlap effects.
 """
 
@@ -30,7 +34,7 @@ def get_benchmark() -> PagedKVOffloadBenchmark:
         fallback_dtype=torch.float16,
         prefetch_next_page=True,
         use_direct_h2d=False,
-        use_host_prefetch_thread=True,
+        use_host_prefetch_thread=False,
     )
     return attach_benchmark_metadata(
         PagedKVOffloadBenchmark(cfg, label="paged_kv_offload_prefetch_optimized"),
