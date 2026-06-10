@@ -909,6 +909,17 @@ SoL framing (B), measured 2026-06-09:
   labs have dynamic shapes cudagraphs cannot capture). Generalizable lever (banked): other launch-bound
   sm_103 labs on the "default" fallback may similarly prefer reduce-overhead, gated by per-lab cudagraph
   safety.
+- Survey complete (B22d): the remaining compile/inference labs all pass or are intentional. ch20
+  memory_standard 1.385x, moe 2.549x, training_single 2.39x, pipeline_sequential pass; moe_cuda,
+  flexattention, blackwell_matmul, recsys all pass. ch20:nvfp4_mlp reads 0.766x latency but is a
+  MEMORY-goal benchmark (get_optimization_goal="memory": TE-NVFP4 trades latency for footprint vs BF16;
+  intentional, not a regression, do not "fix"). nvfp4_group_gemm 1.00x BANKED: a frontier 50-knob
+  tcgen05 cutlass kernel with thin headroom (only 1.03x on B200), so a GB300 config sweep is
+  compile-bound (one nvcc build per config) and low-EV. Net this session (access restored): 2 shipped
+  wins (paged_kv_offload_prefetch 0.568->1.223x, moe_pad_quant 1.019->1.927x), and the underperformers
+  that remain are deep (nvfp4_gemv fused fp4 GEMV), intentional (nvfp4_mlp memory), or thin-frontier
+  (nvfp4_group_gemm). The reduce-overhead lever (B22c) is the reusable takeaway. The "reopened frontier"
+  was the operator's OWN committed Jun 9 GB300-enablement, not an active competitor (B22).
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
