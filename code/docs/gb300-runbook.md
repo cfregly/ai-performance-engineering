@@ -1078,6 +1078,24 @@ SoL framing (B), measured 2026-06-09:
   scaled_mm path (1.26x, 346->276us, bit-exact). Caveat: clocks not locked (read-only), absolute us/%SoL
   directional; verdicts from --set full achieved tensor/DRAM throughput, not --set basic SM-busy.
 
+- HONEST NEGATIVE (B32, nvfp4_group_gemm deepen attempt): NCU-DEEPEN-ATTEMPT.md. Implementing the B28
+  viable lever measured-FAILED, and a config-win is refuted. Lever 1 (cut per-CTA smem, PIPELINE_STAGES
+  2->1): REGRESSED (15.1% -> 12.0% HBM-SoL, 226 -> 281us); not applied. Root-cause REFINEMENT (corrects
+  B28's "smem-capped"): achieved occupancy is WARP-SPECIALIZATION-capped (~6.2% across 2/3/4 CTAs/SM, all
+  configs), not smem-capped -- the mainloop has only ~2 active warps/CTA (TMA-producer + the thread0
+  consumer that issues both UTCCP + MMA), so extra CTAs add no active warps and the occupancy lever
+  cannot convert to SoL. Lever 2 (cut the 46.6% barrier): the per-k-tile __syncthreads() is load-bearing
+  (double-buffer stage-lifetime between the TMA-producer + consumer warps); narrowing it to mbarrier
+  async pipelining is a full rewrite across a 6316-line multi-path megakernel, not safely landable in a
+  session. Config-win REFUTED (clean test): setting the optimized to UNROLL_N=1 (fresh u1 build) still
+  measures 0.926x (optimized 0.364 vs baseline 0.337ms) -- UNROLL_N is a wash; the regression is the
+  optimized's EXTRA knobs (EPILOGUE_LD_X32 / WS_TMA_PRODUCER / TMA_L2_PROMOTION / ASSUME_NO_N_TAIL) being
+  net-negative on GB300, and dropping them only TIES the baseline (1.0x < the 1.05x gate). VERDICT:
+  nvfp4_group is config-UN-WINNABLE on GB300 (no config beats the minimal baseline; UNROLL_N wash; extras
+  hurt); the ONLY path to a real win is the deep mbarrier async-pipelining kernel rewrite (next-lever,
+  out of single-session scope). The kernel still remains the fastest grouped-NVFP4 option (no library
+  grouped NVFP4 exists; it beats per-group _scaled_mm 3.1x, B28). .cu pristine, verify PASS.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
