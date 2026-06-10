@@ -1130,6 +1130,23 @@ SoL framing (B), measured 2026-06-09:
   end-to-end-capped because the calls are host/routing-bound (a kernel win on a host-bound call does not
   move the wall), or deep-out-of-scope. The surgical frontier is harvested.
 
+- WIN + SURVEY (B35, single-target custom-kernel roofline): docs/gb300-sol-roofline-kernels.md.
+  SoL-grounded 5 priority custom-CUDA-kernel labs (ncu --set full where hand-owned). AT-CEILING /
+  library-bound (the %SoL is the answer, no hand kernel to tune): moe_cuda_ptx (torch.bmm cuBLAS BF16,
+  layer 17% FLOP-SoL, PTX path unimplemented), ozaki_scheme (cuBLAS FP-emulation, 61.3 TFLOPS),
+  nvfp4_gemm (CUTLASS NVFP4 M=128 memory-bound ~65% HBM-SoL near-ceiling; tiny shapes launch-bound).
+  HAND-OWNED HEADROOM: custom_vs_cublas gemm_cluster (CuTe tcgen05 FP16 8192^3) at 32.2% FP16 FLOP-SoL,
+  latency/occupancy-bound (Compute(SM) 58%, DRAM 33%, achieved occupancy 6.2% = 1 CTA/SM, top stall
+  46.5% scoreboard-on-smem); cuBLAS hits 49.3% on the same shape (1.6x faster), so the gap is real.
+  WIN (verify-passing, KEPT): eliminated the beta=0 dead-C path in tcgen05_cluster.cu -- the epilogue
+  loaded a 256MB C only to multiply it by 0.0, plus a 256MB per-call torch.zeros host memset; now writes
+  the accumulator straight to D (zeros->empty, drop the C-load + zero-axpby). Verify PASSES bit-identical
+  (rel 2.6e-4); harness 2.260x -> 2.329x. Honestly modest (~3% wall, ~0.8% kernel) because the kernel is
+  latency/occupancy-bound not bandwidth-bound, so removing 256MB of traffic barely moves it -- the real
+  gain is the killed per-call memset + dead C-load (a clean efficiency/correctness fix). NEXT LEVER: the
+  32%->50%+ gap needs an occupancy rewrite (warp-specialized persistent kernel + split TMEM); structurally
+  capped for an incremental edit (smem 192/227KB + full-TMEM both pin it to 1 CTA/SM), deferred.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

@@ -242,17 +242,13 @@ gemm_cluster(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   auto tiled_t2r_copy = make_tmem_copy(SM100_TMEM_LOAD_32dp32b1x{}, tCtAcc);
   auto thr_t2r_copy = tiled_t2r_copy.get_slice(threadIdx.x);
 
-  Tensor tDgC = thr_t2r_copy.partition_D(tCgC);
-  Tensor tDrC = make_fragment_like(tDgC);
-  copy(tDgC, tDrC);
-
+  // beta=0 GEMM (C=A@B^T): C-load eliminated (was multiplied by 0.0).
   Tensor tDtAcc = thr_t2r_copy.partition_S(tCtAcc);
   Tensor tDgD = thr_t2r_copy.partition_D(tCgD);
   Tensor tDrAcc = make_tensor<Accumulator>(shape(tDgD));
   copy(tiled_t2r_copy, tDtAcc, tDrAcc);
 
-  axpby(1.0f, tDrAcc, 0.0f, tDrC);
-  copy(tDrC, tDgD);
+  copy(tDrAcc, tDgD);  // D = accumulator (beta=0)
 
   __syncthreads();
   if (elect_one_warp) {
@@ -277,7 +273,7 @@ torch::Tensor run_cluster_matmul(torch::Tensor a, torch::Tensor b) {
               "Size must be divisible by tcgen05 tile");
 
   auto options = a.options().dtype(torch::kFloat32);
-  auto c_buffer = torch::zeros({m, n}, options);
+  auto c_buffer = torch::empty({m, n}, options);  // beta=0: no memset needed (C is never read)
   auto d_buffer = torch::empty_like(c_buffer);
 
   auto tiled_mma = make_tiled_mma(MmaTag{});
