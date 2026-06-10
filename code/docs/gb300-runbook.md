@@ -1017,6 +1017,20 @@ SoL framing (B), measured 2026-06-09:
   found their wins. Remaining headroom is upstream-blocked (Triton 3.7 tcgen05, torch._int_mm on sm_103)
   or deep multi-day kernel work (a hand-written tcgen05 fp4 GEMM for nvfp4_group_gemm).
 
+- BANK (B28, nvfp4_group_gemm, DATA-BACKED close of the last single-GPU lever): a same-shape GB300
+  config sweep (default BLOCK_M=8/BLOCK_N=32/KPACK_TILE=64, vs KPACK_TILE=128, vs WS_UNROLL2_MMA=1)
+  measured the custom tcgen05 grouped-GEMM kernel at a flat 0.924-0.925x vs the cuBLAS scaled_mm
+  baseline (optimized 0.3635-0.3648 ms vs baseline 0.336 ms, g2_n3072_k4096). cuBLAS is ~8% FASTER and
+  the env-config knobs are inert (<0.5% spread). This upgrades the earlier "thin headroom" guess (B22d)
+  to a measured verdict: on GB300 the B200-tuned tcgen05 path REGRESSES vs cuBLAS, and the bottleneck is
+  structural (the core MMA/TMA pipeline), not in the swept knobs. To clear the 1.05x gate the kernel
+  must drop 0.364 -> 0.320 ms (a 12% structural gain that BEATS NVIDIA's own arch-tuned library) -- a
+  K4/R4/H4/P4 deep rewrite, the lowest-EV class of win. Closed: cuBLAS-bound, config-inert; the named
+  next lever is a hand-written GB300 tcgen05 fp4 grouped GEMM (multi-day, beats-cuBLAS frontier), not a
+  config tweak. With this, the single-GPU frontier is data-backed harvested (6 wins) and distributed is
+  separately harvested (ch04 12 wins + train_distributed banked low-value/high-cost), so the whole repo
+  is harvested; remaining levers are upstream-toolchain (not self-fixable) or this deep P4 kernel.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
