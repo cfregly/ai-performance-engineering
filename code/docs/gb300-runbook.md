@@ -1007,6 +1007,17 @@ SoL framing (B), measured 2026-06-09:
   (pinned ~= pageable) -> 1.01-1.02x is inherent. The distinction: zero-copy is a legit win when the
   transfer is incidental to a compute that can stay GPU-resident; it is gaming when the transfer itself is
   the measured quantity.
+- Foundational sweep close (B27c, ch04-09/11): grace_coherent_memory (17x, B27) was the UNIQUE
+  foundational win. ch04 is distributed training (DDP/NCCL/torchrun 4-GPU), outside the single-GPU
+  cudagraph/compile/C2C lever space. ch05-08 single-GPU yield only marginals (launch_bounds 1.0028x, a
+  __launch_bounds__ hint with no measurable effect on GB300 since ptxas already optimizes) plus the banked
+  nvfp4_mlp (memory-goal). The foundational frontier is harvested. Session total: 6 shipped GB300 wins;
+  the three reusable levers (cudagraph the data-independent launch-bound decode loop; torch.compile-fuse a
+  quant-dequant prologue into a reduction; zero-copy on coherent C2C to skip incidental host staging) all
+  found their wins. Remaining headroom is upstream-blocked (Triton 3.7 tcgen05, torch._int_mm on sm_103)
+  or deep multi-day kernel work (a hand-written tcgen05 fp4 GEMM for nvfp4_group_gemm).
+
+Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
 headroom; memory-movement opts near-tie on GB300's abundant bandwidth). (3) FP4, cuBLASLt NVFP4
