@@ -10,6 +10,8 @@ code/upstream/triton-tcgen05-wait-st/STATUS.md probe D).
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from core.benchmark.triton_compat import _canonicalize_triton_arch
@@ -43,6 +45,38 @@ def test_canonicalize_preserves_suffix_and_clamps_only_121(raw: str, expected: s
 def test_canonicalize_normalizes_spelling() -> None:
     assert _canonicalize_triton_arch(" SM103a ") == "sm_103a"
     assert _canonicalize_triton_arch("sm121a") == "sm_120"
+
+
+def test_codegen_arch_clamp_is_gb10_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The TRITON_CODEGEN_ARCH clamp must hit ONLY GB10 (CC 12.1): a major>=12
+    catch-all would force sm_120 on real sm_120 GPUs (blocking sm_120a
+    arch-conditional codegen) and mis-target future major-13 arches."""
+    from core.benchmark import triton_compat
+
+    monkeypatch.setattr(triton_compat.torch.cuda, "is_available", lambda: True)
+
+    for capability, expected in [
+        ((12, 1), "sm_120"),  # GB10: the one arch the clamp exists for
+        ((12, 0), None),      # real sm_120 GPU: leave Triton's own target alone
+        ((13, 0), None),      # future arch: never clamp
+        ((10, 3), None),      # GB300: never clamp
+    ]:
+        monkeypatch.delenv("TRITON_CODEGEN_ARCH", raising=False)
+        monkeypatch.setattr(
+            triton_compat.torch.cuda, "get_device_capability", lambda c=capability: c
+        )
+        triton_compat._clamp_triton_codegen_arch()
+        assert os.environ.get("TRITON_CODEGEN_ARCH") == expected, capability
+
+    # A user-set env var is normalized (sm_121a -> sm_120) but an 'a' suffix on a
+    # non-121 arch survives verbatim.
+    monkeypatch.setattr(triton_compat.torch.cuda, "get_device_capability", lambda: (10, 3))
+    monkeypatch.setenv("TRITON_CODEGEN_ARCH", "sm_121a")
+    triton_compat._clamp_triton_codegen_arch()
+    assert os.environ["TRITON_CODEGEN_ARCH"] == "sm_120"
+    monkeypatch.setenv("TRITON_CODEGEN_ARCH", "sm_103a")
+    triton_compat._clamp_triton_codegen_arch()
+    assert os.environ["TRITON_CODEGEN_ARCH"] == "sm_103a"
 
 
 def test_patched_sm_arch_from_capability() -> None:

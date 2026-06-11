@@ -60,8 +60,12 @@ def _clamp_triton_codegen_arch() -> None:
         sanitized = None
     if not torch.cuda.is_available():
         return
-    major, _ = torch.cuda.get_device_capability()
-    if major >= 12:
+    # Allowlist, not denylist (rigor principle t): clamp ONLY GB10 (CC 12.1), the
+    # one arch CUDA 13.0's ptxas can't target. A `major >= 12` catch-all here would
+    # force sm_120 on real sm_120 GPUs (blocking their sm_120a arch-conditional
+    # codegen — the same suffix-stripping bug class as the sm_103a incident) and
+    # would mis-target any future major-13 arch.
+    if torch.cuda.get_device_capability() == (12, 1):
         os.environ["TRITON_CODEGEN_ARCH"] = "sm_120"
         _log("INFO: Triton codegen clamped to sm_120 for GB10 compatibility")
 
