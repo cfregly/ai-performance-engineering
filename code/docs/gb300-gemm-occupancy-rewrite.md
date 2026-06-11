@@ -195,3 +195,104 @@ TMA traffic that L2 already dedups. Smem-feasible stage-deepening at
 (256,2) is exhausted (stage 3 needs 144KB > 110KB cap), so the warp-
 specialized producer + 2-SM MMA rewrite is the only remaining
 structural lever toward the 48.7% cuBLAS ceiling.
+
+---
+
+# E4 verdict (2026-06-11): independent replication — cluster_m=2 B-multicast CONFIRMED HONEST NEGATIVE (tie within noise) + co-tenancy caveat
+
+Front E4 ran the same measurement mission as E5 **concurrently and unaware**
+(both fronts benched GPU 2 in the 06:04–06:13 UTC window: E5's sweep/ncu/
+gates overlapped E4's sweep and focused A/Bs — exactly the same-GPU
+co-tenancy this runbook bans). Detected post-hoc from `/tmp/frontE5/` mtimes
+vs E4 artifact run-ids interleaving minute-by-minute. Everything marked
+CLEAN below was re-measured after E5 finished, with GPU 2 verified idle
+(`nvidia-smi -i 2`, no compute apps). The clean re-runs confirm the E5
+verdict, so the contamination flipped no conclusion — but the overlapped-
+window numbers in both sessions carry that caveat (E4's three overlapped
+interleaves scattered cm2 +3.4% / tie / −2.2% — sign-flipping noise).
+
+Reconciliation: pod `tcgen05_dual_cta.cu` / `tcgen05_loader.py` /
+`bench_dual_cta.py` already md5-matched the committed c045227b state
+(43b814c3 / 55d8f32c / 1a533beb) — no transfer, nothing overwritten.
+Sanity: plain dual (256,2,cm=1) first read 893.5 us, inside the 840–915
+window. All arms rel_err = 0.0 vs torch.matmul in every run.
+
+## A/B — CLEAN (12 interleaved reps x (warmup=5, iters=20), quiet GPU 2)
+
+| arm | median | TFLOPS | %SoL | reps [min..max] us |
+|---|---|---|---|---|
+| cuBLAS (target) | 609.4 us | 1804.2 | 48.1% | [599.8..632.8] |
+| cluster (incumbent) | 1119.0 us | 982.6 | 26.2% | [980.9..1207.5] |
+| dual_cta (256,2,cm=1) plain | **926.1 us** | 1187.3 | 31.7% | [884.1..970.3] |
+| dual_cta (256,2,cm=2) mcast | 928.3 us | 1184.5 | 31.6% | [903.8..950.2] |
+
+**Plain vs mcast: 0.24% apart, ranges overlap — a dead tie**, replicating
+E5's paired read (mcast +0.65%) with independent code paths. Sweep arms
+(6-rep interleave, overlapped window, directionally consistent with E5):
+cm=4 950.2 us (loses ~2–5%), (128,3,cm=2) 1188.0 us (loses ~22%).
+(256,3,*) does not build **by design** — 3x48KB stages trip the
+`sizeof(SharedStorageT) <= 110KB` static_assert (tcgen05_dual_cta.cu:397).
+Node state note: incumbent (1119 us) and plain (926 us) both sit well off
+their B37 banks (904–962 / 838 best) on a quiet GPU while cuBLAS held
+600–616 us all session — hot-node drift hits the long-running custom
+kernels hardest; the interleaved relative ordering is the meaningful read.
+
+## ncu — CLEAN (skip 4, 1 launch each, quiet GPU 2)
+
+| metric | plain (256,2,cm=1) | mcast (256,2,cm=2) |
+|---|---|---|
+| Duration | 801.1 us | 808.0 us (+0.9%) |
+| **long_scoreboard (warp-cycles/issued of total)** | **28.5 / 39.2 (72.7%)** | **28.0 / 38.7 (72.4%) — unchanged** |
+| DRAM throughput (of peak) | 21.7% | 21.6% |
+| L2 throughput | 45.1% | 44.5% |
+| Compute (SM) throughput | 64.8% | 63.8% |
+| Block Limit smem / regs | 2 / 2 | 2 / 2 |
+| Achieved warps/SM (2 CTAs/SM) | 7.74 | 7.69 |
+
+Same mechanism E5 profiled, independently reproduced: the multicast IS real
+(`SM90_TMA_LOAD_MULTICAST` atom in the profiled signature, cluster size 2)
+and 2 CTAs/SM co-residency survives clustering, but it buys nothing —
+L2/DRAM traffic is essentially unchanged (L2 was already absorbing the
+duplicate B reads) and the dominant long_scoreboard TMA-**latency** stall
+(~73% of warp time) is untouched because the single producer/consumer
+warp's wait→MMA→commit chain is serialized on latency, not starved of
+bandwidth (DRAM 22%). The lever's premise is falsified at (256,2):
+bandwidth was never the binding resource. E4 ncu durations (798–808 us
+across 4 profiles incl. the overlapped pair) agree with E2's locked-clock
+799.4 us bank, confirming ncu replay isolation kept profiles trustworthy.
+
+## Harness verify gates (3/3 PASSED, `verification passed: true`)
+
+```
+AISP_TCGEN05_VARIANT=dual_cta AISP_DUAL_CLUSTER_M=2 (multicast):
+  verification PASSED, speedup 2.6967x   (run 20260611_061340)
+AISP_TCGEN05_VARIANT=dual_cta (plain regression):
+  verification PASSED, speedup 2.6733x   (run 20260611_061425)
+default (cluster) regression:
+  verification PASSED, speedup 2.4150x   (run 20260611_061446; 2.329x contract intact)
+```
+
+E4 artifacts on the pod: `/tmp/e4_focus_ab.py`, `/tmp/e4_ncu_one.py`,
+ncu reports `/tmp/e4_ncu_{plain,cm2}.ncu-rep` (overlapped window) and
+`/tmp/e4_ncu_{plain,cm2}_clean.ncu-rep` (clean).
+
+## Defaults recommendation (concurs with E5)
+
+**Keep the c045227b defaults — no revert.** The committed default path is
+already the plain winner (tile_n=256, stages=2, **cluster_m=1**); cm=2 is
+opt-in only, correct, verify-clean, and now twice-measured neutral. Do not
+flip the default to cm=2 (no win to take) and do not delete the mode (it
+is the documented negative that closes this branch of the search tree).
+
+## Named next lever (concurs with E5, plus one process lever)
+
+1. **2-SM UMMA pair (cta_group=2 / SM100_MMA_F16BF16_2x1SM_SS) on the
+   dual-CTA footprint** — the kernel is latency/issue-bound at 8 warps/SM;
+   fuse the CTA pair into one 256-wide MMA instead of re-cutting TMA
+   traffic that L2 already dedups. Stage-deepening at (256,2) is
+   smem-impossible (static_assert), so this is the remaining structural
+   path toward the ~48% cuBLAS ceiling.
+2. **Process: single-GPU mutex for concurrent fronts.** E4+E5 silently
+   co-measured GPU 2 for ~9 minutes; a `/tmp/gpu2.lock` flock (or
+   per-front GPU assignment in the dispatch brief) costs nothing and
+   protects every future A/B from sign-flipping contamination.

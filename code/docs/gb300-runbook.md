@@ -1309,6 +1309,14 @@ SoL framing (B), measured 2026-06-09:
   (the only remaining structural path to the cuBLAS ceiling): 2-SM UMMA pair (cta_group=2,
   SM100_MMA_F16BF16_2x1SM_SS) + warp-specialized producer on the dual-CTA footprint -- the kernel is
   issue/latency-bound, not BW-bound, and stage-deepening at (256,2) is smem-exhausted.
+  INDEPENDENTLY REPLICATED (second front, same session): a concurrent front raced the same mission,
+  detected a 9-minute GPU-2 co-tenancy overlap with the first (post-hoc, from artifact mtimes),
+  re-measured everything decisive on a verified-quiet GPU: plain 926.1 vs mcast 928.3 us (0.24% delta,
+  dead tie), long_scoreboard 28.5 -> 28.0 of ~39 (unchanged), multicast confirmed ACTIVE
+  (SM90_TMA_LOAD_MULTICAST, cluster 2) with L2/DRAM barely moving -- the premise falsification is
+  replicated, verify 3/3 PASS again. PROCESS LESSON: orchestrator must treat agent silence as
+  UNKNOWN, not dead -- two fronts silently co-measured on one GPU and only forensics caught it; a
+  GPU flock/mutex (or orchestrator-side GPU lease) is the named process lever.
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
