@@ -281,3 +281,145 @@ become L2 hits), or the 2SM ring deepened to cover TMA latency at the pair
 level. The CTA2-vs-CTA1 store finding above is a free clue for that work: the
 2SM pair's phase-staggering already hides store latency — the same staggering
 argument applies to its TMA fetch stream.
+
+# Y3: persistent CTAs / tile scheduler for L2 B-reuse — premise FALSIFIED in pre-check; mainloop diagnosed tensor-pipe-paced at the REAL (measured) fp16 ceiling; early-fill prologue shipped (CTA1 15.20 -> 14.98us)
+
+Front Y3 owned the final named capstone lever: persistent CTAs + tile
+scheduler so M-tiles sharing a B k-panel run consecutively/co-resident and
+the 16x-duplicated B pulls become L2 hits. The mandated pre-check killed the
+premise with data before a line of scheduler code was written, and the
+mainloop-bound analysis that replaced it re-grounds the whole "~5-6us
+tensor-pipe SoL floor" framing: the 9.4us mainloop is ALREADY ~87% of the
+empirically achievable tensor rate on this part. The residual prologue slack
+was harvested with an early-fill reorder (AISP_TCGEN05_EARLY_FILL).
+
+## 1. Pre-check: B (and A, and D) are ALREADY fully L2-resident
+
+ncu --set full on the B58 incumbent (CTA1, 2048^3, launches 6-7,
+/tmp/frontY3/ncu_full_cta1.ncu-rep, kernel 18.2-18.4us under replay):
+
+| metric | value | reading |
+|---|---|---|
+| dram__bytes_read.sum | 16.82 MB | = A(8MB) + B(8MB) cold fill + ~0.8MB metadata: the EXACT compulsory floor |
+| dram__bytes_write.sum | 0 B | even D's 8MB stays in L2 past kernel end |
+| derived lts lookup-miss-promoted | 0% | no capacity/conflict misses at all |
+| l1tex xbar->L1 TMA-load bytes | 201.33 MB | = 128 CTAs x 32 k-tiles x 48KB, the full 16x-B / 8x-A duplication |
+| same, rate | 11.0 TB/s = 29.4% of path peak (~37.5 TB/s) | aggregate delivery path nowhere near saturated |
+| lts srcunit_tex read sectors | 3.26M = ~104MB | hardware in-flight merge already collapses ~1.93x of the duplication before L2 banks see it (B53 confirmed) |
+
+Verdict on the named lever: with DRAM reads at the compulsory floor and 0%
+misses, NO tile schedule, persistence shape, or grid swizzle can save a
+single DRAM byte at this shape — the 126MB L2 swallows the entire 24MB
+working set on first touch. The duplication is real but is absorbed at
+11 TB/s on a 37.5 TB/s path. Banked WITHOUT implementation, per the
+pre-check design. (Corollary: the B48/X CLUSTER_M=2 multicast non-win is now
+explained — it could only halve L2 lookups the in-flight merge was already
+halving.)
+
+## 2. What actually binds the 9.4us mainloop: per-k-tile stamp split (probe3)
+
+/tmp/frontY3/{make_probe3.py,probe3.cu,p3_driver.py}: %globaltimer stamps
+per k-tile on consumer warp 0 (t0 wait-entry / t1 data-ready / t2 MMAs
+issued+committed) and producer warp 1 (g0 gate-entry / g1 gate-clear / g2
+TMA issued), 128 CTAs, one un-replayed launch (probed mainloop 9.98us vs
+9.4us native, ~0.6us stamp overhead):
+
+| segment (med across 128 CTAs) | value | reading |
+|---|---|---|
+| w0 sum tma_wait | 2.30us | ALL of it is fill-phase: tile0 waits ~860ns, steady-state wait ~0ns |
+| w0 sum mma_issue+commit | 5.12us | consumer issue path, ~160ns/tile |
+| w0 inter-iteration gap | ~2.31us | loop bookkeeping + stamps (~74ns/tile) |
+| w1 sum gate_wait (ring full) | 6.14us | producer always AHEAD: delivery never the steady-state laggard |
+| w1 sum tma_issue | 1.02us | TMA issue cost trivial — producer-issue-bound falsified |
+| TMA issue -> barrier-flip latency | 768ns (p10 512 / p90 768) | fully hidden by the 4-stage ring in steady state |
+| fill-phase arrival spacing | 256-288ns / 48KB stage | per-SM delivery path streams ~178GB/s after first arrival |
+| steady-state per-tile period | ~290ns (timer granularity 32ns) | vs 256ns/tile pure-pipe time (below) |
+| drain after last issue | 0.26us | pipe backlog at loop end ~1 tile: issue and execution are paced together |
+
+## 3. The "5-6us SoL floor" is falsified: the real fp16 ceiling is ~1.9 PF
+
+cuBLAS (torch.matmul, fp16/fp32acc) on the same GPU: 2048^3 = 11.47us
+(1.50 PF); 4096^3 = 1.78 PF; 8192^3 = 1.87 PF (asymptote); 16384^3 = 1.71 PF.
+The 3.77 PF chip rate implied by "30.0% SoL" (42ns per 128x256x16 UMMA) is
+not approached by ANY dense fp16 kernel on this part. The practical per-SM
+UMMA rate is ~64ns per 128x256x16 (16.4 TF/SM, 2.49 PF chip if all 152 SMs
+worked): our mainloop moves 134.2 MFLOP/CTA in 9.4us = 14.3 TF/SM = 87% of
+that — ABOVE cuBLAS's own best per-SM rate (1.87PF/152 = 12.3 TF/SM).
+Steady state is tensor-pipe-paced (consumer never starves; ~290ns period vs
+~256ns pipe time per 4-UMMA tile); the only recoverable mainloop slack is
+the ~2.3us fill-phase ramp (768ns first arrival + ~270ns/stage stream-in),
+of which only the issue START time is addressable — the ramp rate is a
+per-SM delivery property. Kernel floor under bit-identity constraints
+(no split-K; 128 tiles = 128 SMs): ~8.2us pipe + ~0.8us fill + 0.26us drain
++ ~2.8us epilogue ~= 12.1us. A <=12us breakthrough is NOT reachable at this
+shape without breaking accumulation-order bit-identity (B52's falsified
+territory); after the early-fill ship below (14.98us) the honest remaining
+envelope is ~14.2-14.5us, all of it epilogue-side, none of it mainloop.
+
+## 4. Shipped: AISP_TCGEN05_EARLY_FILL=1 (prologue overlap)
+
+The one addressable piece: the plain 1SM branch now inits its mbarriers and
+issues the first kStages TMA fills BEFORE the tcgen05 TMEM allocation, so
+alloc + __syncthreads + accumulator setup overlap the 768ns first-arrival
+TMA flight instead of preceding it. The producer loop starts at p=kStages
+with identical stage/gate arithmetic; TMA issue order and per-tile UMMA
+order are unchanged (bit-identity structural). 2SM and mcast branches keep
+the incumbent order (alloc at branch top).
+
+- A/B (process-interleaved paired CUDA-graph timing, one build per process
+  — NB: loading two builds into one process ALIASES the kernel (identical
+  mangled template symbol; the dynamic linker binds both modules to the
+  first-loaded instance and the launch fails with cluster_launch invalid
+  argument — same trap Y2's per-process ab2.py design dodged); 5 pairs,
+  7 graph reps of 32 calls each):
+
+| pair | EF0 med | EF1 med | delta |
+|---|---|---|---|
+| 1 | 15.189us | 14.935us | -0.254 |
+| 2 | 15.204us | 15.050us | -0.154 |
+| 3 | 15.114us | 14.928us | -0.186 |
+| 4 | 15.200us | 15.134us | -0.066 |
+| 5 | 15.204us | 14.980us | -0.224 |
+
+med-of-meds 15.200 -> 14.980us (-0.22us, 1.015x); min-of-mins 14.967 ->
+14.771us; EF1 wins ALL 5 pairs on med AND min, zero overlap of pairwise
+medians. The B58-backup control build measured 15.193us med in the same
+session (B58's shipped number), and the refactored file at EARLY_FILL=0
+measured 15.189us — the deferred-callable refactor is perf-neutral at
+default-off.
+- Bit-identity (cross-process .pt compare): EF0 and EF1, CTA1 AND CTA2, all
+  torch.equal vs the B58 backup build outputs. allclose vs fp32 matmul ref
+  PASS. (CTA2's code path at EARLY_FILL=1 is order-identical to incumbent
+  by construction.)
+- ncu --set full on the shipped build (/tmp/frontY3/ncu_full_ef1.ncu-rep vs
+  ncu_full_cta1.ncu-rep): byte-identical traffic — TMA-load 201.326592MB in
+  both, DRAM read 16.82MB in both, lts tex-read sectors ~3.27M in both. The
+  change is purely temporal (issue start time), as designed. Kernel time
+  under 41-pass replay (18.2-18.4us) cannot resolve 0.22us; the bankable
+  number is the interleaved graph A/B above.
+- Harness x3 all three shared-file targets: see log
+  /tmp/frontY3/harness_after.log (verification passed, 9/9).
+- Diff: c7e412cc81c2905c36464ae4bb681219 -> 82e2a128eecc4e71e68b5eb7f3121706
+  (`code/labs/fullstack_cluster/capstone_kernels_tcgen05.cu`): +65/-9 lines:
+  the AISP_TCGEN05_EARLY_FILL macro + comment, the alloc_tmem deferred
+  callable, alloc_tmem() calls at the 2SM/mcast branch tops, and the plain
+  1SM branch's p_fill early-fill block with the producer loop starting at
+  p_fill. Y3 artifacts: /tmp/frontY3/{make_probe3.py,probe3.cu,p3_driver.py,
+  ncu_full_cta1.ncu-rep,ncu_full_ef1.ncu-rep,raw_cta1.csv,raw_ef1.csv,
+  cublas_sol.py,cublas_sol2.py,y3_one.py,y3_bitcmp.py,ab_run.log,
+  ab_interleaved.log,harness_after.log,capstone_kernels_tcgen05.cu.bak.B58}.
+
+## 5. Named next lever (post-Y3)
+
+The mainloop is CLOSED (87% of the real pipe rate; the fill ramp's issue
+start was harvested here, and the ramp RATE plus the steady-state period are
+hardware properties at this stage size). The remaining kernel-level meat is
+the EPILOGUE (~2.8us probed): Y2's named TMA tensor store (~0.3-0.5us) is
+the only concrete residual. The structural unlock beyond that is shape- or
+contract-level, not kernel-level: at 2048^3 with 128x256 atoms there are
+only 128 tiles for 152 SMs and a hard accumulation-order contract; relaxing
+either (larger problem, or a sanctioned non-bit-identical split-K mode)
+is what would re-open >1us wins. Recommend the lab's expectation files
+adopt the measured ~1.9 PF dense-fp16 ceiling for GB300 SoL accounting
+(the B58 kernel was at ~58% REAL SoL, the Y3 ship is at ~59%; the "30.0%
+SoL" framing against 3.77 PF overstated the remaining headroom by 2x).

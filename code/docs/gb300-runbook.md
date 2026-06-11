@@ -1643,6 +1643,30 @@ SoL framing (B), measured 2026-06-09:
   swizzled tile rasterization (attacks the DRAM/L2 numbers that sank every V3 config without
   touching the winning shape).
 
+- WIN + SOL REFRAMING (B61, capstone early-fill + the persistence pre-check + the REAL dense-FP16
+  ceiling): docs/gb300-capstone-f-decomposition.md (Y3 section). THE PRE-CHECK KILLED THE NAMED
+  LEVER before a line of scheduler code: dram__bytes_read = 16.82MB = the EXACT A+B cold-fill
+  floor, dram writes 0 (even D stays in L2), promoted misses 0% -- B is FULLY L2-resident; there
+  are no DRAM misses for any persistence/swizzle/schedule to convert. Mainloop split (per-k-tile
+  globaltimer): consumer tma_wait is ALL fill-phase (steady-state ~0), producer gate_wait 6.14us
+  (delivery always AHEAD of consumption) -- the producer-issue-bound hypothesis falsified too;
+  steady-state period ~290ns/tile ~= pure tensor-pipe time. THE REFRAMING (bankable, repo-wide):
+  the 3.75 PFLOPS dense-FP16 "peak" is unreachable on this part -- cuBLAS itself asymptotes at
+  1.87 PF (8192^3; 11.47us at 2048^3); the real per-SM rate is ~64ns per 128x256x16 UMMA, and the
+  capstone mainloop runs at ~87% of THAT (14.3 TF/SM, ABOVE cuBLAS's own 12.3) -- B58 was at ~58%
+  REAL SoL, not 30%, and the kernel floor under the bit-identity contract (no split-K, 128 tiles
+  on 128 SMs) is ~12.1us: a <=12us "breakthrough" is structurally unreachable. RECOMMEND: adopt
+  ~1.9 PF as the GB300 dense-fp16 SoL reference (current sol-ceilings framing overstates remaining
+  headroom 2x). SHIPPED WIN: AISP_TCGEN05_EARLY_FILL=1 -- mbarrier init + first kStages TMA fills
+  issued BEFORE tmem alloc (alloc+sync overlaps TMA flight): 15.200 -> 14.980us med-of-meds
+  (1.015x, EF1 won all 5 interleaved process-pairs on med AND min), TMA traffic byte-identical
+  (purely temporal), torch.equal bit-identity CTA1+CTA2, harness 9/9 verification PASS. TRAP
+  BANKED: two builds loaded in ONE process alias the mangled kernel symbol -> invalid-argument
+  launch; one build per process for A/B. Capstone ladder final: 66 -> 38.9 -> 37.6 -> 24.0 ->
+  16.0 -> 15.2 -> 14.98us (~4.4x cumulative, bit-identical lineage throughout); mainloop CLOSED at
+  ~87% real SoL; only residual the ~0.3-0.5us epilogue TMA store. Structural unlocks beyond are
+  CONTRACT-level (sanctioned non-bit-identical split-K, larger shapes).
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

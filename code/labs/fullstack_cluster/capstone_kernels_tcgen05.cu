@@ -159,6 +159,28 @@ static_assert(kCta1ClusterM == 1 || kCta1ClusterM == 2,
 #define AISP_TCGEN05_SMEM_EPILOGUE 1
 #endif
 
+// Early-fill prologue (Y3). Probe stamps on the B58 incumbent put ~2.3us of
+// the 10.0us (probed) CTA1 mainloop in FILL-PHASE consumer starvation: the
+// first stage lands 768ns after the producer's first issue and stages then
+// stream in at only ~270ns/stage, while in steady state the consumer never
+// waits (tma_wait ~0; the loop is tensor-pipe-paced at ~256ns/tile). The
+// only recoverable part is the issue start time: the plain 1SM branch inits
+// its mbarriers and issues the first kStages TMA fills BEFORE the tcgen05
+// TMEM allocation, so the alloc + __syncthreads + accumulator setup overlap
+// TMA flight instead of preceding it. TMA/L2 and the TMEM allocator are
+// independent units, and the fills target the smem A/B ring which the alloc
+// never touches. The producer loop then starts at p=kStages with identical
+// stage/gate arithmetic, so the TMA issue ORDER and the per-tile UMMA issue
+// order are byte-identical to the incumbent (bit-identity is structural).
+// The 2SM and mcast-pair branches keep the incumbent order (alloc first).
+// MEASURED (Y3, 2048^3, process-interleaved paired graph A/B, 5 pairs):
+// CTA1 15.20 -> 14.98us med-of-meds (-0.22us, 1.015x, EF1 wins all 5 pairs
+// on med AND min; bit-identity torch.equal vs the B58 build PASS for CTA1
+// and CTA2). -D overridable for A/B sweeps.
+#ifndef AISP_TCGEN05_EARLY_FILL
+#define AISP_TCGEN05_EARLY_FILL 1
+#endif
+
 template <class MmaTag, int ClusterM, int Stages, int KBlocks, int MmaCtas = 1>
 struct TcgenVariantConfig {
   using Mma = MmaTag;
@@ -261,13 +283,22 @@ __global__ void gemm_device_variant(ATensor mA,
   using TmemAllocator = typename Variant::TmemAllocator;
   TmemAllocator tmem_allocator{};
 
-  if (elect_one_warp) {
-    tmem_allocator.allocate(TmemAllocator::Sm100TmemCapacityColumns,
-                            &shared_storage.tmem_base_ptr);
-  }
-  __syncthreads();
-  uint32_t tmem_base = shared_storage.tmem_base_ptr;
-  tCtAcc.data() = tmem_base;
+  // Early-fill (Y3): the allocation is a deferred-callable so the plain 1SM
+  // branch can issue its first TMA fills first; every other path calls it in
+  // the incumbent position (see macro comment above).
+  uint32_t tmem_base = 0;
+  auto alloc_tmem = [&] {
+    if (elect_one_warp) {
+      tmem_allocator.allocate(TmemAllocator::Sm100TmemCapacityColumns,
+                              &shared_storage.tmem_base_ptr);
+    }
+    __syncthreads();
+    tmem_base = shared_storage.tmem_base_ptr;
+    tCtAcc.data() = tmem_base;
+  };
+#if !AISP_TCGEN05_EARLY_FILL
+  alloc_tmem();
+#endif
 
   auto cta_in_cluster_coord_vmnk =
       cluster_layout_vmnk.get_flat_coord(int(cute::block_rank_in_cluster()));
@@ -289,6 +320,9 @@ __global__ void gemm_device_variant(ATensor mA,
   // mma barrier (commit covers all previously issued UMMAs) before t2r.
   if constexpr (Variant::kMmaCtas == 2) {
     // Cutlass tutorial 04: 2SM MMA + 2SM TMA multicast.
+#if AISP_TCGEN05_EARLY_FILL
+    alloc_tmem();  // incumbent order for the 2SM pair (no early fill here)
+#endif
     auto [tAgA, tAsA] = tma_partition(
         tma_atom_A,
         get<2>(cta_in_cluster_coord_vmnk),
@@ -404,6 +438,9 @@ __global__ void gemm_device_variant(ATensor mA,
       cute::wait_barrier(mma_barrier[last_stage], last_phase);
     }
   } else if constexpr (Variant::kClusterM == 2) {
+#if AISP_TCGEN05_EARLY_FILL
+    alloc_tmem();  // incumbent order for the mcast pair (no early fill here)
+#endif
     // B48/X: 1SM MMA pair + SM90 TMA multicast for B across the cluster's
     // two M-neighbor CTAs (same n-tile => same B panel; A stays per-CTA).
     // Each CTA issues its half of the B box once per stage with a both-CTA
@@ -539,6 +576,25 @@ __global__ void gemm_device_variant(ATensor mA,
 
     int num_k_tiles = size<3>(tCgA);
 
+#if AISP_TCGEN05_EARLY_FILL
+    // Y3: issue the first kStages fills (fresh stages, no gate) BEFORE the
+    // TMEM allocation so alloc+sync overlap the 768ns first-arrival latency.
+    // Stage s of tile p (= p for p < kStages) and the expect-tx protocol are
+    // exactly the incumbent producer-loop iterations 0..kStages-1.
+    int const p_fill = (num_k_tiles < kStages) ? num_k_tiles : kStages;
+    if (producer_warp && elect_one_thr) {
+      for (int p = 0; p < p_fill; ++p) {
+        cute::set_barrier_transaction_bytes(tma_barrier[p],
+                                            tma_transaction_bytes);
+        copy(tma_atom_A.with(tma_barrier[p]), tAgA(_, p), tAsA(_, p));
+        copy(tma_atom_B.with(tma_barrier[p]), tBgB(_, p), tBsB(_, p));
+      }
+    }
+    alloc_tmem();
+#else
+    int const p_fill = 0;
+#endif
+
     if (producer_warp) {
       // Producer (warp 1 as a WHOLE warp): fill the smem ring tile after
       // tile, gated only on the consumer's commit for the stage being
@@ -550,10 +606,10 @@ __global__ void gemm_device_variant(ATensor mA,
       // lane issues TMA) -- splitting one warp into mutually-dependent
       // divergent spin loops deadlocks under serialized schedulers (ncu
       // replay).
-      int stage = 0;
+      int stage = p_fill % kStages;  // 0 unless K is smaller than the ring
       int gate_phase = 0;
       int gate_count = 0;
-      for (int p = 0; p < num_k_tiles; ++p) {
+      for (int p = p_fill; p < num_k_tiles; ++p) {
         if (p >= kStages) {
           cute::wait_barrier(mma_barrier[stage], gate_phase);
           if (++gate_count == kStages) {
