@@ -1189,6 +1189,27 @@ SoL framing (B), measured 2026-06-09:
   dominant long_scoreboard stall); (2) persistent CTAs + tile-swizzled scheduler (4096 one-shot CTAs
   each pay launch + a register-capped 256-fp32/thread epilogue).
 
+- WIN + SURVEY (B38, never-rooflined labs sweep + block_scaling cudagraph): docs/
+  gb300-sol-roofline-labs2.md. WIN (shipped, verify PASS x2): labs/block_scaling cudagraph-captures the
+  CuTeDSL compiled_gemm launch in _post_setup (side-stream capture, replay in _run_problem; eager
+  fallback + AISP_BLOCK_SCALING_DISABLE_GRAPH=1 kill-switch; verify path stays eager; graph output
+  bit-identical, max_abs_err 0.0) -- optimized arm 0.0946 -> 0.0811 ms = 1.168x over the prior optimized,
+  harness 1.97x -> 2.24-2.57x vs baseline. SPLIT (corrects the F-survey host-dominance hypothesis to
+  half-right): the kernel is 44.8 us (20.5% NVFP4-SoL, 40% of the 18 us HBM floor); host submit is only
+  7.9 us hidden; the 94.6 us wall was kernel + ~50 us timing-frame overhead (event bracket + device sync
+  + L2-clear + Python), of which graph replay reclaims ~13.6 us. Config lever REFUTED clean: 21
+  tiler/cluster combos flat (best 4.5% kernel). ncu mechanism: UMMA tensor-pipe 34.5%, ~58% scoreboard
+  stalls (smem/L1TEX), single persistent wave, DRAM 25% -- shallow-K (K=1024) mainloop cannot hide smem
+  latency; the remaining 2.5x to the HBM floor needs an in-kernel rewrite of the vendored sm103 example
+  (deeper smem staging / split-K), deep-deferred. ALSO MEASURED (fresh GB300 numbers, GPU3):
+  nvfp4_dual_gemm kernel-frame is 6.6 us vs 48.5 us harness wall at iterations=4 -- 86% of the harness
+  number is frame/host (raise iterations before ANY kernel claim; kernel-side 3.3x headroom, tiny-M
+  mainloop latency); memory_bandwidth_patterns 70.6% HBM-SoL (5.64 TB/s, at-ceiling at the 70% cutoff);
+  software_pipelining 60.5% HBM-SoL (TMA bulk-copy/deeper stages named, not implemented); attention
+  quartet (fa4 14 arms, gluon, flex, cudnn_sdpa) CLOSED as overhead-bound micro-shapes (0.06-3.4% of
+  floors; no optimization EV at these shapes). With B36+B37 this round: three verify-passing wins, all
+  three from the same playbook -- profile-split the wall, kill the incidental work, graph the launch.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

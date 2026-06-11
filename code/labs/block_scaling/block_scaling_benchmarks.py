@@ -149,8 +149,78 @@ class OptimizedBlockScalingBenchmarkBase(BlockScalingBenchmarkBase):
     benchmark_path = "hardware_blockscaled_cutlass"
     nvtx_label = "block_scaling_hardware_blockscaled"
     compile_hardware = True
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._replay_graph: Optional[torch.cuda.CUDAGraph] = None
+
+    def _post_setup(self) -> None:
+        """Capture the compiled blockscaled launch in a CUDA graph for replay.
+
+        The CuTeDSL host invoke costs ~8us per call; inside the harness's
+        per-iteration timing frame (event bracket + full-device sync) that
+        host time is exposed on the GPU timeline. Replaying a pre-captured
+        graph (~2us launch) removes it. Inputs are static device buffers
+        (identical to the eager path), so every replay re-executes the full
+        GEMM on the same data; the verification path still calls
+        problem.run_hardware() eagerly and is unaffected. Set
+        AISP_BLOCK_SCALING_DISABLE_GRAPH=1 to fall back to eager launches.
+        """
+        import os as _os
+
+        if _os.getenv("AISP_BLOCK_SCALING_DISABLE_GRAPH", "").strip().lower() in {
+            "1", "true", "yes", "on",
+        }:
+            self._replay_graph = None
+            return
+        problem = self._require_problem()
+        if problem.compiled_gemm is None:
+            self._replay_graph = None
+            return
+        try:
+            import cuda.bindings.driver as _cuda_drv
+
+            capture_stream = torch.cuda.Stream()
+            with torch.cuda.stream(capture_stream):
+                problem.compiled_gemm(
+                    problem.a_tensor,
+                    problem.b_tensor,
+                    problem.sfa_tensor,
+                    problem.sfb_tensor,
+                    problem.c_tensor,
+                    _cuda_drv.CUstream(capture_stream.cuda_stream),
+                )
+            torch.cuda.synchronize()
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph, stream=capture_stream):
+                current = torch.cuda.current_stream()
+                problem.compiled_gemm(
+                    problem.a_tensor,
+                    problem.b_tensor,
+                    problem.sfa_tensor,
+                    problem.sfb_tensor,
+                    problem.c_tensor,
+                    _cuda_drv.CUstream(current.cuda_stream),
+                )
+            torch.cuda.synchronize()
+            self._replay_graph = graph
+        except Exception:
+            self._replay_graph = None
+
     def _run_problem(self, problem: BlockScalingProblem) -> None:
-        problem.run_hardware()
+        if self._replay_graph is not None:
+            self._replay_graph.replay()
+        else:
+            problem.run_hardware()
+
+    def teardown(self) -> None:
+        self._replay_graph = None
+        super().teardown()
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        metrics = super().get_custom_metrics() or {}
+        metrics["block_scaling.graph_replay"] = float(self._replay_graph is not None)
+        return metrics
 
     def _build_verification_output(self, problem: BlockScalingProblem) -> torch.Tensor:
         problem.run_hardware()
