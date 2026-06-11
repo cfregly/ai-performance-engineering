@@ -77,8 +77,8 @@ __global__ void optimized_tile_pipeline_kernel(
     int repeat_fmas) {
   cg::thread_block cta = cg::this_thread_block();
 
-  __shared__ float lhs_tile[kPipelineStages][kTileElems];
-  __shared__ float rhs_tile[kPipelineStages][kTileElems];
+  __shared__ alignas(16) float lhs_tile[kPipelineStages][kTileElems];
+  __shared__ alignas(16) float rhs_tile[kPipelineStages][kTileElems];
   using pipe_state_t = cuda::pipeline_shared_state<cuda::thread_scope_block, kPipelineStages>;
   __shared__ alignas(pipe_state_t) unsigned char pipe_state_bytes[sizeof(pipe_state_t)];
   auto* pipe_state = reinterpret_cast<pipe_state_t*>(pipe_state_bytes);
@@ -98,13 +98,17 @@ __global__ void optimized_tile_pipeline_kernel(
     if (full_tile) {
       auto warp = cg::tiled_partition<kWarpSize>(cta);
       const int warp_id = warp.meta_group_rank();
+      // 16B-aligned static size lets memcpy_async lower to 128-bit cp.async
+      // without a runtime alignment probe.
+      constexpr auto kChunkBytes =
+          cuda::aligned_size_t<16>(static_cast<size_t>(kChunkElems) * sizeof(float));
       if (warp_id < kCopyWarpsPerTensor) {
         const int chunk_base = warp_id * kChunkElems;
         cuda::memcpy_async(
             warp,
             lhs_tile[stage] + chunk_base,
             lhs + tile_base + chunk_base,
-            static_cast<size_t>(kChunkElems) * sizeof(float),
+            kChunkBytes,
             pipe);
       } else {
         const int chunk_base = (warp_id - kCopyWarpsPerTensor) * kChunkElems;
@@ -112,7 +116,7 @@ __global__ void optimized_tile_pipeline_kernel(
             warp,
             rhs_tile[stage] + chunk_base,
             rhs + tile_base + chunk_base,
-            static_cast<size_t>(kChunkElems) * sizeof(float),
+            kChunkBytes,
             pipe);
       }
     } else {
@@ -126,7 +130,7 @@ __global__ void optimized_tile_pipeline_kernel(
     pipe.producer_commit();
   };
 
-  // Prime the first two stages before starting steady-state consumption.
+  // Prime all pipeline stages before starting steady-state consumption.
   for (int stage = 0; stage < kPipelineStages; ++stage) {
     const int tile = blockIdx.x + stage * stride;
     if (tile >= num_tiles) {
@@ -141,28 +145,49 @@ __global__ void optimized_tile_pipeline_kernel(
   for (int tile = blockIdx.x; tile < num_tiles; tile += stride, ++iteration) {
     const int stage = iteration % kPipelineStages;
     const int tile_base = tile * kTileElems;
+    const bool full_tile = tile_base + kTileElems <= numel;
 
+    // consumer_wait returns once the stage's async copies (committed by every
+    // thread in the block) are complete, so no extra block barrier is needed
+    // before reading the staged tile.
     pipe.consumer_wait();
-    cta.sync();
 
-    for (int local = threadIdx.x; local < kTileElems; local += blockDim.x) {
-      const int idx = tile_base + local;
-      if (idx < numel) {
-        out[idx] = tile_math(lhs_tile[stage][local], rhs_tile[stage][local], repeat_fmas);
+    if (full_tile) {
+      // 128-bit vector path: 4 elements per thread per pass cuts the issued
+      // instruction count ~4x vs the scalar loop (the kernel is issue-bound,
+      // not DRAM-bound, at 256-thread blocks).
+      const float4* lhs_vec = reinterpret_cast<const float4*>(lhs_tile[stage]);
+      const float4* rhs_vec = reinterpret_cast<const float4*>(rhs_tile[stage]);
+      float4* out_vec = reinterpret_cast<float4*>(out + tile_base);
+      constexpr int kVecPerTile = kTileElems / 4;
+      for (int v = threadIdx.x; v < kVecPerTile; v += blockDim.x) {
+        const float4 a = lhs_vec[v];
+        const float4 b = rhs_vec[v];
+        float4 r;
+        r.x = tile_math(a.x, b.x, repeat_fmas);
+        r.y = tile_math(a.y, b.y, repeat_fmas);
+        r.z = tile_math(a.z, b.z, repeat_fmas);
+        r.w = tile_math(a.w, b.w, repeat_fmas);
+        out_vec[v] = r;
+      }
+    } else {
+      for (int local = threadIdx.x; local < kTileElems; local += blockDim.x) {
+        const int idx = tile_base + local;
+        if (idx < numel) {
+          out[idx] = tile_math(lhs_tile[stage][local], rhs_tile[stage][local], repeat_fmas);
+        }
       }
     }
 
-    cta.sync();
+    // Per-thread release: producer_acquire on this stage blocks until every
+    // thread has released, so the explicit cta.sync()s around release and the
+    // refill are redundant and only serialize the pipeline.
     pipe.consumer_release();
-    cta.sync();
 
     const int next_tile = tile + kPipelineStages * stride;
     if (next_tile < num_tiles) {
-      const int next_stage = (iteration + kPipelineStages) % kPipelineStages;
-      stage_tile(next_stage, next_tile);
+      stage_tile(stage, next_tile);
     }
-
-    cta.sync();
   }
 }
 
