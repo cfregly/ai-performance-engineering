@@ -9,13 +9,13 @@ import triton
 import triton.language as tl
 from core.utils.compile_utils import enable_tf32
 
-# arch_config patches Triton's SM-architecture handling for GB10 (sm_121a -> sm_120) so
-# kernels keep compiling there. It is GB10-ONLY: on GB300 (sm_103, Blackwell Ultra) the
-# patch makes the Triton 3.7 JIT emit a tcgen05.wait.st intrinsic LLVM cannot select
-# (uncatchable "LLVM ERROR: Cannot select"), which previously forced this lab to skip on
-# GB300. Guard the import to the GB10 compute capability so sm_103 JITs cleanly.
-if torch.cuda.is_available() and torch.cuda.get_device_capability() == (12, 1):
-    import arch_config  # noqa: F401
+# arch_config patches Triton's SM-architecture handling for GB10 (sm_121a -> sm_120).
+# The patch used to de-suffix every other arch too, which on GB300 rewrote
+# sm_103a -> sm_103 and made the Triton 3.7 JIT abort (uncatchable "LLVM ERROR:
+# Cannot select: intrinsic %llvm.nvvm.tcgen05.wait.st") — this import was
+# capability-gated to GB10 as a workaround. triton_compat.py now preserves the 'a'
+# suffix for all arches and clamps only sm_121, so the import is safe everywhere.
+import arch_config  # noqa: F401
 
 enable_tf32()
 
@@ -38,8 +38,10 @@ def matmul_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     # num_warps is Triton's launch meta-parameter (passed at the call site), NOT a kernel
-    # parameter. A dead `num_warps: tl.constexpr` here also triggered the tcgen05.wait.st
-    # LLVM-select bug on Triton 3.7 / sm_103; it is the launch kwarg in run_one instead.
+    # parameter; it is the launch kwarg in run_one instead. (A dead `num_warps:
+    # tl.constexpr` param here was once suspected as a tcgen05.wait.st abort trigger;
+    # probe B in code/upstream/triton-tcgen05-wait-st/STATUS.md refuted that — the
+    # abort was the sm_103a de-suffix in triton_compat.py, fixed 2026-06-11.)
 ):
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)

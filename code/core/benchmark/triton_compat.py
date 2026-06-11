@@ -3,8 +3,15 @@
 Triton 3.5+ may emit architecture names such as ``sm_121a`` that ``ptxas``
 doesn't understand even though the underlying GPU (e.g. GB10) supports the
 feature set.  Importing this module patches Triton's CUDA backend so the
-generated PTX/CUBIN requests ``sm_121`` instead.  The patch is idempotent and
-can be disabled by setting ``ENABLE_TRITON_PATCH=0`` in the environment.
+generated PTX/CUBIN requests ``sm_120`` instead.  The clamp applies ONLY to
+sm_121: every other arch keeps its ``a`` suffix verbatim, because the suffix
+is required for arch-conditional ISA (tcgen05/TMA on sm_100a/sm_103a, wgmma
+on sm_90a).  Stripping it makes LLVM instruction selection fail with an
+uncatchable abort — proven on GB300 2026-06-11: rewriting sm_103a -> sm_103
+under Triton 3.7 dies with ``LLVM ERROR: Cannot select: intrinsic
+%llvm.nvvm.tcgen05.wait.st`` (code/upstream/triton-tcgen05-wait-st/STATUS.md,
+probe D).  The patch is idempotent and can be disabled by setting
+``ENABLE_TRITON_PATCH=0`` in the environment.
 """
 
 from __future__ import annotations
@@ -27,10 +34,13 @@ def _canonicalize_triton_arch(arch: str) -> str:
     suffix = lowered[2:]
     if suffix.startswith("_"):
         suffix = suffix[1:]
-    # Keep the 'a' suffix for Blackwell (sm_100a) where ptxas requires it for TMA.
-    if suffix.endswith("a") and not suffix.startswith("100"):
-        suffix = suffix[:-1]
-    if suffix == "121":
+    # Keep the 'a' suffix verbatim for every arch: it is required for
+    # arch-conditional ISA (tcgen05/TMA on sm_100a/sm_103a, wgmma on sm_90a).
+    # Stripping it from sm_103a (GB300) made Triton plan tcgen05 codegen from
+    # CC 10.3 but target plain sm_103, and LLVM aborts with an uncatchable
+    # "LLVM ERROR: Cannot select: intrinsic %llvm.nvvm.tcgen05.wait.st".
+    # Clamp only GB10's sm_121[a] -> sm_120, the arch CUDA 13.0 ptxas lacks.
+    if suffix in ("121", "121a"):
         suffix = "120"
     return f"sm_{suffix}"
 
@@ -98,15 +108,12 @@ def ensure_triton_compat() -> None:
     original_sm_arch = triton_compiler.sm_arch_from_capability
 
     def _safe_sm_arch_from_capability(capability: int, _orig=original_sm_arch) -> str:
-        arch = _orig(capability)
-        # Preserve 'a' suffix for sm_100a so ptxas accepts TMA/tensormap.
-        if arch.endswith("a") and not arch.endswith("100a"):
-            arch = arch[:-1]
-        if arch == "sm_121":
-            # CUDA 13.0's ptxas still lacks native sm_121 support. Clamp to sm_120
-            # so Triton kernels build on GB10 until NVIDIA ships an updated assembler.
-            arch = "sm_120"
-        return arch
+        # Single source of truth with _canonicalize_triton_arch: preserve the 'a'
+        # suffix (required for arch-conditional ISA — de-suffixing sm_103a here was
+        # the root cause of every "Cannot select: intrinsic
+        # %llvm.nvvm.tcgen05.wait.st" abort on GB300) and clamp only GB10's
+        # sm_121[a] -> sm_120, which CUDA 13.0's ptxas lacks.
+        return _canonicalize_triton_arch(_orig(capability))
 
     try:
         triton_compiler.sm_arch_from_capability = _safe_sm_arch_from_capability  # type: ignore[assignment]

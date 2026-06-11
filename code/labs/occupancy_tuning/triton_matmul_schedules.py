@@ -19,13 +19,14 @@ def _tcgen05_codegen_broken() -> bool:
     select ("LLVM ERROR: Cannot select"), an uncatchable abort that forced this lab to
     skip on GB300.
 
-    ROOT CAUSE (fixed 2026-06, two triggers in triton_matmul.py): (1) matmul_kernel
-    declared a dead `num_warps: tl.constexpr` kernel param (shadowing Triton's launch
-    meta-param); (2) `import arch_config` (a GB10/sm_121-only Triton patch) was applied
-    unconditionally and misrouted the arch on sm_103. Removing the dead param AND
-    guarding the arch_config import to the GB10 capability makes the kernel JIT cleanly
-    on Triton 3.7 / sm_103 (verified: all tile schedules run; 256x256x64 reaches ~1.62x
-    over the 64x64x32 baseline at 8192x8192x256), so the lab no longer needs to skip."""
+    ROOT CAUSE (mechanism-proven 2026-06-11, Front P2): core/benchmark/triton_compat.py
+    (imported via `import arch_config`) de-suffixed sm_103a -> sm_103, and Triton's
+    arch-conditional tcgen05 intrinsics are only selectable for the 'a' target — probe D
+    in code/upstream/triton-tcgen05-wait-st/STATUS.md reproduces the abort from exactly
+    that transform on vanilla Triton 3.7. (The dead `num_warps: tl.constexpr` kernel
+    param suspected by B18 was a red herring: probe B shows it JITs clean without the
+    de-suffix.) triton_compat.py now preserves the 'a' suffix for all arches, so the
+    arch_config import is unconditional again and the lab does not skip."""
     return False
 
 

@@ -168,21 +168,29 @@ def get_optimal_compile_mode(preferred_mode: str = "max-autotune", sm_threshold:
         The compile mode to use: "max-autotune" if GPU has enough SMs,
         otherwise "reduce-overhead"
     """
+    # Testing / A-B facility: force a specific compile mode regardless of the
+    # caller's preference (used by the GB300 sm_103a-unlock re-sweep to measure
+    # incumbent arms, e.g. AISP_COMPILE_MODE_OVERRIDE=reduce-overhead). Not set
+    # in normal operation.
+    override = os.environ.get("AISP_COMPILE_MODE_OVERRIDE", "").strip()
+    if override:
+        return override
+
     if preferred_mode != "max-autotune":
         return preferred_mode
-    
+
     if not torch.cuda.is_available():
         return "reduce-overhead"
 
-    # Triton >= 3.6 emits an unloadable sm_103 `tcgen05.wait.st` PTX intrinsic under
-    # max-autotune on Blackwell Ultra (GB300, CC 10.3), which its LLVM backend cannot
-    # select, hard-aborting the compile (LLVM ERROR: Cannot select ...). The
-    # repo-pinned Triton 3.5.0 compiles max-autotune cleanly. On the affected
-    # toolchain only, fall back to "default" (still graph-captured + fused, so it
-    # still beats eager); every other arch/toolchain keeps max-autotune.
-    if _max_autotune_unsafe_on_this_toolchain():
-        return "default"
-
+    # HISTORICAL (root-caused 2026-06-11, guard retired same day): the "sm_103
+    # tcgen05.wait.st LLVM abort" under max-autotune was NOT a Triton >= 3.6 bug.
+    # It was self-inflicted by core/benchmark/triton_compat.py, which de-suffixed
+    # sm_103a -> sm_103; the arch-conditional tcgen05 intrinsics are only
+    # selectable for the 'a' targets, so LLVM hard-aborted (uncatchable SIGABRT).
+    # triton_compat.py now preserves the 'a' suffix for all arches and the
+    # max-autotune paths were re-verified clean on GB300 / Triton 3.7 (see
+    # code/upstream/triton-tcgen05-wait-st/STATUS.md), so the sm_103 downgrade
+    # to "default" is gone.
     try:
         device_index = torch.cuda.current_device()
         num_sms = torch.cuda.get_device_properties(device_index).multi_processor_count
@@ -194,30 +202,6 @@ def get_optimal_compile_mode(preferred_mode: str = "max-autotune", sm_threshold:
     except Exception:
         # If we can't determine SM count, use reduce-overhead to be safe
         return "reduce-overhead"
-
-
-def _max_autotune_unsafe_on_this_toolchain() -> bool:
-    """True on GB300 / Blackwell Ultra (sm_103, CC 10.3) with Triton >= 3.6, where
-    max-autotune emits an unloadable tcgen05 kernel (see get_optimal_compile_mode)."""
-    try:
-        if torch.cuda.get_device_capability() != (10, 3):
-            return False
-    except Exception:
-        return False
-    try:
-        import triton
-
-        triton_mm = tuple(int(x) for x in triton.__version__.split(".")[:2])
-    except Exception:
-        return False
-    if triton_mm >= (3, 6):
-        logger.warning(
-            "sm_103 + Triton %s: max-autotune emits an unloadable tcgen05 kernel; "
-            "using compile mode 'default'. Use the pinned Triton 3.5.0 for max-autotune.",
-            getattr(__import__("triton"), "__version__", "?"),
-        )
-        return True
-    return False
 
 
 _CallableT = TypeVar("_CallableT", bound=Callable[..., Any])

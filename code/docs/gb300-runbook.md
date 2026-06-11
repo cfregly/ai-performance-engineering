@@ -825,15 +825,19 @@ SoL framing (B), measured 2026-06-09:
   state). The lab stays correctly skip-guarded; the edits were reverted (a half-applied unblock would
   make the lab SIGABRT instead of skip cleanly). Full unblock needs the repo-pinned Triton 3.5.0 or
   isolating + removing the second trigger (deeper follow-up; the 1.62x bare-kernel result is the
-  demonstrated ceiling if unblocked).
+  demonstrated ceiling if unblocked). [2026-06-11 correction, see B69/B70: the dead param was a red
+  herring -- Front P2 probe B shows it JITs clean without the arch de-suffix; the ONLY real trigger
+  was triton_compat.py rewriting sm_103a -> sm_103.]
 - Kernel (B19, occupancy unblock ACHIEVED, SUPERSEDES B18): isolated the second trigger B18 was missing.
   `import arch_config` is the other trigger: at import it runs configure_optimizations() (inductor config
   + arch env vars + a Triton-compat patch), and empirically the kernel ABORTS with arch_config imported
-  but JITs cleanly WITHOUT it on sm_103. (Honest mechanism note: the obvious suspect,
-  triton.runtime.driver.set_active_device_capability(10,3), is RULED OUT -- it is a no-op on Triton 3.7,
-  where DriverConfig lacks that method; the exact configure_optimizations side effect that flips the
-  codegen is not yet isolated, likely the ensure_triton_compat Triton patch -- so the fix below is
-  empirical, not mechanism-proven.) Fixing BOTH triggers in triton_matmul.py (remove the dead
+  but JITs cleanly WITHOUT it on sm_103. (Mechanism note, RESOLVED 2026-06-11 -- the suspect ensure_triton_compat
+  Triton patch IS the mechanism, now proven: core/benchmark/triton_compat.py de-suffixed
+  sm_103a -> sm_103 (preserving only sm_100a), and the arch-conditional tcgen05 intrinsics are only
+  LLVM-selectable for the 'a' target, so instruction selection dies with the uncatchable fatal.
+  Probe D in code/upstream/triton-tcgen05-wait-st/STATUS.md reproduces the abort by applying exactly
+  that transform to vanilla Triton 3.7; probes A-C show the unpatched stack is clean. Fixed in-repo +
+  downgrades retired: see B70.) Fixing BOTH triggers in triton_matmul.py (remove the dead
   num_warps:constexpr kernel param + guard `import arch_config` to compute capability (12,1)) makes
   triton_matmul.run_one JIT cleanly on Triton 3.7 / sm_103, so triton_matmul_schedules.
   _tcgen05_codegen_broken() -> False and the lab no longer skips. Verified end-to-end: harness
@@ -846,7 +850,8 @@ SoL framing (B), measured 2026-06-09:
   configure_optimizations side effect (likely
   ensure_triton_compat) and guard it centrally in arch_config by capability, which would protect any
   other raw-triton tl.dot kernel on sm_103 (blast radius is narrow: most arch_config importers use
-  torch/cuBLAS/CUTLASS paths that already run).
+  torch/cuBLAS/CUTLASS paths that already run). [Executed 2026-06-11 (B70): fixed centrally in
+  triton_compat.py itself -- suffix preserved, no capability guard needed.]
 - Kernel (B20, ch13:quantization 0.17x regression root-caused, measured bank): the flagged
   ch13:quantization "optimization" (INT8 dynamic-quant via torch._int_mm + torch.compile max-autotune)
   runs at 0.17x = 5.9x SLOWER than the fp32 baseline on GB300. Measured the components at the lab's
@@ -1857,6 +1862,24 @@ SoL framing (B), measured 2026-06-09:
   (only sm_100a preserved). REVISES the B17/B18/B19-era toolchain attribution; RE-OPENS the
   B10/B16 stale-checks (max-autotune may work after a 1-line in-repo fix). Evidence
   /tmp/frontP2/. NEXT LEVER: fix the de-suffix, re-run the max-autotune-gated paths.
+- IN-REPO FIX SHIPPED (B70, tcgen05.wait.st de-suffix fixed + sm_103 downgrades retired, pod-verified
+  2026-06-11): executes B69's named next lever. core/benchmark/triton_compat.py now preserves the 'a'
+  suffix for ALL arches in both _canonicalize_triton_arch and the sm_arch_from_capability patch (the
+  patch closure now delegates to _canonicalize_triton_arch -- single source of truth); only
+  sm_121[a] -> sm_120 is clamped, the original GB10 intent. GB10 behavior verified unchanged without
+  GB10 hardware: tests/test_triton_compat_arch.py (15 tests, pod-run on live Triton 3.7) pins
+  sm_121[a] -> sm_120, sm_120[a]/sm_103[a]/sm_100[a]/sm_90[a] pass through verbatim, and the patched
+  sm_arch_from_capability(103) -> sm_103a. Re-ran the previously-aborting max-autotune-gated paths on
+  the pod with the fix active (evidence /tmp/frontFIX/): (1) occupancy_tuning triton_matmul with the
+  `import arch_config` capability guard REMOVED -- raw tl.dot JITs + verifies at 64x64x32,
+  128x256x64, 256x256x64, and harness occupancy_tuning:proton_matmul_bm256_bn256_bk64 SUCCEEDS at
+  1.327x verify-pass (vs 1.306x when B19 shipped it guarded). (2) llama max-autotune --
+  _safe_compile_mode retired from llama_3_1_8b_optimization.py and the central
+  get_optimal_compile_mode sm_103+Triton>=3.6 "default" downgrade retired from compile_utils.py;
+  get_optimal_compile_mode now returns max-autotune on sm_103 and the lab compiles + runs clean
+  (real triton_mm autotune sweeps in the log = live Triton codegen on sm_103a). Confirms B18's dead
+  num_warps param was a red herring (Front P2 probe B). The B10/B16 stale-checks re-opened by B69
+  can now re-run under true max-autotune.
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,

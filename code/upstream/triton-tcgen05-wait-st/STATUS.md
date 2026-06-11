@@ -73,6 +73,15 @@ preserve the `a` suffix for ALL `sm_1xxa` arches (the suffix is required
 for arch-conditional ISA: tcgen05/TMA on sm_100a/sm_103a); clamp only
 `sm_121 -> sm_120` (the original GB10 intent).
 
+**SHIPPED 2026-06-11 (runbook B70):** both functions fixed (the patch
+closure now delegates to `_canonicalize_triton_arch`; suffix preserved
+verbatim for all arches, only `sm_121[a] -> sm_120` clamped), unit-tested
+in `tests/test_triton_compat_arch.py` (pod-run, 15 passed, GB10 clamp
+unchanged). Pod re-verified clean: occupancy_tuning raw `tl.dot` with
+`arch_config` imported unguarded (harness 1.327x verify-pass) and llama
+max-autotune. The `_safe_compile_mode` fallback and the central
+`get_optimal_compile_mode` sm_103 downgrade are retired.
+
 ## Residual upstream angle (hypothesis, intentionally not filed)
 
 Triton could raise a catchable Python error instead of an uncatchable
