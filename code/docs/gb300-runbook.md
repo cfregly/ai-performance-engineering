@@ -1147,6 +1147,28 @@ SoL framing (B), measured 2026-06-09:
   32%->50%+ gap needs an occupancy rewrite (warp-specialized persistent kernel + split TMEM); structurally
   capped for an incremental edit (smem 192/227KB + full-TMEM both pin it to 1 CTA/SM), deferred.
 
+- WIN + HYPOTHESIS CORRECTION (B36, blackwell_matmul host-overhead deepen): docs/
+  gb300-blackwell-matmul-hostoverhead.md. labs/blackwell_matmul:blackwell_matmul_tcgen05 (FP16 2048^3)
+  0.2250 ms -> ~0.155 ms median (~1.45x; 69.61x -> 101-104x vs naive), verify PASS x3, outputs
+  BIT-IDENTICAL (torch.equal) pre/post. The shared-file siblings also gain: fullstack_cluster
+  cluster_gemm_tcgen05 1.06x, cta2 1.12x, both verify PASS. Patch (capstone_kernels_tcgen05.cu, shared
+  by both labs): (1) drop the beta=0 epilogue C-load + zero-axpby, (2) torch::zeros C + empty_like D ->
+  single torch::empty D aliased as C, (3) cache the TMA atoms in a leaked static thread_local keyed on
+  (a_ptr,b_ptr,m,n,k,device) -- content-agnostic, mutated-tensor case verified correct, (4) one-shot
+  cudaFuncSetAttribute guard. TWO HYPOTHESES CORRECTED by the nsys probe: (a) the B35-survey suspect
+  cuTensorMapEncodeTiled is 0.24 us/call (0.7% of API time), NOT ~190 us -- the TMA-encode-dominance
+  hypothesis is refuted; (b) the B35 "kernel ~16us vs wall ~213us" framing was wrong -- the kernel was
+  66.2 us, and the single biggest win was IN-KERNEL: the dead beta=0 C-load was serializing ~27 us of
+  gmem->reg latency in the epilogue (66.2 -> 38.9 us kernel). The "13x host overhead" was really a mix
+  of a slower-than-surveyed kernel + ~63 us of host costs (zeros fill+alloc ~31 us, setattr 4.5 us,
+  encode+atom-build, pybind). Serial probe: 134.4 -> 71.1 us warm, 156.8 -> 91.9 us cold-L2. Durable
+  lesson: a wall-vs-kernel gap claim from a DRAFT wall-clock survey must be profile-split before
+  trusting the ratio -- here the same beta=0 dead-path class (B35) hid on BOTH sides of the boundary.
+  NEXT LEVER: fp16-direct epilogue (kill the .to(kFloat16) ~3.9 us copy + ~20 us host _to_copy, halve D
+  store traffic); then the ~28 us/call residual host gap (pybind + empty + launch) is a CUDA-graph
+  candidate; kernel-side 38.9 us = ~440 TFLOPS = 11.7% FP16-SoL at 2048^3 -- k-stage double-buffered
+  pipelining is the deep candidate.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

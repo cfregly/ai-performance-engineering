@@ -7,6 +7,7 @@
 
 #include <cooperative_groups.h>
 #include <type_traits>
+#include <utility>
 
 #include <cutlass/arch/barrier.h>
 #include <cutlass/cluster_launch.hpp>
@@ -261,9 +262,12 @@ __global__ void gemm_device_variant(ATensor mA,
   auto tiled_t2r_copy = make_tmem_copy(SM100_TMEM_LOAD_32dp32b1x{}, tCtAcc);
   auto thr_t2r_copy = tiled_t2r_copy.get_slice(threadIdx.x);
 
+  // Host-overhead fix: every call site hardcodes Alpha(1.0f), Beta(0.0f), so
+  // the C operand is never observable in the output. Drop the global->register
+  // load of C and the beta multiply (bit-identical: C was zero-filled before).
+  (void)beta;
   Tensor tDgC = thr_t2r_copy.partition_D(tCgC);
   Tensor tDrC = make_fragment_like(tDgC);
-  copy(tDgC, tDrC);
 
   Tensor tDtAcc = thr_t2r_copy.partition_S(tCtAcc);
   Tensor tDgD = thr_t2r_copy.partition_D(tCgD);
@@ -272,7 +276,7 @@ __global__ void gemm_device_variant(ATensor mA,
 
   CUTE_UNROLL
   for (int i = 0; i < size(tDrC); ++i) {
-    tDrC(i) = alpha * tDrAcc(i) + beta * tDrC(i);
+    tDrC(i) = alpha * tDrAcc(i);
   }
   copy(tDrC, tDgD);
 
@@ -300,8 +304,11 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
   auto n = b_contig.size(0);
 
   auto options = a.options().dtype(torch::kFloat32);
-  auto c_buffer = torch::zeros({m, n}, options);
-  auto d_buffer = torch::empty_like(c_buffer);
+  // Host-overhead fix: the device epilogue no longer reads C (alpha=1, beta=0
+  // at every call site), so no zero-filled C operand is needed. Alias C to D
+  // and skip the per-call 16MB memset kernel + extra allocation.
+  auto d_buffer = torch::empty({m, n}, options);
+  auto c_buffer = d_buffer;
 
   auto cluster_shape = Variant::cluster_shape();
   auto tiled_mma = make_tiled_mma(typename Variant::Mma{});
@@ -353,7 +360,7 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
                    make_tile(typename decltype(tiled_mma)::AtomThrID{}));
 
   // Build TMA atoms. 2SM variants must use SM100 TMA atoms + multicast semantics.
-  auto tma_atom_A = [&] {
+  auto build_tma_atom_A = [&] {
     if constexpr (Variant::kClusterM == 2) {
       return make_tma_atom_A_sm100(
           SM100_TMA_2SM_LOAD_MULTICAST{},
@@ -369,9 +376,9 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
           sA_layout,
           make_shape(size<0>(mma_tiler), size<2>(mma_tiler)));
     }
-  }();
+  };
 
-  auto tma_atom_B = [&] {
+  auto build_tma_atom_B = [&] {
     if constexpr (Variant::kClusterM == 2) {
       return make_tma_atom_B_sm100(
           SM100_TMA_2SM_LOAD_MULTICAST{},
@@ -387,7 +394,47 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
           sB_layout,
           make_shape(size<1>(mma_tiler), size<2>(mma_tiler)));
     }
-  }();
+  };
+
+  // Host-overhead fix: cache the TMA atoms across calls. A CUtensorMap encodes
+  // only the base address, shape, and layout of the operand -- never tensor
+  // contents -- so a rebuild is needed only when the data pointers, problem
+  // shape, or device change. Cache is per template instantiation per thread;
+  // intentionally leaked (the atoms hold no CUDA resources requiring teardown).
+  struct TmaAtomCacheKey {
+    const void* a_ptr;
+    const void* b_ptr;
+    int64_t m, n, k;
+    int device;
+    bool matches(const void* ap, const void* bp, int64_t mm, int64_t nn,
+                 int64_t kk, int dev) const {
+      return a_ptr == ap && b_ptr == bp && m == mm && n == nn && k == kk &&
+             device == dev;
+    }
+  };
+  using TmaAtomPair = std::pair<decltype(build_tma_atom_A()),
+                                decltype(build_tma_atom_B())>;
+  struct TmaAtomCache {
+    TmaAtomCacheKey key;
+    TmaAtomPair atoms;
+  };
+  static thread_local TmaAtomCache* tma_cache = nullptr;
+  const void* a_ptr = a_contig.data_ptr();
+  const void* b_ptr = b_contig.data_ptr();
+  const int device = static_cast<int>(a_contig.get_device());
+  if (tma_cache == nullptr ||
+      !tma_cache->key.matches(a_ptr, b_ptr, m, n, k, device)) {
+    auto* fresh = new TmaAtomCache{
+        TmaAtomCacheKey{a_ptr, b_ptr, m, n, k, device},
+        TmaAtomPair{build_tma_atom_A(), build_tma_atom_B()}};
+    delete tma_cache;
+    tma_cache = fresh;
+  }
+  // Copy (not reference): keeps decltype(tma_atom_A) a value type for the
+  // kernel template instantiation below. The atom is a small trivially
+  // copyable descriptor; the expensive part is the build, not the copy.
+  auto tma_atom_A = tma_cache->atoms.first;
+  auto tma_atom_B = tma_cache->atoms.second;
 
   auto cluster_m_tiles = size<1>(cluster_layout_vmnk);
   auto cluster_n_tiles = size<2>(cluster_layout_vmnk);
@@ -416,8 +463,14 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
       decltype(tma_atom_A), decltype(tma_atom_B),
       Alpha, Beta>;
 
-  AT_CUDA_CHECK(cudaFuncSetAttribute(
-      kernel_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
+  // Host-overhead fix: the max-dynamic-smem attribute is sticky per
+  // (function, device). Set it once per device instead of on every call.
+  static thread_local int attr_set_for_device = -1;
+  if (attr_set_for_device != device) {
+    AT_CUDA_CHECK(cudaFuncSetAttribute(
+        kernel_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
+    attr_set_for_device = device;
+  }
 
   cutlass::ClusterLaunchParams params{
       dimGrid, dimBlock, dimCluster, smem_bytes};
