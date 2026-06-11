@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__mission-control-mcp__search_dashboards",
+      "mcp__mission-control-mcp__search_folders",
+      "mcp__mission-control-mcp__search_logs",
+      "mcp__mission-control-mcp__search_coreweave_docs",
+      "mcp__mission-control-mcp__query_filesystem_coreweave_docs",
+      "mcp__mission-control-mcp__query_observability_knowledge_base",
+      "mcp__mission-control-mcp__get_dashboard_by_uid",
+      "mcp__mission-control-mcp__get_dashboard_panel_queries",
+      "mcp__mission-control-mcp__get_dashboard_property",
+      "mcp__mission-control-mcp__get_dashboard_summary",
+      "mcp__mission-control-mcp__get_datasource",
+      "mcp__mission-control-mcp__list_datasources",
+      "mcp__mission-control-mcp__list_customer_datasources",
+      "mcp__mission-control-mcp__lookup_customer_org_id",
+      "mcp__mission-control-mcp__get_metrics_for_symptoms",
+      "mcp__mission-control-mcp__query_prometheus",
+      "mcp__mission-control-mcp__query_prometheus_histogram",
+      "mcp__mission-control-mcp__list_prometheus_metric_names",
+      "mcp__mission-control-mcp__list_prometheus_metric_metadata",
+      "mcp__mission-control-mcp__list_prometheus_label_names",
+      "mcp__mission-control-mcp__list_prometheus_label_values",
+      "mcp__mission-control-mcp__query_loki_logs",
+      "mcp__mission-control-mcp__query_loki_patterns",
+      "mcp__mission-control-mcp__query_loki_stats",
+      "mcp__mission-control-mcp__list_loki_label_names",
+      "mcp__mission-control-mcp__list_loki_label_values",
+      "mcp__mission-control-mcp__query_clickhouse",
+      "mcp__mission-control-mcp__list_clickhouse_tables",
+      "mcp__mission-control-mcp__describe_clickhouse_table",
+      "mcp__mission-control-mcp__get_annotations",
+      "mcp__mission-control-mcp__get_annotation_tags",
+      "mcp__mission-control-mcp__generate_deeplink"
+    ]
+  }
+}

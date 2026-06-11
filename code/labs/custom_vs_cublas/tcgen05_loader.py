@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import os
 from functools import lru_cache
 from pathlib import Path
 import sys
@@ -59,13 +60,15 @@ def _get_cuda_flags() -> list[str]:
     return flags
 
 
-def _load_kernel(source_file: Path, name_prefix: str):
+def _load_kernel(source_file: Path, name_prefix: str, extra_cuda_flags: tuple[str, ...] = ()):
     """Generic kernel loader with caching."""
     if not source_file.exists():
         raise FileNotFoundError(f"{source_file.name} not found in {_LAB_DIR}")
-    
-    cuda_flags = _get_cuda_flags()
-    src_hash = hashlib.md5(source_file.read_bytes()).hexdigest()[:8]
+
+    cuda_flags = _get_cuda_flags() + list(extra_cuda_flags)
+    src_hash = hashlib.md5(
+        source_file.read_bytes() + "|".join(extra_cuda_flags).encode()
+    ).hexdigest()[:8]
     build_name = f"{name_prefix}_{src_hash}"
     build_dir = Path(_get_build_directory(build_name, verbose=False))
     shared_object = build_dir / f"{build_name}.so"
@@ -231,7 +234,45 @@ def load_tcgen05_warp_parallel_module():
 
 def matmul_tcgen05_warp_parallel(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """Execute warp-parallel tcgen05 GEMM: C = A @ B^T
-    
+
     Issues next TMA before waiting for current one.
     """
     return load_tcgen05_warp_parallel_module().matmul_tcgen05_warp_parallel(a, b)
+
+
+# =============================================================================
+# Stage 13: Dual-CTA Occupancy (2 CTAs/SM)
+# =============================================================================
+
+@lru_cache(maxsize=None)
+def _load_tcgen05_dual_cta_module(tile_n: int, stages: int):
+    extra = (f"-DDUAL_TILE_N={tile_n}", f"-DDUAL_STAGES={stages}")
+    return _load_kernel(
+        _LAB_DIR / "tcgen05_dual_cta.cu",
+        f"lab_tcgen05_dual_cta_n{tile_n}s{stages}",
+        extra_cuda_flags=extra,
+    )
+
+
+def load_tcgen05_dual_cta_module():
+    """JIT-compile the dual-CTA (2 CTAs/SM) occupancy kernel.
+
+    Tunables (env, read at first load):
+      AISP_DUAL_TILE_N: MMA tile N (default 128; 128-col fp32 acc in TMEM)
+      AISP_DUAL_STAGES: smem pipeline stages (default 3; ~96KB/CTA)
+    Both CTAs/SM fit because TMEM (2x128 of 512 cols) and smem (2x~96KB of
+    227KB) are halved vs the cluster kernel's full-TMEM 192KB footprint.
+    """
+    tile_n = int(os.environ.get("AISP_DUAL_TILE_N", "128"))
+    stages = int(os.environ.get("AISP_DUAL_STAGES", "3"))
+    return _load_tcgen05_dual_cta_module(tile_n, stages)
+
+
+def matmul_tcgen05_dual_cta(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Execute dual-CTA (2 CTAs/SM) tcgen05 GEMM: C = A @ B^T
+
+    KEY OPTIMIZATION: half-size TMEM allocation (128 cols) + ~96KB smem +
+    early tcgen05 alloc-permit release, so TWO CTAs co-reside per SM and
+    cover each other's TMA latency.
+    """
+    return load_tcgen05_dual_cta_module().matmul_tcgen05_dual_cta(a, b)

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Optional
 from types import ModuleType
 
@@ -12,7 +13,16 @@ from core.benchmark.tcgen05_requirements import ensure_tcgen05_supported
 from core.benchmark.verification import PrecisionFlags, simple_signature
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from labs.custom_vs_cublas.tcgen05_loader import load_tcgen05_cluster_module, matmul_tcgen05_cluster
+from labs.custom_vs_cublas.tcgen05_loader import (
+    load_tcgen05_cluster_module,
+    load_tcgen05_dual_cta_module,
+    matmul_tcgen05_cluster,
+)
+
+# Variant switch (default: committed cluster kernel, 2.329x vs naive).
+#   AISP_TCGEN05_VARIANT=dual_cta -> 2 CTAs/SM occupancy rewrite
+#   AISP_TCGEN05_VARIANT=cluster  -> incumbent (default)
+_VARIANT = os.environ.get("AISP_TCGEN05_VARIANT", "cluster")
 
 
 class OptimizedTcgen05MatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -25,6 +35,7 @@ class OptimizedTcgen05MatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.b: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._module: Optional[ModuleType] = None
+        self._kernel_fn = None
         self.register_workload_metadata(
             bytes_per_iteration=float(6 * self.size * self.size),
             custom_units_per_iteration=float(2 * self.size * self.size * self.size),
@@ -35,7 +46,12 @@ class OptimizedTcgen05MatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ensure_tcgen05_supported(module_name="labs/custom_vs_cublas tcgen05 kernels")
 
         # Compile the extension (first time only) outside the timed hot path.
-        self._module = load_tcgen05_cluster_module()
+        if _VARIANT == "dual_cta":
+            self._module = load_tcgen05_dual_cta_module()
+            self._kernel_fn = self._module.matmul_tcgen05_dual_cta
+        else:
+            self._module = load_tcgen05_cluster_module()
+            self._kernel_fn = self._module.matmul_tcgen05_cluster
 
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
@@ -48,9 +64,9 @@ class OptimizedTcgen05MatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.a is None or self.b is None:
             raise RuntimeError("setup() must run before benchmark_fn()")
         if self._module is None:
-            raise RuntimeError("tcgen05 cluster module was not compiled in setup()")
+            raise RuntimeError("tcgen05 module was not compiled in setup()")
         with torch.inference_mode():
-            self.output = self._module.matmul_tcgen05_cluster(self.a, self.b)
+            self.output = self._kernel_fn(self.a, self.b)
 
     def capture_verification_payload(self) -> None:
         if self.a is None or self.b is None or self.output is None:

@@ -50,3 +50,4 @@ code/third_party/pytorch-src/
 code/third_party/pytorch-src/
 code/vendor/pytorch-src/
 *.json.bak
+.claude/settings.local.json
