@@ -91,7 +91,11 @@ void persistent_decode_cuda(torch::Tensor q, torch::Tensor k, torch::Tensor v, t
     const int threads = 64;
     const size_t smem_bytes = threads * sizeof(float);
     
-    cudaStream_t stream = at::cuda::getDefaultCUDAStream();
+    // Use the CURRENT stream, not getDefaultCUDAStream(): an explicit-but-default
+    // stream is invisible to side-stream CUDA graph capture exactly like a raw
+    // <<<>>> legacy launch (B45/B62/B65 silent-drop class). Eager behavior is
+    // identical (current == default outside capture).
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
     const int grid = std::min(blocks, batch);
     
     persistent_decode_kernel<<<grid, threads, smem_bytes, stream>>>(

@@ -184,7 +184,12 @@ void check_transpose_tensors(torch::Tensor src, torch::Tensor dst) {
 void copy_scalar(torch::Tensor src, torch::Tensor dst) {
   check_copy_tensors(src, dst);
   c10::cuda::CUDAGuard guard(src.device());
-  auto stream = at::cuda::getDefaultCUDAStream();
+  // Use the CURRENT stream, not getDefaultCUDAStream() (here and in the four
+  // launchers below): an explicit-but-default stream is invisible to
+  // side-stream CUDA graph capture exactly like a raw <<<>>> legacy launch
+  // (B45/B62/B65 silent-drop class). Eager behavior is identical (current ==
+  // default outside capture).
+  auto stream = at::cuda::getCurrentCUDAStream();
   const int n = static_cast<int>(src.numel());
   const int blocks = std::max(1, std::min(4096, ceil_div_int(n, kCopyThreads)));
   copy_scalar_kernel<<<blocks, kCopyThreads, 0, stream>>>(
@@ -202,7 +207,7 @@ void copy_vectorized(torch::Tensor src, torch::Tensor dst) {
   TORCH_CHECK(dst_ptr % alignof(float4) == 0, "dst pointer must be 16-byte aligned");
 
   c10::cuda::CUDAGuard guard(src.device());
-  auto stream = at::cuda::getDefaultCUDAStream();
+  auto stream = at::cuda::getCurrentCUDAStream();
   const int n = static_cast<int>(src.numel());
   const int vec_count = n / 4;
   if (vec_count > 0) {
@@ -229,7 +234,7 @@ void copy_vectorized(torch::Tensor src, torch::Tensor dst) {
 void copy_async_double_buffered(torch::Tensor src, torch::Tensor dst) {
   check_copy_tensors(src, dst);
   c10::cuda::CUDAGuard guard(src.device());
-  auto stream = at::cuda::getDefaultCUDAStream();
+  auto stream = at::cuda::getCurrentCUDAStream();
   const int n = static_cast<int>(src.numel());
   const int blocks = std::max(1, std::min(4096, ceil_div_int(n, kAsyncTileElems)));
   copy_async_double_buffered_kernel<<<blocks, kCopyThreads, 0, stream>>>(
@@ -242,7 +247,7 @@ void copy_async_double_buffered(torch::Tensor src, torch::Tensor dst) {
 void transpose_naive(torch::Tensor src, torch::Tensor dst) {
   check_transpose_tensors(src, dst);
   c10::cuda::CUDAGuard guard(src.device());
-  auto stream = at::cuda::getDefaultCUDAStream();
+  auto stream = at::cuda::getCurrentCUDAStream();
   const int rows = static_cast<int>(src.size(0));
   const int cols = static_cast<int>(src.size(1));
   const dim3 block(kTransposeTileDim, kTransposeBlockRows);
@@ -258,7 +263,7 @@ void transpose_naive(torch::Tensor src, torch::Tensor dst) {
 void transpose_tiled(torch::Tensor src, torch::Tensor dst) {
   check_transpose_tensors(src, dst);
   c10::cuda::CUDAGuard guard(src.device());
-  auto stream = at::cuda::getDefaultCUDAStream();
+  auto stream = at::cuda::getCurrentCUDAStream();
   const int rows = static_cast<int>(src.size(0));
   const int cols = static_cast<int>(src.size(1));
   const dim3 block(kTransposeTileDim, kTransposeBlockRows);

@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <unordered_map>
 #include <vector>
 
 #define CHECK_CUDA(x)                                                        \
@@ -16,6 +18,13 @@
   } while (0)
 
 namespace {
+
+// Replicated-accumulator count for the single-launch metric kernels: blocks
+// fold into replica (blockIdx % K), cutting the same-address atomic chain
+// depth K-fold. The chains are what the pre-ticket __threadfence has to wait
+// out, so K directly shortens every block's completion tail (measured ~5us at
+// K=1 with a 592-block grid). The last block sums the K replicas into out.
+constexpr int kMetricAccumReplicas = 8;
 
 // grid.x indexes segments, grid.y indexes chunks within a segment.
 // Each block reduces its chunk and atomically accumulates partial/count into
@@ -101,6 +110,192 @@ __global__ void metric_reduction_fused_kernel(
   }
 }
 
+// Single-launch fused metric reduction (B65-named lever, drops the zeros-fill
+// launch of the two-launch B50 shape). Both variants below accumulate the
+// three sums in fp32 registers (fmaf), atomically fold into a PERSISTENT
+// all-zero replicated accumulator, and let the last block to arrive (atomic
+// ticket, threadFenceReduction pattern) fold the replicas into `out` and
+// restore the accumulator+ticket to zero -- so `out` can be torch::empty and
+// no separate fill kernel is ever launched. Numerics class is unchanged from
+// the incumbent: fp32 fmaf accumulation + nondeterministic atomic fold order.
+// NOTE: the persistent scratch is stream-serialized state; concurrent calls
+// from different streams on one device are not supported (the lab and capture
+// paths are single-stream).
+// Scalar single-launch variant (the DEFAULT; measured GB300 winner): keeps the
+// incumbent kernel's proven load/fold structure EXACTLY (column-per-thread
+// coalesced loads, block row-striding, fp32 fmaf accumulators, 3 atomicAdds
+// per thread, no barriers in the load path) and only redirects the atomic fold
+// to the persistent replicated accumulator, appending the last-block
+// ticket/fold/re-zero tail that lets `out` be torch::empty.
+__global__ void metric_reduction_fused_single_launch_scalar_kernel(
+    const float* __restrict__ preds,
+    const float* __restrict__ targets,
+    float* __restrict__ accum,          // persistent, all-zero on entry
+    unsigned int* __restrict__ ticket,  // persistent, zero on entry
+    float* __restrict__ out,
+    int64_t num_rows,
+    int64_t responders) {
+  for (int64_t col = threadIdx.x; col < responders; col += blockDim.x) {
+    float pred_sq = 0.0f;
+    float target_sq = 0.0f;
+    float covar = 0.0f;
+    for (int64_t row = blockIdx.x; row < num_rows; row += gridDim.x) {
+      int64_t idx = row * responders + col;
+      float pred = preds[idx];
+      float target = targets[idx];
+      pred_sq = fmaf(pred, pred, pred_sq);
+      target_sq = fmaf(target, target, target_sq);
+      covar = fmaf(pred, target, covar);
+    }
+    const int64_t out_len = 3 * responders;
+    float* replica = accum + (blockIdx.x % kMetricAccumReplicas) * out_len;
+    atomicAdd(&replica[col], pred_sq);
+    atomicAdd(&replica[responders + col], target_sq);
+    atomicAdd(&replica[2 * responders + col], covar);
+  }
+
+  __threadfence();
+  __syncthreads();
+  __shared__ bool is_last;
+  if (threadIdx.x == 0) {
+    const unsigned int done = atomicAdd(ticket, 1u);
+    is_last = (done == gridDim.x - 1);
+  }
+  __syncthreads();
+  if (is_last) {
+    __threadfence();
+    const int64_t out_len = 3 * responders;
+    for (int64_t o = threadIdx.x; o < out_len; o += blockDim.x) {
+      float total = 0.0f;
+#pragma unroll
+      for (int k = 0; k < kMetricAccumReplicas; ++k) {
+        total += __ldcg(&accum[k * out_len + o]);
+        __stcg(&accum[k * out_len + o], 0.0f);
+      }
+      out[o] = total;
+    }
+    if (threadIdx.x == 0) {
+      *ticket = 0u;
+    }
+  }
+}
+
+// float4 single-launch variant (AISP_METRIC_REDUCTION_VARIANT=vec4; REFUTED as
+// slower than the scalar variant on GB300 at the lab shape -- see the host
+// dispatch comment): float4 grid-stride loads over the row-major
+// [num_rows, responders] pair; each thread owns 4 consecutive responder
+// columns (host enforces blockDim % (responders/4) == 0 so the column slot is
+// loop-invariant), with a shared-memory block fold before the global fold.
+__global__ void metric_reduction_fused_single_launch_kernel(
+    const float4* __restrict__ preds,
+    const float4* __restrict__ targets,
+    float* __restrict__ accum,          // persistent, all-zero on entry
+    unsigned int* __restrict__ ticket,  // persistent, zero on entry
+    float* __restrict__ out,
+    int64_t total_vec,  // num_rows * (responders / 4)
+    int64_t responders) {
+  const int rvec = static_cast<int>(responders >> 2);
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+
+  float pred_sq[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float target_sq[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float covar[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  auto accumulate = [&](const float4 p, const float4 t) {
+    pred_sq[0] = fmaf(p.x, p.x, pred_sq[0]);
+    pred_sq[1] = fmaf(p.y, p.y, pred_sq[1]);
+    pred_sq[2] = fmaf(p.z, p.z, pred_sq[2]);
+    pred_sq[3] = fmaf(p.w, p.w, pred_sq[3]);
+    target_sq[0] = fmaf(t.x, t.x, target_sq[0]);
+    target_sq[1] = fmaf(t.y, t.y, target_sq[1]);
+    target_sq[2] = fmaf(t.z, t.z, target_sq[2]);
+    target_sq[3] = fmaf(t.w, t.w, target_sq[3]);
+    covar[0] = fmaf(p.x, t.x, covar[0]);
+    covar[1] = fmaf(p.y, t.y, covar[1]);
+    covar[2] = fmaf(p.z, t.z, covar[2]);
+    covar[3] = fmaf(p.w, t.w, covar[3]);
+  };
+
+  // 4-deep software pipeline: with a device-filling grid each thread only has
+  // ~5 grid-stride trips, so a plain loop leaves almost no loads in flight and
+  // the kernel goes latency-bound (ncu: 18% DRAM, vs the incumbent scalar
+  // kernel's 21-trip loop at 26%). Batch 4 independent float4 pairs per round
+  // (8 x 512B loads in flight per warp) before any FMA consumes them.
+  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  for (; idx + 3 * stride < total_vec; idx += 4 * stride) {
+    const float4 p0 = preds[idx];
+    const float4 p1 = preds[idx + stride];
+    const float4 p2 = preds[idx + 2 * stride];
+    const float4 p3 = preds[idx + 3 * stride];
+    const float4 t0 = targets[idx];
+    const float4 t1 = targets[idx + stride];
+    const float4 t2 = targets[idx + 2 * stride];
+    const float4 t3 = targets[idx + 3 * stride];
+    accumulate(p0, t0);
+    accumulate(p1, t1);
+    accumulate(p2, t2);
+    accumulate(p3, t3);
+  }
+  for (; idx < total_vec; idx += stride) {
+    accumulate(preds[idx], targets[idx]);
+  }
+
+  // Block-level fold: slot stride 13 (coprime with 32 banks) kills write
+  // conflicts. Thread t's slot holds [pred_sq[0..3], target_sq[0..3],
+  // covar[0..3]] for columns 4*(t % rvec) .. 4*(t % rvec) + 3.
+  extern __shared__ float smem[];  // blockDim.x * 13 floats
+  float* slot = &smem[threadIdx.x * 13];
+#pragma unroll
+  for (int q = 0; q < 4; ++q) {
+    slot[q] = pred_sq[q];
+    slot[4 + q] = target_sq[q];
+    slot[8 + q] = covar[q];
+  }
+  __syncthreads();
+
+  const int group = blockDim.x / rvec;  // threads sharing one column slot
+  const int64_t out_len = 3 * responders;
+  float* replica = accum + (blockIdx.x % kMetricAccumReplicas) * out_len;
+  for (int64_t o = threadIdx.x; o < out_len; o += blockDim.x) {
+    const int m = static_cast<int>(o / responders);  // 0=pred_sq 1=target_sq 2=covar
+    const int c = static_cast<int>(o % responders);
+    const int c4 = c >> 2;
+    const int q = c & 3;
+    float sum = 0.0f;
+    for (int s = 0; s < group; ++s) {
+      sum += smem[(c4 + rvec * s) * 13 + m * 4 + q];
+    }
+    atomicAdd(&replica[o], sum);
+  }
+
+  // Publish this block's fold, then take a ticket; the last block to arrive
+  // sees every other block's accumulator contribution (threadfence-before-
+  // ticket on the producer side, canonical threadFenceReduction ordering).
+  __threadfence();
+  __syncthreads();
+  __shared__ bool is_last;
+  if (threadIdx.x == 0) {
+    const unsigned int done = atomicAdd(ticket, 1u);
+    is_last = (done == gridDim.x - 1);
+  }
+  __syncthreads();
+  if (is_last) {
+    __threadfence();
+    for (int64_t o = threadIdx.x; o < out_len; o += blockDim.x) {
+      float total = 0.0f;
+#pragma unroll
+      for (int k = 0; k < kMetricAccumReplicas; ++k) {
+        total += __ldcg(&accum[k * out_len + o]);  // L2 load: atomics landed in L2
+        __stcg(&accum[k * out_len + o], 0.0f);     // restore the all-zero invariant
+      }
+      out[o] = total;
+    }
+    if (threadIdx.x == 0) {
+      *ticket = 0u;  // next launch on this stream sees a clean ticket
+    }
+  }
+}
+
 __global__ void pack_rows_kernel(
     const float* input,
     const int64_t* row_indices,
@@ -175,6 +370,30 @@ torch::Tensor segment_abs_mean(torch::Tensor flat, torch::Tensor offsets) {
   return out;
 }
 
+namespace {
+
+// Persistent per-device scratch for the single-launch kernel: 3*responders
+// fp32 accumulator slots + one trailing 32-bit ticket, allocated and zeroed
+// ONCE (outside any capture; the warm setup() call triggers it). The kernel
+// restores the all-zero invariant on every launch, so steady-state calls and
+// CUDA-graph replays never need a fill kernel.
+struct MetricReductionScratch {
+  torch::Tensor buf;       // float32 [capacity + 1]; last element is the ticket
+  int64_t capacity = 0;    // accumulator slots (3 * responders)
+};
+
+MetricReductionScratch& metric_reduction_scratch(const torch::Tensor& like, int64_t needed) {
+  static std::unordered_map<int, MetricReductionScratch> cache;  // keyed by device index
+  auto& scratch = cache[like.get_device()];
+  if (scratch.capacity < needed) {
+    scratch.buf = torch::zeros({needed + 1}, like.options().dtype(torch::kFloat32));
+    scratch.capacity = needed;
+  }
+  return scratch;
+}
+
+}  // namespace
+
 torch::Tensor metric_reduction_fused(torch::Tensor preds, torch::Tensor targets) {
   TORCH_CHECK(preds.is_cuda(), "preds must be a CUDA tensor");
   TORCH_CHECK(targets.is_cuda(), "targets must be a CUDA tensor");
@@ -189,25 +408,105 @@ torch::Tensor metric_reduction_fused(torch::Tensor preds, torch::Tensor targets)
   TORCH_CHECK(responders > 0, "responders dimension must be positive");
   int64_t num_rows = preds_contig.numel() / responders;
 
-  // Output layout matches torch.cat((pred_sq, target_sq, covar)): fp32
-  // accumulation into a zero-initialized buffer (atomic partial folds).
-  auto out = torch::zeros({3 * responders}, preds.options());
-  if (num_rows == 0) {
-    return out;
-  }
-
   static const int sm_count = [device_index = preds_contig.get_device()] {
     int count = 0;
     CHECK_CUDA(cudaDeviceGetAttribute(&count, cudaDevAttrMultiProcessorCount, device_index));
     return count;
   }();
 
+  constexpr int threads = 256;
+
+  // Kill switch: AISP_METRIC_REDUCTION_SINGLE_LAUNCH=0 restores the B50/B65
+  // two-launch incumbent (zeros fill + scalar-load fused kernel) exactly.
+  static const bool single_launch_enabled = [] {
+    const char* env = std::getenv("AISP_METRIC_REDUCTION_SINGLE_LAUNCH");
+    return env == nullptr || env[0] != '0';
+  }();
+
+  const int64_t rvec = responders / 4;
+  const bool vec_ok =
+      single_launch_enabled && num_rows > 0 && responders % 4 == 0 && rvec > 0 &&
+      threads % rvec == 0 &&
+      reinterpret_cast<uintptr_t>(preds_contig.data_ptr<float>()) % 16 == 0 &&
+      reinterpret_cast<uintptr_t>(targets_contig.data_ptr<float>()) % 16 == 0;
+
+  if (vec_ok) {
+    // Single-launch path: out needs no fill (the kernel's last block writes
+    // every element), so this is exactly one kernel per call.
+    auto out = torch::empty({3 * responders}, preds.options());
+    auto& scratch = metric_reduction_scratch(preds_contig, kMetricAccumReplicas * 3 * responders);
+    float* accum = scratch.buf.data_ptr<float>();
+    auto* ticket = reinterpret_cast<unsigned int*>(accum + scratch.capacity);
+
+    // Grid-size sweep knob (B48-style, env-gated). Default 2 blocks/SM: the
+    // measured GB300 optimum for the scalar single-launch kernel (8.26us vs
+    // 8.33us at 4/SM and 12.2us at 1/SM, K=8) -- fewer blocks means shorter
+    // same-address atomic chains for the pre-ticket fence to wait out.
+    static const int blocks_per_sm = [] {
+      const char* env = std::getenv("AISP_METRIC_REDUCTION_BLOCKS_PER_SM");
+      const int parsed = env ? std::atoi(env) : 0;
+      return parsed > 0 ? parsed : 2;
+    }();
+    // Variant knob: default "scalar" (incumbent load structure + ticket tail,
+    // the measured GB300 winner); AISP_METRIC_REDUCTION_VARIANT=vec4 selects
+    // the float4 + smem-fold variant (REFUTED as slower here: the kernel is
+    // latency-bound, and 4x fewer grid-stride trips per thread starves the
+    // load pipeline; kept for re-evaluation on other parts/shapes).
+    static const bool use_scalar_variant = [] {
+      const char* env = std::getenv("AISP_METRIC_REDUCTION_VARIANT");
+      return env == nullptr || env[0] != 'v';
+    }();
+
+    if (use_scalar_variant) {
+      int64_t blocks = std::min<int64_t>(num_rows, static_cast<int64_t>(sm_count) * blocks_per_sm);
+      blocks = std::max<int64_t>(1, blocks);
+      metric_reduction_fused_single_launch_scalar_kernel<<<
+          static_cast<unsigned int>(blocks), threads, 0,
+          c10::cuda::getCurrentCUDAStream()>>>(
+          preds_contig.data_ptr<float>(),
+          targets_contig.data_ptr<float>(),
+          accum,
+          ticket,
+          out.data_ptr<float>(),
+          num_rows,
+          responders);
+      CHECK_CUDA(cudaGetLastError());
+      return out;
+    }
+
+    const int64_t total_vec = num_rows * rvec;
+    int64_t blocks = std::min<int64_t>((total_vec + threads - 1) / threads,
+                                       static_cast<int64_t>(sm_count) * blocks_per_sm);
+    blocks = std::max<int64_t>(1, blocks);
+    const size_t smem_bytes = static_cast<size_t>(threads) * 13 * sizeof(float);
+
+    metric_reduction_fused_single_launch_kernel<<<
+        static_cast<unsigned int>(blocks), threads, smem_bytes,
+        c10::cuda::getCurrentCUDAStream()>>>(
+        reinterpret_cast<const float4*>(preds_contig.data_ptr<float>()),
+        reinterpret_cast<const float4*>(targets_contig.data_ptr<float>()),
+        accum,
+        ticket,
+        out.data_ptr<float>(),
+        total_vec,
+        responders);
+    CHECK_CUDA(cudaGetLastError());
+    return out;
+  }
+
+  // Legacy/fallback path (odd responders, misaligned inputs, or kill switch):
+  // output layout matches torch.cat((pred_sq, target_sq, covar)): fp32
+  // accumulation into a zero-initialized buffer (atomic partial folds).
+  auto out = torch::zeros({3 * responders}, preds.options());
+  if (num_rows == 0) {
+    return out;
+  }
+
   // Enough row-blocks to fill the device while keeping per-output atomic
   // traffic bounded at gridDim partials per element.
   int64_t blocks = std::min<int64_t>(num_rows, static_cast<int64_t>(sm_count) * 4);
   blocks = std::max<int64_t>(1, blocks);
 
-  constexpr int threads = 256;
   metric_reduction_fused_kernel<<<static_cast<unsigned int>(blocks), threads, 0, c10::cuda::getCurrentCUDAStream()>>>(
       preds_contig.data_ptr<float>(),
       targets_contig.data_ptr<float>(),

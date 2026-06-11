@@ -81,7 +81,11 @@ void tma_copy(torch::Tensor src, torch::Tensor dst) {
     const int blocks = (n + threads - 1) / threads;
 
     c10::cuda::CUDAGuard guard(src.get_device());
-    cudaStream_t stream = c10::cuda::getDefaultCUDAStream();
+    // Use the CURRENT stream, not getDefaultCUDAStream(): an explicit-but-default
+    // stream is invisible to side-stream CUDA graph capture exactly like a raw
+    // <<<>>> legacy launch (B45/B62/B65 silent-drop class). Eager behavior is
+    // identical (current == default outside capture).
+    cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
     tma_copy_kernel<<<blocks, threads, threads * sizeof(float), stream>>>(src.data_ptr<float>(), dst.data_ptr<float>(), n);
 }
 """

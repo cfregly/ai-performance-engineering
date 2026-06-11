@@ -1797,6 +1797,27 @@ SoL framing (B), measured 2026-06-09:
   exactly when the epilogue runs; zero TMEM/occupancy cost, unlike the retired eo2) -- if it
   fails to move tensor-pipe past ~72.5%, DECLARE THE FRONTIER.
 
+- WIN + ESTIMATE REFUTATION (B67, metric_reduction single-launch fuse, the B65/B50-named lever,
+  decided on the graphed pure-GPU figure): docs/gb300-metric-reduction-single-launch.md.
+  Pure-GPU warm 9.048 -> 8.134us = 1.1124x (6/6 interleaved paired wins, zero overlap, capture-
+  fidelity 2 -> 1 kernel/iter -- the zeros-fill launch provably gone); default frame 0.05738 ->
+  0.05173ms (1.109x, 6/6); all 24 runs verification PASS at the unweakened 1e-4 contract,
+  numerics TIGHTER than incumbent (max-abs vs fp64 0.0029 vs 0.0137). Shipped: persistent K=8
+  replicated accumulators + atomic-ticket last-block fold/re-zero, 2 blocks/SM, kill switch
+  AISP_METRIC_REDUCTION_SINGLE_LAUNCH=0. ESTIMATE REFUTED WITH MECHANISM: B50's "4-5us via
+  float4" was wrong -- the kernel is latency/atomic-bound, not BW-bound; float4+unroll measured
+  SLOWER (14.9us); the real cost was __threadfence waiting out 592-deep same-address atomic
+  chains (~5us), fixed by replication (K sweep: K=8 optimal). Honest note: graphed COLD
+  regresses 11.6 -> 13.6us; warm is the comparison-grade figure. ncu: effective 3.05-3.09 TB/s
+  ~38.7% HBM-SoL; gap to the 3.15us single-read floor now 2.59x (was 2.9x). Shared-file
+  regression metric_reduction_cuda PASS in band. PLUS B45-class #4 CLOSED: the last 7
+  explicit-but-default stream sites fixed (persistent_decode x2 incl. tma_extension.py,
+  memory_bandwidth_patterns x5), each validated (bandwidth_patterns brackets its banked
+  0.0704ms; native_tma_prefill_decode 0.7126ms = new reference; zero getDefaultCUDAStream
+  call sites remain under labs/). Evidence /tmp/frontR/ (235 files). NEXT LEVER (small,
+  per report: cooperative/DSMEM reduction EV ~3% -- the residual 2.59x is frame, not kernel):
+  harness-bracket amortization for sub-10us labs, opt-in like B62.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
