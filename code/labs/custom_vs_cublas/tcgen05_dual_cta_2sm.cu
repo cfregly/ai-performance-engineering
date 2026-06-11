@@ -79,6 +79,7 @@
 #include <cute/atom/mma_traits_sm100.hpp>
 #include <cute/atom/copy_traits_sm100_tma.hpp>  // make_tma_atom_A/B_sm100, SM100_TMA_2SM_LOAD
 #include <cute/arch/cluster_sm90.hpp>           // elect_one_sync, block_rank_in_cluster, cluster_sync
+#include <cute/algorithm/prefetch.hpp>          // cute::prefetch (TMA PREFETCH op, lever g)
 
 #ifndef DUAL2SM_TILE_N
 #define DUAL2SM_TILE_N 256
@@ -167,6 +168,28 @@
 #ifndef DUAL2SM_RASTER_GM
 #define DUAL2SM_RASTER_GM 0
 #endif
+// Lever (g), V6-front: raster-aware L2 prefetch, scoped to the PERSIST
+// eo=0 path (the B65 winner). That path's smem ring FULLY DRAINS at each
+// round boundary and refills cold: the first kStages TMA issues of round
+// t+1 all miss to DRAM. But round t+1's tile is deterministic
+// (raster_map(rr + (t+1)*C)), so issue cp.async.bulk.prefetch.tensor
+// (the TMA atoms' PREFETCH op -- same descriptors, same coord slices,
+// L2-only, no smem/barrier) for its first DUAL2SM_PREFETCH k-stages'
+// A/B panels during round t. Each CTA prefetches its OWN issue slices
+// (A-half + B N/2-half), so the pair covers the full tile boxes.
+// 0 = off; 1..kStages = #leading k-stages prefetched.
+#ifndef DUAL2SM_PREFETCH
+#define DUAL2SM_PREFETCH 0
+#endif
+// Prefetch issuer (sweep axis): 0 = producer warp 0 (both CTAs) right
+// after round t's LAST TMA issue (lead = consumer's remaining ~kStages
+// MMAs + epilogue, a few us); 1 = epilogue-parked warp 2 right after the
+// round's mma_barrier release (latest issue, shortest lead); 2 = parked
+// warp 3 at round-t START (max ~33us lead, but the prefetched lines must
+// survive a full round of demand traffic on a ~118MiB in-flight window).
+#ifndef DUAL2SM_PF_ISSUER
+#define DUAL2SM_PF_ISSUER 0
+#endif
 
 using namespace cute;
 
@@ -218,6 +241,15 @@ static_assert(DUAL2SM_RASTER_GM == 0 || kPersist ||
               (DUAL2SM_EPI_OVERLAP == 0 && DUAL2SM_AMCAST == 0),
               "Non-persistent raster is scoped to the incumbent (eo=0, "
               "non-multicast) shape");
+static_assert(DUAL2SM_PREFETCH == 0 ||
+              (kPersist && DUAL2SM_EPI_OVERLAP == 0),
+              "PREFETCH is scoped to the persistent eo=0 path (the B65 "
+              "winner; its per-round cold ring refill is the target)");
+static_assert(DUAL2SM_PREFETCH >= 0 && DUAL2SM_PREFETCH <= kStages,
+              "DUAL2SM_PREFETCH is a leading-stage count (0..kStages)");
+static_assert(DUAL2SM_PF_ISSUER >= 0 && DUAL2SM_PF_ISSUER <= 2,
+              "DUAL2SM_PF_ISSUER must be 0 (producer), 1 (epilogue), or "
+              "2 (parked warp, round start)");
 
 // Raster-order tile mapping: index idx in [0, grid_m*grid_n) ->
 // (tile_m, tile_n). GROUP_M (gm>0): groups of gm pair-rows sweep n
@@ -295,7 +327,8 @@ using EpiLoadOp = SM100_TMEM_LOAD_32dp32b128x;
 // alias trap. The tags force a distinct symbol per config.
 constexpr int kCfgMain = DUAL2SM_WARP_SPLIT | (DUAL2SM_AMCAST << 1) | (DUAL2SM_MIN_BLOCKS << 2);
 constexpr int kCfgEpi = DUAL2SM_EPI_OVERLAP | (DUAL2SM_EPI_ATOM << 8);
-constexpr int kCfgV5 = DUAL2SM_PERSIST | (DUAL2SM_RASTER_GM << 1);
+constexpr int kCfgV5 = DUAL2SM_PERSIST | (DUAL2SM_RASTER_GM << 1) |
+                       (DUAL2SM_PREFETCH << 8) | (DUAL2SM_PF_ISSUER << 12);
 
 template <class SharedStorageT, int CfgMain, int CfgEpi, int CfgV5,
           class ATensor, class BTensor, class CTensor, class DTensor,
@@ -694,6 +727,25 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   int empty_phase[kStages] = {};
   int full_phase[kStages] = {};
   int tmem_phase = 0;
+#if DUAL2SM_PREFETCH > 0
+  // Lever (g): L2-prefetch round t_next's leading k-stage panels via the
+  // TMA atoms' PREFETCH op (cp.async.bulk.prefetch.tensor on the SAME
+  // descriptors + coord slices as the round's eventual demand loads; each
+  // CTA covers its own issue slices, the pair covers the full boxes).
+  auto prefetch_round = [&](int t_next) {
+    if (t_next < my_tiles) {
+      int ptm, ptn;
+      raster_map(rr + t_next * num_clusters, grid_m_t, grid_n_t, ptm, ptn);
+      auto tAgA_p = tAgA_for(ptm, ptn);
+      auto tBgB_p = tBgB_dyn(ptm, ptn);
+      CUTE_UNROLL
+      for (int pk = 0; pk < DUAL2SM_PREFETCH; ++pk) {
+        cute::prefetch(tma_atom_A, tAgA_p(_, pk));
+        cute::prefetch(tma_atom_B, tBgB_p(_, pk));
+      }
+    }
+  };
+#endif
   auto tiled_t2r_copy = make_tmem_copy(EpiLoadOp{}, tCtAcc);
   auto thr_t2r_copy = tiled_t2r_copy.get_slice(threadIdx.x);
   Tensor tDtAcc = thr_t2r_copy.partition_S(tCtAcc);        // (CPY, rest...)
@@ -702,6 +754,12 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   for (int t = 0; t < my_tiles; ++t) {
     int tm, tn;
     raster_map(rr + t * num_clusters, grid_m_t, grid_n_t, tm, tn);
+#if DUAL2SM_PREFETCH > 0 && DUAL2SM_PF_ISSUER == 2
+    // Issuer 2: parked warp 3, round-t start (max lead, eviction risk).
+    if (warp_idx == 3 && elect_one_thr) {
+      prefetch_round(t + 1);
+    }
+#endif
     if (warp_idx == 0) {
       // Producer: WHOLE warp 0 of BOTH CTAs. The ring fully drains at
       // each round boundary (the commit-drain loop below), so the first
@@ -724,6 +782,14 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
           copy(tma_atom_B.with(storage.full_barrier[s]), tBgB_t(_, k), tBsB);
         }
       }
+#if DUAL2SM_PREFETCH > 0 && DUAL2SM_PF_ISSUER == 0
+      // Issuer 0: producer, right after round t's LAST TMA issue -- the
+      // commit-drain below blocks until the consumer catches up, so the
+      // prefetch gets that whole window of lead time.
+      if (elect_one_thr) {
+        prefetch_round(t + 1);
+      }
+#endif
       // Drain this round's final multicast commits on BOTH CTAs.
       for (int k = num_k_tiles - min(kStages, num_k_tiles); k < num_k_tiles; ++k) {
         int s = k % kStages;
@@ -757,6 +823,13 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
     // Per-round epilogue: ALL 128 threads of both CTAs (one multicast
     // commit per round -> mma_barrier phase alternates with t).
     cute::wait_barrier(storage.mma_barrier[0], t & 1);
+#if DUAL2SM_PREFETCH > 0 && DUAL2SM_PF_ISSUER == 1
+    // Issuer 1: epilogue-parked warp 2, right after the round's MMAs
+    // complete (latest issue point, shortest lead).
+    if (warp_idx == 2 && elect_one_thr) {
+      prefetch_round(t + 1);
+    }
+#endif
     {
       auto coord_t = make_coord(tm, tn, _);
       Tensor gD_t = local_tile(mD, mma_tiler, coord_t, Step<_1, _1, X>{});

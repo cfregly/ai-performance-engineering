@@ -1775,6 +1775,28 @@ SoL framing (B), measured 2026-06-09:
   est 4-5us = ~1.8-2x pure-GPU, now MEASURABLE via graphed mode where frame mode buried it;
   plus fix the 7 remaining explicit-but-default sites.
 
+- NO-OP + RATIFICATION->DEFAULT-FLIP (B66, dual_2sm raster-aware prefetch + B65 replication): docs/
+  gb300-gemm-occupancy-rewrite.md (V6 section). PREFETCH (the B65-named lever): implemented via
+  cute::prefetch on the TMA atoms (cp.async.bulk.prefetch.tensor, the CUTLASS sm103 collective
+  pattern), depth + issuer swept (5 configs, 20/20 rel_err 0.0). HONEST NO-OP ON TIME with the
+  bytes premise proven TRUE a second time: DRAM reads -7-9% (the prefetch lands, merging ~8
+  clusters' concurrent demand misses per fresh B panel) at FLAT long_scoreboard (31.4 -> 31.5,
+  UNMOVED -- the V2-V6 invariant survives its most surgical attack) and noise-level duration.
+  LAW (now thrice-proven on this kernel: V5 raster, V6 prefetch, B53 multicast): feed latency is
+  fully covered by 3 stages x 3 co-resident CTAs -- shortening a latency nobody waits on buys
+  nothing; the wait is on the EPILOGUE side. Prefetch ships default-OFF (pf=2 is a free -7-9%
+  DRAM-read knob for power-sensitive use). RATIFICATION REPRODUCED: fresh session, 12 pairs,
+  1.0562x 12/12 (replicates B65's 1.0598x 12/12) -> LOADER DEFAULTS FLIPPED (PERSIST=1,
+  MIN_BLOCKS=3, RASTER_GM=8); gates 3/3 verification PASS on the new defaults (2sm 2.9062x, up
+  from 2.8115x). HARNESS WATCH ITEM: a stale-results-file trap -- gate3's first "pass" was
+  gate2's leftover JSON (caught by timestamp); clean re-run passed; the harness should
+  nonce/clean its results path. Ladder (real-SoL): cuBLAS 683us 84.6% > persist+raster DEFAULT
+  883us 65.5% > ex-champion 928us > plain dual; prefetch/eo2/A-mcast/tile_n=64/tile_k=128 all
+  honestly retired. NEXT LEVER (final on this kernel): TMA-store epilogue through the drained
+  ring stage (t2r -> st.shared -> cp.async.bulk.tensor store per chunk; stage-0's 24KB is free
+  exactly when the epilogue runs; zero TMEM/occupancy cost, unlike the retired eo2) -- if it
+  fails to move tensor-pipe past ~72.5%, DECLARE THE FRONTIER.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

@@ -1111,3 +1111,157 @@ persistence + raster, i.e. it is unlocked by this front's machinery.
 Secondary: replication front for the default flip; and the eo2/persist
 tie definitively retires the dedicated-epilogue family -- do not
 re-attempt it below 4 feed streams.
+
+# V6 verdict (2026-06-11): raster-aware L2 prefetch is an HONEST NO-OP on time (bytes premise TRUE yet again: DRAM reads -7-9%, long_scoreboard UNMOVED) -- and the B65 persist+raster default flip is RATIFIED (1.0562x, 12/12 fresh pairs) and SHIPPED
+
+Mission (front V6): (1) B65's named lever -- during round t of the
+persistent+raster schedule, L2-prefetch round t+1's A/B panels
+(deterministic: raster_map(rr + (t+1)*C)) to attack the long_scoreboard
+stall that never moved across V2-V5; (2) ratify the B65 default flip
+with fresh interleaved pairs and, on reproduction, ship the loader
+default. Baseline md5s verified (cu 14df3d6e / loader 45ed1491);
+GPU 2 leased, all runs flocked.
+
+## Lever (g) implementation: DUAL2SM_PREFETCH / DUAL2SM_PF_ISSUER
+
+The persist eo=0 winner's smem ring FULLY DRAINS at every round boundary
+and refills cold -- the first kStages TMA issues of each round miss to
+DRAM. The new knob prefetches round t+1's first 1..kStages k-stage
+panels through the TMA atoms' own PREFETCH op
+(`cute::prefetch(tma_atom, coord_slice)` ->
+`cp.async.bulk.prefetch.tensor.*.L2.global` on the SAME descriptors +
+coord slices as the eventual demand loads; SM100_TMA_2SM_LOAD aliases
+SM90_TMA_LOAD::PREFETCH, the exact pattern CUTLASS's sm103 collectives
+use). Each CTA prefetches its OWN issue slices (A-half + B N/2-half), so
+the pair covers the full tile boxes. Three issue points swept:
+  i0 = producer warp 0 (both CTAs) right after round t's LAST TMA issue
+       (lead = consumer's remaining ~kStages MMAs + epilogue);
+  i1 = epilogue-parked warp 2 right after the round's mma_barrier
+       (latest issue);
+  i2 = parked warp 3 at round-t START (max ~33us lead, eviction risk on
+       the ~118MiB in-flight window).
+Scope-asserted to PERSIST + EPI_OVERLAP=0 (the B65 winner path); config
+tag kCfgV5 extended (pf<<8 | pfi<<12) per the B61 symbol-alias trap.
+
+## A/B: prefetch sweep (8192^3, 12 order-alternated pairs each, incumbent = B65 winner (128,3,ws1,mb3,p1,rg8))
+
+| challenger      | incumbent med | challenger med | paired med | wins  |
+|-----------------|--------------:|---------------:|-----------:|-------|
+| pf=1 i0         |       880.8us |        885.9us |     0.9942 | 3/12  |
+| **pf=2 i0**     |       882.2us |        880.8us | **1.0021** | 7/12  |
+| pf=3 i0         |       884.2us |        887.7us |     0.9934 | 4/12  |
+| pf=2 i1         |       881.1us |        893.7us |     0.9910 | 0/12  |
+| pf=2 i2         |       882.7us |        892.7us |     0.9898 | 1/12  |
+
+cuBLAS same-session 682-685us. Best variant (depth 2, producer issuer)
+is a statistical TIE; every other depth/issuer is mildly NEGATIVE (the
+extra issue traffic and L2 displacement cost more than the warm lines
+buy). Correctness: 20/20 rel_err 0.0 (5 configs x 4 sizes incl.
+non-square 2560x1536x4096).
+
+## ncu mechanism (--set full, skip 5 / count 2, same session): the prefetch LANDS, but buys bytes, not time
+
+| metric                            | pf=0 (B65 winner) | pf=2 i0         |
+|-----------------------------------|------------------:|----------------:|
+| duration (ncu clock)              |   747.1 / 742.0us | 744.9 / 738.7us |
+| long_scoreboard (cyc/issue)       |     31.36 / 31.66 |   31.54 / 31.64 |
+| barrier stall (cyc/issue)         |       0.17 / 0.19 |     0.17 / 0.18 |
+| tensor-pipe active (% elapsed)    |       72.7 / 72.3 |     72.0 / 71.6 |
+| dram bytes read                   |   1.094 / 1.088GB | 1.017 / 0.994GB |
+| L2 read sectors (srcunit tex)     |   373.4 / 369.6M  | 374.6 / 372.9M  |
+| registers/thread                  |                84 |              86 |
+| grid / waves                      |         456 / 1.0 |       456 / 1.0 |
+
+The prefetch is REAL: DRAM reads drop 7-9% (the early bulk-prefetch
+merges the ~8 clusters' concurrent demand misses on each fresh B
+col-panel into one fill) at flat L2 sectors and +2 regs. And it buys
+NOTHING in time: long_scoreboard is IDENTICAL (31.4-31.7 cyc/issue),
+duration within noise. Same law V5 measured for rg8's DRAM cut: this
+kernel's feed latency is fully covered by 3 stages x 3 co-resident CTAs
+-- converting the round-boundary cold refill from DRAM hits to L2 hits
+shortens a latency nobody was waiting on. The V2-V5 long_scoreboard
+invariant survives its most surgical attack yet; it is NOT fill-source
+latency. VERDICT: honest NO-OP on time (tie at best, 7/12); PREFETCH
+defaults to 0 (off). For DRAM-byte/power-sensitive deployments pf=2 i0
+is a free -7-9% DRAM-read knob at zero time cost.
+
+## RATIFICATION: the B65 default flip REPRODUCES -- defaults FLIPPED
+
+Fresh session, 12 order-alternated pairs, B65 winner (128,3,ws1,mb3,
+p1,rg8) vs the prior champion (128,3,ws1,mb2,p0,rg0), both rebuilt under
+V6 source:
+
+| metric           | old champion | B65 winner  |
+|------------------|-------------:|------------:|
+| median           |      928.5us |     882.9us |
+| band             | 897.3-978.3  | 872.7-926.3 |
+| real SoL         |        62.3% |       65.5% |
+| paired med/wins  |              | 1.0562x, 12/12 |
+
+Replicates B65's 1.0598x 12/12 (independent session, fresh tensors,
+fresh builds). Loader defaults FLIPPED: AISP_DUAL2SM_MIN_BLOCKS 2->3,
+AISP_DUAL2SM_PERSIST 0->1, AISP_DUAL2SM_RASTER_GM 0->8 (prefetch ships
+default-OFF). The non-persistent ex-champion remains selectable via
+PERSIST=0 RASTER_GM=0 MIN_BLOCKS=2.
+
+## Harness verify gates on the NEW defaults (3/3 PASSED, `--profile none`)
+
+```
+GATE1 AISP_TCGEN05_VARIANT=dual_cta_2sm (NEW defaults 128,3,ws=1,mb=3,p=1,rg=8,pf=0):
+  verification passed: true, 0 failed (best_speedup 2.9062x; was 2.8115x on old defaults)
+GATE2 AISP_TCGEN05_VARIANT=dual_cta: verification passed: true, 0 failed (best_speedup 2.4001x)
+GATE3 AISP_TCGEN05_VARIANT=cluster: verification passed: true, 0 failed (best_speedup 2.4637x; 2.329x contract intact)
+Verdict snapshots: /tmp/frontV6/gate{1,2,3}_{2sm,dual,cluster}_results.json.
+```
+
+Gate-3 flake (honest note, NOT V6-induced): the cluster gate hung twice
+in a row AFTER its optimized-timing phase completed (harness watchdog:
+"No benchmark progress for 357s (last completed: optimized timing)"),
+then passed clean on the third run. The cluster kernel itself is
+standalone-clean (31 launches, rel_err 0.0, /tmp/frontV6/
+cluster_standalone.py); no V6 code executes under variant=cluster (the
+V6 lever is scope-asserted to the dual_2sm persist path, and gate1 --
+which DOES run the new-default persistent kernel -- passed first try,
+twice). The hang sits in the harness's post-timing sync/cleanup phase;
+killed PIDs 1193812-1193851 (own flocked run). Watch item for the
+harness, not this kernel.
+
+## Files (pod == local Mac repo, md5)
+
+```
+CHANGED  labs/custom_vs_cublas/tcgen05_dual_cta_2sm.cu  042c79a7c38a67d604561d199e43a35f
+         (V6: DUAL2SM_PREFETCH + DUAL2SM_PF_ISSUER lever g -- prefetch_round()
+          via cute::prefetch on the 2SM TMA atoms, 3 issuer call sites in the
+          persist eo=0 mainloop, scope asserts, kCfgV5 tag extension)
+CHANGED  labs/custom_vs_cublas/tcgen05_loader.py        a2855e7b5258032a4eecf37d41c1da3f
+         (V6: prefetch/pf_issuer params + AISP_DUAL2SM_PREFETCH /
+          AISP_DUAL2SM_PF_ISSUER env; DEFAULTS FLIPPED to the ratified B65
+          winner: mb=3, persist=1, raster_gm=8)
+Backups: /tmp/frontV6/{tcgen05_dual_cta_2sm.cu,tcgen05_loader.py} (B65
+originals, md5 14df3d6e/45ed1491). Evidence: /tmp/frontV6/ab_pf*.log (5
+sweeps), ab_ratify.log, corr_pf*.log (20/20 rel_err 0.0),
+ncu_{pf0,pf2i0}.ncu-rep + ncu_raw.log, gates.log + gate3_spy.log
+(passing rerun) + gate{1,2,3}_*_results.json, cluster_standalone.py,
+build_*.log. Drivers: /tmp/frontV6/
+{ab_v6,build_v6,correctness_v6,ncu_driver_v6,ncu_raw_v6}.py. Nothing
+committed.
+```
+
+## Named next lever
+
+**TMA-store epilogue through the drained ring stage:** the
+long_scoreboard invariant (~21.9 cyc/issue at 3 waves, ~31.5 at 1 wave;
+75% of issue-stall cycles in B57's accounting) survived DRAM->L2
+conversion twice -- the wait is on the EPILOGUE side: each round's drain
+is 4x chunked tcgen05.ld (TMEM->reg, scoreboard-tracked) + fenced
+per-thread st.global of 128KB/CTA, serialized per round at eo=0. The
+structural out: at the round boundary the smem ring is FULLY DRAINED --
+stage 0's 24KB is free exactly when the epilogue runs. Stage the D tile
+through it (t2r -> st.shared -> ONE cp.async.bulk.tensor.2d store/chunk)
+so the store path goes async bulk instead of 128 scoreboarded register
+stores, shrinking the per-round epilogue serialization that 3-CTA
+co-residency only partially hides (tensor-pipe stuck at ~72.5%). Zero
+TMEM cost, zero occupancy cost -- unlike the retired eo=2 family. If
+THAT also fails to move tensor-pipe, this kernel's frontier is the
+per-SM-pair feed architecture itself, and the remaining 19pts of real
+SoL to cuBLAS (65.5 vs 84.6) are not reachable by scheduling.

@@ -297,7 +297,8 @@ def matmul_tcgen05_dual_cta(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 def _load_tcgen05_dual_cta_2sm_module(tile_n: int, stages: int, warp_split: int = 0, amcast: int = 0,
                                       min_blocks: int = 2, tile_k: int = 64,
                                       epi_overlap: int = 0, epi_atom: int = 32,
-                                      persist: int = 0, raster_gm: int = 0):
+                                      persist: int = 0, raster_gm: int = 0,
+                                      prefetch: int = 0, pf_issuer: int = 0):
     extra = (
         f"-DDUAL2SM_TILE_N={tile_n}",
         f"-DDUAL2SM_STAGES={stages}",
@@ -309,11 +310,14 @@ def _load_tcgen05_dual_cta_2sm_module(tile_n: int, stages: int, warp_split: int 
         f"-DDUAL2SM_EPI_ATOM={epi_atom}",
         f"-DDUAL2SM_PERSIST={persist}",
         f"-DDUAL2SM_RASTER_GM={raster_gm}",
+        f"-DDUAL2SM_PREFETCH={prefetch}",
+        f"-DDUAL2SM_PF_ISSUER={pf_issuer}",
     )
     return _load_kernel(
         _LAB_DIR / "tcgen05_dual_cta_2sm.cu",
         f"lab_tcgen05_dual_cta_2sm_n{tile_n}s{stages}w{warp_split}a{amcast}"
-        f"mb{min_blocks}k{tile_k}eo{epi_overlap}ea{epi_atom}p{persist}rg{raster_gm}",
+        f"mb{min_blocks}k{tile_k}eo{epi_overlap}ea{epi_atom}p{persist}rg{raster_gm}"
+        f"pf{prefetch}pi{pf_issuer}",
         extra_cuda_flags=extra,
     )
 
@@ -337,8 +341,9 @@ def load_tcgen05_dual_cta_2sm_module():
       AISP_DUAL2SM_AMCAST: 1 = (2,2,1) cluster + TMA-multicast of A across
         the cluster N mode (V-front lever b); 0 = (2,1,1) cluster
       AISP_DUAL2SM_MIN_BLOCKS: __launch_bounds__ min-CTAs/SM hint (default
-        2 = 255-reg budget; 4 caps regs at 128 for a 4th co-resident CTA on
-        tile_n=64 footprints -- V3-front lever c)
+        3 = 170-reg budget for the persistent 3-CTAs/SM default; 2 = the
+        255-reg budget of the non-persistent champion; 4 caps regs at 128
+        for a 4th co-resident CTA on tile_n=64 footprints -- V3 lever c)
       AISP_DUAL2SM_TILE_K: K-extent per pipeline stage (default 64; 128
         doubles the TMA box and halves barrier round-trips per fed byte --
         V3-front lever d)
@@ -356,33 +361,52 @@ def load_tcgen05_dual_cta_2sm_module():
         walks raster indices r, r+C, r+2C...; composes with EPI_OVERLAP=2
         (V4 double-TMEM inner loop, 2 CTAs/SM, use STAGES=4 per the B63
         sizing law) or EPI_OVERLAP=0 (champion 3 CTAs/SM, per-round
-        epilogue, use MIN_BLOCKS=3 to hold the 170-reg budget). Default 0.
+        epilogue, use MIN_BLOCKS=3 to hold the 170-reg budget). Default 1
+        (flipped by the V6 ratification; see below).
       AISP_DUAL2SM_RASTER_GM: GROUP_M tile-raster group size in pair-rows
         (V5-front lever f; 0 = off). Groups of gm pair-rows sweep n
         together so the in-flight window keeps gm A row-panels L2-resident
         while B col-panels stream (8 -> 32MiB A-window at 8192^3). Without
         PERSIST this flattens the launch grid to 1D and relies on
-        ascending-blockIdx rasterization. Default 0.
-    Defaults are the measured-best config from the GB300 U-front session
-    (2026-06-11, GPU 2, 8192^3): (128,3) = 867-895us / 33.2-33.8% SoL,
-    16/16 interleaved-rep wins vs plain dual (256,2). ncu: 152 regs/thread
-    and 72KB smem/CTA -> Block Limits 3/3 -> THREE CTAs/SM (TMEM 3x128 of
-    512 cols); per-CTA B traffic halves because the 2x1SM atom splits B
-    N/2-per-CTA across the pair. (256,2) 2SM ties plain dual: 255 regs cap
-    it at 2 CTAs/SM and TMEM 2x256 is an exact fit.
+        ascending-blockIdx rasterization. Default 8 (flipped by the V6
+        ratification; see below).
+      AISP_DUAL2SM_PREFETCH: raster-aware L2 prefetch depth in leading
+        k-stages of the NEXT round's A/B panels (V6-front lever g; scoped
+        to PERSIST + EPI_OVERLAP=0, whose smem ring refills cold at every
+        round boundary). 0 = off (default). Issued via the TMA atoms'
+        cp.async.bulk.prefetch.tensor on the same descriptors.
+      AISP_DUAL2SM_PF_ISSUER: prefetch issue point (default 0): 0 =
+        producer warp after the round's last TMA issue; 1 = epilogue
+        warp 2 after the round's MMAs complete; 2 = parked warp 3 at
+        round start (max lead, eviction risk).
+    Defaults are the B65/V5 persistent+raster winner, RATIFIED by the V6
+    front (2026-06-11, GPU 2, 8192^3, fresh session): (128,3,ws=1,mb=3,
+    p=1,rg=8) = 882.9us median vs the prior (128,3,ws=1,mb=2) champion's
+    928.5us -- 1.0562x paired median, 12/12 order-alternated wins
+    (replicating B65's 1.0598x, 12/12; see
+    docs/gb300-gemm-occupancy-rewrite.md V5/V6). MIN_BLOCKS=3 holds the
+    170-reg budget for 3 CTAs/SM under the persistent per-round epilogue;
+    for the NON-persistent champion shape set PERSIST=0 RASTER_GM=0
+    MIN_BLOCKS=2 (the pre-V6 default, 152 regs / 3 CTAs/SM). PREFETCH
+    defaults 0: the V6 sweep measured it a tie at best (1.0021, 7/12 at
+    depth 2/issuer 0) -- the round-boundary refill is already
+    latency-covered by co-resident CTAs.
     """
     tile_n = int(os.environ.get("AISP_DUAL2SM_TILE_N", "128"))
     stages = int(os.environ.get("AISP_DUAL2SM_STAGES", "3"))
     warp_split = int(os.environ.get("AISP_DUAL2SM_WARP_SPLIT", "1"))
     amcast = int(os.environ.get("AISP_DUAL2SM_AMCAST", "0"))
-    min_blocks = int(os.environ.get("AISP_DUAL2SM_MIN_BLOCKS", "2"))
+    min_blocks = int(os.environ.get("AISP_DUAL2SM_MIN_BLOCKS", "3"))
     tile_k = int(os.environ.get("AISP_DUAL2SM_TILE_K", "64"))
     epi_overlap = int(os.environ.get("AISP_DUAL2SM_EPI_OVERLAP", "0"))
     epi_atom = int(os.environ.get("AISP_DUAL2SM_EPI_ATOM", "32"))
-    persist = int(os.environ.get("AISP_DUAL2SM_PERSIST", "0"))
-    raster_gm = int(os.environ.get("AISP_DUAL2SM_RASTER_GM", "0"))
+    persist = int(os.environ.get("AISP_DUAL2SM_PERSIST", "1"))
+    raster_gm = int(os.environ.get("AISP_DUAL2SM_RASTER_GM", "8"))
+    prefetch = int(os.environ.get("AISP_DUAL2SM_PREFETCH", "0"))
+    pf_issuer = int(os.environ.get("AISP_DUAL2SM_PF_ISSUER", "0"))
     return _load_tcgen05_dual_cta_2sm_module(tile_n, stages, warp_split, amcast, min_blocks, tile_k,
-                                             epi_overlap, epi_atom, persist, raster_gm)
+                                             epi_overlap, epi_atom, persist, raster_gm,
+                                             prefetch, pf_issuer)
 
 
 def matmul_tcgen05_dual_cta_2sm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
