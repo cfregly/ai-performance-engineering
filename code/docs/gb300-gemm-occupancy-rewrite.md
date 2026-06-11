@@ -451,3 +451,141 @@ re-reads (L2 srcunit_tex 376.8M vs 257.5M sectors) — a (2,2,1) cluster with
 unlike E5's falsified B-multicast premise, this targets traffic that is NOT
 already L2-deduped (it shows up in the sector counts). Both are incremental
 on tcgen05_dual_cta_2sm.cu, not a rewrite.
+
+---
+
+# V2 verdict (2026-06-11): warp-split leader is a WIN (12/12 paired, 1.073x hot-median, new default); A-multicast is an HONEST NEGATIVE with the traffic premise PROVEN TRUE but latency-coupling cost 9% — and its V-front deadlock was the B53 expect-tx trap, now FIXED
+
+Continuation session (Front V2, GPU 2, pod `aisp-gb300-runall`, 8192^3 FP16).
+Front V died at its turn limit waiting on the first correctness build of its
+two B49 levers; this session recovered its in-flight state, finished both
+levers, and root-caused + fixed a real deadlock in lever (b).
+
+## Predecessor-state disposition: SALVAGED (full implementation, one fatal bug)
+
+/tmp/frontV/backup matched the B49 reference md5s exactly
+(tcgen05_dual_cta_2sm.cu 9727eb7d); the live tree carried a complete
+flag-gated implementation of BOTH levers (DUAL2SM_WARP_SPLIT /
+DUAL2SM_AMCAST, env AISP_DUAL2SM_WARP_SPLIT / AISP_DUAL2SM_AMCAST, default
+base config untouched). Code review against CUTLASS 4.2.0
+sm100_mma_warpspecialized.hpp + tutorial 04_mma_tma_2sm found the design
+canonical (per-CTA multicast issue, per-coord create_tma_multicast_mask<2>,
+empty-barrier count = kClusterN, commit mask 0xF) EXCEPT one line — and that
+line was the exact trap B53 warned about:
+
+```
+WRONG (V-front): tma_bytes = 2 * (kClusterN * sizeof(tAsA_0) + sizeof(tBsB_0));
+RIGHT (V2):      tma_bytes = 2 * (sizeof(tAsA_0) + sizeof(tBsB_0));
+```
+
+Under cta_group::2 multicast the leader full-barrier counts each issue's
+slice ONCE per destination pair — NO participant multiplier (tutorial 04:
+`size<0>(cluster_layout_vmnk) * sizeof(make_tensor_like(tAsA))`). The
+kClusterN multiplier over-expects by A-half/stage, the barrier never fires,
+and the kernel hangs: that is precisely the 25-min GPU-pegged hang that ate
+Front V's correctness run (reproduced down to a SINGLE (2,2,1) cluster at
+256x256x2048, then fixed: rel_err 0.0 at every size after the one-line fix;
+kClusterN=1 value is unchanged, so the incumbent is byte-identical).
+All four variants now verify: (128,3) ws/amc = 00, 10, 01, 11 all
+rel_err 0.00e+00 vs torch.matmul at 4096^3.
+
+## Lever (a) warp-split leader — WIN, shipped as the new default
+
+Whole-warp producer (warp 0, both CTAs: empty-wait + TMA) / consumer
+(warp 1, leader CTA: full-wait + MMA + commit) split of the previously
+serialized leader chain. B44 whole-warp-role trap respected; ncu --set full
+replays clean.
+
+Interleaved 8-rep round-robin (8 arms, `ab_full.log`, quiet GPU 2):
+
+| arm | median | TFLOPS | %SoL |
+|---|---|---|---|
+| cuBLAS (target, same session) | 614.6 us | 1788.9 | 47.7% |
+| cluster (incumbent) | 1141.0 us | 963.6 | 25.7% |
+| dual_cta (256,2,cm=1) plain | 936.4 us | 1174.2 | 31.3% |
+| dual_2sm (128,3) base | 892.3 us | 1232.2 | 32.9% |
+| **dual_2sm (128,3) ws=1** | **875.3 us** | **1256.2** | **33.5%** |
+| dual_2sm (128,3) amc=1 | 1147.4 us | 958.3 | 25.6% |
+| dual_2sm (128,3) ws=1 amc=1 | 933.8 us | 1177.5 | 31.4% |
+
+Paired per-rep (the thermally honest instrument; round-robin medians
+understate because slow arms give the base cooling breaks): 10/10 wins
+order-fixed (median 1.0784x) and **12/12 wins order-ALTERNATED with thermal
+pre-soak, median speedup 1.0725x** (base_med 989.8us vs ws_med 920.7us,
+same-session cuBLAS 672.6us hot). NOT a breakthrough (33.5% << 40%); a
+solid incremental WIN on the same mechanism axis as B49 predicted.
+
+ncu mechanism (--set full, skip 5, 2 launches, means):
+duration 786.9 -> 755.4us (-4.0%); long_scoreboard/issued 23.65 -> 22.34
+(-5.5%); tensor-pipe-active-of-elapsed 66.7% -> 70.9% (+4.2pts); IPC 0.374
+-> 0.392; L2 srcunit_tex read sectors 375.0M -> 340.5M (-9%); DRAM read
+1.53 -> 1.38GB. The free-running producer keeps all 3 stages in flight, so
+fewer stalled cycles AND fewer L2 re-fetches. Occupancy unchanged
+(18.75/18.2%, 3 CTAs/SM, 152 regs) — this lever pays purely through overlap.
+
+## Lever (b) A-multicast (2,2,1) — HONEST NEGATIVE (premise TRUE, mechanism wrong axis)
+
+B53-style pre-check, answered with this session's ncu: A's duplicate
+loads are genuinely NOT hardware-merged in the (2,1,1) shape — L2
+srcunit_tex 375.0M re-measured (B49: 376.8M), and the (2,2,1)
+SM100_TMA_2SM_LOAD_MULTICAST on A really does eliminate them: 261.4M
+sectors (-30%, right at plain-dual's 257.5M level). The traffic premise
+was TRUE — unlike E5's falsified B-multicast — and the implementation is
+correct (rel_err 0.0 everywhere after the expect-tx fix).
+
+It still LOSES 9% (ncu 786.9 -> 857.8us; bench 892.3 -> 1147.4us in
+round-robin, -22% there because the (2,2,1) shape also tanks under thermal
+load): the kernel is LATENCY-bound, not traffic-bound (DRAM 28%), so
+removing L2 sectors buys nothing, while the cross-pair coupling costs
+plenty: every stage's smem reuse now waits on the SLOWER of two pairs'
+MMA streams (empty barrier count 2, commits from both pair-leaders),
+tensor-pipe duty drops 66.7% -> 55.6% (-11pts), long_scoreboard RISES
+23.65 -> 26.84, and DRAM bytes read go UP 1.53 -> 1.83GB (the interleaved
+4-CTA working set worsens L2 residency). Lock-step pipeline serialization
+across pairs > traffic savings, mechanism closed. The flag stays in the
+tree (correct, selectable, OFF by default) as the measured record.
+
+## Harness verify gates (3/3 PASSED)
+
+```
+AISP_TCGEN05_VARIANT=dual_cta_2sm (loader defaults 128,3,ws=1):
+  verification passed: true, 0 failed (run 20260611_164022, speedup 2.76x)
+AISP_TCGEN05_VARIANT=dual_cta (plain dual regression):
+  verification passed: true, 0 failed (run 20260611_164034)
+default (cluster) regression:
+  verification passed: true, 0 failed (run 20260611_164048)
+(speedup figures 6.45x/11.94x on gates 2-3 are a throttled-baseline
+artifact — harness logged baseline launches at SM=120MHz; pass/fail
+gates are the signal, all green.)
+```
+
+## Files (pod, md5)
+
+```
+CHANGED  labs/custom_vs_cublas/tcgen05_dual_cta_2sm.cu   ac866efe2c96ed07b8c6db2a5536100d
+         (V-front: DUAL2SM_WARP_SPLIT + DUAL2SM_AMCAST flag-gated levers;
+          V2: expect-tx fix — drop kClusterN multiplier in tma_bytes)
+CHANGED  labs/custom_vs_cublas/tcgen05_loader.py         da0bbda48279f0a8817a79ecc2da711a
+         (V-front: warp_split/amcast plumbing; V2: AISP_DUAL2SM_WARP_SPLIT
+          default flips to 1; base remains AISP_DUAL2SM_WARP_SPLIT=0)
+CHANGED  labs/custom_vs_cublas/bench_dual_cta.py         5ad5ea81aa5ec2c22b61bb2673878384
+         (V-front: --twosm N,S[,WS[,AMC]] explicit arms; unchanged by V2)
+Backups: /tmp/frontV/backup (B49 originals), /tmp/frontV2/backup (V-front
+in-flight state). Logs: /tmp/frontV2/{ab_ws,ab_full}.log, paired runs in
+session transcript; ncu: /tmp/frontV2/ncu_{base,ws,amc}.ncu-rep. Nothing
+committed.
+```
+
+## Named next lever
+
+**Occupancy x pipeline-depth frontier under warp-split: tile_n=64.**
+After ws=1, long_scoreboard is STILL the dominant stall (22.3 of 29.9 =
+75%) and the producer is bounded by kStages=3 in-flight tiles (72KB/CTA at
+n=128 caps smem at 3 CTAs/SM). n=64 halves both the epilogue register
+footprint (below 152) and per-stage smem (~12KB/stage-CTA): stages 5-6 AND
+a 4th CTA/SM (TMEM 4x64=256 of 512 cols) become simultaneously reachable —
+deeper TMA in-flight to bury the latency plus more resident warps to absorb
+it. Risk: 256x64 MMA efficiency; the B49 inversion (n=128 won in 2SM form
+where it lost in plain) says small-N + 2SM is repeatedly underestimated.
+Fallback axis: kTileK=128 (double the TMA box, halve barrier round-trips
+per byte) at n=128 s=2.

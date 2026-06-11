@@ -1563,6 +1563,26 @@ SoL framing (B), measured 2026-06-09:
   shapes). Evidence /tmp/frontM3/. NEXT LEVER (~1.2x est): expert-capacity right-sizing (the
   padded capacity dim overcomputes vs actual routed tokens).
 
+- WIN + PREMISE-TRUE NEGATIVE (B57, dual_2sm warp-split shipped / A-multicast falsified, the
+  B49-named levers): docs/gb300-gemm-occupancy-rewrite.md (V2 section). LEVER (a) WARP-SPLIT WIN
+  (default flipped to AISP_DUAL2SM_WARP_SPLIT=1): splitting the leader's serialized
+  empty-wait->TMA->full-wait->MMA chain across two whole warps wins 22/22 order-alternated paired
+  reps, median 1.0725x hot (base 989.8 -> ws 920.7us; cold 892.3 -> 875.3us = 33.5% SoL); ncu
+  long_scoreboard 23.65 -> 22.34, tensor-pipe-of-elapsed 66.7 -> 70.9%, occupancy unchanged -- pays
+  purely through producer/consumer overlap. Gates 3/3 verification PASS. LEVER (b) A-MULTICAST
+  (2,2,1): the rare PREMISE-TRUE negative -- the B53-style pre-check CONFIRMED A duplicates are NOT
+  hardware-merged (375.0M sectors reproduces B49's 376.8M) and multicast truly removes them (261.4M
+  ~= plain-dual's 257.5M) -- yet it LOSES 9%: the kernel is latency-bound (DRAM 28%), cross-pair
+  lock-step (empty barrier waits the slower pair) drops tensor-pipe 11pts and RAISES DRAM bytes read
+  (worse L2 residency). Traffic removal is not a win when the synchronization that buys it costs
+  more than the bytes did. Flag stays in-tree, correct, OFF. BUG FIXED (Front V's deadlock): the
+  B53 expect-tx trap verbatim -- V multiplied tma_bytes by cluster participants; the tutorial-04
+  formula has NO multiplier; one-line fix, rel_err 0.0 at every size. Custom-kernel ladder:
+  cluster 25.2% -> dual 31.5% -> 2sm 33.5% -> 2sm+ws ~34.2% (hot-paired 1.07x) vs cuBLAS 47.7%.
+  NEXT LEVER: tile_n=64 opens stages 5-6 AND a 4th CTA/SM simultaneously (TMEM 4x64=256 cols;
+  long_scoreboard still 75% of stalls, producer capped at 3 in-flight stages); fallback kTileK=128
+  to halve barrier round-trips per byte.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

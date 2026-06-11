@@ -69,9 +69,9 @@ def load_dual(tile_n: int, stages: int, cluster_m: int = 1):
     return mod.matmul_tcgen05_dual_cta
 
 
-def load_dual_2sm(tile_n: int, stages: int):
+def load_dual_2sm(tile_n: int, stages: int, warp_split: int = 0, amcast: int = 0):
     from labs.custom_vs_cublas.tcgen05_loader import _load_tcgen05_dual_cta_2sm_module
-    mod = _load_tcgen05_dual_cta_2sm_module(tile_n, stages)
+    mod = _load_tcgen05_dual_cta_2sm_module(tile_n, stages, warp_split, amcast)
     return mod.matmul_tcgen05_dual_cta_2sm
 
 
@@ -81,6 +81,9 @@ def main():
     parser.add_argument("--sweep", action="store_true", help="sweep (tile_n, stages, cluster_m) configs")
     parser.add_argument("--interleave", type=int, default=0, metavar="N",
                         help="round-robin all arms N times; report per-arm median (thermal-drift-fair)")
+    parser.add_argument("--twosm", action="append", default=None, metavar="N,S[,WS[,AMC]]",
+                        help="explicit dual_2sm arm tile_n,stages[,warp_split[,amcast]]; repeatable, "
+                             "overrides the default dual_2sm arm list")
     args = parser.parse_args()
 
     M = N = K = args.size
@@ -118,11 +121,24 @@ def main():
 
     # 2-SM UMMA pair (cta_group::2) arms: the U-front structural lever.
     # (128,3) is the measured winner (3 CTAs/SM; see loader docstring).
-    twosm_configs = [(256, 2), (128, 3), (128, 2)] if args.sweep else [(128, 3), (256, 2)]
-    for tile_n, stages in twosm_configs:
+    # 4-tuples are (tile_n, stages, warp_split, amcast); V-front levers.
+    if args.twosm:
+        twosm_configs = []
+        for spec in args.twosm:
+            parts = [int(x) for x in spec.split(",")]
+            parts += [0] * (4 - len(parts))
+            twosm_configs.append(tuple(parts[:4]))
+    elif args.sweep:
+        twosm_configs = [(256, 2, 0, 0), (128, 3, 0, 0), (128, 2, 0, 0),
+                         (128, 3, 1, 0), (128, 3, 1, 1), (128, 3, 0, 1)]
+    else:
+        twosm_configs = [(128, 3, 0, 0), (256, 2, 0, 0)]
+    for tile_n, stages, ws, amc in twosm_configs:
         name = f"dual_2sm n={tile_n} s={stages}"
+        if ws or amc:
+            name += f" ws={ws} amc={amc}"
         try:
-            fn = load_dual_2sm(tile_n, stages)
+            fn = load_dual_2sm(tile_n, stages, ws, amc)
             rel = check(fn, a, b, ref)
             arms.append((name, fn, rel))
         except Exception as e:  # noqa: BLE001
