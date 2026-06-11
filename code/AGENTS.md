@@ -39,6 +39,15 @@
 - Do not publish, compare, or store performance numbers from unsupported fallback paths as if they were valid results for the required benchmark contract.
 - Keep expected-unsupported classification explicit in structured outputs, logs, tests, and queue ledgers so unsupported environments cannot be mistaken for valid benchmark data.
 
+## Toolchain Workarounds & Abort Attribution (CRITICAL)
+Origin: the 2026-06-11 GB300 sm_103a `tcgen05.wait.st` incident (runbook B69/B70/B71; mechanism evidence `code/upstream/triton-tcgen05-wait-st/STATUS.md`) — `core/benchmark/triton_compat.py` de-suffixed `sm_103a -> sm_103` and impersonated an upstream Triton bug for weeks, spawning guards that tainted banked measurements (B23c).
+- Before attributing an uncatchable native abort (LLVM `Cannot select`, ptxas error, SIGABRT in a JIT) to an upstream toolchain bug — and before adding any protective guard — reproduce on the VANILLA stack: strip repo monkey-patches, compat shims, import-time `configure_*` side effects, and env clamps first. They are invisible in the failing stack trace.
+- Empirical narrowing is not attribution. The VERDICT needs the two-sided mechanism probe: vanilla clean AND applying the suspected local transform to vanilla reproduces the exact abort. Search the upstream tracker for the exact error string before filing.
+- Hardware/toolchain workarounds are ALLOWLISTS, never denylists: clamp exactly the arch/capability/version the bug was proven on (`sm_121[a] -> sm_120`), never blanket-transform identifier strings whose semantics you do not own (the `a` suffix selects arch-conditional ISA: tcgen05/TMA on sm_100a/sm_103a, wgmma on sm_90a). Pin both halves with a unit test — the clamp AND verbatim pass-through for everything else (`tests/test_triton_compat_arch.py` is the pattern).
+- Every protective guard (compile-mode downgrade, capability-gated skip, fallback path) must record the bug it avoids WITH evidence and a falsifiable retirement condition. A guard with no retirement condition is permanent perf debt.
+- Numbers measured under a protective guard are tainted: they carry the guard in their measurement context and cannot close a "no win" verdict (B23c banked "all compile modes ~1.5%" while max-autotune silently aborted; post-fix it wins 1.083x). When a guard is retired, re-sweep every formerly-gated path.
+- Inductor-style autotuners SWALLOW crashing candidates silently, biasing the search toward extern kernels — and warm caches can mask an abort entirely (the B71 cold-cache counterfactual: the abort only reproduces with a fresh `TRITON_CACHE_DIR`). Validate guard removals and abort claims cold-cache.
+
 ## Cluster Field Report Mode (ONLY when working in `code/cluster*` or writing the cluster field report)
 - This section adds constraints specific to cluster evaluation work; all other rules in this file still apply.
 - Discovery/inventory may use `nvidia-smi` and related commands. Benchmarks/profiling must still lock clocks via the harness (`lock_gpu_clocks`); do not manually lock clocks via `nvidia-smi`.
