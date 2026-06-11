@@ -1256,6 +1256,26 @@ SoL framing (B), measured 2026-06-09:
   NEXT LEVER: residual is GEMM-shape efficiency (<=1.5x on 0.16 ms, below the harness noise floor) --
   bank this front as harvested.
 
+- WIN + CORRECTION (B41, software_pipelining TMA bulk-copy lever): docs/gb300-software-pipelining.md.
+  The B38-named lever landed: kernel 83.0 -> 60.5 us = 4850 -> 6653 GB/s = 60.6% -> 83.2% HBM-SoL
+  (fp32 2^25, 403MB/iter); harness 144.0 -> 123.0/126.0 us = 1.17x over the committed optimized arm,
+  verify PASS x2, max_abs_diff 7.15e-7, baseline arm untouched. DIAGNOSIS (the transferable part): ncu
+  showed the 2-stage cuda::pipeline kernel was INSTRUCTION-ISSUE-bound, not DRAM-bound (issue slots
+  74.6% busy, IPC 3.17/4, DRAM only 56%) -- scalar element loops + per-element predicates + 4 redundant
+  cta.sync per 1KB tile + per-thread cp.async machinery. Fix: (1) float4 + aligned_size_t<16> + sync
+  removal on the sm_80 fallback (83 -> 64.2 us); (2) a new warp-specialized sm_90+ kernel: single
+  producer lane issues cp.async.bulk per operand per tile with full/empty mbarrier pairs, STAGE
+  EARLY-RELEASE (drain smem->registers, release the stage before compute/store), exact-cover 544-thread
+  blocks (1 producer warp + 512 consumers, one float4 pair each, zero ragged loops). Winning config
+  stages=2 tile=2048 (stages 3/4/6/8, tiles 1024/4096, V=2/4, __stcs all rejected by sweep). SoL
+  GROUNDING: torch.add (same 2R:1W bytes, zero staging) measures 86.8-87.1% = the practical GB300 triad
+  ceiling, so 83.2% is within 4.6% of unstaged parity and the naive 50.3us "floor" is unreachable here.
+  This validates+supersedes the e5655e3a/b487f3f8 unvalidated cp.async candidates. CORRECTION (B38
+  nvfp4_dual_gemm frame claim): raising iterations 4 -> 50 measures 48 vs 47 us/iter -- the "86% of the
+  harness wall is frame" premise FAILS measurement (per-iter wall is frame-clean); the dual_gemm bank
+  reverts to a plain kernel-side question (banked, tiny-M latency). NEXT LEVER (small EV, <=3us): TMA
+  stores to skip the st.global drain; atomic-ticket tile assignment for the ~1/36 tail.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
