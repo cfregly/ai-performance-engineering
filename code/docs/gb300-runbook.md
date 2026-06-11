@@ -1523,6 +1523,27 @@ SoL framing (B), measured 2026-06-09:
   pin GEMM1 to ATEN via scoped max_autotune_gemm_backends (66us extern + 52us tuned standalone
   GELU vs the 172.5us fused template saves ~54us/replay -> ~0.34ms) or fix the extern benchmark.
 
+- WIN (B55, capstone F-decomposition -> epilogue t2r atom fix, 1.49x kernel, bit-identical): docs/
+  gb300-capstone-f-decomposition.md. The B52-named F attack landed via measurement-first
+  decomposition (%globaltimer stamps in a PROBE-only build): F budget = epilogue t2r TMEM_LOAD
+  7.65-7.81us (77% of F!) + cvt/store 3.7us + everything else (launch rollout, tcgen05.alloc,
+  barrier init, prologue) < 1.5us combined -- every other B52 candidate measured dead. ROOT CAUSE
+  (SASS): SM100_TMEM_LOAD_32dp32b1x = 256 tcgen05.ld per thread, EACH lowered by ptxas to
+  LEPC + CALL.ABS.NOINC + WARPSYNC (512 helper calls per kernel). FIX: 32dp32b32x atom = 8
+  loads/thread -> epilogue 7.7 -> 0.42us. Sweep: 16x ties, 128x REGRESSES (the 128-output asm
+  serializes writeback) -- widest is not best. Kernel 23.81-23.90 -> 15.94-16.10us = 1.49x (zero
+  distribution overlap, 7 interleaved graphed reps); FP16-SoL ~19% -> ~28.5%; ncu tensor-pipe
+  active 20.4 -> 37.9%. BIT-IDENTICAL (torch.equal vs incumbent, CTA1+CTA2; the atom changes
+  columns-per-instruction only). Harness 9/9 verification PASS all 3 targets; honest note: the
+  wrapper is host-dispatch-bound (~85-100us/call) so end-to-end cannot resolve the 7.9us kernel cut
+  -- the kernel-level 1.49x is the bankable metric (triangulated stamps+graphs+ncu). One-hunk ship:
+  AISP_TCGEN05_T2R_ATOM macro (default 32dp32b32x). Durable lesson: TMEM_LOAD atom WIDTH is a
+  first-class perf knob on sm_103 -- the narrow atom's per-load helper-call overhead can dominate
+  an entire kernel's fixed cost; check SASS for CALL.ABS.NOINC around tcgen05.ld. NEXT LEVER:
+  cvt+store is write-sector-bound (16MB L2 write sectors for 8MB of D = 50% efficiency, STG.E.128
+  spanning 32 rows); smem-staged transpose epilogue (r2s -> coalesced s2g, reusing the drained A/B
+  ring) worth ~1.5-2us; after that the kernel is mainloop-bound (9.4us, TMA delivery efficiency).
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

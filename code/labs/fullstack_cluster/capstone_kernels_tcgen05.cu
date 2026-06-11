@@ -107,6 +107,25 @@ constexpr int kCta1ClusterM = AISP_TCGEN05_CTA1_CLUSTER_M;
 static_assert(kCta1ClusterM == 1 || kCta1ClusterM == 2,
               "CTA1 cluster M extent must be 1 (no multicast) or 2");
 
+// TMEM->register epilogue atom (B54/Y: F-decomposition). The fixed per-CTA
+// cost F (~15us, 62-65% of the kernel) is NOT alloc/launch/prologue -- probe
+// stamps put 7.7-7.8us in the t2r TMEM_LOAD alone and 3.4-3.8us in the fp16
+// cvt+store, vs <0.25us each for tcgen05.alloc, mbarrier init and the
+// first-stage TMA. Cause: the 32dp32b1x atom costs 256 tcgen05.ld per
+// thread, and ptxas lowers EACH one to a LEPC+CALL.ABS.NOINC+WARPSYNC
+// convergence-helper sequence (512 calls/warp visible in SASS). Widening to
+// 32dp32b32x cuts that to 8 loads per thread: t2r 7.65 -> 0.42us, in-kernel
+// total 22.5 -> 14.7us at 2048^3 (full-grid probe medians). Output is
+// BIT-IDENTICAL (torch.equal vs the 1x build): the atom only changes how
+// many columns one instruction moves; each thread still owns the same
+// (row, all-256-columns) fragment, so the per-element RNE convert and the
+// STG.E.128 store mapping are unchanged. 16x ties (0.51us t2r); 128x
+// regresses (0.99us t2r + slower cvt+store: the 128-output asm serializes
+// register writeback). -D overridable for A/B sweeps.
+#ifndef AISP_TCGEN05_T2R_ATOM
+#define AISP_TCGEN05_T2R_ATOM SM100_TMEM_LOAD_32dp32b32x
+#endif
+
 template <class MmaTag, int ClusterM, int Stages, int KBlocks, int MmaCtas = 1>
 struct TcgenVariantConfig {
   using Mma = MmaTag;
@@ -560,7 +579,7 @@ __global__ void gemm_device_variant(ATensor mA,
     }
   }
 
-  auto tiled_t2r_copy = make_tmem_copy(SM100_TMEM_LOAD_32dp32b1x{}, tCtAcc);
+  auto tiled_t2r_copy = make_tmem_copy(AISP_TCGEN05_T2R_ATOM{}, tCtAcc);
   auto thr_t2r_copy = tiled_t2r_copy.get_slice(threadIdx.x);
 
   // Host-overhead fix: every call site hardcodes Alpha(1.0f), Beta(0.0f), so
