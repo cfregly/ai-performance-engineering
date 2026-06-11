@@ -1318,6 +1318,27 @@ SoL framing (B), measured 2026-06-09:
   UNKNOWN, not dead -- two fronts silently co-measured on one GPU and only forensics caught it; a
   GPU flock/mutex (or orchestrator-side GPU lease) is the named process lever.
 
+- WIN (B44, capstone k-stage pipeline, the B39-named lever): docs/gb300-blackwell-matmul-hostoverhead.md
+  (D4 section). capstone_kernels_tcgen05.cu mainloop rebuilt from serial TMA->wait->MMA->wait to a
+  4-stage smem ring (48KB/stage = 192KB < 227KB cap, static_assert-guarded) with per-stage tma
+  (expect-tx) + mma (tcgen05-commit) barrier pairs (no full-drain wait per k-iteration), whole-warp
+  specialization (warp 1 TMA producer, warp 0 UMMA consumer, warps 2-3 phase-lock), parity-safe final
+  drain; both 1SM and 2SM-multicast branches. Kernel 37.6 -> 24.0 us = 1.57x = ~716 TFLOPS = 12.2% ->
+  19.1% FP16-SoL; ncu like-for-like 68.5 -> 45.3 us, tensor-pipe 13.0 -> 20.4%, IPC 0.13 -> 0.21.
+  Harness: blackwell_matmul_tcgen05 0.13113 -> 0.10377/0.10847/0.12029 ms (best 151.30x vs naive),
+  verify PASS x3; both fullstack_cluster targets PASS. BIT-IDENTICAL (torch.equal, 20 repeats each,
+  CTA1+CTA2) -- structural, the k-tile MMA issue ORDER is unchanged, only the prefetch overlaps.
+  Cumulative B36+B39+B44 on this target: 0.225 -> ~0.104 ms = ~2.2x, bit-identical lineage intact.
+  Iteration log (the depth story): ring+single-barrier 29.45, per-stage barriers 24.32, warp-spec
+  24.03, S=2 attribution 27.92 -- depth matters; residual is TMA latency x depth and S=4 is the smem
+  ceiling at bK=64. BANKED TRAP (durable): a 1-LANE producer spin role inside a warp ran bit-identical
+  on hardware but reproducibly DEADLOCKED under ncu kernel-replay; whole-warp role assignment fixed it.
+  Never put mutually-dependent spin roles inside one warp. NEXT LEVER: finer k-tiles (bK 64->32, SW64
+  atom) halve stage cost to 24KB -> 8-stage ring in the same smem budget (doubles TMA-latency cover,
+  accumulation order preserved); fallbacks: cluster B-multicast (NOTE: B43 falsified that premise on
+  the SIBLING dual-CTA kernel -- L2 already dedups; re-check L2 sectors here before building it), or
+  the deferred persistent-occupancy rewrite (full-TMEM alloc still pins 1 CTA/SM).
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

@@ -228,12 +228,15 @@ __global__ void gemm_device_variant(ATensor mA,
 
     int num_k_tiles = size<3>(tCgA);
 
-    if (producer_warp && elect_one_thr) {
-      // Producer (warp 1, one lane, BOTH CTAs of the pair): fill the smem
-      // ring tile after tile, gated only on the local mma commit for the
-      // stage being reused (the multicast commit signals both CTAs'
-      // barriers). Only the leader CTA arms expect-tx (2SM TMA semantics,
-      // unchanged); both CTAs issue their copies.
+    if (producer_warp) {
+      // Producer (warp 1 as a WHOLE warp, BOTH CTAs of the pair): fill the
+      // smem ring tile after tile, gated only on the local mma commit for
+      // the stage being reused (the multicast commit signals both CTAs'
+      // barriers). The gate waits are warp-converged (all 32 lanes wait;
+      // only the elected lane issues TMA) -- splitting one warp into
+      // mutually-dependent divergent spin loops deadlocks under serialized
+      // schedulers (ncu replay). Only the leader CTA arms expect-tx (2SM
+      // TMA semantics, unchanged); both CTAs issue their copies.
       int stage = 0;
       int gate_phase = 0;
       int gate_count = 0;
@@ -245,14 +248,16 @@ __global__ void gemm_device_variant(ATensor mA,
             gate_phase ^= 1;
           }
         }
-        if (elect_one_cta) {
-          cute::set_barrier_transaction_bytes(tma_barrier[stage],
-                                              tma_transaction_bytes);
+        if (elect_one_thr) {
+          if (elect_one_cta) {
+            cute::set_barrier_transaction_bytes(tma_barrier[stage],
+                                                tma_transaction_bytes);
+          }
+          copy(tma_atom_A.with(tma_barrier[stage], tma_mcast_mask_a),
+               tAgA(_, p), tAsA(_, stage));
+          copy(tma_atom_B.with(tma_barrier[stage], tma_mcast_mask_b),
+               tBgB(_, p), tBsB(_, stage));
         }
-        copy(tma_atom_A.with(tma_barrier[stage], tma_mcast_mask_a),
-             tAgA(_, p), tAsA(_, stage));
-        copy(tma_atom_B.with(tma_barrier[stage], tma_mcast_mask_b),
-             tBgB(_, p), tBsB(_, stage));
         ++stage;
         if (stage == kStages) {
           stage = 0;
@@ -323,13 +328,17 @@ __global__ void gemm_device_variant(ATensor mA,
 
     int num_k_tiles = size<3>(tCgA);
 
-    if (producer_warp && elect_one_thr) {
-      // Producer (warp 1, one lane): fill the smem ring tile after tile,
-      // gated only on the consumer's commit for the stage being reused
-      // (tiles 0..kStages-1 hit fresh stages, no gate). Running this loop on
-      // its own warp takes both mbarrier wake-ups off the MMA warp's issue
-      // chain: by the time the consumer waits a tma barrier the phase has
-      // already flipped, so its try_wait falls through.
+    if (producer_warp) {
+      // Producer (warp 1 as a WHOLE warp): fill the smem ring tile after
+      // tile, gated only on the consumer's commit for the stage being
+      // reused (tiles 0..kStages-1 hit fresh stages, no gate). Running this
+      // loop on its own warp takes both mbarrier wake-ups off the MMA
+      // warp's issue chain: by the time the consumer waits a tma barrier
+      // the phase has already flipped, so its try_wait falls through. The
+      // gate waits are warp-converged (all 32 lanes wait; only the elected
+      // lane issues TMA) -- splitting one warp into mutually-dependent
+      // divergent spin loops deadlocks under serialized schedulers (ncu
+      // replay).
       int stage = 0;
       int gate_phase = 0;
       int gate_count = 0;
@@ -341,21 +350,23 @@ __global__ void gemm_device_variant(ATensor mA,
             gate_phase ^= 1;
           }
         }
-        cute::set_barrier_transaction_bytes(tma_barrier[stage],
-                                            tma_transaction_bytes);
-        copy(tma_atom_A.with(tma_barrier[stage]), tAgA(_, p), tAsA(_, stage));
-        copy(tma_atom_B.with(tma_barrier[stage]), tBgB(_, p), tBsB(_, stage));
+        if (elect_one_thr) {
+          cute::set_barrier_transaction_bytes(tma_barrier[stage],
+                                              tma_transaction_bytes);
+          copy(tma_atom_A.with(tma_barrier[stage]), tAgA(_, p), tAsA(_, stage));
+          copy(tma_atom_B.with(tma_barrier[stage]), tBgB(_, p), tBsB(_, stage));
+        }
         ++stage;
         if (stage == kStages) {
           stage = 0;
         }
       }
     } else {
-      // Consumer (warp 0) + phase-locking companions (warps 2-3 and the
-      // non-elect lanes of warp 1): wait each tile's TMA in round order,
-      // issue its UMMAs, commit to the stage's mma barrier. No drain wait in
-      // the loop -- the tensor pipe is fed back-to-back across k-tiles. The
-      // k-tile MMA issue ORDER is unchanged vs the serial loop.
+      // Consumer (warp 0) + phase-locking companions (warps 2-3): wait each
+      // tile's TMA in round order, issue its UMMAs, commit to the stage's
+      // mma barrier. No drain wait in the loop -- the tensor pipe is fed
+      // back-to-back across k-tiles. The k-tile MMA issue ORDER is
+      // unchanged vs the serial loop.
       int read_stage = 0;
       int tma_read_phase = 0;
       for (int k_tile = 0; k_tile < num_k_tiles; ++k_tile) {

@@ -373,3 +373,100 @@ index 7d3188e2..89c2059e 100644
  
  torch::Tensor optimized_matmul_tcgen05(torch::Tensor a, torch::Tensor b) {
 ```
+
+# D4 section: k-stage pipelined mainloop (Front D4, 2026-06-11)
+
+## Verdict: WIN (bit-identical, all 3 targets PASS, 1.57x kernel)
+
+`gemm_device_variant` mainloop rebuilt from serial TMA->wait->MMA->wait into a 4-stage
+double(quad)-buffered TMA/UMMA pipeline with whole-warp producer/consumer specialization.
+Kernel (FP16 2048^3, free-running, torch-profiler device time): CTA1 **37.6 us -> 24.0 us**,
+CTA2 ~38 us-class -> **24.0 us** (~1.57x kernel; ~457 -> ~716 TFLOP/s, 12.2% -> 19.1% FP16-SoL
+at 3.75 PFLOPS peak). Outputs **bit-identical** (torch.equal == True vs pre-change dumps, CTA1+CTA2,
+stable across 20 repeat calls each).
+
+## Before / after (harness, GPU 1, --profile none --single-gpu, iterations=5 warmup=5)
+
+| Target | Before (B39 state) | After (3 runs, shipped build) | Verify |
+|---|---|---|---|
+| labs/blackwell_matmul:blackwell_matmul_tcgen05 | 0.13113 ms (119.68x vs naive) | 0.10377 / 0.10847 / 0.12029 ms (151.30x / 144.54x / 130.48x) | PASS all, max_diff 0.125 (atol 5.0, unchanged) |
+| labs/fullstack_cluster:cluster_gemm_tcgen05 | n/a (baseline IS this kernel) | opt 0.10094 ms, ratio 1.09 | PASS |
+| labs/fullstack_cluster:cluster_gemm_tcgen05_cta2 | n/a | opt 0.09614 ms, ratio 1.09 | PASS |
+
+(0.12029 outlier consistent with the node's 5-9% thermal drift + sibling-front CPU contention;
+ratio ~1.0 on fullstack by construction -- both sides share the patched kernel, B28 finding.)
+
+## ncu (CTA1, --set full, launch-skip 5, launch-count 2; replay clocks, compare like-for-like)
+
+| Metric | Before (B39) | After (shipped) |
+|---|---|---|
+| Duration | 68.54 us | **45.3 us** (1.51x at replay clocks) |
+| sm__pipe_tensor_cycles_active % active | 12.99 | **20.4** |
+| Executed IPC active | 0.13 | 0.21 |
+| No-eligible % | 96.7 | 94.6 |
+| L2 cache throughput % | ~10 | 11.4 |
+| DRAM | ~247 GB/s | ~373 GB/s |
+| Achieved occupancy | 6.39% | 6.21% (unchanged by design: full-TMEM alloc pins 1 CTA/SM; grid 128 CTAs < 152 SMs, single wave) |
+
+## What was built (capstone_kernels_tcgen05.cu, shared by both labs; backup /tmp/frontD4/capstone_kernels_tcgen05.cu.B39)
+
+1. Smem layouts get a trailing PIPE mode (CUTLASS sm100 collective pattern:
+   `UMMA::tile_to_mma_shape(atom, append(mma_shape, Int<kStages>))`); TMA atoms built against the
+   stage-0 slice (identical to the old single-stage layout). `kPipelineStages = 4` =
+   smem max for the 128x256x64 per-CTA tile: 48KB/stage (A 16KB + B 32KB), 192KB < 227KB limit;
+   static_assert guards the ceiling. Occupancy unaffected (full-TMEM alloc already pins 1 CTA/SM).
+2. Per-stage mbarrier pairs: tma_barrier[4] ("stage filled", expect-tx) + mma_barrier[4]
+   ("stage drained", tcgen05 commit / umma_arrive per k-tile -- CUTLASS producer/consumer protocol,
+   NOT the tutorial's single-barrier wait-after-MMA: UMMAs of consecutive k-tiles issue
+   back-to-back into the in-order tensor pipe).
+3. Whole-warp specialization: warp 1 is the TMA producer (gate waits warp-converged, elected lane
+   issues copies + expect-tx), warp 0 consumes (tma wait -> 4 UMMAs -> commit), warps 2-3 phase-lock
+   on the tma barriers; epilogue waits the final k-tile's commit (parity-safe: every thread consumed
+   or gated on round floor((num-1)/S)-1 or later). 2SM branch keeps leader-only expect-tx/MMA and
+   multicast commit; peer-CTA companions phase-lock on the local mma commits instead (their tma
+   barriers are never armed).
+4. Bit-identity is structural: the k-tile MMA issue ORDER is unchanged vs the serial loop (only
+   load residence changes), so the tmem accumulation sequence -- and the output -- is bit-identical.
+
+## Iteration log (mechanism attribution)
+
+| Step | CTA1 kernel | Note |
+|---|---|---|
+| B39 serial baseline | 37.6 us | TMA->wait->MMA->wait per k-tile |
+| 1. 4-stage ring, single mma barrier (tutorial protocol) | 29.45 us | prefetch overlaps MMA, but full MMA-drain wait per iteration |
+| 2. per-stage mma barriers (CUTLASS protocol) | 24.32 us | drain wait off the loop; consecutive k-tile UMMAs back-to-back |
+| 3. warp-specialized producer | 24.19-24.03 us | wake-ups off the MMA warp's issue chain; ~flat => issue chain was NOT the residual bound |
+| 4. S=2 attribution build | 27.92 us | depth matters => residual is TMA delivery (latency x depth), S=4 is the smem ceiling at this tile |
+
+Iteration 3 trap worth banking: the first warp-specialized cut split warp 1 into a 1-lane producer +
+31 phase-locking lanes -- two mutually-dependent spin loops INSIDE one warp. Runs fine on ITS
+hardware (bit-identical, 20x stable) but **deadlocks under ncu kernel-replay** (reproduced 2x,
+hung mid-pass). Whole-warp role assignment (all 32 lanes wait the gate, elected lane issues TMA)
+fixes it; ncu then completes cleanly. Never split mutually-dependent spin roles within a warp.
+
+## SoL accounting (where the next factor is)
+
+24.0 us = 716 TFLOP/s = 19.1% FP16-SoL. Pure-MMA floor at per-SM peak is ~5.4 us (134 MFLOP/CTA at
+~24.7 TFLOPS/SM); the loop now sits at ~750 ns/k-tile = TMA delivery rate of ~63 GB/s/CTA
+(~8.1 TB/s aggregate from L2-resident operands; L2 macro-throughput only ~11% => per-CTA TMA
+latency x 4-deep ring is the binding term, consistent with the S=2 regression). The 128x256x64
+tile cannot stage deeper (48KB/stage, 227KB cap).
+
+## Next lever
+
+**Deeper ring via finer k-tiles**: bK 64->32 (SW64 smem atom) halves the stage cost to 24KB ->
+8-stage ring in the same 192KB, doubling latency cover; accumulation order is preserved (same
+sequence of K=16 UMMA slabs) so bit-identity survives. Risks: SW64 TMA box efficiency (64B rows)
+and 2x issue counts. Alternatives if it stalls: cluster-wide B multicast (halves L2 pull), or the
+deferred warp-specialized persistent-kernel occupancy rewrite (split TMEM, >1 CTA/SM).
+
+## Diff (exact, vs B39 state 336a78bf; shipped md5 898fe01d95d133b949d423c1dbf1a1b2)
+
+Full diff at /tmp/frontD4/d4.diff on the pod (411 lines). Summary of hunks:
+- `SharedStorage`: +`int Stages` param; `mma_barrier`/`tma_barrier` become `[Stages]` arrays.
+- `TcgenVariantConfig`: +`kStages`; `kPipelineStages = 4` for both variants.
+- `gemm_device_variant`: +`producer_warp`; both mainloop branches rebuilt as
+  producer-loop (warp 1) / consumer-loop (others) over the staged ring with the per-stage
+  barrier protocol described above; final-commit drain before the t2r epilogue.
+- Host: staged `sA_layout`/`sB_layout` via `append(mma_shape, Int<kStages>)`; TMA atoms from
+  `s{A,B}_layout(_, _, _, Int<0>{})`; smem static_assert <= 232448 B.
