@@ -61,20 +61,43 @@ struct SharedStorage {
 template <typename Allocator>
 struct ClusterTmemHelper; // unused: CTA-group kernels allocate locally
 
-// Pipeline depth. Per-stage smem cost at the 128x256x64 (CTA1, per-CTA) tile
-// is 48KB (A 16KB + B 32KB), so 4 stages = 192KB, inside the 227KB/block
-// opt-in limit. Occupancy is unaffected: the TMEM allocator already grabs the
-// full 512-column capacity, pinning every variant to 1 CTA/SM regardless of
-// smem footprint.
-constexpr int kPipelineStages = 4;
+// Pipeline depth x k-tile granularity (D5). bK = 16 * kKBlocksPerTile.
+// At bK=64 (SW128 smem atom) a 128x256 per-CTA stage costs 48KB
+// (A 16KB + B 32KB) => 4 stages max under the 227KB/block opt-in limit.
+// Halving the k-tile to bK=32 (SW64 atom) halves the stage cost to 24KB so an
+// 8-stage ring fits the same 192KB budget -- MEASURED NEGATIVE on GB300
+// (D5, 2048^3): bK32 is ~14% slower at every depth S in {4,6,8} (CTA1
+// 27.5-27.7us vs 24.15us) because the 64B-row SW64 TMA boxes halve request
+// efficiency and the per-tile wait/commit cadence doubles (ncu: tensor-pipe
+// active 20.4%->18.4%, DRAM 375->347 GB/s, IPC 0.21->0.23); the S-control at
+// bK32 shows deeper staging recovers none of it, i.e. the residual bound is
+// TMA delivery efficiency, not latency cover. Defaults stay at the bK=64,
+// 4-stage incumbent. The k-blocks within a tile and the tiles themselves both
+// walk K in strictly ascending order, so the UMMA accumulation sequence --
+// and the output bits -- are independent of (kKBlocksPerTile,
+// kPipelineStages): all four swept configs verified torch.equal vs the B44
+// kernel. Occupancy is unaffected either way: the TMEM allocator already
+// grabs the full 512-column capacity, pinning every variant to 1 CTA/SM
+// regardless of smem footprint. Both knobs are -D overridable for A/B sweeps.
+#ifndef AISP_TCGEN05_KBLOCKS
+#define AISP_TCGEN05_KBLOCKS 4
+#endif
+#ifndef AISP_TCGEN05_STAGES
+#define AISP_TCGEN05_STAGES 4
+#endif
+constexpr int kKBlocksPerTile = AISP_TCGEN05_KBLOCKS;  // K=16 UMMA slabs/k-tile
+constexpr int kPipelineStages = AISP_TCGEN05_STAGES;
+static_assert(kKBlocksPerTile == 2 || kKBlocksPerTile == 4,
+              "bK must be 32 (SW64 smem atom) or 64 (SW128 smem atom)");
 
-template <class MmaTag, int ClusterM, int Stages>
+template <class MmaTag, int ClusterM, int Stages, int KBlocks>
 struct TcgenVariantConfig {
   using Mma = MmaTag;
   static constexpr int kClusterM = ClusterM;
   static constexpr int kClusterN = 1;
   static constexpr int kClusterK = 1;
   static constexpr int kStages = Stages;
+  static constexpr int kKBlocks = KBlocks;
   static_assert(Stages >= 2, "pipeline needs at least double buffering");
   using TmemAllocator = std::conditional_t<
       ClusterM == 1, cute::TMEM::Allocator1Sm, cute::TMEM::Allocator2Sm>;
@@ -87,12 +110,12 @@ struct TcgenVariantConfig {
 using VariantCTA1 = TcgenVariantConfig<
     SM100_MMA_F16BF16_SS<TypeA, TypeB, TypeC, 128, 256,
                          UMMA::Major::K, UMMA::Major::K>,
-    1, kPipelineStages>;
+    1, kPipelineStages, kKBlocksPerTile>;
 
 using VariantCTA2 = TcgenVariantConfig<
     SM100_MMA_F16BF16_2x1SM_SS<TypeA, TypeB, TypeC, 256, 256,
                                UMMA::Major::K, UMMA::Major::K>,
-    2, kPipelineStages>;
+    2, kPipelineStages, kKBlocksPerTile>;
 
 template <class Variant,
           class SharedStorageT,
@@ -462,15 +485,15 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
 
   auto bM = tile_size<0>(tiled_mma);
   auto bN = tile_size<1>(tiled_mma);
-  auto bK = tile_size<2>(tiled_mma) * Int<4>{};
+  auto bK = tile_size<2>(tiled_mma) * Int<Variant::kKBlocks>{};
   auto mma_tiler = make_shape(bM, bN, bK);
 
   TORCH_CHECK(evenly_divides(shape(mma_tiler), tile_shape(tiled_mma)),
               "tcgen05 MMA tile must divide instruction tile");
   TORCH_CHECK(
       evenly_divides(make_shape(m, n, k), mma_tiler),
-      "Problem size must be divisible by the tcgen05 tile (128x256x64 or "
-      "256x256x64 depending on the variant)");
+      "Problem size must be divisible by the tcgen05 tile "
+      "(128x256 or 256x256 by bK=16*kKBlocks depending on the variant)");
 
   auto mma_shape_A =
       partition_shape_A(tiled_mma,
@@ -482,12 +505,21 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
   // k-stage pipelining: append the PIPE mode to the smem layouts (CUTLASS
   // sm100 collective pattern). The TMA atoms are built against the stage-0
   // slice, which is identical to the pre-pipeline single-stage layout.
+  // Swizzle atom tracks the k-tile byte width: SW128 (128B K-rows) at bK=64,
+  // SW64 (64B K-rows) at bK=32 -- the atom's K extent must tile the k-tile's
+  // K extent exactly.
   constexpr int kStages = Variant::kStages;
+  using SmemAtomA = std::conditional_t<Variant::kKBlocks == 4,
+                                       UMMA::Layout_K_SW128_Atom<TypeA>,
+                                       UMMA::Layout_K_SW64_Atom<TypeA>>;
+  using SmemAtomB = std::conditional_t<Variant::kKBlocks == 4,
+                                       UMMA::Layout_K_SW128_Atom<TypeB>,
+                                       UMMA::Layout_K_SW64_Atom<TypeB>>;
   auto sA_layout = UMMA::tile_to_mma_shape(
-      UMMA::Layout_K_SW128_Atom<TypeA>{},
+      SmemAtomA{},
       append(mma_shape_A, Int<kStages>{}));
   auto sB_layout = UMMA::tile_to_mma_shape(
-      UMMA::Layout_K_SW128_Atom<TypeB>{},
+      SmemAtomB{},
       append(mma_shape_B, Int<kStages>{}));
   auto sA_layout_stage0 = sA_layout(_, _, _, Int<0>{});
   auto sB_layout_stage0 = sB_layout(_, _, _, Int<0>{});
@@ -665,6 +697,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("optimized_matmul_tcgen05_cta2", &optimized_matmul_tcgen05_cta2);
 }
 
+// Sweep builds load several configs of this file into one process; the torch
+// library name is global, so only the shipped (non-sweep) build registers it.
+#ifndef AISP_TCGEN05_SWEEP_BUILD
 TORCH_LIBRARY(capstone_tcgen05, m) {
   m.def("optimized_matmul_tcgen05(Tensor a, Tensor b) -> Tensor");
   m.def("optimized_matmul_tcgen05_cta2(Tensor a, Tensor b) -> Tensor");
@@ -674,3 +709,4 @@ TORCH_LIBRARY_IMPL(capstone_tcgen05, CUDA, m) {
   m.impl("optimized_matmul_tcgen05", optimized_matmul_tcgen05);
   m.impl("optimized_matmul_tcgen05_cta2", optimized_matmul_tcgen05_cta2);
 }
+#endif  // AISP_TCGEN05_SWEEP_BUILD
