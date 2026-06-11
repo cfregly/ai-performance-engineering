@@ -431,3 +431,73 @@ def load_tcgen05_dual_cta_2sm_module():
 def matmul_tcgen05_dual_cta_2sm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """Execute 2-SM UMMA pair tcgen05 GEMM: C = A @ B^T."""
     return load_tcgen05_dual_cta_2sm_module().matmul_tcgen05_dual_cta_2sm(a, b)
+
+
+# =============================================================================
+# Stage 15: FP8 (e4m3) port of the 2-SM UMMA pair kernel (Front F8)
+# =============================================================================
+
+@lru_cache(maxsize=None)
+def _load_tcgen05_dual_2sm_fp8_module(tile_n: int, stages: int, warp_split: int = 1,
+                                      min_blocks: int = 3, tile_k: int = 128,
+                                      epi_atom: int = 32,
+                                      persist: int = 1, raster_gm: int = 8,
+                                      tma_epi: int = 1):
+    extra = (
+        f"-DDUAL2SM_TILE_N={tile_n}",
+        f"-DDUAL2SM_STAGES={stages}",
+        f"-DDUAL2SM_WARP_SPLIT={warp_split}",
+        "-DDUAL2SM_AMCAST=0",
+        f"-DDUAL2SM_MIN_BLOCKS={min_blocks}",
+        f"-DDUAL2SM_TILE_K={tile_k}",
+        "-DDUAL2SM_EPI_OVERLAP=0",
+        f"-DDUAL2SM_EPI_ATOM={epi_atom}",
+        f"-DDUAL2SM_PERSIST={persist}",
+        f"-DDUAL2SM_RASTER_GM={raster_gm}",
+        "-DDUAL2SM_PREFETCH=0",
+        "-DDUAL2SM_PF_ISSUER=0",
+        f"-DDUAL2SM_TMA_EPI={tma_epi}",
+    )
+    return _load_kernel(
+        _LAB_DIR / "tcgen05_dual_2sm_fp8.cu",
+        f"lab_tcgen05_dual_2sm_fp8_n{tile_n}s{stages}w{warp_split}"
+        f"mb{min_blocks}k{tile_k}ea{epi_atom}p{persist}rg{raster_gm}te{tma_epi}",
+        extra_cuda_flags=extra,
+    )
+
+
+def load_tcgen05_dual_2sm_fp8_module():
+    """JIT-compile the FP8 (e4m3 x e4m3 -> fp32 accum) 2-SM UMMA pair kernel.
+
+    Type-level port of the FP16 champion (tcgen05_dual_cta_2sm.cu) to dense
+    FP8 via SM100_MMA_F8F6F4_2x1SM_SS: atom K-extent 32, kTileK default 128
+    so the per-stage byte footprint (24KB at TILE_N=128) and the 3-CTAs/SM
+    occupancy math are IDENTICAL to the FP16 winner while barrier
+    round-trips per fed byte halve. No block scales (dense GEMM lab).
+
+    Tunables (env, read at first load; defaults = the FP16 champion geometry
+    adapted to e4m3):
+      AISP_DUAL2SM_FP8_TILE_N (128), AISP_DUAL2SM_FP8_STAGES (3),
+      AISP_DUAL2SM_FP8_WARP_SPLIT (1), AISP_DUAL2SM_FP8_MIN_BLOCKS (3),
+      AISP_DUAL2SM_FP8_TILE_K (128; 64 selects the SW64 smem atom and
+      12KB/stage -> stages up to 6 at the same 72KB ring),
+      AISP_DUAL2SM_FP8_EPI_ATOM (32), AISP_DUAL2SM_FP8_PERSIST (1),
+      AISP_DUAL2SM_FP8_RASTER_GM (8), AISP_DUAL2SM_FP8_TMA_EPI (1; requires
+      TILE_K=128 -- the 16KB fp32 staging chunk must fit a drained A stage).
+    """
+    tile_n = int(os.environ.get("AISP_DUAL2SM_FP8_TILE_N", "128"))
+    stages = int(os.environ.get("AISP_DUAL2SM_FP8_STAGES", "3"))
+    warp_split = int(os.environ.get("AISP_DUAL2SM_FP8_WARP_SPLIT", "1"))
+    min_blocks = int(os.environ.get("AISP_DUAL2SM_FP8_MIN_BLOCKS", "3"))
+    tile_k = int(os.environ.get("AISP_DUAL2SM_FP8_TILE_K", "128"))
+    epi_atom = int(os.environ.get("AISP_DUAL2SM_FP8_EPI_ATOM", "32"))
+    persist = int(os.environ.get("AISP_DUAL2SM_FP8_PERSIST", "1"))
+    raster_gm = int(os.environ.get("AISP_DUAL2SM_FP8_RASTER_GM", "8"))
+    tma_epi = int(os.environ.get("AISP_DUAL2SM_FP8_TMA_EPI", "1"))
+    return _load_tcgen05_dual_2sm_fp8_module(tile_n, stages, warp_split, min_blocks, tile_k,
+                                             epi_atom, persist, raster_gm, tma_epi)
+
+
+def matmul_tcgen05_dual_2sm_fp8(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Execute FP8 2-SM UMMA pair GEMM: C = A @ B^T (e4m3 in, fp16 out)."""
+    return load_tcgen05_dual_2sm_fp8_module().matmul_tcgen05_dual_2sm_fp8(a, b)
