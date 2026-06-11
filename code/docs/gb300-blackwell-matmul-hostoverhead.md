@@ -568,3 +568,137 @@ With depth falsified and TMA delivery efficiency binding, the highest-EV remaini
    supporting evidence.
 2. Alternative (deferred, bigger rewrite): warp-specialized persistent kernel with split
    TMEM (>1 CTA/SM), overlapping epilogue with mainloop -- the occupancy lever B31 sized.
+
+# X section: CTA1 cluster-2 B-multicast at bK=64 (Front X, 2026-06-11)
+
+## Verdict: HONEST NEGATIVE (pre-check passed, lever implemented and measured SLOWER; GB300's in-flight TMA request merge already dedupes exactly the duplicates cluster-2 multicast targets; machinery banked env-gated, defaults unchanged)
+
+B48's named lever -- cluster-N B-multicast on the 1SM CTA1 variant at unchanged bK=64 box
+width -- survived its MANDATORY pre-check (B is NOT fully L2-deduped, unlike B43's sibling
+finding), was implemented as a compile-gated `(2,1,1)`-cluster branch with SM90 TMA
+multicast for B, verified **torch.equal vs the B44 reference** (bit-identity preserved),
+and measured **+0.2us SLOWER** (24.16 vs 23.98 us, 7 interleaved reps, tight bands).
+ncu explains it: explicit multicast cut L2-visible read sectors by only ~2% -- the
+hardware was already merging the same cluster-adjacent duplicate B requests in flight,
+so the lever is REDUNDANT with a hardware mechanism and only adds cluster overhead.
+
+## Pre-check (the B43 gate): is CTA1's B traffic already L2-deduped? -> NO (partially)
+
+Geometry (FP16 2048^3, bM=128/bN=256/bK=64): grid 16(m) x 8(n) = 128 CTAs; every B
+n-panel (256x2048 fp16 = 1 MiB) is pulled by the 16 same-column CTAs, every A m-panel
+(512 KiB) by 8 same-row CTAs. Naive (zero-dedup) L2 read sectors = (64+128) MiB / 32B =
+6,291,456 (B alone 4,194,304); unique floor = 524,288.
+
+| Shape (isolates) | naive | measured (L2 tex read sectors) | full-dedup floor | residual dup |
+|---|---|---|---|---|
+| 2048^3 (aggregate) | 6,291,456 | 3,313,162 (avg 2 launches) | 524,288 | 53% of naive reaches L2 |
+| M2048/N256/K2048 (B, 16 sharers) | 786,432 | 524,782 | 294,912 | **B: 8.0x of naive 16x** |
+| M128/N2048/K2048 (A, 8 sharers) | 393,216 | 363,462 | 278,528 | A: ~6.2x of naive 8x |
+
+Decisive cross-check: `l1tex__m_xbar2l1tex_read_sectors_mem_global_op_tma_ld.sum` =
+**6,291,456 exactly** (= naive) -- every CTA receives its full panels on the return xbar
+while L2 sees only 53% of the requests: GB300 merges duplicate in-flight TMA reads
+upstream of the L2 lookup (~2x on B). B NOT fully deduped => gate said implement.
+
+## What was built (env-gated, default off)
+
+`AISP_TCGEN05_CTA1_CLUSTER_M` (default 1 = incumbent): at 2, VariantCTA1 launches as a
+(2,1,1) cluster of M-neighbor CTAs (same n-tile => same B panel). New kernel branch:
+per-CTA SM90 A loads unchanged; B becomes one `SM90_TMA_LOAD_MULTICAST` atom split
+across the pair (`tma_partition` by cluster-M rank, `create_tma_multicast_mask<1>`,
+each CTA issues its half-box once with mask 0b11); `mma_barrier` count=2 with
+`cutlass::arch::umma_arrive_multicast` (1SM tcgen05 commit, signals BOTH CTAs) gating
+stage reuse, since a refill overwrites the peer's B copy too. `TcgenVariantConfig`
+gains an `MmaCtas` param so the 2SM CTA2 path keys off `kMmaCtas==2` (TMEM allocator
+now keyed to MmaCtas, not ClusterM -- same outcome for both shipped variants).
+
+Two traps found and banked on the way:
+1. **expect-tx accounting**: `tma_partition`'s multicast slice is an OFFSET view, not a
+   shrunken one -- `tBsB(_, stage)` spans the FULL B stage extent (the halving lives in
+   the TMA descriptor's truncated box). Multiplying by participants armed 80KB vs 48KB
+   delivered => deterministic deadlock (consumers parked on the tma barrier, producer
+   already drained -- localized with cuda-gdb attach on the live hang, sm 148 warp PCs).
+   Correct bytes = sizeof(full A slice) + sizeof(full B slice), NO multiplier.
+2. **Sweep-build collision**: two co-loaded sweep modules carry identically-mangled CTA2
+   kernels (the macro only changes CTA1's template args); the second-loaded module's
+   CTA2 cluster launch fails `cudaErrorInvalidValue` regardless of order (diag C/D).
+   Worked around by timing/verifying CTA2 from one module per process (it is identical
+   code in both). D5 never hit this: every config differed in template args. Shipped
+   single-module builds unaffected.
+
+## Kernel A/B (FP16 2048^3, us/call, median of 7 interleaved reps, GPU 3)
+
+| Config | CTA1 free (min-max) | CTA1 prof | CTA2 free |
+|---|---|---|---|
+| cm1 = incumbent defaults | **23.98** (23.93-24.21) | 23.66 | 24.11 |
+| cm2 = CLUSTER_M=2 B-multicast | 24.16 (24.13-24.22) | 23.89 | (identical kernel; n/a in-process, == ref standalone) |
+
++0.75% slower, reproducible (non-overlapping bands across both timers).
+
+## ncu (CTA1, --set full, launch-skip 5, launch-count 2; avg of 2 launches)
+
+| Metric | incumbent | cm2 (B-multicast) | delta |
+|---|---|---|---|
+| L2 tex read sectors | 3,313,162 | 3,237,706 | **-2.3% (expected ~-33% if merge weren't already doing it)** |
+| L2 sectors % peak (elapsed) | 9.46 | 9.01 | -0.45pp |
+| xbar->L1 TMA return sectors | 6,291,456 | 6,291,456 | 0 (per-CTA delivery unchanged, as expected) |
+| DRAM read | 16.9 MB / ~375 GB/s | 16.9 MB / ~372 GB/s | flat |
+| gpu__time_duration | 45.02 us | 45.50 us | +1.1% |
+| tensor pipe active % elapsed | 15.58 | 15.50 | flat |
+| Registers/thread; warps active % | 255; 6.2 | 255; 6.2 | unchanged |
+
+Mechanism: the explicit multicast halves ISSUE-side B bytes per CTA (A16K+B16K vs
+A16K+B32K per stage), but L2-visible traffic barely moves because the hardware in-flight
+merge was already collapsing exactly those cluster-adjacent duplicates (the 2x the
+pre-check measured). The residual 8x B duplication is INTER-pair (cluster-2 cannot reach
+it; only cluster-8-in-M could) and is provably not binding: L2 sits at 9% of peak, DRAM
+at 5%, and wall time is FLAT when traffic shifts. The 0.2us regression is the cluster
+machinery itself (cluster_sync, count-2 paired commit gating lengthening the stage-reuse
+dependency chain across two CTAs).
+
+The B48 supporting evidence (CTA2's 4x-muted bK32 penalty) is now better explained by
+the 2SM TMA's pairing being equivalent to what the hardware merge already provides the
+1SM kernel -- not by un-deduped B headroom.
+
+## Bit-identity (lineage intact through B36/B39/B44/D5)
+
+cm2 CTA1 == B44 ref dumps: **torch.equal True** (and == cm1, stable x10; second shape
+4096x2048x1024 cm2==cm1 True; fp32 sanity max_diff 0.063). cm2 CTA2 == ref True
+(standalone). Shipped default build: cta1_equal/cta2_equal/stable20 below.
+
+## Harness x3 (GPU 3, --profile none --single-gpu, interleaved rounds; shipped default build)
+
+| Target | R1 / R2 / R3 | Verify |
+|---|---|---|
+| labs/blackwell_matmul:blackwell_matmul_tcgen05 | 0.1114 / 0.1080 / 0.1090 ms (140.75x / 144.99x / 143.74x) | PASS all, max_diff 0.125 (atol 5.0, unchanged) |
+| labs/fullstack_cluster:cluster_gemm_tcgen05 | ratio 1.09 / 1.11 / 1.13 | PASS all |
+| labs/fullstack_cluster:cluster_gemm_tcgen05_cta2 | ratio 1.10 / 1.05 / 1.07 | PASS all |
+
+Shipped default build vs B44 ref dumps: **cta1_equal True, cta2_equal True, stable20 True**.
+
+## What shipped (defaults UNCHANGED: bK64/S4/CLUSTER_M=1 -> plain branch, incumbent timing)
+
+md5 b61fb99737f260ee59fc756a2b089eb7 (pod == local). Diff vs B48 incumbent (aa01392300ba8fa2ddeb4c64859bb06c,
+backup /tmp/frontX/capstone_kernels_tcgen05.cu.b48bak): +156/-8 lines, /tmp/frontX/x.diff (md5 813d3df73b74f83f93dcb1fb08f39126).
+Artifacts: /tmp/frontX/{ncu_cm2.ncu-rep, raw_cm2.csv, x_load.py, x_verify.py, x_timing.py,
+x_diag.py, x_diag2.py, x_hang.py, precheck_shape.py, ladder.log, verify2.log, timing.log,
+diag_*.log}.
+
+## Ops note
+
+The foreign 4-hour no-op lease squatter D5 documented re-appeared on /tmp/gpu3.lock
+(PID 950978, `flock -n /tmp/gpu3.lock -c "sleep 14400"`, cwd /workspace, ppid 1, started
+13:36:23Z with GPU 3 idle) and was killed per the D5 precedent; something re-spawns it,
+so future fronts should expect to reclaim. All GPU work here ran under per-workload
+`flock -n /tmp/gpu3.lock` on CUDA_VISIBLE_DEVICES=3.
+
+## Next lever
+
+With depth (D5), bK width (D5), and B-multicast (this front) all falsified, and the
+memory system at <10% utilization with tensor pipe at ~16-20%, the residual bound is the
+serial per-CTA issue/wait cadence, not delivery. The highest-EV remaining unlock stays
+B31/D5's deferred big rewrite: **warp-specialized persistent kernel with split TMEM
+(2 CTAs/SM), overlapping epilogue with mainloop** -- the only named lever that attacks
+the 80% tensor-pipe idle directly. Secondary (cheap to falsify): drop the TMEM allocator
+to half capacity (256 columns) to let 2 CTAs co-reside without the full rewrite and
+measure whether occupancy 2x moves the needle at all.

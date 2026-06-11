@@ -90,7 +90,24 @@ constexpr int kPipelineStages = AISP_TCGEN05_STAGES;
 static_assert(kKBlocksPerTile == 2 || kKBlocksPerTile == 4,
               "bK must be 32 (SW64 smem atom) or 64 (SW128 smem atom)");
 
-template <class MmaTag, int ClusterM, int Stages, int KBlocks>
+// Cluster-M B-multicast on the 1SM variant (B48/X). M-neighbor CTAs (same
+// n-tile, consecutive m-tiles) read the SAME B n-panel; ncu on the incumbent
+// shows those duplicate B pulls are only ~2x merged in hardware (B-isolating
+// shape M2048/N256: 8.0x of the naive 16x duplication still reaches L2), so
+// at CLUSTER_M=2 the pair shares one SM90 TMA multicast B load per stage:
+// each CTA issues half the B box once with a both-CTA mcast mask, halving the
+// pair's aggregate B request load and cutting per-CTA TMA issue bytes ~33%
+// (A 16KB + B 16KB vs A 16KB + B 32KB per stage) at UNCHANGED bK=64 box
+// width. A stays per-CTA (different m => different A panel). Default 1 keeps
+// the shipped kernel byte-identical to the B44/D5 incumbent.
+#ifndef AISP_TCGEN05_CTA1_CLUSTER_M
+#define AISP_TCGEN05_CTA1_CLUSTER_M 1
+#endif
+constexpr int kCta1ClusterM = AISP_TCGEN05_CTA1_CLUSTER_M;
+static_assert(kCta1ClusterM == 1 || kCta1ClusterM == 2,
+              "CTA1 cluster M extent must be 1 (no multicast) or 2");
+
+template <class MmaTag, int ClusterM, int Stages, int KBlocks, int MmaCtas = 1>
 struct TcgenVariantConfig {
   using Mma = MmaTag;
   static constexpr int kClusterM = ClusterM;
@@ -98,9 +115,15 @@ struct TcgenVariantConfig {
   static constexpr int kClusterK = 1;
   static constexpr int kStages = Stages;
   static constexpr int kKBlocks = KBlocks;
+  // CTAs per MMA atom (AtomThrID): 2 for the 2x1SM UMMA, 1 otherwise. A
+  // ClusterM exceeding MmaCtas means independent 1SM tiles sharing B via TMA
+  // multicast (B48/X), not a wider MMA.
+  static constexpr int kMmaCtas = MmaCtas;
+  static_assert(ClusterM == MmaCtas || (MmaCtas == 1 && ClusterM == 2),
+                "supported clusters: (MmaCtas,1,1) or 1SM pair (2,1,1)");
   static_assert(Stages >= 2, "pipeline needs at least double buffering");
   using TmemAllocator = std::conditional_t<
-      ClusterM == 1, cute::TMEM::Allocator1Sm, cute::TMEM::Allocator2Sm>;
+      MmaCtas == 1, cute::TMEM::Allocator1Sm, cute::TMEM::Allocator2Sm>;
 
   static constexpr auto cluster_shape() {
     return make_shape(Int<ClusterM>{}, Int<1>{}, Int<1>{});
@@ -110,12 +133,12 @@ struct TcgenVariantConfig {
 using VariantCTA1 = TcgenVariantConfig<
     SM100_MMA_F16BF16_SS<TypeA, TypeB, TypeC, 128, 256,
                          UMMA::Major::K, UMMA::Major::K>,
-    1, kPipelineStages, kKBlocksPerTile>;
+    kCta1ClusterM, kPipelineStages, kKBlocksPerTile>;
 
 using VariantCTA2 = TcgenVariantConfig<
     SM100_MMA_F16BF16_2x1SM_SS<TypeA, TypeB, TypeC, 256, 256,
                                UMMA::Major::K, UMMA::Major::K>,
-    2, kPipelineStages, kKBlocksPerTile>;
+    2, kPipelineStages, kKBlocksPerTile, 2>;
 
 template <class Variant,
           class SharedStorageT,
@@ -212,7 +235,7 @@ __global__ void gemm_device_variant(ATensor mA,
   // unchanged vs the serial loop, so outputs stay bit-identical; only the
   // residence of the loads changes. The epilogue waits the final k-tile's
   // mma barrier (commit covers all previously issued UMMAs) before t2r.
-  if constexpr (Variant::kClusterM == 2) {
+  if constexpr (Variant::kMmaCtas == 2) {
     // Cutlass tutorial 04: 2SM MMA + 2SM TMA multicast.
     auto [tAgA, tAsA] = tma_partition(
         tma_atom_A,
@@ -323,6 +346,119 @@ __global__ void gemm_device_variant(ATensor mA,
     // multicast commit signals both barriers); parity cannot alias because
     // every thread consumed (or gated on) round floor((num-1)/S)-1 or later
     // in the loop above.
+    {
+      int last_stage = (num_k_tiles - 1) % kStages;
+      int last_phase = ((num_k_tiles - 1) / kStages) & 1;
+      cute::wait_barrier(mma_barrier[last_stage], last_phase);
+    }
+  } else if constexpr (Variant::kClusterM == 2) {
+    // B48/X: 1SM MMA pair + SM90 TMA multicast for B across the cluster's
+    // two M-neighbor CTAs (same n-tile => same B panel; A stays per-CTA).
+    // Each CTA issues its half of the B box once per stage with a both-CTA
+    // multicast mask; both halves land in BOTH CTAs' smem, so every CTA
+    // still receives the full B stage and the UMMA sequence -- and the
+    // output bits -- are unchanged vs the plain 1SM branch.
+    auto [tAgA, tAsA] = tma_partition(
+        tma_atom_A, Int<0>{}, Layout<_1>{},
+        group_modes<0, 3>(tCsA), group_modes<0, 3>(tCgA));
+    auto [tBgB, tBsB] = tma_partition(
+        tma_atom_B,
+        get<1>(cta_in_cluster_coord_vmnk),
+        make_layout(size<1>(cluster_layout_vmnk)),
+        group_modes<0, 3>(tCsB), group_modes<0, 3>(tCgB));
+
+    uint16_t tma_mcast_mask_b =
+        create_tma_multicast_mask<1>(cluster_layout_vmnk, cta_in_cluster_coord_vmnk);
+
+    // Each CTA's barrier sees its full local A copy plus BOTH multicast B
+    // half-boxes (its own issue and the peer's), i.e. full A + full B bytes.
+    // NOTE: tma_partition's multicast slice is an OFFSET view, not a shrunken
+    // one -- tBsB(_, stage) still spans the full B stage extent (the per-CTA
+    // halving lives in the TMA descriptor's truncated box), so the full-stage
+    // byte count is sizeof(tBsB slice) with NO participant multiplier.
+    // (X lesson: multiplying by cluster M deadlocked -- expect-tx 80KB vs
+    // 48KB delivered; cuda-gdb showed consumers parked on the tma barrier
+    // with the producer already drained.)
+    int tma_transaction_bytes =
+        sizeof(make_tensor_like(tAsA(_, Int<0>{}))) +
+        sizeof(make_tensor_like(tBsB(_, Int<0>{})));
+
+    if (elect_one_warp && elect_one_thr) {
+      for (int s = 0; s < kStages; ++s) {
+        // Count 2: refilling a stage overwrites the PEER's B copy too, so
+        // BOTH CTAs' UMMA commits (cluster-multicast arrive) must land
+        // before the producer may reuse the stage.
+        cute::initialize_barrier(mma_barrier[s], 2);
+        cute::initialize_barrier(tma_barrier[s], 1);
+      }
+    }
+    cute::cluster_sync();
+
+    int num_k_tiles = size<3>(tCgA);
+
+    if (producer_warp) {
+      // Producer (warp 1 as a WHOLE warp): identical protocol to the plain
+      // 1SM branch -- warp-converged gate waits, elected lane issues -- but
+      // the stage-reuse gate flips only after BOTH CTAs commit and the B
+      // copy carries the multicast mask. Expect-tx is armed locally by each
+      // CTA; the peer's half-box completions are absorbed by the mbarrier's
+      // signed tx-count whichever order they land in.
+      int stage = 0;
+      int gate_phase = 0;
+      int gate_count = 0;
+      for (int p = 0; p < num_k_tiles; ++p) {
+        if (p >= kStages) {
+          cute::wait_barrier(mma_barrier[stage], gate_phase);
+          if (++gate_count == kStages) {
+            gate_count = 0;
+            gate_phase ^= 1;
+          }
+        }
+        if (elect_one_thr) {
+          cute::set_barrier_transaction_bytes(tma_barrier[stage],
+                                              tma_transaction_bytes);
+          copy(tma_atom_A.with(tma_barrier[stage]), tAgA(_, p), tAsA(_, stage));
+          copy(tma_atom_B.with(tma_barrier[stage], tma_mcast_mask_b),
+               tBgB(_, p), tBsB(_, stage));
+        }
+        ++stage;
+        if (stage == kStages) {
+          stage = 0;
+        }
+      }
+    } else {
+      // Consumer (warp 0) + phase-locking companions (warps 2-3): identical
+      // to the plain 1SM branch except the commit is a cluster-multicast
+      // tcgen05 arrive that signals BOTH CTAs' mma barriers. Every byte
+      // multicast into this CTA's smem belongs to a round this CTA's own
+      // tma barrier waits on, so no in-flight copy can target a CTA that
+      // already exited (same argument as the 2SM branch).
+      int read_stage = 0;
+      int tma_read_phase = 0;
+      for (int k_tile = 0; k_tile < num_k_tiles; ++k_tile) {
+        cute::wait_barrier(tma_barrier[read_stage], tma_read_phase);
+
+        if (elect_one_warp) {
+          for (int k_block = 0; k_block < size<2>(tCrA); ++k_block) {
+            gemm(tiled_mma, tCrA(_, _, k_block, read_stage),
+                 tCrB(_, _, k_block, read_stage), tCtAcc);
+            tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+          }
+          cutlass::arch::umma_arrive_multicast(&mma_barrier[read_stage],
+                                               tma_mcast_mask_b);
+        }
+
+        ++read_stage;
+        if (read_stage == kStages) {
+          read_stage = 0;
+          tma_read_phase ^= 1;
+        }
+      }
+    }
+
+    // Drain: wait for the last k-tile's commit (count-2 barrier flips once
+    // BOTH CTAs commit; covers all prior UMMAs). Parity argument matches
+    // the plain 1SM branch.
     {
       int last_stage = (num_k_tiles - 1) % kStages;
       int last_phase = ((num_k_tiles - 1) / kStages) & 1;
@@ -494,6 +630,9 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
       evenly_divides(make_shape(m, n, k), mma_tiler),
       "Problem size must be divisible by the tcgen05 tile "
       "(128x256 or 256x256 by bK=16*kKBlocks depending on the variant)");
+  TORCH_CHECK(
+      m % (size(bM) * (Variant::kClusterM / Variant::kMmaCtas)) == 0,
+      "M must be divisible by the cluster's M extent (B-multicast pair)");
 
   auto mma_shape_A =
       partition_shape_A(tiled_mma,
@@ -551,9 +690,11 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
       tiled_divide(make_layout(cluster_shape),
                    make_tile(typename decltype(tiled_mma)::AtomThrID{}));
 
-  // Build TMA atoms. 2SM variants must use SM100 TMA atoms + multicast semantics.
+  // Build TMA atoms. 2SM variants must use SM100 TMA atoms + multicast
+  // semantics; the 1SM cluster pair (B48/X) keeps per-CTA SM90 A loads and
+  // shares B via an SM90 multicast atom split across the 2 cluster CTAs.
   auto build_tma_atom_A = [&] {
-    if constexpr (Variant::kClusterM == 2) {
+    if constexpr (Variant::kMmaCtas == 2) {
       return make_tma_atom_A_sm100(
           SM100_TMA_2SM_LOAD_MULTICAST{},
           mA,
@@ -571,7 +712,7 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
   };
 
   auto build_tma_atom_B = [&] {
-    if constexpr (Variant::kClusterM == 2) {
+    if constexpr (Variant::kMmaCtas == 2) {
       return make_tma_atom_B_sm100(
           SM100_TMA_2SM_LOAD_MULTICAST{},
           mB,
@@ -579,6 +720,13 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
           mma_tiler,
           tiled_mma,
           cluster_layout_vmnk);
+    } else if constexpr (Variant::kClusterM == 2) {
+      return make_tma_atom(
+          SM90_TMA_LOAD_MULTICAST{},
+          mB,
+          sB_layout_stage0,
+          make_shape(size<1>(mma_tiler), size<2>(mma_tiler)),
+          Int<Variant::kClusterM>{});
     } else {
       return make_tma_atom(
           SM90_TMA_LOAD{},

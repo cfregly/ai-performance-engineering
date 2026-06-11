@@ -1484,6 +1484,27 @@ SoL framing (B), measured 2026-06-09:
   fill vs TMEM_LOAD t2r epilogue; starting split: launch+F_in-kernel ~13.3us single-CTA,
   u_1cta ~0.223us); K=256 runs at 137 TFLOPS = 3.6% SoL, purely F-bound.
 
+- HONEST NEGATIVE (B53, capstone cluster-M B-multicast: pre-check passed, implemented, measured
+  slower; the deepest-grounded multicast refutation): docs/gb300-blackwell-matmul-hostoverhead.md
+  (X section). The B43 gate was honored and PASSED: at 2048^3 the incumbent's L2 read sectors are
+  3.31M vs 6.29M naive (xbar TMA-load count = exactly 6.29M) -- GB300's HARDWARE IN-FLIGHT TMA MERGE
+  dedups only ~2x of the 16x B duplication -- so the lever was implemented (env-gated
+  AISP_TCGEN05_CTA1_CLUSTER_M, (2,1,1) cluster, SM90_TMA_LOAD_MULTICAST B split across the M-pair,
+  umma_arrive_multicast stage gating). MEASURED: +0.75% SLOWER (24.16 vs 23.98us, 7 interleaved
+  reps); L2 sectors -2.3% only (vs -33% if multicast removed new duplicates). MECHANISM: explicit
+  multicast eliminates exactly the duplicates the hardware merge already catches, plus ~0.2us
+  cluster overhead; the residual 8x B duplication is INTER-PAIR (unreachable at cluster-2) and NOT
+  BINDING (L2 9% of peak, DRAM 5%, duration flat as traffic shifts). RE-EXPLAINS B48's "supporting
+  evidence" (CTA2's muted bK32 penalty = the 2SM pairing replicating the hardware merge, not
+  headroom). Verify 9/9 PASS, torch.equal == B44 lineage everywhere, defaults unchanged. TRAPS
+  BANKED: (1) tma_partition's multicast slice is an OFFSET VIEW, not shrunken -- scaling expect-tx
+  by participant count arms 80KB vs 48KB delivered = deterministic deadlock (localized via cuda-gdb
+  attach); correct bytes = the full slice, no multiplier. (2) Co-loaded sweep modules with
+  identically-mangled CTA2 kernels fail cluster launch with cudaErrorInvalidValue -- single-module
+  builds only. Together with B52: every byte-side AND wave-side lever on this kernel is now
+  falsified; the F-decomposition (B52's named lever) is the sole remaining capstone path. OPS: the
+  gpu3 idle lease-squatter RE-SPAWNED and was killed again (something re-creates it).
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
