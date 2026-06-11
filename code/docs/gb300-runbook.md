@@ -1689,6 +1689,29 @@ SoL framing (B), measured 2026-06-09:
   repo-wide. Evidence /tmp/frontH2/ (91 tuples + h2_audit.json). NEXT LEVER: repo-wide
   legacy-stream launch audit; then dual-figure banking for the 4 frame-bound labs.
 
+- HONEST NEGATIVE (B63, dual_2sm TMEM double-buffered epilogue overlap, the B60-named lever): docs/
+  gb300-gemm-occupancy-rewrite.md (V4 section). Formulation analysis FIRST (as mandated): the
+  within-tile k-tail split is structurally DEAD (the 2x1SM atom computes both N-halves per k-block
+  from one shared stage ring; max window (kStages-1)/nk ~= 1.6%); cross-tile double-buffering is
+  the only real window and was implemented CORRECTLY (2x128 TMEM cols/CTA at 2 CTAs/SM; discovered
+  constraint: the t2r drain is WARPGROUP-BOUND (TMEM subpartition w <-> warp rank w) so it needs a
+  dedicated second epilogue warpgroup, not the parked warps; flattened (tile,k) pipeline with
+  cluster-scope buffer-reuse barriers; rel_err 0.0 everywhere including the T=4 reuse protocol).
+  MEASURED: best config 0.9479x, 0/52 paired wins across the 5-config space. MECHANISM: at 9 waves
+  and 3 CTAs/SM, CO-RESIDENCY ALREADY HIDES THE EPILOGUE FOR FREE -- the lever pays only inside a
+  persistent kernel; at the clean 2-CTA point the deficit is feed concurrency (long_scoreboard
+  27.6 vs 22.0), not the epilogue (drain fully hidden as designed); the consecutive-n walk costs
+  +0.74GB DRAM. NEW SIZING LAW (bankable): smem footprint must match the TMEM-IMPLIED CTA count --
+  at s=3 a third co-scheduled CTA fits in smem but NOT TMEM and spins a full tile inside
+  tcgen05.alloc (barrier stall 0.29 -> 34.0 cyc/issue, tensor-pipe craters ~52%); sizing smem to
+  the TMEM count (s=4) recovers 16 of 21 points. Gates 3/3 verification PASS; B57/B60 defaults
+  byte-path intact (AISP_DUAL2SM_EPI_OVERLAP=0 default). NEXT LEVER (carrying V4's proven building
+  block): persistent CTAs + L2-swizzled tile rasterization -- the epilogue-warpgroup double-TMEM
+  cross-tile pipeline IS the persistent kernel's inner loop; what failed was only the grid shape
+  (no rasterization -> DRAM) and the 2-vs-3 feed-stream gap (deeper stages recover 16/21; the
+  swizzled walk must supply the rest). NOTE vs B61: at 8192^3, B (128MB) does NOT fit L2 -- the
+  swizzle premise is ALIVE here, unlike the 2048^3 capstone where B61's pre-check killed it.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

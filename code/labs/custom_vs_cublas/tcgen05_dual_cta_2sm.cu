@@ -113,6 +113,35 @@
 #ifndef DUAL2SM_TILE_K
 #define DUAL2SM_TILE_K 64
 #endif
+// Lever (e), V4-front: cross-tile TMEM double-buffered epilogue overlap.
+// 0 = incumbent (single TMEM buffer; epilogue serialized after the full
+// k-loop). T>=2 = each cluster processes T consecutive n-tiles with TWO
+// TMEM accumulator buffers (2*TILE_N cols/CTA) and a SECOND warpgroup
+// (threads 128..255) as a dedicated epilogue: it drains buffer (t%2) and
+// stores tile t WHILE the consumer's MMA stream fills buffer ((t+1)%2);
+// the smem k-pipeline flows straight across tile boundaries (no per-tile
+// prologue bubble). Structural notes that force this formulation:
+//   - the 2x1SM atom computes the FULL 256xTILE_N pair tile per k-block,
+//     so both N-halves advance through K in lockstep -- a within-tile
+//     k-tail split can only overlap (kStages-1)/num_k_tiles (~1.6%) of
+//     the mainloop. Cross-TILE double-buffering is the only real window.
+//   - the t2r drain is warpgroup-bound (TMEM subpartition w is only
+//     addressable by a warp of rank w within its warpgroup), so the
+//     drain needs a full second warpgroup, not the parked warps 2-3.
+// TMEM cost: 2x128=256 cols/CTA -> TWO CTAs/SM (the incumbent's THREE
+// CTAs/SM needs 3x256=768 > 512); the B60-flagged occupancy-vs-overlap
+// tradeoff, measured here. Under EPI_OVERLAP the mainloop is always the
+// warp-split producer/consumer structure (DUAL2SM_WARP_SPLIT ignored).
+#ifndef DUAL2SM_EPI_OVERLAP
+#define DUAL2SM_EPI_OVERLAP 0
+#endif
+// t2r atom column-repeat for the overlap epilogue's CHUNKED drain (B55
+// trap: re-sweep atom width when the epilogue structure changes). 32 ->
+// four 32-col chunks at TILE_N=128 with 32-reg fragments, fitting the
+// 128-reg/thread budget that 256 threads x 2 CTAs/SM imposes.
+#ifndef DUAL2SM_EPI_ATOM
+#define DUAL2SM_EPI_ATOM 32
+#endif
 
 using namespace cute;
 
@@ -137,8 +166,22 @@ static_assert(kTileK == 64 || kTileK == 128, "DUAL2SM_TILE_K must be 64 or 128")
 static_assert(kTileN >= 32 && (kTileN & (kTileN - 1)) == 0 && kTileN <= 256,
               "DUAL2SM_TILE_N must be a power of two in [32, 256]");
 
-// fp32 accumulator: each CTA holds its 128-row M-half x kTileN in TMEM.
-constexpr int kAccTmemCols = kTileN;
+// V4 epilogue-overlap shape (lever e): T output tiles per cluster walked
+// consecutively along n; 2 TMEM accumulator buffers; 2 warpgroups.
+constexpr int kTilesPerCta = (DUAL2SM_EPI_OVERLAP >= 2) ? DUAL2SM_EPI_OVERLAP : 1;
+constexpr bool kEpiOverlap = (DUAL2SM_EPI_OVERLAP >= 2);
+constexpr int kNumAccBufs = kEpiOverlap ? 2 : 1;
+constexpr int kNumThreads = kEpiOverlap ? 256 : 128;
+static_assert(DUAL2SM_EPI_OVERLAP == 0 || DUAL2SM_EPI_OVERLAP == 2 ||
+              DUAL2SM_EPI_OVERLAP == 4 || DUAL2SM_EPI_OVERLAP == 8,
+              "DUAL2SM_EPI_OVERLAP must be 0 (off) or 2|4|8 tiles per CTA");
+static_assert(!(kEpiOverlap && DUAL2SM_AMCAST),
+              "Epilogue overlap is not combined with A-multicast (scope)");
+static_assert(!kEpiOverlap || kTileN % DUAL2SM_EPI_ATOM == 0,
+              "DUAL2SM_EPI_ATOM must divide DUAL2SM_TILE_N");
+
+// fp32 accumulator: each CTA holds its 128-row M-half x kTileN per buffer.
+constexpr int kAccTmemCols = kNumAccBufs * kTileN;
 static_assert(2 * kAccTmemCols <= cute::TMEM::Allocator2Sm::Sm100TmemCapacityColumns,
               "Accumulator must leave TMEM room for a co-resident CTA");
 
@@ -148,7 +191,8 @@ struct Dual2SmSharedStorage {
   alignas(128) cute::ArrayEngine<TypeB_, cute::cosize_v<BSmemLayout>> smem_B[kStages];
   alignas(16) cute::uint64_t full_barrier[kStages];   // leader-only: pair TMA bytes
   alignas(16) cute::uint64_t empty_barrier[kStages];  // per-CTA: multicast commit
-  alignas(16) cute::uint64_t mma_barrier;
+  alignas(16) cute::uint64_t mma_barrier[kNumAccBufs];  // per acc buffer
+  alignas(16) cute::uint64_t tmem_empty[kNumAccBufs];   // leader-only: both CTAs' drains
   alignas(16) cute::uint32_t tmem_base_ptr;
 
   CUTE_DEVICE auto tensor_sA(int stage) {
@@ -163,14 +207,35 @@ using MmaTag =
     SM100_MMA_F16BF16_2x1SM_SS<TypeA, TypeB, TypeC, kTileM, kTileN,
                                UMMA::Major::K, UMMA::Major::K>;
 
+// Overlap-epilogue t2r atom (column repeat per tcgen05.ld; B55 trap knob).
+#if DUAL2SM_EPI_ATOM == 1
+using EpiLoadOp = SM100_TMEM_LOAD_32dp32b1x;
+#elif DUAL2SM_EPI_ATOM == 2
+using EpiLoadOp = SM100_TMEM_LOAD_32dp32b2x;
+#elif DUAL2SM_EPI_ATOM == 4
+using EpiLoadOp = SM100_TMEM_LOAD_32dp32b4x;
+#elif DUAL2SM_EPI_ATOM == 8
+using EpiLoadOp = SM100_TMEM_LOAD_32dp32b8x;
+#elif DUAL2SM_EPI_ATOM == 16
+using EpiLoadOp = SM100_TMEM_LOAD_32dp32b16x;
+#elif DUAL2SM_EPI_ATOM == 32
+using EpiLoadOp = SM100_TMEM_LOAD_32dp32b32x;
+#elif DUAL2SM_EPI_ATOM == 64
+using EpiLoadOp = SM100_TMEM_LOAD_32dp32b64x;
+#elif DUAL2SM_EPI_ATOM == 128
+using EpiLoadOp = SM100_TMEM_LOAD_32dp32b128x;
+#else
+#error "DUAL2SM_EPI_ATOM must be 1|2|4|8|16|32|64|128"
+#endif
+
 template <class SharedStorageT,
           class ATensor, class BTensor, class CTensor, class DTensor,
           class MmaTiler_MNK, class TiledMMA,
           class TmaAtomA, class TmaAtomB>
 #if DUAL2SM_AMCAST
-__global__ void __cluster_dims__(2, 2, 1) __launch_bounds__(128, DUAL2SM_MIN_BLOCKS)
+__global__ void __cluster_dims__(2, 2, 1) __launch_bounds__(kNumThreads, DUAL2SM_MIN_BLOCKS)
 #else
-__global__ void __cluster_dims__(2, 1, 1) __launch_bounds__(128, DUAL2SM_MIN_BLOCKS)
+__global__ void __cluster_dims__(2, 1, 1) __launch_bounds__(kNumThreads, DUAL2SM_MIN_BLOCKS)
 #endif
 gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
                   MmaTiler_MNK mma_tiler, TiledMMA tiled_mma,
@@ -185,7 +250,9 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   bool leader_cta = (v == 0);                      // even rank issues the 2SM MMA
 
   int tile_m = blockIdx.x / 2;  // pair-wide 256-row M tile
-  int tile_n = blockIdx.y;
+  // Under EPI_OVERLAP each cluster walks kTilesPerCta CONSECUTIVE n-tiles
+  // (tile_n .. tile_n+kTilesPerCta-1); A is shared across the walk (L2-hot).
+  int tile_n = blockIdx.y * kTilesPerCta;
 
   auto mma_coord = make_coord(tile_m, tile_n, _);
 
@@ -226,7 +293,15 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
       // so reuse must wait for BOTH leaders' commits (count kClusterN).
       cute::initialize_barrier(storage.empty_barrier[s], kClusterN);
     }
-    cute::initialize_barrier(storage.mma_barrier, 1);
+    for (int bb = 0; bb < kNumAccBufs; ++bb) {
+      cute::initialize_barrier(storage.mma_barrier[bb], 1);
+      if constexpr (kEpiOverlap) {
+        // Leader-side acc-buffer-free barrier: BOTH CTAs' epilogue
+        // warpgroups arrive (cluster-scope) once their TMEM half of the
+        // buffer is drained; the consumer waits before reusing the buffer.
+        cute::initialize_barrier(storage.tmem_empty[bb], 2);
+      }
+    }
   }
   cutlass::arch::fence_barrier_init();
   __syncthreads();
@@ -319,6 +394,35 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
     copy(tma_atom_B.with(storage.full_barrier[stage]), tBgB(_, k_tile), tBsB);
   };
 
+#if DUAL2SM_EPI_OVERLAP
+  // Per-walk-tile B gmem TMA coordinate slices (A is tile_m-only: shared).
+  auto tBgB_for = [&](int t) {
+    auto coord_t = make_coord(tile_m, tile_n + t, _);
+    Tensor gCoordB_t = local_tile(tma_coord_B, mma_tiler, coord_t, Step<X, _1, _1>{});
+    Tensor tCgCoordB_t = cta_mma.partition_B(gCoordB_t);
+    return cute::get<0>(tma_partition(tma_atom_B, Int<0>{}, Layout<_1>{},
+        group_modes<0,3>(tCsB_0), group_modes<0,3>(tCgCoordB_t)));
+  };
+#if DUAL2SM_EPI_OVERLAP == 2
+  decltype(tBgB_for(0)) tBgB_t[kTilesPerCta] = { tBgB_for(0), tBgB_for(1) };
+#elif DUAL2SM_EPI_OVERLAP == 4
+  decltype(tBgB_for(0)) tBgB_t[kTilesPerCta] = { tBgB_for(0), tBgB_for(1), tBgB_for(2), tBgB_for(3) };
+#else
+  decltype(tBgB_for(0)) tBgB_t[kTilesPerCta] = { tBgB_for(0), tBgB_for(1), tBgB_for(2), tBgB_for(3),
+                                                 tBgB_for(4), tBgB_for(5), tBgB_for(6), tBgB_for(7) };
+#endif
+
+  auto issue_tma_t = [&](int stage, int t, int k_tile) {
+    if (leader_cta) {
+      cute::set_barrier_transaction_bytes(storage.full_barrier[stage], tma_bytes);
+    }
+    auto tAsA = make_tensor(make_smem_ptr(storage.smem_A[stage].begin()), tAsA_0.layout());
+    copy(tma_atom_A.with(storage.full_barrier[stage]), tAgA(_, k_tile), tAsA);
+    auto tBsB = make_tensor(make_smem_ptr(storage.smem_B[stage].begin()), tBsB_0.layout());
+    copy(tma_atom_B.with(storage.full_barrier[stage]), tBgB_t[t](_, k_tile), tBsB);
+  };
+#endif
+
   // Per-stage UMMA smem-descriptor fragments (same type per stage -> array).
   auto fragA = [&](int s) { return cta_mma.make_fragment_A(storage.tensor_sA(s)); };
   auto fragB = [&](int s) { return cta_mma.make_fragment_B(storage.tensor_sB(s)); };
@@ -350,7 +454,114 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   // This CTA's own SM pair (for the final TMEM-complete commit).
   const uint16_t kPairMask = uint16_t(0x3) << (int(cute::block_rank_in_cluster()) & ~1);
 
-#if DUAL2SM_WARP_SPLIT
+#if DUAL2SM_EPI_OVERLAP
+  // =====================================================================
+  // V4 cross-tile epilogue-overlap mainloop (lever e). Warpgroup 0 runs
+  // the warp-split producer/consumer over the FLATTENED (tile, k)
+  // iteration space -- the smem stage ring crosses tile boundaries with
+  // no prologue bubble. Warpgroup 1 (warps 4-7, BOTH CTAs) is a
+  // dedicated epilogue: it drains TMEM buffer (t%2) + stores tile t
+  // while the consumer fills buffer ((t+1)%2) of the next tile.
+  // =====================================================================
+  const int total_iters = kTilesPerCta * num_k_tiles;
+  const uint32_t leader_rank = uint32_t(cute::block_rank_in_cluster()) & ~1u;
+  if (warp_idx == 0) {
+    // Producer: WHOLE warp 0 of BOTH CTAs (empty-wait + TMA issue).
+    int empty_phase[kStages] = {};
+    for (int g = 0; g < total_iters; ++g) {
+      int s = g % kStages;
+      if (g >= kStages) {
+        cute::wait_barrier(storage.empty_barrier[s], empty_phase[s]);
+        empty_phase[s] ^= 1;
+      }
+      if (elect_one_thr) {
+        issue_tma_t(s, g / num_k_tiles, g % num_k_tiles);
+      }
+    }
+    // Drain the final multicast commits on BOTH CTAs (smem barrier
+    // lifetime, as in the incumbent paths).
+    for (int g = total_iters - min(kStages, total_iters); g < total_iters; ++g) {
+      int s = g % kStages;
+      cute::wait_barrier(storage.empty_barrier[s], empty_phase[s]);
+      empty_phase[s] ^= 1;
+    }
+  } else if (warp_idx == 1 && leader_cta) {
+    // Consumer: leader warp 1 (full-wait + MMA + commit). Buffer b = t%2
+    // is reused by tile t+2: its first MMA must wait until BOTH CTAs'
+    // epilogues drained it (tmem_empty, cluster-scope arrivals).
+    int full_phase[kStages] = {};
+    int tmem_phase[kNumAccBufs] = {};
+    for (int t = 0; t < kTilesPerCta; ++t) {
+      int b = t % kNumAccBufs;
+      if (t >= kNumAccBufs) {
+        cute::wait_barrier(storage.tmem_empty[b], tmem_phase[b]);
+        tmem_phase[b] ^= 1;
+      }
+      tCtAcc.data() = tmem_base + uint32_t(b) * uint32_t(kTileN);
+      tiled_mma.accumulate_ = UMMA::ScaleOut::Zero;
+      for (int k = 0; k < num_k_tiles; ++k) {
+        int curr = (t * num_k_tiles + k) % kStages;
+        cute::wait_barrier(storage.full_barrier[curr], full_phase[curr]);
+        full_phase[curr] ^= 1;
+
+        for (int kb = 0; kb < size<2>(tCrA_st[0]); ++kb) {
+          gemm(tiled_mma, tCrA_st[curr](_, _, kb), tCrB_st[curr](_, _, kb), tCtAcc);
+          tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+        }
+        cutlass::arch::umma_arrive_multicast_2x1SM(
+            reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]), kEmptyMask);
+      }
+      // Tile t complete in BOTH CTAs' TMEM halves: release the pair's
+      // mma_barrier[b] so both epilogue warpgroups can drain it.
+      cutlass::arch::umma_arrive_multicast_2x1SM(
+          reinterpret_cast<uint64_t*>(&storage.mma_barrier[b]), kPairMask);
+    }
+  } else if (warp_idx >= 4) {
+    // Dedicated epilogue warpgroup (BOTH CTAs): warps 4-7 have ranks 0-3
+    // within their warpgroup, so they cover TMEM subpartitions 0-3 and
+    // can drain the full 128-lane accumulator concurrently with the
+    // mainloop warps. Chunked t2r (32-col fragments) keeps registers
+    // inside the 128/thread budget of 256 threads x 2 CTAs/SM.
+    const int epi_tid = int(threadIdx.x) - 128;
+    Tensor tEpiAcc = cta_mma.make_fragment_C(tCgC);
+    auto tiled_t2r_copy = make_tmem_copy(EpiLoadOp{}, tEpiAcc);
+    auto thr_t2r_copy = tiled_t2r_copy.get_slice(epi_tid);
+    int mma_phase[kNumAccBufs] = {};
+    for (int t = 0; t < kTilesPerCta; ++t) {
+      int b = t % kNumAccBufs;
+      cute::wait_barrier(storage.mma_barrier[b], mma_phase[b]);
+      mma_phase[b] ^= 1;
+      tEpiAcc.data() = tmem_base + uint32_t(b) * uint32_t(kTileN);
+
+      auto coord_t = make_coord(tile_m, tile_n + t, _);
+      Tensor gD_t = local_tile(mD, mma_tiler, coord_t, Step<_1, _1, X>{});
+      Tensor tCgD_t = cta_mma.partition_C(gD_t);
+      Tensor tDtAcc = thr_t2r_copy.partition_S(tEpiAcc);   // (CPY, rest...)
+      Tensor tDgD = thr_t2r_copy.partition_D(tCgD_t);      // (CPY, rest...)
+      // Chunk over ALL rest modes (rank varies with atom width/tile_n):
+      // one EPI_ATOM-wide t2r fragment -> fence -> gmem store per chunk.
+      constexpr int kEpiRank = decltype(rank(tDtAcc))::value;
+      Tensor tDtAccG = group_modes<1, kEpiRank>(tDtAcc);   // (CPY, REST)
+      Tensor tDgDG = group_modes<1, kEpiRank>(tDgD);       // (CPY, REST)
+      CUTE_UNROLL
+      for (int c = 0; c < size<1>(tDtAccG); ++c) {
+        Tensor tDrAcc = make_tensor<Accumulator>(shape(tDgDG(_, c)));
+        copy(tiled_t2r_copy, tDtAccG(_, c), tDrAcc);
+        cutlass::arch::fence_view_async_tmem_load();
+        copy(tDrAcc, tDgDG(_, c));  // D = accumulator (beta=0)
+      }
+      if (t + kNumAccBufs < kTilesPerCta) {
+        // Buffer b will be reused: signal the LEADER's consumer that this
+        // CTA's TMEM half is drained (one cluster-scope arrive per CTA;
+        // not signalled for the last kNumAccBufs tiles so no arrive can
+        // land after the leader's barriers die -- smem lifetime trap).
+        cutlass::arch::ClusterBarrier::arrive(
+            &storage.tmem_empty[b], leader_rank,
+            uint32_t((warp_idx == 4) && elect_one_thr));
+      }
+    }
+  }
+#elif DUAL2SM_WARP_SPLIT
   // =====================================================================
   // Warp-split mainloop (lever a): producer = WHOLE warp 0 of BOTH CTAs
   // (empty-wait + TMA issue); consumer = WHOLE warp 1 of the leader CTA
@@ -404,7 +615,7 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
     // Final commit: multicast so the PEER also learns its TMEM half is
     // complete (the pair MMA writes both CTAs' TMEM).
     cutlass::arch::umma_arrive_multicast_2x1SM(
-        reinterpret_cast<uint64_t*>(&storage.mma_barrier), kPairMask);
+        reinterpret_cast<uint64_t*>(&storage.mma_barrier[0]), kPairMask);
   }
 #else
   // =====================================================================
@@ -470,13 +681,14 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
     // complete (the pair MMA writes both CTAs' TMEM).
     if (leader_cta) {
       cutlass::arch::umma_arrive_multicast_2x1SM(
-          reinterpret_cast<uint64_t*>(&storage.mma_barrier), kPairMask);
+          reinterpret_cast<uint64_t*>(&storage.mma_barrier[0]), kPairMask);
     }
   }
 #endif
 
+#if !DUAL2SM_EPI_OVERLAP
   // All 128 threads of both CTAs rendezvous here for the epilogue.
-  cute::wait_barrier(storage.mma_barrier, 0);
+  cute::wait_barrier(storage.mma_barrier[0], 0);
 
   // Epilogue: TMEM -> registers -> gmem (beta=0: C never read).
   auto tiled_t2r_copy = make_tmem_copy(SM100_TMEM_LOAD_32dp32b1x{}, tCtAcc);
@@ -489,7 +701,10 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   cutlass::arch::fence_view_async_tmem_load();
 
   copy(tDrAcc, tDgD);  // D = accumulator (beta=0)
+#endif  // !DUAL2SM_EPI_OVERLAP
 
+  // Under EPI_OVERLAP the dedicated warpgroup already drained + stored all
+  // tiles; all warps (8 under overlap, 4 otherwise) rendezvous here.
   __syncthreads();
   if (elect_one_warp) {
     // Pair-collective dealloc (tcgen05.dealloc.cta_group::2): implicit
@@ -565,11 +780,13 @@ torch::Tensor run_dual_cta_2sm_matmul(torch::Tensor a, torch::Tensor b) {
 
   int grid_pairs_m = int(m) / kTileM;
   int grid_n = int(n) / kTileN;
-  TORCH_CHECK(grid_n % kClusterN == 0,
-              "N tiles (", grid_n, ") must be divisible by cluster N (", kClusterN, ")");
+  TORCH_CHECK(grid_n % (kClusterN * kTilesPerCta) == 0,
+              "N tiles (", grid_n, ") must be divisible by cluster N x tiles/CTA (",
+              kClusterN * kTilesPerCta, ")");
 
-  dim3 dimBlock(128);
-  dim3 dimGrid(2 * grid_pairs_m, grid_n);  // blockIdx.x: (pair, v) interleaved
+  dim3 dimBlock(kNumThreads);  // 256 under EPI_OVERLAP (2nd = epilogue warpgroup)
+  // blockIdx.x: (pair, v) interleaved; y: each cluster walks kTilesPerCta n-tiles
+  dim3 dimGrid(2 * grid_pairs_m, grid_n / kTilesPerCta);
   int smem_bytes = sizeof(SharedStorageT);
 
   auto* kernel_ptr = &gemm_dual_cta_2sm<

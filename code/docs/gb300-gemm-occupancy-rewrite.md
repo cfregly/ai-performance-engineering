@@ -742,3 +742,177 @@ from launch-shape knobs. The two structural candidates, in EV order:
    grid with swizzled (m,n) walk is the standard cuBLAS L2-shaping tool
    and attacks the SAME DRAM/L2 numbers that just sank every V3 config —
    without touching the winning (128,3) shape.
+
+# B-runbook V4 front (2026-06-11): TMEM double-buffered epilogue overlap (lever e) -- HONEST NEGATIVE
+
+Mission: B60's named structural lever on `tcgen05_dual_cta_2sm.cu` -- drain
+one TMEM accumulator buffer (t2r + store) while the MMA stream fills the
+other, instead of the incumbent's fully-serialized post-k-loop epilogue.
+
+## Which formulation the layout permits (stated before coding)
+
+1. WITHIN-TILE k-tail split (drain N-half 1 while half 2's final MMAs run):
+   structurally DEAD on this kernel. The 2x1SM atom
+   (SM100_MMA_F16BF16_2x1SM_SS, 256 x TILE_N) computes BOTH N-halves of the
+   pair tile per k-block instruction, and both halves are fed from the SAME
+   smem stage ring -- the maximum k-stagger between halves is the in-flight
+   stage count, so the overlap window is (kStages-1)/num_k_tiles = 2/128
+   ~ 1.6% of the mainloop. Splitting the atom into two N/2 atoms does not
+   change this (they would still share the stage ring).
+2. CROSS-TILE TMEM double-buffering: the only real window, and the layout
+   permits it cleanly at n=128: 2 buffers x 128 cols = 256 TMEM cols/CTA ->
+   exactly 2 CTAs/SM (512-col TMEM); the incumbent's 3 CTAs/SM would need
+   3 x 256 = 768 > 512 (the B60 TMEM math; impossible).
+   One additional layout fact forces the implementation shape: the t2r
+   drain is WARPGROUP-bound (TMEM subpartition w is only addressable by a
+   warp of rank w within its warpgroup), so the drain cannot run on the
+   parked warps 2-3 -- it needs a full SECOND warpgroup (256 threads/CTA).
+
+## What was built (flag-gated; incumbent path untouched and default)
+
+`DUAL2SM_EPI_OVERLAP=T` (0 = off/incumbent-byte-path; 2|4|8 = tiles per
+CTA walked consecutively along n, grid_y / T):
+- Warpgroup 0 = the B57 warp-split producer/consumer mainloop over the
+  FLATTENED (tile, k) iteration space -- the smem stage ring crosses tile
+  boundaries with NO per-tile prologue bubble. Warpgroup 1 (warps 4-7,
+  BOTH CTAs) = dedicated epilogue draining TMEM buffer (t%2) + storing
+  tile t while the consumer fills buffer ((t+1)%2).
+- Per-buffer mma_barrier[2] (leader tcgen05.commit multicast to the pair);
+  tmem_empty[2] on the leader (cluster-scope ClusterBarrier::arrive from
+  both CTAs' epilogue warpgroups) gates buffer reuse at T>2; arrives are
+  SKIPPED for the last kNumAccBufs tiles of the walk so no remote arrive
+  can land after the target CTA's smem barriers die (B49/V2 lifetime trap).
+- Chunked t2r drain (`DUAL2SM_EPI_ATOM`, default 32 cols -> 32-reg
+  fragments): 256 threads x 2 CTAs/SM caps registers at 128/thread, so
+  the incumbent's full-tile one-shot fragment does not fit. group_modes
+  over the partition rest-modes makes the chunking atom-width-agnostic.
+
+## A/B (paired, order-alternated, 8192^3, GPU 2, vs incumbent (128,3,ws=1))
+
+ALL arms rel_err = 0.0 (incl. the T=4 buffer-reuse path: the cluster-scope
+tmem_empty protocol is correctness-proven, not just the T=2 no-reuse case).
+
+| challenger config      | inc median      | chal median     | paired sp | wins |
+|------------------------|----------------:|----------------:|----------:|------|
+| (128,3) e2 ea32        | 889.2us / 33.0% | 1144.1us / 25.6%|  0.7903   | 0/12 |
+| (128,3) e4 ea32        |   (same-sess)   |    (same-sess)  |  0.7318   | 0/10 |
+| (128,4) e2 ea32  BEST  | 929.2us / 31.6% |  980.3us / 29.9%|  0.9479   | 0/10 |
+| (128,2) k128 e2 ea32   | 918.6us / 31.9% | 1034.1us / 28.4%|  0.8856   | 0/10 |
+| (128,4) e2 ea16        | 924.8us / 31.7% |  978.0us / 30.0%|  0.9442   | 0/10 |
+
+0/52 paired wins total. cuBLAS same-session 640-678us / 43-46% SoL (node
+thermal drift; the paired order-alternated protocol absorbs it -- note the
+incumbent itself swung 889->929us across sessions). Atom width 16 vs 32 is
+flat (0.944 vs 0.948): the B55 re-sweep duty is done and the epilogue atom
+is NOT the binder -- the drain is fully hidden, exactly as designed; the
+loss is mainloop-side.
+
+## Why it loses (ncu, --set full, skip 5 / count 2; vs V3 incumbent rep)
+
+| metric                              | incumbent (128,3) | e2 (128,3) | e2 (128,4) |
+|-------------------------------------|------------------:|-----------:|-----------:|
+| duration (ncu clock)                |       748.8us     |  890-975us |  801-809us |
+| tensor-pipe active (% of elapsed)   |         71.6%     |  49.8-53.8%|     66.9%  |
+| long_scoreboard (cyc/issue)         |          22.0     |      28.5  |      27.6  |
+| barrier stall (cyc/issue)           |          0.29     |      34.0  |      15.2  |
+| warp latency (cyc/inst issued)      |          29.6     |      69.9  |      48.4  |
+| occupancy limit (smem)              |     3 CTAs/SM     |  3 CTAs/SM |  2 CTAs/SM |
+| warps_active (% of peak)            |         18.3%     |     34.3%  |     24.1%  |
+| registers/thread                    |           152     |        46  |        46  |
+| dram bytes read                     |        1.36GB     |    2.1GB   |    2.1GB   |
+| waves (vs theoretical)              |          8.98     |      4.49  |      6.74  |
+
+Three structural findings:
+1. **The s=3 overlap pathology is a TMEM-vs-smem occupancy mismatch:** at
+   72KB/CTA the hardware co-schedules a THIRD CTA per SM (smem limit 3),
+   but TMEM (2x256 of 512 cols) only fits two -- the third spins inside
+   tcgen05.alloc for a whole tile duration. ncu shows it directly:
+   warps_active 34.3% (~2.75 CTAs resident, one useless), barrier stall
+   0.29 -> 34.0 cyc/issue, tensor pipe 71.6 -> ~52%. LESSON (new, bankable):
+   when TMEM binds occupancy, size the smem footprint to the TMEM-implied
+   CTA count (s=4 = 96KB caps smem residency at exactly 2) or pay a
+   spinning-allocator slot.
+2. **At the clean 2-CTA point (s=4) the deficit is feed concurrency, not
+   the epilogue:** tensor-pipe 66.9 vs 71.6%, long_scoreboard 27.6 vs 22.0
+   -- one fewer independent TMA/MMA stream per SM exposes more TMA latency
+   per warp. Registers are 46/thread (vs cap 128): no spill pressure; the
+   drain itself is invisible in the A/B (atom width flat) -- the overlap
+   mechanism WORKS, the occupancy it costs is simply worth more.
+3. **The n-walk hurts L2:** DRAM read bytes rise 1.36 -> 2.1GB at equal L2
+   sector counts -- 304 clusters walking 2-4 consecutive n-tiles reuse B
+   worse across the SM array than 456 independent (m,n) CTAs. Walk length
+   T=4 compounds it (0.73x): more serial tiles behind one producer stream,
+   fewer concurrent distinct tiles for L2 sharing.
+
+The decomposition: at 9 waves deep and 3 CTAs/SM, the incumbent's
+serialized epilogue was ALREADY hidden by co-resident CTAs' mainloops --
+the per-SM tensor pipe does not idle while one CTA drains, because two
+other k-pipelines keep feeding it. Explicit intra-CTA overlap buys back
+only what co-residency already provided, and pays 1/3 of the SM's
+independent feed streams for it on a mainloop that is TMA-latency-bound
+(B60: long_scoreboard 75% of issue-cycles).
+
+## Verdict
+
+HONEST NEGATIVE for lever e on this kernel shape: best overlap config
+(128,4,e2) = 0.9479x, 0/52 paired wins across the 5-config space (stages,
+tile_k, walk length, atom width all probed; rel_err 0.0 everywhere). The
+lever is structurally priced out: TMEM double-buffering costs exactly the
+third co-resident CTA whose mainloop was already hiding the epilogue for
+free. It can only pay inside a kernel whose 2-CTA pair saturates the SM's
+tensor pipe on its own (persistent cuBLAS-class mainloop) -- i.e. the
+lever is DOWNSTREAM of the persistent-CTA rewrite, not parallel to it.
+
+## Harness verify gates (3/3 PASSED, `--profile none`)
+
+```
+AISP_TCGEN05_VARIANT=dual_cta_2sm (loader defaults 128,3,ws=1,mb=2,k=64,eo=0):
+  verification passed: true, 0 failed (ts 18:11:21, best_speedup 2.8196x)
+AISP_TCGEN05_VARIANT=dual_cta (plain dual regression):
+  verification passed: true, 0 failed (ts 18:11:38, best_speedup 2.7577x)
+AISP_TCGEN05_VARIANT=cluster (default regression):
+  verification passed: true, 0 failed (ts 18:11:54, best_speedup 2.4624x;
+  2.329x contract intact)
+```
+
+Verdict snapshots: `/tmp/frontV4/gate{1,2,3}_{2sm,dual,cluster}_results.json`.
+
+## Files (pod, md5)
+
+```
+CHANGED  labs/custom_vs_cublas/tcgen05_dual_cta_2sm.cu  39b52e587871389181a3ef74b24b5566
+         (V4: DUAL2SM_EPI_OVERLAP=0|2|4|8 cross-tile TMEM double-buffer +
+          second epilogue warpgroup + DUAL2SM_EPI_ATOM chunked t2r;
+          defaults byte-equivalent path to B60 -- the incumbent rebuilt
+          under V4 source reproduces 152 regs / 3 CTAs/SM / the same
+          863-929us round-robin band and passes all gates)
+CHANGED  labs/custom_vs_cublas/tcgen05_loader.py        1ea36d72cffadccf312f0122d68b646e
+         (V4: epi_overlap/epi_atom params + AISP_DUAL2SM_EPI_OVERLAP /
+          AISP_DUAL2SM_EPI_ATOM env plumbing; defaults UNCHANGED:
+          128,3,ws=1,amc=0,mb=2,k=64,eo=0,ea=32 -- B57/B60 incumbent
+          stays the default)
+UNCHANGED labs/custom_vs_cublas/bench_dual_cta.py       5ad5ea81aa5ec2c22b61bb2673878384
+Backups: /tmp/frontV4/{tcgen05_dual_cta_2sm.cu,tcgen05_loader.py} (B60
+originals, md5 ae3f0a34/83744a2d). Logs: /tmp/frontV4/ab_{e2,e4,s4e2,
+k128e2,s4e2a16}.log, gate{1,2,3}_*.log; ncu: /tmp/frontV4/
+ncu_{e2_n128s3,e2_n128s4,inc_n128s3}.ncu-rep. A/B driver:
+/tmp/frontV4/ab_v4.py. Nothing committed.
+```
+
+## Named next lever
+
+**Persistent CTAs + tile rasterization (B60's candidate #2), now carrying
+V4's building block:** a persistent grid of ~304 clusters (2 CTAs/SM,
+TMEM 2x128-col buffers) with a SWIZZLED (m,n) tile walk. V4's epilogue
+warpgroup + double-TMEM + cross-tile-pipeline machinery is exactly the
+persistent kernel's inner structure and is now flag-gated, correctness-
+proven (rel_err 0.0 incl. buffer reuse) and measured -- what failed here
+is only the GRID SHAPE (consecutive-n walks with no rasterization destroy
+L2 reuse, +0.74GB DRAM) and the feed-concurrency deficit (2 vs 3 streams).
+The persistent rewrite must therefore ship BOTH: (a) an L2-aware swizzled
+rasterization (the standard cuBLAS tool, attacks the V3 DRAM/L2 numbers
+directly), and (b) deeper stages (s=4/96KB measured best; s=5/120KB fits
+the full 227KB budget at 2 CTAs/SM if the 110KB static cap is lifted to
+113KB) or B-multicast across persistent pairs to close the 2-stream gap.
+V4's data says (b) alone recovers 16 of the 21 lost points -- the
+remaining 5 must come from (a).

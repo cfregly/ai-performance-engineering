@@ -295,7 +295,8 @@ def matmul_tcgen05_dual_cta(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 @lru_cache(maxsize=None)
 def _load_tcgen05_dual_cta_2sm_module(tile_n: int, stages: int, warp_split: int = 0, amcast: int = 0,
-                                      min_blocks: int = 2, tile_k: int = 64):
+                                      min_blocks: int = 2, tile_k: int = 64,
+                                      epi_overlap: int = 0, epi_atom: int = 32):
     extra = (
         f"-DDUAL2SM_TILE_N={tile_n}",
         f"-DDUAL2SM_STAGES={stages}",
@@ -303,10 +304,13 @@ def _load_tcgen05_dual_cta_2sm_module(tile_n: int, stages: int, warp_split: int 
         f"-DDUAL2SM_AMCAST={amcast}",
         f"-DDUAL2SM_MIN_BLOCKS={min_blocks}",
         f"-DDUAL2SM_TILE_K={tile_k}",
+        f"-DDUAL2SM_EPI_OVERLAP={epi_overlap}",
+        f"-DDUAL2SM_EPI_ATOM={epi_atom}",
     )
     return _load_kernel(
         _LAB_DIR / "tcgen05_dual_cta_2sm.cu",
-        f"lab_tcgen05_dual_cta_2sm_n{tile_n}s{stages}w{warp_split}a{amcast}mb{min_blocks}k{tile_k}",
+        f"lab_tcgen05_dual_cta_2sm_n{tile_n}s{stages}w{warp_split}a{amcast}"
+        f"mb{min_blocks}k{tile_k}eo{epi_overlap}ea{epi_atom}",
         extra_cuda_flags=extra,
     )
 
@@ -335,6 +339,15 @@ def load_tcgen05_dual_cta_2sm_module():
       AISP_DUAL2SM_TILE_K: K-extent per pipeline stage (default 64; 128
         doubles the TMA box and halves barrier round-trips per fed byte --
         V3-front lever d)
+      AISP_DUAL2SM_EPI_OVERLAP: 0 (default, off) or 2|4|8 = cross-tile TMEM
+        double-buffered epilogue overlap (V4-front lever e): each cluster
+        walks that many consecutive n-tiles with 2 TMEM acc buffers and a
+        SECOND warpgroup (256 threads/CTA) draining buffer (t%2) while the
+        MMA stream fills buffer ((t+1)%2). TMEM 2x128=256 cols/CTA -> TWO
+        CTAs/SM (vs the incumbent's three); WARP_SPLIT is ignored (the
+        overlap mainloop is always producer/consumer split).
+      AISP_DUAL2SM_EPI_ATOM: t2r column-repeat of the overlap epilogue's
+        chunked drain (default 32; B55 atom-width trap knob)
     Defaults are the measured-best config from the GB300 U-front session
     (2026-06-11, GPU 2, 8192^3): (128,3) = 867-895us / 33.2-33.8% SoL,
     16/16 interleaved-rep wins vs plain dual (256,2). ncu: 152 regs/thread
@@ -349,7 +362,10 @@ def load_tcgen05_dual_cta_2sm_module():
     amcast = int(os.environ.get("AISP_DUAL2SM_AMCAST", "0"))
     min_blocks = int(os.environ.get("AISP_DUAL2SM_MIN_BLOCKS", "2"))
     tile_k = int(os.environ.get("AISP_DUAL2SM_TILE_K", "64"))
-    return _load_tcgen05_dual_cta_2sm_module(tile_n, stages, warp_split, amcast, min_blocks, tile_k)
+    epi_overlap = int(os.environ.get("AISP_DUAL2SM_EPI_OVERLAP", "0"))
+    epi_atom = int(os.environ.get("AISP_DUAL2SM_EPI_ATOM", "32"))
+    return _load_tcgen05_dual_cta_2sm_module(tile_n, stages, warp_split, amcast, min_blocks, tile_k,
+                                             epi_overlap, epi_atom)
 
 
 def matmul_tcgen05_dual_cta_2sm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
