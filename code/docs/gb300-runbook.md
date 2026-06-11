@@ -1339,6 +1339,41 @@ SoL framing (B), measured 2026-06-09:
   the SIBLING dual-CTA kernel -- L2 already dedups; re-check L2 sectors here before building it), or
   the deferred persistent-occupancy rewrite (full-TMEM alloc still pins 1 CTA/SM).
 
+- BREAKTHROUGH (B45, moe_cuda router_vectorized, the B40 lever class generalizes): docs/
+  gb300-moe-cuda-router-vectorize.md. labs/moe_cuda:router_vectorized optimized arm 8.289 -> 0.500 ms
+  = 16.5x over the shipped arm (harness 177-270x vs the noisy eager baseline), verify PASS x4,
+  numerics BIT-EXACT (max_abs_diff 0.0, eager and via replay). Root cause WORSE than the static
+  estimate: the 32-iteration boolean-mask expert loop made the benchmark's own torch.cuda.CUDAGraph
+  capture THROW (flat_tokens[mask] -> aten::nonzero -> DtoH, illegal during capture), so self.graph
+  silently fell back to None and the "graph-optimized" arm ran EAGER with 96 host syncs/iter. After
+  the B40-style sortless fixed-capacity dense dispatch (one-hot-cumsum rank -> index_copy_ into
+  [32x640] slots -> 2 baddbmm with bias folded -> gather-back): 679 cudaLaunchKernel + 96 nonzero +
+  96 DtoH per iter -> 1 cudaGraphLaunch, 0/0/0, 33 kernels inside one graph. Design (a) (gathered
+  per-token weights) rejected by arithmetic: w[ids] gather is ~64GB of traffic = the 91ms baseline.
+  PERF TRAP BANKED: a naive [N,E] one_hot.cumsum(0) (outer-dim int64 scan, 32 lanes) was a single
+  2048us kernel = 82% of the replay; transposing to [E,N].cumsum(1) is 24us. Audit rule from B45:
+  a benchmark whose graph-capture path can THROW must fail loudly -- a silent eager fallback hid a
+  16.5x for the lab's entire life. NEXT LEVER (modest, ~1.4x est): torch.compile the now-static
+  forward to fuse bias+GELU epilogues; compile-vs-manual-capture interplay needs care.
+
+- HONEST NEGATIVE (B46, block_scaling tile_k lever, implementation-grade): docs/
+  gb300-block-scaling-deepen.md. The reopened H-front lever is REFUTED three ways, with the strongest
+  evidence class (working bit-correct implementation measured at parity): (1) tile_k=384/256 are NOT
+  configuration -- MMA-K is ISA-FIXED at 96 FP4 elements (SM103MmaMXF4NVF4Op) and the AB smem buffer
+  is a K_SW128 atom (256 elements); 768 = LCM(96,256); the mainloop is a hand-unrolled 8-MMA/3-buffer
+  period with cross-buffer descriptor wraps. (2) The stage-starvation premise was FACTUALLY WRONG: a
+  trace probe shows ab=8 stages (24KB each) -- the ring already holds the whole K=1024 extent plus
+  lookahead (corrects the H-front static edit map). (3) The implementable equivalent (peeled
+  short-tail last k-tile, 16->11 MMAs/tile = -31% MMA work, bit-correct err 0.0) measures EXACT PARITY:
+  43.62 vs 43.65 us (0.9994x, 6 interleaved rounds); ncu proves it -- tensor-pipe active drops 34.50 ->
+  24.02% (exactly x11/16) at FLAT duration: the zero-pad MMA work was fully hidden. Harness A/B/A all
+  verification PASSED, no B38 regression. Kernel re-diagnosed FEED-BOUND: ~786MB/GEMM of A/B re-reads
+  (4096 CTA-tiles x 192KB) vs 8MB unique bytes + a 128MB C write (~16us of the 18us HBM floor); the
+  suggested (256,256) tiler relief was ALREADY measured marginal in the B38 21-combo sweep (4.5%
+  kernel, ~2% wall, below gate). VERDICT: block_scaling is at its structural ceiling absent a
+  different data layout; closed. Also closes the K_SW64/tile_k=384 deep rewrite (strictly worse than
+  the parity-measured 11-MMA variant). Default path const_expr-gated bit-identical post-edit.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

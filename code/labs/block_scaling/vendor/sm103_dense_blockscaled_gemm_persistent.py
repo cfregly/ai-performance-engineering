@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import argparse
+import os
 from typing import Optional, Type, Tuple, Union
 
 import cuda.bindings.driver as cuda
@@ -224,6 +225,29 @@ class Sm103BlockScaledPersistentDenseGemmKernel:
         self.smem_capacity = utils.get_smem_capacity_in_bytes("sm_103")
         self.num_tmem_alloc_cols = cute.arch.get_max_tmem_alloc_cols("sm_103")
         self.sf_buffers_per_tile_k = 4 if self.sf_vec_size == 16 else 2
+        # AISP tile_k lever (Front H2). The mainloop k-tile of 768 FP4 elements
+        # is the LCM of the ISA-fixed MMA-K (96 elements = 48B, see
+        # SM103MmaMXF4NVF4Op "K fixed to 96") and the K_SW128 smem buffer width
+        # (128B = 256 elements): 8 MMAs consume exactly 3 buffers per k-tile,
+        # with MMA windows wrapping across buffer boundaries (cur/next
+        # descriptor pairs). Smaller uniform tile_k values are structurally
+        # impossible without changing the swizzle (384 would need K_SW64 and a
+        # rewritten 4-MMA mainloop; 256 is impossible at any swizzle because 96
+        # does not divide 256). What IS possible with the existing structure: a
+        # partial *tail* k-tile. For K % 768 == 256 (e.g. the lab's K=1024),
+        # the last k-tile only needs 2 of 3 AB buffers, 2 of 4 SF buffers and 3
+        # of 8 MMAs - the other 5 MMAs of the incumbent path multiply pure TMA
+        # OOB zero-fill (K coverage 1536 vs 1024). AISP_BLOCK_SCALING_TILE_K=256
+        # enables that short-tail path (the effective tail tile_k becomes 256)
+        # with the last k-tile peeled out of the steady-state loops so the hot
+        # bodies stay identical to the incumbent. Any other value keeps the
+        # incumbent codegen bit-for-bit.
+        self.enable_short_tail = (
+            os.environ.get("AISP_BLOCK_SCALING_TILE_K", "768").strip() == "256"
+        )
+        self.debug_stages = (
+            os.environ.get("AISP_BLOCK_SCALING_DEBUG_STAGES", "0").strip() == "1"
+        )
 
     def _setup_attributes(self):
         """Set up kernel attributes that depend on runtime tensor inputs.
@@ -406,6 +430,19 @@ class Sm103BlockScaledPersistentDenseGemmKernel:
             # Release accumulator buffer early in epilogue when overlapping
             self.iter_acc_early_release_in_epilogue = (
                 self.num_sf_tmem_cols // self.epi_tile_n
+            )
+
+        if self.debug_stages:
+            # Trace-time (host) print: these are static Python ints during JIT.
+            print(
+                "[aisp-block-scaling] stages: "
+                f"acc={self.num_acc_stage} ab={self.num_ab_stage} "
+                f"sf={self.num_sf_stage} c={self.num_c_stage} "
+                f"mma_tiler={self.mma_tiler} "
+                f"mma_sf_tiler={self.mma_sf_tiler} "
+                f"sf_buffers_per_tile_k={self.sf_buffers_per_tile_k} "
+                f"smem_capacity={self.smem_capacity} "
+                f"short_tail={self.enable_short_tail}"
             )
 
     @cute.jit
@@ -874,6 +911,15 @@ class Sm103BlockScaledPersistentDenseGemmKernel:
         )
         k_tile_cnt = cute.size(gA_mkl, mode=[3])
 
+        # AISP short-tail k-tile (see __init__): active only when the dynamic
+        # K remainder of the last 768-element k-tile is exactly 256 elements
+        # (128 uint8). mA_mkl is the uint8-recast counting tensor, so mode 1
+        # is K in bytes and one full k-tile is 384 bytes.
+        short_tail_active = cutlass.Boolean(False)
+        if cutlass.const_expr(self.enable_short_tail):
+            k_bytes = cute.size(mA_mkl, mode=[1])
+            short_tail_active = (k_bytes - (k_tile_cnt - 1) * 384) == 128
+
         #
         # Partition global tensor for TiledMMA_A/B/C
         #
@@ -1069,40 +1115,152 @@ class Sm103BlockScaledPersistentDenseGemmKernel:
                 #
                 # TMA load loop for A/B tensors
                 #
-                for k_tile in cutlass.range(0, k_tile_cnt, 1, unroll=1):
-                    # Load buffers_per_k_tile buffers
-                    for buffer in cutlass.range(buffers_per_k_tile, unroll_full=True):
-                        # Acquire next empty AB buffer
-                        ab_empty = ab_producer.acquire_and_advance(peek_ab_empty_status)
+                if cutlass.const_expr(self.enable_short_tail):
+                    # AISP short-tail: peel the last k-tile so the steady-state
+                    # body stays identical to the incumbent codegen.
+                    for k_tile in cutlass.range(0, k_tile_cnt - 1, 1, unroll=1):
+                        # Load buffers_per_k_tile buffers
+                        for buffer in cutlass.range(buffers_per_k_tile, unroll_full=True):
+                            # Acquire next empty AB buffer
+                            ab_empty = ab_producer.acquire_and_advance(peek_ab_empty_status)
 
-                        # TMA load A/B
-                        cute.copy(
-                            tma_atom_a,
-                            cute.group_modes(
-                                tAgA_slice[(None, None, buffer, k_tile)], 0, 2
-                            ),
-                            tAsA[(None, ab_empty.index)],
-                            tma_bar_ptr=ab_empty.barrier,
-                            mcast_mask=a_full_mcast_mask,
-                        )
-                        cute.copy(
-                            tma_atom_b,
-                            cute.group_modes(
-                                tBgB_slice[(None, None, buffer, k_tile)], 0, 2
-                            ),
-                            tBsB[(None, ab_empty.index)],
-                            tma_bar_ptr=ab_empty.barrier,
-                            mcast_mask=b_full_mcast_mask,
-                        )
+                            # TMA load A/B
+                            cute.copy(
+                                tma_atom_a,
+                                cute.group_modes(
+                                    tAgA_slice[(None, None, buffer, k_tile)], 0, 2
+                                ),
+                                tAsA[(None, ab_empty.index)],
+                                tma_bar_ptr=ab_empty.barrier,
+                                mcast_mask=a_full_mcast_mask,
+                            )
+                            cute.copy(
+                                tma_atom_b,
+                                cute.group_modes(
+                                    tBgB_slice[(None, None, buffer, k_tile)], 0, 2
+                                ),
+                                tBsB[(None, ab_empty.index)],
+                                tma_bar_ptr=ab_empty.barrier,
+                                mcast_mask=b_full_mcast_mask,
+                            )
 
-                        # Peek (try_wait) AB buffer empty for next buffer
-                        peek_ab_empty_status = cutlass.Boolean(1)
-                        # Check if we're not at the last buffer of the last k_tile
-                        if not (
-                            (k_tile == k_tile_cnt - 1)
-                            and (buffer == buffers_per_k_tile - 1)
-                        ):
-                            peek_ab_empty_status = ab_producer.try_acquire()
+                            # Peek (try_wait) AB buffer empty for next buffer
+                            peek_ab_empty_status = cutlass.Boolean(1)
+                            # Check if we're not at the last buffer of the last k_tile
+                            if not (
+                                (k_tile == k_tile_cnt - 1)
+                                and (buffer == buffers_per_k_tile - 1)
+                            ):
+                                peek_ab_empty_status = ab_producer.try_acquire()
+                    last_k_tile = k_tile_cnt - 1
+                    if short_tail_active:
+                        # Last k-tile has 128 valid bytes (buffer 0) plus the
+                        # wrap buffer read by MMA2's "next" descriptor
+                        # (buffer 1, TMA OOB zero-fill); buffer 2 is never
+                        # read - do not produce it.
+                        for buffer in cutlass.range(2, unroll_full=True):
+                            # Acquire next empty AB buffer
+                            ab_empty = ab_producer.acquire_and_advance(
+                                peek_ab_empty_status
+                            )
+
+                            # TMA load A/B
+                            cute.copy(
+                                tma_atom_a,
+                                cute.group_modes(
+                                    tAgA_slice[(None, None, buffer, last_k_tile)],
+                                    0,
+                                    2,
+                                ),
+                                tAsA[(None, ab_empty.index)],
+                                tma_bar_ptr=ab_empty.barrier,
+                                mcast_mask=a_full_mcast_mask,
+                            )
+                            cute.copy(
+                                tma_atom_b,
+                                cute.group_modes(
+                                    tBgB_slice[(None, None, buffer, last_k_tile)],
+                                    0,
+                                    2,
+                                ),
+                                tBsB[(None, ab_empty.index)],
+                                tma_bar_ptr=ab_empty.barrier,
+                                mcast_mask=b_full_mcast_mask,
+                            )
+
+                            # Peek (try_wait) AB buffer empty for next buffer
+                            peek_ab_empty_status = cutlass.Boolean(1)
+                            if buffer == 0:
+                                peek_ab_empty_status = ab_producer.try_acquire()
+                    else:
+                        # Load buffers_per_k_tile buffers
+                        for buffer in cutlass.range(buffers_per_k_tile, unroll_full=True):
+                            # Acquire next empty AB buffer
+                            ab_empty = ab_producer.acquire_and_advance(peek_ab_empty_status)
+
+                            # TMA load A/B
+                            cute.copy(
+                                tma_atom_a,
+                                cute.group_modes(
+                                    tAgA_slice[(None, None, buffer, last_k_tile)], 0, 2
+                                ),
+                                tAsA[(None, ab_empty.index)],
+                                tma_bar_ptr=ab_empty.barrier,
+                                mcast_mask=a_full_mcast_mask,
+                            )
+                            cute.copy(
+                                tma_atom_b,
+                                cute.group_modes(
+                                    tBgB_slice[(None, None, buffer, last_k_tile)], 0, 2
+                                ),
+                                tBsB[(None, ab_empty.index)],
+                                tma_bar_ptr=ab_empty.barrier,
+                                mcast_mask=b_full_mcast_mask,
+                            )
+
+                            # Peek (try_wait) AB buffer empty for next buffer
+                            peek_ab_empty_status = cutlass.Boolean(1)
+                            # Check if we're not at the last buffer of the last last_k_tile
+                            if not (
+                                (last_k_tile == k_tile_cnt - 1)
+                                and (buffer == buffers_per_k_tile - 1)
+                            ):
+                                peek_ab_empty_status = ab_producer.try_acquire()
+                else:
+                    for k_tile in cutlass.range(0, k_tile_cnt, 1, unroll=1):
+                        # Load buffers_per_k_tile buffers
+                        for buffer in cutlass.range(buffers_per_k_tile, unroll_full=True):
+                            # Acquire next empty AB buffer
+                            ab_empty = ab_producer.acquire_and_advance(peek_ab_empty_status)
+
+                            # TMA load A/B
+                            cute.copy(
+                                tma_atom_a,
+                                cute.group_modes(
+                                    tAgA_slice[(None, None, buffer, k_tile)], 0, 2
+                                ),
+                                tAsA[(None, ab_empty.index)],
+                                tma_bar_ptr=ab_empty.barrier,
+                                mcast_mask=a_full_mcast_mask,
+                            )
+                            cute.copy(
+                                tma_atom_b,
+                                cute.group_modes(
+                                    tBgB_slice[(None, None, buffer, k_tile)], 0, 2
+                                ),
+                                tBsB[(None, ab_empty.index)],
+                                tma_bar_ptr=ab_empty.barrier,
+                                mcast_mask=b_full_mcast_mask,
+                            )
+
+                            # Peek (try_wait) AB buffer empty for next buffer
+                            peek_ab_empty_status = cutlass.Boolean(1)
+                            # Check if we're not at the last buffer of the last k_tile
+                            if not (
+                                (k_tile == k_tile_cnt - 1)
+                                and (buffer == buffers_per_k_tile - 1)
+                            ):
+                                peek_ab_empty_status = ab_producer.try_acquire()
 
                 # Advance to next tile
                 tile_sched.advance_to_next_work()
@@ -1145,49 +1303,188 @@ class Sm103BlockScaledPersistentDenseGemmKernel:
                 #
                 # TMA load loop for scale factors
                 #
-                for k_tile in cutlass.range(0, k_tile_cnt, 1, unroll=1):
-                    # Load SF stages based on sf_buffers_per_tile_k
-                    for sf_stage in cutlass.range(
-                        self.sf_buffers_per_tile_k, unroll_full=True
-                    ):
-                        # Acquire next empty SF buffer
-                        sf_empty = sf_producer.acquire_and_advance(peek_sf_empty_status)
-
-                        tAgSFA_compact = cute.filter_zeros(
-                            tAgSFA_slice[
-                                (None, k_tile * self.sf_buffers_per_tile_k + sf_stage)
-                            ]
-                        )
-                        tBgSFB_compact = cute.filter_zeros(
-                            tBgSFB_slice[
-                                (None, k_tile * self.sf_buffers_per_tile_k + sf_stage)
-                            ]
-                        )
-
-                        # TMA load SFA/SFB for this SF stage
-                        cute.copy(
-                            tma_atom_sfa,
-                            tAgSFA_compact,
-                            tAsSFA_compact[(None, sf_empty.index)],
-                            tma_bar_ptr=sf_empty.barrier,
-                            mcast_mask=sfa_full_mcast_mask,
-                        )
-                        cute.copy(
-                            tma_atom_sfb,
-                            tBgSFB_compact,
-                            tBsSFB_compact[(None, sf_empty.index)],
-                            tma_bar_ptr=sf_empty.barrier,
-                            mcast_mask=sfb_full_mcast_mask,
-                        )
-
-                        # Peek (try_wait) SF buffer empty for next stage
-                        peek_sf_empty_status = cutlass.Boolean(1)
-                        # Check if we're not at the last stage of the last k_tile
-                        if not (
-                            k_tile == k_tile_cnt - 1
-                            and sf_stage == self.sf_buffers_per_tile_k - 1
+                if cutlass.const_expr(self.enable_short_tail):
+                    # AISP short-tail: peel the last k-tile so the steady-state
+                    # body stays identical to the incumbent codegen.
+                    for k_tile in cutlass.range(0, k_tile_cnt - 1, 1, unroll=1):
+                        # Load SF stages based on sf_buffers_per_tile_k
+                        for sf_stage in cutlass.range(
+                            self.sf_buffers_per_tile_k, unroll_full=True
                         ):
-                            peek_sf_empty_status = sf_producer.try_acquire()
+                            # Acquire next empty SF buffer
+                            sf_empty = sf_producer.acquire_and_advance(peek_sf_empty_status)
+
+                            tAgSFA_compact = cute.filter_zeros(
+                                tAgSFA_slice[
+                                    (None, k_tile * self.sf_buffers_per_tile_k + sf_stage)
+                                ]
+                            )
+                            tBgSFB_compact = cute.filter_zeros(
+                                tBgSFB_slice[
+                                    (None, k_tile * self.sf_buffers_per_tile_k + sf_stage)
+                                ]
+                            )
+
+                            # TMA load SFA/SFB for this SF stage
+                            cute.copy(
+                                tma_atom_sfa,
+                                tAgSFA_compact,
+                                tAsSFA_compact[(None, sf_empty.index)],
+                                tma_bar_ptr=sf_empty.barrier,
+                                mcast_mask=sfa_full_mcast_mask,
+                            )
+                            cute.copy(
+                                tma_atom_sfb,
+                                tBgSFB_compact,
+                                tBsSFB_compact[(None, sf_empty.index)],
+                                tma_bar_ptr=sf_empty.barrier,
+                                mcast_mask=sfb_full_mcast_mask,
+                            )
+
+                            # Peek (try_wait) SF buffer empty for next stage
+                            peek_sf_empty_status = cutlass.Boolean(1)
+                            # Check if we're not at the last stage of the last k_tile
+                            if not (
+                                k_tile == k_tile_cnt - 1
+                                and sf_stage == self.sf_buffers_per_tile_k - 1
+                            ):
+                                peek_sf_empty_status = sf_producer.try_acquire()
+                    last_k_tile = k_tile_cnt - 1
+                    if short_tail_active:
+                        # The 3-MMA tail consumes only 2 SF buffers (loaded at
+                        # MMA0 and MMA2); SF stages 2-3 are never consumed.
+                        for sf_stage in cutlass.range(2, unroll_full=True):
+                            # Acquire next empty SF buffer
+                            sf_empty = sf_producer.acquire_and_advance(
+                                peek_sf_empty_status
+                            )
+
+                            tAgSFA_compact = cute.filter_zeros(
+                                tAgSFA_slice[
+                                    (
+                                        None,
+                                        last_k_tile * self.sf_buffers_per_tile_k
+                                        + sf_stage,
+                                    )
+                                ]
+                            )
+                            tBgSFB_compact = cute.filter_zeros(
+                                tBgSFB_slice[
+                                    (
+                                        None,
+                                        last_k_tile * self.sf_buffers_per_tile_k
+                                        + sf_stage,
+                                    )
+                                ]
+                            )
+
+                            # TMA load SFA/SFB for this SF stage
+                            cute.copy(
+                                tma_atom_sfa,
+                                tAgSFA_compact,
+                                tAsSFA_compact[(None, sf_empty.index)],
+                                tma_bar_ptr=sf_empty.barrier,
+                                mcast_mask=sfa_full_mcast_mask,
+                            )
+                            cute.copy(
+                                tma_atom_sfb,
+                                tBgSFB_compact,
+                                tBsSFB_compact[(None, sf_empty.index)],
+                                tma_bar_ptr=sf_empty.barrier,
+                                mcast_mask=sfb_full_mcast_mask,
+                            )
+
+                            # Peek (try_wait) SF buffer empty for next stage
+                            peek_sf_empty_status = cutlass.Boolean(1)
+                            if sf_stage == 0:
+                                peek_sf_empty_status = sf_producer.try_acquire()
+                    else:
+                        # Load SF stages based on sf_buffers_per_tile_k
+                        for sf_stage in cutlass.range(
+                            self.sf_buffers_per_tile_k, unroll_full=True
+                        ):
+                            # Acquire next empty SF buffer
+                            sf_empty = sf_producer.acquire_and_advance(peek_sf_empty_status)
+
+                            tAgSFA_compact = cute.filter_zeros(
+                                tAgSFA_slice[
+                                    (None, last_k_tile * self.sf_buffers_per_tile_k + sf_stage)
+                                ]
+                            )
+                            tBgSFB_compact = cute.filter_zeros(
+                                tBgSFB_slice[
+                                    (None, last_k_tile * self.sf_buffers_per_tile_k + sf_stage)
+                                ]
+                            )
+
+                            # TMA load SFA/SFB for this SF stage
+                            cute.copy(
+                                tma_atom_sfa,
+                                tAgSFA_compact,
+                                tAsSFA_compact[(None, sf_empty.index)],
+                                tma_bar_ptr=sf_empty.barrier,
+                                mcast_mask=sfa_full_mcast_mask,
+                            )
+                            cute.copy(
+                                tma_atom_sfb,
+                                tBgSFB_compact,
+                                tBsSFB_compact[(None, sf_empty.index)],
+                                tma_bar_ptr=sf_empty.barrier,
+                                mcast_mask=sfb_full_mcast_mask,
+                            )
+
+                            # Peek (try_wait) SF buffer empty for next stage
+                            peek_sf_empty_status = cutlass.Boolean(1)
+                            # Check if we're not at the last stage of the last last_k_tile
+                            if not (
+                                last_k_tile == k_tile_cnt - 1
+                                and sf_stage == self.sf_buffers_per_tile_k - 1
+                            ):
+                                peek_sf_empty_status = sf_producer.try_acquire()
+                else:
+                    for k_tile in cutlass.range(0, k_tile_cnt, 1, unroll=1):
+                        # Load SF stages based on sf_buffers_per_tile_k
+                        for sf_stage in cutlass.range(
+                            self.sf_buffers_per_tile_k, unroll_full=True
+                        ):
+                            # Acquire next empty SF buffer
+                            sf_empty = sf_producer.acquire_and_advance(peek_sf_empty_status)
+
+                            tAgSFA_compact = cute.filter_zeros(
+                                tAgSFA_slice[
+                                    (None, k_tile * self.sf_buffers_per_tile_k + sf_stage)
+                                ]
+                            )
+                            tBgSFB_compact = cute.filter_zeros(
+                                tBgSFB_slice[
+                                    (None, k_tile * self.sf_buffers_per_tile_k + sf_stage)
+                                ]
+                            )
+
+                            # TMA load SFA/SFB for this SF stage
+                            cute.copy(
+                                tma_atom_sfa,
+                                tAgSFA_compact,
+                                tAsSFA_compact[(None, sf_empty.index)],
+                                tma_bar_ptr=sf_empty.barrier,
+                                mcast_mask=sfa_full_mcast_mask,
+                            )
+                            cute.copy(
+                                tma_atom_sfb,
+                                tBgSFB_compact,
+                                tBsSFB_compact[(None, sf_empty.index)],
+                                tma_bar_ptr=sf_empty.barrier,
+                                mcast_mask=sfb_full_mcast_mask,
+                            )
+
+                            # Peek (try_wait) SF buffer empty for next stage
+                            peek_sf_empty_status = cutlass.Boolean(1)
+                            # Check if we're not at the last stage of the last k_tile
+                            if not (
+                                k_tile == k_tile_cnt - 1
+                                and sf_stage == self.sf_buffers_per_tile_k - 1
+                            ):
+                                peek_sf_empty_status = sf_producer.try_acquire()
 
                 # Advance to next tile
                 tile_sched.advance_to_next_work()
@@ -1329,7 +1626,303 @@ class Sm103BlockScaledPersistentDenseGemmKernel:
 
                 is_first_iteration = True
 
-                for k_tile in cutlass.range(0, k_tile_cnt, 1, unroll=1):
+                if cutlass.const_expr(self.enable_short_tail):
+                    # AISP short-tail: peel the last k-tile so the steady-state
+                    # body stays identical to the incumbent codegen.
+                    for k_tile in cutlass.range(0, k_tile_cnt - 1, 1, unroll=1):
+                        if is_leader_cta:
+                            # Conditionally load SFA/SFB for MMA0/MMA1 depending on sf_vec_size
+                            if 0 % MmasPerSfBuffer == 0:
+                                sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
+                                s2t_stage_coord = (
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    sf_full.index,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfa,
+                                    tCsSFA_compact_s2t[s2t_stage_coord],
+                                    tCtSFA_compact_s2t,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfb,
+                                    tCsSFB_compact_s2t[s2t_stage_coord],
+                                    tCtSFB_compact_s2t,
+                                )
+                                sf_full.release()
+                                peek_sf_full_status = cutlass.Boolean(1)
+                                peek_sf_full_status = sf_consumer.try_wait()
+
+                            # Wait for A/B data to be ready(MMA0, MMA1, part of MMA2)
+                            ab_full0 = ab_consumer.wait_and_advance(peek_ab_full_status)
+
+                            # peek for next stage (MMA2, MMA3, MMA4, part of MMA5)
+                            peek_ab_full_status = cutlass.Boolean(1)
+                            peek_ab_full_status = ab_consumer.try_wait()
+
+                            # delay the acc acquire to ublock tmem
+                            if is_first_iteration:
+                                acc_pipeline.producer_acquire(acc_producer_state)
+                                is_first_iteration = False
+
+                            # MMA0
+                            k_block_coord_cur = (None, 0, 0, ab_full0.index)
+                            k_block_coord_next = (None, 0, 0, ab_full0.index)
+                            sf_kblock_coord = (None, None, 0 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+                            tiled_mma.set(tcgen05.Field.ACCUMULATE, True)
+
+                            # MMA1
+                            k_block_coord_cur = (None, 0, 3, ab_full0.index)
+                            k_block_coord_next = (None, 0, 0, ab_full0.index)
+                            sf_kblock_coord = (None, None, 1 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # Conditionally load SFA/SFB for MMA2/MMA3
+                            if 2 % MmasPerSfBuffer == 0:
+                                sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
+                                s2t_stage_coord = (
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    sf_full.index,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfa,
+                                    tCsSFA_compact_s2t[s2t_stage_coord],
+                                    tCtSFA_compact_s2t,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfb,
+                                    tCsSFB_compact_s2t[s2t_stage_coord],
+                                    tCtSFB_compact_s2t,
+                                )
+                                sf_full.release()
+                                peek_sf_full_status = cutlass.Boolean(1)
+                                peek_sf_full_status = sf_consumer.try_wait()
+
+                            # Wait for A/B data to be ready(MMA2, MMA3, MMA4, part of MMA5)
+                            ab_full1 = ab_consumer.wait_and_advance(peek_ab_full_status)
+
+                            # peek for next stage (part of MMA5, MMA6, MMA7)
+                            peek_ab_full_status = cutlass.Boolean(1)
+                            peek_ab_full_status = ab_consumer.try_wait()
+
+                            # MMA2
+                            k_block_coord_cur = (None, 0, 6, ab_full0.index)
+                            k_block_coord_next = (None, 0, 0, ab_full1.index)
+                            sf_kblock_coord = (None, None, 2 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # Release stage_ab_0 as it is no longer needed
+                            ab_full0.release()
+
+                            # MMA3
+                            k_block_coord_cur = (None, 0, 1, ab_full1.index)
+                            k_block_coord_next = (None, 0, 0, ab_full1.index)
+                            sf_kblock_coord = (None, None, 3 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # Conditionally load SFA/SFB for MMA4/MMA5
+                            if 4 % MmasPerSfBuffer == 0:
+                                sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
+                                s2t_stage_coord = (
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    sf_full.index,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfa,
+                                    tCsSFA_compact_s2t[s2t_stage_coord],
+                                    tCtSFA_compact_s2t,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfb,
+                                    tCsSFB_compact_s2t[s2t_stage_coord],
+                                    tCtSFB_compact_s2t,
+                                )
+                                sf_full.release()
+                                peek_sf_full_status = cutlass.Boolean(1)
+                                peek_sf_full_status = sf_consumer.try_wait()
+
+                            # MMA4
+                            k_block_coord_cur = (None, 0, 4, ab_full1.index)
+                            k_block_coord_next = (None, 0, 0, ab_full1.index)
+                            sf_kblock_coord = (None, None, 4 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # Wait for A/B data to be ready(part of MMA5, MMA6, MMA7)
+                            ab_full2 = ab_consumer.wait_and_advance(peek_ab_full_status)
+
+                            # peek for next loop's first stage (MMA0, MMA1, part of MMA2)
+                            peek_ab_full_status = cutlass.Boolean(1)
+                            if k_tile + 1 < k_tile_cnt:
+                                peek_ab_full_status = ab_consumer.try_wait()
+
+                            # MMA5
+                            k_block_coord_cur = (None, 0, 7, ab_full1.index)
+                            k_block_coord_next = (None, 0, 0, ab_full2.index)
+                            sf_kblock_coord = (None, None, 5 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # Conditionally load SFA/SFB for MMA6/MMA7
+                            if 6 % MmasPerSfBuffer == 0:
+                                sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
+                                s2t_stage_coord = (
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    sf_full.index,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfa,
+                                    tCsSFA_compact_s2t[s2t_stage_coord],
+                                    tCtSFA_compact_s2t,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfb,
+                                    tCsSFB_compact_s2t[s2t_stage_coord],
+                                    tCtSFB_compact_s2t,
+                                )
+                                sf_full.release()
+                                peek_sf_full_status = cutlass.Boolean(1)
+                                if k_tile + 1 < k_tile_cnt:
+                                    peek_sf_full_status = sf_consumer.try_wait()
+
+                            ab_full1.release()
+
+                            # MMA6
+                            k_block_coord_cur = (None, 0, 2, ab_full2.index)
+                            k_block_coord_next = (None, 0, 0, ab_full2.index)
+                            sf_kblock_coord = (None, None, 6 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # MMA7
+                            k_block_coord_cur = (None, 0, 5, ab_full2.index)
+                            k_block_coord_next = (None, 0, 0, ab_full2.index)
+                            sf_kblock_coord = (None, None, 7 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            ab_full2.release()
+                    last_k_tile = k_tile_cnt - 1
                     if is_leader_cta:
                         # Conditionally load SFA/SFB for MMA0/MMA1 depending on sf_vec_size
                         if 0 % MmasPerSfBuffer == 0:
@@ -1461,167 +2054,471 @@ class Sm103BlockScaledPersistentDenseGemmKernel:
 
                         # Release stage_ab_0 as it is no longer needed
                         ab_full0.release()
+                        if short_tail_active:
+                            # When K % 768 == 256, MMA0..MMA2 already cover all
+                            # remaining valid K (MMA2 wraps into buffer 1, whose
+                            # tail is TMA OOB zero-fill). MMA3..MMA7 would
+                            # multiply pure zero-fill; buffer 2 / SF stages 2-3
+                            # are not produced in this mode. Buffer 1 (wrap
+                            # target of MMA2) is the last buffer - release it.
+                            ab_full1.release()
+                        else:
 
-                        # MMA3
-                        k_block_coord_cur = (None, 0, 1, ab_full1.index)
-                        k_block_coord_next = (None, 0, 0, ab_full1.index)
-                        sf_kblock_coord = (None, None, 3 % MmasPerSfBuffer * sf_stride)
-                        tiled_mma.set(
-                            tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
-                        )
-                        tiled_mma.set(
-                            tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
-                        )
-                        self.make_desc_and_call_mma(
-                            tiled_mma,
-                            tCtAcc,
-                            sA[k_block_coord_cur],
-                            sA[k_block_coord_next],
-                            sB[k_block_coord_cur],
-                            sB[k_block_coord_next],
-                            tCtAcc,
-                        )
-
-                        # Conditionally load SFA/SFB for MMA4/MMA5
-                        if 4 % MmasPerSfBuffer == 0:
-                            sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
-                            s2t_stage_coord = (
-                                None,
-                                None,
-                                None,
-                                None,
-                                sf_full.index,
+                            # MMA3
+                            k_block_coord_cur = (None, 0, 1, ab_full1.index)
+                            k_block_coord_next = (None, 0, 0, ab_full1.index)
+                            sf_kblock_coord = (None, None, 3 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
                             )
-                            cute.copy(
-                                tiled_copy_s2t_sfa,
-                                tCsSFA_compact_s2t[s2t_stage_coord],
-                                tCtSFA_compact_s2t,
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
                             )
-                            cute.copy(
-                                tiled_copy_s2t_sfb,
-                                tCsSFB_compact_s2t[s2t_stage_coord],
-                                tCtSFB_compact_s2t,
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
                             )
-                            sf_full.release()
-                            peek_sf_full_status = cutlass.Boolean(1)
-                            peek_sf_full_status = sf_consumer.try_wait()
 
-                        # MMA4
-                        k_block_coord_cur = (None, 0, 4, ab_full1.index)
-                        k_block_coord_next = (None, 0, 0, ab_full1.index)
-                        sf_kblock_coord = (None, None, 4 % MmasPerSfBuffer * sf_stride)
-                        tiled_mma.set(
-                            tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
-                        )
-                        tiled_mma.set(
-                            tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
-                        )
-                        self.make_desc_and_call_mma(
-                            tiled_mma,
-                            tCtAcc,
-                            sA[k_block_coord_cur],
-                            sA[k_block_coord_next],
-                            sB[k_block_coord_cur],
-                            sB[k_block_coord_next],
-                            tCtAcc,
-                        )
-
-                        # Wait for A/B data to be ready(part of MMA5, MMA6, MMA7)
-                        ab_full2 = ab_consumer.wait_and_advance(peek_ab_full_status)
-
-                        # peek for next loop's first stage (MMA0, MMA1, part of MMA2)
-                        peek_ab_full_status = cutlass.Boolean(1)
-                        if k_tile + 1 < k_tile_cnt:
-                            peek_ab_full_status = ab_consumer.try_wait()
-
-                        # MMA5
-                        k_block_coord_cur = (None, 0, 7, ab_full1.index)
-                        k_block_coord_next = (None, 0, 0, ab_full2.index)
-                        sf_kblock_coord = (None, None, 5 % MmasPerSfBuffer * sf_stride)
-                        tiled_mma.set(
-                            tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
-                        )
-                        tiled_mma.set(
-                            tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
-                        )
-                        self.make_desc_and_call_mma(
-                            tiled_mma,
-                            tCtAcc,
-                            sA[k_block_coord_cur],
-                            sA[k_block_coord_next],
-                            sB[k_block_coord_cur],
-                            sB[k_block_coord_next],
-                            tCtAcc,
-                        )
-
-                        # Conditionally load SFA/SFB for MMA6/MMA7
-                        if 6 % MmasPerSfBuffer == 0:
-                            sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
-                            s2t_stage_coord = (
-                                None,
-                                None,
-                                None,
-                                None,
-                                sf_full.index,
-                            )
-                            cute.copy(
-                                tiled_copy_s2t_sfa,
-                                tCsSFA_compact_s2t[s2t_stage_coord],
-                                tCtSFA_compact_s2t,
-                            )
-                            cute.copy(
-                                tiled_copy_s2t_sfb,
-                                tCsSFB_compact_s2t[s2t_stage_coord],
-                                tCtSFB_compact_s2t,
-                            )
-                            sf_full.release()
-                            peek_sf_full_status = cutlass.Boolean(1)
-                            if k_tile + 1 < k_tile_cnt:
+                            # Conditionally load SFA/SFB for MMA4/MMA5
+                            if 4 % MmasPerSfBuffer == 0:
+                                sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
+                                s2t_stage_coord = (
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    sf_full.index,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfa,
+                                    tCsSFA_compact_s2t[s2t_stage_coord],
+                                    tCtSFA_compact_s2t,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfb,
+                                    tCsSFB_compact_s2t[s2t_stage_coord],
+                                    tCtSFB_compact_s2t,
+                                )
+                                sf_full.release()
+                                peek_sf_full_status = cutlass.Boolean(1)
                                 peek_sf_full_status = sf_consumer.try_wait()
 
-                        ab_full1.release()
+                            # MMA4
+                            k_block_coord_cur = (None, 0, 4, ab_full1.index)
+                            k_block_coord_next = (None, 0, 0, ab_full1.index)
+                            sf_kblock_coord = (None, None, 4 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
 
-                        # MMA6
-                        k_block_coord_cur = (None, 0, 2, ab_full2.index)
-                        k_block_coord_next = (None, 0, 0, ab_full2.index)
-                        sf_kblock_coord = (None, None, 6 % MmasPerSfBuffer * sf_stride)
-                        tiled_mma.set(
-                            tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
-                        )
-                        tiled_mma.set(
-                            tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
-                        )
-                        self.make_desc_and_call_mma(
-                            tiled_mma,
-                            tCtAcc,
-                            sA[k_block_coord_cur],
-                            sA[k_block_coord_next],
-                            sB[k_block_coord_cur],
-                            sB[k_block_coord_next],
-                            tCtAcc,
-                        )
+                            # Wait for A/B data to be ready(part of MMA5, MMA6, MMA7)
+                            ab_full2 = ab_consumer.wait_and_advance(peek_ab_full_status)
 
-                        # MMA7
-                        k_block_coord_cur = (None, 0, 5, ab_full2.index)
-                        k_block_coord_next = (None, 0, 0, ab_full2.index)
-                        sf_kblock_coord = (None, None, 7 % MmasPerSfBuffer * sf_stride)
-                        tiled_mma.set(
-                            tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
-                        )
-                        tiled_mma.set(
-                            tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
-                        )
-                        self.make_desc_and_call_mma(
-                            tiled_mma,
-                            tCtAcc,
-                            sA[k_block_coord_cur],
-                            sA[k_block_coord_next],
-                            sB[k_block_coord_cur],
-                            sB[k_block_coord_next],
-                            tCtAcc,
-                        )
+                            # peek for next loop's first stage (MMA0, MMA1, part of MMA2)
+                            peek_ab_full_status = cutlass.Boolean(1)
+                            if last_k_tile + 1 < k_tile_cnt:
+                                peek_ab_full_status = ab_consumer.try_wait()
 
-                        ab_full2.release()
+                            # MMA5
+                            k_block_coord_cur = (None, 0, 7, ab_full1.index)
+                            k_block_coord_next = (None, 0, 0, ab_full2.index)
+                            sf_kblock_coord = (None, None, 5 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # Conditionally load SFA/SFB for MMA6/MMA7
+                            if 6 % MmasPerSfBuffer == 0:
+                                sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
+                                s2t_stage_coord = (
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    sf_full.index,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfa,
+                                    tCsSFA_compact_s2t[s2t_stage_coord],
+                                    tCtSFA_compact_s2t,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfb,
+                                    tCsSFB_compact_s2t[s2t_stage_coord],
+                                    tCtSFB_compact_s2t,
+                                )
+                                sf_full.release()
+                                peek_sf_full_status = cutlass.Boolean(1)
+                                if last_k_tile + 1 < k_tile_cnt:
+                                    peek_sf_full_status = sf_consumer.try_wait()
+
+                            ab_full1.release()
+
+                            # MMA6
+                            k_block_coord_cur = (None, 0, 2, ab_full2.index)
+                            k_block_coord_next = (None, 0, 0, ab_full2.index)
+                            sf_kblock_coord = (None, None, 6 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # MMA7
+                            k_block_coord_cur = (None, 0, 5, ab_full2.index)
+                            k_block_coord_next = (None, 0, 0, ab_full2.index)
+                            sf_kblock_coord = (None, None, 7 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            ab_full2.release()
+                else:
+                    for k_tile in cutlass.range(0, k_tile_cnt, 1, unroll=1):
+                        if is_leader_cta:
+                            # Conditionally load SFA/SFB for MMA0/MMA1 depending on sf_vec_size
+                            if 0 % MmasPerSfBuffer == 0:
+                                sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
+                                s2t_stage_coord = (
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    sf_full.index,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfa,
+                                    tCsSFA_compact_s2t[s2t_stage_coord],
+                                    tCtSFA_compact_s2t,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfb,
+                                    tCsSFB_compact_s2t[s2t_stage_coord],
+                                    tCtSFB_compact_s2t,
+                                )
+                                sf_full.release()
+                                peek_sf_full_status = cutlass.Boolean(1)
+                                peek_sf_full_status = sf_consumer.try_wait()
+
+                            # Wait for A/B data to be ready(MMA0, MMA1, part of MMA2)
+                            ab_full0 = ab_consumer.wait_and_advance(peek_ab_full_status)
+
+                            # peek for next stage (MMA2, MMA3, MMA4, part of MMA5)
+                            peek_ab_full_status = cutlass.Boolean(1)
+                            peek_ab_full_status = ab_consumer.try_wait()
+
+                            # delay the acc acquire to ublock tmem
+                            if is_first_iteration:
+                                acc_pipeline.producer_acquire(acc_producer_state)
+                                is_first_iteration = False
+
+                            # MMA0
+                            k_block_coord_cur = (None, 0, 0, ab_full0.index)
+                            k_block_coord_next = (None, 0, 0, ab_full0.index)
+                            sf_kblock_coord = (None, None, 0 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+                            tiled_mma.set(tcgen05.Field.ACCUMULATE, True)
+
+                            # MMA1
+                            k_block_coord_cur = (None, 0, 3, ab_full0.index)
+                            k_block_coord_next = (None, 0, 0, ab_full0.index)
+                            sf_kblock_coord = (None, None, 1 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # Conditionally load SFA/SFB for MMA2/MMA3
+                            if 2 % MmasPerSfBuffer == 0:
+                                sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
+                                s2t_stage_coord = (
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    sf_full.index,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfa,
+                                    tCsSFA_compact_s2t[s2t_stage_coord],
+                                    tCtSFA_compact_s2t,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfb,
+                                    tCsSFB_compact_s2t[s2t_stage_coord],
+                                    tCtSFB_compact_s2t,
+                                )
+                                sf_full.release()
+                                peek_sf_full_status = cutlass.Boolean(1)
+                                peek_sf_full_status = sf_consumer.try_wait()
+
+                            # Wait for A/B data to be ready(MMA2, MMA3, MMA4, part of MMA5)
+                            ab_full1 = ab_consumer.wait_and_advance(peek_ab_full_status)
+
+                            # peek for next stage (part of MMA5, MMA6, MMA7)
+                            peek_ab_full_status = cutlass.Boolean(1)
+                            peek_ab_full_status = ab_consumer.try_wait()
+
+                            # MMA2
+                            k_block_coord_cur = (None, 0, 6, ab_full0.index)
+                            k_block_coord_next = (None, 0, 0, ab_full1.index)
+                            sf_kblock_coord = (None, None, 2 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # Release stage_ab_0 as it is no longer needed
+                            ab_full0.release()
+
+                            # MMA3
+                            k_block_coord_cur = (None, 0, 1, ab_full1.index)
+                            k_block_coord_next = (None, 0, 0, ab_full1.index)
+                            sf_kblock_coord = (None, None, 3 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # Conditionally load SFA/SFB for MMA4/MMA5
+                            if 4 % MmasPerSfBuffer == 0:
+                                sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
+                                s2t_stage_coord = (
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    sf_full.index,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfa,
+                                    tCsSFA_compact_s2t[s2t_stage_coord],
+                                    tCtSFA_compact_s2t,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfb,
+                                    tCsSFB_compact_s2t[s2t_stage_coord],
+                                    tCtSFB_compact_s2t,
+                                )
+                                sf_full.release()
+                                peek_sf_full_status = cutlass.Boolean(1)
+                                peek_sf_full_status = sf_consumer.try_wait()
+
+                            # MMA4
+                            k_block_coord_cur = (None, 0, 4, ab_full1.index)
+                            k_block_coord_next = (None, 0, 0, ab_full1.index)
+                            sf_kblock_coord = (None, None, 4 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # Wait for A/B data to be ready(part of MMA5, MMA6, MMA7)
+                            ab_full2 = ab_consumer.wait_and_advance(peek_ab_full_status)
+
+                            # peek for next loop's first stage (MMA0, MMA1, part of MMA2)
+                            peek_ab_full_status = cutlass.Boolean(1)
+                            if k_tile + 1 < k_tile_cnt:
+                                peek_ab_full_status = ab_consumer.try_wait()
+
+                            # MMA5
+                            k_block_coord_cur = (None, 0, 7, ab_full1.index)
+                            k_block_coord_next = (None, 0, 0, ab_full2.index)
+                            sf_kblock_coord = (None, None, 5 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # Conditionally load SFA/SFB for MMA6/MMA7
+                            if 6 % MmasPerSfBuffer == 0:
+                                sf_full = sf_consumer.wait_and_advance(peek_sf_full_status)
+                                s2t_stage_coord = (
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    sf_full.index,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfa,
+                                    tCsSFA_compact_s2t[s2t_stage_coord],
+                                    tCtSFA_compact_s2t,
+                                )
+                                cute.copy(
+                                    tiled_copy_s2t_sfb,
+                                    tCsSFB_compact_s2t[s2t_stage_coord],
+                                    tCtSFB_compact_s2t,
+                                )
+                                sf_full.release()
+                                peek_sf_full_status = cutlass.Boolean(1)
+                                if k_tile + 1 < k_tile_cnt:
+                                    peek_sf_full_status = sf_consumer.try_wait()
+
+                            ab_full1.release()
+
+                            # MMA6
+                            k_block_coord_cur = (None, 0, 2, ab_full2.index)
+                            k_block_coord_next = (None, 0, 0, ab_full2.index)
+                            sf_kblock_coord = (None, None, 6 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            # MMA7
+                            k_block_coord_cur = (None, 0, 5, ab_full2.index)
+                            k_block_coord_next = (None, 0, 0, ab_full2.index)
+                            sf_kblock_coord = (None, None, 7 % MmasPerSfBuffer * sf_stride)
+                            tiled_mma.set(
+                                tcgen05.Field.SFA, tCtSFA_mma[sf_kblock_coord].iterator
+                            )
+                            tiled_mma.set(
+                                tcgen05.Field.SFB, tCtSFB_mma[sf_kblock_coord].iterator
+                            )
+                            self.make_desc_and_call_mma(
+                                tiled_mma,
+                                tCtAcc,
+                                sA[k_block_coord_cur],
+                                sA[k_block_coord_next],
+                                sB[k_block_coord_cur],
+                                sB[k_block_coord_next],
+                                tCtAcc,
+                            )
+
+                            ab_full2.release()
+
 
                 if is_leader_cta:
                     acc_pipeline.producer_commit(acc_producer_state)
