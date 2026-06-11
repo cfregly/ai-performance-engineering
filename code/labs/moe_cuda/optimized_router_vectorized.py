@@ -8,6 +8,8 @@ per-token weight gather path; this variant is the standard MoE grouped dispatch.
 from __future__ import annotations
 
 import math
+import os
+import time
 from typing import Optional
 
 import torch
@@ -17,6 +19,14 @@ import torch.nn.functional as F
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
+
+# Kill-switch: AISP_MOE_CUDA_COMPILE=0 restores the pre-compile (B45) behavior
+# of capturing the eager forward. Default ON.
+_COMPILE_ENV = "AISP_MOE_CUDA_COMPILE"
+
+
+def _compile_enabled() -> bool:
+    return os.environ.get(_COMPILE_ENV, "1").strip().lower() not in ("0", "false", "off")
 
 
 class VectorizedTopKMoE(nn.Module):
@@ -167,6 +177,10 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph: Optional[torch.cuda.CUDAGraph] = None
         self.static_output: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._compile_enabled: bool = False
+        self._compile_seconds: Optional[float] = None
+        self._dynamo_graph_breaks: Optional[int] = None
+        self._dynamo_unique_graphs: Optional[int] = None
         tokens = self.batch_size * self.top_k
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -231,6 +245,54 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 model(self.inputs)
         torch.cuda.synchronize(self.device)
 
+        # torch.compile the static forward so Inductor fuses the GELU/dispatch
+        # epilogues, then manually capture the COMPILED callable below.
+        # Composition: Inductor's own cudagraph machinery stays OFF
+        # ("max-autotune-no-cudagraphs") because the manual torch.cuda.CUDAGraph
+        # capture owns the graph; replay() keeps the zero-Python hot path.
+        # AISP_MOE_CUDA_COMPILE=0 restores the B45 eager-capture behavior.
+        self._compile_enabled = _compile_enabled()
+        self._compile_seconds = None
+        self._dynamo_graph_breaks = None
+        self._dynamo_unique_graphs = None
+        forward_fn = self.model
+        capture_no_grad = False
+        if self._compile_enabled:
+            from torch._dynamo.utils import counters as dynamo_counters
+
+            dynamo_counters.clear()
+            compile_start = time.perf_counter()
+            compiled = torch.compile(
+                self.model,
+                fullgraph=True,  # AUDIT RULE: any graph break must fail loudly
+                dynamic=False,
+                mode="max-autotune-no-cudagraphs",
+            )
+            # Compile + autotune happen here (setup, untimed). Warmup and the
+            # capture below MUST share grad mode, otherwise capture triggers a
+            # Dynamo recompile whose autotuning would be captured into the graph.
+            with torch.no_grad():
+                for _ in range(3):
+                    compiled(self.inputs)
+            torch.cuda.synchronize(self.device)
+            self._compile_seconds = time.perf_counter() - compile_start
+
+            graph_breaks = sum(dynamo_counters["graph_break"].values())
+            unique_graphs = int(dynamo_counters["stats"].get("unique_graphs", 0))
+            self._dynamo_graph_breaks = graph_breaks
+            self._dynamo_unique_graphs = unique_graphs
+            if graph_breaks != 0:
+                raise RuntimeError(
+                    f"torch.compile path has {graph_breaks} graph break(s); refusing silent partial compile"
+                )
+            if unique_graphs < 1:
+                raise RuntimeError(
+                    "torch.compile silently fell back to eager (0 unique graphs compiled); "
+                    "refusing to run the un-compiled path as the optimized arm"
+                )
+            forward_fn = compiled
+            capture_no_grad = True
+
         # Capture the forward pass into a CUDA graph to hide Python dispatch overhead.
         self.graph = None
         self.static_output = None
@@ -238,12 +300,21 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.cuda.synchronize(self.device)
             self.graph = torch.cuda.CUDAGraph()
             with torch.cuda.graph(self.graph):
-                assert self.model is not None and self.inputs is not None
-                self.static_output = self.model(self.inputs)
+                assert forward_fn is not None and self.inputs is not None
+                if capture_no_grad:
+                    with torch.no_grad():
+                        self.static_output = forward_fn(self.inputs)
+                else:
+                    self.static_output = forward_fn(self.inputs)
             torch.cuda.synchronize(self.device)
         except Exception:
             self.graph = None
             self.static_output = None
+            if self._compile_enabled:
+                # AUDIT RULE (B45): no silent eager fallback on the compiled path.
+                raise
+        if self._compile_enabled and self.graph is None:
+            raise RuntimeError("CUDA-graph capture of the compiled forward did not produce a graph")
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.inputs is None:
@@ -283,7 +354,9 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
-        return BenchmarkConfig(iterations=10, warmup=10)  # torch.compile needs warmup
+        # setup_timeout covers the one-time torch.compile/autotune cost, which
+        # lives in setup() (untimed) and is reported via compile_seconds.
+        return BenchmarkConfig(iterations=10, warmup=10, setup_timeout_seconds=600)
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
@@ -297,11 +370,21 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         flops = 2.0 * batch * n * n  # Rough estimate
         bytes_moved = batch * n * 4.0  # Input/output bytes
         arithmetic_intensity = flops / max(bytes_moved, 1.0)
-        return {
+        metrics = {
             "router_vectorized.estimated_flops": flops,
             "router_vectorized.estimated_bytes": bytes_moved,
             "router_vectorized.arithmetic_intensity": arithmetic_intensity,
+            # AUDIT RULE (B45): prove the captured/compiled path is live.
+            "router_vectorized.manual_graph_active": 1.0 if self.graph is not None else 0.0,
+            "router_vectorized.compile_enabled": 1.0 if self._compile_enabled else 0.0,
         }
+        if self._compile_seconds is not None:
+            metrics["router_vectorized.compile_seconds"] = float(self._compile_seconds)
+        if self._dynamo_graph_breaks is not None:
+            metrics["router_vectorized.dynamo_graph_breaks"] = float(self._dynamo_graph_breaks)
+        if self._dynamo_unique_graphs is not None:
+            metrics["router_vectorized.dynamo_unique_graphs"] = float(self._dynamo_unique_graphs)
+        return metrics
 
     def validate_result(self) -> Optional[str]:
         if self.model is None:
