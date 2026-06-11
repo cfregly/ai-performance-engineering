@@ -1464,6 +1464,26 @@ SoL framing (B), measured 2026-06-09:
   epilogue fusion or hand-fused baddbmm+GELU); compiled GELU 69.3us + Triton GEMM1 104us are
   the remaining top per-replay costs.
 
+- HONEST NEGATIVE, MEASURED-CEILING GRADE (B52, capstone wave-quantization fill, the D5b-named
+  lever, refuted BEFORE building): docs/gb300-capstone-wave-quant.md. At the scored 2048^3 shape
+  the 128-CTA grid fills 128/152 SMs (84.2%, SM count verified), but the kernel is FIXED-COST-
+  bound, not wave-bound: K-slope probes (K=256..4096) split T = F + u*nk with F = 14.9-15.5us =
+  62-65% of the 23.9us kernel; only ~8.5us is k-redistributable, so perfectly balanced zero-
+  overhead stream-K ceilings at 1.058-1.074x -- and measured full-fill contention (152-CTA single
+  wave, identical per-CTA work, replicated x2) costs +3.9-4.2%, dropping the ceiling to 1.016-
+  1.058x, at/below the 1.05 gate before ANY implementation cost (>=33.6MB fp32 partial round-trip,
+  >=147 extra drain/refill+epilogue segments, flag protocol). Tile reshape dead by divisibility
+  (no legal UMMA atom yields 128<CTAs<=152); persistence dead by arithmetic (128 tiles < 152 SMs,
+  all resident at t=0). ncu grounding: fill 83.1->98.2% achievable but tensor-pipe duty ~18%/SM
+  either way (issue/latency-bound even when full). All scored tcgen05 GEMM targets are 2048-only:
+  no scored shape escapes. Zero repo files touched; incumbent bit-identical lineage untouched.
+  OPS: orphaned foreign python squatted GPU3 mid-session (rep discarded, re-run replicated 0.2%);
+  Front X's concurrent pod kernel edit proven non-contaminating (pre/post builds bit-equal).
+  NEXT LEVER (the real target, ~2x the wave-quant ceiling from a 20% cut): attack F itself --
+  decompose the ~15us fixed per-CTA cost (launch turnaround vs TMEM alloc vs 4-stage prologue
+  fill vs TMEM_LOAD t2r epilogue; starting split: launch+F_in-kernel ~13.3us single-CTA,
+  u_1cta ~0.223us); K=256 runs at 137 TFLOPS = 3.6% SoL, purely F-bound.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
