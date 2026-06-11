@@ -24,9 +24,23 @@ from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 # of capturing the eager forward. Default ON.
 _COMPILE_ENV = "AISP_MOE_CUDA_COMPILE"
 
+# Opt-in (Front M2): AISP_MOE_CUDA_GELU_EPILOGUE=1 forces Inductor to fuse the
+# GELU into the GEMM1 Triton-template epilogue (benchmark_epilogue_fusion=False).
+# Default OFF: measured ~1.03x end-to-end (below the 1.05x gate) because the
+# erf cost is conserved — it moves into the template epilogue (+58us) instead
+# of disappearing with the standalone kernel (52-69us). At B51 the fusion was
+# refused by ACCIDENT: the single benchmarked epilogue candidate
+# (max_epilogue_benchmarked_choices=1, BLOCK 128/128/128 stages=4) fails Triton
+# smem precompile on SM103 (262160B > 232448B) -> ms_fused=inf -> refuse.
+_GELU_EPILOGUE_ENV = "AISP_MOE_CUDA_GELU_EPILOGUE"
+
 
 def _compile_enabled() -> bool:
     return os.environ.get(_COMPILE_ENV, "1").strip().lower() not in ("0", "false", "off")
+
+
+def _gelu_epilogue_enabled() -> bool:
+    return os.environ.get(_GELU_EPILOGUE_ENV, "0").strip().lower() in ("1", "true", "on")
 
 
 class VectorizedTopKMoE(nn.Module):
@@ -178,9 +192,11 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.static_output: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._compile_enabled: bool = False
+        self._gelu_epilogue_enabled: bool = False
         self._compile_seconds: Optional[float] = None
         self._dynamo_graph_breaks: Optional[int] = None
         self._dynamo_unique_graphs: Optional[int] = None
+        self._kernels_per_replay: Optional[float] = None
         tokens = self.batch_size * self.top_k
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -252,13 +268,27 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # capture owns the graph; replay() keeps the zero-Python hot path.
         # AISP_MOE_CUDA_COMPILE=0 restores the B45 eager-capture behavior.
         self._compile_enabled = _compile_enabled()
+        self._gelu_epilogue_enabled = self._compile_enabled and _gelu_epilogue_enabled()
         self._compile_seconds = None
         self._dynamo_graph_breaks = None
         self._dynamo_unique_graphs = None
+        self._kernels_per_replay = None
         forward_fn = self.model
         capture_no_grad = False
         if self._compile_enabled:
             from torch._dynamo.utils import counters as dynamo_counters
+
+            if self._gelu_epilogue_enabled:
+                # Front M2: Inductor's benchmark-driven template-epilogue fusion
+                # refuses the GEMM1+GELU fusion (its sole benchmarked candidate
+                # smem-OOMs on SM103 -> inf slowdown). Disabling the benchmark
+                # makes the scheduler fuse heuristically: the standalone
+                # triton_poi_fused_gelu kernel disappears into
+                # triton_tem_fused_baddbmm_gelu_*. Changing this config also
+                # changes the Inductor cache key, so arms never share artifacts.
+                import torch._inductor.config as inductor_config
+
+                inductor_config.benchmark_epilogue_fusion = False
 
             dynamo_counters.clear()
             compile_start = time.perf_counter()
@@ -315,6 +345,33 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 raise
         if self._compile_enabled and self.graph is None:
             raise RuntimeError("CUDA-graph capture of the compiled forward did not produce a graph")
+
+        # AUDIT (Front M2): count kernels per replay and prove the fusion state.
+        # Profiling lives in setup() (untimed); exported via get_custom_metrics.
+        if self.graph is not None:
+            from torch.profiler import ProfilerActivity, profile as torch_profile
+
+            torch.cuda.synchronize(self.device)
+            with torch_profile(activities=[ProfilerActivity.CUDA]) as prof:
+                for _ in range(5):
+                    self.graph.replay()
+                torch.cuda.synchronize(self.device)
+            kernel_count = 0.0
+            standalone_gelu = []
+            for evt in prof.key_averages():
+                if (getattr(evt, "self_device_time_total", 0) or 0) <= 0:
+                    continue
+                kernel_count += evt.count
+                if "fused_gelu" in evt.key and evt.key.startswith("triton_poi"):
+                    standalone_gelu.append(evt.key)
+            self._kernels_per_replay = kernel_count / 5.0
+            if self._gelu_epilogue_enabled and standalone_gelu:
+                # AUDIT RULE (B45/B51): the opt-in fusion path must fail loudly
+                # if the standalone GELU kernel survived (fusion silently refused).
+                raise RuntimeError(
+                    "AISP_MOE_CUDA_GELU_EPILOGUE=1 but a standalone GELU kernel "
+                    f"is still launched per replay: {standalone_gelu}"
+                )
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.inputs is None:
@@ -377,7 +434,10 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
             # AUDIT RULE (B45): prove the captured/compiled path is live.
             "router_vectorized.manual_graph_active": 1.0 if self.graph is not None else 0.0,
             "router_vectorized.compile_enabled": 1.0 if self._compile_enabled else 0.0,
+            "router_vectorized.gelu_epilogue_enabled": 1.0 if self._gelu_epilogue_enabled else 0.0,
         }
+        if self._kernels_per_replay is not None:
+            metrics["router_vectorized.kernels_per_replay"] = float(self._kernels_per_replay)
         if self._compile_seconds is not None:
             metrics["router_vectorized.compile_seconds"] = float(self._compile_seconds)
         if self._dynamo_graph_breaks is not None:

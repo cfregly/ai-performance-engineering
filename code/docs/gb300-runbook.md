@@ -1505,6 +1505,24 @@ SoL framing (B), measured 2026-06-09:
   falsified; the F-decomposition (B52's named lever) is the sole remaining capstone path. OPS: the
   gpu3 idle lease-squatter RE-SPAWNED and was killed again (something re-creates it).
 
+- HONEST NEGATIVE, ESTIMATE CORRECTION (B54, moe_cuda GELU-into-GEMM1-epilogue, the B51-named
+  lever): docs/gb300-moe-cuda-gelu-epilogue.md. The fusion LANDS structurally (16 -> 15 kernels/
+  replay; the standalone GELU kernel disappears into triton_tem_fused_baddbmm_gelu_*;
+  verification PASS 12/12; graph_breaks=0, unique_graphs=1 every rep) but pays only 1.0227x
+  median (0.40292 -> 0.39396 ms, 6 reps/arm interleaved, non-overlapping distributions -- real
+  but below the 1.05 gate). WHY THE ~1.2x ESTIMATE WAS WRONG: the 69us standalone GELU is erf
+  COMPUTE, conserved under fusion -- it moves INTO the GEMM1 template (+58.6us on the template)
+  instead of disappearing; fusion only saves the intermediate's memory round-trip (~10.6us).
+  DURABLE LESSON: kernel-count reduction is not cost reduction when the eliminated kernel is
+  compute-bound -- classify standalone kernels compute- vs traffic-dominated BEFORE estimating
+  fusion EV. Fused path ships opt-in (AISP_MOE_CUDA_GELU_EPILOGUE=1, default stays B51) with a
+  loud-failure assert that the standalone GELU is actually gone when enabled. Evidence
+  /tmp/frontM2/ on pod. NEXT LEVER (~1.15x est, from the Inductor diagnosis): Inductor's
+  extern-kernel autotune mis-measures ATEN baddbmm at 0.1403ms vs nvjet's real 66us (broadcast-
+  bias stride [2048,0,1] benchmark artifact), so the slower Triton template wins the autotune;
+  pin GEMM1 to ATEN via scoped max_autotune_gemm_backends (66us extern + 52us tuned standalone
+  GELU vs the 172.5us fused template saves ~54us/replay -> ~0.34ms) or fix the extern benchmark.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
