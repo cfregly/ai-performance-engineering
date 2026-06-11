@@ -1276,6 +1276,23 @@ SoL framing (B), measured 2026-06-09:
   reverts to a plain kernel-side question (banked, tiny-M latency). NEXT LEVER (small EV, <=3us): TMA
   stores to skip the st.global drain; atomic-ticket tile assignment for the ~1/36 tail.
 
+- RE-AUDIT (B42, full-bank false-wall audit, prompted by the B40 mis-bank): every banked negative/tie/
+  deferral re-classified against the six levers proven AFTER those banks were written (in-file
+  model-surgery, whole-model cudagraph capture, warp-specialized TMA bulk-copy, dual-CTA occupancy,
+  fp16-direct epilogue/dead-operand elimination, _post_setup graph capture). RESULT: all standing
+  negatives are SOUND measured walls (B1/B7 NVLink ceiling, B15 atomic-serialization, B20 torch._int_mm
+  upstream, B22b dequant-bytes, B23b/B23c compile-vs-eager structure, B27b transfer-measurement gaming
+  rule, B32 warp-specialization cap); the three historical mis-banks (B25b->B29, B28->B28-reopen,
+  B34->B40) were already caught -- pattern confirmed: both un-banked classes were TASK-framing traps
+  (full-loop generalization; single-file scope), not measured walls. STALE-CHECKS (2): B10 grouped-GEMM
+  Triton tl.dot codegen gap (never re-benchmarked on a newer triton/torch pair) and B16 (zymtrace
+  infra-wall blocked the codegen ground-truth) -- both reopen only on a toolchain change. NEW TERRITORY:
+  7 labs fell through EVERY survey (ran in the strict inventory, never headroom-examined):
+  parameterized_cuda_graphs, python_concurrency, moe_parallelism (multi-GPU), tcgen05_cluster_shapes,
+  training_hotpath (the B36-sweep flagged its torch::zeros at rank 6), uma_memory, vllm-deepseek-tuning
+  (env-gap). Single-GPU survey front queued on these. The 44 inventory failed_no_speedup ties re-confirm
+  as the GB300 memory-movement signature; no hidden regression.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
