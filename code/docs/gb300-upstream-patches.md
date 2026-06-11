@@ -3,7 +3,7 @@
 **FILED 2026-06-11 (account `cfregly`, all five live):**
 | item | link |
 |---|---|
-| Inductor baddbmm decomposition | https://github.com/pytorch/pytorch/issues/187093 |
+| Inductor baddbmm decomposition | https://github.com/pytorch/pytorch/issues/187093 + **code PR https://github.com/pytorch/pytorch/pull/187106** (Fixes #187093; pod-validated, test incl.) |
 | `_int_mm` sm_103 Ampere dispatch | https://github.com/pytorch/pytorch/issues/187094 |
 | `_scaled_grouped_mm` NVFP4 (+ sm_103 FP8 trap) | https://github.com/pytorch/pytorch/issues/187095 (+ comment on PR #174699) |
 | CUTLASS TMEM_LOAD atom width (tutorials 01-05) | https://github.com/NVIDIA/cutlass/pull/3313 |
