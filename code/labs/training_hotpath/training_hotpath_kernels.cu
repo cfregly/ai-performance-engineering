@@ -3,6 +3,7 @@
 #include <torch/extension.h>
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -15,6 +16,11 @@
 
 namespace {
 
+// grid.x indexes segments, grid.y indexes chunks within a segment.
+// Each block reduces its chunk and atomically accumulates partial/count into
+// out[segment]; out must be zero-initialized by the caller. Chunking restores
+// occupancy when num_segments is far below the SM count of the device
+// (a 128-segment launch fills ~11% of one wave on GB300 otherwise).
 __global__ void segment_abs_mean_kernel(
     const float* flat,
     const int64_t* offsets,
@@ -27,8 +33,23 @@ __global__ void segment_abs_mean_kernel(
 
   int64_t start = offsets[segment];
   int64_t stop = offsets[segment + 1];
+  int64_t length = stop - start;
+  if (length <= 0) {
+    return;  // out[segment] stays at its zero initialization (matches 0/1).
+  }
+
+  int64_t chunk_span = (length + gridDim.y - 1) / gridDim.y;
+  int64_t chunk_start = start + static_cast<int64_t>(blockIdx.y) * chunk_span;
+  int64_t chunk_stop = chunk_start + chunk_span;
+  if (chunk_stop > stop) {
+    chunk_stop = stop;
+  }
+  if (chunk_start >= chunk_stop) {
+    return;
+  }
+
   float local_sum = 0.0f;
-  for (int64_t idx = start + threadIdx.x; idx < stop; idx += blockDim.x) {
+  for (int64_t idx = chunk_start + threadIdx.x; idx < chunk_stop; idx += blockDim.x) {
     local_sum += fabsf(flat[idx]);
   }
 
@@ -44,8 +65,7 @@ __global__ void segment_abs_mean_kernel(
   }
 
   if (threadIdx.x == 0) {
-    int64_t count = stop > start ? (stop - start) : 1;
-    out[segment] = shared[0] / static_cast<float>(count);
+    atomicAdd(&out[segment], shared[0] / static_cast<float>(length));
   }
 }
 
@@ -99,8 +119,22 @@ torch::Tensor segment_abs_mean(torch::Tensor flat, torch::Tensor offsets) {
   auto num_segments = offsets_contig.size(0) - 1;
   auto out = torch::zeros({num_segments}, flat.options());
 
+  // Query the SM count once per process; the attribute query costs ~10us per
+  // call on some driver paths, which would dominate this microsecond kernel.
+  static const int sm_count = [device_index = flat_contig.get_device()] {
+    int count = 0;
+    CHECK_CUDA(cudaDeviceGetAttribute(&count, cudaDevAttrMultiProcessorCount, device_index));
+    return count;
+  }();
+
+  // Aim for ~8 blocks per SM so small segment counts still fill the device.
+  int64_t target_blocks = static_cast<int64_t>(sm_count) * 8;
+  int64_t chunks = (target_blocks + num_segments - 1) / num_segments;
+  chunks = std::max<int64_t>(1, std::min<int64_t>(chunks, 64));
+
   constexpr int threads = 256;
-  segment_abs_mean_kernel<<<num_segments, threads>>>(
+  dim3 grid(static_cast<unsigned int>(num_segments), static_cast<unsigned int>(chunks));
+  segment_abs_mean_kernel<<<grid, threads>>>(
       flat_contig.data_ptr<float>(),
       offsets_contig.data_ptr<int64_t>(),
       out.data_ptr<float>(),

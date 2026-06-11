@@ -1374,6 +1374,26 @@ SoL framing (B), measured 2026-06-09:
   different data layout; closed. Also closes the K_SW64/tile_k=384 deep rewrite (strictly worse than
   the parity-measured 11-MMA variant). Default path const_expr-gated bit-identical post-edit.
 
+- WIN + SURVEY (B47, never-examined labs sweep, closes the B42 territory): docs/
+  gb300-sol-roofline-labs3.md. WIN (shipped): labs/training_hotpath:metric_reduction_cuda 8.11x ->
+  9.01x/8.89x (kernel 15.5 -> 10.3 us), verify PASS x2 -- segment_abs_mean launched only 128 blocks
+  (Waves/SM 0.11, occupancy 12.4%, DRAM 4.2%); fix = chunked grid (1280 blocks) + per-chunk atomicAdd
+  partials + SM-count cached in a static. Attempt-1 trap banked: a per-call cudaDeviceGetAttribute
+  (~10us) made it SLOWER (6.32x) -- cache device attributes. Now host/harness-overhead-bound (~10.8us
+  zeros+launch floor). FINDINGS: (1) padding_aware_transformer's packed-row path is a SPEED-REGRESSION
+  on GB300 (0.674x; CUDA-event isolated 1.647 vs 2.597 ms) that "succeeds" only via its memory goal --
+  the per-iter 315MB torch::zeros memset is only ~100us of the ~950us regression; the real cost is ~72
+  extra tiny launches + odd-shape GEMMs (the CPU-era packing trick inverts on GB300's launch profile);
+  named deep lever: cudagraph the packed forward, do not patch. (2) metric_reduction_vectorized 93.6x
+  but ~22% SoL: 3 mul+sum passes re-read 126MB; fusion to one pass (25MB) named (~150x headline est),
+  fp32-accumulate guardrail required. (3) B45-CLASS AUDIT CLEAN: no silent capture->eager fallback in
+  any of the 7 labs; parameterized_cuda_graphs is loud-by-construction and its capture is LIVE on GB300
+  (33.83x via real graph replay, param-update probe confirms). (4) tcgen05_cluster_shapes = BUILD-GAP
+  (pod third_party/cutlass missing cutlass/detail/collective/moe_stride_utils.hpp -- blocks the ch10
+  tcgen05 extension family); uma_memory/python_concurrency/moe_parallelism = NOT-A-BENCHMARK
+  (utility/CPU-teaching/planner); vllm-deepseek-tuning = ENV-GAP. (5) Harness measurement overhead
+  ~30-55us/iter compresses every sub-100us lab speedup -- audit-worthy as a harness lever.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
