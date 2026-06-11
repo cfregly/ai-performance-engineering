@@ -129,3 +129,155 @@ CUTLASS-style, reusing the (drained) A/B ring smem — worth ~1.5-2us (~10%).
 Values and destinations unchanged => bit-identity preservable. After that the
 kernel is mainloop-bound (9.4us, 59%, TMA delivery efficiency — B48/D5
 territory) and F is spent.
+
+## 8. Y2: smem-staged transpose epilogue — the write-sector half, harvested (1SM); honest 2SM gate-out
+
+**Date:** 2026-06-11 | **Front:** Y2 | **Base:** B55 (385d820f0b06239077a63a3ed90ca81a)
+**Verdict: WIN on the 1SM path — 1.054x kernel (16.01 -> 15.19us med-of-meds at FP16
+2048^3), L2 write sectors exactly halved to the 100%-efficiency floor, bit-identical
+(torch.equal, CTA1 + CTA2), all 3 harness targets verify PASS x3. The 2SM (CTA2) entry
+is constexpr-gated to the B55 direct store: staging halves its sectors identically but
+REGRESSES the kernel +0.27us — measured, mechanism below.**
+
+Sec. 7 named the lever: B55's cvt+store is write-sector-bound (each warp's
+STG.E.128 spans 32 different D rows; 524,288 x 32B = 16MB of L2 write sectors
+for 8MB of D). The fix stages the converted fp16 tile through the drained A/B
+smem ring: each thread r2s-stores its 512B row as 32 16B chunks, XOR-swizzled
+(`chunk ^ (tid&7)`) so both the STS.128 and the LDS.128 are bank-conflict-free;
+after one `__syncthreads()`, each warp drains whole rows — lane l stores chunk
+l of ONE row, so every warp store instruction covers 512 contiguous bytes
+(16 fully-written 32B sectors). The thread->row mapping is never assumed: each
+thread stashes its gmem row pointer (`&tDgD(0)`) in a 1KB smem table and phase
+2 stores through it. Ring reuse is safe: the epilogue runs strictly after the
+final-k-tile mma-barrier drain (the tcgen05 commit orders ALL prior UMMA smem
+reads, incl. the 2SM peer's, before the barrier flips) and every TMA fill was
+consumed in-loop before that commit; the 65KB stage stops 127KB short of the
+mbarrier words. Macro `AISP_TCGEN05_SMEM_EPILOGUE` (default 1, 1SM-only via
+`if constexpr (kMmaCtas == 1)`); `=0` rebuilds the exact B55 store everywhere.
+
+### Component (probe2 stamps, per-CTA medians, full grid 2048^3, 128 CTAs, CTA1)
+
+| region | sm=0 (B55 path) | sm=1 (staged) |
+|---|---|---|
+| mainloop k-linear | 9.38us | 9.41us |
+| t2r TMEM_LOAD | 0.42us | 0.42us |
+| **cvt+store** | **3.39us** | **2.43us (-0.96us)** |
+| sync + TMEM free | 0.26us | 0.19us |
+| in-kernel total | 14.72us | 13.70us |
+
+Per-warp slot-8 medians all 2.43us — the 32-pass s2g loop is perfectly
+load-balanced across the 4 warps.
+
+### Kernel A/B (interleaved process-level, CUDA-graph x32 calls/rep, GPU 3)
+
+- CTA1, 7 reps each: A (direct) med 15.93-16.09us; B (staged) med
+  15.12-15.26us — **1.054x, zero overlap across 14 measurements.**
+- CTA2, 3 reps each: A med 15.45-15.53us; B med 15.72-15.78us — **staged
+  REGRESSES +0.27us, zero overlap.** Shipped CTA2 keeps the direct store
+  (post-gate sanity x3: med 15.41-15.51us, back at its control band; CTA1
+  post-gate x3: med 15.17-15.21us, win retained).
+- Shipped kernel ~30.0% FP16-SoL (17.18 GFLOP / 15.19us = 1.13 PFLOP/s), up
+  from ~28.5%.
+
+### ncu (--set full, skip 5, count 2; same session, both variants, both entries)
+
+| metric | CTA1 sm=0 | CTA1 sm=1 | CTA2 sm=0 | CTA2 sm=1 (not shipped) |
+|---|---|---|---|---|
+| global store sectors | 524,288 (50% eff) | **262,144 (100%)** | 524,288 (50%) | 262,144 (100%) |
+| global_st instructions | 16,384 | 16,384 | 16,384 | 16,384 |
+| shared_st / shared_ld | 256 / 896 | 17,152 / 33,664 | 256 / 1,088 | 17,152 / 33,856 |
+| duration under ncu | 18.8-19.2us | 18.3-18.4us | 18.8-18.9us | 18.9-19.1us |
+
+SASS: staged store phase = 64 STS.128 + 64 LDS.128 + 64 LDS.64 (row-pointer
+table) + 64 ST.E.128 across the two kernel instantiations; control = 64
+STG.E.128 direct.
+
+### Why CTA1 wins 0.96us but CTA2 loses 0.27us (honest accounting)
+
+The projection (~1.5-2us) ignored two costs that don't vanish: the gmem write
+itself has a ~1.2us floor at 100% efficiency (8MB through L2, single wave) and
+the smem round-trip costs ~0.55us (64KB STS + 64KB LDS at 128B/cycle/SM) plus
+a CTA-wide sync. Floor for a staged cvt+store is ~2.1-2.3us; measured 2.43us.
+On CTA1 the sector waste WAS time on the critical path: removing 8MB of
+half-filled sectors bought 0.96us against the 0.55us round-trip. On CTA2 the
+identical sector halving bought nothing: its control already ran 0.55us faster
+than CTA1's at identical sector counts (524,288), i.e. the 2SM pair's store
+phase was not L2-write-time-bound, so the round-trip is a pure add (+0.27us).
+The waste is recoverable only where it is actually the binding constraint.
+
+### Verification + harness (gate: verification PASS)
+
+- Final gated build `torch.equal` vs incumbent-1x bit-lineage refs: **CTA1
+  PASS, CTA2 PASS** (same RNE convert per element; CTA1 changes only store
+  order, CTA2 is byte-identical code path to B55).
+- allclose vs fp32 torch.matmul ref (2e-2): PASS both.
+- Harness x3 on the FINAL gated file, all three shared-file targets
+  (failed_verification=0 in all 9 runs):
+
+| target | run1 | run2 | run3 |
+|---|---|---|---|
+| blackwell_matmul_tcgen05 (median / speedup) | 0.163ms / 96.4x | 0.108ms / 144.8x | 0.104ms / 151.2x |
+| cluster_gemm_tcgen05 | 0.0887ms / 1.15x | 0.0972ms / 1.04x | 0.0887ms / 1.12x |
+| cluster_gemm_tcgen05_cta2 | 0.0881ms / 1.18x | 0.0908ms / 1.16x | 0.0868ms / 1.18x |
+
+These wrappers stay host-dispatch-bound (~85-100us/call), so the ~0.8us kernel
+cut sits inside host noise end-to-end; the bankable number is the kernel-level
+graph A/B + stamps + ncu agreement above. run1 blackwell carries the post-edit
+extension rebuild (same pattern as B55's run1).
+
+(An earlier harness x3 on the staged-everywhere build also passed 9/9 —
+/tmp/frontY2/harness_staged_all.log — the gate-out is a perf decision, not a
+correctness one.)
+
+### Diff (entire change) + md5
+
+`code/labs/fullstack_cluster/capstone_kernels_tcgen05.cu`
+(385d820f0b06239077a63a3ed90ca81a -> c7e412cc81c2905c36464ae4bb681219):
+
+```diff
++// smem-staged transpose store (B55 follow-up, Y2). [rationale + measured
++// numbers comment block, incl. the 2SM gate-out]
++#ifndef AISP_TCGEN05_SMEM_EPILOGUE
++#define AISP_TCGEN05_SMEM_EPILOGUE 1
++#endif
+...
+   for (int i = 0; i < size(tDrD); ++i) {
+     tDrD(i) = static_cast<DType>(alpha * tDrAcc(i));
+   }
+-  copy(tDrD, tDgD);
++#if AISP_TCGEN05_SMEM_EPILOGUE
++  if constexpr (Variant::kMmaCtas == 1) {
++    // r2s swizzled 16B chunks into the drained ring + row-pointer stash,
++    // __syncthreads, then per-warp whole-row s2g (lane l = chunk l)
++    ... (35-line block; see kernel source)
++  } else {
++    copy(tDrD, tDgD);
++  }
++#else
++  copy(tDrD, tDgD);
++#endif
+```
+
+Y2 artifacts (never the shipped path): /tmp/frontY2/probe2.cu (+stamps,
+regenerated from the shipped file by make_probe2.py), ab_run.log / ab_cta2.log
+/ final_check.log (interleaved A/B), ncu_sm{0,1}.ncu-rep /
+ncu_cta2_sm{0,1}.ncu-rep, harness_staged_all.log / harness_after.log,
+capstone_kernels_tcgen05.cu.b55.bak (pristine B55).
+
+## 9. Named next lever (post-Y2)
+
+The CTA1 epilogue residual is ~0.3-0.5us of SM-side staging slack: a TMA
+tensor store (`SM90_TMA_STORE` atom over mD; smem stage in the descriptor's
+swizzle mode; one `cp.async.bulk.tensor.2d` per CTA + `tma_store_wait` before
+exit) would delete the per-thread LDS+ST issue chain and make the drain async
+— but it is bounded by the same ~1.2us L2-write floor, so it is NOT
+breakthrough-shaped. The bigger fish is now unambiguous: the **9.4us mainloop**
+(62% of the 15.2us kernel) against a ~5-6us tensor-pipe SoL at this grid.
+B48/D5 already localized the residual to TMA delivery efficiency (bK64/SW128
+box shape), and B52 falsified wave-quant/stream-K — so the next
+breakthrough-shaped levers are mainloop-side: L2-resident B reuse across
+M-tiles (persistent CTAs + tile scheduler so the 16x-duplicated B panel pulls
+become L2 hits), or the 2SM ring deepened to cover TMA latency at the pair
+level. The CTA2-vs-CTA1 store finding above is a free clue for that work: the
+2SM pair's phase-staggering already hides store latency — the same staggering
+argument applies to its TMA fetch stream.

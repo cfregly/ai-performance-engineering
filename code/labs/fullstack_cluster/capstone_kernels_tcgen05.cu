@@ -126,6 +126,39 @@ static_assert(kCta1ClusterM == 1 || kCta1ClusterM == 2,
 #define AISP_TCGEN05_T2R_ATOM SM100_TMEM_LOAD_32dp32b32x
 #endif
 
+// smem-staged transpose store (B55 follow-up, Y2). The direct register->gmem
+// store half of the epilogue is write-sector-bound: each thread owns one full
+// 512B D row, so every warp STG.E.128 spans 32 DIFFERENT rows -- each 16B
+// lane-store opens its own 32B L2 sector (ncu on B55: 524,288 write sectors =
+// 16MB for 8MB of D, 50% efficiency; cvt+store 3.36us of the 16.0us kernel).
+// Staging through the drained A/B smem ring fixes the store shape: each
+// thread r2s-stores its converted row into a 64KB stage buffer (16B chunks,
+// XOR-swizzled by chunk^(tid&7) so both the STS.128 and the LDS.128 are
+// bank-conflict-free), then each warp s2g-stores whole rows -- lane l writes
+// chunk l of ONE row, so a warp instruction covers 512 contiguous bytes
+// (16 fully-written 32B sectors, 100% write-sector efficiency). Reusing the
+// ring is safe: the epilogue runs strictly after the final-k-tile mma-barrier
+// drain (the tcgen05 commit orders ALL prior UMMA smem reads, including the
+// 2SM peer's via the multicast commit, before the barrier flips) and every
+// TMA fill was consumed in-loop before that commit could fire; the 65KB stage
+// stops well short of the mbarrier words at the ring's tail. The thread->row
+// mapping is never assumed: each thread stashes its own gmem row pointer in a
+// 1KB smem table and phase 2 stores through it. Bit-identity is structural:
+// the SAME RNE-converted fp16 bytes land at the SAME addresses, only the
+// store ORDER changes (torch.equal vs B55 must hold). MEASURED (Y2, 2048^3,
+// interleaved graph A/B): CTA1 16.01 -> 15.19us med-of-meds (-0.82us, 1.054x,
+// zero overlap, 7 reps each); probe stamps put the cvt+store at 3.39 ->
+// 2.43us; ncu confirms 524,288 -> 262,144 write sectors (the exact 100%
+// floor). The 2SM variant is gated OUT (if constexpr below): staging halves
+// its sectors identically (524,288 -> 262,144) but the kernel REGRESSES
+// 15.46 -> 15.72us (3 reps, zero overlap) -- the direct-store sector waste
+// was evidently not on the 2SM pair's critical path (its control already ran
+// 0.55us faster than CTA1 at identical sector counts), so the ~0.55us smem
+// round-trip (64KB STS + 64KB LDS) nets +0.27us there. -D overridable.
+#ifndef AISP_TCGEN05_SMEM_EPILOGUE
+#define AISP_TCGEN05_SMEM_EPILOGUE 1
+#endif
+
 template <class MmaTag, int ClusterM, int Stages, int KBlocks, int MmaCtas = 1>
 struct TcgenVariantConfig {
   using Mma = MmaTag;
@@ -604,7 +637,52 @@ __global__ void gemm_device_variant(ATensor mA,
   for (int i = 0; i < size(tDrD); ++i) {
     tDrD(i) = static_cast<DType>(alpha * tDrAcc(i));
   }
+#if AISP_TCGEN05_SMEM_EPILOGUE
+  // smem-staged transpose store (Y2; rationale + measurements at the macro
+  // definition). 1SM variants only: the 2SM pair measures a net regression
+  // (see macro comment), so it keeps the direct store. Phase 1 (r2s): thread
+  // t owns one 512B row; write its 32 16B chunks into stage row t at swizzled
+  // chunk slots. Phase 2 (s2g): warp w drains rows {4p+w}; lane l reads back
+  // chunk l of the row and stores it to the row's gmem address -- 512
+  // contiguous bytes per warp store instruction.
+  if constexpr (Variant::kMmaCtas == 1) {
+    constexpr int kRowHalves = decltype(size(tDrD))::value;       // 256
+    constexpr int kRowBytes  = kRowHalves * int(sizeof(DType));   // 512
+    constexpr int kRowChunks = kRowBytes / 16;                    // 32 x 16B
+    constexpr int kRows      = 128;                               // = blockDim
+    static_assert(kRowChunks == 32,
+                  "phase 2 maps one warp lane per 16B chunk of a row");
+    constexpr int kStageBytes =
+        kRows * kRowBytes + kRows * int(sizeof(DType*));
+    static_assert(kStageBytes <= int(sizeof(shared_storage.A) +
+                                     sizeof(shared_storage.B)),
+                  "D staging must fit inside the drained A/B smem ring");
+    auto* stage = reinterpret_cast<cute::uint128_t*>(shared_memory);
+    auto** row_ptr =
+        reinterpret_cast<DType**>(shared_memory + kRows * kRowBytes);
+    int const tid = int(threadIdx.x);
+    row_ptr[tid] = &tDgD(Int<0>{});
+    Tensor tDrDv = recast<cute::uint128_t>(tDrD);
+    int const sw = tid & 7;
+    CUTE_UNROLL
+    for (int i = 0; i < kRowChunks; ++i) {
+      stage[tid * kRowChunks + (i ^ sw)] = tDrDv(i);
+    }
+    __syncthreads();
+    int const warp = tid >> 5;
+    int const lane = tid & 31;
+    CUTE_UNROLL
+    for (int p = 0; p < kRows / 4; ++p) {
+      int const r = p * 4 + warp;
+      cute::uint128_t const v = stage[r * kRowChunks + (lane ^ (r & 7))];
+      reinterpret_cast<cute::uint128_t*>(row_ptr[r])[lane] = v;
+    }
+  } else {
+    copy(tDrD, tDgD);
+  }
+#else
   copy(tDrD, tDgD);
+#endif
 
   __syncthreads();
   if (elect_one_warp) {

@@ -1583,6 +1583,26 @@ SoL framing (B), measured 2026-06-09:
   long_scoreboard still 75% of stalls, producer capped at 3 in-flight stages); fallback kTileK=128
   to halve barrier round-trips per byte.
 
+- WIN + MEASURED GATE-OUT (B58, capstone smem-staged transpose epilogue, the B55-named lever):
+  docs/gb300-capstone-f-decomposition.md (sections 8-9). 1SM path WINS: swizzled r2s
+  (chunk ^ (tid&7), STS.128/LDS.128 conflict-free) + per-warp whole-row s2g replaces the direct
+  32-row-spanning STG.E.128 -- L2 write sectors 524,288 -> 262,144 (the EXACT 100%-efficiency
+  target: 8MB of sectors for 8MB of D); cvt+store 3.39 -> 2.43us (probe stamps); kernel 16.01 ->
+  15.19us med-of-meds = 1.054x with ZERO overlap across 14 measurements; ~28.5 -> ~30.0% FP16-SoL.
+  2SM path REGRESSES (+0.27us, zero overlap) despite identical sector halving -- its store phase
+  was never L2-write-time-bound (control already 0.55us faster at identical sectors), so the smem
+  round-trip is a pure add; constexpr-gated to kMmaCtas==1 only. LESSON: sector waste is only
+  recoverable where it is the BINDING constraint -- same byte fix, opposite outcomes on sibling
+  paths. Estimate calibration: 0.96us realized vs 1.5-2us projected (the projection ignored the
+  ~1.2us L2-write floor + 0.55us STS/LDS round-trip; measured is within 0.2us of the staged floor).
+  BIT-IDENTICAL (torch.equal CTA1+CTA2, gated build); harness 9/9 verification PASS; ships as
+  AISP_TCGEN05_SMEM_EPILOGUE=1 default (=0 rebuilds exact B55). Capstone ladder: 66 (B31-era) ->
+  38.9 (B36) -> 37.6 (B39) -> 24.0 (B44) -> 16.0 (B55) -> 15.2us (B58), bit-identical lineage
+  throughout. NEXT LEVER (the epilogue is SPENT; mainloop now 62% = 9.4us vs ~5-6us tensor-pipe
+  SoL): L2-resident B reuse across M-tiles -- persistent CTAs + tile scheduler turning the
+  16x-duplicated B pulls into L2 hits; clue: the 2SM pair's phase-staggering already hides store
+  latency, the same argument applies to its TMA fetch stream.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
