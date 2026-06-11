@@ -1603,6 +1603,24 @@ SoL framing (B), measured 2026-06-09:
   16x-duplicated B pulls into L2 hits; clue: the 2SM pair's phase-staggering already hides store
   latency, the same argument applies to its TMA fetch stream.
 
+- WIN (B59, moe_cuda expert-capacity right-sizing, the B56-named lever): docs/
+  gb300-moe-cuda-capacity-rightsizing.md. The static per-expert slot capacity was 2x max
+  observed load rounded to 64 (= 640 at the lab input) -> 60% of dense-dispatch GEMM rows were
+  padding; right-sized to observed-max-rounded (320, 20% padding), halving the M dim of both
+  expert GEMMs and the dispatch/GELU pointwise work. 0.31006 -> 0.23491 ms = 1.3199x median
+  (6 reps/arm interleaved, all verified, clean GPU snapshots). CORRECTNESS RAILS: capacity stays
+  STATIC (manual-graph contract intact, graph_breaks=0); an in-graph sticky overflow counter is
+  checked host-side in setup and post-reps -- any routed assignment beyond capacity FAILS the
+  run loudly (demonstrated: forced capacity=256 -> BENCHMARK FAILED with the guard message;
+  /tmp/frontM4/r04b_*); tokens are never silently dropped; semantics on non-overflowing inputs
+  unchanged (padded rows inert, same gather-back indices). Default ON post-validation (bare
+  396.7x vs baseline ~0.238ms; kill switch AISP_MOE_CUDA_CAPACITY_RIGHTSIZE=0 restores B56,
+  re-measured 313.3x ~0.301ms). moe_cuda lab lifetime: 8.29ms (pre-B45) -> 0.235ms = ~35x
+  (B45 16.5x -> B51 1.27x -> B56 1.31x -> B59 1.32x). Evidence /tmp/frontM4/. NEXT LEVER:
+  calibrated-capacity generalization (capacity follows the input distribution; a production
+  router would calibrate per deployment -- document as the lab's transferable pattern) and the
+  remaining 20% padding floor (rounding granularity 64; sub-64 rounding is cheap to test).
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

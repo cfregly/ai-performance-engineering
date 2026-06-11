@@ -60,6 +60,31 @@ _GELU_EPILOGUE_ENV = "AISP_MOE_CUDA_GELU_EPILOGUE"
 # loud error in setup().
 _GEMM1_ATEN_ENV = "AISP_MOE_CUDA_GEMM1_ATEN"
 
+# Front M4 (default ON; kill switch AISP_MOE_CUDA_CAPACITY_RIGHTSIZE=0
+# restores the B56 2x-padded capacity): calibrate the static
+# per-expert slot capacity to the OBSERVED max tokens/expert (rounded up to a
+# multiple of 64) instead of 2x that value. At the lab input (seed-42,
+# batch 4096 x top-2 = 8192 assignments over 32 experts, max load 309) the
+# incumbent capacity is 640 -> 20480 dense GEMM rows of which only 8192 are
+# live (60% padding); right-sized capacity is 320 -> 10240 rows (20% padding),
+# halving the M dim of both expert GEMMs and the GELU/dispatch pointwise work.
+# CORRECTNESS: capacity is a correctness parameter under static shapes (the
+# manual CUDA graph requires them). Right-sizing stays static — calibrated
+# once in setup() on the lab input — and arms a LOUD overflow guard: the
+# forward accumulates an in-graph overflow counter (sticky across replays)
+# that is checked host-side in setup() and again after the timed reps; any
+# routed assignment beyond capacity FAILS the run instead of being silently
+# dropped to the trash row. Semantics on a non-overflowing input are
+# unchanged: padded rows are inert in bmm/GELU, and live rows are gathered
+# back by the same slot indices.
+_CAPACITY_RIGHTSIZE_ENV = "AISP_MOE_CUDA_CAPACITY_RIGHTSIZE"
+
+# Test/tuning override: AISP_MOE_CUDA_CAPACITY=<int> forces an explicit static
+# capacity. The overflow guard is armed for any override, so a too-small
+# capacity fails loudly (used by the Front M4 evidence to demonstrate the
+# guard firing) — tokens are never silently dropped.
+_CAPACITY_OVERRIDE_ENV = "AISP_MOE_CUDA_CAPACITY"
+
 
 def _compile_enabled() -> bool:
     return os.environ.get(_COMPILE_ENV, "1").strip().lower() not in ("0", "false", "off")
@@ -77,6 +102,21 @@ def _gemm1_aten_enabled() -> bool:
         # GEMM1 Triton template that this rewrite removes.
         return not _gelu_epilogue_enabled()
     return raw.strip().lower() in ("1", "true", "on")
+
+
+def _capacity_rightsize_enabled() -> bool:
+    # Default ON (Front M4 win, 1.32x); =0 restores B56's 2x-padded capacity.
+    return os.environ.get(_CAPACITY_RIGHTSIZE_ENV, "1").strip().lower() in ("1", "true", "on")
+
+
+def _capacity_override() -> Optional[int]:
+    raw = os.environ.get(_CAPACITY_OVERRIDE_ENV)
+    if raw is None or not raw.strip():
+        return None
+    value = int(raw.strip())
+    if value < 1:
+        raise ValueError(f"{_CAPACITY_OVERRIDE_ENV} must be a positive integer, got {value}")
+    return value
 
 
 class VectorizedTopKMoE(nn.Module):
@@ -143,6 +183,17 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         # baddbmm. Only set this under torch.compile — eagerly the standalone
         # broadcast bias adds cost ~150us each; Inductor fuses them for free.
         self.use_bmm_bias_fuse: bool = False
+        # Front M4 (AISP_MOE_CUDA_CAPACITY_RIGHTSIZE): calibrate capacity to
+        # the observed max load (round-64) instead of 2x it; capacity_override
+        # forces an explicit value. Either one arms capacity_guard: the
+        # forward accumulates routed-beyond-capacity assignments into the
+        # in-graph overflow_total buffer (sticky across graph replays), which
+        # the benchmark checks host-side — overflow FAILS loudly, tokens are
+        # never silently dropped.
+        self.capacity_rightsize: bool = False
+        self.capacity_override: Optional[int] = None
+        self.capacity_guard: bool = False
+        self.register_buffer("overflow_total", torch.zeros((), dtype=torch.int64), persistent=False)
 
     @torch.no_grad()
     def calibrate_capacity(self, tokens: torch.Tensor) -> int:
@@ -151,14 +202,21 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         Must run eagerly (it is the ONLY host sync of the optimized path);
         call it once in ``setup()`` BEFORE graph capture. Capacity is 2x the
         observed max tokens/expert, rounded up to a multiple of 64, clamped to
-        the routed-token count.
+        the routed-token count. Front M4: with ``capacity_rightsize`` the 2x
+        overprovision is dropped (capacity = max load rounded up to 64) and
+        the loud overflow guard covers the (static) residual risk; a
+        ``capacity_override`` wins over both.
         """
+        if self.capacity_override is not None:
+            self.capacity = self.capacity_override
+            return self.capacity
         logits = self.router(tokens)
         _, expert_ids = torch.topk(logits, self.top_k, dim=-1)
         counts = torch.bincount(expert_ids.reshape(-1), minlength=self.num_experts)
         max_load = int(counts.max().item())
         total_assignments = tokens.shape[0] * self.top_k
-        capacity = min(((max_load * 2 + 63) // 64) * 64, total_assignments)
+        factor = 1 if self.capacity_rightsize else 2
+        capacity = min(((max_load * factor + 63) // 64) * 64, total_assignments)
         self.capacity = max(capacity, 64)
         return self.capacity
 
@@ -193,6 +251,13 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         valid = ranks < capacity
         slots = flat_expert_ids * capacity + ranks.clamp_max(capacity - 1)
         slots = torch.where(valid, slots, torch.full_like(slots, num_slots))
+
+        if self.capacity_guard:
+            # Front M4 AUDIT RULE: overflow must be LOUD, never a silent drop.
+            # Sticky in-graph counter (accumulates across graph replays);
+            # checked host-side in setup() and again after the timed reps —
+            # any assignment routed beyond capacity fails the run.
+            self.overflow_total.add_((~valid).sum())
 
         x_dense = flat_tokens.new_zeros(num_slots + 1, self.hidden_size)
         x_dense.index_copy_(0, slots, flat_tokens)
@@ -247,6 +312,8 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._compile_enabled: bool = False
         self._gelu_epilogue_enabled: bool = False
         self._gemm1_aten_enabled: bool = False
+        self._capacity_rightsize_enabled: bool = False
+        self._capacity: Optional[int] = None
         self._compile_seconds: Optional[float] = None
         self._dynamo_graph_breaks: Optional[int] = None
         self._dynamo_unique_graphs: Optional[int] = None
@@ -309,11 +376,19 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Calibrate the static per-expert slot capacity and warm up kernels
         # (cuBLAS workspaces, one-hot/cumsum) eagerly BEFORE graph capture:
         # the only host sync of the optimized path lives in calibrate_capacity().
-        model.calibrate_capacity(self.inputs)
+        # Front M4: right-sizing / explicit override arm the loud overflow
+        # guard (see GroupedTopKMoE); the incumbent default path is untouched.
+        self._capacity_rightsize_enabled = _capacity_rightsize_enabled()
+        capacity_override = _capacity_override()
+        model.capacity_rightsize = self._capacity_rightsize_enabled
+        model.capacity_override = capacity_override
+        model.capacity_guard = self._capacity_rightsize_enabled or capacity_override is not None
+        self._capacity = model.calibrate_capacity(self.inputs)
         with torch.no_grad():
             for _ in range(3):
                 model(self.inputs)
         torch.cuda.synchronize(self.device)
+        self._check_capacity_overflow("eager warmup")
 
         # torch.compile the static forward so Inductor fuses the GELU/dispatch
         # epilogues, then manually capture the COMPILED callable below.
@@ -451,6 +526,31 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     "AISP_MOE_CUDA_GEMM1_ATEN=1 but a Triton GEMM template "
                     f"kernel still runs per replay: {template_bmm}"
                 )
+            # Front M4: the warmups/capture/profile replays above all ran the
+            # in-graph overflow counter; a calibrated-too-small capacity fails
+            # HERE, before any timed rep.
+            self._check_capacity_overflow("compile warmup / graph capture / profile replays")
+
+    def _check_capacity_overflow(self, phase: str) -> None:
+        """Front M4 loud overflow guard (host side, untimed phases only).
+
+        Reads the sticky in-graph counter the forward accumulates whenever
+        capacity right-sizing / an explicit capacity override is active. Any
+        routed assignment beyond the static capacity is a correctness failure
+        (the trash row would silently drop it), so the run aborts.
+        """
+        model = self.model
+        if not isinstance(model, GroupedTopKMoE) or not model.capacity_guard:
+            return
+        torch.cuda.synchronize(self.device)
+        overflow = int(model.overflow_total.item())
+        if overflow != 0:
+            raise RuntimeError(
+                f"capacity overflow guard tripped during {phase}: {overflow} "
+                f"assignment-pass(es) routed beyond static capacity={model.capacity}; "
+                "refusing to silently drop tokens — raise "
+                f"{_CAPACITY_OVERRIDE_ENV} or unset {_CAPACITY_RIGHTSIZE_ENV}"
+            )
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.inputs is None:
@@ -472,6 +572,9 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self.output is None or self.model is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        # Front M4: every timed replay accumulated the in-graph overflow
+        # counter; check it before the output is allowed to verify.
+        self._check_capacity_overflow("timed replays")
         self._set_verification_payload(
             inputs={"input": self.inputs.detach()},
             output=self.output.detach().float().clone(),
@@ -515,7 +618,11 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "router_vectorized.compile_enabled": 1.0 if self._compile_enabled else 0.0,
             "router_vectorized.gelu_epilogue_enabled": 1.0 if self._gelu_epilogue_enabled else 0.0,
             "router_vectorized.gemm1_aten_enabled": 1.0 if self._gemm1_aten_enabled else 0.0,
+            # Front M4: prove which static capacity the dense dispatch used.
+            "router_vectorized.capacity_rightsize_enabled": 1.0 if self._capacity_rightsize_enabled else 0.0,
         }
+        if self._capacity is not None:
+            metrics["router_vectorized.capacity"] = float(self._capacity)
         if self._kernels_per_replay is not None:
             metrics["router_vectorized.kernels_per_replay"] = float(self._kernels_per_replay)
         if self._compile_seconds is not None:
