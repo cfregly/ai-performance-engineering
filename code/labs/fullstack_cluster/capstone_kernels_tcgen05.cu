@@ -66,7 +66,7 @@ struct ClusterTmemHelper; // unused: CTA-group kernels allocate locally
 // opt-in limit. Occupancy is unaffected: the TMEM allocator already grabs the
 // full 512-column capacity, pinning every variant to 1 CTA/SM regardless of
 // smem footprint.
-constexpr int kPipelineStages = 2;
+constexpr int kPipelineStages = 4;
 
 template <class MmaTag, int ClusterM, int Stages>
 struct TcgenVariantConfig {

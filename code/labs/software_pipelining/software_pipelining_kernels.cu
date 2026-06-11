@@ -205,7 +205,7 @@ __global__ void optimized_tile_pipeline_kernel(
 constexpr int kTmaStages = 2;
 constexpr int kTmaTileElems = 2048;  // floats per operand per stage
 constexpr int kTmaProducerThreads = kWarpSize;  // warp 0
-constexpr int kTmaVecPerConsumer = 2;  // float4 pairs per consumer thread per tile
+constexpr int kTmaVecPerConsumer = 1;  // float4 pairs per consumer thread per tile
 // 1 producer warp + consumers that exactly cover the tile (no ragged loop).
 constexpr int kTmaConsumerThreads = kTmaTileElems / 4 / kTmaVecPerConsumer;
 constexpr int kTmaBlockThreads = kTmaProducerThreads + kTmaConsumerThreads;

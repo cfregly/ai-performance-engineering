@@ -12,7 +12,12 @@ class OptimizedTilePipelineBenchmark(TilePipelineBenchmark):
             op_name="optimized_tile_pipeline",
             label="software_pipelining_optimized",
             pipeline_stage_count=2,
-            notes="Two-stage producer/consumer pipeline using block-scoped cuda::pipeline.",
+            notes=(
+                "Two-stage warp-specialized TMA (cp.async.bulk) tile pipeline on sm_90+: "
+                "producer warp issues bulk copies against tx-count mbarriers, consumer "
+                "warps compute with float4 vectors and release stages early. Falls back "
+                "to a block-scoped cuda::pipeline on sm_80."
+            ),
         )
 
 
