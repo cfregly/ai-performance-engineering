@@ -1,0 +1,60 @@
+# DRAFT — internal review pending
+# SASS evidence for tmem_load_atom_repro.cu (generated + verified 2026-06-11)
+# Environment: NVIDIA GB300 (sm_103), CUDA 13.2 (nvcc V13.2.78, ptxas 13.2),
+#   driver 580.159.03. Compiled against CUTLASS main headers; identical
+#   counts reproduced against CUTLASS 4.2.0 headers.
+# Build:
+#   nvcc -std=c++20 -arch=sm_103a -I$CUTLASS_DIR/include \
+#        -DT2R_ATOM=SM100_TMEM_LOAD_32dp32b1x  -o repro_1x  tmem_load_atom_repro.cu
+#   nvcc -std=c++20 -arch=sm_103a -I$CUTLASS_DIR/include \
+#        -DT2R_ATOM=SM100_TMEM_LOAD_32dp32b32x -o repro_32x tmem_load_atom_repro.cu
+#   cuobjdump -sass repro_1x > repro_1x.sass   (and likewise repro_32x)
+# Runtime sanity (same GPU, 2000 launches, CUDA events; epilogue-only kernel):
+#   atom=SM100_TMEM_LOAD_32dp32b1x   kernel time: 10.906 us/launch
+#   atom=SM100_TMEM_LOAD_32dp32b32x  kernel time:  5.861 us/launch
+
+## instruction counts (cuobjdump -sass | grep -c), kernel tmem_epilogue_kernel
+[repro_1x]
+  LDTM:            256
+  CALL.ABS.NOINC:  256
+  LEPC:            256
+  WARPSYNC:        259
+[repro_32x]
+  LDTM:            8
+  CALL.ABS.NOINC:  8
+  LEPC:            8
+  WARPSYNC:        11
+
+## repro_1x.sass: one of the 256 per-load helper-call sites (LEPC + CALL.ABS.NOINC + WARPSYNC wrapping each LDTM)
+        /*0400*/                   IMAD.U32 R6, RZ, RZ, UR6 ;
+        /*0410*/                   IMAD.U32 R7, RZ, RZ, UR7 ;
+        /*0420*/                   IMAD.U32 R10, RZ, RZ, UR8 ;
+        /*0430*/                   MOV R11, UR9 ;
+        /*0440*/                   LEPC R20, 0x460 ;
+        /*0450*/                   CALL.ABS.NOINC R2 ;
+        /*0460*/                   WARPSYNC.ALL ;
+        /*0470*/                   R2UR UR4, R22.reuse ;
+        /*0480*/                   VIADD R0, R22, 0x1 ;
+        /*0490*/                   SHF.R.U32.HI R0, RZ, 0x15, R0 ;
+        /*04a0*/                   LOP3.LUT P0, RZ, R0, 0x3, R23, 0x48, !PT ;
+        /*04b0*/                   LDTM R2, tmem[UR4] ;
+        /*04c0*/                   STL [R1+0x48], R2 ;
+        /*04d0*/              @!P0 BRA 0x5e0 ;
+        /*04e0*/                   MOV R0, 0x0 ;
+
+## repro_32x.sass: the same site at x32 width (8 total LDTM.x32 in the kernel)
+        /*0400*/                   IMAD.U32 R6, RZ, RZ, UR6 ;
+        /*0410*/                   IMAD.U32 R7, RZ, RZ, UR7 ;
+        /*0420*/                   IMAD.U32 R10, RZ, RZ, UR8 ;
+        /*0430*/                   MOV R11, UR9 ;
+        /*0440*/                   LEPC R20, 0x460 ;
+        /*0450*/                   CALL.ABS.NOINC R2 ;
+        /*0460*/                   WARPSYNC.ALL ;
+        /*0470*/                   R2UR UR4, R16.reuse ;
+        /*0480*/                   VIADD R0, R16, 0x20 ;
+        /*0490*/                   SHF.R.U32.HI R0, RZ, 0x15, R0 ;
+        /*04a0*/                   LOP3.LUT P0, RZ, R0, 0x3, R17, 0x48, !PT ;
+        /*04b0*/                   LDTM.x32 R20, tmem[UR4] ;
+        /*04c0*/                   STL.64 [R1], R20 ;
+        /*04d0*/                   STL.64 [R1+0x8], R22 ;
+        /*04e0*/                   STL.64 [R1+0x10], R24 ;

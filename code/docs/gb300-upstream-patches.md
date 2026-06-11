@@ -7,21 +7,34 @@ pod artifacts). In-repo fixes are already landed on main and are not listed.
 
 ## Tier 1 — ready to file (evidence complete, reproducer exists)
 
-### 1. PyTorch Inductor: extern-kernel autotune mis-measures broadcast-bias `baddbmm`
-- **Repo:** pytorch/pytorch (Inductor autotuning)
-- **Finding (B56 evidence, /tmp/frontM3 on pod):** Inductor's extern-kernel
-  autotune benchmarks ATEN `baddbmm` with a broadcast-bias stride `[2048,0,1]`
-  benchmark artifact at 0.1403 ms when the real nvjet kernel runs 66 us — so a
-  slower Triton template wins the autotune. ~40% perf left on the table at
-  these shapes (32x640x512x2048 BF16 class).
-- **Patch shape:** fix the extern benchmark's stride handling for broadcast
-  bias (or benchmark the actual decomposed bmm+pointwise path).
-- **Companion enhancement:** Inductor never considers the
-  `bmm + pointwise-bias` decomposition for broadcast-bias `baddbmm`; B56
-  measured the decomposition 1.31x faster end-to-end (routes to beta-zero
-  nvjet). Could ship as a decomposition rule or autotune candidate.
+### 1. PyTorch Inductor: no `bmm + pointwise-bias` decomposition choice for broadcast-bias `baddbmm`
+- **Status (2026-06-11, Front P): reproducer verified / draft ready.**
+  `code/upstream/inductor-baddbmm-decomposition/{repro.py,ISSUE_DRAFT.md,README.md}`.
+  repro.py ran on the pod (GPU 3, flock, foreign-proc clean): exit 0, all
+  assertions passed — eager 138.0 vs 60.3 us (== banked), template choice
+  reproduced (`triton_tem_fused_baddbmm` vs `nvjet_*_bz` extern), decomposition
+  1.451x with the GELU consumer (banked pair: 172.8 -> 115.9 us). Standalone
+  (no consumer) the decomposition is honestly 0.90-1.0x — the filing frames it
+  as an AUTOTUNE-LEVEL choice, not an unconditional rewrite.
+- **Repo:** pytorch/pytorch (Inductor decompositions / GEMM autotune)
+- **Finding (B56 evidence — CORRECTED from the B54-era framing):** the
+  0.140 ms extern-baddbmm autotune number is HONEST (`at::baddbmm_out`
+  materializes the broadcast bias via a 74.6 us `direct_copy` before a beta=1
+  GEMM); the Triton template correctly wins for the op as written. The bug to
+  file is the MISSING `bmm + pointwise-bias` decomposition candidate: 1.31x
+  end-to-end at MoE shapes (32x640x1024x2048 BF16), bias add fuses for free.
+- **To file:** see README — paste ISSUE_DRAFT.md into a pytorch/pytorch issue
+  (`module: inductor`, `topic: performance`), attach repro.py inline; optional
+  follow-up PR branch `inductor-baddbmm-broadcast-bias-decomp`.
 
 ### 2. CUTLASS: tcgen05 tutorial/example uses the pathological narrow TMEM_LOAD atom
+- **Status (2026-06-11, Front P): reproducer verified / draft ready.**
+  `code/upstream/cutlass-tmem-load-atom/{tmem_load_atom_repro.cu,sass_evidence.txt,PR_DRAFT.md,README.md}`.
+  Minimal standalone .cu (TMEM alloc + t2r + store only, no torch) compiled on
+  the pod against BOTH CUTLASS 4.2.0 and main (4.5.2) headers: SASS shows the
+  per-load LEPC + CALL.ABS.NOINC + WARPSYNC wrap — 256 vs 8 helper calls
+  (1x vs 32x atom); runtime 10.91 vs 5.86 us/launch on GPU 3. All five
+  Blackwell cute tutorials still demonstrate the 1x atom on current main.
 - **Repo:** NVIDIA/cutlass (examples + cute tutorials for sm100/sm103)
 - **Finding (B55, docs/gb300-capstone-f-decomposition.md):**
   `SM100_TMEM_LOAD_32dp32b1x` lowers (ptxas, CUDA 13.2) to a per-load
@@ -30,12 +43,19 @@ pod artifacts). In-repo fixes are already landed on main and are not listed.
   kernel). Swapping to `32dp32b32x` is a one-line 1.49x kernel win; 128x
   REGRESSES (serialized writeback). Tutorials that demonstrate the 1x atom
   teach a 1.5x perf bug.
-- **Patch shape:** docs/example update recommending wide atoms (32x sweet
-  spot measured) + a note on the helper-call lowering. Optionally a ptxas
-  issue (via NVIDIA bug tracker) asking whether the helper-call lowering of
-  narrow tcgen05.ld is intended.
+- **To file:** see README — fork NVIDIA/cutlass, branch
+  `docs/blackwell-tutorial-tmem-load-atom-width`, paste PR_DRAFT.md; optional
+  separate ptxas question to the NVIDIA bug tracker (text at the bottom of
+  PR_DRAFT.md).
 
 ### 3. CUTLASS: 2x1SM MMA atom operand-split semantics undocumented/stale prints
+- **Status (2026-06-11, Front P): reproducer verified / draft ready.**
+  `code/upstream/cutlass-2x1sm-docs/{snippet.cu,PR_DRAFT.md,README.md}`.
+  Host-only print check (no GPU) compiled+run on the pod against BOTH CUTLASS
+  4.2.0 and main (4.5.2): `partition_shape_B` actually returns
+  `((_128,_16),_1,_4)` (N/2, 16 KiB B/stage — matching the banked B49 ncu
+  footprints) where tutorial 04's annotations claim `((_256,_16),_1,_4)`.
+  Deadlock claims cite banked B53/B57 evidence only (not re-run).
 - **Repo:** NVIDIA/cutlass
 - **Finding (B49/B57, docs/gb300-gemm-occupancy-rewrite.md):** the
   `SM100_MMA_F16BF16_2x1SM_SS` atom SPLITS B N/2-per-CTA across the pair
@@ -44,8 +64,10 @@ pod artifacts). In-repo fixes are already landed on main and are not listed.
   multicast slice is an OFFSET VIEW — expect-tx bytes must be the full
   delivered slice with NO participant multiplier; getting this wrong is a
   deterministic mbarrier deadlock (two independent fronts hit it: B53, B57).
-- **Patch shape:** docs clarification + tutorial print fix + a comment in
-  tutorial-04 on the expect-tx formula.
+- **To file:** see README — fork NVIDIA/cutlass, branch
+  `docs/blackwell-tutorial04-2sm-b-split-expect-tx`, make the mechanical
+  annotation edits from the PR_DRAFT table, paste PR_DRAFT.md, attach
+  snippet.cu.
 
 ## Tier 2 — reportable findings (needs a minimal standalone reproducer first)
 
@@ -84,6 +106,14 @@ pod artifacts). In-repo fixes are already landed on main and are not listed.
 ## Process note
 Each Tier-1 item should ship with: the minimal .cu/.py reproducer (extracted
 from the lab, no repo dependencies), measured numbers from this campaign
-(GB300, CUDA 13.2, torch 2.12 NGC 26.05, CUTLASS 4.3.0), and a link-free
-description (internal pod paths stripped). File from a personal fork; CC the
-relevant CODEOWNERS.
+(GB300 sm_103, driver 580.159.03, CUDA 13.2, torch 2.12.0a0 NGC 26.05,
+CUTLASS 4.2.0 — the version previously listed here as 4.3.0 was wrong; the
+lab builds against `third_party/cutlass` whose version.h says 4.2.0, and the
+CUTLASS findings were additionally reproduced against main/4.5.2), and a
+link-free description (internal pod paths stripped). File from a personal
+fork; CC the relevant CODEOWNERS.
+
+Tier-1 filing packages live under `code/upstream/` (Front P, 2026-06-11):
+every file is marked "DRAFT — internal review pending"; nothing has been
+posted externally. Pod verification artifacts: `/tmp/frontP/` (repro
+stdout/stderr, SASS dumps, ALL_DONE).
