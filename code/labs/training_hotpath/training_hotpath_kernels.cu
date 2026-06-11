@@ -1,6 +1,7 @@
 // CUDA kernels for the training-hotpath lab.
 
 #include <torch/extension.h>
+#include <c10/cuda/CUDAStream.h>
 #include <cuda_runtime.h>
 
 #include <algorithm>
@@ -165,7 +166,7 @@ torch::Tensor segment_abs_mean(torch::Tensor flat, torch::Tensor offsets) {
 
   constexpr int threads = 256;
   dim3 grid(static_cast<unsigned int>(num_segments), static_cast<unsigned int>(chunks));
-  segment_abs_mean_kernel<<<grid, threads>>>(
+  segment_abs_mean_kernel<<<grid, threads, 0, c10::cuda::getCurrentCUDAStream()>>>(
       flat_contig.data_ptr<float>(),
       offsets_contig.data_ptr<int64_t>(),
       out.data_ptr<float>(),
@@ -207,7 +208,7 @@ torch::Tensor metric_reduction_fused(torch::Tensor preds, torch::Tensor targets)
   blocks = std::max<int64_t>(1, blocks);
 
   constexpr int threads = 256;
-  metric_reduction_fused_kernel<<<static_cast<unsigned int>(blocks), threads>>>(
+  metric_reduction_fused_kernel<<<static_cast<unsigned int>(blocks), threads, 0, c10::cuda::getCurrentCUDAStream()>>>(
       preds_contig.data_ptr<float>(),
       targets_contig.data_ptr<float>(),
       out.data_ptr<float>(),
@@ -234,7 +235,7 @@ torch::Tensor pack_rows(torch::Tensor input, torch::Tensor row_indices) {
   constexpr int threads = 256;
   int64_t total = num_rows * num_cols;
   int blocks = static_cast<int>((total + threads - 1) / threads);
-  pack_rows_kernel<<<blocks, threads>>>(
+  pack_rows_kernel<<<blocks, threads, 0, c10::cuda::getCurrentCUDAStream()>>>(
       input_contig.data_ptr<float>(),
       rows_contig.data_ptr<int64_t>(),
       output.data_ptr<float>(),
@@ -261,7 +262,7 @@ torch::Tensor scatter_rows(torch::Tensor packed, torch::Tensor row_indices, int6
   constexpr int threads = 256;
   int64_t total = num_rows * num_cols;
   int blocks = static_cast<int>((total + threads - 1) / threads);
-  scatter_rows_kernel<<<blocks, threads>>>(
+  scatter_rows_kernel<<<blocks, threads, 0, c10::cuda::getCurrentCUDAStream()>>>(
       packed_contig.data_ptr<float>(),
       rows_contig.data_ptr<int64_t>(),
       output.data_ptr<float>(),

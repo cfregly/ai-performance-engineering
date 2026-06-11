@@ -5433,9 +5433,202 @@ class BenchmarkHarness:
                 for warning in mem_warnings:
                     import warnings as warn_module
                     warn_module.warn(f"MEMORY TRACKING WARNING: {warning}", RuntimeWarning)
-        
+
+        # ===== OPT-IN GRAPHED TIMING SUPPLEMENT (env: AISP_BENCH_TIMING_MODE) =====
+        # Reports a pure-GPU per-iteration figure ALONGSIDE the default frame-mode
+        # numbers. times_ms (the comparable, banked metric) is never replaced; the
+        # supplement runs only after every default-path protection above has
+        # completed. With the env var unset this block is a no-op and the default
+        # timing path is bit-for-bit identical.
+        timing_mode_env = os.environ.get("AISP_BENCH_TIMING_MODE", "").strip().lower()
+        if timing_mode_env and timing_mode_env != "default":
+            if timing_mode_env != "graphed":
+                raise RuntimeError(
+                    f"Unknown AISP_BENCH_TIMING_MODE='{timing_mode_env}'. "
+                    "Expected 'graphed' (or unset/'default')."
+                )
+            if not is_cuda:
+                raise RuntimeError(
+                    "AISP_BENCH_TIMING_MODE=graphed requires a CUDA device."
+                )
+            graphed_metrics = self._graphed_timing_supplement(fn, config, times_ms)
+            if benchmark_obj is not None:
+                setattr(benchmark_obj, "_aisp_graphed_timing_metrics", graphed_metrics)
+
         return times_ms, inference_timing_data
-    
+
+    def _graphed_timing_supplement(
+        self,
+        fn: Callable,
+        config: BenchmarkConfig,
+        frame_times_ms: List[float],
+    ) -> Dict[str, float]:
+        """Opt-in (AISP_BENCH_TIMING_MODE=graphed) pure-GPU timing supplement.
+
+        Captures ``capture_iters`` calls of ``benchmark_fn`` into ONE CUDA graph
+        and times whole-graph replays with a single event bracket, dividing by
+        the iteration count. This removes the per-iteration timing frame
+        (drained-queue launch exposure, event-bracket floor, Python dispatch)
+        from the measurement, yielding the pure-GPU per-iteration figure.
+
+        Contract:
+        - NEVER replaces the default frame-mode ``times_ms``; the default path
+          (including all validity protections and verification hooks) has
+          already completed by the time this runs. Both numbers are reported.
+        - REFUSES LOUDLY if benchmark_fn cannot be graph-captured (dynamic
+          shapes, host-side work, CPU-GPU syncs in the hot path). There is no
+          silent eager fallback by design (B45 audit rule).
+        """
+        capture_iters = max(1, int(os.environ.get("AISP_BENCH_GRAPHED_CAPTURE_ITERS", "50")))
+        replays = max(3, int(os.environ.get("AISP_BENCH_GRAPHED_REPLAYS", "30")))
+
+        # Cold-L2 comparability: the default frame clears L2 before every timed
+        # iteration. The warm graphed figure has no clears (iterations run
+        # back-to-back), so for working sets that fit in L2 it measures
+        # L2-resident performance. We therefore also build an interleaved
+        # (clear+fn) graph plus a clears-only graph and report the difference
+        # as the cold-L2 pure-GPU figure -- that is the number comparable to
+        # the harness's cold-L2 timing contract.
+        l2_buffer = None
+        if getattr(config, "clear_l2_cache", False):
+            from core.harness.l2_cache_utils import create_l2_flush_buffer
+            l2_buffer = create_l2_flush_buffer(self.device)
+
+        try:
+            capture_stream = torch.cuda.Stream(device=self.device)
+            capture_stream.wait_stream(torch.cuda.current_stream(self.device))
+            with torch.cuda.stream(capture_stream):
+                for _ in range(3):
+                    fn()
+            torch.cuda.synchronize(self.device)
+            graph_warm = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph_warm, stream=capture_stream):
+                for _ in range(capture_iters):
+                    fn()
+            torch.cuda.synchronize(self.device)
+            graph_cold = None
+            graph_clears = None
+            if l2_buffer is not None:
+                graph_cold = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(graph_cold, stream=capture_stream):
+                    for _ in range(capture_iters):
+                        l2_buffer.zero_()
+                        fn()
+                torch.cuda.synchronize(self.device)
+                graph_clears = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(graph_clears, stream=capture_stream):
+                    for _ in range(capture_iters):
+                        l2_buffer.zero_()
+                torch.cuda.synchronize(self.device)
+        except Exception as exc:
+            raise RuntimeError(
+                "AISP_BENCH_TIMING_MODE=graphed: CUDA graph capture of benchmark_fn FAILED -- "
+                "this benchmark cannot be measured in graphed mode (dynamic shapes, host-side "
+                "work, or CPU-GPU syncs in the hot path). No eager fallback by design; unset "
+                f"AISP_BENCH_TIMING_MODE to use the default frame-mode timing. Cause: {exc!r}"
+            ) from exc
+
+        # Capture-fidelity audit (B45 rule, hardened): a kernel launched on the
+        # legacy default stream inside benchmark_fn is silently DROPPED from a
+        # side-stream capture (measured on labs/training_hotpath: the fused
+        # reduction kernel vanished; replay timed only the fill kernel). Compare
+        # per-iteration kernel-launch counts between one eager call and one
+        # graph replay; refuse loudly on mismatch instead of reporting a number
+        # that times a subset of the workload.
+        def _kernel_signature(run_once: Callable[[], Any]) -> Tuple[int, float]:
+            from torch.profiler import ProfilerActivity
+            from torch.profiler import profile as torch_profile
+            torch.cuda.synchronize(self.device)
+            with torch_profile(activities=[ProfilerActivity.CUDA]) as prof:
+                run_once()
+                torch.cuda.synchronize(self.device)
+            count = 0
+            total_us = 0.0
+            for evt in prof.key_averages():
+                device_time = float(getattr(evt, "self_device_time_total", 0.0) or 0.0)
+                if device_time > 0.0:
+                    count += int(evt.count)
+                    total_us += device_time
+            return count, total_us / 1000.0
+
+        eager_kernel_count, eager_kernel_ms = _kernel_signature(fn)
+        replay_kernel_count, _ = _kernel_signature(graph_warm.replay)
+        if eager_kernel_count <= 0:
+            raise RuntimeError(
+                "AISP_BENCH_TIMING_MODE=graphed: benchmark_fn launches no CUDA kernels; "
+                "graphed timing is meaningless for this benchmark. No fallback by design."
+            )
+        if replay_kernel_count != eager_kernel_count * capture_iters:
+            raise RuntimeError(
+                "AISP_BENCH_TIMING_MODE=graphed: CAPTURE-FIDELITY VIOLATION -- one eager "
+                f"benchmark_fn() launches {eager_kernel_count} kernel(s), but the captured "
+                f"{capture_iters}-iteration graph replays {replay_kernel_count} "
+                f"(expected {eager_kernel_count * capture_iters}). Kernels were dropped or "
+                "duplicated during capture (typical cause: a raw <<<...>>> launch on the "
+                "legacy default stream instead of at::cuda::getCurrentCUDAStream(), which a "
+                "side-stream capture silently skips). Refusing to report a graphed number "
+                "that does not time the full workload; no eager fallback by design."
+            )
+
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+
+        def _time_graph_per_iter(graph: "torch.cuda.CUDAGraph") -> List[float]:
+            samples: List[float] = []
+            for _ in range(replays):
+                torch.cuda.synchronize(self.device)
+                start_event.record()
+                graph.replay()
+                end_event.record()
+                torch.cuda.synchronize(self.device)
+                samples.append(start_event.elapsed_time(end_event) / capture_iters)
+            return samples
+
+        warm_per_iter_ms = _time_graph_per_iter(graph_warm)
+        warm_median = statistics.median(warm_per_iter_ms)
+        cold_median: Optional[float] = None
+        if graph_cold is not None and graph_clears is not None:
+            cold_per_iter_ms = _time_graph_per_iter(graph_cold)
+            clears_per_iter_ms = _time_graph_per_iter(graph_clears)
+            cold_median = statistics.median(cold_per_iter_ms) - statistics.median(clears_per_iter_ms)
+
+        # Restore benchmark state with one eager call on the default stream so
+        # tensors the benchmark exposes for verification reference ordinary
+        # allocator memory, NOT the graphs' private pools (those are freed when
+        # the graph objects die, which would corrupt the verification payload).
+        fn()
+        torch.cuda.synchronize(self.device)
+
+        frame_median = statistics.median(frame_times_ms) if frame_times_ms else float("nan")
+        graphed_median = cold_median if cold_median is not None else warm_median
+        metrics = {
+            "graphed_iter_ms_median": graphed_median,
+            "graphed_warm_iter_ms_median": warm_median,
+            "graphed_warm_iter_ms_min": min(warm_per_iter_ms),
+            "graphed_capture_iters": float(capture_iters),
+            "graphed_replays": float(replays),
+            "graphed_eager_kernel_count": float(eager_kernel_count),
+            "graphed_eager_kernel_ms": eager_kernel_ms,
+            "frame_iter_ms_median": frame_median,
+            "frame_overhead_ms_median": frame_median - graphed_median,
+        }
+        if cold_median is not None:
+            metrics["graphed_cold_iter_ms_median"] = cold_median
+        message = (
+            "AISP_BENCH_TIMING_MODE=graphed supplement: "
+            f"frame-mode median {frame_median * 1000:.2f} us/iter vs "
+            f"graphed pure-GPU median {graphed_median * 1000:.2f} us/iter "
+            f"({'cold-L2' if cold_median is not None else 'warm-L2'}; "
+            f"warm-L2 {warm_median * 1000:.2f} us/iter; "
+            f"frame overhead {(frame_median - graphed_median) * 1000:.2f} us/iter; "
+            f"{capture_iters} iters/graph x {replays} replays). "
+            "Frame-mode numbers remain the comparable metric."
+        )
+        print(f"[harness] {message}", flush=True)
+        if LOGGER_AVAILABLE:
+            logger.info(message)
+        return metrics
+
     def _warmup(self, fn: Callable, warmup_iterations: int, config: Optional[BenchmarkConfig] = None) -> None:
         """Perform warmup iterations.
         
@@ -5658,23 +5851,29 @@ class BenchmarkHarness:
 
     def _resolve_custom_metrics(self, benchmark: BaseBenchmark) -> Optional[Dict[str, float]]:
         """Resolve benchmark-specific custom metrics if provided."""
+        numeric_metrics: Dict[str, float] = {}
         getter = getattr(benchmark, "get_custom_metrics", None)
         if callable(getter):
             try:
                 metrics = getter()
                 if isinstance(metrics, dict) and metrics:
-                    numeric_metrics: Dict[str, float] = {}
                     for key, value in metrics.items():
                         if isinstance(value, bool):
                             numeric_metrics[key] = float(value)
                         elif isinstance(value, (int, float)):
                             numeric_metrics[key] = float(value)
-                    if numeric_metrics:
-                        return numeric_metrics
             except Exception as exc:  # pragma: no cover - defensive
                 if LOGGER_AVAILABLE:
                     logger.debug(f"get_custom_metrics() raised: {exc}")
-        return None
+        # Opt-in graphed timing supplement metrics (AISP_BENCH_TIMING_MODE=graphed).
+        # The attribute exists only when the supplement ran; the default path is
+        # unaffected when the env var is unset.
+        graphed_metrics = getattr(benchmark, "_aisp_graphed_timing_metrics", None)
+        if isinstance(graphed_metrics, dict):
+            for key, value in graphed_metrics.items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    numeric_metrics.setdefault(str(key), float(value))
+        return numeric_metrics or None
 
     def _resolve_story_metadata(self, benchmark: BaseBenchmark) -> Optional[Dict[str, Any]]:
         """Resolve benchmark story metadata if provided."""

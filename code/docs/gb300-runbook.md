@@ -1667,6 +1667,28 @@ SoL framing (B), measured 2026-06-09:
   ~87% real SoL; only residual the ~0.3-0.5us epilogue TMA store. Structural unlocks beyond are
   CONTRACT-level (sanctioned non-bit-identical split-K, larger shapes).
 
+- INFRASTRUCTURE WIN + B45-CLASS INSTANCE #2 (B62, harness frame-overhead audit + opt-in graphed
+  timing): docs/gb300-harness-frame-audit.md. MEASURED FRAME MODEL (validated ~5% on 3 arms):
+  T_reported ~= 22us bracket floor + 3.2us/extra-launch + fn host residual + T_pureGPU; wall adds
+  ~53-61us/iter outside the bracket (L2 zero_+sync 35, post-sync 5, bookkeeping 13-20, +20
+  force-eval on tensor returns). Frame-share ranking of optimized arms: nvfp4_dual_gemm 86%,
+  blackwell_matmul 84%, metric_reduction 79%, software_pipelining 51%, block_scaling 44%,
+  moe_cuda ~15% -- the microsecond labs are now measuring the ruler. OPT-IN
+  AISP_BENCH_TIMING_MODE=graphed (default path untouched; regression-proven: metric_reduction
+  0.0567ms in the B50 band, blackwell 0.109ms, shared-.cu sibling re-run clean, zero graphed_*
+  keys leak when unset): graph-captures N iters of benchmark_fn, reports BOTH figures;
+  demonstrated metric_reduction 56.7 -> 9.04us warm (reproduces B50's 8.16us pure-GPU) and
+  blackwell_matmul 105.2 -> 15.04us warm (reproduces B58's 15.2us kernel); block_scaling REFUSES
+  LOUDLY (internal-graph replay, uncapturable -- the B45 contract enforced, no silent fallback).
+  NEW B45-CLASS FINDING (#2): metric_reduction's fused kernel launched on the LEGACY DEFAULT
+  STREAM was SILENTLY DROPPED from capture (first graphed run timed 1.2us = fill kernel only;
+  profiler-of-replay proof); fixed via getCurrentCUDAStream() (4 sites,
+  training_hotpath_kernels.cu) and guarded harness-side by a kernel-count CAPTURE-FIDELITY AUDIT
+  that refuses on mismatch. Durable lesson: any <<<>>> launch without an explicit current-stream
+  argument is invisible to capture-based timing AND to manual-graph workloads -- audit the class
+  repo-wide. Evidence /tmp/frontH2/ (91 tuples + h2_audit.json). NEXT LEVER: repo-wide
+  legacy-stream launch audit; then dual-figure banking for the 4 frame-bound labs.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
