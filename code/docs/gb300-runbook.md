@@ -1941,6 +1941,31 @@ SoL framing (B), measured 2026-06-09:
   double-buffered 2x128-col TMEM views inside the 256-col/CTA budget (the eo=2 structure at
   eo=0's occupancy; an mbarrier rewrite, not a config) -- reclaiming the epilogue exposure frees
   co-residency's concurrency for depth.
+- ENGINE-BEST WALL DOCUMENTED (B74, block_scaling tile_k lever CLOSED with four refutations,
+  resolves Front H/H2): the 20.5%-NVFP4-SoL diagnosis chain ends at a documented shape wall, not
+  a win. Front H's static map (tile_k 768->384/256 re-tile) was REFUTED structurally before
+  measurement: 768 is the LCM of the ISA-fixed MMA-K (96 elem) and the K_SW128 buffer width (256
+  elem) -- 8 MMAs consume exactly 3 buffers per k-tile; 384 needs K_SW64 + a rewritten 4-MMA
+  mainloop, 256 is impossible at any swizzle (96 does not divide 256). Front H's "only ~2 AB
+  stages" claim was ALSO wrong: debug-stages shows ab=8 sf=6. What IS structurally possible (a
+  Front H2 successor implemented it, then died unmeasured -- found via the orphaned-edit check):
+  a peeled short-TAIL k-tile (env-gated) that stops the K=1024 tail from multiplying pure TMA
+  zero-fill in 5 of its 8 MMAs (K-coverage 1536 vs 1024). MEASURED: activation debug-confirmed
+  (short_tail=True, const_expr-branched codegen), 50-iter A/B 43.887us (incumbent) vs 43.955us
+  (short-tail) = 0.998x PARITY, numerics exact (max_abs_err 0.0 both arms) -- the tail's
+  zero-fill MMAs were already fully latency-hidden behind the 58% long-scoreboard stalls;
+  removing ~31% of MMA issue work moves nothing in a load-starved pipeline (the B73 deep-ring
+  lesson again: hiding already-hidden latency is worth zero). Engine swap ALSO refuted: nvjet
+  NVFP4 _scaled_mm at the exact shape (8192x8192x1024, sf_vec 16) is 73.7us / 1866 TFLOP/s =
+  0.596x of the lab kernel -- the CUTLASS blockscaled kernel (43.9us / 3132 TFLOP/s, within
+  0.12% of the vendor reference) is ALREADY the best engine at this shallow-K shape, 1.68x over
+  cuBLASLt's path. Split-K stays math-refuted (>=256MB partial-accumulator traffic vs the ~96MB
+  floor). VERDICT: ~21% NVFP4-SoL at K=1024 is the engine-best wall for this kernel family --
+  only 2 forced k-tiles exist, so load latency cannot amortize regardless of MMA savings.
+  Evidence tuples in the front-BS bundle on the dev pod. NEXT LEVER (low-EV, large): the K_SW64
+  swizzle + 4-MMA mainloop rewrite (the only structural opening, same effort class as B68's
+  contract-level residuals); secondary audit: whether the persistent scheduler overlaps tile
+  N+1's loads with tile N's epilogue (if not, cross-tile prefetch is a cheaper opening).
 
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
