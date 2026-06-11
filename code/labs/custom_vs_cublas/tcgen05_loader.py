@@ -245,11 +245,15 @@ def matmul_tcgen05_warp_parallel(a: torch.Tensor, b: torch.Tensor) -> torch.Tens
 # =============================================================================
 
 @lru_cache(maxsize=None)
-def _load_tcgen05_dual_cta_module(tile_n: int, stages: int):
-    extra = (f"-DDUAL_TILE_N={tile_n}", f"-DDUAL_STAGES={stages}")
+def _load_tcgen05_dual_cta_module(tile_n: int, stages: int, cluster_m: int = 1):
+    extra = (
+        f"-DDUAL_TILE_N={tile_n}",
+        f"-DDUAL_STAGES={stages}",
+        f"-DDUAL_CLUSTER_M={cluster_m}",
+    )
     return _load_kernel(
         _LAB_DIR / "tcgen05_dual_cta.cu",
-        f"lab_tcgen05_dual_cta_n{tile_n}s{stages}",
+        f"lab_tcgen05_dual_cta_n{tile_n}s{stages}c{cluster_m}",
         extra_cuda_flags=extra,
     )
 
@@ -260,6 +264,9 @@ def load_tcgen05_dual_cta_module():
     Tunables (env, read at first load):
       AISP_DUAL_TILE_N: MMA tile N (default 256; 256-col fp32 acc in TMEM)
       AISP_DUAL_STAGES: smem pipeline stages (default 2; ~96KB/CTA)
+      AISP_DUAL_CLUSTER_M: 1 (default, plain launch) or 2/4 = (M,1,1)
+        cluster + TMA multicast of B across the cluster (E3 lever vs the
+        long_scoreboard TMA-latency stall; B L2->SM traffic / cluster_m)
     Defaults are the measured-best config from the GB300 sweep (2026-06-10,
     GPU 2): (256,2) = 838-915us vs (128,3) = 1050-1109us; see
     docs/gb300-gemm-occupancy-rewrite.md. Both CTAs/SM fit because TMEM
@@ -268,7 +275,8 @@ def load_tcgen05_dual_cta_module():
     """
     tile_n = int(os.environ.get("AISP_DUAL_TILE_N", "256"))
     stages = int(os.environ.get("AISP_DUAL_STAGES", "2"))
-    return _load_tcgen05_dual_cta_module(tile_n, stages)
+    cluster_m = int(os.environ.get("AISP_DUAL_CLUSTER_M", "1"))
+    return _load_tcgen05_dual_cta_module(tile_n, stages, cluster_m)
 
 
 def matmul_tcgen05_dual_cta(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:

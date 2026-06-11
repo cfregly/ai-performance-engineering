@@ -29,6 +29,18 @@
  * Tunables (compile-time, see tcgen05_loader.py):
  *   -DDUAL_TILE_N=128|256   (256 requires DUAL_STAGES=2 to keep 2 CTAs/SM)
  *   -DDUAL_STAGES=2|3|4
+ *   -DDUAL_CLUSTER_M=1|2|4  (E3 lever: >1 launches a (DUAL_CLUSTER_M,1,1)
+ *     cluster of vertically-adjacent M-tiles sharing the same B k-tiles and
+ *     TMA-MULTICASTS B: each CTA issues 1/DUAL_CLUSTER_M of the B tile and
+ *     the hardware delivers every slice into ALL cluster CTAs' smem. B-side
+ *     L2->SM traffic divides by DUAL_CLUSTER_M, attacking the dominant
+ *     long_scoreboard stall (28.5/38.9 warp-cycles/instr at (256,2) plain).
+ *     Each CTA's full_barrier still receives the full A+B byte count per
+ *     stage (own A + own B-slice + peer B-slices), so expect_tx math is
+ *     unchanged. Stage-drain agreement becomes cluster-wide: tcgen05.commit
+ *     is multicast to every cluster CTA's empty barrier (init count
+ *     DUAL_CLUSTER_M), because a producer's B-multicast overwrites the
+ *     PEER's stage too, not just its own.)
  */
 
 #include <ATen/cuda/CUDAContext.h>
@@ -52,6 +64,15 @@
 #ifndef DUAL_STAGES
 #define DUAL_STAGES 3
 #endif
+#ifndef DUAL_CLUSTER_M
+#define DUAL_CLUSTER_M 1
+#endif
+
+#if DUAL_CLUSTER_M > 1
+#define DUAL_CLUSTER_ATTR __cluster_dims__(DUAL_CLUSTER_M, 1, 1)
+#else
+#define DUAL_CLUSTER_ATTR
+#endif
 
 using namespace cute;
 
@@ -68,6 +89,8 @@ constexpr int kTileN = DUAL_TILE_N;
 constexpr int kStages = DUAL_STAGES;
 
 static_assert(kStages >= 2 && kStages <= 4, "DUAL_STAGES must be 2..4");
+static_assert(DUAL_CLUSTER_M == 1 || DUAL_CLUSTER_M == 2 || DUAL_CLUSTER_M == 4,
+              "DUAL_CLUSTER_M must be 1, 2, or 4 (power-of-2 TMA multicast width)");
 static_assert(kTileN >= 32 && (kTileN & (kTileN - 1)) == 0 && kTileN <= 256,
               "DUAL_TILE_N must be a power of two in [32, 256] (TMEM alloc granularity)");
 
@@ -101,7 +124,7 @@ template <class SharedStorageT,
           class ATensor, class BTensor, class CTensor, class DTensor,
           class MmaTiler_MNK, class TiledMMA,
           class TmaAtomA, class TmaAtomB>
-__global__ void __launch_bounds__(128, 2)
+__global__ void DUAL_CLUSTER_ATTR __launch_bounds__(128, 2)
 gemm_dual_cta(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
               MmaTiler_MNK mma_tiler, TiledMMA tiled_mma,
               int grid_m, int grid_n,
@@ -147,12 +170,19 @@ gemm_dual_cta(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   if (elect_one_warp && elect_one_thr) {
     for (int s = 0; s < kStages; ++s) {
       cute::initialize_barrier(storage.full_barrier[s], 1);
-      cute::initialize_barrier(storage.empty_barrier[s], 1);
+      // Stage drain is cluster-wide under B-multicast: one tcgen05.commit
+      // arrival per cluster CTA (DUAL_CLUSTER_M=1 -> plain single arrival).
+      cute::initialize_barrier(storage.empty_barrier[s], DUAL_CLUSTER_M);
     }
     cute::initialize_barrier(storage.mma_barrier, 1);
   }
   cutlass::arch::fence_barrier_init();
   __syncthreads();
+#if DUAL_CLUSTER_M > 1
+  // Every cluster CTA must observe our barrier init before its TMA multicast
+  // (data + transaction bytes) or commit multicast can target our smem.
+  cute::cluster_sync();
+#endif
 
   uint32_t tmem_base = storage.tmem_base_ptr;
 
@@ -170,20 +200,54 @@ gemm_dual_cta(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   // gmem-side TMA partitions are stage-independent; smem-side tensors for
   // stage s differ from stage 0 only by base pointer (identical layout).
   Tensor tCsA_0 = storage.tensor_sA(0);
-  Tensor tCsB_0 = storage.tensor_sB(0);
   auto [tAgA, tAsA_0] = tma_partition(tma_atom_A, Int<0>{}, Layout<_1>{},
       group_modes<0,3>(tCsA_0), group_modes<0,3>(tCgCoordA));
+
+#if DUAL_CLUSTER_M > 1
+  // B is TMA-multicast across the cluster M-mode: tma_partition selects this
+  // CTA's 1/DUAL_CLUSTER_M slice of the B k-tile (by cluster rank) on BOTH
+  // the gmem and smem side; the copy below delivers each slice into every
+  // cluster CTA's smem and signals every CTA's full_barrier with that
+  // slice's bytes. The multicast slice offset is baked into the partitioned
+  // tensors' ITERATORS (not the layout), so per-stage smem tensors cannot be
+  // rebuilt by base-pointer swap -- partition each stage explicitly.
+  uint16_t mcast_mask_b = uint16_t((1u << DUAL_CLUSTER_M) - 1);
+  int cta_rank_m = int(cute::block_rank_in_cluster());
+  auto cta_layout_m = make_layout(Int<DUAL_CLUSTER_M>{});
+  auto partB = [&](int s) {
+    return tma_partition(tma_atom_B, cta_rank_m, cta_layout_m,
+        group_modes<0,3>(storage.tensor_sB(s)), group_modes<0,3>(tCgCoordB));
+  };
+  auto partB_s = [&](int s) { auto [g, smem] = partB(s); return smem; };
+  auto [tBgB, tBsB_0] = partB(0);
+#if DUAL_STAGES == 2
+  decltype(tBsB_0) tBsB_st[kStages] = { tBsB_0, partB_s(1) };
+#elif DUAL_STAGES == 3
+  decltype(tBsB_0) tBsB_st[kStages] = { tBsB_0, partB_s(1), partB_s(2) };
+#else
+  decltype(tBsB_0) tBsB_st[kStages] = { tBsB_0, partB_s(1), partB_s(2), partB_s(3) };
+#endif
+#else
+  Tensor tCsB_0 = storage.tensor_sB(0);
   auto [tBgB, tBsB_0] = tma_partition(tma_atom_B, Int<0>{}, Layout<_1>{},
       group_modes<0,3>(tCsB_0), group_modes<0,3>(tCgCoordB));
+#endif
 
+  // NOTE: under multicast, tAsA_0/tBsB_0 mode-0 still spans the FULL tile
+  // coordinate space, so this is the full A+B byte count per stage -- which
+  // is exactly what each CTA's barrier receives (own A + all B slices).
   int tma_bytes = sizeof(make_tensor_like(tAsA_0)) + sizeof(make_tensor_like(tBsB_0));
 
   auto issue_tma = [&](int stage, int k_tile) {
     cute::set_barrier_transaction_bytes(storage.full_barrier[stage], tma_bytes);
     auto tAsA = make_tensor(make_smem_ptr(storage.smem_A[stage].begin()), tAsA_0.layout());
-    auto tBsB = make_tensor(make_smem_ptr(storage.smem_B[stage].begin()), tBsB_0.layout());
     copy(tma_atom_A.with(storage.full_barrier[stage]), tAgA(_, k_tile), tAsA);
+#if DUAL_CLUSTER_M > 1
+    copy(tma_atom_B.with(storage.full_barrier[stage], mcast_mask_b), tBgB(_, k_tile), tBsB_st[stage]);
+#else
+    auto tBsB = make_tensor(make_smem_ptr(storage.smem_B[stage].begin()), tBsB_0.layout());
     copy(tma_atom_B.with(storage.full_barrier[stage]), tBgB(_, k_tile), tBsB);
+#endif
   };
 
   // Per-stage UMMA smem-descriptor fragments (same type per stage -> array).
@@ -245,9 +309,30 @@ gemm_dual_cta(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
       }
 
       // tcgen05.commit: empty_barrier[curr] arrives when MMA reads are done.
+#if DUAL_CLUSTER_M > 1
+      // Multicast the commit to EVERY cluster CTA's empty barrier: reusing a
+      // stage overwrites the peers' copies of B too, so the producer must
+      // know all cluster CTAs drained it (barrier init count DUAL_CLUSTER_M).
+      cutlass::arch::umma_arrive_multicast(
+          reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]), mcast_mask_b);
+#else
       cutlass::arch::umma_arrive(
           reinterpret_cast<uint64_t*>(&storage.empty_barrier[curr]));
+#endif
     }
+
+#if DUAL_CLUSTER_M > 1
+    // Drain the final multicast commits. Every commit we multicast at a peer
+    // must be DELIVERED before that peer exits (its smem barriers die with
+    // it). Waiting our own empty barriers proves the peers' final commits
+    // reached us; the peers' identical drain proves ours reached them, so no
+    // remote arrival is in flight when any CTA exits.
+    for (int k = num_k_tiles - min(kStages, num_k_tiles); k < num_k_tiles; ++k) {
+      int s = k % kStages;
+      cute::wait_barrier(storage.empty_barrier[s], empty_phase[s]);
+      empty_phase[s] ^= 1;
+    }
+#endif
 
     // Final commit: mma_barrier arrives when ALL issued MMAs completed.
     cutlass::arch::umma_arrive(&storage.mma_barrier);
@@ -322,10 +407,21 @@ torch::Tensor run_dual_cta_matmul(torch::Tensor a, torch::Tensor b) {
       make_layout(make_shape(m, n), make_stride(n, Int<1>{})));
 
   auto tma_atom_A = make_tma_atom(SM90_TMA_LOAD{}, mA, sA_layout, select<0, 2>(mma_tiler));
+#if DUAL_CLUSTER_M > 1
+  // Multicast atom: the TMA box is truncated to 1/DUAL_CLUSTER_M of the B
+  // tile; each cluster CTA issues its slice and the hardware fans it out to
+  // all CTAs in the 16-bit cta mask.
+  auto tma_atom_B = make_tma_atom(SM90_TMA_LOAD_MULTICAST{}, mB, sB_layout,
+                                  select<1, 2>(mma_tiler), Int<DUAL_CLUSTER_M>{});
+#else
   auto tma_atom_B = make_tma_atom(SM90_TMA_LOAD{}, mB, sB_layout, select<1, 2>(mma_tiler));
+#endif
 
   int grid_m = (m + size(bM) - 1) / size(bM);
   int grid_n = (n + size(bN) - 1) / size(bN);
+
+  TORCH_CHECK(grid_m % DUAL_CLUSTER_M == 0,
+              "M / ", kTileM, " must be divisible by DUAL_CLUSTER_M=", DUAL_CLUSTER_M);
 
   dim3 dimBlock(128);
   dim3 dimGrid(grid_m, grid_n);
@@ -345,8 +441,19 @@ torch::Tensor run_dual_cta_matmul(torch::Tensor a, torch::Tensor b) {
   launch_config.blockDim = dimBlock;
   launch_config.dynamicSmemBytes = smem_bytes;
   launch_config.stream = at::cuda::getCurrentCUDAStream();
+#if DUAL_CLUSTER_M > 1
+  // Must match the kernel's __cluster_dims__: (DUAL_CLUSTER_M, 1, 1).
+  cudaLaunchAttribute cluster_attr;
+  cluster_attr.id = cudaLaunchAttributeClusterDimension;
+  cluster_attr.val.clusterDim.x = DUAL_CLUSTER_M;
+  cluster_attr.val.clusterDim.y = 1;
+  cluster_attr.val.clusterDim.z = 1;
+  launch_config.numAttrs = 1;
+  launch_config.attrs = &cluster_attr;
+#else
   launch_config.numAttrs = 0;
   launch_config.attrs = nullptr;
+#endif
 
   void* args[] = {
     (void*)&mA, (void*)&mB, (void*)&mC, (void*)&mD,

@@ -4,19 +4,24 @@
 Usage (on the GB300 pod, GPU 2 only):
     export CUDA_VISIBLE_DEVICES=2
     cd /work/ai-performance-engineering/code
-    python labs/custom_vs_cublas/bench_dual_cta.py [--size 8192] [--sweep]
+    python labs/custom_vs_cublas/bench_dual_cta.py [--size 8192] [--sweep] [--interleave N]
 
 Reports CUDA-event kernel time, TFLOPS, and % of GB300 FP16 dense SoL
 (3.75 PFLOPS), plus max relative error vs torch.matmul.
 
---sweep additionally tries (tile_n, stages) in {(128,3), (128,2), (256,2)}
+--sweep additionally tries (tile_n, stages, cluster_m) configs
 (each config is a separate JIT build; first run compiles).
+
+--interleave N round-robins every arm N times (one bench rep each) and
+reports per-arm median +/- spread, so the node's 5-9% thermal drift hits all
+arms equally. Use this mode for any perf claim.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import statistics
 import sys
 from pathlib import Path
 
@@ -51,23 +56,25 @@ def check(fn, a, b, ref):
     return rel
 
 
-def report(name, ms, rel, M, N, K):
+def report(name, ms, rel, M, N, K, suffix=""):
     tflops = (2 * M * N * K / 1e12) / (ms / 1e3)
     sol = 100.0 * tflops / GB300_FP16_PEAK_TFLOPS
     flag = "OK " if rel < 0.01 else "BAD"
-    print(f"  {name:<28} {ms*1e3:>9.1f} us  {tflops:>8.1f} TFLOPS  {sol:>5.1f}% SoL  rel_err={rel:.2e} [{flag}]")
+    print(f"  {name:<28} {ms*1e3:>9.1f} us  {tflops:>8.1f} TFLOPS  {sol:>5.1f}% SoL  rel_err={rel:.2e} [{flag}]{suffix}")
 
 
-def load_dual(tile_n: int, stages: int):
+def load_dual(tile_n: int, stages: int, cluster_m: int = 1):
     from labs.custom_vs_cublas.tcgen05_loader import _load_tcgen05_dual_cta_module
-    mod = _load_tcgen05_dual_cta_module(tile_n, stages)
+    mod = _load_tcgen05_dual_cta_module(tile_n, stages, cluster_m)
     return mod.matmul_tcgen05_dual_cta
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, default=8192)
-    parser.add_argument("--sweep", action="store_true", help="sweep (tile_n, stages) configs")
+    parser.add_argument("--sweep", action="store_true", help="sweep (tile_n, stages, cluster_m) configs")
+    parser.add_argument("--interleave", type=int, default=0, metavar="N",
+                        help="round-robin all arms N times; report per-arm median (thermal-drift-fair)")
     args = parser.parse_args()
 
     M = N = K = args.size
@@ -81,21 +88,42 @@ def main():
     print(f"GEMM:   {M}x{N}x{K} FP16, {2*M*N*K/1e12:.2f} TFLOP\n")
 
     cublas = lambda x, y: torch.matmul(x, y.T)  # noqa: E731
-    report("cuBLAS (target)", bench(cublas, a, b), 0.0, M, N, K)
 
     from labs.custom_vs_cublas.tcgen05_loader import matmul_tcgen05_cluster
-    rel = check(matmul_tcgen05_cluster, a, b, ref)
-    report("cluster (incumbent)", bench(matmul_tcgen05_cluster, a, b), rel, M, N, K)
 
-    # Default = measured-best GB300 config (2026-06-10 sweep); --sweep tries all.
-    configs = [(256, 2)] if not args.sweep else [(128, 3), (128, 2), (256, 2)]
-    for tile_n, stages in configs:
+    # Default = measured-best GB300 config (2026-06-10 sweep) plain + its
+    # 2x1-cluster B-multicast variant (E3); --sweep tries all.
+    if args.sweep:
+        configs = [(128, 3, 1), (128, 2, 1), (256, 2, 1), (128, 3, 2), (256, 2, 2), (256, 2, 4)]
+    else:
+        configs = [(256, 2, 1), (256, 2, 2)]
+
+    arms = [("cuBLAS (target)", cublas, 0.0)]
+    rel = check(matmul_tcgen05_cluster, a, b, ref)
+    arms.append(("cluster (incumbent)", matmul_tcgen05_cluster, rel))
+    for tile_n, stages, cluster_m in configs:
+        name = f"dual_cta n={tile_n} s={stages} cm={cluster_m}"
         try:
-            fn = load_dual(tile_n, stages)
+            fn = load_dual(tile_n, stages, cluster_m)
             rel = check(fn, a, b, ref)
-            report(f"dual_cta n={tile_n} s={stages}", bench(fn, a, b), rel, M, N, K)
+            arms.append((name, fn, rel))
         except Exception as e:  # noqa: BLE001
-            print(f"  dual_cta n={tile_n} s={stages:<14} FAILED: {e}")
+            print(f"  {name:<28} FAILED: {e}")
+
+    if args.interleave > 0:
+        times: dict[str, list[float]] = {name: [] for name, _, _ in arms}
+        for rep in range(args.interleave):
+            for name, fn, _ in arms:
+                times[name].append(bench(fn, a, b, warmup=5, iters=20))
+        print(f"Interleaved A/B: {args.interleave} reps x (warmup=5, iters=20) per arm, round-robin\n")
+        for name, _, rel in arms:
+            ts = times[name]
+            med = statistics.median(ts)
+            suffix = f"  reps[min..max]=[{min(ts)*1e3:.1f}..{max(ts)*1e3:.1f}]us"
+            report(name, med, rel, M, N, K, suffix=suffix)
+    else:
+        for name, fn, rel in arms:
+            report(name, bench(fn, a, b), rel, M, N, K)
     print()
 
 

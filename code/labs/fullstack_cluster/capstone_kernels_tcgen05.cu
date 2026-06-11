@@ -26,7 +26,11 @@ using namespace cute;
 using TypeA = cutlass::half_t;
 using TypeB = cutlass::half_t;
 using TypeC = float;
-using TypeD = float;
+// fp16-direct epilogue: D is written as fp16 straight from the epilogue
+// registers (fp32 accumulator -> one round-to-nearest-even conversion), so the
+// host-side d_buffer.to(kFloat16) pass disappears. TypeC stays float: it is
+// the UMMA accumulator type and (post C-load removal) only feeds layout math.
+using TypeD = cutlass::half_t;
 using Accumulator = float;
 using Alpha = float;
 using Beta = float;
@@ -266,19 +270,25 @@ __global__ void gemm_device_variant(ATensor mA,
   // the C operand is never observable in the output. Drop the global->register
   // load of C and the beta multiply (bit-identical: C was zero-filled before).
   (void)beta;
-  Tensor tDgC = thr_t2r_copy.partition_D(tCgC);
-  Tensor tDrC = make_fragment_like(tDgC);
 
   Tensor tDtAcc = thr_t2r_copy.partition_S(tCtAcc);
   Tensor tDgD = thr_t2r_copy.partition_D(tCgD);
   Tensor tDrAcc = make_tensor<Accumulator>(shape(tDgD));
   copy(tiled_t2r_copy, tDtAcc, tDrAcc);
 
+  // fp16-direct epilogue: convert the fp32 accumulator to fp16 in registers
+  // and store straight to the fp16 D buffer. This is the same single
+  // round-to-nearest-even conversion of the same fp32 value that the old
+  // fp32-store + host .to(kFloat16) path performed, so the output is
+  // bit-identical while the separate cast kernel (and its host dispatch)
+  // disappears and the D store traffic halves.
+  using DType = typename DTensor::value_type;
+  Tensor tDrD = make_tensor<DType>(shape(tDgD));
   CUTE_UNROLL
-  for (int i = 0; i < size(tDrC); ++i) {
-    tDrC(i) = alpha * tDrAcc(i);
+  for (int i = 0; i < size(tDrD); ++i) {
+    tDrD(i) = static_cast<DType>(alpha * tDrAcc(i));
   }
-  copy(tDrC, tDgD);
+  copy(tDrD, tDgD);
 
   __syncthreads();
   if (elect_one_warp) {
@@ -303,12 +313,11 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
   auto k = a_contig.size(1);
   auto n = b_contig.size(0);
 
-  auto options = a.options().dtype(torch::kFloat32);
   // Host-overhead fix: the device epilogue no longer reads C (alpha=1, beta=0
-  // at every call site), so no zero-filled C operand is needed. Alias C to D
-  // and skip the per-call 16MB memset kernel + extra allocation.
-  auto d_buffer = torch::empty({m, n}, options);
-  auto c_buffer = d_buffer;
+  // at every call site), so no zero-filled C operand is needed. fp16-direct
+  // epilogue: the kernel writes fp16 D, so allocate the output at its final
+  // dtype and return it without a .to(kFloat16) pass.
+  auto d_buffer = torch::empty({m, n}, a.options().dtype(torch::kFloat16));
 
   auto cluster_shape = Variant::cluster_shape();
   auto tiled_mma = make_tiled_mma(typename Variant::Mma{});
@@ -348,11 +357,15 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
       make_gmem_ptr(reinterpret_cast<TypeB const*>(
           b_contig.data_ptr<at::Half>())),
       make_layout(make_shape(n, k), make_stride(k, Int<1>{})));
+  // mC is layout-plumbing only: the epilogue dropped the C load/store, so this
+  // pointer is never dereferenced (it exists to type partition_C /
+  // make_fragment_C with the fp32 accumulator type). Point it at the D
+  // allocation rather than allocating dead fp32 memory.
   Tensor mC = make_tensor(
-      make_gmem_ptr(c_buffer.data_ptr<TypeC>()),
+      make_gmem_ptr(reinterpret_cast<TypeC*>(d_buffer.data_ptr<at::Half>())),
       make_layout(make_shape(m, n), make_stride(n, Int<1>{})));
   Tensor mD = make_tensor(
-      make_gmem_ptr(d_buffer.data_ptr<TypeD>()),
+      make_gmem_ptr(reinterpret_cast<TypeD*>(d_buffer.data_ptr<at::Half>())),
       make_layout(make_shape(m, n), make_stride(n, Int<1>{})));
 
   auto cluster_layout_vmnk =
@@ -485,7 +498,8 @@ torch::Tensor run_tcgen05_variant(torch::Tensor a, torch::Tensor b) {
   TORCH_CHECK(status == cutlass::Status::kSuccess,
               "tcgen05 inline kernel launch failed");
 
-  return d_buffer.to(torch::kFloat16);
+  // fp16-direct epilogue: D is already fp16; no conversion pass.
+  return d_buffer;
 }
 
 torch::Tensor optimized_matmul_tcgen05(torch::Tensor a, torch::Tensor b) {
