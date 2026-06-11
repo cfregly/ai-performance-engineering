@@ -1842,6 +1842,22 @@ SoL framing (B), measured 2026-06-09:
   (overlap one tile's epilogue with another's mainloop). None reachable by re-scheduling the
   existing shape.
 
+- FILING PACKAGES + ATTRIBUTION REVISION (B69, upstream Tier-2 reproducers, pod-verified): docs/
+  gb300-upstream-patches.md + code/upstream/. (4) _scaled_grouped_mm NVFP4 refusal verified
+  (exact ValueErrors captured; per-group NVFP4 _scaled_mm works via nvjet; 30-launch fallback
+  1068us/call re-measured; CUTLASS example 90 proves hardware capability) + BONUS: FP8 rowwise
+  grouped is ALSO broken on sm_103 (arch-conditional trap + poisoned context) -- NO
+  _scaled_grouped_mm path works on sm_103 at all; upstream PR pytorch#174699 in flight, comment
+  there first. (5) _int_mm 13.4x repro verified with NEW dispatched-kernel evidence: sm_103
+  _int_mm lands on AMPERE cutlass_80 kernels while tf32/fp16 get sm100/nvjet -- a dispatch gap,
+  not a kernel gap; layout-controlled vs pytorch#165230. (6) Triton tcgen05.wait.st: ALREADY
+  FILED upstream (triton#8473; 3.5 release cut between #7725/#8299) -- do-not-file; and the
+  4-probe repro proves vanilla Triton 3.7 is CLEAN on sm_103: the campaign's aborts were
+  SELF-INFLICTED by core/benchmark/triton_compat.py:100-109 stripping the 'a' from sm_103a
+  (only sm_100a preserved). REVISES the B17/B18/B19-era toolchain attribution; RE-OPENS the
+  B10/B16 stale-checks (max-autotune may work after a 1-line in-repo fix). Evidence
+  /tmp/frontP2/. NEXT LEVER: fix the de-suffix, re-run the max-autotune-gated paths.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
