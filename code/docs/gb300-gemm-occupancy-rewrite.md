@@ -916,3 +916,198 @@ the full 227KB budget at 2 CTAs/SM if the 110KB static cap is lifted to
 113KB) or B-multicast across persistent pairs to close the 2-stream gap.
 V4's data says (b) alone recovers 16 of the 21 lost points -- the
 remaining 5 must come from (a).
+
+# V5 verdict (2026-06-11): persistent clusters + GROUP_M raster is a WIN (12/12 paired, 1.0598x) -- persistence at CHAMPION occupancy carries it (+4.8%), the L2 raster premise is TRUE but adds only ~1%, and the occupancy-API grid-sizing trap that masked the win is banked
+
+Mission: B63's named lever -- persistent CTAs + L2-swizzled tile
+rasterization on `tcgen05_dual_cta_2sm.cu`, reusing V4's
+epilogue-warpgroup + double-TMEM cross-tile pipeline as the persistent
+inner loop. Both compositions were built and measured; the WINNING shape
+turned out to be persistence over the INCUMBENT inner loop (eo=0, 3
+CTAs/SM), not over V4's 2-CTA overlap loop -- consistent with V4's own
+finding that co-residency already hides the epilogue at 3 CTAs/SM.
+
+## The L2 working-set math (stated before coding, as mandated)
+
+8192^3 FP16, champion tile (256x128 pair tiles): 32 pair-rows x 64 n-cols
+= 2048 pair tiles (4096 CTAs; V4's waves 8.98 = 4096/456 cross-checks).
+A row-panel = 256x8192x2B = 4MiB; B col-panel = 128x8192x2B = 2MiB;
+A = B = 128MiB vs L2 = 129.25MiB (152 SMs, verified on GPU 2) -> full-
+matrix residency DEAD (the B63 note), panel residency ALIVE. K does NOT
+block the raster: locality is carried by GROUP_M -- groups of gm
+pair-rows sweep n together, keeping gm x 4MiB of A panels L2-resident
+while B col-panels stream once per group. The real constraint is the
+IN-FLIGHT window = C resident clusters' consecutive raster indices:
+  - 3 CTAs/SM (C=228): gm=8 -> 32MiB A + 57MiB B + ~29MiB D-in-flight
+    ~ 118MiB (fits, tight); gm=16 ~ 123MiB; gm=4 -> 159MiB (over, excluded)
+  - 2 CTAs/SM (C=152): gm=8 -> 32 + 38 + ~19 = ~89MiB (comfortable)
+DRAM-read floor: A once (128MiB) + B x ceil(32/gm) passes = 640MiB (gm=8)
+/ 384MiB (gm=16), vs 1.36GB measured incumbent -- the x-fastest 2D wave
+order walks full-M columns (a 128MiB A working set per wave) and re-reads
+A every one of the 9 waves. CAVEAT STATED UP FRONT: DRAM bytes are NOT
+the binding resource (1.36GB / 875us = 1.55TB/s ~ 19% of HBM3e); the
+payoff channel had to be TMA service latency (long_scoreboard) or
+persistence amortization. Premise alive -> implemented.
+
+## What was built (all flag-gated; defaults byte-path-equivalent to B63)
+
+`AISP_DUAL2SM_RASTER_GM=g` (lever f1): GROUP_M raster_map() tile order.
+Without PERSIST the 2D grid is flattened to 1D (ascending-blockIdx
+hardware rasterization executes the order -- the standard Triton trick).
+`AISP_DUAL2SM_PERSIST=1` (lever f2): grid = exactly the co-residable
+cluster count C; cluster r walks raster indices r, r+C, r+2C... (static
+round-robin, deadlock-free by construction, tiles>=C clamped at small
+sizes). Composes with EPI_OVERLAP=2 (V4's double-TMEM + epilogue-
+warpgroup pipeline as the persistent inner loop, per-round dynamic TMA
+coordinate slices) or EPI_OVERLAP=0 (champion 3-CTAs/SM occupancy,
+warp-split mainloop per round, per-round all-thread epilogue with a
+cluster-scope tmem_empty reuse gate, CHUNKED t2r drain to hold the
+170-reg budget of 3x128 threads -- measured 84 regs, zero spills).
+Also: per-config non-type template tags (kCfgMain/kCfgEpi/kCfgV5) so
+configs differing only in body-level macros get distinct mangled symbols
+(the B61 in-process alias trap, now closed for this kernel family).
+
+## Iteration 1 -- the grid-sizing trap (bankable, the headline lesson)
+
+First implementation sized the persistent grid with
+`cudaOccupancyMaxActiveBlocksPerMultiprocessor`. ALL persistent arms lost
+catastrophically (0/36 paired): p1eo0rg8 0.5647x, p1eo2rg8 0.6712x,
+p1eo0rg0 0.5133x. ncu caught the mechanism red-handed: two IDENTICAL
+back-to-back launches in one process got grid 152 CTAs (waves 0.33 = ONE
+CTA/SM, 1.32ms, tensor-pipe 34.7%) and grid 456 (waves 1.0, 742us,
+tensor-pipe 72.7%) from the same query -- the API is UNSTABLE for this
+cluster kernel on sm_103, and a persistent kernel sized to the bad
+answer runs the whole GEMM at 1/3 occupancy with no second wave to
+backfill. TRAP: never size a persistent cluster grid from the occupancy
+API; compute it STATICALLY -- blocks/SM = min(smem-implied
+(sharedMemPerMultiprocessor / (dynamic smem + 1KiB reserved)),
+TMEM-implied (512 / kAccTmemCols)); registers proved non-binding (84 at
+eo=0 / 64 at eo=2). Post-fix audit: 4/4 launches grid 456, 729-747us.
+
+## A/B (paired order-alternated, 12 reps x (warmup=5, iters=20), 8192^3,
+## GPU 2, vs incumbent (128,3,ws=1); ALL arms rel_err = 0.0)
+
+| challenger config              | inc median | chal median | paired sp | wins  |
+|--------------------------------|-----------:|------------:|----------:|-------|
+| rg8 (raster only, 3 CTA/SM)    |    921.3us |     924.2us |   0.9989  | 6/12  |
+| rg16 (raster only)             |    925.9us |     934.2us |   0.9970  | 5/12  |
+| persist eo0 rg8  (iter1 grid)  |    831.3us |    1519.5us |   0.5647  | 0/12  |
+| persist eo2 rg8  (iter1 grid)  |    840.4us |    1285.1us |   0.6712  | 0/12  |
+| persist eo0 rg0  (iter1 grid)  |    811.9us |    1655.0us |   0.5133  | 0/12  |
+| persist eo0 rg0  (static grid) |    933.6us |     894.2us |   1.0481  | 12/12 |
+| persist eo0 rg16 (static grid) |    923.8us |     887.3us |   1.0485  | 11/12 |
+| **persist eo0 rg8 (static)**   |**926.0us** | **885.0us** |**1.0598** |**12/12** |
+| persist eo2 rg8  (static grid) |    917.8us |     918.1us |   1.0060  | 7/12  |
+
+cuBLAS same-session 670-682us (43-44% nameplate / 85-86% real; node ran
+hot this session -- the incumbent's own band was 811-997us across
+sessions; the paired protocol absorbs it). Winner at 885.0us = 33.1%
+nameplate / 65.4% real-SoL same-session (the incumbent's clean-session
+863-875us band scales to ~825-835us under this win ratio).
+
+DECOMPOSITION (the clean part of this front): persistence alone +4.8%
+(12/12); GROUP_M gm=8 on top of persistence +1.1%; raster WITHOUT
+persistence 0.0% (tie) -- and gm=16 adds nothing over persistence. The
+V4 inner loop (eo2) at the correct grid is a TIE (1.0060x, 7/12): the
+2-vs-3 feed-stream deficit consumes the overlap gain even when
+persistent, closing V4's conjecture -- the dedicated-epilogue warpgroup
+is priced out at ANY grid shape on this kernel.
+
+## ncu mechanism (--set full, skip 5 / count 2, same session)
+
+| metric                            | incumbent (128,3) | rg8 only    | persist eo0 rg8 |
+|-----------------------------------|------------------:|------------:|----------------:|
+| duration (ncu clock)              |   754.4 / 757.9us | 746.4/748.6 | 725.8 / 727.6us |
+| tensor-pipe active (% of elapsed) |       71.4 / 70.7 | 70.1 / 69.9 |     72.9 / 72.5 |
+| long_scoreboard (cyc/issue)       |       21.9 / 22.6 | 21.9 / 22.5 |     31.9 / 31.5 |
+| barrier stall (cyc/issue)         |       0.29 / 0.31 | 0.29 / 0.32 |     0.17 / 0.19 |
+| dram bytes read                   |    1.371 / 1.393GB| 0.932/0.881 |   0.973/1.007GB |
+| L2 read sectors (srcunit tex)     |    344.1 / 346.8M | 348.3/342.9 |   372.6 / 370.6M|
+| registers/thread                  |               152 |         152 |              84 |
+| waves (grid / co-residable)       |              8.98 |        8.98 |  1.0 (grid 456) |
+| warps_active (% of peak)          |       18.2 / 18.4 | 17.9 / 18.2 |     18.5 / 18.5 |
+
+Three mechanisms, each isolated:
+1. **The L2 raster premise is TRUE but NOT BINDING (the pre-stated
+   honest-negative channel, measured):** rg8 cuts DRAM reads 1.37 ->
+   0.88-0.93GB (-35%, toward the 640MiB floor) at identical L2 sector
+   counts -- and long_scoreboard DOES NOT MOVE (21.87 -> 21.88). The
+   kernel's TMA latency is already fully covered by 3 stages x 3
+   co-resident CTAs; converting DRAM hits to L2 hits buys bytes (power),
+   not time. Bytes-premise levers need a BANDWIDTH-bound kernel.
+2. **Persistence pays through launch/prologue amortization, not feed:**
+   the winner runs 9 rounds per cluster on ONE 456-CTA launch instead of
+   9 waves of fresh CTAs -- per-tile prologue (alloc + barrier init +
+   cluster_sync + descriptor setup + first-fill) and per-wave launch
+   overhead are eliminated; ncu shows tensor-pipe +1.7pts and ncu-clock
+   -3.8%; the A/B's further ~2pts is the host-visible launch overhead of
+   4096-CTA grids that CUDA events capture between iterations. Higher
+   long_scoreboard per issue is an artifact of ELIMINATED prologue
+   instructions (inst/cycle 0.39 -> 0.32 at equal warps_active), not a
+   regression -- barrier stalls FELL 0.29 -> 0.17.
+3. **The eo2 inner loop ties at the correct grid** (774us single-launch
+   vs V4's 801-809us non-persistent: persistence helps it, but its
+   2-CTA/SM occupancy still loses exactly what V4 measured).
+
+## Harness verify gates (3/3 PASSED, `--profile none`)
+
+```
+AISP_TCGEN05_VARIANT=dual_cta_2sm (loader defaults 128,3,ws=1,mb=2,k=64,eo=0,p=0,rg=0):
+  verification passed: true, 0 failed (best_speedup 2.8115x)
+AISP_TCGEN05_VARIANT=dual_cta (plain dual regression):
+  verification passed: true, 0 failed (best_speedup 2.7532x)
+AISP_TCGEN05_VARIANT=cluster (default regression):
+  verification passed: true, 0 failed (best_speedup 2.4489x; 2.329x contract intact)
+
+Verdict snapshots: /tmp/frontV5/gate{1,2,3}_{2sm,dual,cluster}_results.json.
+```
+
+## Defaults recommendation
+
+Defaults UNCHANGED (mission constraint): the champion (128,3,ws=1)
+remains the loader default and rebuilds byte-path-identical under V5
+source (same 152 regs / 3 CTAs/SM / its round-robin band, all gates
+green). The winner is selectable TODAY via
+`AISP_DUAL2SM_PERSIST=1 AISP_DUAL2SM_MIN_BLOCKS=3 AISP_DUAL2SM_RASTER_GM=8`
+(config (128,3,ws=1,mb=3,p=1,rg=8)). RECOMMEND: an independent
+replication front (E4-style) before flipping the default -- the evidence
+here is 12/12 paired in one session plus rel_err 0.0 at four sizes
+including non-square and the tiles<C clamp path.
+
+## Files (pod, md5)
+
+```
+CHANGED  labs/custom_vs_cublas/tcgen05_dual_cta_2sm.cu  14df3d6ea890df192b48d6f1240dd2fe
+         (V5: DUAL2SM_PERSIST + DUAL2SM_RASTER_GM levers, raster_map(),
+          persistent eo0/eo2 mainloops with per-round dynamic TMA coord
+          slices + cluster-scope tmem_empty round gate, STATIC persistent
+          grid sizing, per-config symbol tags; B57/B60/B63 incumbent
+          default path preserved)
+CHANGED  labs/custom_vs_cublas/tcgen05_loader.py        45ed1491909232a23e1ebf8ccbe584f6
+         (V5: persist/raster_gm params + AISP_DUAL2SM_PERSIST /
+          AISP_DUAL2SM_RASTER_GM env plumbing; defaults UNCHANGED:
+          128,3,ws=1,amc=0,mb=2,k=64,eo=0,ea=32,p=0,rg=0)
+UNCHANGED labs/custom_vs_cublas/bench_dual_cta.py       5ad5ea81aa5ec2c22b61bb2673878384
+Backups: /tmp/frontV5/{tcgen05_dual_cta_2sm.cu,tcgen05_loader.py,
+bench_dual_cta.py} (B63 originals, md5 39b52e58/1ea36d72/5ad5ea81).
+Evidence: /tmp/frontV5/correctness.log (24/24 rel_err 0.0), iter2.log
+(grid audit: 4/4 launches grid 456), ab_*.log (9 A/B runs),
+ncu_{inc,rg8,p1eo0rg8,p1eo2rg8,p1eo0rg8_i2}.ncu-rep, gates.log +
+gate{1,2,3}_*_results.json. A/B driver: /tmp/frontV5/ab_v5.py.
+Nothing committed.
+```
+
+## Named next lever
+
+**Raster-aware L2 prefetch from the persistent schedule:** static
+round-robin makes every cluster's NEXT tile deterministic
+(raster_map(rr + (t+1)*C)). During round t's epilogue/commit-drain the
+producer warp can issue `cp.async.bulk.prefetch.tensor` (L2-only, no
+smem, no barrier) for round t+1's A/B panels -- attacking the one stall
+that never moved across V2-V5 (long_scoreboard ~22-32 cyc/issue, 75% of
+issue-stall cycles in B57's accounting) with bytes that are L2-resident
+by the time the k-loop asks. This is a lever that ONLY exists under
+persistence + raster, i.e. it is unlocked by this front's machinery.
+Secondary: replication front for the default flip; and the eo2/persist
+tie definitively retires the dedicated-epilogue family -- do not
+re-attempt it below 4 feed streams.

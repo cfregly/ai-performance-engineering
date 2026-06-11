@@ -296,7 +296,8 @@ def matmul_tcgen05_dual_cta(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 @lru_cache(maxsize=None)
 def _load_tcgen05_dual_cta_2sm_module(tile_n: int, stages: int, warp_split: int = 0, amcast: int = 0,
                                       min_blocks: int = 2, tile_k: int = 64,
-                                      epi_overlap: int = 0, epi_atom: int = 32):
+                                      epi_overlap: int = 0, epi_atom: int = 32,
+                                      persist: int = 0, raster_gm: int = 0):
     extra = (
         f"-DDUAL2SM_TILE_N={tile_n}",
         f"-DDUAL2SM_STAGES={stages}",
@@ -306,11 +307,13 @@ def _load_tcgen05_dual_cta_2sm_module(tile_n: int, stages: int, warp_split: int 
         f"-DDUAL2SM_TILE_K={tile_k}",
         f"-DDUAL2SM_EPI_OVERLAP={epi_overlap}",
         f"-DDUAL2SM_EPI_ATOM={epi_atom}",
+        f"-DDUAL2SM_PERSIST={persist}",
+        f"-DDUAL2SM_RASTER_GM={raster_gm}",
     )
     return _load_kernel(
         _LAB_DIR / "tcgen05_dual_cta_2sm.cu",
         f"lab_tcgen05_dual_cta_2sm_n{tile_n}s{stages}w{warp_split}a{amcast}"
-        f"mb{min_blocks}k{tile_k}eo{epi_overlap}ea{epi_atom}",
+        f"mb{min_blocks}k{tile_k}eo{epi_overlap}ea{epi_atom}p{persist}rg{raster_gm}",
         extra_cuda_flags=extra,
     )
 
@@ -348,6 +351,18 @@ def load_tcgen05_dual_cta_2sm_module():
         overlap mainloop is always producer/consumer split).
       AISP_DUAL2SM_EPI_ATOM: t2r column-repeat of the overlap epilogue's
         chunked drain (default 32; B55 atom-width trap knob)
+      AISP_DUAL2SM_PERSIST: 1 = persistent clusters (V5-front lever f):
+        the grid is exactly the co-residable cluster count and cluster r
+        walks raster indices r, r+C, r+2C...; composes with EPI_OVERLAP=2
+        (V4 double-TMEM inner loop, 2 CTAs/SM, use STAGES=4 per the B63
+        sizing law) or EPI_OVERLAP=0 (champion 3 CTAs/SM, per-round
+        epilogue, use MIN_BLOCKS=3 to hold the 170-reg budget). Default 0.
+      AISP_DUAL2SM_RASTER_GM: GROUP_M tile-raster group size in pair-rows
+        (V5-front lever f; 0 = off). Groups of gm pair-rows sweep n
+        together so the in-flight window keeps gm A row-panels L2-resident
+        while B col-panels stream (8 -> 32MiB A-window at 8192^3). Without
+        PERSIST this flattens the launch grid to 1D and relies on
+        ascending-blockIdx rasterization. Default 0.
     Defaults are the measured-best config from the GB300 U-front session
     (2026-06-11, GPU 2, 8192^3): (128,3) = 867-895us / 33.2-33.8% SoL,
     16/16 interleaved-rep wins vs plain dual (256,2). ncu: 152 regs/thread
@@ -364,8 +379,10 @@ def load_tcgen05_dual_cta_2sm_module():
     tile_k = int(os.environ.get("AISP_DUAL2SM_TILE_K", "64"))
     epi_overlap = int(os.environ.get("AISP_DUAL2SM_EPI_OVERLAP", "0"))
     epi_atom = int(os.environ.get("AISP_DUAL2SM_EPI_ATOM", "32"))
+    persist = int(os.environ.get("AISP_DUAL2SM_PERSIST", "0"))
+    raster_gm = int(os.environ.get("AISP_DUAL2SM_RASTER_GM", "0"))
     return _load_tcgen05_dual_cta_2sm_module(tile_n, stages, warp_split, amcast, min_blocks, tile_k,
-                                             epi_overlap, epi_atom)
+                                             epi_overlap, epi_atom, persist, raster_gm)
 
 
 def matmul_tcgen05_dual_cta_2sm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:

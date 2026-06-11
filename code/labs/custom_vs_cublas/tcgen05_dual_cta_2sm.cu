@@ -142,6 +142,31 @@
 #ifndef DUAL2SM_EPI_ATOM
 #define DUAL2SM_EPI_ATOM 32
 #endif
+// Lever (f), V5-front: persistent clusters + L2-aware GROUP_M raster.
+// DUAL2SM_PERSIST=1 launches exactly the co-residable cluster count
+// (occupancy API clamped by the TMEM-implied CTAs/SM; B63 sizing law) and
+// each cluster walks raster indices r, r+C, r+2C... so the in-flight
+// window is ~C consecutive raster indices at all times. Composes with
+// EPI_OVERLAP=2 (V4's double-TMEM + epilogue-warpgroup cross-tile pipeline
+// as the persistent inner loop; 2 CTAs/SM) or EPI_OVERLAP=0 (champion
+// occupancy, 3 CTAs/SM, per-round serialized epilogue that co-residency
+// hides per the V4 finding, chunked t2r to hold the 170-reg budget).
+#ifndef DUAL2SM_PERSIST
+#define DUAL2SM_PERSIST 0
+#endif
+// DUAL2SM_RASTER_GM=g (0=off): GROUP_M tile rasterization -- groups of g
+// pair-rows sweep n together, so a window of W consecutive indices touches
+// g A row-panels (g x 4MiB at 8192^3, L2-resident across the n-sweep) +
+// W/g B col-panels (2MiB each, streamed once per group) instead of the
+// incumbent x-fastest order's full-M column (128MiB of A per wave, which
+// thrashes L2 and re-reads A every wave: the measured 1.36GB vs the
+// 640MiB raster floor). Without PERSIST the launch grid is flattened to
+// 1D and relies on ascending-blockIdx hardware rasterization (the
+// standard Triton GROUP_M trick); the wave window is then ~228 indices
+// (3 CTAs/SM) -> gm=8: 32MiB A + 57MiB B + ~29MiB D in flight < 129MiB L2.
+#ifndef DUAL2SM_RASTER_GM
+#define DUAL2SM_RASTER_GM 0
+#endif
 
 using namespace cute;
 
@@ -179,6 +204,42 @@ static_assert(!(kEpiOverlap && DUAL2SM_AMCAST),
               "Epilogue overlap is not combined with A-multicast (scope)");
 static_assert(!kEpiOverlap || kTileN % DUAL2SM_EPI_ATOM == 0,
               "DUAL2SM_EPI_ATOM must divide DUAL2SM_TILE_N");
+
+// V5 persistent + raster shape (lever f).
+constexpr bool kPersist = (DUAL2SM_PERSIST != 0);
+static_assert(!kPersist || DUAL2SM_AMCAST == 0,
+              "PERSIST is not combined with A-multicast (scope)");
+static_assert(!kPersist || DUAL2SM_EPI_OVERLAP == 0 || DUAL2SM_EPI_OVERLAP == 2,
+              "Under PERSIST the walk is dynamic: EPI_OVERLAP must be 0 "
+              "(3 CTAs/SM, per-round epilogue) or 2 (double-buffered "
+              "epilogue warpgroup)");
+static_assert(DUAL2SM_RASTER_GM >= 0, "DUAL2SM_RASTER_GM must be >= 0");
+static_assert(DUAL2SM_RASTER_GM == 0 || kPersist ||
+              (DUAL2SM_EPI_OVERLAP == 0 && DUAL2SM_AMCAST == 0),
+              "Non-persistent raster is scoped to the incumbent (eo=0, "
+              "non-multicast) shape");
+
+// Raster-order tile mapping: index idx in [0, grid_m*grid_n) ->
+// (tile_m, tile_n). GROUP_M (gm>0): groups of gm pair-rows sweep n
+// together (m-fastest within a group column) so the group's A row-panels
+// stay L2-resident while B col-panels stream once per group. gm=0:
+// m-fastest linear (the incumbent 2D grid's x-fastest wave order).
+CUTE_DEVICE void raster_map(int idx, int grid_m, int grid_n, int& tm, int& tn) {
+#if DUAL2SM_RASTER_GM > 0
+  constexpr int gm = DUAL2SM_RASTER_GM;
+  int per_group = gm * grid_n;
+  int group = idx / per_group;
+  int first_m = group * gm;
+  int gsz = grid_m - first_m;       // tail group when gm does not divide grid_m
+  gsz = gsz < gm ? gsz : gm;
+  int rem = idx - group * per_group;
+  tm = first_m + rem % gsz;
+  tn = rem / gsz;
+#else
+  tm = idx % grid_m;
+  tn = idx / grid_m;
+#endif
+}
 
 // fp32 accumulator: each CTA holds its 128-row M-half x kTileN per buffer.
 constexpr int kAccTmemCols = kNumAccBufs * kTileN;
@@ -228,7 +289,15 @@ using EpiLoadOp = SM100_TMEM_LOAD_32dp32b128x;
 #error "DUAL2SM_EPI_ATOM must be 1|2|4|8|16|32|64|128"
 #endif
 
-template <class SharedStorageT,
+// Compile-config tags: configs that differ ONLY in body-level macros (ws,
+// mb, eo, ea, persist, raster_gm) would otherwise instantiate the SAME
+// mangled kernel symbol across separately-built .so's -- the B61 in-process
+// alias trap. The tags force a distinct symbol per config.
+constexpr int kCfgMain = DUAL2SM_WARP_SPLIT | (DUAL2SM_AMCAST << 1) | (DUAL2SM_MIN_BLOCKS << 2);
+constexpr int kCfgEpi = DUAL2SM_EPI_OVERLAP | (DUAL2SM_EPI_ATOM << 8);
+constexpr int kCfgV5 = DUAL2SM_PERSIST | (DUAL2SM_RASTER_GM << 1);
+
+template <class SharedStorageT, int CfgMain, int CfgEpi, int CfgV5,
           class ATensor, class BTensor, class CTensor, class DTensor,
           class MmaTiler_MNK, class TiledMMA,
           class TmaAtomA, class TmaAtomB>
@@ -249,10 +318,29 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   int v = int(cute::block_rank_in_cluster()) & 1;  // peer rank within the SM pair
   bool leader_cta = (v == 0);                      // even rank issues the 2SM MMA
 
+#if DUAL2SM_PERSIST || DUAL2SM_RASTER_GM > 0
+  const int grid_m_t = int(size<0>(shape(mA))) / kTileM;  // pair-rows
+  const int grid_n_t = int(size<0>(shape(mB))) / kTileN;  // n-cols
+#endif
+#if DUAL2SM_PERSIST
+  // Persistent: real tile coords come from the round loop below; (0,0)
+  // builds the shape templates (all partition shapes are coord-invariant).
+  int tile_m = 0;
+  int tile_n = 0;
+  const int num_clusters = int(gridDim.x) >> 1;
+  const int rr = int(blockIdx.x) >> 1;                   // this cluster's id
+  const int total_tiles = grid_m_t * grid_n_t;
+  const int my_tiles = (total_tiles - rr + num_clusters - 1) / num_clusters;
+#elif DUAL2SM_RASTER_GM > 0
+  // 1D-flattened grid: blockIdx.x = (raster index, v) interleaved.
+  int tile_m, tile_n;
+  raster_map(int(blockIdx.x) >> 1, grid_m_t, grid_n_t, tile_m, tile_n);
+#else
   int tile_m = blockIdx.x / 2;  // pair-wide 256-row M tile
   // Under EPI_OVERLAP each cluster walks kTilesPerCta CONSECUTIVE n-tiles
   // (tile_n .. tile_n+kTilesPerCta-1); A is shared across the walk (L2-hot).
   int tile_n = blockIdx.y * kTilesPerCta;
+#endif
 
   auto mma_coord = make_coord(tile_m, tile_n, _);
 
@@ -295,10 +383,11 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
     }
     for (int bb = 0; bb < kNumAccBufs; ++bb) {
       cute::initialize_barrier(storage.mma_barrier[bb], 1);
-      if constexpr (kEpiOverlap) {
-        // Leader-side acc-buffer-free barrier: BOTH CTAs' epilogue
-        // warpgroups arrive (cluster-scope) once their TMEM half of the
-        // buffer is drained; the consumer waits before reusing the buffer.
+      if constexpr (kEpiOverlap || kPersist) {
+        // Leader-side acc-buffer-free barrier: BOTH CTAs' epilogues arrive
+        // (cluster-scope) once their TMEM half of the buffer is drained;
+        // the consumer waits before reusing the buffer (under PERSIST
+        // eo=0 this gates the next round's first MMA on both drains).
         cute::initialize_barrier(storage.tmem_empty[bb], 2);
       }
     }
@@ -394,7 +483,25 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
     copy(tma_atom_B.with(storage.full_barrier[stage]), tBgB(_, k_tile), tBsB);
   };
 
-#if DUAL2SM_EPI_OVERLAP
+#if DUAL2SM_PERSIST
+  // Per-round gmem TMA coordinate slices: under the persistent raster walk
+  // BOTH tile_m and tile_n vary per round; the layout algebra is static so
+  // a slice is a few integer ops, recomputed once per ~33us tile.
+  auto tAgA_for = [&](int tm, int tn) {
+    auto coord_t = make_coord(tm, tn, _);
+    Tensor gCoordA_t = local_tile(tma_coord_A, mma_tiler, coord_t, Step<_1, X, _1>{});
+    Tensor tCgCoordA_t = cta_mma.partition_A(gCoordA_t);
+    return cute::get<0>(tma_partition(tma_atom_A, Int<0>{}, Layout<_1>{},
+        group_modes<0,3>(tCsA_0), group_modes<0,3>(tCgCoordA_t)));
+  };
+  auto tBgB_dyn = [&](int tm, int tn) {
+    auto coord_t = make_coord(tm, tn, _);
+    Tensor gCoordB_t = local_tile(tma_coord_B, mma_tiler, coord_t, Step<X, _1, _1>{});
+    Tensor tCgCoordB_t = cta_mma.partition_B(gCoordB_t);
+    return cute::get<0>(tma_partition(tma_atom_B, Int<0>{}, Layout<_1>{},
+        group_modes<0,3>(tCsB_0), group_modes<0,3>(tCgCoordB_t)));
+  };
+#elif DUAL2SM_EPI_OVERLAP
   // Per-walk-tile B gmem TMA coordinate slices (A is tile_m-only: shared).
   auto tBgB_for = [&](int t) {
     auto coord_t = make_coord(tile_m, tile_n + t, _);
@@ -454,7 +561,226 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   // This CTA's own SM pair (for the final TMEM-complete commit).
   const uint16_t kPairMask = uint16_t(0x3) << (int(cute::block_rank_in_cluster()) & ~1);
 
-#if DUAL2SM_EPI_OVERLAP
+#if DUAL2SM_PERSIST && DUAL2SM_EPI_OVERLAP
+  // =====================================================================
+  // V5 persistent mainloop, eo=2 inner loop (lever f over lever e): the
+  // V4 epilogue-warpgroup + double-TMEM cross-tile pipeline IS the
+  // persistent inner structure; only the tile sequence changed -- cluster
+  // rr walks raster indices rr, rr+C, rr+2C... (GROUP_M-swizzled), so the
+  // smem stage ring crosses tile boundaries with no prologue bubble and
+  // the in-flight window stays ~C consecutive raster indices.
+  // =====================================================================
+  const uint32_t leader_rank = uint32_t(cute::block_rank_in_cluster()) & ~1u;
+  if (warp_idx == 0) {
+    // Producer: WHOLE warp 0 of BOTH CTAs (empty-wait + TMA issue).
+    int empty_phase[kStages] = {};
+    int g = 0;
+    for (int t = 0; t < my_tiles; ++t) {
+      int tm, tn;
+      raster_map(rr + t * num_clusters, grid_m_t, grid_n_t, tm, tn);
+      auto tAgA_t = tAgA_for(tm, tn);
+      auto tBgB_t = tBgB_dyn(tm, tn);
+      for (int k = 0; k < num_k_tiles; ++k, ++g) {
+        int s = g % kStages;
+        if (g >= kStages) {
+          cute::wait_barrier(storage.empty_barrier[s], empty_phase[s]);
+          empty_phase[s] ^= 1;
+        }
+        if (elect_one_thr) {
+          if (leader_cta) {
+            cute::set_barrier_transaction_bytes(storage.full_barrier[s], tma_bytes);
+          }
+          auto tAsA = make_tensor(make_smem_ptr(storage.smem_A[s].begin()), tAsA_0.layout());
+          copy(tma_atom_A.with(storage.full_barrier[s]), tAgA_t(_, k), tAsA);
+          auto tBsB = make_tensor(make_smem_ptr(storage.smem_B[s].begin()), tBsB_0.layout());
+          copy(tma_atom_B.with(storage.full_barrier[s]), tBgB_t(_, k), tBsB);
+        }
+      }
+    }
+    // Drain the final multicast commits on BOTH CTAs (smem barrier
+    // lifetime, as in the incumbent paths).
+    const int total_iters = my_tiles * num_k_tiles;
+    for (int g2 = total_iters - min(kStages, total_iters); g2 < total_iters; ++g2) {
+      int s = g2 % kStages;
+      cute::wait_barrier(storage.empty_barrier[s], empty_phase[s]);
+      empty_phase[s] ^= 1;
+    }
+  } else if (warp_idx == 1 && leader_cta) {
+    // Consumer: leader warp 1 (full-wait + MMA + commit). Buffer b = t%2
+    // is reused by round t+2: its first MMA waits until BOTH CTAs'
+    // epilogues drained it (tmem_empty, cluster-scope arrivals).
+    int full_phase[kStages] = {};
+    int tmem_phase[kNumAccBufs] = {};
+    int g = 0;
+    for (int t = 0; t < my_tiles; ++t) {
+      int b = t % kNumAccBufs;
+      if (t >= kNumAccBufs) {
+        cute::wait_barrier(storage.tmem_empty[b], tmem_phase[b]);
+        tmem_phase[b] ^= 1;
+      }
+      tCtAcc.data() = tmem_base + uint32_t(b) * uint32_t(kTileN);
+      tiled_mma.accumulate_ = UMMA::ScaleOut::Zero;
+      for (int k = 0; k < num_k_tiles; ++k, ++g) {
+        int s = g % kStages;
+        cute::wait_barrier(storage.full_barrier[s], full_phase[s]);
+        full_phase[s] ^= 1;
+
+        for (int kb = 0; kb < size<2>(tCrA_st[0]); ++kb) {
+          gemm(tiled_mma, tCrA_st[s](_, _, kb), tCrB_st[s](_, _, kb), tCtAcc);
+          tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+        }
+        cutlass::arch::umma_arrive_multicast_2x1SM(
+            reinterpret_cast<uint64_t*>(&storage.empty_barrier[s]), kEmptyMask);
+      }
+      // Round t complete in BOTH CTAs' TMEM halves: release the pair's
+      // mma_barrier[b] so both epilogue warpgroups can drain it.
+      cutlass::arch::umma_arrive_multicast_2x1SM(
+          reinterpret_cast<uint64_t*>(&storage.mma_barrier[b]), kPairMask);
+    }
+  } else if (warp_idx >= 4) {
+    // Dedicated epilogue warpgroup (BOTH CTAs): drains buffer t%2 + stores
+    // the round's raster tile while the consumer fills the other buffer.
+    const int epi_tid = int(threadIdx.x) - 128;
+    Tensor tEpiAcc = cta_mma.make_fragment_C(tCgC);
+    auto tiled_t2r_copy = make_tmem_copy(EpiLoadOp{}, tEpiAcc);
+    auto thr_t2r_copy = tiled_t2r_copy.get_slice(epi_tid);
+    int mma_phase[kNumAccBufs] = {};
+    for (int t = 0; t < my_tiles; ++t) {
+      int b = t % kNumAccBufs;
+      cute::wait_barrier(storage.mma_barrier[b], mma_phase[b]);
+      mma_phase[b] ^= 1;
+      tEpiAcc.data() = tmem_base + uint32_t(b) * uint32_t(kTileN);
+
+      int tm, tn;
+      raster_map(rr + t * num_clusters, grid_m_t, grid_n_t, tm, tn);
+      auto coord_t = make_coord(tm, tn, _);
+      Tensor gD_t = local_tile(mD, mma_tiler, coord_t, Step<_1, _1, X>{});
+      Tensor tCgD_t = cta_mma.partition_C(gD_t);
+      Tensor tDtAcc = thr_t2r_copy.partition_S(tEpiAcc);   // (CPY, rest...)
+      Tensor tDgD = thr_t2r_copy.partition_D(tCgD_t);      // (CPY, rest...)
+      constexpr int kEpiRank = decltype(rank(tDtAcc))::value;
+      Tensor tDtAccG = group_modes<1, kEpiRank>(tDtAcc);   // (CPY, REST)
+      Tensor tDgDG = group_modes<1, kEpiRank>(tDgD);       // (CPY, REST)
+      CUTE_UNROLL
+      for (int c = 0; c < size<1>(tDtAccG); ++c) {
+        Tensor tDrAcc = make_tensor<Accumulator>(shape(tDgDG(_, c)));
+        copy(tiled_t2r_copy, tDtAccG(_, c), tDrAcc);
+        cutlass::arch::fence_view_async_tmem_load();
+        copy(tDrAcc, tDgDG(_, c));  // D = accumulator (beta=0)
+      }
+      if (t + kNumAccBufs < my_tiles) {
+        // Buffer b will be reused: signal the LEADER's consumer that this
+        // CTA's TMEM half is drained (skipped for the last kNumAccBufs
+        // rounds so no remote arrive lands after the leader's smem
+        // barriers die -- the B49/V2 lifetime trap).
+        cutlass::arch::ClusterBarrier::arrive(
+            &storage.tmem_empty[b], leader_rank,
+            uint32_t((warp_idx == 4) && elect_one_thr));
+      }
+    }
+  }
+#elif DUAL2SM_PERSIST
+  // =====================================================================
+  // V5 persistent mainloop, eo=0 inner loop: champion occupancy (3
+  // CTAs/SM at (128,3)) is kept -- each round runs the warp-split
+  // producer/consumer k-loop, then ALL 128 threads drain+store the single
+  // TMEM buffer (serialized per round; co-residency hides it, the V4
+  // finding). TMEM reuse across rounds is gated by tmem_empty: both CTAs
+  // arrive after their drain, the leader's consumer waits before round
+  // t+1's first MMA. The t2r drain is CHUNKED (EpiLoadOp) so the live
+  // range fits the 170-reg budget that 3 CTAs/SM x 128 threads imposes.
+  // =====================================================================
+  const uint32_t leader_rank = uint32_t(cute::block_rank_in_cluster()) & ~1u;
+  int empty_phase[kStages] = {};
+  int full_phase[kStages] = {};
+  int tmem_phase = 0;
+  auto tiled_t2r_copy = make_tmem_copy(EpiLoadOp{}, tCtAcc);
+  auto thr_t2r_copy = tiled_t2r_copy.get_slice(threadIdx.x);
+  Tensor tDtAcc = thr_t2r_copy.partition_S(tCtAcc);        // (CPY, rest...)
+  constexpr int kEpiRank = decltype(rank(tDtAcc))::value;
+  Tensor tDtAccG = group_modes<1, kEpiRank>(tDtAcc);       // (CPY, REST)
+  for (int t = 0; t < my_tiles; ++t) {
+    int tm, tn;
+    raster_map(rr + t * num_clusters, grid_m_t, grid_n_t, tm, tn);
+    if (warp_idx == 0) {
+      // Producer: WHOLE warp 0 of BOTH CTAs. The ring fully drains at
+      // each round boundary (the commit-drain loop below), so the first
+      // kStages issues of a round need no empty-wait.
+      auto tAgA_t = tAgA_for(tm, tn);
+      auto tBgB_t = tBgB_dyn(tm, tn);
+      for (int k = 0; k < num_k_tiles; ++k) {
+        int s = k % kStages;
+        if (k >= kStages) {
+          cute::wait_barrier(storage.empty_barrier[s], empty_phase[s]);
+          empty_phase[s] ^= 1;
+        }
+        if (elect_one_thr) {
+          if (leader_cta) {
+            cute::set_barrier_transaction_bytes(storage.full_barrier[s], tma_bytes);
+          }
+          auto tAsA = make_tensor(make_smem_ptr(storage.smem_A[s].begin()), tAsA_0.layout());
+          copy(tma_atom_A.with(storage.full_barrier[s]), tAgA_t(_, k), tAsA);
+          auto tBsB = make_tensor(make_smem_ptr(storage.smem_B[s].begin()), tBsB_0.layout());
+          copy(tma_atom_B.with(storage.full_barrier[s]), tBgB_t(_, k), tBsB);
+        }
+      }
+      // Drain this round's final multicast commits on BOTH CTAs.
+      for (int k = num_k_tiles - min(kStages, num_k_tiles); k < num_k_tiles; ++k) {
+        int s = k % kStages;
+        cute::wait_barrier(storage.empty_barrier[s], empty_phase[s]);
+        empty_phase[s] ^= 1;
+      }
+    } else if (warp_idx == 1 && leader_cta) {
+      // Consumer: TMEM buffer reuse waits for BOTH CTAs' round-(t-1)
+      // drains (cluster-scope tmem_empty arrivals).
+      if (t >= 1) {
+        cute::wait_barrier(storage.tmem_empty[0], tmem_phase);
+        tmem_phase ^= 1;
+      }
+      tiled_mma.accumulate_ = UMMA::ScaleOut::Zero;
+      for (int k = 0; k < num_k_tiles; ++k) {
+        int s = k % kStages;
+        cute::wait_barrier(storage.full_barrier[s], full_phase[s]);
+        full_phase[s] ^= 1;
+
+        for (int kb = 0; kb < size<2>(tCrA_st[0]); ++kb) {
+          gemm(tiled_mma, tCrA_st[s](_, _, kb), tCrB_st[s](_, _, kb), tCtAcc);
+          tiled_mma.accumulate_ = UMMA::ScaleOut::One;
+        }
+        cutlass::arch::umma_arrive_multicast_2x1SM(
+            reinterpret_cast<uint64_t*>(&storage.empty_barrier[s]), kEmptyMask);
+      }
+      cutlass::arch::umma_arrive_multicast_2x1SM(
+          reinterpret_cast<uint64_t*>(&storage.mma_barrier[0]), kPairMask);
+    }
+
+    // Per-round epilogue: ALL 128 threads of both CTAs (one multicast
+    // commit per round -> mma_barrier phase alternates with t).
+    cute::wait_barrier(storage.mma_barrier[0], t & 1);
+    {
+      auto coord_t = make_coord(tm, tn, _);
+      Tensor gD_t = local_tile(mD, mma_tiler, coord_t, Step<_1, _1, X>{});
+      Tensor tCgD_t = cta_mma.partition_C(gD_t);
+      Tensor tDgD = thr_t2r_copy.partition_D(tCgD_t);      // (CPY, rest...)
+      Tensor tDgDG = group_modes<1, kEpiRank>(tDgD);       // (CPY, REST)
+      CUTE_UNROLL
+      for (int c = 0; c < size<1>(tDtAccG); ++c) {
+        Tensor tDrAcc = make_tensor<Accumulator>(shape(tDgDG(_, c)));
+        copy(tiled_t2r_copy, tDtAccG(_, c), tDrAcc);
+        cutlass::arch::fence_view_async_tmem_load();
+        copy(tDrAcc, tDgDG(_, c));  // D = accumulator (beta=0)
+      }
+    }
+    if (t + 1 < my_tiles) {
+      // All this CTA's t2r loads must be done before signaling the drain
+      // (skipped on the last round -- the B49/V2 smem-lifetime trap).
+      __syncthreads();
+      cutlass::arch::ClusterBarrier::arrive(
+          &storage.tmem_empty[0], leader_rank,
+          uint32_t((warp_idx == 0) && elect_one_thr));
+    }
+  }
+#elif DUAL2SM_EPI_OVERLAP
   // =====================================================================
   // V4 cross-tile epilogue-overlap mainloop (lever e). Warpgroup 0 runs
   // the warp-split producer/consumer over the FLATTENED (tile, k)
@@ -686,7 +1012,7 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   }
 #endif
 
-#if !DUAL2SM_EPI_OVERLAP
+#if !DUAL2SM_EPI_OVERLAP && !DUAL2SM_PERSIST
   // All 128 threads of both CTAs rendezvous here for the epilogue.
   cute::wait_barrier(storage.mma_barrier[0], 0);
 
@@ -701,7 +1027,7 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   cutlass::arch::fence_view_async_tmem_load();
 
   copy(tDrAcc, tDgD);  // D = accumulator (beta=0)
-#endif  // !DUAL2SM_EPI_OVERLAP
+#endif  // !DUAL2SM_EPI_OVERLAP && !DUAL2SM_PERSIST
 
   // Under EPI_OVERLAP the dedicated warpgroup already drained + stored all
   // tiles; all warps (8 under overlap, 4 otherwise) rendezvous here.
@@ -780,22 +1106,53 @@ torch::Tensor run_dual_cta_2sm_matmul(torch::Tensor a, torch::Tensor b) {
 
   int grid_pairs_m = int(m) / kTileM;
   int grid_n = int(n) / kTileN;
+#if !DUAL2SM_PERSIST
   TORCH_CHECK(grid_n % (kClusterN * kTilesPerCta) == 0,
               "N tiles (", grid_n, ") must be divisible by cluster N x tiles/CTA (",
               kClusterN * kTilesPerCta, ")");
+#endif
 
   dim3 dimBlock(kNumThreads);  // 256 under EPI_OVERLAP (2nd = epilogue warpgroup)
-  // blockIdx.x: (pair, v) interleaved; y: each cluster walks kTilesPerCta n-tiles
-  dim3 dimGrid(2 * grid_pairs_m, grid_n / kTilesPerCta);
   int smem_bytes = sizeof(SharedStorageT);
 
   auto* kernel_ptr = &gemm_dual_cta_2sm<
-      SharedStorageT, decltype(mA), decltype(mB), decltype(mC), decltype(mD),
+      SharedStorageT, kCfgMain, kCfgEpi, kCfgV5,
+      decltype(mA), decltype(mB), decltype(mC), decltype(mD),
       decltype(mma_tiler), decltype(tiled_mma), decltype(tma_atom_A), decltype(tma_atom_B)>;
 
   AT_CUDA_CHECK(cudaFuncSetAttribute(kernel_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
   AT_CUDA_CHECK(cudaFuncSetAttribute(kernel_ptr, cudaFuncAttributePreferredSharedMemoryCarveout,
                                      cudaSharedmemCarveoutMaxShared));
+
+#if DUAL2SM_PERSIST
+  // Persistent grid = exactly the co-residable cluster count, sized
+  // STATICALLY as min(smem-implied, TMEM-implied) CTAs/SM. The V5 ncu
+  // trap (bankable): cudaOccupancyMaxActiveBlocksPerMultiprocessor is
+  // UNSTABLE for this cluster kernel -- identical back-to-back launches
+  // got grids of 152 and 456 CTAs (waves 0.33 vs 1.0) from the same
+  // query, and the undersized grid runs persistently at 1/3 occupancy
+  // (1.32ms vs 742us). Registers are not binding here (84 regs at eo=0 /
+  // 64 at eo=2, measured), so the static minimum is exact.
+  auto* props = at::cuda::getCurrentDeviceProperties();
+  // +1KB/CTA: the per-block reserved smem (cudaDevAttrReservedSharedMemoryPerBlock).
+  int smem_blocks = int(props->sharedMemPerMultiprocessor / size_t(smem_bytes + 1024));
+  constexpr int kTmemBlocks =
+      cute::TMEM::Allocator2Sm::Sm100TmemCapacityColumns / kAccTmemCols;
+  int blocks_per_sm = smem_blocks < kTmemBlocks ? smem_blocks : kTmemBlocks;
+  TORCH_CHECK(blocks_per_sm >= 1, "persistent grid: zero co-residable CTAs/SM");
+  int sm_count = props->multiProcessorCount;
+  int total_pair_tiles = grid_pairs_m * grid_n;
+  int persist_clusters = (sm_count * blocks_per_sm) / 2;
+  if (persist_clusters > total_pair_tiles) persist_clusters = total_pair_tiles;
+  dim3 dimGrid(2 * persist_clusters);  // cluster rr walks rr, rr+C, rr+2C...
+#elif DUAL2SM_RASTER_GM > 0
+  // 1D flatten: ascending-blockIdx hardware rasterization executes the
+  // GROUP_M order produced by raster_map (the standard Triton trick).
+  dim3 dimGrid(2 * grid_pairs_m * grid_n);
+#else
+  // blockIdx.x: (pair, v) interleaved; y: each cluster walks kTilesPerCta n-tiles
+  dim3 dimGrid(2 * grid_pairs_m, grid_n / kTilesPerCta);
+#endif
 
   cudaLaunchConfig_t launch_config;
   launch_config.gridDim = dimGrid;
