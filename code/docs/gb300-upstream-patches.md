@@ -69,28 +69,79 @@ pod artifacts). In-repo fixes are already landed on main and are not listed.
   annotation edits from the PR_DRAFT table, paste PR_DRAFT.md, attach
   snippet.cu.
 
-## Tier 2 — reportable findings (needs a minimal standalone reproducer first)
+## Tier 2 — reportable findings (reproducers verified 2026-06-11, Front P2)
 
 ### 4. PyTorch: `torch._scaled_grouped_mm` refuses NVFP4
+- **Status (2026-06-11, Front P2): reproducer verified / draft ready.**
+  `code/upstream/pytorch-scaled-grouped-mm-nvfp4/{repro.py,ISSUE_DRAFT.md,README.md}`.
+  repro.py ran on the pod (GPU 3, flock, foreign-proc clean): exit 0. Exact
+  refusal messages captured (`ValueError: ... For MXFP8, scales must both be
+  float8_e8m0fnu tensors.` / `Expected mat_a to be Float8_e4m3 matrix got
+  Float4_e2m1fn_x2`); per-group NVFP4 `_scaled_mm` works (nvjet_sm103
+  Avec16UE4M3 kernel, profiler-named); 30-launch fallback re-measured
+  (1068 us/call GPU span, 35.6 us/GEMM). BONUS finding in the same repro:
+  FP8 rowwise `_scaled_grouped_mm` is ALSO broken on sm_103 — the dispatched
+  CUTLASS kernel traps ("Arch conditional MMA instruction used without
+  targeting appropriate compute capability") and poisons the CUDA context,
+  so NO `_scaled_grouped_mm` path works on sm_103 at all in torch 2.12.0a0.
 - **Repo:** pytorch/pytorch
 - **Finding (B28):** the grouped scaled-mm API accepts FP8/MXFP8 only; NVFP4
   workloads are forced to 30 separate `_scaled_mm` launches, which a custom
-  fused kernel beats 3.1x wall. Feature request: NVFP4 grouped support
-  (sm100/sm103 hardware supports it).
+  fused kernel beats 3.1x wall (banked). Feature request: NVFP4 grouped
+  support — capability citation verified: CUTLASS
+  `examples/90_sm103_fp4_ultra_grouped_gemm` (e2m1 + ue4m3-SF, sm_103).
+- **Upstream check (2026-06-11):** NVFP4 grouped is IN FLIGHT upstream —
+  pytorch/pytorch#174699 (open, CuTeDSL block-scaled grouped MM with nvfp4,
+  hooks `F.scaled_grouped_mm`), plus #156238 (SM100+ grouped ask) and
+  #162209 (MXFP8 precedent, merged).
+- **To file:** see README — consider commenting on #174699/#156238 instead
+  of a new issue; if filing, pytorch/pytorch "🚀 Feature" template, paste
+  ISSUE_DRAFT.md, attach repro.py; decide whether to split the sm_103
+  FP8-grouped arch-trap into its own bug.
 
 ### 5. PyTorch: `torch._int_mm` 13.4x slower than tf32 matmul on sm_103
+- **Status (2026-06-11, Front P2): reproducer verified / draft ready.**
+  `code/upstream/pytorch-int-mm-sm103/{repro.py,ISSUE_DRAFT.md,README.md}`.
+  repro.py ran on the pod (GPU 3, flock, foreign-proc clean): exit 0,
+  banked numbers reproduced exactly (row-major rhs 3645.9 us = 13.4x vs
+  tf32 272.3 us; 24.5x vs fp16) and the dispatched kernels captured — the
+  NEW evidence: `_int_mm` lands on Ampere-era `cutlass_80_tensorop_i16832gemm`
+  (col-major rhs, 1751 us = 6.4x) / `cutlass_80_wmma_..._forwardCompat`
+  (row-major rhs) while fp32-tf32 gets `cutlass3x_sm100_*_2sm` and fp16
+  gets `nvjet_sm103_*`. Layout-controlled: BOTH rhs layouts are several
+  times slower than tf32 (the row/col 2.08x gap is the separately-tracked
+  pytorch/pytorch#165230; ours is the arch-dispatch bug).
 - **Repo:** pytorch/pytorch
 - **Finding (B20):** INT8 `_int_mm` runs 13.4x slower than the tf32 path on
-  GB300 — the sm_103 INT8 GEMM dispatch appears to hit a slow kernel. Perf
-  bug report with shapes + timings.
+  GB300 — sm_103 INT8 dispatch hits sm_80 forward-compat kernels. Perf bug
+  with shapes + timings + dispatched-kernel names.
+- **To file:** see README — pytorch/pytorch bug template, paste
+  ISSUE_DRAFT.md, attach repro.py; link #165230; suggest labels
+  `module: linear algebra`, `topic: performance`, `oncall: quantization`.
 
 ### 6. Triton: sm_103 max-autotune emits unselectable `tcgen05.wait.st`
-- **Repo:** triton-lang/triton (and pytorch torch.compile)
-- **Finding (toolchain section + B23-era):** `torch.compile(mode=
-  "max-autotune")` on sm_103 with Triton 3.7 (and 3.5.0 on torch 2.12)
-  aborts with `LLVM ERROR: Cannot select: intrinsic %llvm.nvvm.tcgen05.wait.st`.
-  Forces every lab to fall back to reduce-overhead. Likely known upstream;
-  verify against current Triton main before filing.
+- **Status (2026-06-11, Front P2): DO NOT FILE — already filed upstream AND
+  root-caused to an in-repo patch.**
+  `code/upstream/triton-tcgen05-wait-st/{repro.py,STATUS.md,README.md}`
+  (no ISSUE_DRAFT, deliberately). Upstream: the exact error string is
+  triton-lang/triton#8473 (open; the genuine bug was the Triton 3.5
+  release cut between breaking PR #7725 and fixing LLVM-bump PR #8299) and
+  #8481 (closed dup). On THIS stack the 4-probe repro (pod, GPU 3, exit 0)
+  shows vanilla Triton 3.7.0 is CLEAN on sm_103 (plain tl.dot JIT, dead
+  num_warps:constexpr param, max-autotune attn+MLP compile all clean); the
+  abort reproduces ONLY when the target arch is mis-set to `sm_103` without
+  the `a` suffix (probe D: rc=134, exact error string) — which is precisely
+  what `core/benchmark/triton_compat.py:100-109` (`ensure_triton_compat`,
+  the GB10 sm_121 workaround) does to sm_103a. This resolves the B19
+  "exact side effect not yet isolated" question; the campaign's 3.7 aborts
+  were self-inflicted.
+- **Repo:** none (in-repo fix instead): preserve the `a` suffix for all
+  `sm_1xxa` in triton_compat.py, clamp only sm_121->sm_120; then re-test
+  llama max-autotune with `ENABLE_TRITON_PATCH=0` and consider retiring the
+  sm_103 max-autotune->default downgrade in `get_optimal_compile_mode`.
+- **Finding (toolchain section + B17/B18/B19-era, REVISED):** the abort
+  signature is real but its 3.7 occurrences trace to the repo's arch
+  de-suffixing; the upstream 3.5-release breakage is fixed on main.
 
 ## Tier 3 — book/educational content (this repo's own publishing pipeline)
 
@@ -117,3 +168,10 @@ Tier-1 filing packages live under `code/upstream/` (Front P, 2026-06-11):
 every file is marked "DRAFT — internal review pending"; nothing has been
 posted externally. Pod verification artifacts: `/tmp/frontP/` (repro
 stdout/stderr, SASS dumps, ALL_DONE).
+
+Tier-2 filing packages live under `code/upstream/` as well (Front P2,
+2026-06-11): same DRAFT marking, nothing posted externally. Pod
+verification artifacts: `/tmp/frontP2/` (per-item
+.cmd/.stdout/.stderr/.exit tuples, the childD mechanism probe, ALL_DONE).
+Item 6 ships a STATUS.md instead of an ISSUE_DRAFT (already filed
+upstream + root-caused in-repo).
