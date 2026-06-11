@@ -1901,6 +1901,26 @@ SoL framing (B), measured 2026-06-09:
   candidate-swallowing autotuner turns a toolchain abort into an invisible PERF BIAS -- when a
   compile backend "works", verify its candidate space actually compiles from a COLD cache.
 
+- CONTRACT-LEVEL WIN (B72, FP8 port of the dual_2sm champion, the B68-named unlock): docs/
+  gb300-fp8-dual2sm.md. NEW tcgen05_dual_2sm_fp8.cu (generated from the FP16 champion by 12
+  exact-match asserted patches; FP16 file untouched, md5-identical, FP16 gates 3/3 PASS):
+  fp8_2sm (n256, s3, mb2, kTileK=128, rg8, te1) = 377.6us / 2912 TFLOPS at 8192^3 = 1.918x paired
+  over the in-session custom FP16 champion (724.1us; 2.20x vs the B68 830us figure), 0.7228x of
+  same-run cuBLASLt FP8 (0/16 -- not beaten, but ONE front reached the ~70%-of-ceiling position
+  the FP16 journey needed seven fronts for). Correctness: rel_err == 0.0 EXACTLY on all 11 configs
+  (exact-dataset provably-exact fp32 partials; randn-quantized also 0.0). FP8 CEILING CALIBRATED
+  (B61 method): warmed nvjet FP8 best 266.9us = 4119 TFLOPS = the real ceiling (B68's 3.7-3.8PF
+  estimate was the cold value). DESIGN FACTS: the FP8 2SM atom K-extent is 32 and splits B
+  N/2-per-CTA (B49 print-check held); kTileK=128 keeps per-stage bytes equal to the FP16 champion
+  (24KB) while halving barrier trips/byte; the n256 BIG TILE beats the FP16-geometry port at FP8
+  rates (2 CTAs/SM trades occupancy for halved B-traffic/flop -- nvjet's own 128x256 corroborates);
+  TMA-store epi is a BIGGER lever at FP8 (1.128x vs 1.09x); k64/SW64 ring-deepening loses badly
+  (TMA-box halving -> issue-bound, the B48 law at FP8). ncu: tensor pipe 81.7% (highest-utilized),
+  grid 304 = 152 SMs x 2 (B65 static sizing), 71 regs, 98.4KB smem. The kernel is TENSOR-BOUND --
+  structure, not feed, is the frontier. NEXT LEVER: ring depth on the n256 footprint at 1 CTA/SM
+  (e4m3 makes 6x32KB = 192KB fit the 227KB SM budget, impossible at fp16; requires lifting the
+  110KB static cap); secondary: in-kernel fp16 D output (D-store still ~12%).
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

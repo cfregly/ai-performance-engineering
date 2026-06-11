@@ -475,20 +475,23 @@ def load_tcgen05_dual_2sm_fp8_module():
     occupancy math are IDENTICAL to the FP16 winner while barrier
     round-trips per fed byte halve. No block scales (dense GEMM lab).
 
-    Tunables (env, read at first load; defaults = the FP16 champion geometry
-    adapted to e4m3):
-      AISP_DUAL2SM_FP8_TILE_N (128), AISP_DUAL2SM_FP8_STAGES (3),
-      AISP_DUAL2SM_FP8_WARP_SPLIT (1), AISP_DUAL2SM_FP8_MIN_BLOCKS (3),
+    Tunables (env, read at first load; defaults = the MEASURED FP8 champion
+    (2026-06-11 GPU2 16-rep interleave: 377.6us / 2912 TF at 8192^3 =
+    0.7228x cuBLASLt FP8; 1.918x over the FP16 champion in-session; see
+    docs/gb300-fp8-dual2sm.md) -- the n256 big tile BEATS the FP16
+    champion geometry n128 at FP8 rates):
+      AISP_DUAL2SM_FP8_TILE_N (256), AISP_DUAL2SM_FP8_STAGES (3),
+      AISP_DUAL2SM_FP8_WARP_SPLIT (1), AISP_DUAL2SM_FP8_MIN_BLOCKS (2),
       AISP_DUAL2SM_FP8_TILE_K (128; 64 selects the SW64 smem atom and
       12KB/stage -> stages up to 6 at the same 72KB ring),
       AISP_DUAL2SM_FP8_EPI_ATOM (32), AISP_DUAL2SM_FP8_PERSIST (1),
       AISP_DUAL2SM_FP8_RASTER_GM (8), AISP_DUAL2SM_FP8_TMA_EPI (1; requires
       TILE_K=128 -- the 16KB fp32 staging chunk must fit a drained A stage).
     """
-    tile_n = int(os.environ.get("AISP_DUAL2SM_FP8_TILE_N", "128"))
+    tile_n = int(os.environ.get("AISP_DUAL2SM_FP8_TILE_N", "256"))
     stages = int(os.environ.get("AISP_DUAL2SM_FP8_STAGES", "3"))
     warp_split = int(os.environ.get("AISP_DUAL2SM_FP8_WARP_SPLIT", "1"))
-    min_blocks = int(os.environ.get("AISP_DUAL2SM_FP8_MIN_BLOCKS", "3"))
+    min_blocks = int(os.environ.get("AISP_DUAL2SM_FP8_MIN_BLOCKS", "2"))
     tile_k = int(os.environ.get("AISP_DUAL2SM_FP8_TILE_K", "128"))
     epi_atom = int(os.environ.get("AISP_DUAL2SM_FP8_EPI_ATOM", "32"))
     persist = int(os.environ.get("AISP_DUAL2SM_FP8_PERSIST", "1"))
