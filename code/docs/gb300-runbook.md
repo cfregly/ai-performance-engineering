@@ -1210,6 +1210,26 @@ SoL framing (B), measured 2026-06-09:
   floors; no optimization EV at these shapes). With B36+B37 this round: three verify-passing wins, all
   three from the same playbook -- profile-split the wall, kill the incidental work, graph the launch.
 
+- WIN + EVIDENCE-BASED SKIP (B39, fp16-direct epilogue on the B36 kernel): docs/
+  gb300-blackwell-matmul-hostoverhead.md (D3 section). capstone_kernels_tcgen05.cu epilogue now
+  converts the fp32 UMMA accumulator to fp16 in registers and stores straight to an fp16 D
+  (TypeD float -> cutlass::half_t; the .to(kFloat16) cast kernel + host aten::_to_copy are GONE, D
+  store traffic halved): blackwell_matmul_tcgen05 0.14949 -> 0.1300-0.1309 ms (104.9x -> ~120x vs
+  naive), verify PASS x3; BIT-IDENTICAL (torch.equal pre/post for CTA1+CTA2 -- fp32-accum->fp16 RN in
+  registers rounds identically to fp32-store-then-convert). fullstack_cluster pair ratios settle at
+  ~1.0x by construction (B28 pattern: baseline CTA1 and optimized CTA2 are BOTH this kernel -- both
+  sides got faster; absolute opt times improved, verify PASS). Kernel 38.9 -> 37.6 us; serial probe
+  75.7 -> 64.5 us. CUDA-GRAPH SKIPPED with evidence (not negligence): the sanctioned path is the
+  harness enable_cuda_graph + declared graph_capture_enabled signature audited by
+  GraphCaptureCheatDetector; this benchmark declares none, flipping the shared config changes the
+  timing mode of every variant in both labs (a measurement-contract change, not an op win), and an
+  extension-internal undeclared stream-capture is ambiguous-to-illegitimate. Ceiling was ~3% anyway
+  (graph replaces only the 8.5 us launch API; the ~18 us pybind/check/empty host residual is
+  un-graphable). Cumulative B36+B39 on this target: 0.2250 -> 0.130 ms = 1.73x, bit-identical
+  throughout. NEXT LEVER (now the dominant term): k-stage pipelining in gemm_device_variant
+  (double-buffered smem, TMA prefetch of tile k+1 overlapping MMA of tile k) -- the mainloop is serial
+  TMA->wait->MMA->wait and 37.6 us is ~457 TFLOPS = 12.2% FP16-SoL at 2048^3.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
