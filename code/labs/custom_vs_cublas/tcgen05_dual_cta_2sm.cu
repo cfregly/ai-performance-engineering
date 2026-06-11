@@ -68,6 +68,7 @@
 #include <ATen/cuda/Exceptions.h>
 #include <torch/extension.h>
 
+#include <cuda.h>          // CUtensorMap / cuTensorMapEncodeTiled (lever h)
 #include <cuda_runtime.h>
 
 #include <cutlass/arch/barrier.h>
@@ -78,6 +79,7 @@
 #include <cute/arch/tmem_allocator_sm100.hpp>
 #include <cute/atom/mma_traits_sm100.hpp>
 #include <cute/atom/copy_traits_sm100_tma.hpp>  // make_tma_atom_A/B_sm100, SM100_TMA_2SM_LOAD
+#include <cute/atom/copy_traits_sm90_tma.hpp>   // SM90_TMA_STORE, tma_store_arrive/wait (lever h)
 #include <cute/arch/cluster_sm90.hpp>           // elect_one_sync, block_rank_in_cluster, cluster_sync
 #include <cute/algorithm/prefetch.hpp>          // cute::prefetch (TMA PREFETCH op, lever g)
 
@@ -190,6 +192,27 @@
 #ifndef DUAL2SM_PF_ISSUER
 #define DUAL2SM_PF_ISSUER 0
 #endif
+// Lever (h), V7-front: TMA-store epilogue through the drained ring stage
+// (the B66-named LAST scheduling lever). Scoped to the PERSIST eo=0
+// incumbent: its per-round epilogue is kTileN/32 x [chunked t2r -> fence
+// -> 8 per-thread STG.E.128], whose 16B-per-32B-sector pattern is
+// STRUCTURAL to the 32dp32b t2r layout (thread == row, so the 32 lanes'
+// 16B vectors hit 32 different rows = 32 different sectors; V6 ncu:
+// 16.78M global-store sectors = exactly 2x the 8.39M floor, 20.05M L1->L2
+// write sectors = 2.39x). Staging each 128x32 fp32 chunk through the
+// DRAINED stage smem_A[c % kStages] (16KB, free at every round boundary)
+// with the SW128 XOR pattern (16B-group ^ (row & 7); the B58 capstone
+// pattern, conflict-free STS.128) turns the store path into ONE
+// cp.async.bulk.tensor.2d per chunk at 100% sector efficiency. Zero
+// TMEM/occupancy cost (unlike the retired eo=2 family). Completion: one
+// commit group per chunk; staging-buffer reuse waits
+// tma_store_wait<kStages-1> (the TMA engine is the ring's last consumer
+// -- the B58 trap); the producer's elected thread waits <0> AFTER the
+// tmem_empty arrive, so only the smem-reuse path (not the consumer's
+// next-round MMA) is gated on the store drain.
+#ifndef DUAL2SM_TMA_EPI
+#define DUAL2SM_TMA_EPI 0
+#endif
 
 using namespace cute;
 
@@ -250,6 +273,12 @@ static_assert(DUAL2SM_PREFETCH >= 0 && DUAL2SM_PREFETCH <= kStages,
 static_assert(DUAL2SM_PF_ISSUER >= 0 && DUAL2SM_PF_ISSUER <= 2,
               "DUAL2SM_PF_ISSUER must be 0 (producer), 1 (epilogue), or "
               "2 (parked warp, round start)");
+static_assert(DUAL2SM_TMA_EPI == 0 || (kPersist && DUAL2SM_EPI_OVERLAP == 0),
+              "TMA_EPI is scoped to the persistent eo=0 path (its per-round "
+              "serialized epilogue is the target)");
+static_assert(DUAL2SM_TMA_EPI == 0 || DUAL2SM_EPI_ATOM == 32,
+              "TMA_EPI staging assumes 32-col t2r chunks (128x32 fp32 = 16KB "
+              "= one drained A stage)");
 
 // Raster-order tile mapping: index idx in [0, grid_m*grid_n) ->
 // (tile_m, tile_n). GROUP_M (gm>0): groups of gm pair-rows sweep n
@@ -321,6 +350,32 @@ using EpiLoadOp = SM100_TMEM_LOAD_32dp32b128x;
 #error "DUAL2SM_EPI_ATOM must be 1|2|4|8|16|32|64|128"
 #endif
 
+#if DUAL2SM_TMA_EPI
+// V7 lever (h): the D store descriptor is built RAW (cuTensorMapEncodeTiled,
+// the nvfp4-lab pattern) instead of through cute's make_tma_copy: the cute
+// path's element-space swizzle conventions (get_tma_swizzle_base demands a
+// byte-space Swizzle<3,4,3>) don't compose cleanly with an fp32 staging
+// tile, and nothing else on the store path needs the layout algebra. Box =
+// (n=32, m=128) fp32 = 128B x 128 rows = 16KB, CU_TENSOR_MAP_SWIZZLE_128B:
+// the engine reads smem expecting the PHYSICAL 128B-swizzle pattern
+// (16B-group g at row r lives at r*128B + (g ^ (r & 7))*16B from the box
+// base), which is exactly what the staging writes.
+static CUtensorMap make_tma_desc_D(void const* d_ptr, int64_t m, int64_t n) {
+  CUtensorMap desc{};
+  uint64_t global_dim[2] = {uint64_t(n), uint64_t(m)};         // dim0 = n (stride 1)
+  uint64_t global_strides[1] = {uint64_t(n) * sizeof(float)};  // dim1 byte stride
+  uint32_t box_dim[2] = {32, 128};                             // 128B x 128 rows
+  uint32_t elem_strides[2] = {1, 1};
+  CUresult res = cuTensorMapEncodeTiled(
+      &desc, CU_TENSOR_MAP_DATA_TYPE_FLOAT32, 2, const_cast<void*>(d_ptr),
+      global_dim, global_strides, box_dim, elem_strides,
+      CU_TENSOR_MAP_INTERLEAVE_NONE, CU_TENSOR_MAP_SWIZZLE_128B,
+      CU_TENSOR_MAP_L2_PROMOTION_L2_128B, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE);
+  TORCH_CHECK(res == CUDA_SUCCESS, "cuTensorMapEncodeTiled(D) failed: ", int(res));
+  return desc;
+}
+#endif
+
 // Compile-config tags: configs that differ ONLY in body-level macros (ws,
 // mb, eo, ea, persist, raster_gm) would otherwise instantiate the SAME
 // mangled kernel symbol across separately-built .so's -- the B61 in-process
@@ -328,7 +383,8 @@ using EpiLoadOp = SM100_TMEM_LOAD_32dp32b128x;
 constexpr int kCfgMain = DUAL2SM_WARP_SPLIT | (DUAL2SM_AMCAST << 1) | (DUAL2SM_MIN_BLOCKS << 2);
 constexpr int kCfgEpi = DUAL2SM_EPI_OVERLAP | (DUAL2SM_EPI_ATOM << 8);
 constexpr int kCfgV5 = DUAL2SM_PERSIST | (DUAL2SM_RASTER_GM << 1) |
-                       (DUAL2SM_PREFETCH << 8) | (DUAL2SM_PF_ISSUER << 12);
+                       (DUAL2SM_PREFETCH << 8) | (DUAL2SM_PF_ISSUER << 12) |
+                       (DUAL2SM_TMA_EPI << 14);
 
 template <class SharedStorageT, int CfgMain, int CfgEpi, int CfgV5,
           class ATensor, class BTensor, class CTensor, class DTensor,
@@ -342,7 +398,11 @@ __global__ void __cluster_dims__(2, 1, 1) __launch_bounds__(kNumThreads, DUAL2SM
 gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
                   MmaTiler_MNK mma_tiler, TiledMMA tiled_mma,
                   CUTE_GRID_CONSTANT TmaAtomA const tma_atom_A,
-                  CUTE_GRID_CONSTANT TmaAtomB const tma_atom_B) {
+                  CUTE_GRID_CONSTANT TmaAtomB const tma_atom_B
+#if DUAL2SM_TMA_EPI
+                  , CUTE_GRID_CONSTANT CUtensorMap const tma_desc_D
+#endif
+                  ) {
 
   uint32_t elect_one_thr = cute::elect_one_sync();
   const int warp_idx = int(threadIdx.x / 32);
@@ -830,6 +890,68 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
       prefetch_round(t + 1);
     }
 #endif
+#if DUAL2SM_TMA_EPI
+    {
+      // V7 lever (h): stage each (128 x 32) fp32 chunk of this CTA's D
+      // half through the DRAINED ring stage smem_A[c % kStages], then ONE
+      // cp.async.bulk.tensor.2d store per chunk. CLayout of the 2x1SM
+      // atom (Stride<Int<M/2>, ...> on the thr mode): CTA v owns the
+      // CONTIGUOUS D rows [tm*256 + v*128, +128).
+      constexpr int kDChunks = kTileN / 32;
+      const int row0 = (tm * 2 + v) * 128;  // D row base (the 2x1SM CLayout
+                                            // gives CTA v the CONTIGUOUS rows
+                                            // [tm*256 + v*128, +128))
+      const int col0 = tn * kTileN;         // D col base
+      const int r = int(threadIdx.x);       // 32dp32b t2r: thread == row
+      // D-side partition used for the register-fragment SHAPE only (the
+      // t2r CopyAtom requires a dst layout that vectorizes into regs);
+      // no stores go through it under TMA_EPI.
+      auto coord_t = make_coord(tm, tn, _);
+      Tensor gD_t = local_tile(mD, mma_tiler, coord_t, Step<_1, _1, X>{});
+      Tensor tCgD_t = cta_mma.partition_C(gD_t);
+      Tensor tDgD = thr_t2r_copy.partition_D(tCgD_t);      // (CPY, rest...)
+      Tensor tDgDG = group_modes<1, kEpiRank>(tDgD);       // (CPY, REST)
+      CUTE_UNROLL
+      for (int c = 0; c < kDChunks; ++c) {
+        Tensor tDrAcc = make_tensor<Accumulator>(shape(tDgDG(_, c)));
+        copy(tiled_t2r_copy, tDtAccG(_, c), tDrAcc);
+        cutlass::arch::fence_view_async_tmem_load();
+        if (c >= kStages) {
+          // Staging-buffer reuse: the TMA store engine is the ring's
+          // LAST consumer (the B58 trap) -- chunk c-kStages must be read
+          // out of this stage before the CTA overwrites it.
+          if (warp_idx == 0 && elect_one_thr) {
+            cute::tma_store_wait<kStages - 1>();
+          }
+          __syncthreads();
+        }
+        float4* sbuf = reinterpret_cast<float4*>(storage.smem_A[c % kStages].begin());
+        CUTE_UNROLL
+        for (int g = 0; g < 8; ++g) {
+          // SW128 16B-group XOR (g ^ (row & 7)): conflict-free STS.128,
+          // and exactly the descriptor's SWIZZLE_128B physical pattern.
+          sbuf[r * 8 + (g ^ (r & 7))] =
+              make_float4(tDrAcc(4 * g + 0), tDrAcc(4 * g + 1),
+                          tDrAcc(4 * g + 2), tDrAcc(4 * g + 3));
+        }
+        cute::tma_store_fence();   // STS visible to the async proxy
+        __syncthreads();           // whole CTA's chunk staged
+        if (warp_idx == 0 && elect_one_thr) {
+          uint32_t s_ptr = cute::cast_smem_ptr_to_uint(storage.smem_A[c % kStages].begin());
+          int32_t crd_n = col0 + c * 32;   // descriptor dim0 = n
+          int32_t crd_m = row0;            // descriptor dim1 = m
+          asm volatile(
+              "cp.async.bulk.tensor.2d.global.shared::cta.bulk_group"
+              " [%0, {%2, %3}], [%1];"
+              :
+              : "l"(reinterpret_cast<uint64_t>(&tma_desc_D)), "r"(s_ptr),
+                "r"(crd_n), "r"(crd_m)
+              : "memory");
+          cute::tma_store_arrive();
+        }
+      }
+    }
+#else
     {
       auto coord_t = make_coord(tm, tn, _);
       Tensor gD_t = local_tile(mD, mma_tiler, coord_t, Step<_1, _1, X>{});
@@ -844,6 +966,7 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
         copy(tDrAcc, tDgDG(_, c));  // D = accumulator (beta=0)
       }
     }
+#endif  // DUAL2SM_TMA_EPI
     if (t + 1 < my_tiles) {
       // All this CTA's t2r loads must be done before signaling the drain
       // (skipped on the last round -- the B49/V2 smem-lifetime trap).
@@ -852,6 +975,18 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
           &storage.tmem_empty[0], leader_rank,
           uint32_t((warp_idx == 0) && elect_one_thr));
     }
+#if DUAL2SM_TMA_EPI
+    // Smem-reuse gate ONLY: the elected warp-0 thread -- the SAME thread
+    // that issues round t+1's TMA loads into smem_A -- drains its store
+    // groups (wait_group.read: the engine has READ the staging buffers;
+    // gmem landing is not needed for reuse and D is never re-read). The
+    // consumer's round t+1 is NOT gated: the tmem_empty arrive above is
+    // already sent, and its first MMA transitively waits on this thread's
+    // TMA loads anyway.
+    if (warp_idx == 0 && elect_one_thr) {
+      cute::tma_store_wait<0>();
+    }
+#endif
   }
 #elif DUAL2SM_EPI_OVERLAP
   // =====================================================================
@@ -1177,6 +1312,13 @@ torch::Tensor run_dual_cta_2sm_matmul(torch::Tensor a, torch::Tensor b) {
   auto tma_atom_B = make_tma_atom_B_sm100(SM100_TMA_2SM_LOAD{}, mB, sB_layout,
                                           mma_tiler, tiled_mma, cluster_layout_vmnk);
 
+#if DUAL2SM_TMA_EPI
+  // V7 lever (h): raw TMA store descriptor for D -- (n=32, m=128) fp32
+  // box, SWIZZLE_128B; one descriptor for the whole kernel, per-chunk
+  // element coords on the device side.
+  CUtensorMap tma_desc_D = make_tma_desc_D(d_buffer.data_ptr<TypeD>(), m, n);
+#endif
+
   int grid_pairs_m = int(m) / kTileM;
   int grid_n = int(n) / kTileN;
 #if !DUAL2SM_PERSIST
@@ -1245,6 +1387,9 @@ torch::Tensor run_dual_cta_2sm_matmul(torch::Tensor a, torch::Tensor b) {
     (void*)&mA, (void*)&mB, (void*)&mC, (void*)&mD,
     (void*)&mma_tiler, (void*)&tiled_mma,
     (void*)&tma_atom_A, (void*)&tma_atom_B
+#if DUAL2SM_TMA_EPI
+    , (void*)&tma_desc_D
+#endif
   };
 
   AT_CUDA_CHECK(cudaLaunchKernelExC(&launch_config, (void*)kernel_ptr, args));

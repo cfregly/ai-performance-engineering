@@ -1818,6 +1818,30 @@ SoL framing (B), measured 2026-06-09:
   per report: cooperative/DSMEM reduction EV ~3% -- the residual 2.59x is frame, not kernel):
   harness-bracket amortization for sub-10us labs, opt-in like B62.
 
+- WIN + FRONTIER DECLARED (B68, dual_2sm TMA-store epilogue, the B66-named FINAL lever): docs/
+  gb300-gemm-occupancy-rewrite.md (V7 section + FINAL LADDER). The lever LANDS as the new default
+  (AISP_DUAL2SM_TMA_EPI=1): per-round D epilogue rerouted t2r -> swizzled STS.128 into the drained
+  ring stage (16KB = one 128x32 fp32 chunk) -> ONE cp.async.bulk.tensor.2d per chunk via a raw
+  cuTensorMapEncodeTiled SWIZZLE_128B descriptor (__grid_constant__); reuse gated by
+  tma_store_wait<kStages-1> (the TMA engine is the ring's last consumer, B58 trap honored). Zero
+  TMEM/occupancy cost, 3 CTAs/SM intact. MEASURED: 906.5 -> 830.3us = 1.0905x 12/12 + ratify
+  898.5 -> 826.9us = 1.0863x 12/12 (24/24 total, two sessions); real SoL 63.8-64.4% -> 69.7-70.0%
+  (cuBLAS 82.8-83.3% same-session). ncu: global-st sectors 16.78M -> ZERO (SASS: 32x STS.128, no
+  STG.E); L2 writes 20.05M -> 11.67M = D at the EXACT 100%-efficiency floor; tensor-pipe-elapsed
+  61.9 -> 71.5% (+9.5pts, past the plateau); long_scoreboard 31.4 -> 28.2 -- the V2-V6 invariant
+  FINALLY moved: its movable half was the epilogue's own store chain. Gates 3/3 PASS on the new
+  defaults (2sm best_speedup 3.0859, up from 2.9062); the B66 stale-results trap FIRED LIVE and
+  was caught by mtime (quarantined .STALE_gate2copy). TRAPS BANKED: cute get_tma_swizzle_base
+  rejects element-space fp32 swizzles (raw descriptor is simpler and sufficient -- tma_partition
+  drops the swizzle anyway); the t2r register fragment must shape from partition_D, not
+  partition_S. FINAL LADDER: 2sm base -> +warp-split 1.0725x (B57) -> +persist/raster 1.056-1.060x
+  (B65/B66) -> +TMA-store epilogue 1.086-1.091x (B68) = ~70% real SoL. SCHEDULING FRONTIER CLOSED:
+  the store path sits at its sector floor at zero occupancy cost; the residual ~13pts to cuBLAS
+  lives in the mainloop CONTRACT -- FP8/NVFP4 operands (2-4x effective ring depth per smem byte),
+  a 256-wide-N pair tile (blocked by the 512-col TMEM wall), or grid-level split-K/stream-K
+  (overlap one tile's epilogue with another's mainloop). None reachable by re-scheduling the
+  existing shape.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

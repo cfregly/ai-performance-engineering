@@ -1265,3 +1265,191 @@ TMEM cost, zero occupancy cost -- unlike the retired eo=2 family. If
 THAT also fails to move tensor-pipe, this kernel's frontier is the
 per-SM-pair feed architecture itself, and the remaining 19pts of real
 SoL to cuBLAS (65.5 vs 84.6) are not reachable by scheduling.
+
+# V7: TMA-store epilogue through the drained ring stage -- WIN (1.0905x + 1.0863x paired, 24/24); D-store L2 sectors at the EXACT floor; tensor-pipe +9.5pts; defaults flip to te=1
+
+Front V7 owned B66's named last lever. The thrice-proven law (V5 raster /
+V6 prefetch / B53 multicast): feed latency is fully covered by 3 stages x
+3 co-resident CTAs; the residual is the per-round SERIALIZED epilogue --
+4x [chunked tcgen05.ld -> fence -> 8 per-thread STG.E.128] of 64KB/CTA at
+eo=0, which co-residency only partially hides (tensor-pipe parked at
+~72.5% real / 60-62% ncu-replay-elapsed since V2).
+
+## Store-phase recoverability (stated BEFORE building, from V6's pf0 report)
+
+| quantity | incumbent | floor | reading |
+|---|---:|---:|---|
+| D bytes (8192^2 fp32) | 256MiB | 256MiB | |
+| global-st data sectors (L1) | 16.78M | 8.39M | EXACTLY 2x: 16B per 32B sector |
+| L1->L2 write sectors (lg_op_st) | 20.05M | 8.39M | 2.39x the floor |
+| DRAM write bytes | 250MB | ~256MiB | already at floor (L2 coalesces) |
+| L2 write port (% peak elapsed) | 7.7% | -- | write BYTES not kernel-binding |
+
+The 2x is STRUCTURAL to the 32dp32b t2r layout: thread == row, so a
+warp's 32 16B vectors hit 32 different D rows = 32 different sectors;
+st.global can never exceed 50% sector efficiency from this fragment
+shape (.v4 16B is the widest per-thread store). The recoverable TIME is
+the store-side share of the serialized epilogue window, NOT write
+bandwidth (B58's gate-out lesson; the B61-analog L2-write floor here is
+~24us aggregate = 2.7% of the kernel, not binding -- unlike the
+capstone's 8%). GO was called on the structural-2x evidence.
+
+## What was built (flag-gated DUAL2SM_TMA_EPI; scope-asserted to persist+eo0, EPI_ATOM=32)
+
+Per round, per CTA (kTileN=128):
+- 4 chunks of (128 rows x 32 cols) fp32 = 16KB = EXACTLY one drained
+  smem_A stage; chunk c stages through smem_A[c % 3] (the whole ring is
+  drained at every round boundary by the producer's commit-drain loop).
+- t2r (unchanged 32x atom) -> fence_view_async_tmem_load -> swizzled
+  STS.128: float4 at sbuf[r*8 + (g ^ (r & 7))] -- the B58 capstone
+  pattern == the SW128 physical layout; measured conflict rate ~1.7%.
+- tma_store_fence + __syncthreads -> ONE cp.async.bulk.tensor.2d per
+  chunk (elected warp-0 thread) + commit_group.
+- Completion semantics: chunk 3 reuses smem_A[0] -> tma_store_wait<2>
+  + __syncthreads BEFORE overwrite (the TMA engine is the ring's LAST
+  consumer -- the B58 trap). tma_store_wait<0> is issued AFTER the
+  tmem_empty arrive: only the producer's smem reuse is gated (the SAME
+  elected thread issues round t+1's TMA loads), the consumer's next
+  round is not.
+- Descriptor: RAW cuTensorMapEncodeTiled (the nvfp4-lab pattern): box
+  (n=32, m=128), CU_TENSOR_MAP_SWIZZLE_128B, fp32, host-built per
+  launch, passed __grid_constant__ CUtensorMap. The cute make_tma_copy
+  route was tried first and REJECTED at compile time by
+  get_tma_swizzle_base (element-space Swizzle<3,2,3> vs the expected
+  byte-space M=4..6 convention). BANKABLE: for epilogue D-staging, the
+  raw descriptor is SIMPLER and fully sufficient -- tma_partition drops
+  the swizzle anyway and nothing else needs the layout algebra; only
+  the PHYSICAL pattern identity (staging XOR == descriptor swizzle)
+  matters, and rel_err 0.0 proves it.
+- SASS: 32x STS.128, ZERO STG.E (global-store path deleted); regs 84 ->
+  88; grid 456; 3 CTAs/SM intact (zero TMEM/occupancy cost, unlike the
+  retired eo=2 family).
+- One trap hit en route: the t2r register fragment MUST be shaped from
+  the partition_D (gmem) side -- shaping it from the TMEM partition_S
+  side fails the CopyAtom dst-vectorization static assert.
+
+## Correctness
+
+rel_err 0.0 at 2048^3, 4096^3, 2560x1536x4096, 8192^3 (validates thread
+== row, ascending-column fragment order, v -> contiguous 128-row half
+(CLayout Stride<Int<M/2>,...>), and the staging-XOR == SWIZZLE_128B
+identity in one shot).
+
+## A/B (paired order-alternated, 12 reps x (warmup 5, iters 20), 8192^3, GPU 2, TWO sessions)
+
+| metric | te=0 incumbent | te=1 challenger |
+|---|---:|---:|
+| session 1 median | 906.5us / 63.8% real | 830.3us / 69.7% real |
+| session 1 paired | -- | 1.0905x, 12/12 |
+| session 2 (ratify) median | 898.5us / 64.4% real | 826.9us / 70.0% real |
+| session 2 paired | -- | 1.0863x, 12/12 |
+| cuBLAS (same sessions) | 699.3 / 694.8us | = 82.8 / 83.3% real |
+
+## ncu mechanism (--set full, skip 5 / count 2; te=0 column = V6's pf0 report)
+
+| metric | te=0 | te=1 |
+|---|---:|---:|
+| duration | 747.1 / 742.0us | 687.0 / 682.8us (-8.1%) |
+| global-st sectors (L1) | 16.78M | 0 |
+| L1->L2 write sectors (lg st) | 20.05M | 3.28M (non-D residual; common-mode, present in both arms) |
+| L2 write sectors (srcunit tex) | 20.05M | 11.67M = 8.39M D + 3.28M residual -> D-stores at the EXACT 100%-efficiency floor |
+| tensor-pipe active (% elapsed) | 61.9 / 60.0 | 71.5 / 69.1 (+9.5pts like-for-like) |
+| long_scoreboard (cyc/issue) | 31.4 / 31.7 | 28.2 / 28.1 |
+| barrier stall (cyc/issue) | 0.17 / 0.19 | 0.24 / 0.24 (the 5 added per-round syncs; cheap) |
+| dram bytes read | 1.09GB | 0.97-0.98GB (fewer D write-allocate evictions of A/B panels) |
+| smem-st bank conflicts | ~100-176 | 125K-287K (~1.7% of 16.8M STS.128; swizzle holds) |
+| registers/thread | 84 | 88 |
+
+The V2-V6 long_scoreboard invariant finally MOVED (31.4 -> 28.2) -- it
+was never fill-source latency (V5/V6 proofs); its movable component was
+the epilogue's own scoreboarded t2r+store chain, and shortening the
+store half of that chain is what freed the tensor pipe.
+
+## Harness verify gates (3/3 PASSED, `--profile none`, results JSONs fresh-checked)
+
+```
+GATE1 AISP_TCGEN05_VARIANT=dual_cta_2sm (FINAL defaults 128,3,ws=1,mb=3,p=1,rg=8,pf=0,te=1):
+  verification passed: true, 0 failed (best_speedup 3.0859; was 2.9062 on V6 defaults)
+GATE2 AISP_TCGEN05_VARIANT=dual_cta: verification passed: true, 0 failed (best_speedup 2.7569)
+GATE3 AISP_TCGEN05_VARIANT=cluster: verification passed: true, 0 failed (best_speedup 2.467, fresh-JSON rerun; 2.4637 V6 contract intact)
+Verdict snapshots: /tmp/frontV7/gate{1,2,3}_{2sm,dual,cluster}_results.json.
+```
+
+## Defaults
+
+AISP_DUAL2SM_TMA_EPI defaults 1. The FINAL shipped default is
+(128,3,ws=1,mb=3,p=1,rg=8,pf=0,te=1); te=0 rebuilds the B65/V6
+st.global epilogue exactly.
+
+## THE FINAL LADDER (dual_cta_2sm lineage, 8192^3, GPU 2)
+
+Paired speedups are session-internal (the honest cross-session metric);
+real-SoL = % of the B61-measured ~1900 TF dense-fp16 ceiling.
+
+| rung | lever | paired speedup, wins | real SoL after |
+|---|---|---|---:|
+| 0 | 2sm base (128,3) single-warp mainloop (U front) | -- | ~58-60% |
+| 1 | + warp-split producer/consumer (V2, lever a) | 1.0725x hot, 12/12 | ~62% |
+| 2 | + persistent clusters + GROUP_M raster, mb=3 (B65, ratified V6, lever f) | 1.0562x + 1.0598x, 24/24 | 65.5% |
+| 3 | + TMA-store epilogue through the drained ring (V7, lever h) | 1.0905x + 1.0863x, 24/24 | 69.7-70.0% |
+| -- | cuBLAS (same sessions) | -- | 82.8-84.6% |
+
+Retired/falsified levers along the way (all measured, all banked):
+B-multicast (E4/E5), stage-3 smem deepening at N=256 (cap), AMCAST
+A-multicast (V), kTileK=128 (V3), tile_n=64 4-CTA (V3), eo=2 epilogue
+warpgroup overlap (V4: TMEM cost kills the 3rd CTA/SM), grid-flatten
+raster without persistence (V5), L2 prefetch of the round refill (V6:
+latency nobody waits on), prefetch issuer variants (V6).
+
+## Post-V7 frontier note (for the book)
+
+The last named scheduling lever is now harvested and the epilogue store
+path sits AT its sector floor with zero occupancy cost. The residual
+~13pts of real SoL to cuBLAS (70.0 vs 83.3 same-session) now lives in
+the mainloop CONTRACT, not the schedule: the 2-SM pair feeds one
+256x128xK=64 UMMA stream through a 3-stage 24KB/CTA ring, and the t2r
+drain itself (the un-removable half of the epilogue chain) plus the
+per-round TMEM serialization still costs ~2-3 round-trips per tile.
+Contract-level changes that would plausibly unlock the rest: (1)
+FP8/NVFP4 operands -- halving/quartering fed bytes per FLOP doubles the
+effective ring depth and shrinks the k-loop barrier count per tile at
+fixed smem; (2) a 256x256 pair tile (TILE_N=256 with a 2-buffer TMEM
+plan) to halve tiles and epilogue rounds -- needs the 512-col TMEM
+budget that eo=2 already showed is the binding wall, i.e., a different
+accumulator-precision or split-K contract; (3) split-K/stream-K to
+overlap epilogue rounds of one tile with mainloop of another at the
+GRID level rather than inside the CTA. None of these are reachable by
+re-scheduling the existing shape -- this kernel's scheduling frontier
+is declared CLOSED at 70% real SoL.
+
+## Files (pod == local Mac repo, md5)
+
+```
+CHANGED  labs/custom_vs_cublas/tcgen05_dual_cta_2sm.cu  fa3a17c2a245b03f846a1a675fd5a849
+         (V7: DUAL2SM_TMA_EPI lever h -- raw cuTensorMapEncodeTiled D
+          descriptor + __grid_constant__ param, swizzled STS.128 staging
+          through smem_A[c % kStages], per-chunk cp.async.bulk.tensor.2d +
+          commit_group, tma_store_wait reuse gates, scope asserts, kCfgV5
+          tag bit 14)
+CHANGED  labs/custom_vs_cublas/tcgen05_loader.py        efa828fe406cd0a3e635a7a528ab5046
+         (V7: tma_epi param + AISP_DUAL2SM_TMA_EPI env, DEFAULT 1 after
+          the two-session ratification)
+Backups (pre-V7 B66 state): /tmp/frontV7/{tcgen05_dual_cta_2sm.cu,
+tcgen05_loader.py} (md5 042c79a7/a2855e7b). Evidence: /tmp/frontV7/
+ab_te1.log + ab_ratify_te1.log (24 paired reps), corr_te1.log (4/4
+rel_err 0.0), ncu_te1.ncu-rep + ncu_te1_raw.csv + ncu_pf0_raw.csv (V6
+incumbent export), gates.log + gate{1,2,3}_*_results.json,
+build_te{0,1}*.log. Drivers: /tmp/frontV7/{build_v7,correctness_v7,
+ab_v7,ncu_driver_v7,cmp_ncu}.py + gates_v7.sh. Nothing committed.
+```
+
+Gate-3 flake (honest note, identical to V6's): the cluster gate hit the
+harness watchdog ("No benchmark progress for 357s (last completed:
+optimized timing)") and was timeout-killed (exit 137) on the first run;
+the loop's result-parse then read GATE2's leftover results JSON
+(best_speedup identical to gate2 = the B66 stale-results trap, caught
+live). Re-run with benchmark_test_results.json REMOVED first; passed
+with a fresh, mtime-verified JSON. No V7 code executes under
+variant=cluster (lever h is scope-asserted to dual_2sm persist+eo0), and
+gate1 -- which DOES run the V7 kernel as the new default -- passed first
+try. Same harness post-timing cleanup watch-item as V6.

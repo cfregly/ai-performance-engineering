@@ -298,7 +298,8 @@ def _load_tcgen05_dual_cta_2sm_module(tile_n: int, stages: int, warp_split: int 
                                       min_blocks: int = 2, tile_k: int = 64,
                                       epi_overlap: int = 0, epi_atom: int = 32,
                                       persist: int = 0, raster_gm: int = 0,
-                                      prefetch: int = 0, pf_issuer: int = 0):
+                                      prefetch: int = 0, pf_issuer: int = 0,
+                                      tma_epi: int = 0):
     extra = (
         f"-DDUAL2SM_TILE_N={tile_n}",
         f"-DDUAL2SM_STAGES={stages}",
@@ -312,12 +313,13 @@ def _load_tcgen05_dual_cta_2sm_module(tile_n: int, stages: int, warp_split: int 
         f"-DDUAL2SM_RASTER_GM={raster_gm}",
         f"-DDUAL2SM_PREFETCH={prefetch}",
         f"-DDUAL2SM_PF_ISSUER={pf_issuer}",
+        f"-DDUAL2SM_TMA_EPI={tma_epi}",
     )
     return _load_kernel(
         _LAB_DIR / "tcgen05_dual_cta_2sm.cu",
         f"lab_tcgen05_dual_cta_2sm_n{tile_n}s{stages}w{warp_split}a{amcast}"
         f"mb{min_blocks}k{tile_k}eo{epi_overlap}ea{epi_atom}p{persist}rg{raster_gm}"
-        f"pf{prefetch}pi{pf_issuer}",
+        f"pf{prefetch}pi{pf_issuer}te{tma_epi}",
         extra_cuda_flags=extra,
     )
 
@@ -379,6 +381,18 @@ def load_tcgen05_dual_cta_2sm_module():
         producer warp after the round's last TMA issue; 1 = epilogue
         warp 2 after the round's MMAs complete; 2 = parked warp 3 at
         round start (max lead, eviction risk).
+      AISP_DUAL2SM_TMA_EPI: 1 = TMA-store epilogue through the drained
+        ring stage (V7-front lever h; scoped to PERSIST + EPI_OVERLAP=0,
+        EPI_ATOM=32): each round's D chunks are staged t2r -> swizzled
+        st.shared into smem_A[c % stages] (free at the round boundary) ->
+        ONE cp.async.bulk.tensor.2d store per 128x32 chunk, replacing the
+        per-thread scoreboarded st.global path (50% sector efficiency,
+        structural to the 32dp32b t2r layout). Default 1 (flipped by the
+        V7 ratification: 1.0905x and 1.0863x paired medians, 12/12 +
+        12/12 order-alternated wins vs te=0 at 8192^3; L2 D-write sectors
+        16.78M -> 8.39M = the exact floor; tensor-pipe +9.5pts; see
+        docs/gb300-gemm-occupancy-rewrite.md V7). Set 0 for the B65/V6
+        st.global epilogue.
     Defaults are the B65/V5 persistent+raster winner, RATIFIED by the V6
     front (2026-06-11, GPU 2, 8192^3, fresh session): (128,3,ws=1,mb=3,
     p=1,rg=8) = 882.9us median vs the prior (128,3,ws=1,mb=2) champion's
@@ -390,7 +404,11 @@ def load_tcgen05_dual_cta_2sm_module():
     MIN_BLOCKS=2 (the pre-V6 default, 152 regs / 3 CTAs/SM). PREFETCH
     defaults 0: the V6 sweep measured it a tie at best (1.0021, 7/12 at
     depth 2/issuer 0) -- the round-boundary refill is already
-    latency-covered by co-resident CTAs.
+    latency-covered by co-resident CTAs. V7 (2026-06-11) adds TMA_EPI=1
+    on top (the final default: 128,3,ws=1,mb=3,p=1,rg=8,te=1): 826.9-
+    830.3us median / 69.7-70.0% real SoL vs the te=0 incumbent's 898.5-
+    906.5us / ~64%, paired 1.0905x + 1.0863x, 24/24 order-alternated wins
+    across two sessions, rel_err 0.0 at 4 sizes.
     """
     tile_n = int(os.environ.get("AISP_DUAL2SM_TILE_N", "128"))
     stages = int(os.environ.get("AISP_DUAL2SM_STAGES", "3"))
@@ -404,9 +422,10 @@ def load_tcgen05_dual_cta_2sm_module():
     raster_gm = int(os.environ.get("AISP_DUAL2SM_RASTER_GM", "8"))
     prefetch = int(os.environ.get("AISP_DUAL2SM_PREFETCH", "0"))
     pf_issuer = int(os.environ.get("AISP_DUAL2SM_PF_ISSUER", "0"))
+    tma_epi = int(os.environ.get("AISP_DUAL2SM_TMA_EPI", "1"))
     return _load_tcgen05_dual_cta_2sm_module(tile_n, stages, warp_split, amcast, min_blocks, tile_k,
                                              epi_overlap, epi_atom, persist, raster_gm,
-                                             prefetch, pf_issuer)
+                                             prefetch, pf_issuer, tma_epi)
 
 
 def matmul_tcgen05_dual_cta_2sm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
