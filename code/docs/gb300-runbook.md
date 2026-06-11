@@ -1729,6 +1729,52 @@ SoL framing (B), measured 2026-06-09:
   for capstone_extension_tcgen05 (~85us pybind host residual, B55) and the remaining
   frame-bound labs, now that the repo is legacy-stream clean.
 
+- WIN + TRAP (B65, dual_2sm persistent clusters + GROUP_M raster, the B63-named lever): docs/
+  gb300-gemm-occupancy-rewrite.md (V5 section). L2 MATH FIRST (as mandated): at 8192^3 the
+  premise is alive on PANELS, not matrices -- GROUP_M keeps gm x 4MiB A row-panels resident while
+  2MiB B col-panels stream; in-flight window at 3 CTAs/SM (C=228 clusters) gm=8 = 32A+57B+~29D
+  ~ 118MiB < 129.25MiB L2; DRAM floor 640MiB vs 1.36GB incumbent (x-fastest wave re-reads A every
+  one of 9 waves). MEASURED WIN: persistent clusters at CHAMPION occupancy (eo=0, 3 CTAs/SM,
+  warp-split rounds, chunked t2r, 84 regs) + gm=8 raster = 1.0598x paired median, 12/12 wins
+  (926.0 -> 885.0us; ncu 754 -> 726us, tensor-pipe 71.4 -> 72.9%, waves exactly 1.0 on a 456-CTA
+  grid); selectable AISP_DUAL2SM_PERSIST=1 MIN_BLOCKS=3 RASTER_GM=8; defaults UNCHANGED pending an
+  E4-style replication (rel_err 0.0 at 4 sizes incl non-square + tiles<C clamp; gates 3/3 PASS
+  2.8115x/2.7532x/2.4489x). DECOMPOSITION: persistence alone +4.8% (12/12, launch/prologue
+  amortization); raster adds +1.1% only UNDER persistence; raster alone TIES (0.9989) with DRAM
+  read -35% (0.88-0.93GB) and long_scoreboard UNMOVED (21.87 -> 21.88) -- the L2 premise is TRUE
+  but NOT BINDING (TMA latency already covered by 3 stages x 3 co-resident CTAs); bytes-premise
+  levers need a bandwidth-bound kernel. V4's eo2 inner loop persists to a TIE (1.0060x, 7/12) --
+  the dedicated-epilogue family is retired below 4 feed streams at ANY grid shape. TRAP BANKED
+  (the iteration-1 killer): cudaOccupancyMaxActiveBlocksPerMultiprocessor is UNSTABLE for this
+  cluster kernel on sm_103 -- identical back-to-back launches got grids of 152 vs 456 CTAs (waves
+  0.33 vs 1.0; 1.32ms vs 742us), and a persistent kernel sized to the bad answer runs the whole
+  GEMM at 1/3 occupancy with no second wave to backfill (0.51-0.67x, 0/36 paired). Size persistent
+  cluster grids STATICALLY: min(smem-implied (+1KiB/CTA reserve), TMEM-implied) -- regs measured
+  non-binding. Also closed: per-config non-type template tags end the B61 same-symbol alias risk
+  for this kernel family. Evidence /tmp/frontV5/. NEXT LEVER (only exists under persist+raster):
+  raster-aware L2 prefetch -- cp.async.bulk.prefetch.tensor for round t+1's deterministic panels
+  (raster_map(rr+(t+1)C)) issued during round t's drain, attacking the long_scoreboard stall that
+  never moved across V2-V5; secondary: replication front for the default flip.
+
+- MEASUREMENT BANK + B45-CLASS #4 (B65, dual-figure bank for the frame-bound labs, the B64-named
+  lever): docs/gb300-dual-figure-bank.md. Six graphed pure-GPU figures banked with capture-
+  fidelity audit, every default run verification-PASS inside its banked band: capstone
+  cluster_gemm_tcgen05 15.58us warm (79.0% frame; B55's "~85-100us host dispatch" now measured;
+  pure-GPU = B61's closed 14.98us kernel + ~0.6us epilogue/wrapper), cta2 15.54us; blackwell
+  15.04us (= B62 demo); metric_reduction_vectorized 9.02us (78.5% frame) + _cuda 5.87us first
+  figure; software_pipelining 60.73us warm = B41's 60.5us kernel, banked after a 1-line fix --
+  NEW SUB-CLASS #4: at::cuda::getDefaultCUDAStream() passed as an EXPLICIT stream arg is
+  parser-"explicit" but capture-invisible (B64's audit only flagged missing/zero args); same
+  pattern still live UNFIXED in persistent_decode (2 sites) + memory_bandwidth_patterns (5
+  sites). moe_cuda: loud refusal by construction (nested manual graph), default re-confirmed
+  0.2352ms. TRUE-HEADROOM RANKING (vs B61 real ceilings): metric_reduction_vectorized is the
+  top target -- 9.02us warm vs 3.15us single-read HBM floor = 2.9x gap (~40% HBM-SoL); tcgen05
+  GEMMs 1.24-1.29x off a structurally-capped floor; tile_pipeline closed (1.05x of torch.add
+  parity). Evidence /tmp/frontA2/ (a2_summary.json). NEXT LEVER: the B50-named single-launch
+  fused metric_reduction kernel (drop the zeros fill; partials + last-block reduce, float4) --
+  est 4-5us = ~1.8-2x pure-GPU, now MEASURABLE via graphed mode where frame mode buried it;
+  plus fix the 7 remaining explicit-but-default sites.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

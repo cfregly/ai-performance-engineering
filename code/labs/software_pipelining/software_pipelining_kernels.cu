@@ -399,7 +399,12 @@ torch::Tensor launch_common(
   const int num_tiles = (numel + kTileElems - 1) / kTileElems;
   const int grid = std::max(1, std::min(num_tiles, props->multiProcessorCount * 8));
   const dim3 block(kBlockThreads);
-  const cudaStream_t stream = at::cuda::getDefaultCUDAStream();
+  // Use the CURRENT stream, not getDefaultCUDAStream(): an explicit-but-default
+  // stream is invisible to side-stream CUDA graph capture exactly like a raw
+  // <<<>>> legacy launch (B45/B62 silent-drop class; caught by the graphed-mode
+  // capture-fidelity audit). Eager behavior is identical (current == default
+  // outside capture).
+  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
   if (use_pipeline && props->major >= 9) {
     // TMA bulk-copy pipeline (sm_90+): dynamic smem above the 48KB static cap.
