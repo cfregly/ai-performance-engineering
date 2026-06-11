@@ -1881,6 +1881,26 @@ SoL framing (B), measured 2026-06-09:
   num_warps param was a red herring (Front P2 probe B). The B10/B16 stale-checks re-opened by B69
   can now re-run under true max-autotune.
 
+- RE-SWEEP CLOSE (B71, the B69/B70 unlock measured across the formerly-gated paths): docs/
+  gb300-sm103a-unlock.md. The Front-T re-sweep under true max-autotune: 1 UNLOCKED WIN + 3 honest
+  parities + survey clean, ZERO aborts in 15 harness runs. DECISIVE CONTROL (cold-cache
+  counterfactual): re-applying the old de-suffix with a fresh TRITON_CACHE_DIR makes the
+  grouped-GEMM lab itself die with the tcgen05.wait.st abort (exit 134) -- pre-fix runs only ever
+  worked via warm caches and Inductor's subprocess autotuning SILENTLY SWALLOWING every aborting
+  Triton candidate, i.e. the pre-fix tuner space was systematically biased toward extern kernels.
+  WIN: ch14:model_compile_reduced_precision max-autotune 1.130/1.075/1.137x vs default 0.994-1.005x
+  (median 4.509 -> 4.165 ms = 1.083x over the incumbent arm, verify PASS x3) -- FLIPS the lab from
+  failed_no_speedup to succeeded and CORRECTS B23c ("compile adds ~1.5% all modes" -- max-autotune
+  had ABORTED then, it was never measured). PARITIES (each bankable): blackwell_grouped_gemm
+  510 TFLOPS harness / 870 TFLOPS kernel = parity with banked -- the B10/B11 tl.dot-gap attribution
+  STANDS (the unlock is works-from-cold, not TFLOPS; B10/B16 now formally closed);
+  moe_pad_quant max-autotune 0.3160 vs champion 0.3096 ms (B40's win was CAPTURE, not codegen --
+  confirmed); router_vectorized parity (nvjet honestly beats Triton templates). Guard disposition:
+  sm_103 max-autotune downgrades RETIRED (15-run validation, zero aborts/verify failures);
+  AISP_COMPILE_MODE_OVERRIDE added as the A/B escape hatch. Durable lesson: a silent
+  candidate-swallowing autotuner turns a toolchain abort into an invisible PERF BIAS -- when a
+  compile backend "works", verify its candidate space actually compiles from a COLD cache.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
