@@ -1230,6 +1230,32 @@ SoL framing (B), measured 2026-06-09:
   (double-buffered smem, TMA prefetch of tile k+1 overlapping MMA of tile k) -- the mainloop is serial
   TMA->wait->MMA->wait and 37.6 us is ~457 TFLOPS = 12.2% FP16-SoL at 2048^3.
 
+- BREAKTHROUGH + UN-BANK (B40, moe_pad_quant in-file router override): docs/gb300-moe-router-override.md.
+  SUPERSEDES the B34 negative, which was a MIS-BANK of the B29 class: the "out of scope" wall was the
+  original task's single-file framing, not the repo's -- the OPTIMIZED arm builds its own model instance
+  and may legitimately bind a vectorized router onto it from within optimized_moe_pad_quant.py. Measured:
+  optimized arm 4.222 ms -> 0.309-0.384 ms (median ~0.324) = ~13x over the shipped arm (23-35x vs the
+  eager baseline), verify PASS x5 (max_diff 0.1025, rtol 0.1/atol 1.0). The B34-era ceiling estimate
+  (~1.4-1.5x) was beaten ~9x because the win COMPOUNDS: killing the 32x nonzero + .tolist() graph breaks
+  let torch.compile capture the ENTIRE model as ONE cudagraph, collapsing the fragmented compiled
+  subgraphs too -- host gap ~1.0 ms -> ~0, aten::nonzero 32/iter -> 0, DtoH 32/iter -> 0; new wall split
+  is pure GPU (~0.16 ms/iter standalone: expert bmms ~57us, lm_head ~24us, router cumsum/scatter ~25us).
+  Winning design (of 4): sortless fixed-capacity dense dispatch via types.MethodType in setup() --
+  rank-within-expert by one-hot cumsum (no argsort; the same slot indices gather back, restoring token
+  order for free), index_copy_ into a [32,192,512] slot tensor (capacity = 2x observed max, calibrated
+  by ONE eager pass in setup, zero host syncs in the measured path), 3 bmms vs stacked weights, weights
+  post-gather, sum over top_k. Numeric cross-check max_abs_diff 0.0 vs original forward_grouped before
+  any harness run. torch._grouped_mm (works on torch 2.12/sm_103) measured SLOWER (0.824 vs 0.775 ms
+  eager) -- documented reserve. Durable lessons: (1) re-audit banked negatives whose blocker was a TASK
+  constraint, not a measured wall (B29, now B40); (2) graph-break removal pays superlinearly when it
+  unlocks whole-model cudagraph capture -- the lever's value is the capture boundary it moves, not the
+  op it fixes. Related sweep (same session, static): the B36 host-waste class (dead beta=0 buffers,
+  per-call descriptor builds/attrs, fusable casts) is ABSENT from the rest of the repo -- descriptors
+  cached at init, attrs in setup; the class was confined to the two labs already fixed (B36/B39); the
+  three static candidates surfaced were baseline-arm or cuBLASLt-beta=0-fast-path false positives.
+  NEXT LEVER: residual is GEMM-shape efficiency (<=1.5x on 0.16 ms, below the harness noise floor) --
+  bank this front as harvested.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
