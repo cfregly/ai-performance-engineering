@@ -4,7 +4,7 @@
 
 # PR title
 
-`[docs/examples] Blackwell cute tutorials: note that narrow TMEM_LOAD atoms (32dp32b1x) carry a large per-load lowering cost; prefer wider atoms (32dp32b32x) for the t2r epilogue`
+`[docs/examples] Blackwell cute tutorials: narrow TMEM_LOAD atoms (32dp32b1x) carry a large per-load lowering cost — prefer wider atoms (32dp32b32x) in t2r epilogues`
 
 # PR body
 

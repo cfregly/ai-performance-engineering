@@ -11,7 +11,7 @@
 # `cutlass3x_sm100_tensorop_*_2sm` kernel and fp16/bf16 get nvjet_sm103.
 #
 # This script:
-#   1. times torch._int_mm at the banked shape against fp32-tf32 / fp16 /
+#   1. times torch._int_mm at a representative shape against fp32-tf32 / fp16 /
 #      bf16 matmuls of the same shape,
 #   2. controls for the known row-major-rhs penalty
 #      (pytorch/pytorch#165230) by timing BOTH rhs layouts:

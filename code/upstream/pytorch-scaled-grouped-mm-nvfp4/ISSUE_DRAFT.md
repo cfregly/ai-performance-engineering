@@ -42,7 +42,7 @@ g=2 groups of M=(192, 320), N=3072, K=4096, batched over 15 inputs =
 
 Each GEMM is tiny (M=192/320), so the loop is launch-bound and the GPU is
 work-starved (a single GEMM of this size cannot fill the machine). In our
-internal campaign on the same workload, a hand-written fused tcgen05
+testing on the same workload, a hand-written fused tcgen05
 grouped kernel (one launch for all 30 sub-problems) measured 0.224 ms vs
 0.701 ms for the 30-launch `_scaled_mm` loop — **3.1x wall-clock** — purely
 from batching, with the same instruction class the library already uses.
