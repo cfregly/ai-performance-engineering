@@ -2,6 +2,7 @@
 
 #include <torch/extension.h>
 
+#include <c10/cuda/CUDAStream.h>
 #include <cuda_runtime.h>
 
 namespace {
@@ -63,7 +64,7 @@ void run_low_occupancy(const torch::Tensor& input, torch::Tensor& output, int wo
     int n = static_cast<int>(input.numel());
     int block = 64;
     int grid = std::min(std::max(1, (n + block - 1) / block / 8), 64);
-    low_occupancy_kernel<<<grid, block>>>(
+    low_occupancy_kernel<<<grid, block, 0, c10::cuda::getCurrentCUDAStream()>>>(
         input.data_ptr<float>(),
         output.data_ptr<float>(),
         n,
@@ -77,7 +78,7 @@ void run_high_occupancy(const torch::Tensor& input, torch::Tensor& output, int w
     int n = static_cast<int>(input.numel());
     int block = 256;
     int grid = std::min(std::max(1, (n + block - 1) / block), 512);
-    high_occupancy_kernel<<<grid, block>>>(
+    high_occupancy_kernel<<<grid, block, 0, c10::cuda::getCurrentCUDAStream()>>>(
         input.data_ptr<float>(),
         output.data_ptr<float>(),
         n,

@@ -1,5 +1,6 @@
 // Minimal CUDA extension built with -lineinfo to demonstrate source/line capture.
 #include <torch/extension.h>
+#include <c10/cuda/CUDAStream.h>
 
 __global__ void lineinfo_demo_kernel(const float* __restrict__ a,
                                      const float* __restrict__ b,
@@ -17,10 +18,11 @@ torch::Tensor lineinfo_demo_forward(torch::Tensor a, torch::Tensor b) {
   auto out = torch::zeros_like(a);
   const int threads = 256;
   const int blocks = (n + threads - 1) / threads;
-  lineinfo_demo_kernel<<<blocks, threads>>>(a.data_ptr<float>(),
-                                            b.data_ptr<float>(),
-                                            out.data_ptr<float>(),
-                                            n);
+  lineinfo_demo_kernel<<<blocks, threads, 0, c10::cuda::getCurrentCUDAStream()>>>(
+      a.data_ptr<float>(),
+      b.data_ptr<float>(),
+      out.data_ptr<float>(),
+      n);
   return out;
 }
 

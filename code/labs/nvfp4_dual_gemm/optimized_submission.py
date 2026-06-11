@@ -14,6 +14,7 @@ CUDA_SRC = r"""
 
 #include <torch/library.h>
 #include <ATen/core/Tensor.h>
+#include <c10/cuda/CUDAStream.h>
 
 constexpr int WARP_SIZE = 32;
 
@@ -786,7 +787,9 @@ void dual_gemm_launch(
   // cutlass incantation (this affects ptxas)
   auto this_kernel = kernel_cutlass<K, BLOCK_N, NUM_STAGES, ONE_MMA>;
   cudaFuncSetAttribute(this_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
-  this_kernel<<<grid, TB_SIZE, smem_size>>>(A_tmap, B1_tmap, B2_tmap, SFA_tmap, SFB1_tmap, SFB2_tmap, C_ptr, M, N);
+  // Launch on the current torch stream (capture-legal); a raw legacy-stream
+  // launch is silently dropped from CUDA-graph capture (B45/B62 class).
+  this_kernel<<<grid, TB_SIZE, smem_size, c10::cuda::getCurrentCUDAStream()>>>(A_tmap, B1_tmap, B2_tmap, SFA_tmap, SFB1_tmap, SFB2_tmap, C_ptr, M, N);
 }
 
 at::Tensor dual_gemm(

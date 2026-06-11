@@ -2,6 +2,7 @@
 
 #include <torch/extension.h>
 
+#include <c10/cuda/CUDAStream.h>
 #include <cuda_runtime.h>
 
 namespace {
@@ -83,7 +84,7 @@ void launch_coalesced_copy(torch::Tensor src, torch::Tensor dst) {
     int n = static_cast<int>(src.numel());
     constexpr int threads = 256;
     int blocks = (n + threads - 1) / threads;
-    coalesced_copy_kernel<<<blocks, threads>>>(
+    coalesced_copy_kernel<<<blocks, threads, 0, c10::cuda::getCurrentCUDAStream()>>>(
         src.data_ptr<float>(),
         dst.data_ptr<float>(),
         n
@@ -101,7 +102,7 @@ void launch_uncoalesced_copy(torch::Tensor src, torch::Tensor dst, int stride) {
     int n = static_cast<int>(src.numel());
     constexpr int threads = 256;
     int blocks = (n + threads - 1) / threads;
-    uncoalesced_stride_kernel<<<blocks, threads>>>(
+    uncoalesced_stride_kernel<<<blocks, threads, 0, c10::cuda::getCurrentCUDAStream()>>>(
         src.data_ptr<float>(),
         dst.data_ptr<float>(),
         stride,
@@ -133,7 +134,7 @@ void launch_bank_conflict_transpose(torch::Tensor src, torch::Tensor dst, bool p
     
     size_t shared_bytes = sizeof(float) * TILE_DIM * (padded ? (TILE_DIM + 1) : TILE_DIM);
     
-    transpose_bank_conflict_kernel<<<grid, block, shared_bytes>>>(
+    transpose_bank_conflict_kernel<<<grid, block, shared_bytes, c10::cuda::getCurrentCUDAStream()>>>(
         src.data_ptr<float>(),
         dst.data_ptr<float>(),
         width,

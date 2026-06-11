@@ -1712,6 +1712,23 @@ SoL framing (B), measured 2026-06-09:
   swizzled walk must supply the rest). NOTE vs B61: at 8192^3, B (128MB) does NOT fit L2 -- the
   swizzle premise is ALIVE here, unlike the 2048^3 capstone where B61's pre-check killed it.
 
+- INFRASTRUCTURE WIN (B64, repo-wide legacy-stream launch audit, the B62-named lever): docs/
+  gb300-legacy-stream-audit.md. Parser-based sweep of 849 CUDA-bearing files + 38 embedded-CUDA
+  .py (266 legacy-stream launch sites): exactly 1 DANGEROUS (capture-eligible benchmark_fn)
+  site -- labs/nvfp4_dual_gemm/optimized_submission.py, the lab the B62 frame table ranked #1
+  (86% frame share), whose single fused kernel was launched on the legacy default stream and
+  SILENTLY DROPPED from side-stream capture (B45/B62 class, instance #3) -- FIXED via
+  getCurrentCUDAStream(); +7 latent torch-extension sites fixed proactively (4 files); 222
+  standalone-binary + 29 excluded-helper sites classified BENIGN with reachability evidence;
+  third_party out of scope. Validation: default mode brackets the banked 47-48.5us band
+  (verification PASS); graphed mode now PASSES the capture-fidelity audit
+  (graphed_eager_kernel_count=1) and banks the first dual figure: nvfp4_dual_gemm pure-GPU
+  6.89us warm -- confirming B38's 6.6us kernel figure (+4%) and proving the 86% frame share
+  measured, not modeled. Latent-extension smoke: 5/5 capture-fidelity PASS. Evidence
+  /tmp/frontA/ (sweep_raw.json = the full inventory). NEXT LEVER: bank graphed dual figures
+  for capstone_extension_tcgen05 (~85us pybind host residual, B55) and the remaining
+  frame-bound labs, now that the repo is legacy-stream clean.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

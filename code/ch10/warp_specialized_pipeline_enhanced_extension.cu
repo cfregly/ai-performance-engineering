@@ -2,6 +2,7 @@
 // Based on Chapter 10's enhanced warp specialization pattern
 
 #include <torch/extension.h>
+#include <c10/cuda/CUDAStream.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda/pipeline>
@@ -204,7 +205,7 @@ torch::Tensor warp_specialized_pipeline_enhanced_forward(
         cudaFuncAttributeMaxDynamicSharedMemorySize,
         static_cast<int>(shared_bytes)));
     
-    warp_specialized_enhanced_kernel<<<grid, block, shared_bytes>>>(
+    warp_specialized_enhanced_kernel<<<grid, block, shared_bytes, c10::cuda::getCurrentCUDAStream()>>>(
         A.data_ptr<float>(),
         B.data_ptr<float>(),
         C.data_ptr<float>(),
