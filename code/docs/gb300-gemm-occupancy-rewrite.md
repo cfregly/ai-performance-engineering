@@ -589,3 +589,156 @@ it. Risk: 256x64 MMA efficiency; the B49 inversion (n=128 won in 2SM form
 where it lost in plain) says small-N + 2SM is repeatedly underestimated.
 Fallback axis: kTileK=128 (double the TMA box, halve barrier round-trips
 per byte) at n=128 s=2.
+
+---
+
+# V3 verdict (2026-06-11): tile_n=64 is an HONEST NEGATIVE on every axis — the 4th (even 5th) CTA/SM is REACHED and still loses 30-38%; kTileK=128 fallback also negative (-15%); the B57 incumbent (128,3,ws=1) stands
+
+Front V3 session (GPU 2, pod `aisp-gb300-runall`, 8192^3 FP16, base 2f7e30f9
++ uncommitted B57 state, incumbent md5s verified before work). B57's named
+lever was tile_n=64 ("simultaneously opens a 4th CTA/SM and stages 5-6"),
+with kTileK=128 as the fallback axis. Both were implemented flag-gated,
+measured, and falsified. One forecast correction up front: B57 estimated
+~12KB/stage-CTA at n=64, but the A-half is 16KB/stage at ANY tile_n (128
+rows x 64 K x 2B; only the B-half halves to 4KB), so n=64 is 20KB/stage —
+stages 5-6 and the 4th CTA are NOT simultaneously reachable. The session
+measured the whole reachable frontier anyway.
+
+## What was added (all flag-gated, defaults byte-equivalent to B57)
+
+`tcgen05_dual_cta_2sm.cu` + `tcgen05_loader.py`:
+- `DUAL2SM_STAGES` extended 2..6 (stage-array initializers for s=5,6).
+- `DUAL2SM_MIN_BLOCKS` (env `AISP_DUAL2SM_MIN_BLOCKS`, default 2):
+  `__launch_bounds__(128, MB)` hint; 4/5 cap regs at 128/102 for the
+  4th/5th co-resident CTA.
+- `DUAL2SM_TILE_K` (env `AISP_DUAL2SM_TILE_K`, default 64): K-extent per
+  stage; 128 doubles the TMA box and halves barrier round-trips per byte
+  (`bK = atom_K * Int<kTileK/16>`).
+ptxas: every n=64 config compiles at 88 regs/thread (vs 152 at n=128), no
+spills at any MIN_BLOCKS; (64,6) is statically excluded by the 110KB smem
+guard (6 x 20KB = 120KB also exceeds 227KB/2 — it would be 1 CTA/SM,
+strictly dominated).
+
+## Config table (8192^3, 6-rep round-robin medians, GPU 2, all rel_err 0.00e+00)
+
+| config (n,s,ws,amc,mb,k) | us | TFLOPS | %SoL | CTAs/SM (ncu Block Limits) | binding limit |
+|---|---|---|---|---|---|
+| cuBLAS same-session | 639.1 | 1720.3 | 45.9 | - | - |
+| **(128,3,1,0,2,64) incumbent** | **863.7** | **1273.1** | **33.95** | **3 (regs 3 / smem 3)** | regs+smem tie |
+| (128,2,1,0,2,128) k128 fallback | 1008.9 | 1089.8 | 29.1 | 2 (smem 2, 96KB/CTA) | smem |
+| (64,2,1,0,5,64) | 1223.5 | 898.7 | 24.0 | **5** (regs 5 / smem 5, occ 30.3%) | smem+regs tie |
+| (64,2,1,0,4,64) | 1238.8 | 887.5 | 23.7 | 5 (same 88-reg binary) | smem+regs |
+| (64,5,1,0,2,64) | 1380.7 | 796.3 | 21.2 | 2 (smem, 100KB/CTA) | smem |
+| (64,3,1,0,2,64) control | 1394.3 | 788.6 | 21.0 | 3 (smem 3, 60KB/CTA) | smem |
+| (64,4,1,0,2,64) | 1444.6 | 761.1 | 20.3 | 2 (smem, 80KB/CTA) | smem |
+
+Paired order-alternated A/B of the best challenger (k128) vs the incumbent
+(8 reps, thermal pre-soak, cuBLAS probe each rep, `ab_k128.log`):
+challenger wins 0/8, median speedup 0.8306x (17% slower hot) — inc
+hot-paired median 891.4us vs chal 1073.3us, same-session cuBLAS 641.2us.
+The n=64 arms were not paired-tested: their round-robin ranges
+(1213-1466us) do not overlap the incumbent's (846-967us).
+
+## ncu mechanism (--set full, skip 5, 2 launches, means)
+
+| metric | inc (128,3) | (64,3) ctrl | (64,2,mb5) | (128,2,k128) |
+|---|---|---|---|---|
+| duration us | 748.8 | 1173.3 | 1075.2 | 862.7 |
+| long_scoreboard /issue | 22.05 | 23.00 | **53.18** | 25.76 |
+| warp latency /inst issued | 29.55 | 28.44 | 61.75 | 33.44 |
+| tensor pipe % of elapsed | 71.6 | 40.6 | 44.2 | 57.7 |
+| achieved occupancy % (warps/SM) | 18.2 (11.7) | 18.6 (11.9) | **30.3 (19.4)** | 12.1 (7.7) |
+| L2 srcunit_tex read sectors | 344.6M | 579.9M | 560.3M | 341.9M |
+| DRAM bytes read GB | 1.37 | 2.92 | 2.54 | 2.06 |
+| IPC | 0.39 | 0.41 | 0.31 | 0.23 |
+
+Three separate falsifications:
+1. **tile_n=64 per se (control (64,3), same 3 CTAs/SM, same stages):**
+   tensor-pipe duty craters 71.6 -> 40.6%. n=64 halves the FLOPs per
+   barrier round-trip while the A-half feed stays 16KB/stage, and the
+   grid's n-tiles double (8192 CTAs, waves 18.0 vs 9.0) so A re-reads
+   DOUBLE through L2 (sectors +68%, DRAM read +114%, L2 hit 77.0 -> 73.5%).
+   Arithmetic intensity per fed byte halves — the exact inverse of the
+   lever's premise. The 32-col B slices also halve TMA box width (B48
+   delivery-efficiency trap), compounding per-byte cost.
+2. **Occupancy axis (64,2,mb4/mb5): the 4th AND 5th CTA/SM genuinely
+   arrive** (Block Limits 5/5/16/32, theoretical 31.25%, achieved 30.3% —
+   the first >3 CTA/SM residency in this kernel family) and the config is
+   the best of the n=64 family (+9% vs (64,3)) — but it still loses 38% to
+   the incumbent: long_scoreboard per issue MORE THAN DOUBLES (22.1 ->
+   53.2) because 10 concurrent TMA streams/SM (5 CTAs x 2 stages) contend
+   for the same L2/DRAM path with doubled per-byte traffic. More resident
+   warps absorb latency only if the latency stays constant; here added
+   residency CREATES the latency it was meant to hide.
+3. **kTileK=128 fallback (128,2,k128):** barrier round-trips per byte
+   genuinely halve (64 vs 128 k-iters) and per-issue stalls stay near
+   incumbent (25.8), but 98.4KB/CTA smem caps residency at 2 CTAs/SM
+   (occ 12.1%, IPC 0.23): losing the 3rd CTA costs more than halved sync
+   saves. DRAM read rises 1.37 -> 2.06GB (poorer cross-CTA L2 timing, hit
+   rate 77.0 -> 68.0%).
+
+Conclusion: the (128,3) point sits at a genuine local optimum of the
+(tile_n, stages, CTAs/SM, tile_k) frontier — every single-axis move from
+it that fits the hardware budgets was now measured and loses. The
+long_scoreboard stall at 22/29.6 issue-cycles (75%) is NOT an
+occupancy-curable artifact; it is the latency floor of the
+single-leader-MMA + dual-producer-TMA structure at 3 CTAs/SM.
+
+## Harness verify gates (3/3 PASSED, `--profile none`)
+
+```
+AISP_TCGEN05_VARIANT=dual_cta_2sm (loader defaults 128,3,ws=1,mb=2,k=64):
+  verification passed: true, 0 failed (ts 17:28:15, best_speedup 2.7974x)
+AISP_TCGEN05_VARIANT=dual_cta (plain dual regression):
+  verification passed: true, 0 failed (ts 17:28:35, best_speedup 2.7656x)
+AISP_TCGEN05_VARIANT=cluster (default regression):
+  verification passed: true, 0 failed (ts 17:28:52, best_speedup 2.4448x;
+  2.329x contract intact)
+```
+
+Procedural note: a first gate pass ran at the harness's profile_minimal
+DEFAULT and gate 3 (cluster) hung in the post-timing profiling phase
+(harness self-reported "no progress for 328s"; python SIGKILLed, GPU 2
+clean). Gates 1-2 passed in that mode too (gate-2 json: passed, 2.742x).
+The quoted 3/3 above is the clean `--profile none` re-run, matching the
+V2 gate procedure. Verdict snapshots:
+`/tmp/frontV3/gate{1,2,3}_{2sm,dual,cluster}_results.json`.
+
+## Files (pod, md5)
+
+```
+CHANGED  labs/custom_vs_cublas/tcgen05_dual_cta_2sm.cu  ae3f0a34730f0d79347ad6f807a75694
+         (V3: DUAL2SM_STAGES 2..6, DUAL2SM_MIN_BLOCKS launch-bounds knob,
+          DUAL2SM_TILE_K=64|128; defaults byte-equivalent to B57 — the
+          incumbent rebuilt under V3 source reproduces 152 regs and the
+          863.7us/33.95% SoL round-robin median)
+CHANGED  labs/custom_vs_cublas/tcgen05_loader.py        83744a2d1e925186f69bfa9cb29c89df
+         (V3: min_blocks/tile_k params + AISP_DUAL2SM_MIN_BLOCKS /
+          AISP_DUAL2SM_TILE_K env plumbing; defaults UNCHANGED:
+          128,3,ws=1,amc=0,mb=2,k=64 — the B57 incumbent stays the default)
+UNCHANGED labs/custom_vs_cublas/bench_dual_cta.py       5ad5ea81aa5ec2c22b61bb2673878384
+Backups: /tmp/frontV3/{tcgen05_dual_cta_2sm.cu,tcgen05_loader.py} (B57
+originals, md5 ac86…/da0b…). Logs: /tmp/frontV3/{build_v3,sweep_v3,
+ab_k128,gateN*}.log; ncu: /tmp/frontV3/ncu_{inc_n128s3,n64s3,n64s2mb5,
+n128s2k128}.ncu-rep. Nothing committed.
+```
+
+## Named next lever
+
+The occupancy/pipeline-shape configuration space on this kernel is now
+EXHAUSTED (B49 tiles, B53/V2 multicast both axes, B57 warp-split, V3
+tile_n=64/stages/min-blocks/tile_k — every frontier point measured). The
+remaining 863.7 -> 639.1us gap to cuBLAS (33.9 -> 45.9% SoL) cannot come
+from launch-shape knobs. The two structural candidates, in EV order:
+1. **2-CTA output tiling with TMEM double-buffering (epilogue overlap):**
+   the epilogue (TMEM->reg->gmem, ~all-thread) is serialized after the
+   FULL k-loop per CTA; cuBLAS-class kernels split N into two TMEM
+   halves and drain half while the MMA stream fills the other. TMEM
+   2x128 of 512 cols leaves room at n=128 to double-buffer WITHIN the
+   3-CTA footprint (3 x 256 = 768 > 512 fails; 2 x 256 fits at 2 CTAs —
+   measure both).
+2. **Persistent CTAs + tile rasterization (L2-locality scheduling):** the
+   8192^3 grid re-reads A/B with hash-order CTA placement; a persistent
+   grid with swizzled (m,n) walk is the standard cuBLAS L2-shaping tool
+   and attacks the SAME DRAM/L2 numbers that just sank every V3 config —
+   without touching the winning (128,3) shape.

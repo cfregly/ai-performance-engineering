@@ -1621,6 +1621,28 @@ SoL framing (B), measured 2026-06-09:
   router would calibrate per deployment -- document as the lab's transferable pattern) and the
   remaining 20% padding floor (rounding granularity 64; sub-64 rounding is cheap to test).
 
+- HONEST NEGATIVE x3 (B60, dual_2sm launch-shape frontier exhausted, the B57-named levers): docs/
+  gb300-gemm-occupancy-rewrite.md (V3 section). tile_n=64 AND kTileK=128 both implemented
+  flag-gated, fully measured, FALSIFIED -- (128,3,ws=1) is a measured LOCAL OPTIMUM of the whole
+  (tile_n, stages, CTAs/SM, tile_k) frontier. FORECAST CORRECTION first by arithmetic then ncu:
+  B57's ~12KB/stage estimate was wrong -- the A-half is 16KB/stage at ANY tile_n (only B halves),
+  so "4th CTA + stages 5-6 simultaneously" was never reachable. Three mechanisms: (1) (64,3)
+  control: tensor-pipe 71.6 -> 40.6%, L2 sectors +68%, DRAM +114% -- halving tile_n halves
+  FLOPs/barrier-trip while doubling n-tiles; arithmetic intensity inverts the premise (rhymes with
+  B37's (128,3) loss). (2) The 5th CTA/SM GENUINELY ARRIVES ((64,2,mb5): Block Limits 5/5, occ
+  30.3%, first >3 CTAs/SM in this family) and STILL LOSES 38% -- long_scoreboard 22.05 -> 53.18:
+  10 TMA streams/SM CREATE the latency they were meant to hide; occupancy is not free latency
+  cover when every resident CTA adds memory pressure. (3) k128: barrier trips genuinely halve,
+  stalls/issue flat, but 2 CTAs/SM costs more than halved sync saves. Paired gate: best challenger
+  0/8 wins (0.8306x). All rel_err 0.0; verify 3/3 PASS (2.7974x/2.7656x/2.4448x); defaults
+  byte-equivalent to B57. Procedural: a profile_minimal harness stall (328s) was SIGKILLed and
+  re-run clean per V2 precedent -- use --profile none for gates. NEXT LEVERS (structural, the
+  launch-shape space is done): (1) TMEM double-buffered epilogue overlap (split N into two TMEM
+  halves, drain one while MMA fills the other; epilogue is currently serialized after the full
+  k-loop; 2x256 fits at 2 CTAs/SM, 3x256 does not -- measure both); (2) persistent CTAs +
+  swizzled tile rasterization (attacks the DRAM/L2 numbers that sank every V3 config without
+  touching the winning shape).
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

@@ -50,13 +50,18 @@
  *     (2 x 256 = 512 cols at kTileN=256).
  *
  * Tunables (compile-time, see tcgen05_loader.py):
- *   -DDUAL2SM_TILE_N=128|256  (per-CTA TMEM cols = TILE_N; pair M fixed 256)
- *   -DDUAL2SM_STAGES=2|3|4    (per-CTA smem 32KB/stage at N=256,
- *                              24KB/stage at N=128; 110KB static cap.
+ *   -DDUAL2SM_TILE_N=64|128|256 (per-CTA TMEM cols = TILE_N; pair M fixed 256)
+ *   -DDUAL2SM_STAGES=2..6     (per-CTA smem at TILE_K=64: 32KB/stage N=256,
+ *                              24KB/stage N=128, 20KB/stage N=64 -- the A
+ *                              half is 16KB/stage at ANY N; 110KB static cap.
  *                              MEASURED BEST: (128,3) = 72KB -> with 152
  *                              regs/thread the epilogue at N=128 unlocks
  *                              Block Limits 3/3 -> THREE CTAs/SM, TMEM
  *                              3x128 of 512 cols)
+ *   -DDUAL2SM_MIN_BLOCKS=2|4  (__launch_bounds__ min-CTAs/SM hint: 4 caps
+ *                              regs at 128/thread for a 4th co-resident CTA)
+ *   -DDUAL2SM_TILE_K=64|128   (K per stage; 128 doubles the TMA box and
+ *                              halves barrier round-trips per fed byte)
  */
 
 #include <ATen/cuda/CUDAContext.h>
@@ -94,6 +99,20 @@
 #ifndef DUAL2SM_AMCAST
 #define DUAL2SM_AMCAST 0
 #endif
+// Lever (c), V3-front: __launch_bounds__ min-blocks-per-SM hint. 2 = the
+// B57 default register budget (caps at 255 regs; measured 152 at n=128);
+// 4 caps regs at 128/thread so a 4th co-resident CTA is REACHABLE on the
+// tile_n=64 footprint (smem 40KB/CTA at s=2, TMEM 4x64 of 512 cols).
+// Hint only: occupancy is still bound by min(smem, TMEM, regs) at runtime.
+#ifndef DUAL2SM_MIN_BLOCKS
+#define DUAL2SM_MIN_BLOCKS 2
+#endif
+// Lever (d), V3-front fallback axis: K-extent of one pipeline stage.
+// 128 doubles the per-stage TMA box (A 32KB + B-half 8KB at n=128) and
+// HALVES barrier round-trips per fed byte; 64 = the incumbent k-block.
+#ifndef DUAL2SM_TILE_K
+#define DUAL2SM_TILE_K 64
+#endif
 
 using namespace cute;
 
@@ -108,11 +127,13 @@ using Accumulator = float;
 constexpr int kTileM = 256;  // pair-wide M: 128 rows per CTA of the pair
 constexpr int kTileN = DUAL2SM_TILE_N;
 constexpr int kStages = DUAL2SM_STAGES;
+constexpr int kTileK = DUAL2SM_TILE_K;
 // Cluster shape is (2, kClusterN, 1): V mode is the SM pair; under AMCAST
 // the N mode groups two SM pairs that share tile_m (A multicast partners).
 constexpr int kClusterN = DUAL2SM_AMCAST ? 2 : 1;
 
-static_assert(kStages >= 2 && kStages <= 4, "DUAL2SM_STAGES must be 2..4");
+static_assert(kStages >= 2 && kStages <= 6, "DUAL2SM_STAGES must be 2..6");
+static_assert(kTileK == 64 || kTileK == 128, "DUAL2SM_TILE_K must be 64 or 128");
 static_assert(kTileN >= 32 && (kTileN & (kTileN - 1)) == 0 && kTileN <= 256,
               "DUAL2SM_TILE_N must be a power of two in [32, 256]");
 
@@ -147,9 +168,9 @@ template <class SharedStorageT,
           class MmaTiler_MNK, class TiledMMA,
           class TmaAtomA, class TmaAtomB>
 #if DUAL2SM_AMCAST
-__global__ void __cluster_dims__(2, 2, 1) __launch_bounds__(128, 2)
+__global__ void __cluster_dims__(2, 2, 1) __launch_bounds__(128, DUAL2SM_MIN_BLOCKS)
 #else
-__global__ void __cluster_dims__(2, 1, 1) __launch_bounds__(128, 2)
+__global__ void __cluster_dims__(2, 1, 1) __launch_bounds__(128, DUAL2SM_MIN_BLOCKS)
 #endif
 gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
                   MmaTiler_MNK mma_tiler, TiledMMA tiled_mma,
@@ -275,8 +296,12 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
   decltype(sliceA(0)) tAsA_st[kStages] = { sliceA(0), sliceA(1) };
 #elif DUAL2SM_STAGES == 3
   decltype(sliceA(0)) tAsA_st[kStages] = { sliceA(0), sliceA(1), sliceA(2) };
-#else
+#elif DUAL2SM_STAGES == 4
   decltype(sliceA(0)) tAsA_st[kStages] = { sliceA(0), sliceA(1), sliceA(2), sliceA(3) };
+#elif DUAL2SM_STAGES == 5
+  decltype(sliceA(0)) tAsA_st[kStages] = { sliceA(0), sliceA(1), sliceA(2), sliceA(3), sliceA(4) };
+#else
+  decltype(sliceA(0)) tAsA_st[kStages] = { sliceA(0), sliceA(1), sliceA(2), sliceA(3), sliceA(4), sliceA(5) };
 #endif
 #endif
 
@@ -303,9 +328,15 @@ gemm_dual_cta_2sm(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
 #elif DUAL2SM_STAGES == 3
   decltype(fragA(0)) tCrA_st[kStages] = { fragA(0), fragA(1), fragA(2) };
   decltype(fragB(0)) tCrB_st[kStages] = { fragB(0), fragB(1), fragB(2) };
-#else
+#elif DUAL2SM_STAGES == 4
   decltype(fragA(0)) tCrA_st[kStages] = { fragA(0), fragA(1), fragA(2), fragA(3) };
   decltype(fragB(0)) tCrB_st[kStages] = { fragB(0), fragB(1), fragB(2), fragB(3) };
+#elif DUAL2SM_STAGES == 5
+  decltype(fragA(0)) tCrA_st[kStages] = { fragA(0), fragA(1), fragA(2), fragA(3), fragA(4) };
+  decltype(fragB(0)) tCrB_st[kStages] = { fragB(0), fragB(1), fragB(2), fragB(3), fragB(4) };
+#else
+  decltype(fragA(0)) tCrA_st[kStages] = { fragA(0), fragA(1), fragA(2), fragA(3), fragA(4), fragA(5) };
+  decltype(fragB(0)) tCrB_st[kStages] = { fragB(0), fragB(1), fragB(2), fragB(3), fragB(4), fragB(5) };
 #endif
 
   int num_k_tiles = size<3>(tCgA);
@@ -479,8 +510,8 @@ torch::Tensor run_dual_cta_2sm_matmul(torch::Tensor a, torch::Tensor b) {
   auto k = a_contig.size(1);
   auto n = b_contig.size(0);
 
-  TORCH_CHECK(m % kTileM == 0 && n % kTileN == 0 && k % 64 == 0,
-              "Size must be divisible by the 2SM pair tile (", kTileM, "x", kTileN, "x64)");
+  TORCH_CHECK(m % kTileM == 0 && n % kTileN == 0 && k % kTileK == 0,
+              "Size must be divisible by the 2SM pair tile (", kTileM, "x", kTileN, "x", kTileK, ")");
 
   auto options = a.options().dtype(torch::kFloat32);
   auto c_buffer = torch::empty({m, n}, options);  // beta=0: never read
@@ -489,7 +520,9 @@ torch::Tensor run_dual_cta_2sm_matmul(torch::Tensor a, torch::Tensor b) {
   auto tiled_mma = make_tiled_mma(MmaTag{});
   auto bM = tile_size<0>(tiled_mma);              // 256 (pair-wide)
   auto bN = tile_size<1>(tiled_mma);              // kTileN
-  auto bK = tile_size<2>(tiled_mma) * Int<4>{};   // 64
+  // kTileK/16 atom k-blocks per stage: 4 -> kTileK=64 (incumbent), 8 -> 128
+  // (V3 lever d: double TMA box, half the barrier round-trips per byte).
+  auto bK = tile_size<2>(tiled_mma) * Int<kTileK / 16>{};
   auto mma_tiler = make_shape(bM, bN, bK);
 
   // Post-partitioned per-CTA shapes: A = 128-row half, B = FULL kTileN.

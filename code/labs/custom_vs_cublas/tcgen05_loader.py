@@ -294,16 +294,19 @@ def matmul_tcgen05_dual_cta(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 # =============================================================================
 
 @lru_cache(maxsize=None)
-def _load_tcgen05_dual_cta_2sm_module(tile_n: int, stages: int, warp_split: int = 0, amcast: int = 0):
+def _load_tcgen05_dual_cta_2sm_module(tile_n: int, stages: int, warp_split: int = 0, amcast: int = 0,
+                                      min_blocks: int = 2, tile_k: int = 64):
     extra = (
         f"-DDUAL2SM_TILE_N={tile_n}",
         f"-DDUAL2SM_STAGES={stages}",
         f"-DDUAL2SM_WARP_SPLIT={warp_split}",
         f"-DDUAL2SM_AMCAST={amcast}",
+        f"-DDUAL2SM_MIN_BLOCKS={min_blocks}",
+        f"-DDUAL2SM_TILE_K={tile_k}",
     )
     return _load_kernel(
         _LAB_DIR / "tcgen05_dual_cta_2sm.cu",
-        f"lab_tcgen05_dual_cta_2sm_n{tile_n}s{stages}w{warp_split}a{amcast}",
+        f"lab_tcgen05_dual_cta_2sm_n{tile_n}s{stages}w{warp_split}a{amcast}mb{min_blocks}k{tile_k}",
         extra_cuda_flags=extra,
     )
 
@@ -326,6 +329,12 @@ def load_tcgen05_dual_cta_2sm_module():
         wins, median 1.0725x hot; set 0 for the U-front single-warp base)
       AISP_DUAL2SM_AMCAST: 1 = (2,2,1) cluster + TMA-multicast of A across
         the cluster N mode (V-front lever b); 0 = (2,1,1) cluster
+      AISP_DUAL2SM_MIN_BLOCKS: __launch_bounds__ min-CTAs/SM hint (default
+        2 = 255-reg budget; 4 caps regs at 128 for a 4th co-resident CTA on
+        tile_n=64 footprints -- V3-front lever c)
+      AISP_DUAL2SM_TILE_K: K-extent per pipeline stage (default 64; 128
+        doubles the TMA box and halves barrier round-trips per fed byte --
+        V3-front lever d)
     Defaults are the measured-best config from the GB300 U-front session
     (2026-06-11, GPU 2, 8192^3): (128,3) = 867-895us / 33.2-33.8% SoL,
     16/16 interleaved-rep wins vs plain dual (256,2). ncu: 152 regs/thread
@@ -338,7 +347,9 @@ def load_tcgen05_dual_cta_2sm_module():
     stages = int(os.environ.get("AISP_DUAL2SM_STAGES", "3"))
     warp_split = int(os.environ.get("AISP_DUAL2SM_WARP_SPLIT", "1"))
     amcast = int(os.environ.get("AISP_DUAL2SM_AMCAST", "0"))
-    return _load_tcgen05_dual_cta_2sm_module(tile_n, stages, warp_split, amcast)
+    min_blocks = int(os.environ.get("AISP_DUAL2SM_MIN_BLOCKS", "2"))
+    tile_k = int(os.environ.get("AISP_DUAL2SM_TILE_K", "64"))
+    return _load_tcgen05_dual_cta_2sm_module(tile_n, stages, warp_split, amcast, min_blocks, tile_k)
 
 
 def matmul_tcgen05_dual_cta_2sm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
