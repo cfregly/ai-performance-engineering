@@ -213,7 +213,7 @@ gate 3/3: rel_err=0.00e+00 time=850.4us 1293 TFLOPS -> PASS
 FP16 gates: 3/3  (champion band incl. thermal drift; rel_err 0.0)
 ```
 
-Session: 2026-06-11, pod <gb300-pod>, GPU 2 under /tmp/gpu2.lock,
+Session: 2026-06-11, pod aisp-gb300-runall, GPU 2 under /tmp/gpu2.lock,
 torch 2.12.0a0+nv26.05 / CUDA 13.2 / ncu 2026.1.1. Backups of touched
 files in /tmp/frontF8/. Harness note: this lab has no FP8 quick-lab
 target; the kernel-level A/B + exact-tolerance correctness above is the
@@ -375,7 +375,7 @@ gate 3/3: rel_err=0.00e+00 time=819.3us 1342 TFLOPS -> PASS
 FP16 gates: 3/3  (champion band; shared loader rebuilt clean)
 ```
 
-Session F8b: 2026-06-11/12, pod <gb300-pod>, GPU 2 under
+Session F8b: 2026-06-11/12, pod aisp-gb300-runall, GPU 2 under
 /tmp/gpu2.lock (compute-apps checked idle before every timed block),
 torch 2.12.0a0+nv26.05 / CUDA 13.2 / ncu 2026.1.1. Evidence:
 /tmp/frontF8b/ (entry backups, build logs, dh_ab_run{1,2}.log,
@@ -384,4 +384,198 @@ Files (md5, pod == local verified at handoff):
 tcgen05_dual_2sm_fp8.cu fe1f3aa68a062f2c07131ea4ceef8457,
 tcgen05_loader.py e860783dcb07ceb96777dbf943c14bc5,
 bench_dual_2sm_fp8.py 9be8d66ca79844c31350566686366e1c
+(this doc md5-matched pod == local by the mirror step itself).
+
+---
+
+# F8c. Declared-final front: in-CTA epilogue/mainloop overlap inside the 2-CTAs/SM footprint -- HONEST NEGATIVE; the FP8 scheduling frontier is DECLARED at 0.908x
+
+Mission (B73's named lever): reclaim the per-round serialized epilogue
+exposure IN-CTA -- "a dedicated epilogue warp pair + double-buffered
+2x128-col TMEM views inside the existing 256-col/CTA budget; the eo=2
+structure at eo=0's occupancy." Measured to a decisive negative with the
+mechanism fully decomposed; no default changes. The FP8 champion stands
+at (n256, s3, ws1, mb2, k128, p1, rg8, te1, dh1) = 313.5-315.7 us /
+~3500 TF / 0.907-0.908x of same-run cuBLASLt FP8.
+
+## F8c.1 The TMEM/tile arithmetic, stated BEFORE coding (the formulation finding)
+
+TMEM = 128 lanes x 512 fp32 columns per SM. Each CTA's accumulator
+buffer = its 128-row M-half x kTileN fp32 = kTileN TMEM columns. The
+budget identity that closes the whole family:
+
+```
+kTileN x kNumAccBufs x CTAs/SM <= 512
+  n256 eo0:  256 x 1 x 2 = 512   <- the champion (big-tile AI, 2 streams/SM)
+  n256 eo2:  256 x 2 x 2 = 1024  <- INADMISSIBLE (even 1 CTA/SM consumes all 512)
+  n128 eo0:  128 x 1 x 3 = 384   <- 3 CTAs/SM (smem-bound at 3)
+  n128 eo2:  128 x 2 x 2 = 512   <- the ONLY admissible double-buffer point
+```
+
+Three structural facts sharpened the brief's lever before any code:
+1. **Double-buffering at n256 does not fit**: 512 cols/CTA fails the
+   co-residency static_assert; there is no "n256 overlap at 2 CTAs/SM".
+2. **2x128-col views of ONE n256 accumulation cannot work**: every
+   256-wide tcgen05.mma k-block writes ALL 256 columns, so neither half
+   is drainable before the tile's final k-block (the file's own eo=2
+   structural note). The views must be two FULL n128 tiles.
+3. **A warp PAIR cannot drain**: tcgen05.ld 32dp32b from TMEM
+   subpartition w is only addressable by the warp of rank w within its
+   warpgroup; a 128-lane drain needs ranks 0-3 = a full second
+   warpgroup (threads 128-255), not parked warps 2-3.
+
+So the implementable formulation is fallback (a): n128 tiles,
+kNumAccBufs=2 (256 TMEM cols/CTA = exactly the champion's budget,
+2 CTAs/SM preserved), the persistent eo=2 producer/consumer/epilogue-
+warpgroup structure, PLUS the F8b te1+dh1 staged-fp16 store re-hosted in
+the overlap epilogue.
+
+## F8c.2 What was built (new mechanism, behind DUAL2SM_EPI_OVERLAP=2 + TMA_EPI=1 + D_HALF=1)
+
+The pre-existing eo=2 path stored fp32 D by direct STG (the 50%-sector
+path) + host-side .to(fp16) -- the very ~400 MB tax F8b retired. F8c
+adds the staged TMA store to the eo=2 persistent epilogue, with the B58
+wait choreography re-solved for a LIVE ring:
+
+- Under eo=2 the smem ring NEVER drains (the mainloop streams across
+  tile boundaries), so the eo=0 trick of staging through a drained
+  smem_A stage is unavailable. A DEDICATED staging pair is added to
+  SharedStorage: 2 x (128 rows x 64 fp16 cols, SW128 16B-group XOR) =
+  32 KB. Total smem 107.52 KB/CTA (ncu-confirmed) <= the 110 KB
+  2-CTAs/SM cap; the persistent grid static-sizes to 304 = 2 CTAs/SM.
+- Sync is warpgroup-local `bar.sync 1, 128` (ids audited: nothing else
+  in the kernel or the included CUTLASS device code uses named
+  bar.sync) -- a __syncthreads would deadlock against the mainloop
+  warps, which only rendezvous at kernel end.
+- Staging-slot reuse: the ISSUING thread (warp 4 elected) waits
+  `tma_store_wait<1>` (engine has READ the box issued two stores ago),
+  then the named barrier republishes to all 128 epi threads; a final
+  `tma_store_wait<0>` precedes the end-of-kernel rendezvous (smem
+  lifetime). Per tile: 4 x 32-col t2r chunks -> 2 chunk-pair fp16
+  boxes -> 2 TMA stores.
+- Plumbing: loader gains AISP_DUAL2SM_FP8_EPI_OVERLAP / an
+  `epi_overlap` arg (build name suffix `eo{n}`; symbol uniqueness via
+  the kCfgEpi template tag -- B61); bench --fp8 gains the optional
+  10th field EO.
+
+## F8c.3 Correctness: rel_err == 0.0 EXACTLY, all paths, all sizes
+
+Exact dataset, same-run fp32-upcast reference (TF32 off), sizes
+2048/4096/8192: champion control, F8c eo2-te1dh1, and eo2-te0 all
+report rel_err = 0.00e+00 bit-exactly (/tmp/frontF8c/
+correctness_run1.log). The live-ring staging choreography is sound.
+
+## F8c.4 The A/B: decisive loss, with the geometry decomposed
+
+8192^3, 12-rep order-alternated interleave, same session
+(/tmp/frontF8c/ab_run1.log):
+
+| arm | median | vs cuBLASLt | vs champion |
+|---|---|---|---|
+| cuBLASLt FP8                       | 285.1 us / 3856 TF | --      | --      |
+| champion n256-eo0-te1dh1           | 315.7 us / 3483 TF | 0.9072x | --      |
+| **F8c eo2-n128-te1dh1**            | 396.6 us / 2772 TF | 0.7201x | **0.7948x, 0/12** |
+| eo0-n128-mb3-te1dh1 (geom control) | 336.1 us / 3271 TF | 0.8494x | 0.9360x, 0/12 |
+
+- The champion replicated its banked 0.908x in-session (healthy run).
+- The staged-store lever DOES generalize into the eo=2 epilogue:
+  eo2-te1dh1 376.7 us vs eo2-te0 546.2 us single-shot at 8192 (1.45x;
+  the host-conversion + fp32-STG tax measured inside the overlap
+  structure too). Banked as a mechanism; it just cannot rescue n128.
+
+## F8c.5 ncu: the thesis falsified cleanly (/tmp/frontF8c/fp8_eo2.ncu-rep)
+
+| metric | champion (F8b.5) | F8c eo2-n128 |
+|---|---|---|
+| Duration (isolated)   | 284.7 us | 359.0 us |
+| Tensor pipe           | 86.6% (over-utilized) | **65.8%** |
+| Compute (SM)          | 87.2% | 73.8% |
+| L2 throughput         | 59.1% | 67.1% |
+| Memory throughput     | 58.1% / 1.68 TB/s | 68.8% / 1.27 TB/s |
+| Grid / CTAs/SM        | 304 / 2 | 304 / 2 (as designed) |
+| Regs/thread           | 103 | 96 (no spill; BL-Regs 2 = BL-SMem 2) |
+| Dyn smem/CTA          | 98.43 KB | 107.52 KB (= the stated arithmetic) |
+| Top stalls            | long-scoreboard 88.3% of 34.7 cyc | long-scoreboard 59.8% + CTA-barrier 31.5% of 48.5 cyc |
+
+The F8c thesis was "epilogue exposure reclaimed -> tensor pipe >90% ->
+~290 us class." The opposite happened: the pipe FELL 86.6 -> 65.8. The
+overlap works structurally (the epilogue is no longer serialized), but
+at n128 the MAINLOOP cannot saturate the pair MMA: per FLOP it carries
+2x the k-block barrier/issue round-trips and 1.5x the smem-feed bytes
+(341 FLOP/smem-byte at n128 vs 512 at n256), and L2 pressure rises to
+67%. The limiter at this geometry was never the epilogue -- it is the
+feed, which the n256 big tile was specifically amortizing.
+
+## F8c.6 Why the family is closed (the banked mechanism)
+
+Two independent dominations, both measured:
+1. **Geometry-matched**: at fixed n128, the in-CTA overlap (eo2,
+   2 CTAs/SM + dedicated warpgroup) is 0.847x of plain eo0 at
+   3 CTAs/SM (396.6 vs 336.1 us). The third co-resident CTA is the
+   better epilogue-hider AND TMA-latency-hider than the warpgroup that
+   replaced it -- B63's FP16 verdict replicates exactly at FP8, one
+   rung down the occupancy ladder.
+2. **Cross-geometry**: even the BEST n128 schedule is bounded by its
+   own mainloop feed rate: eo0-n128-mb3 with three full MMA streams/SM
+   and its epilogue already co-residency-hidden runs 336.1 us > the
+   n256 champion's 315.7 us. No epilogue scheduling at n128 can make
+   up a deficit that exists in the mainloop itself. (The k64 deep-ring
+   escape is already closed by the B72 kTileK=128 box law.)
+
+With the TMEM identity of F8c.1, this closes every point in the
+in-CTA-overlap family on this kernel: the 512-col TMEM wall forces
+double-buffering down to n128, and n128's feed tax exceeds the ~9%
+epilogue exposure the overlap could reclaim. The structure nvjet uses
+(specialized epilogue warps inside one CTA) only pays at tile shapes
+whose accumulator fits TWICE in TMEM without halving tile AI -- FP8
+dense at 256-col tiles is precisely where it cannot.
+
+## F8c.7 The FP8 scheduling frontier, DECLARED
+
+The final FP8 ladder (8192^3, vs same-run cuBLASLt FP8):
+
+| rung | result |
+|---|---|
+| F8 type-level port (n128 FP16 geometry)         | 0.7228x |
+| F8a/F8b n256 big tile + TMA-store epi (te1)     | ~0.79x -> 0.83x |
+| F8b in-kernel fp16 D (dh1) -- **the champion**  | **0.907-0.908x** |
+| F8c in-CTA epilogue overlap (eo2)               | 0.7201x -- REJECTED |
+
+The remaining ~9% to the library is structural under this kernel's
+resources: cuBLASLt's nvjet runs the epilogue-overlap structure at a
+tile/TMEM geometry this 256-col accumulator budget cannot express
+(and reaches 4046-4156 TF). Within the 2-CTAs/SM, 512-TMEM-col,
+110KB-smem envelope, the scheduling levers are exhausted: warp-split,
+persistence, raster, TMA-store epilogue, in-kernel fp16 D are all
+banked wins; deep ring (F8b) and in-CTA overlap (F8c) are both
+measured negatives with mechanisms understood. **The FP8 frontier for
+tcgen05_dual_2sm_fp8.cu is 0.908x of cuBLASLt FP8 (313.5-315.7 us,
+~3500 TF), parity-class (>= 0.85x), and further progress requires a
+different ACCUMULATOR geometry (e.g. n128-epilogue-split atoms with
+TMEM column sharing), not a different schedule.**
+
+Defaults: UNCHANGED everywhere (loader eo default 0; champion config
+untouched). The eo=2+te1+dh1 machinery remains available behind
+AISP_DUAL2SM_FP8_EPI_OVERLAP=2 for future accumulator-geometry work,
+correctness-proven at rel_err 0.0.
+
+## F8c.8 Gates + files
+
+```
+FP8 exactness: rel_err == 0.0 at 2048/4096/8192 x {champion, eo2-te1dh1, eo2-te0}
+gate 1/3: rel_err=0.00e+00 time=737.8us 1490 TFLOPS -> PASS
+gate 2/3: rel_err=0.00e+00 time=813.2us 1352 TFLOPS -> PASS
+gate 3/3: rel_err=0.00e+00 time=835.8us 1315 TFLOPS -> PASS
+FP16 gates: 3/3  (champion band; rel_err 0.0)
+```
+
+Session F8c: 2026-06-11/12, pod aisp-gb300-runall, GPU 2 under
+/tmp/gpu2.lock (compute-apps checked idle before every timed block),
+torch 2.12.0a0+nv26.05 / CUDA 13.2 / ncu 2026.1.1. Evidence:
+/tmp/frontF8c/ (entry backups, correctness_run1.log, ab_run1.log,
+fp8_eo2.ncu-rep + details, fp16_gates.log, run scripts).
+Files (md5, pod == local verified at handoff):
+tcgen05_dual_2sm_fp8.cu 26bc94aa59b06d028937be179a814e75,
+tcgen05_loader.py 8236d523308b1bc87ddfddbb9107b5f4,
+bench_dual_2sm_fp8.py a179a74103d579a815dc5ab24c26d723
 (this doc md5-matched pod == local by the mirror step itself).

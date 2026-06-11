@@ -202,6 +202,24 @@
 #ifndef DUAL2SM_D_HALF
 #define DUAL2SM_D_HALF 0
 #endif
+// F8c lever: in-CTA epilogue/mainloop overlap WITHIN the 2-CTAs/SM
+// footprint -- the eo=2 structure at eo=0's occupancy. TMEM arithmetic:
+// double-buffering at n256 needs 2x256 = 512 cols/CTA (the WHOLE TMEM ->
+// 1 CTA/SM; inadmissible), and a half-drain of one n256 accumulation is
+// impossible (every 256-wide MMA k-block writes all 256 cols). The only
+// formulation inside the 256-col/CTA budget is n128 tiles with 2x128-col
+// TMEM buffers (kNumAccBufs=2) -- exactly the champion's TMEM/CTA spend,
+// so 2 CTAs/SM is preserved. EPI_OVERLAP=2 + PERSIST give the structure;
+// THIS lever adds the F8b te1+dh1 store path to that epilogue: under
+// eo=2 the smem ring NEVER drains (the mainloop streams across tile
+// boundaries), so the eo=0 trick of staging through a drained smem_A
+// stage is unavailable -- a DEDICATED double-buffered staging pair
+// (2 x 128x64 fp16 SW128 boxes, 32KB) is added to SharedStorage, and the
+// epilogue warpgroup synchronizes with bar.sync 1,128 (warpgroup-local;
+// __syncthreads would deadlock against the mainloop warps). The drain
+// unit must be a full second WARPGROUP, not a warp pair: tcgen05.ld
+// 32dp32b from TMEM subpartition w is only addressable by the warp of
+// rank w within its warpgroup (ranks 0-3 needed for 128 lanes).
 
 using namespace cute;
 
@@ -268,15 +286,21 @@ static_assert(DUAL2SM_PREFETCH >= 0 && DUAL2SM_PREFETCH <= kStages,
 static_assert(DUAL2SM_PF_ISSUER >= 0 && DUAL2SM_PF_ISSUER <= 2,
               "DUAL2SM_PF_ISSUER must be 0 (producer), 1 (epilogue), or "
               "2 (parked warp, round start)");
-static_assert(DUAL2SM_TMA_EPI == 0 || (kPersist && DUAL2SM_EPI_OVERLAP == 0),
-              "TMA_EPI is scoped to the persistent eo=0 path (its per-round "
-              "serialized epilogue is the target)");
+static_assert(DUAL2SM_TMA_EPI == 0 || (kPersist && DUAL2SM_EPI_OVERLAP == 0) ||
+              (kPersist && DUAL2SM_EPI_OVERLAP == 2),
+              "TMA_EPI is scoped to the persistent paths: eo=0 (per-round "
+              "serialized epilogue) or eo=2 (F8c overlap epilogue)");
 static_assert(DUAL2SM_TMA_EPI == 0 || DUAL2SM_EPI_ATOM == 32,
               "TMA_EPI staging assumes 32-col t2r chunks (128x32 fp32 = 16KB "
               "= one drained A stage)");
-static_assert(DUAL2SM_TMA_EPI == 0 || kTileK >= 128,
-              "FP8 TMA_EPI: the 16KB fp32 staging chunk only fits a drained "
-              "A stage when kTileK >= 128 (128 rows x kTileK x 1B)");
+static_assert(DUAL2SM_TMA_EPI == 0 || DUAL2SM_EPI_OVERLAP != 0 || kTileK >= 128,
+              "FP8 TMA_EPI eo=0: the 16KB fp32 staging chunk only fits a "
+              "drained A stage when kTileK >= 128 (128 rows x kTileK x 1B)");
+static_assert(DUAL2SM_TMA_EPI == 0 || DUAL2SM_EPI_OVERLAP == 0 ||
+              (DUAL2SM_D_HALF == 1 && kTileN == 128),
+              "F8c overlap TMA_EPI: scoped to kTileN=128 (2x128-col TMEM "
+              "double-buffer = the champion's 256-col/CTA budget) with "
+              "in-kernel fp16 D (dedicated 128x64 fp16 staging boxes)");
 static_assert(DUAL2SM_D_HALF == 0 || DUAL2SM_TMA_EPI == 1,
               "D_HALF is scoped to the TMA_EPI store path (the other store "
               "paths copy fp32 fragments straight to gmem)");
@@ -314,6 +338,13 @@ template <class TypeA_, class TypeB_, class ASmemLayout, class BSmemLayout>
 struct Dual2SmSharedStorage {
   alignas(128) cute::ArrayEngine<TypeA_, cute::cosize_v<ASmemLayout>> smem_A[kStages];
   alignas(128) cute::ArrayEngine<TypeB_, cute::cosize_v<BSmemLayout>> smem_B[kStages];
+#if DUAL2SM_TMA_EPI && DUAL2SM_EPI_OVERLAP
+  // F8c: dedicated epilogue staging (the ring never drains under eo=2, so
+  // the eo=0 drained-A-stage trick is unavailable). Two 128-row x 64-col
+  // fp16 SWIZZLE_128B boxes (16KB each): chunk-pair stores double-buffer
+  // against the TMA store engine.
+  alignas(1024) uint8_t epi_stage[2][128 * 64 * 2];
+#endif
   alignas(16) cute::uint64_t full_barrier[kStages];   // leader-only: pair TMA bytes
   alignas(16) cute::uint64_t empty_barrier[kStages];  // per-CTA: multicast commit
   alignas(16) cute::uint64_t mma_barrier[kNumAccBufs];  // per acc buffer
@@ -755,6 +786,9 @@ gemm_dual_2sm_fp8(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
     auto tiled_t2r_copy = make_tmem_copy(EpiLoadOp{}, tEpiAcc);
     auto thr_t2r_copy = tiled_t2r_copy.get_slice(epi_tid);
     int mma_phase[kNumAccBufs] = {};
+#if DUAL2SM_TMA_EPI
+    int epi_store_q = 0;  // global chunk-pair store counter (slot = q & 1)
+#endif
     for (int t = 0; t < my_tiles; ++t) {
       int b = t % kNumAccBufs;
       cute::wait_barrier(storage.mma_barrier[b], mma_phase[b]);
@@ -771,6 +805,77 @@ gemm_dual_2sm_fp8(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
       constexpr int kEpiRank = decltype(rank(tDtAcc))::value;
       Tensor tDtAccG = group_modes<1, kEpiRank>(tDtAcc);   // (CPY, REST)
       Tensor tDgDG = group_modes<1, kEpiRank>(tDgD);       // (CPY, REST)
+#if DUAL2SM_TMA_EPI
+      // F8c staged fp16 TMA store (the F8b te1+dh1 path, re-hosted in the
+      // overlap epilogue): each PAIR of 32-col fp32 t2r chunks packs
+      // (__floats2half2_rn) into one 128x64 fp16 SW128 box in a DEDICATED
+      // staging buffer (the ring smem is live with the overlapped
+      // mainloop and never drains). Sync is warpgroup-local bar.sync 1,128
+      // -- __syncthreads would deadlock against the mainloop warps. The
+      // B58 crux: staging-slot reuse waits tma_store_wait<1> (engine has
+      // READ the box issued two stores ago) on the ISSUING thread, then
+      // the named barrier republishes that to all 128 epi threads.
+      constexpr int kDStores = kTileN / 64;  // chunk-pair stores per tile
+      const int row0 = (tm * 2 + v) * 128;   // 2x1SM CLayout: CTA v owns
+                                             // contiguous D rows
+      const int col0 = tn * kTileN;
+      const int r = epi_tid;                 // 32dp32b t2r: thread == row
+      auto pack2 = [](float x, float y) -> uint32_t {
+        __half2 h = __floats2half2_rn(x, y);
+        return *reinterpret_cast<uint32_t*>(&h);
+      };
+      CUTE_UNROLL
+      for (int c2 = 0; c2 < kDStores; ++c2) {
+        Tensor tDrAcc0 = make_tensor<Accumulator>(shape(tDgDG(_, 2 * c2)));
+        Tensor tDrAcc1 = make_tensor<Accumulator>(shape(tDgDG(_, 2 * c2 + 1)));
+        copy(tiled_t2r_copy, tDtAccG(_, 2 * c2), tDrAcc0);
+        copy(tiled_t2r_copy, tDtAccG(_, 2 * c2 + 1), tDrAcc1);
+        cutlass::arch::fence_view_async_tmem_load();
+        const int slot = epi_store_q & 1;
+        if (epi_store_q >= 2) {
+          if (warp_idx == 4 && elect_one_thr) {
+            cute::tma_store_wait<1>();
+          }
+          asm volatile("bar.sync 1, 128;" ::: "memory");
+        }
+        uint4* sbuf = reinterpret_cast<uint4*>(storage.epi_stage[slot]);
+        CUTE_UNROLL
+        for (int g = 0; g < 8; ++g) {
+          // Groups 0-3 = chunk 2*c2 (fp16 cols 0-31), groups 4-7 = chunk
+          // 2*c2+1 (cols 32-63); g is compile-time so the branch folds.
+          int o = 8 * (g & 3);
+          uint4 packed;
+          if (g < 4) {
+            packed = make_uint4(pack2(tDrAcc0(o + 0), tDrAcc0(o + 1)),
+                                pack2(tDrAcc0(o + 2), tDrAcc0(o + 3)),
+                                pack2(tDrAcc0(o + 4), tDrAcc0(o + 5)),
+                                pack2(tDrAcc0(o + 6), tDrAcc0(o + 7)));
+          } else {
+            packed = make_uint4(pack2(tDrAcc1(o + 0), tDrAcc1(o + 1)),
+                                pack2(tDrAcc1(o + 2), tDrAcc1(o + 3)),
+                                pack2(tDrAcc1(o + 4), tDrAcc1(o + 5)),
+                                pack2(tDrAcc1(o + 6), tDrAcc1(o + 7)));
+          }
+          sbuf[r * 8 + (g ^ (r & 7))] = packed;   // SW128 16B-group XOR
+        }
+        cute::tma_store_fence();   // STS visible to the async proxy
+        asm volatile("bar.sync 1, 128;" ::: "memory");  // box fully staged
+        if (warp_idx == 4 && elect_one_thr) {
+          uint32_t s_ptr = cute::cast_smem_ptr_to_uint(storage.epi_stage[slot]);
+          int32_t crd_n = col0 + c2 * 64;  // descriptor dim0 = n (fp16 elems)
+          int32_t crd_m = row0;            // descriptor dim1 = m
+          asm volatile(
+              "cp.async.bulk.tensor.2d.global.shared::cta.bulk_group"
+              " [%0, {%2, %3}], [%1];"
+              :
+              : "l"(reinterpret_cast<uint64_t>(&tma_desc_D)), "r"(s_ptr),
+                "r"(crd_n), "r"(crd_m)
+              : "memory");
+          cute::tma_store_arrive();
+        }
+        ++epi_store_q;
+      }
+#else
       CUTE_UNROLL
       for (int c = 0; c < size<1>(tDtAccG); ++c) {
         Tensor tDrAcc = make_tensor<Accumulator>(shape(tDgDG(_, c)));
@@ -778,6 +883,7 @@ gemm_dual_2sm_fp8(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
         cutlass::arch::fence_view_async_tmem_load();
         copy(tDrAcc, tDgDG(_, c));  // D = accumulator (beta=0)
       }
+#endif  // DUAL2SM_TMA_EPI
       if (t + kNumAccBufs < my_tiles) {
         // Buffer b will be reused: signal the LEADER's consumer that this
         // CTA's TMEM half is drained (skipped for the last kNumAccBufs
@@ -788,6 +894,14 @@ gemm_dual_2sm_fp8(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
             uint32_t((warp_idx == 4) && elect_one_thr));
       }
     }
+#if DUAL2SM_TMA_EPI
+    // All staging boxes must be engine-READ before the CTA's smem dies
+    // (wait_group.read; gmem landing is covered by kernel completion --
+    // the banked te1 semantics).
+    if (warp_idx == 4 && elect_one_thr) {
+      cute::tma_store_wait<0>();
+    }
+#endif
   }
 #elif DUAL2SM_PERSIST
   // =====================================================================

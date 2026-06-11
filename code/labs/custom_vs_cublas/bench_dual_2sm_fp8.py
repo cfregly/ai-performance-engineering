@@ -112,8 +112,9 @@ def report(name, ms, rel, M, N, K, exact_mode):
 def load_fp8(cfg):
     n, s, ws, mb, k, p, rg, te = cfg[:8]
     dh = cfg[8] if len(cfg) > 8 else 0
+    eo = cfg[9] if len(cfg) > 9 else 0
     from labs.custom_vs_cublas.tcgen05_loader import _load_tcgen05_dual_2sm_fp8_module
-    mod = _load_tcgen05_dual_2sm_fp8_module(n, s, ws, mb, k, 32, p, rg, te, dh)
+    mod = _load_tcgen05_dual_2sm_fp8_module(n, s, ws, mb, k, 32, p, rg, te, dh, eo)
     return mod.matmul_tcgen05_dual_2sm_fp8
 
 
@@ -125,8 +126,9 @@ def main():
     parser.add_argument("--interleave", type=int, default=0, metavar="N",
                         help="round-robin all arms N times; report per-arm median")
     parser.add_argument("--fp8", action="append", default=None,
-                        metavar="N,S,WS,MB,K,P,RG,TE[,DH]",
-                        help="custom FP8 arm config; repeatable (DH=1: in-kernel fp16 D)")
+                        metavar="N,S,WS,MB,K,P,RG,TE[,DH[,EO]]",
+                        help="custom FP8 arm config; repeatable (DH=1: in-kernel fp16 D; "
+                             "EO=2: F8c overlap-epilogue warpgroup)")
     parser.add_argument("--with-fp16", action="store_true",
                         help="add the FP16 champion arm (own fp16 data, same FLOPs)")
     parser.add_argument("--sol", type=float, default=0.0,
@@ -155,7 +157,9 @@ def main():
     for cfg in cfgs:
         n, s, ws, mb, k, p, rg, te = cfg[:8]
         dh = cfg[8] if len(cfg) > 8 else 0
-        name = f"fp8_2sm n{n}s{s}w{ws}mb{mb}k{k}p{p}rg{rg}te{te}" + (f"dh{dh}" if dh else "")
+        eo = cfg[9] if len(cfg) > 9 else 0
+        name = (f"fp8_2sm n{n}s{s}w{ws}mb{mb}k{k}p{p}rg{rg}te{te}"
+                + (f"dh{dh}" if dh else "") + (f"eo{eo}" if eo else ""))
         try:
             fn = load_fp8(cfg)
             rel = check(fn, a, b, ref)

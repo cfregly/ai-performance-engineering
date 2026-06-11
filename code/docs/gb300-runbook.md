@@ -1967,6 +1967,26 @@ SoL framing (B), measured 2026-06-09:
   contract-level residuals); secondary audit: whether the persistent scheduler overlaps tile
   N+1's loads with tile N's epilogue (if not, cross-tile prefetch is a cheaper opening).
 
+- HONEST NEGATIVE + FP8 FRONTIER DECLARED (B75, in-CTA epilogue overlap, the B73-named lever):
+  docs/gb300-fp8-dual2sm.md (F8c section). THE TMEM ARITHMETIC KILLED THE THESIS BEFORE CODING
+  (stated as mandated): n256 double-buffer = 512 TMEM cols/CTA = INADMISSIBLE (one CTA eats all
+  of TMEM); 2x128-col views of one n256 accumulation CANNOT exist (every 256-wide MMA k-block
+  writes all 256 cols -- nothing is drainable early); a warp PAIR cannot drain (tcgen05.ld
+  subpartition w is warpgroup-rank-addressable -- 128 lanes need a full second warpgroup). The
+  only admissible point (n128 x 2 buffers, champion's TMEM spend, 2 CTAs/SM) was implemented
+  BIT-EXACT (rel_err 0.0 x3 sizes; warpgroup-local bar.sync, audited barrier ids; dual 16KB
+  staging since the ring never drains under eo2) and REJECTED: 0.7948x of the dh1 champion,
+  0/12 paired; ncu tensor pipe 65.8% vs 86.6% (the >90% thesis falsified). TWO INDEPENDENT
+  DOMINATIONS: (1) at fixed n128, overlap@2CTA is 0.847x of plain@3CTA -- the third co-resident
+  CTA out-schedules the dedicated warpgroup (B63's FP16 verdict replicates at FP8); (2) even
+  perfect n128 scheduling is bounded by its own feed-taxed mainloop (336.1us > 315.7us champion;
+  341 vs 512 FLOP/smem-byte; k64 escape closed by the B72 box law). FINAL FP8 LADDER: port
+  0.7228x -> n256+TMA-epi ~0.83x -> fp16-D champion 0.907-0.908x (313.5-315.7us, ~3500 TF) ->
+  overlap REJECTED. The FP8 scheduling frontier is CLOSED at 0.908x of cuBLASLt; further
+  progress requires a different accumulator GEOMETRY, not a different schedule. The staged-store
+  lever generalizes (eo2-te1dh1 1.45x over eo2-te0) and stays available. FP16 gates 3/3 PASS;
+  no defaults changed.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

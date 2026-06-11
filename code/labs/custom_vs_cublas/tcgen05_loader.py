@@ -442,7 +442,8 @@ def _load_tcgen05_dual_2sm_fp8_module(tile_n: int, stages: int, warp_split: int 
                                       min_blocks: int = 3, tile_k: int = 128,
                                       epi_atom: int = 32,
                                       persist: int = 1, raster_gm: int = 8,
-                                      tma_epi: int = 1, d_half: int = 0):
+                                      tma_epi: int = 1, d_half: int = 0,
+                                      epi_overlap: int = 0):
     extra = (
         f"-DDUAL2SM_TILE_N={tile_n}",
         f"-DDUAL2SM_STAGES={stages}",
@@ -450,7 +451,7 @@ def _load_tcgen05_dual_2sm_fp8_module(tile_n: int, stages: int, warp_split: int 
         "-DDUAL2SM_AMCAST=0",
         f"-DDUAL2SM_MIN_BLOCKS={min_blocks}",
         f"-DDUAL2SM_TILE_K={tile_k}",
-        "-DDUAL2SM_EPI_OVERLAP=0",
+        f"-DDUAL2SM_EPI_OVERLAP={epi_overlap}",
         f"-DDUAL2SM_EPI_ATOM={epi_atom}",
         f"-DDUAL2SM_PERSIST={persist}",
         f"-DDUAL2SM_RASTER_GM={raster_gm}",
@@ -462,7 +463,8 @@ def _load_tcgen05_dual_2sm_fp8_module(tile_n: int, stages: int, warp_split: int 
     return _load_kernel(
         _LAB_DIR / "tcgen05_dual_2sm_fp8.cu",
         f"lab_tcgen05_dual_2sm_fp8_n{tile_n}s{stages}w{warp_split}"
-        f"mb{min_blocks}k{tile_k}ea{epi_atom}p{persist}rg{raster_gm}te{tma_epi}dh{d_half}",
+        f"mb{min_blocks}k{tile_k}ea{epi_atom}p{persist}rg{raster_gm}te{tma_epi}dh{d_half}"
+        f"eo{epi_overlap}",
         extra_cuda_flags=extra,
     )
 
@@ -496,7 +498,16 @@ def load_tcgen05_dual_2sm_fp8_module():
       and 1.2525x vs the dh0 champion, 24/24 interleaved wins across two
       sessions, 313.5-315.0 us = 0.907-0.908x of same-run cuBLASLt FP8,
       rel_err 0.0 exactly at 2048/4096/8192 -- in-kernel RN rounding is
-      bit-identical to torch .to(fp16) on the exact dataset).
+      bit-identical to torch .to(fp16) on the exact dataset),
+      AISP_DUAL2SM_FP8_EPI_OVERLAP (0; 2 = the F8c in-CTA epilogue/mainloop
+      overlap: persistent eo=2 structure -- 2x TILE_N-col TMEM accumulator
+      buffers + a dedicated epilogue WARPGROUP (256 threads/CTA) draining
+      buffer t%2 through the staged fp16 TMA store while the consumer
+      fills buffer (t+1)%2. Requires TILE_N=128 with TMA_EPI=1 + D_HALF=1
+      (2x128 TMEM cols/CTA = the n256 champion's 256-col budget, so
+      2 CTAs/SM is preserved; n256 double-buffering needs the whole TMEM
+      and is inadmissible). Dedicated 32KB staging pair in smem -- the
+      eo=2 ring never drains, so the eo=0 drained-stage trick is out).
     Note: MIN_BLOCKS=1 selects the F8b deep-ring 1-CTA/SM build variant
     (lifts the 110KB smem cap to the 227KB per-block opt-in; the grid
     static-sizes to 152). Measured a LOSS at every depth s4/s5/s6 vs the
@@ -513,8 +524,10 @@ def load_tcgen05_dual_2sm_fp8_module():
     raster_gm = int(os.environ.get("AISP_DUAL2SM_FP8_RASTER_GM", "8"))
     tma_epi = int(os.environ.get("AISP_DUAL2SM_FP8_TMA_EPI", "1"))
     d_half = int(os.environ.get("AISP_DUAL2SM_FP8_D_HALF", "1"))
+    epi_overlap = int(os.environ.get("AISP_DUAL2SM_FP8_EPI_OVERLAP", "0"))
     return _load_tcgen05_dual_2sm_fp8_module(tile_n, stages, warp_split, min_blocks, tile_k,
-                                             epi_atom, persist, raster_gm, tma_epi, d_half)
+                                             epi_atom, persist, raster_gm, tma_epi, d_half,
+                                             epi_overlap)
 
 
 def matmul_tcgen05_dual_2sm_fp8(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
