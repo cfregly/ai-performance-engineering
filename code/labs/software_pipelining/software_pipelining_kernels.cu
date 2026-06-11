@@ -191,6 +191,180 @@ __global__ void optimized_tile_pipeline_kernel(
   }
 }
 
+// ---------------------------------------------------------------------------
+// TMA (cp.async.bulk) warp-specialized pipeline for sm_90+.
+//
+// Warp 0 lane 0 is the sole producer: it issues one bulk tensor copy per
+// operand per tile and signals a tx-count mbarrier. Warps 1..N-1 are
+// consumers: they spin on the stage's "full" barrier parity, compute with
+// 128-bit vectors, then arrive on the stage's "empty" barrier so the producer
+// can reuse the stage. This removes the per-thread cp.async + pipeline
+// barrier instruction overhead that capped the cuda::pipeline version at
+// ~76% DRAM SoL (issue-slots-bound, not DRAM-bound).
+// ---------------------------------------------------------------------------
+constexpr int kTmaStages = 2;
+constexpr int kTmaTileElems = 2048;  // floats per operand per stage
+constexpr int kTmaProducerThreads = kWarpSize;  // warp 0
+constexpr int kTmaVecPerConsumer = 2;  // float4 pairs per consumer thread per tile
+// 1 producer warp + consumers that exactly cover the tile (no ragged loop).
+constexpr int kTmaConsumerThreads = kTmaTileElems / 4 / kTmaVecPerConsumer;
+constexpr int kTmaBlockThreads = kTmaProducerThreads + kTmaConsumerThreads;
+static_assert(kTmaConsumerThreads * 4 * kTmaVecPerConsumer == kTmaTileElems);
+static_assert(kTmaBlockThreads <= 1024 && kTmaConsumerThreads % kWarpSize == 0);
+
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+
+__device__ __forceinline__ uint32_t smem_u32(const void* ptr) {
+  return static_cast<uint32_t>(__cvta_generic_to_shared(ptr));
+}
+
+__device__ __forceinline__ void mbar_init(uint64_t* bar, uint32_t count) {
+  asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;" ::"r"(smem_u32(bar)), "r"(count));
+}
+
+__device__ __forceinline__ void mbar_arrive(uint64_t* bar) {
+  asm volatile("mbarrier.arrive.shared::cta.b64 _, [%0];" ::"r"(smem_u32(bar)) : "memory");
+}
+
+__device__ __forceinline__ void mbar_arrive_expect_tx(uint64_t* bar, uint32_t tx_bytes) {
+  asm volatile("mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;" ::"r"(smem_u32(bar)),
+               "r"(tx_bytes)
+               : "memory");
+}
+
+__device__ __forceinline__ void mbar_wait_parity(uint64_t* bar, uint32_t parity) {
+  asm volatile(
+      "{\n"
+      ".reg .pred P1;\n"
+      "LAB_WAIT:\n"
+      "mbarrier.try_wait.parity.shared::cta.b64 P1, [%0], %1;\n"
+      "@P1 bra DONE;\n"
+      "bra LAB_WAIT;\n"
+      "DONE:\n"
+      "}\n" ::"r"(smem_u32(bar)),
+      "r"(parity)
+      : "memory");
+}
+
+__device__ __forceinline__ void tma_bulk_load(
+    void* dst_smem,
+    const void* src_gmem,
+    uint32_t bytes,
+    uint64_t* bar) {
+  asm volatile(
+      "cp.async.bulk.shared::cluster.global.mbarrier::complete_tx::bytes [%0], [%1], %2, [%3];" ::
+          "r"(smem_u32(dst_smem)),
+      "l"(src_gmem),
+      "r"(bytes),
+      "r"(smem_u32(bar))
+      : "memory");
+}
+
+#endif  // __CUDA_ARCH__ >= 900
+
+__global__ void optimized_tile_pipeline_tma_kernel(
+    const float* __restrict__ lhs,
+    const float* __restrict__ rhs,
+    float* __restrict__ out,
+    int numel,
+    int repeat_fmas) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+  extern __shared__ __align__(128) unsigned char smem_raw[];
+  float* lhs_tiles = reinterpret_cast<float*>(smem_raw);
+  float* rhs_tiles = lhs_tiles + kTmaStages * kTmaTileElems;
+  __shared__ uint64_t full_bar[kTmaStages];
+  __shared__ uint64_t empty_bar[kTmaStages];
+
+  if (threadIdx.x == 0) {
+#pragma unroll
+    for (int s = 0; s < kTmaStages; ++s) {
+      mbar_init(&full_bar[s], 1);  // producer's arrive.expect_tx only
+      mbar_init(&empty_bar[s], kTmaConsumerThreads);
+    }
+  }
+  __syncthreads();
+
+  const int num_tiles = (numel + kTmaTileElems - 1) / kTmaTileElems;
+  const int stride = gridDim.x;
+  constexpr uint32_t kTileBytes = kTmaTileElems * sizeof(float);
+
+  if (threadIdx.x < kTmaProducerThreads) {
+    if (threadIdx.x == 0) {
+      // Producer: keep up to kTmaStages tiles in flight.
+      int j = 0;
+      for (int tile = blockIdx.x; tile < num_tiles; tile += stride, ++j) {
+        const int s = j % kTmaStages;
+        const int k = j / kTmaStages;
+        if (k > 0) {
+          mbar_wait_parity(&empty_bar[s], (k - 1) & 1);
+        }
+        const int tile_base = tile * kTmaTileElems;
+        if (tile_base + kTmaTileElems <= numel) {
+          tma_bulk_load(lhs_tiles + s * kTmaTileElems, lhs + tile_base, kTileBytes, &full_bar[s]);
+          tma_bulk_load(rhs_tiles + s * kTmaTileElems, rhs + tile_base, kTileBytes, &full_bar[s]);
+          mbar_arrive_expect_tx(&full_bar[s], 2 * kTileBytes);
+        } else {
+          // Partial tail tile: consumers read global directly.
+          mbar_arrive_expect_tx(&full_bar[s], 0);
+        }
+      }
+    }
+    return;  // whole producer warp exits the consumer path
+  }
+
+  // Consumers: warps 1..N-1.
+  const int ctid = threadIdx.x - kTmaProducerThreads;
+  int j = 0;
+  for (int tile = blockIdx.x; tile < num_tiles; tile += stride, ++j) {
+    const int s = j % kTmaStages;
+    const int k = j / kTmaStages;
+    const int tile_base = tile * kTmaTileElems;
+
+    mbar_wait_parity(&full_bar[s], k & 1);
+
+    if (tile_base + kTmaTileElems <= numel) {
+      const float4* lhs_vec = reinterpret_cast<const float4*>(lhs_tiles + s * kTmaTileElems);
+      const float4* rhs_vec = reinterpret_cast<const float4*>(rhs_tiles + s * kTmaTileElems);
+      float4* out_vec = reinterpret_cast<float4*>(out + tile_base);
+      constexpr int kVecPerTile = kTmaTileElems / 4;
+      constexpr int kMaxVecPerThread =
+          (kVecPerTile + kTmaConsumerThreads - 1) / kTmaConsumerThreads;
+      // Stage-early-release: drain the staged tile into registers, free the
+      // stage for the producer immediately, then compute/store while the next
+      // bulk copy is already in flight. This decouples the refill from the
+      // global-store drain.
+      float4 a[kMaxVecPerThread];
+      float4 b[kMaxVecPerThread];
+      int cnt = 0;
+#pragma unroll
+      for (int v = ctid; v < kVecPerTile; v += kTmaConsumerThreads, ++cnt) {
+        a[cnt] = lhs_vec[v];
+        b[cnt] = rhs_vec[v];
+      }
+      mbar_arrive(&empty_bar[s]);
+      cnt = 0;
+#pragma unroll
+      for (int v = ctid; v < kVecPerTile; v += kTmaConsumerThreads, ++cnt) {
+        float4 r;
+        r.x = tile_math(a[cnt].x, b[cnt].x, repeat_fmas);
+        r.y = tile_math(a[cnt].y, b[cnt].y, repeat_fmas);
+        r.z = tile_math(a[cnt].z, b[cnt].z, repeat_fmas);
+        r.w = tile_math(a[cnt].w, b[cnt].w, repeat_fmas);
+        out_vec[v] = r;
+      }
+    } else {
+      mbar_arrive(&empty_bar[s]);  // tail tile bypasses the staged buffers
+      for (int local = ctid; local < kTmaTileElems; local += kTmaConsumerThreads) {
+        const int idx = tile_base + local;
+        if (idx < numel) {
+          out[idx] = tile_math(lhs[idx], rhs[idx], repeat_fmas);
+        }
+      }
+    }
+  }
+#endif  // __CUDA_ARCH__ >= 900
+}
+
 torch::Tensor check_inputs(
     const torch::Tensor& lhs,
     const torch::Tensor& rhs,
@@ -227,7 +401,30 @@ torch::Tensor launch_common(
   const dim3 block(kBlockThreads);
   const cudaStream_t stream = at::cuda::getDefaultCUDAStream();
 
-  if (use_pipeline) {
+  if (use_pipeline && props->major >= 9) {
+    // TMA bulk-copy pipeline (sm_90+): dynamic smem above the 48KB static cap.
+    constexpr int kTmaSmemBytes = kTmaStages * kTmaTileElems * 2 * sizeof(float);
+    static int blocks_per_sm = [] {
+      cudaFuncSetAttribute(
+          optimized_tile_pipeline_tma_kernel,
+          cudaFuncAttributeMaxDynamicSharedMemorySize,
+          kTmaSmemBytes);
+      int blocks = 0;
+      cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+          &blocks, optimized_tile_pipeline_tma_kernel, kTmaBlockThreads, kTmaSmemBytes);
+      return std::max(1, blocks);
+    }();
+    const int tma_tiles = (numel + kTmaTileElems - 1) / kTmaTileElems;
+    const int tma_grid =
+        std::max(1, std::min(tma_tiles, props->multiProcessorCount * blocks_per_sm));
+    const dim3 tma_block(kTmaBlockThreads);
+    optimized_tile_pipeline_tma_kernel<<<tma_grid, tma_block, kTmaSmemBytes, stream>>>(
+        lhs.data_ptr<float>(),
+        rhs.data_ptr<float>(),
+        out.data_ptr<float>(),
+        numel,
+        static_cast<int>(repeat_fmas));
+  } else if (use_pipeline) {
     optimized_tile_pipeline_kernel<<<grid, block, 0, stream>>>(
         lhs.data_ptr<float>(),
         rhs.data_ptr<float>(),
