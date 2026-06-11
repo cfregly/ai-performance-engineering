@@ -110,9 +110,10 @@ def report(name, ms, rel, M, N, K, exact_mode):
 
 
 def load_fp8(cfg):
-    n, s, ws, mb, k, p, rg, te = cfg
+    n, s, ws, mb, k, p, rg, te = cfg[:8]
+    dh = cfg[8] if len(cfg) > 8 else 0
     from labs.custom_vs_cublas.tcgen05_loader import _load_tcgen05_dual_2sm_fp8_module
-    mod = _load_tcgen05_dual_2sm_fp8_module(n, s, ws, mb, k, 32, p, rg, te)
+    mod = _load_tcgen05_dual_2sm_fp8_module(n, s, ws, mb, k, 32, p, rg, te, dh)
     return mod.matmul_tcgen05_dual_2sm_fp8
 
 
@@ -124,8 +125,8 @@ def main():
     parser.add_argument("--interleave", type=int, default=0, metavar="N",
                         help="round-robin all arms N times; report per-arm median")
     parser.add_argument("--fp8", action="append", default=None,
-                        metavar="N,S,WS,MB,K,P,RG,TE",
-                        help="custom FP8 arm config; repeatable")
+                        metavar="N,S,WS,MB,K,P,RG,TE[,DH]",
+                        help="custom FP8 arm config; repeatable (DH=1: in-kernel fp16 D)")
     parser.add_argument("--with-fp16", action="store_true",
                         help="add the FP16 champion arm (own fp16 data, same FLOPs)")
     parser.add_argument("--sol", type=float, default=0.0,
@@ -152,8 +153,9 @@ def main():
     arms.append(("cuBLASLt FP8 (scaled_mm)", scaled_mm, rel, (a, b)))
 
     for cfg in cfgs:
-        n, s, ws, mb, k, p, rg, te = cfg
-        name = f"fp8_2sm n{n}s{s}w{ws}mb{mb}k{k}p{p}rg{rg}te{te}"
+        n, s, ws, mb, k, p, rg, te = cfg[:8]
+        dh = cfg[8] if len(cfg) > 8 else 0
+        name = f"fp8_2sm n{n}s{s}w{ws}mb{mb}k{k}p{p}rg{rg}te{te}" + (f"dh{dh}" if dh else "")
         try:
             fn = load_fp8(cfg)
             rel = check(fn, a, b, ref)
@@ -194,6 +196,15 @@ def main():
             wins = sum(1 for x, y in zip(samples[name], base) if x < y)
             ratio = statistics.median([y / x for x, y in zip(samples[name], base)])
             print(f"  paired {name} vs cuBLASLt FP8: median speedup {ratio:.4f}x, wins {wins}/{len(base)}")
+        # paired verdict of every later custom arm vs the FIRST custom arm
+        # (list the control/champion first) -- the F8b deep-ring readout.
+        if len(arms) > 2:
+            champ_name = arms[1][0]
+            champ = samples[champ_name]
+            for name, *_ in arms[2:]:
+                wins = sum(1 for x, y in zip(samples[name], champ) if x < y)
+                ratio = statistics.median([y / x for x, y in zip(samples[name], champ)])
+                print(f"  paired {name} vs {champ_name}: median speedup {ratio:.4f}x, wins {wins}/{len(champ)}")
     else:
         print()
         for name, fn, rel, data in arms:

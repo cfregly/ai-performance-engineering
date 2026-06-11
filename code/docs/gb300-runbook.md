@@ -1921,6 +1921,27 @@ SoL framing (B), measured 2026-06-09:
   (e4m3 makes 6x32KB = 192KB fit the 227KB SM budget, impossible at fp16; requires lifting the
   110KB static cap); secondary: in-kernel fp16 D output (D-store still ~12%).
 
+- PARITY-CLASS WIN + HONEST NEGATIVE (B73, FP8 deep-ring refuted / fp16-D ships, the B72-named
+  levers): docs/gb300-fp8-dual2sm.md (F8b section). LEVER 1 (deep ring at 1 CTA/SM): HONEST
+  NEGATIVE with the cleanest mechanism yet -- s4/s5/s6 at 1 CTA/SM all lose (0.86/0.93/0.95x,
+  0/36 paired) even though the ring DID ITS JOB: long_scoreboard stall HALVED (32.0 -> 16.7
+  cyc/warp) and still lost, because that latency was ALREADY HIDDEN by the co-resident CTA; mb1
+  surrendered the second MMA issue stream that covers the serialized per-round epilogue. The B66
+  law at CTA granularity: don't spend resources hiding latency something else already hides.
+  nvjet's 6-deep 1-CTA shape requires an in-CTA overlapped epilogue (structure, not config).
+  LEVER 2 (in-kernel fp16 D, DUAL2SM_D_HALF=1): WIN, RATIFIED, DEFAULTS FLIPPED -- the B72
+  champion's .to(fp16) was a ~400MB conversion kernel INSIDE the timed region; converting in the
+  TMA-epi staging epilogue (chunk pairs -> 128x64 fp16 tiles, FLOAT16 descriptor) wins 1.2527x,
+  24/24 paired across two fresh sessions: 313.5-315.0us / ~3500 TFLOPS = 0.908x of same-run
+  cuBLASLt FP8 (the B72 gap of 0.7228x cut by two thirds). rel_err == 0.0 EXACTLY everywhere
+  (in-kernel RN == torch RN, predicted + confirmed); ncu: tensor pipe 86.6%, DRAM writes at the
+  fp16 floor (234.7 -> 112.3MB). FP16 gates 3/3 PASS. FP8 ladder: port 0.72x (B72) -> +fp16-D
+  0.91x of cuBLASLt. NEXT LEVER (the FP8 scheduling frontier proper, ~9% remains): in-CTA
+  epilogue/mainloop overlap WITHIN the 2-CTA footprint -- dedicated epilogue warp pair +
+  double-buffered 2x128-col TMEM views inside the 256-col/CTA budget (the eo=2 structure at
+  eo=0's occupancy; an mbarrier rewrite, not a config) -- reclaiming the epilogue exposure frees
+  co-residency's concurrency for depth.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

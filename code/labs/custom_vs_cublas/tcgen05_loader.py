@@ -442,7 +442,7 @@ def _load_tcgen05_dual_2sm_fp8_module(tile_n: int, stages: int, warp_split: int 
                                       min_blocks: int = 3, tile_k: int = 128,
                                       epi_atom: int = 32,
                                       persist: int = 1, raster_gm: int = 8,
-                                      tma_epi: int = 1):
+                                      tma_epi: int = 1, d_half: int = 0):
     extra = (
         f"-DDUAL2SM_TILE_N={tile_n}",
         f"-DDUAL2SM_STAGES={stages}",
@@ -457,11 +457,12 @@ def _load_tcgen05_dual_2sm_fp8_module(tile_n: int, stages: int, warp_split: int 
         "-DDUAL2SM_PREFETCH=0",
         "-DDUAL2SM_PF_ISSUER=0",
         f"-DDUAL2SM_TMA_EPI={tma_epi}",
+        f"-DDUAL2SM_D_HALF={d_half}",
     )
     return _load_kernel(
         _LAB_DIR / "tcgen05_dual_2sm_fp8.cu",
         f"lab_tcgen05_dual_2sm_fp8_n{tile_n}s{stages}w{warp_split}"
-        f"mb{min_blocks}k{tile_k}ea{epi_atom}p{persist}rg{raster_gm}te{tma_epi}",
+        f"mb{min_blocks}k{tile_k}ea{epi_atom}p{persist}rg{raster_gm}te{tma_epi}dh{d_half}",
         extra_cuda_flags=extra,
     )
 
@@ -476,8 +477,9 @@ def load_tcgen05_dual_2sm_fp8_module():
     round-trips per fed byte halve. No block scales (dense GEMM lab).
 
     Tunables (env, read at first load; defaults = the MEASURED FP8 champion
-    (2026-06-11 GPU2 16-rep interleave: 377.6us / 2912 TF at 8192^3 =
-    0.7228x cuBLASLt FP8; 1.918x over the FP16 champion in-session; see
+    after the F8b in-kernel-fp16-D ratification (2026-06-11 GPU2 12-rep
+    interleaves x2: 313.5-315.0us / ~3500 TF at 8192^3 = 0.907-0.908x
+    cuBLASLt FP8; the B72 dh0 incumbent was 377.6us / 0.7228x; see
     docs/gb300-fp8-dual2sm.md) -- the n256 big tile BEATS the FP16
     champion geometry n128 at FP8 rates):
       AISP_DUAL2SM_FP8_TILE_N (256), AISP_DUAL2SM_FP8_STAGES (3),
@@ -486,7 +488,20 @@ def load_tcgen05_dual_2sm_fp8_module():
       12KB/stage -> stages up to 6 at the same 72KB ring),
       AISP_DUAL2SM_FP8_EPI_ATOM (32), AISP_DUAL2SM_FP8_PERSIST (1),
       AISP_DUAL2SM_FP8_RASTER_GM (8), AISP_DUAL2SM_FP8_TMA_EPI (1; requires
-      TILE_K=128 -- the 16KB fp32 staging chunk must fit a drained A stage).
+      TILE_K=128 -- the 16KB fp32 staging chunk must fit a drained A stage),
+      AISP_DUAL2SM_FP8_D_HALF (1 = in-kernel fp16 D through the TMA_EPI
+      staging path: D-store bytes halve and the host-side fp32->fp16
+      conversion kernel is retired entirely; requires TMA_EPI=1. DEFAULT 1
+      by the F8b ratification (2026-06-11, GPU 2, 8192^3): paired 1.2527x
+      and 1.2525x vs the dh0 champion, 24/24 interleaved wins across two
+      sessions, 313.5-315.0 us = 0.907-0.908x of same-run cuBLASLt FP8,
+      rel_err 0.0 exactly at 2048/4096/8192 -- in-kernel RN rounding is
+      bit-identical to torch .to(fp16) on the exact dataset).
+    Note: MIN_BLOCKS=1 selects the F8b deep-ring 1-CTA/SM build variant
+    (lifts the 110KB smem cap to the 227KB per-block opt-in; the grid
+    static-sizes to 152). Measured a LOSS at every depth s4/s5/s6 vs the
+    s3/mb2 2-CTAs/SM champion (0.86x/0.93x/0.95x paired, 0/36 wins), so
+    mb stays 2; see docs/gb300-fp8-dual2sm.md F8b for the mechanism.
     """
     tile_n = int(os.environ.get("AISP_DUAL2SM_FP8_TILE_N", "256"))
     stages = int(os.environ.get("AISP_DUAL2SM_FP8_STAGES", "3"))
@@ -497,8 +512,9 @@ def load_tcgen05_dual_2sm_fp8_module():
     persist = int(os.environ.get("AISP_DUAL2SM_FP8_PERSIST", "1"))
     raster_gm = int(os.environ.get("AISP_DUAL2SM_FP8_RASTER_GM", "8"))
     tma_epi = int(os.environ.get("AISP_DUAL2SM_FP8_TMA_EPI", "1"))
+    d_half = int(os.environ.get("AISP_DUAL2SM_FP8_D_HALF", "1"))
     return _load_tcgen05_dual_2sm_fp8_module(tile_n, stages, warp_split, min_blocks, tile_k,
-                                             epi_atom, persist, raster_gm, tma_epi)
+                                             epi_atom, persist, raster_gm, tma_epi, d_half)
 
 
 def matmul_tcgen05_dual_2sm_fp8(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:

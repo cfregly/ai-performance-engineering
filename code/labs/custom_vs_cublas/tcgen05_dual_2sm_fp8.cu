@@ -43,6 +43,7 @@
 #include <torch/extension.h>
 
 #include <cuda.h>          // CUtensorMap / cuTensorMapEncodeTiled (lever h)
+#include <cuda_fp16.h>     // __floats2half2_rn (F8b D_HALF staging convert)
 #include <cuda_runtime.h>
 
 #include <cutlass/arch/barrier.h>
@@ -188,6 +189,19 @@
 #ifndef DUAL2SM_TMA_EPI
 #define DUAL2SM_TMA_EPI 0
 #endif
+// F8b secondary lever: in-kernel fp16 D output, scoped to the TMA_EPI
+// store path. The epilogue converts each PAIR of 32-col fp32 t2r chunks
+// (__float2half_rn, the same round-to-nearest-even as torch's host-side
+// .to(fp16)) into ONE 128x64 fp16 staged tile -- still 128B/row, still
+// the SW128 16B-group XOR physical pattern, still one drained 16KB A
+// stage -- so D-store bytes HALVE and the host-side fp32->fp16
+// conversion kernel (which re-read + re-wrote the whole fp32 D inside
+// the timed region) is RETIRED entirely. Exactness: on the exact
+// dataset the fp32 accumulator value is exact, so in-kernel RN rounding
+// equals host-side RN rounding bit-for-bit (rel_err 0.0 must still hold).
+#ifndef DUAL2SM_D_HALF
+#define DUAL2SM_D_HALF 0
+#endif
 
 using namespace cute;
 
@@ -196,7 +210,13 @@ namespace dual_2sm_fp8_impl {
 using TypeA = cutlass::float_e4m3_t;
 using TypeB = cutlass::float_e4m3_t;
 using TypeC = float;
+// D gmem element: fp16 under the F8b D_HALF lever (in-kernel convert in
+// the TMA_EPI staging path), fp32 otherwise (host-side .to(fp16)).
+#if DUAL2SM_D_HALF
+using TypeD = cutlass::half_t;
+#else
 using TypeD = float;
+#endif
 using Accumulator = float;
 
 constexpr int kTileM = 256;  // pair-wide M: 128 rows per CTA of the pair
@@ -257,6 +277,11 @@ static_assert(DUAL2SM_TMA_EPI == 0 || DUAL2SM_EPI_ATOM == 32,
 static_assert(DUAL2SM_TMA_EPI == 0 || kTileK >= 128,
               "FP8 TMA_EPI: the 16KB fp32 staging chunk only fits a drained "
               "A stage when kTileK >= 128 (128 rows x kTileK x 1B)");
+static_assert(DUAL2SM_D_HALF == 0 || DUAL2SM_TMA_EPI == 1,
+              "D_HALF is scoped to the TMA_EPI store path (the other store "
+              "paths copy fp32 fragments straight to gmem)");
+static_assert(DUAL2SM_D_HALF == 0 || kTileN % 64 == 0,
+              "D_HALF stages chunk PAIRS (64 fp16 cols = 128B rows)");
 
 // Raster-order tile mapping: index idx in [0, grid_m*grid_n) ->
 // (tile_m, tile_n). GROUP_M (gm>0): groups of gm pair-rows sweep n
@@ -347,12 +372,19 @@ using EpiLoadOp = SM100_TMEM_LOAD_32dp32b128x;
 // base), which is exactly what the staging writes.
 static CUtensorMap make_tma_desc_D(void const* d_ptr, int64_t m, int64_t n) {
   CUtensorMap desc{};
-  uint64_t global_dim[2] = {uint64_t(n), uint64_t(m)};         // dim0 = n (stride 1)
-  uint64_t global_strides[1] = {uint64_t(n) * sizeof(float)};  // dim1 byte stride
-  uint32_t box_dim[2] = {32, 128};                             // 128B x 128 rows
+  uint64_t global_dim[2] = {uint64_t(n), uint64_t(m)};          // dim0 = n (stride 1)
+  uint64_t global_strides[1] = {uint64_t(n) * sizeof(TypeD)};   // dim1 byte stride
+#if DUAL2SM_D_HALF
+  // fp16 D: 64 cols x 2B = the same 128B box rows; chunk PAIRS per store.
+  uint32_t box_dim[2] = {64, 128};
+  constexpr CUtensorMapDataType kDDtype = CU_TENSOR_MAP_DATA_TYPE_FLOAT16;
+#else
+  uint32_t box_dim[2] = {32, 128};                              // 128B x 128 rows
+  constexpr CUtensorMapDataType kDDtype = CU_TENSOR_MAP_DATA_TYPE_FLOAT32;
+#endif
   uint32_t elem_strides[2] = {1, 1};
   CUresult res = cuTensorMapEncodeTiled(
-      &desc, CU_TENSOR_MAP_DATA_TYPE_FLOAT32, 2, const_cast<void*>(d_ptr),
+      &desc, kDDtype, 2, const_cast<void*>(d_ptr),
       global_dim, global_strides, box_dim, elem_strides,
       CU_TENSOR_MAP_INTERLEAVE_NONE, CU_TENSOR_MAP_SWIZZLE_128B,
       CU_TENSOR_MAP_L2_PROMOTION_L2_128B, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE);
@@ -369,7 +401,7 @@ constexpr int kCfgMain = DUAL2SM_WARP_SPLIT | (DUAL2SM_AMCAST << 1) | (DUAL2SM_M
 constexpr int kCfgEpi = DUAL2SM_EPI_OVERLAP | (DUAL2SM_EPI_ATOM << 8);
 constexpr int kCfgV5 = DUAL2SM_PERSIST | (DUAL2SM_RASTER_GM << 1) |
                        (DUAL2SM_PREFETCH << 8) | (DUAL2SM_PF_ISSUER << 12) |
-                       (DUAL2SM_TMA_EPI << 14);
+                       (DUAL2SM_TMA_EPI << 14) | (DUAL2SM_D_HALF << 15);
 
 template <class SharedStorageT, int CfgMain, int CfgEpi, int CfgV5,
           class ATensor, class BTensor, class CTensor, class DTensor,
@@ -896,6 +928,68 @@ gemm_dual_2sm_fp8(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
       Tensor tCgD_t = cta_mma.partition_C(gD_t);
       Tensor tDgD = thr_t2r_copy.partition_D(tCgD_t);      // (CPY, rest...)
       Tensor tDgDG = group_modes<1, kEpiRank>(tDgD);       // (CPY, REST)
+#if DUAL2SM_D_HALF
+      // F8b D_HALF: each store consumes a PAIR of 32-col fp32 t2r chunks
+      // converted (__float2half_rn) into one 128x64 fp16 staged tile --
+      // the same 128B rows, the same SW128 16B-group XOR, half the D
+      // bytes, and NO host-side conversion kernel afterwards.
+      constexpr int kDStores = kDChunks / 2;
+      auto pack2 = [](float x, float y) -> uint32_t {
+        __half2 h = __floats2half2_rn(x, y);
+        return *reinterpret_cast<uint32_t*>(&h);
+      };
+      CUTE_UNROLL
+      for (int c2 = 0; c2 < kDStores; ++c2) {
+        Tensor tDrAcc0 = make_tensor<Accumulator>(shape(tDgDG(_, 2 * c2)));
+        Tensor tDrAcc1 = make_tensor<Accumulator>(shape(tDgDG(_, 2 * c2 + 1)));
+        copy(tiled_t2r_copy, tDtAccG(_, 2 * c2), tDrAcc0);
+        copy(tiled_t2r_copy, tDtAccG(_, 2 * c2 + 1), tDrAcc1);
+        cutlass::arch::fence_view_async_tmem_load();
+        if (c2 >= kStages) {
+          // B58: the TMA store engine is the ring's LAST consumer.
+          if (warp_idx == 0 && elect_one_thr) {
+            cute::tma_store_wait<kStages - 1>();
+          }
+          __syncthreads();
+        }
+        uint4* sbuf = reinterpret_cast<uint4*>(storage.smem_A[c2 % kStages].begin());
+        CUTE_UNROLL
+        for (int g = 0; g < 8; ++g) {
+          // Groups 0-3 = chunk 2*c2 (fp16 cols 0-31 of the 64), groups
+          // 4-7 = chunk 2*c2+1 (cols 32-63); g is compile-time (full
+          // unroll) so the branch folds.
+          int o = 8 * (g & 3);
+          uint4 packed;
+          if (g < 4) {
+            packed = make_uint4(pack2(tDrAcc0(o + 0), tDrAcc0(o + 1)),
+                                pack2(tDrAcc0(o + 2), tDrAcc0(o + 3)),
+                                pack2(tDrAcc0(o + 4), tDrAcc0(o + 5)),
+                                pack2(tDrAcc0(o + 6), tDrAcc0(o + 7)));
+          } else {
+            packed = make_uint4(pack2(tDrAcc1(o + 0), tDrAcc1(o + 1)),
+                                pack2(tDrAcc1(o + 2), tDrAcc1(o + 3)),
+                                pack2(tDrAcc1(o + 4), tDrAcc1(o + 5)),
+                                pack2(tDrAcc1(o + 6), tDrAcc1(o + 7)));
+          }
+          sbuf[r * 8 + (g ^ (r & 7))] = packed;
+        }
+        cute::tma_store_fence();   // STS visible to the async proxy
+        __syncthreads();           // whole CTA's chunk pair staged
+        if (warp_idx == 0 && elect_one_thr) {
+          uint32_t s_ptr = cute::cast_smem_ptr_to_uint(storage.smem_A[c2 % kStages].begin());
+          int32_t crd_n = col0 + c2 * 64;  // descriptor dim0 = n (fp16 elems)
+          int32_t crd_m = row0;            // descriptor dim1 = m
+          asm volatile(
+              "cp.async.bulk.tensor.2d.global.shared::cta.bulk_group"
+              " [%0, {%2, %3}], [%1];"
+              :
+              : "l"(reinterpret_cast<uint64_t>(&tma_desc_D)), "r"(s_ptr),
+                "r"(crd_n), "r"(crd_m)
+              : "memory");
+          cute::tma_store_arrive();
+        }
+      }
+#else
       CUTE_UNROLL
       for (int c = 0; c < kDChunks; ++c) {
         Tensor tDrAcc = make_tensor<Accumulator>(shape(tDgDG(_, c)));
@@ -935,6 +1029,7 @@ gemm_dual_2sm_fp8(ATensor mA, BTensor mB, CTensor mC, DTensor mD,
           cute::tma_store_arrive();
         }
       }
+#endif  // DUAL2SM_D_HALF
     }
 #else
     {
@@ -1250,7 +1345,13 @@ torch::Tensor run_dual_2sm_fp8_matmul(torch::Tensor a, torch::Tensor b) {
 
   auto options = a.options().dtype(torch::kFloat32);
   auto c_buffer = torch::empty({m, n}, options);  // beta=0: never read
+#if DUAL2SM_D_HALF
+  // F8b D_HALF: D lands in gmem as fp16 (in-kernel convert); no host-side
+  // conversion kernel runs after the GEMM.
+  auto d_buffer = torch::empty({m, n}, a.options().dtype(torch::kFloat16));
+#else
   auto d_buffer = torch::empty_like(c_buffer);
+#endif
 
   auto tiled_mma = make_tiled_mma(MMA_Atom<MmaTag>{});
   auto bM = tile_size<0>(tiled_mma);              // 256 (pair-wide)
@@ -1275,9 +1376,21 @@ torch::Tensor run_dual_2sm_fp8_matmul(torch::Tensor a, torch::Tensor b) {
 
   using SharedStorageT = Dual2SmSharedStorage<TypeA, TypeB, decltype(sA_layout), decltype(sB_layout)>;
 
-  // 2 CTAs/SM requires per-CTA smem to fit twice in the 227KB/SM budget.
+  // Per-CTA smem cap keyed on the requested co-residency (F8b deep-ring
+  // lever): MIN_BLOCKS >= 2 keeps the incumbent 110KB cap (per-CTA smem
+  // must fit TWICE in the 227KB/SM budget for 2 CTAs/SM). MIN_BLOCKS == 1
+  // is the 1-CTA/SM deep-ring build: one CTA owns the whole SM budget, so
+  // the cap is the sm_103 per-block dynamic-smem opt-in maximum (227KB);
+  // e4m3 makes a 6-stage n256/k128 ring (6 x 32KB = 192KB) fit. The
+  // PERSIST grid sizing below derives 1 CTA/SM from the same footprint
+  // (B65 static sizing; TMEM 256 of 512 cols is NOT binding at 1 CTA/SM).
+#if DUAL2SM_MIN_BLOCKS == 1
+  static_assert(sizeof(SharedStorageT) <= 227 * 1024,
+                "Shared storage exceeds the sm_103 per-block dynamic smem opt-in cap");
+#else
   static_assert(sizeof(SharedStorageT) <= 110 * 1024,
                 "Shared storage too large for 2 CTAs/SM; reduce DUAL2SM_STAGES or DUAL2SM_TILE_N");
+#endif
 
   Tensor mA = make_tensor(make_gmem_ptr(reinterpret_cast<TypeA const*>(a_contig.data_ptr())),
       make_layout(make_shape(m, k), make_stride(k, Int<1>{})));
@@ -1285,7 +1398,7 @@ torch::Tensor run_dual_2sm_fp8_matmul(torch::Tensor a, torch::Tensor b) {
       make_layout(make_shape(n, k), make_stride(k, Int<1>{})));
   Tensor mC = make_tensor(make_gmem_ptr(c_buffer.data_ptr<TypeC>()),
       make_layout(make_shape(m, n), make_stride(n, Int<1>{})));
-  Tensor mD = make_tensor(make_gmem_ptr(d_buffer.data_ptr<TypeD>()),
+  Tensor mD = make_tensor(make_gmem_ptr(reinterpret_cast<TypeD*>(d_buffer.data_ptr())),
       make_layout(make_shape(m, n), make_stride(n, Int<1>{})));
 
   // Cluster (2, kClusterN, 1): the V mode is the SM pair (AtomThrID = 2);
@@ -1308,7 +1421,7 @@ torch::Tensor run_dual_2sm_fp8_matmul(torch::Tensor a, torch::Tensor b) {
   // V7 lever (h): raw TMA store descriptor for D -- (n=32, m=128) fp32
   // box, SWIZZLE_128B; one descriptor for the whole kernel, per-chunk
   // element coords on the device side.
-  CUtensorMap tma_desc_D = make_tma_desc_D(d_buffer.data_ptr<TypeD>(), m, n);
+  CUtensorMap tma_desc_D = make_tma_desc_D(d_buffer.data_ptr(), m, n);
 #endif
 
   int grid_pairs_m = int(m) / kTileM;
@@ -1386,7 +1499,11 @@ torch::Tensor run_dual_2sm_fp8_matmul(torch::Tensor a, torch::Tensor b) {
 
   AT_CUDA_CHECK(cudaLaunchKernelExC(&launch_config, (void*)kernel_ptr, args));
 
+#if DUAL2SM_D_HALF
+  return d_buffer;  // already fp16 (in-kernel convert)
+#else
   return d_buffer.to(torch::kFloat16);
+#endif
 }
 
 }  // namespace dual_2sm_fp8_impl

@@ -213,8 +213,175 @@ gate 3/3: rel_err=0.00e+00 time=850.4us 1293 TFLOPS -> PASS
 FP16 gates: 3/3  (champion band incl. thermal drift; rel_err 0.0)
 ```
 
-Session: 2026-06-11, pod aisp-gb300-runall, GPU 2 under /tmp/gpu2.lock,
+Session: 2026-06-11, pod <gb300-pod>, GPU 2 under /tmp/gpu2.lock,
 torch 2.12.0a0+nv26.05 / CUDA 13.2 / ncu 2026.1.1. Backups of touched
 files in /tmp/frontF8/. Harness note: this lab has no FP8 quick-lab
 target; the kernel-level A/B + exact-tolerance correctness above is the
 deliverable (run_lab.py FP16 stages untouched).
+
+---
+
+# F8b. The named lever measured: 1-CTA/SM deep ring (honest negative) and in-kernel fp16 D (the real win)
+
+Front F8b, 2026-06-11, same pod/GPU/lock. Incumbent verified at entry
+(tcgen05_dual_2sm_fp8.cu dff82e3c..., loader 63837..., bench ef958...,
+pod == local). Two levers from B72's Section 7, in order.
+
+## F8b.1 Deep ring at 1 CTA/SM: the build variant
+
+`DUAL2SM_MIN_BLOCKS=1` now selects a 1-CTA/SM deep-ring build: the 110KB
+static smem cap (the 2-CTAs/SM footprint rule) lifts to the sm_103
+per-block dynamic-smem opt-in maximum (227KB = 232448B; device reports
+smem/SM 233472, opt-in 232448), and the existing B65 static grid sizing
+derives 1 CTA/SM from the same footprint with no further change (grid
+152, ncu-verified). At 1 CTA/SM the TMEM constraint RELAXES (256 of 512
+cols, not binding); the binding limit is smem by design
+(Block-Limit-SMem = 1). e4m3 is what makes the ring fit: 6 stages x
+32KB (A 16KB + B 16KB at n256/k128) = 192KB (196.86KB with barriers) --
+impossible at fp16, and nvjet's own FP8 champion shape
+(128x256_128x6_2x1) runs exactly this 6-deep geometry. mb is part of
+`kCfgMain`, so every mb variant gets a distinct kernel symbol (B61).
+`tma_store_wait<kStages-1>` (the B58 ring-last-consumer gate) is already
+kStages-parametric and recomputes at every depth.
+
+Correctness: rel_err == 0.0 EXACTLY at 2048/4096/8192 for every config
+below (exact dataset).
+
+## F8b.2 8192^3 interleaved A/B, 12 round-robin reps/arm
+
+| arm | smem/CTA | CTAs/SM | median | TFLOPS | vs cuBLASLt |
+|---|---|---|---|---|---|
+| cuBLASLt FP8 (scaled_mm)   | --       | -- | 271.7 us | 4046 | 1.0 |
+| s3 mb2 control (B72 champ) | 98.4 KB  | 2  | 374.2 us | 2938 | 0.7261x |
+| s4 mb1 deep ring           | 131.3 KB | 1  | 434.0 us | 2534 | 0.6262x |
+| s5 mb1 deep ring           | 164.1 KB | 1  | 398.7 us | 2758 | 0.6795x |
+| s6 mb1 deep ring           | 196.9 KB | 1  | 395.4 us | 2781 | 0.6890x |
+
+Paired vs the s3/mb2 control: s4 0.8602x (0/12), s5 0.9318x (0/12),
+s6 0.9456x (0/12). Depth-monotonic recovery that SATURATES below 1.0x:
+the deepest ring that fits recovers most -- but not all -- of what the
+second co-resident CTA was buying. The control reproduced B72 exactly
+(374.2 us / 0.7261x vs the banked 377.6 us / 0.7228x).
+
+## F8b.3 ncu mechanism (the bankable close)
+
+Single-launch full-set profiles, /tmp/frontF8b/fp8_s3mb2.ncu-rep and
+fp8_s6mb1.ncu-rep:
+
+| metric | s3/mb2 champion | s6/mb1 deep ring |
+|---|---|---|
+| Duration (isolated)      | 298.8 us | 318.9 us |
+| Tensor pipe              | 81.0% (flagged over-utilized) | 76.8% |
+| Grid                     | 304 = 2 CTAs/SM | 152 = 1 CTA/SM (B65 exact) |
+| Block Limit SMem         | 2 (binding) | 1 (binding, as designed) |
+| Regs/thread              | 71 | 70 |
+| Dynamic smem/block       | 98.43 KB | 196.86 KB |
+| Achieved occupancy       | 12.06% | 6.27% |
+| Long-scoreboard stall    | 32.0 of 37.0 cyc/warp (86.4%) | 16.7 of 20.8 cyc/warp (80.6%) |
+
+The deep ring did EXACTLY what it promised -- long-scoreboard stall per
+warp HALVED (16.7 vs 32.0 cycles): the 6-deep feed covers TMA latency
+far better than the 3-deep feed. It lost anyway, because that latency
+was already hidden by the co-resident CTA. What mb1 surrendered is the
+second independent MMA issue stream per SM: under the eo=0 per-round
+serialized epilogue, CTA B's mainloop keeps the tensor pipe busy while
+CTA A walks its 8-chunk t2r -> stage -> TMA-store epilogue and its
+round-boundary ring drain/refill; at 1 CTA/SM those windows (x ~14
+persistent rounds) go fully exposed on the tensor-pipe timeline, and
+the pipe drops 81.0 -> 76.8%. This is the B66 law operating at CTA
+granularity: the lever shortened a latency nobody was waiting on, and
+paid issue-stream concurrency for it. nvjet's 6-stage 1-CTA shape wins
+only because its epilogue OVERLAPS the next tile's mainloop inside one
+CTA (specialized epilogue warps + mbarrier choreography) -- that is a
+STRUCTURE, not a config, and it is the same deep-rewrite frontier B32
+named for the group-GEMM. Verdict for the lever as named: HONEST
+NEGATIVE, mechanism banked; mb stays 2.
+
+## F8b.4 The secondary lever was the real unlock: in-kernel fp16 D (DUAL2SM_D_HALF)
+
+B72 sized the D-store path at ~12%. The true cost was larger: the dh0
+champion stores D as fp32 (268 MB) and then `d_buffer.to(fp16)` runs a
+SECOND elementwise kernel (re-read 268 MB + write 134 MB) inside the
+timed region -- ~400 MB of DRAM traffic serialized after every GEMM.
+`DUAL2SM_D_HALF=1` (scoped to TMA_EPI) converts in the staging epilogue
+instead: each PAIR of 32-col fp32 t2r chunks packs via __floats2half2_rn
+into ONE 128x64 fp16 staged tile -- still 128B rows, still the SW128
+16B-group XOR, still one drained 16KB A stage, half the store calls
+(4/round), half the D bytes, descriptor dtype FLOAT16 box (64,128) --
+and the host returns the fp16 buffer directly. No conversion kernel
+exists anymore.
+
+8192^3, 12-rep interleave, run 1 / run 2 (fresh sessions; this pair of
+sessions ran warmer than F8b.2 -- compare PAIRED ratios, not absolutes):
+
+| arm | run 1 median | run 2 median | rel_err |
+|---|---|---|---|
+| cuBLASLt FP8       | 286.6 us | 283.1 us | 0.0 |
+| champion dh0       | 395.5 us | 391.4 us | 0.0 |
+| champion dh1       | 315.0 us (3491 TF) | 313.5 us (3508 TF) | 0.0 |
+
+- paired dh1 vs dh0: **1.2527x / 1.2525x, 24/24 interleaved wins**
+- paired dh1 vs cuBLASLt FP8: **0.9081x / 0.9070x** (the B72 incumbent
+  was 0.7228x -- the gap to the library SHRANK by two thirds)
+- correctness: rel_err == 0.0 EXACTLY at 2048/4096/8192 (in-kernel RN
+  rounding of an exact fp32 accumulator is bit-identical to torch's
+  host-side .to(fp16) RN; predicted and confirmed)
+
+Loader defaults flipped after the two-session ratification:
+AISP_DUAL2SM_FP8_D_HALF=1 -- the FP8 champion is now
+(n256, s3, ws1, mb2, k128, p1, rg8, te1, dh1).
+
+## F8b.5 ncu of the dh1 champion (/tmp/frontF8b/fp8_dh1.ncu-rep)
+
+```
+Duration 284.7 us isolated (dh0 same-method: 298.8) -- the GEMM kernel
+  itself got ~14 us faster, on top of retiring the ~65-80 us conversion
+Compute (SM) Throughput 87.2%; Tensor pipe 86.6% (dh0: 81.0%) --
+  flagged over-utilized; the +5.6pt jump is store-path time returned
+  to the MMA stream
+DRAM write bytes 112.33 MB (dh0: 234.68 MB) -- the fp16-D floor (128
+  MiB logical), write sectors 9.26M -> 5.07M
+Grid 304 = 2 CTAs/SM, dyn smem 98.43 KB, Block-Limit-SMem 2 (binding),
+  achieved occupancy 12.08%
+Regs 103/thread (dh0: 71; the __floats2half2_rn packing) -- Block Limit
+  Regs still >= BL-SMem, occupancy unchanged
+```
+
+## F8b.6 Verdict + next lever
+
+- **Deep ring at 1 CTA/SM (the named lever): HONEST NEGATIVE** with the
+  pipe-utilization mechanism banked (F8b.3). Ring depth is not the
+  binding resource at this geometry; co-resident issue streams are.
+- **In-kernel fp16 D: WIN, ratified, defaults flipped** -- 1.2526x
+  paired over the B72 champion, 24/24, rel_err 0.0, landing at
+  **0.907-0.908x of same-run cuBLASLt FP8**: parity-class (>= 0.85x).
+
+**Named next lever:** the remaining ~9% to cuBLASLt is the FP8
+scheduling frontier proper: overlap the per-round epilogue with the
+next round's mainloop WITHIN the 2-CTAs/SM footprint -- a dedicated
+epilogue warp pair + double-buffered 2x128-col TMEM accumulator views
+inside the existing 256-col/CTA budget (the eo=2 family's structure at
+eo=0's occupancy; needs the mbarrier rewrite, not a config). The F8b.3
+profile says that epilogue exposure is ALSO what co-residency is
+currently spending its concurrency to hide; reclaiming it in-CTA would
+free the second CTA to add depth instead.
+
+## F8b.7 FP16 gates re-verified (nothing destabilized)
+
+```
+gate 1/3: rel_err=0.00e+00 time=738.5us 1489 TFLOPS -> PASS
+gate 2/3: rel_err=0.00e+00 time=786.8us 1397 TFLOPS -> PASS
+gate 3/3: rel_err=0.00e+00 time=819.3us 1342 TFLOPS -> PASS
+FP16 gates: 3/3  (champion band; shared loader rebuilt clean)
+```
+
+Session F8b: 2026-06-11/12, pod <gb300-pod>, GPU 2 under
+/tmp/gpu2.lock (compute-apps checked idle before every timed block),
+torch 2.12.0a0+nv26.05 / CUDA 13.2 / ncu 2026.1.1. Evidence:
+/tmp/frontF8b/ (entry backups, build logs, dh_ab_run{1,2}.log,
+fp8_s3mb2/fp8_s6mb1/fp8_dh1.ncu-rep, ncu_driver.py, run_dh_ab.sh).
+Files (md5, pod == local verified at handoff):
+tcgen05_dual_2sm_fp8.cu fe1f3aa68a062f2c07131ea4ceef8457,
+tcgen05_loader.py e860783dcb07ceb96777dbf943c14bc5,
+bench_dual_2sm_fp8.py 9be8d66ca79844c31350566686366e1c
+(this doc md5-matched pod == local by the mirror step itself).
