@@ -100,3 +100,98 @@ the 3 overwritten files backed up at `/tmp/frontE2/`. Nothing committed.
    per tile; persistence amortizes both and enables L2-friendly tile order —
    i.e. converge on the CUTLASS sm100 warp-specialized collective shape one
    verified step at a time.
+
+---
+
+# E5 verdict (2026-06-11): B-multicast (cluster_m=2) is an HONEST NEGATIVE — tie within noise, mechanism profiled
+
+Measurement-only session (Front E5, GPU 2, pod `aisp-gb300-runall`). Files
+reconciled: pod `tcgen05_dual_cta.cu` / `tcgen05_loader.py` /
+`bench_dual_cta.py` md5-match the committed c045227b state (pod copies
+backed up at `/tmp/frontE5/`). Sanity: plain dual (256,2,cm=1) measured
+904.4us — inside the 840-915us window.
+
+## Interleaved sweep (8 reps x (warmup=5, iters=20), round-robin, 8192^3 FP16)
+
+| arm | median | TFLOPS | %SoL | reps [min..max] us |
+|---|---|---|---|---|
+| cuBLAS (target) | 602.1 us | 1826.1 | 48.7% | [588.1..607.0] |
+| cluster (incumbent) | 1082.8 us | 1015.5 | 27.1% | [1012.3..1120.9] |
+| dual_cta (256,2,cm=1) plain | 929.5 us | 1182.9 | 31.5% | [918.0..960.6] |
+| **dual_cta (256,2,cm=2) mcast** | **919.0 us** | **1196.5** | **31.9%** | [889.7..940.4] |
+| dual_cta (256,2,cm=4) | 949.7 us | 1157.7 | 30.9% | [932.1..972.1] |
+| dual_cta (128,3,cm=2) | 1211.8 us | 907.4 | 24.2% | [1185.7..1257.6] |
+
+Paired per-rep A/B (12 alternating reps, plain vs cm=2, cuBLAS drift
+reference): **mcast/plain median ratio 1.0065 (mcast 0.65% SLOWER), mcast
+wins 3/12 pairs**. Coldest rep reproduced the B37 bank: plain 843.2us vs
+mcast 847.2us (cuBLAS drifted 597.8 -> 645.9us across the run = the known
+5-9% thermal climb). E3's orphaned pre-lapse sweep (`/tmp/frontE3/
+sweep_e3.log`) had shown cm=2 +2.6%; combined evidence: **a tie inside the
+thermal-noise band. cm=2 does not clear the 35.0% plain-dual bank, and
+cm=4 is strictly worse.** (256,3,*) does not build by design: 3x48KB
+stages trip the `sizeof(SharedStorageT) <= 110KB` 2-CTA/SM static_assert.
+
+## ncu mechanism: why multicast cannot win here (full set, skip 3, 1 launch)
+
+| metric | plain (256,2,cm=1) | mcast (256,2,cm=2) |
+|---|---|---|
+| Duration | 789.2 us | 806.9 us |
+| **long_scoreboard (warp-cycles/issue)** | **28.25** | **28.04 (-0.8%, unchanged)** |
+| L2 sectors srcunit_tex | 278.9M | 275.5M (-1.2%) |
+| DRAM throughput (of peak) | 12.5% | 12.5% |
+| Tensor pipe (of elapsed) | 61.8% | 60.5% |
+| Achieved warps_active | 12.09% (2 CTAs/SM) | 12.09% (2 CTAs/SM) |
+| Block Limit smem / regs | 2 / 2 | 2 / 2 (clustering costs no occupancy) |
+
+The premise of the lever was "halve B-side L2->SM traffic to relieve
+long_scoreboard". The profile falsifies the premise, not the
+implementation: the multicast IS active (cluster_dim 2, MULTICAST atom in
+the kernel signature) and costs no occupancy, but L2 sector traffic drops
+only 1.2% — the plain kernel's duplicate B reads were already absorbed by
+L2 hits across cluster-adjacent CTAs — and DRAM sits at 12.5% of peak.
+The stall is TMA **latency** serialization on the single producer/consumer
+warp 0 (wait full_barrier -> 4 MMAs -> commit, 2 stages deep), which
+multicast does not shorten; cluster_sync + multicast-commit fan-out add
+back the little it saves. Bandwidth was never the binding resource at
+(256,2): the lever is config-un-winnable, deepening it is pointless.
+
+## Harness verify gates (3/3 PASSED, `verification passed: true`)
+
+```
+AISP_TCGEN05_VARIANT=dual_cta AISP_DUAL_CLUSTER_M=2 (multicast selected):
+  verification PASSED, speedup 2.6703x   (run 20260611_061106)
+AISP_TCGEN05_VARIANT=dual_cta (plain dual regression):
+  verification PASSED, speedup 2.6710x   (run 20260611_061310, gate2)
+default (cluster) regression:
+  verification PASSED, speedup 2.4248x   (run gate3; 2.329x contract intact)
+```
+
+One transient first-attempt failure on gate 1 (harness TIMING
+CROSS-VALIDATION: CUDA event 0.889ms vs wall 3.256ms, a wall-clock-noise
+trip, not a kernel fault); immediate re-run passed clean. Logs:
+`/tmp/frontE5/gate{1,2,3}.log`, sweep + paired A/B at
+`/tmp/frontE5/{sweep_e5.log,ab_pair.log}`, ncu reports at
+`/tmp/frontE5/ncu_{plain,mcast}.ncu-rep`.
+
+## Defaults recommendation
+
+**Keep the c045227b loader defaults — no revert.** The defaults are
+(tile_n=256, stages=2, **cluster_m=1**): the committed default path is the
+plain dual-CTA winner, re-confirmed best non-cuBLAS arm this session. The
+cm=2 code stays as a measured-negative comparison arm (bench default
+configs include it); it is correct, verify-clean, and costs nothing when
+not selected.
+
+## Named next lever
+
+**2-SM UMMA pair (cta_group=2 / SM100_MMA_F16BF16_2x1SM_SS) on the
+dual-CTA footprint.** ncu says the kernel is latency/issue-bound, not
+bandwidth-bound (DRAM 12.5%, long_scoreboard 73% of stall at 8 active
+warps/SM) — so spend the cluster on what GB300 actually accelerates:
+fusing the CTA pair into one 256-wide MMA halves instruction/barrier
+traffic per fed byte and is the cuBLAS-shaped path, vs. re-cutting
+TMA traffic that L2 already dedups. Smem-feasible stage-deepening at
+(256,2) is exhausted (stage 3 needs 144KB > 110KB cap), so the warp-
+specialized producer + 2-SM MMA rewrite is the only remaining
+structural lever toward the 48.7% cuBLAS ceiling.

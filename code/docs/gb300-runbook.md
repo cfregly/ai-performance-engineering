@@ -1293,6 +1293,23 @@ SoL framing (B), measured 2026-06-09:
   (env-gap). Single-GPU survey front queued on these. The 44 inventory failed_no_speedup ties re-confirm
   as the GB300 memory-movement signature; no hidden regression.
 
+- HONEST NEGATIVE (B43, dual-CTA B-multicast measured): docs/gb300-gemm-occupancy-rewrite.md (E5
+  section). The c045227b 2x1-cluster B-multicast variant is a STATISTICAL TIE with plain dual-CTA
+  (interleaved 12-rep paired A/B: mcast/plain median ratio 1.0065, mcast wins 3/12; sweep medians
+  919.0 vs 929.5 us; cm=4 strictly worse; (128,3,cm=2) worst arm 1211.8 us). The lever's PREMISE is
+  FALSIFIED by ncu: the duplicate B reads were already deduplicated by L2 (sectors 278.9M -> 275.5M,
+  -1.2%, not the expected ~33%; DRAM 12.5% both), so there was no bandwidth to reclaim; the dominant
+  stall is long_scoreboard 28.25 -> 28.04 warp-cycles/issue (UNCHANGED) = TMA LATENCY serialization on
+  the single warp-0 producer/consumer at 2 stages; cluster_sync + multicast-commit fan-out eat the
+  negligible savings. Clustering costs no occupancy (Block Limits smem=2/regs=2 identical, 12.09%
+  achieved both). Verify gates 3/3 PASSED (multicast 2.6703x / plain 2.6710x / default-cluster 2.4248x;
+  2.329x contract intact). DEFAULTS KEPT (loader default is cluster_m=1 = the plain winner; cm=2 stays
+  as a zero-cost measured-negative comparison arm). (256,3) confirmed smem-impossible by build
+  (static_assert 144 > 110KB/CTA). Same-session cuBLAS reference: 602.1 us / 48.7%. NAMED NEXT LEVER
+  (the only remaining structural path to the cuBLAS ceiling): 2-SM UMMA pair (cta_group=2,
+  SM100_MMA_F16BF16_2x1SM_SS) + warp-specialized producer on the dual-CTA footprint -- the kernel is
+  issue/latency-bound, not BW-bound, and stage-deepening at (256,2) is smem-exhausted.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
