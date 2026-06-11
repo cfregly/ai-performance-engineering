@@ -1544,6 +1544,25 @@ SoL framing (B), measured 2026-06-09:
   spanning 32 rows); smem-staged transpose epilogue (r2s -> coalesced s2g, reusing the drained A/B
   ring) worth ~1.5-2us; after that the kernel is mainloop-bound (9.4us, TMA delivery efficiency).
 
+- WIN + HYPOTHESIS FALSIFICATION (B56, moe_cuda bmm+fused-bias GEMM routing, from the B54-named
+  lever): docs/gb300-moe-cuda-gemm1-aten.md. The B54 "Inductor autotune mis-benchmark" hypothesis
+  is FALSIFIED: the 0.1402ms extern-baddbmm benchmark is HONEST -- with broadcast bias stride
+  [2048,0,1], at::baddbmm_out pays a 74.6us bias->output direct_copy + 66.9us beta=1 nvjet =
+  138us real (Inductor's benchmarker reproduces 0.1392ms; B45's "66us eager nvjet" was kernel-
+  only under-counting). Plain backend pin to ATEN measures WORSE (369.8 vs 313.4 GPU us/call).
+  THE LANDED LEVER: rewrite both expert GEMMs baddbmm(b,x,w) -> bmm(x,w)+b -- the honest
+  autotuner then routes GEMM1 to extern nvjet beta-zero (59.2us vs 104us template), bias adds
+  fuse into pointwise for free, and GEMM2's hidden 40us bias-copy (mislabeled "gather-back" in
+  the B51 table; corrected) disappears. 0.40653 -> 0.31139 ms = 1.3055x median (6 reps/arm
+  interleaved, 12/12 verification PASS, non-overlapping, graph_breaks=0/unique_graphs=1 every
+  rep, zero foreign procs). Bit-identical on the lab input (observed, not guaranteed). Default
+  flipped ON (AISP_MOE_CUDA_GEMM1_ATEN=0 kill switch restores B51 exactly: 0.40256 re-measured);
+  composes with B54's opt-in (0.39462 reproduces M2's 0.39396). moe_cuda lab lifetime:
+  8.29ms (pre-B45) -> 0.311ms = ~26.6x. UPSTREAM-REPORTABLE: Inductor never considers the
+  bmm+pointwise-bias decomposition for broadcast-bias baddbmm (~40% on the table at these
+  shapes). Evidence /tmp/frontM3/. NEXT LEVER (~1.2x est): expert-capacity right-sizing (the
+  padded capacity dim overcomputes vs actual routed tokens).
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

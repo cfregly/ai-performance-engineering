@@ -34,6 +34,32 @@ _COMPILE_ENV = "AISP_MOE_CUDA_COMPILE"
 # smem precompile on SM103 (262160B > 232448B) -> ms_fused=inf -> refuse.
 _GELU_EPILOGUE_ENV = "AISP_MOE_CUDA_GELU_EPILOGUE"
 
+# Front M3 (default ON; kill switch AISP_MOE_CUDA_GEMM1_ATEN=0 restores the
+# B51 GEMM routing): rewrites both expert GEMMs from baddbmm(bias, x, w) to
+# bmm(x, w) + bias so the honest autotuner routes GEMM1 to the extern nvjet
+# kernel (59.2us, beta-zero) instead of the ~104us Triton template, with the
+# bias adds fused into adjacent pointwise kernels (GELU for GEMM1, the
+# gather-back for GEMM2) for free. GEMM2 was already extern at B51 but paid a
+# hidden 40us broadcast bias-copy; same fix applies. Measured 1.31x median
+# end-to-end vs B51 (0.4065 -> 0.3114 ms, 6x6 interleaved reps, bit-identical
+# output on the lab input).
+# Why not just pin max_autotune_gemm_backends="ATEN": the B54 "autotune
+# mis-benchmark" hypothesis is FALSIFIED — extern baddbmm with the broadcast
+# bias stride [2048, 0, 1] GENUINELY costs ~0.14ms because at::baddbmm_out
+# materializes the bias into the output buffer first (74.6us broadcast
+# direct_copy kernel) and then runs nvjet with beta=1 (66.9us); Inductor's
+# 0.1402ms benchmark of that choice is honest, and the backend pin measured
+# WORSE end-to-end (369.8 vs 313.4 GPU us/call, Front M3 probes r02/r03).
+# The bias copy is a dataflow cost, so the fix is to remove the broadcast
+# bias from the GEMM op, not to override the tuner.
+# Requires the compile path (ignored under AISP_MOE_CUDA_COMPILE=0: eager
+# bmm + broadcast-add costs ~150us extra, only Inductor fuses it for free).
+# Mutually exclusive with AISP_MOE_CUDA_GELU_EPILOGUE (that flag's loud-assert
+# semantics assume GEMM1 is a Triton template that GELU can fuse into): an
+# explicit GELU_EPILOGUE=1 turns the default off; setting BOTH explicitly is a
+# loud error in setup().
+_GEMM1_ATEN_ENV = "AISP_MOE_CUDA_GEMM1_ATEN"
+
 
 def _compile_enabled() -> bool:
     return os.environ.get(_COMPILE_ENV, "1").strip().lower() not in ("0", "false", "off")
@@ -41,6 +67,16 @@ def _compile_enabled() -> bool:
 
 def _gelu_epilogue_enabled() -> bool:
     return os.environ.get(_GELU_EPILOGUE_ENV, "0").strip().lower() in ("1", "true", "on")
+
+
+def _gemm1_aten_enabled() -> bool:
+    raw = os.environ.get(_GEMM1_ATEN_ENV)
+    if raw is None:
+        # Default ON (Front M3 win); yields to an explicit
+        # AISP_MOE_CUDA_GELU_EPILOGUE=1, whose loud-assert semantics need the
+        # GEMM1 Triton template that this rewrite removes.
+        return not _gelu_epilogue_enabled()
+    return raw.strip().lower() in ("1", "true", "on")
 
 
 class VectorizedTopKMoE(nn.Module):
@@ -103,6 +139,10 @@ class GroupedTopKMoE(VectorizedTopKMoE):
     def __init__(self, hidden_size: int, num_experts: int, top_k: int = 2, expansion: int = 2) -> None:
         super().__init__(hidden_size, num_experts, top_k, expansion)
         self.capacity: Optional[int] = None
+        # Front M3 (AISP_MOE_CUDA_GEMM1_ATEN): bmm + deferred bias instead of
+        # baddbmm. Only set this under torch.compile — eagerly the standalone
+        # broadcast bias adds cost ~150us each; Inductor fuses them for free.
+        self.use_bmm_bias_fuse: bool = False
 
     @torch.no_grad()
     def calibrate_capacity(self, tokens: torch.Tensor) -> int:
@@ -159,11 +199,24 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         x_grouped = x_dense[:num_slots].view(self.num_experts, capacity, self.hidden_size)
 
         # Batched expert MLPs over all experts at once; zero rows are inert.
-        # baddbmm folds the bias add into the GEMM epilogue (the standalone
-        # broadcast adds cost ~150 us each at these shapes).
-        hidden = torch.baddbmm(self.b1.unsqueeze(1), x_grouped, self.w1)
-        hidden = F.gelu(hidden)
-        expert_out = torch.baddbmm(self.b2.unsqueeze(1), hidden, self.w2)
+        if self.use_bmm_bias_fuse:
+            # Front M3: pure bmm lets the honest autotuner pick the extern
+            # beta-zero nvjet kernel (59.2us vs the 104us Triton template that
+            # wins for baddbmm); Inductor fuses the bias adds into the GELU /
+            # gather-back pointwise kernels for free. baddbmm's broadcast bias
+            # is what makes the extern choice lose autotune HONESTLY:
+            # at::baddbmm_out materializes the bias into the output buffer
+            # (74.6us broadcast copy) before an nvjet beta=1 GEMM (0.1402ms
+            # benchmarked total vs 0.1080ms for the template).
+            hidden = F.gelu(torch.bmm(x_grouped, self.w1) + self.b1.unsqueeze(1))
+            expert_out = torch.bmm(hidden, self.w2) + self.b2.unsqueeze(1)
+        else:
+            # baddbmm folds the bias add into the GEMM epilogue (the
+            # standalone broadcast adds cost ~150 us each at these shapes —
+            # under torch.compile see use_bmm_bias_fuse above).
+            hidden = torch.baddbmm(self.b1.unsqueeze(1), x_grouped, self.w1)
+            hidden = F.gelu(hidden)
+            expert_out = torch.baddbmm(self.b2.unsqueeze(1), hidden, self.w2)
 
         # Gather back by the same slot indices (restores token order) and
         # zero out any overflow rows before the weighted scatter-accumulate.
@@ -193,6 +246,7 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._compile_enabled: bool = False
         self._gelu_epilogue_enabled: bool = False
+        self._gemm1_aten_enabled: bool = False
         self._compile_seconds: Optional[float] = None
         self._dynamo_graph_breaks: Optional[int] = None
         self._dynamo_unique_graphs: Optional[int] = None
@@ -269,6 +323,12 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # AISP_MOE_CUDA_COMPILE=0 restores the B45 eager-capture behavior.
         self._compile_enabled = _compile_enabled()
         self._gelu_epilogue_enabled = self._compile_enabled and _gelu_epilogue_enabled()
+        self._gemm1_aten_enabled = self._compile_enabled and _gemm1_aten_enabled()
+        if self._gelu_epilogue_enabled and self._gemm1_aten_enabled:
+            raise RuntimeError(
+                f"{_GELU_EPILOGUE_ENV}=1 and {_GEMM1_ATEN_ENV}=1 are mutually exclusive: "
+                "epilogue fusion needs a Triton GEMM template, the ATEN pin removes it"
+            )
         self._compile_seconds = None
         self._dynamo_graph_breaks = None
         self._dynamo_unique_graphs = None
@@ -289,6 +349,14 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 import torch._inductor.config as inductor_config
 
                 inductor_config.benchmark_epilogue_fusion = False
+
+            if self._gemm1_aten_enabled:
+                # Front M3: switch the forward to the bmm + fused-bias dataflow
+                # (see use_bmm_bias_fuse in GroupedTopKMoE). Dynamo guards on
+                # the attribute, and the changed graph changes the Inductor
+                # cache key, so the arms never share compiled artifacts.
+                assert isinstance(self.model, GroupedTopKMoE)
+                self.model.use_bmm_bias_fuse = True
 
             dynamo_counters.clear()
             compile_start = time.perf_counter()
@@ -358,12 +426,15 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 torch.cuda.synchronize(self.device)
             kernel_count = 0.0
             standalone_gelu = []
+            template_bmm = []
             for evt in prof.key_averages():
                 if (getattr(evt, "self_device_time_total", 0) or 0) <= 0:
                     continue
                 kernel_count += evt.count
                 if "fused_gelu" in evt.key and evt.key.startswith("triton_poi"):
                     standalone_gelu.append(evt.key)
+                if "triton_tem" in evt.key and "bmm" in evt.key:
+                    template_bmm.append(evt.key)
             self._kernels_per_replay = kernel_count / 5.0
             if self._gelu_epilogue_enabled and standalone_gelu:
                 # AUDIT RULE (B45/B51): the opt-in fusion path must fail loudly
@@ -371,6 +442,14 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 raise RuntimeError(
                     "AISP_MOE_CUDA_GELU_EPILOGUE=1 but a standalone GELU kernel "
                     f"is still launched per replay: {standalone_gelu}"
+                )
+            if self._gemm1_aten_enabled and template_bmm:
+                # AUDIT RULE (B45/B51): the opt-in extern-GEMM path must fail
+                # loudly if a Triton bmm/baddbmm template still runs (the
+                # extern routing was silently lost, e.g. an autotune flip).
+                raise RuntimeError(
+                    "AISP_MOE_CUDA_GEMM1_ATEN=1 but a Triton GEMM template "
+                    f"kernel still runs per replay: {template_bmm}"
                 )
 
     def benchmark_fn(self) -> None:
@@ -435,6 +514,7 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "router_vectorized.manual_graph_active": 1.0 if self.graph is not None else 0.0,
             "router_vectorized.compile_enabled": 1.0 if self._compile_enabled else 0.0,
             "router_vectorized.gelu_epilogue_enabled": 1.0 if self._gelu_epilogue_enabled else 0.0,
+            "router_vectorized.gemm1_aten_enabled": 1.0 if self._gemm1_aten_enabled else 0.0,
         }
         if self._kernels_per_replay is not None:
             metrics["router_vectorized.kernels_per_replay"] = float(self._kernels_per_replay)
