@@ -287,3 +287,50 @@ def matmul_tcgen05_dual_cta(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     cover each other's TMA latency.
     """
     return load_tcgen05_dual_cta_module().matmul_tcgen05_dual_cta(a, b)
+
+
+# =============================================================================
+# Stage 14: 2-SM UMMA pair (tcgen05 cta_group::2) on the dual-CTA footprint
+# =============================================================================
+
+@lru_cache(maxsize=None)
+def _load_tcgen05_dual_cta_2sm_module(tile_n: int, stages: int):
+    extra = (
+        f"-DDUAL2SM_TILE_N={tile_n}",
+        f"-DDUAL2SM_STAGES={stages}",
+    )
+    return _load_kernel(
+        _LAB_DIR / "tcgen05_dual_cta_2sm.cu",
+        f"lab_tcgen05_dual_cta_2sm_n{tile_n}s{stages}",
+        extra_cuda_flags=extra,
+    )
+
+
+def load_tcgen05_dual_cta_2sm_module():
+    """JIT-compile the 2-SM UMMA pair (cta_group::2) kernel.
+
+    Fuses the dual-CTA pair into ONE 256-wide SM100_MMA_F16BF16_2x1SM_SS
+    per (pair, k-block): the even cluster rank issues the MMA for both SMs
+    (halved instruction/barrier issue), the odd rank free-runs as a pure
+    TMA producer. Per-CTA smem/TMEM footprint matches the plain dual-CTA
+    (256,2) config, so 2 CTAs/SM remains reachable.
+
+    Tunables (env, read at first load):
+      AISP_DUAL2SM_TILE_N: MMA tile N (default 128; pair tile is 256xN)
+      AISP_DUAL2SM_STAGES: smem stages (default 3; 24KB/CTA/stage at N=128)
+    Defaults are the measured-best config from the GB300 U-front session
+    (2026-06-11, GPU 2, 8192^3): (128,3) = 867-895us / 33.2-33.8% SoL,
+    16/16 interleaved-rep wins vs plain dual (256,2). ncu: 152 regs/thread
+    and 72KB smem/CTA -> Block Limits 3/3 -> THREE CTAs/SM (TMEM 3x128 of
+    512 cols); per-CTA B traffic halves because the 2x1SM atom splits B
+    N/2-per-CTA across the pair. (256,2) 2SM ties plain dual: 255 regs cap
+    it at 2 CTAs/SM and TMEM 2x256 is an exact fit.
+    """
+    tile_n = int(os.environ.get("AISP_DUAL2SM_TILE_N", "128"))
+    stages = int(os.environ.get("AISP_DUAL2SM_STAGES", "3"))
+    return _load_tcgen05_dual_cta_2sm_module(tile_n, stages)
+
+
+def matmul_tcgen05_dual_cta_2sm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Execute 2-SM UMMA pair tcgen05 GEMM: C = A @ B^T."""
+    return load_tcgen05_dual_cta_2sm_module().matmul_tcgen05_dual_cta_2sm(a, b)

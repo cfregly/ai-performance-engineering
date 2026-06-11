@@ -15,13 +15,15 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.custom_vs_cublas.tcgen05_loader import (
     load_tcgen05_cluster_module,
+    load_tcgen05_dual_cta_2sm_module,
     load_tcgen05_dual_cta_module,
     matmul_tcgen05_cluster,
 )
 
 # Variant switch (default: committed cluster kernel, 2.329x vs naive).
-#   AISP_TCGEN05_VARIANT=dual_cta -> 2 CTAs/SM occupancy rewrite
-#   AISP_TCGEN05_VARIANT=cluster  -> incumbent (default)
+#   AISP_TCGEN05_VARIANT=dual_cta     -> 2 CTAs/SM occupancy rewrite
+#   AISP_TCGEN05_VARIANT=dual_cta_2sm -> 2-SM UMMA pair (cta_group::2)
+#   AISP_TCGEN05_VARIANT=cluster      -> incumbent (default)
 _VARIANT = os.environ.get("AISP_TCGEN05_VARIANT", "cluster")
 
 
@@ -49,6 +51,9 @@ class OptimizedTcgen05MatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if _VARIANT == "dual_cta":
             self._module = load_tcgen05_dual_cta_module()
             self._kernel_fn = self._module.matmul_tcgen05_dual_cta
+        elif _VARIANT == "dual_cta_2sm":
+            self._module = load_tcgen05_dual_cta_2sm_module()
+            self._kernel_fn = self._module.matmul_tcgen05_dual_cta_2sm
         else:
             self._module = load_tcgen05_cluster_module()
             self._kernel_fn = self._module.matmul_tcgen05_cluster

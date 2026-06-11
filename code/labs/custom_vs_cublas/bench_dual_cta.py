@@ -69,6 +69,12 @@ def load_dual(tile_n: int, stages: int, cluster_m: int = 1):
     return mod.matmul_tcgen05_dual_cta
 
 
+def load_dual_2sm(tile_n: int, stages: int):
+    from labs.custom_vs_cublas.tcgen05_loader import _load_tcgen05_dual_cta_2sm_module
+    mod = _load_tcgen05_dual_cta_2sm_module(tile_n, stages)
+    return mod.matmul_tcgen05_dual_cta_2sm
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, default=8192)
@@ -105,6 +111,18 @@ def main():
         name = f"dual_cta n={tile_n} s={stages} cm={cluster_m}"
         try:
             fn = load_dual(tile_n, stages, cluster_m)
+            rel = check(fn, a, b, ref)
+            arms.append((name, fn, rel))
+        except Exception as e:  # noqa: BLE001
+            print(f"  {name:<28} FAILED: {e}")
+
+    # 2-SM UMMA pair (cta_group::2) arms: the U-front structural lever.
+    # (128,3) is the measured winner (3 CTAs/SM; see loader docstring).
+    twosm_configs = [(256, 2), (128, 3), (128, 2)] if args.sweep else [(128, 3), (256, 2)]
+    for tile_n, stages in twosm_configs:
+        name = f"dual_2sm n={tile_n} s={stages}"
+        try:
+            fn = load_dual_2sm(tile_n, stages)
             rel = check(fn, a, b, ref)
             arms.append((name, fn, rel))
         except Exception as e:  # noqa: BLE001

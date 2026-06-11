@@ -1394,6 +1394,41 @@ SoL framing (B), measured 2026-06-09:
   (utility/CPU-teaching/planner); vllm-deepseek-tuning = ENV-GAP. (5) Harness measurement overhead
   ~30-55us/iter compresses every sub-100us lab speedup -- audit-worthy as a harness lever.
 
+- HONEST NEGATIVE (B48, capstone bK=32 8-stage ring, falsified by its own control): docs/
+  gb300-blackwell-matmul-hostoverhead.md (D5 section). B44's named lever is DEAD: bK=32 is ~14% slower
+  on CTA1 at EVERY depth (bK64/S4 incumbent 24.15us/19.0% SoL vs bK32 S4/S6/S8 = 27.60/27.48/27.66us),
+  and the bK32/S4 CONTROL proves the regression is the finer k-tile itself -- deepening 4->6->8 recovers
+  <=0.2us. No latency-cover deficit existed (long-scoreboard/barrier stalls flat in ncu); the binding
+  term is TMA delivery efficiency per byte (SW64's narrower box: DRAM 347 vs 375 GB/s with L2 sector
+  util UP 9.5->10.5% = more, narrower requests). CTA2's penalty is 4x smaller (-2%) because the 2SM
+  multicast amortizes the doubled request count -- corroborating the box-width attribution. Bit-identity
+  INTACT across all configs (torch.equal vs B44, lineage B36/B39/B44 unbroken); harness x3 all PASS;
+  machinery shipped env-configurable (AISP_TCGEN05_KBLOCKS/STAGES, defaults = incumbent, control
+  measured == B44). OPS INCIDENT banked: a foreign 4-hour idle `flock ... sleep 14400` squatted the
+  GPU3 lease (violates the per-WORKLOAD lease protocol); killed + reclaimed. Leases wrap workloads,
+  never idle holds. NEXT LEVER (capstone): cluster-N B-multicast at unchanged bK=64 box width (CTA2's
+  muted penalty is the supporting evidence; NOTE B43 falsified B-multicast on the SIBLING dual kernel
+  via L2-dedup -- measure L2 sectors here first).
+
+- WIN (B49, 2-SM UMMA pair on the dual-CTA footprint, the B43/B44-named lever): docs/
+  gb300-gemm-occupancy-rewrite.md (U section). NEW variant tcgen05_dual_cta_2sm.cu (cta_group::2,
+  SM100_MMA_F16BF16_2x1SM_SS): dual_2sm (128,3) = 874.9us median / 1256.8 TFLOPS / 33.5% FP16-SoL,
+  beating same-session plain dual (256,2) (931.2us/31.5%) in 16/16 paired interleaved reps (median
+  ~1.05x, range 1.005-1.103), rel_err 0.0 everywhere, correct on first build; verify gates 3/3 PASS
+  (2sm 2.5539x / plain 2.6213x / default cluster 2.3675x, 2.329x contract intact). MECHANISM (ncu):
+  THREE CTAs/SM (152 regs/thread vs 255, 72KB smem, TMEM 3x128 of 512) -> occupancy 18.75% vs 12.5%;
+  long_scoreboard 28.51 -> 23.47 (-18%); IPC 0.20 -> 0.37; tensor-pipe 49.5 -> 54.0%; DRAM 27.4%
+  (still latency-bound). DISCOVERED FACT (corrects the CUTLASS tutorial's stale prints): the 2x1SM
+  atom SPLITS B N/2-per-CTA (proven by smem footprints + mbarrier tx-byte balance) -- per-CTA B feed
+  halves. The (256,2) 2SM config TIES (255-reg epilogue re-caps at 2 CTAs/SM, TMEM exact-fit): the
+  lever pays through occupancy + traffic, NOT instruction-count halving. FLAGGED: one-off unreproduced
+  hang in a warmup launch (~4000 subsequent launches clean; unproven TMEM pair-alloc suspect; watchdog
+  recommended on unattended 2SM sweeps; defaults avoid the exact-fit config). Custom-kernel ladder now:
+  cluster 25.2% -> plain dual 31.5% -> dual_2sm 33.5% vs cuBLAS 46.6-48.2%. NEXT LEVER: warp-split
+  leader (the serialized empty-wait->TMA->full-wait->MMA chain; long_scoreboard still 76% of stalls) +
+  A-multicast on a (2,2,1) cluster (n=128 tiling doubled A re-reads, L2 sectors 376.8M vs 257.5M --
+  visibly NOT L2-deduped, unlike E5's falsified B premise).
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

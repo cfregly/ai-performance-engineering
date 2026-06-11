@@ -296,3 +296,158 @@ is the documented negative that closes this branch of the search tree).
    co-measured GPU 2 for ~9 minutes; a `/tmp/gpu2.lock` flock (or
    per-front GPU assignment in the dispatch brief) costs nothing and
    protects every future A/B from sign-flipping contamination.
+
+---
+
+# U verdict (2026-06-11): 2-SM UMMA pair (cta_group::2) is a WIN — 2sm(128,3) beats plain dual 16/16 paired reps (median +4.6–6.6%), 33.5% SoL, shipped as a NEW selectable kernel
+
+Implementation session (Front U, GPU 2, pod `aisp-gb300-runall`, 8192^3 FP16,
+peak 3.75 PFLOPS). The B43/B44-named lever — fuse the dual-CTA pair into one
+256-wide `SM100_MMA_F16BF16_2x1SM_SS` — landed as **`tcgen05_dual_cta_2sm.cu`**
+(new file; the measured plain dual `tcgen05_dual_cta.cu` is byte-untouched,
+md5 43b814c3). Correct on first build, rel_err = 0.0 vs torch.matmul on every
+config and every run.
+
+## Design facts (verified against CUTLASS 4.2.0 third_party + cute tutorial 04_mma_tma_2sm_sm100.cu)
+
+- Cluster (2,1,1): blockIdx.x = (pair, v) interleaved; v = block_rank & 1;
+  pair tile 256 x N (per-CTA output still 128 x N).
+- Per-CTA operand residency: A = own 128-row M-half; **B = N/2 columns — the
+  2x1SM atom SPLITS B across the pair** (ncu smem footprints prove it:
+  64KB/CTA at (256,2), 72KB at (128,3) -> Block Limit Shared Mem 3, where
+  full-N B would give 96KB -> limit 2; the mbarrier tx-byte accounting
+  triple-confirms it — an over-expect would never complete. The tutorial's
+  printed comments suggesting full-N B per CTA are stale). C = own 128 rows
+  x N in TMEM (N cols/CTA). So per-CTA B traffic HALVES vs the plain dual.
+- TMA: `SM100_TMA_2SM_LOAD` issued by BOTH CTAs into their own smem with
+  their OWN `full_barrier[stage]` handle; hardware redirects every mbarrier
+  arrival to the EVEN CTA's barrier (`Sm100MmaPeerBitMask`), so the leader's
+  barrier counts pair bytes 2x(A-half + B-half). Only the leader runs
+  `set_barrier_transaction_bytes` (peer completions before leader expect_tx
+  are legal: mbarrier tx-count is transiently negative).
+- Leader-only MMA (`gemm()` under `if (leader_cta)`, fma elects one lane);
+  per-stage `umma_arrive_multicast_2x1SM` (tcgen05.commit.cta_group::2,
+  mask 0b11) releases BOTH CTAs' `empty_barrier[stage]` (init count 1). The
+  odd CTA is a pure TMA producer free-running ahead, bounded by empties —
+  whole-CTA role assignment (B44 ncu-replay trap respected: `--set full`
+  profiled clean, 41 passes, both launches).
+- TMEM: `cute::TMEM::Allocator2Sm` pair-collective alloc of N cols (same
+  base in both SMs' TMEM) + IMMEDIATE permit release -> co-resident CTAs of
+  other pairs can allocate.
+- Final multicast commit on `mma_barrier` + both-CTA empty-drain before
+  epilogue (no in-flight remote arrival when any CTA exits).
+
+## Interleaved A/B (8 reps x (warmup=5, iters=20), round-robin, 8192^3 FP16, GPU 2)
+
+Run `ab_u_full.log` (11 arms, identical arms to the E5 sweep + 2sm):
+
+| arm | median | TFLOPS | %SoL | reps [min..max] us |
+|---|---|---|---|---|
+| cuBLAS (target) | 629.5 us | 1746.7 | 46.6% | [595.1..638.4] |
+| cluster (incumbent) | 1162.0 us | 946.2 | 25.2% | [985.2..1222.5] |
+| dual_cta (256,2,cm=1) plain | 931.2 us | 1180.7 | 31.5% | [922.6..973.0] |
+| dual_cta (256,2,cm=2) | 915.6 us | 1200.9 | 32.0% | [895.7..931.2] |
+| **dual_2sm (128,3)** | **874.9 us** | **1256.8** | **33.5%** | [862.9..882.0] |
+| dual_2sm (256,2) | 897.3 us | 1225.3 | 32.7% | [880.1..911.5] |
+| dual_2sm (128,2) | 971.6 us | 1131.7 | 30.2% | [956.5..998.2] |
+
+Paired per-rep vs same-session plain dual (256,2): **2sm(128,3) wins 16/16
+reps across two independent 8-rep runs; median speedup 1.0458x (run 1,
+`ab_u.log`) and 1.0656x (run 2, `ab_u_full.log`), range [1.0053..1.1032]**.
+Two soak re-runs of the full 11-arm sweep reproduce: 875.3 us / 873.5 us
+median (33.5/33.6% SoL), best-arm both times. NOT a breakthrough (>=44%):
+33.5% vs the 46.6–48.2% same-session cuBLAS ceiling.
+
+Note the inversion: n=128 is a measured LOSS in plain dual (1165 us) but the
+WINNER in 2SM form — the MMA stays 256-wide (pair tile 256x128), so halving
+N no longer halves per-instruction work; it halves the epilogue register
+footprint instead, unlocking a third CTA per SM (below).
+
+## ncu mechanism (--set full, --launch-skip 5 --launch-count 2, locked clocks)
+
+| metric | plain (256,2) | **2sm (128,3)** | 2sm (256,2) |
+|---|---|---|---|
+| Duration | 789.8 us | 786.5 us | 795.7 us |
+| Registers/thread | 255 | **152** | 255 |
+| Block Limit regs / smem | 2 / 2 | **3 / 3** | 2 / 3 |
+| Theoretical / Achieved occupancy | 12.5 / 12.12% | **18.75 / 18.30% (3 CTAs/SM)** | 12.5 / 12.23% |
+| long_scoreboard (warp-cycles/issued) | 28.51 | **23.47 (-18%)** | 34.31 |
+| Warp cycles/issued instr | 38.82 | **30.83** | 44.50 |
+| Issued warp/scheduler | 0.05 | **0.09 (+80%)** | 0.04 |
+| Executed IPC | 0.20 | 0.37 | 0.17 |
+| Tensor pipe active (of elapsed) | 49.46% | **54.01%** | — |
+| DRAM throughput | 1.75 TB/s (22.0%) | 2.17–2.27 TB/s (27.4%) | 1.76 TB/s |
+| L2 read sectors (srcunit_tex) | 257.5M | 376.8M (A re-reads, n=128 tiling) | 242.0M |
+| launch cluster size | — | 2 | 2 |
+
+Mechanism of the win at (128,3): the N=128 epilogue holds 128 fp32/thread
+(152 regs vs 255) and 72KB smem/CTA -> Block Limits 3/3 -> **three CTAs/SM**
+(TMEM 3x128 = 384 of 512 cols; `__launch_bounds__(128,2)` is a minimum, not
+a cap), on top of the structural 2SM gains (one MMA stream per SM pair,
+halved per-CTA B bytes, pure-producer peer). Issue rate +80%, stall
+cycles/instr -21%, tensor-pipe duty +4.6pts.
+
+Mechanism of the (256,2) 2SM tie: the 256-col epilogue pins 255 regs ->
+Block Limit Registers 2, and TMEM 2x256 = 512 is an exact fit -> same
+2 CTAs/SM as plain; halved MMA issue alone does not move the duration
+(long_scoreboard per-issued rises to 34.3 by denominator effect). The lever
+pays through occupancy + traffic, not instruction count per se.
+
+## One-off hang (flagged, unreproduced — treat 2SM sweeps with a watchdog)
+
+The FIRST 8-rep full-sweep attempt hung in a warmup launch (~21 min,
+py-spy: `torch.cuda.synchronize`, GPU pegged at 100%, single process on
+GPU 2, no co-tenancy). Killed and chased: 4x40-launch isolated stress per
+config PASS, two instrumented 8-rep interleaves PASS, two exact-command
+soaks with on-hang autopsy armed PASS (`soak_run{1,2}.log`) — ~4,000
+subsequent 2SM launches clean, rel_err 0.0 everywhere. Unproven suspicion:
+transient TMEM pair-alloc (tcgen05.alloc.cta_group::2 needs a COMMON free
+base across both SMs of a pair) slot-mismatch under cross-pair churn —
+(256,2)'s 2x256 exact fit is the natural suspect; the (128,3) default has
+4-slot headroom. Action: defaults avoid the exact-fit config, and any long
+unattended 2SM sweep should run under `timeout -s KILL`.
+
+## Harness verify gates (3/3 PASSED, `verification: {passed: true}`)
+
+```
+AISP_TCGEN05_VARIANT=dual_cta_2sm (loader defaults 128,3):
+  verification PASSED, speedup 2.5539x   (run 20260611_081140)
+AISP_TCGEN05_VARIANT=dual_cta (plain dual regression):
+  verification PASSED, speedup 2.6213x   (run 20260611_081242)
+default (cluster) regression:
+  verification PASSED, speedup 2.3675x   (run 20260611_081307; 2.329x contract intact)
+re-gate after final comment-only .cu doc fix (rebuild, same codegen):
+  verification PASSED, speedup 2.52x     (run 20260611_082149; 4-rep A/B re-check
+  879.1us 2sm(128,3) vs 916.7us plain — win intact, ab_u_rebuild.log)
+```
+
+## Files (pod, md5)
+
+```
+NEW      labs/custom_vs_cublas/tcgen05_dual_cta_2sm.cu       9727eb7dbfe5c8df5c35bcf9f037c152
+CHANGED  labs/custom_vs_cublas/tcgen05_loader.py             d8295ae153d95f3e0943ca890158c110
+         (adds _load_tcgen05_dual_cta_2sm_module / load_tcgen05_dual_cta_2sm_module /
+          matmul_tcgen05_dual_cta_2sm; env AISP_DUAL2SM_TILE_N=128, AISP_DUAL2SM_STAGES=3)
+CHANGED  labs/custom_vs_cublas/bench_dual_cta.py              70982a094bbe602fe494cacdfb7abf7e
+         (adds dual_2sm arms: default [(128,3),(256,2)], sweep adds (128,2))
+CHANGED  labs/custom_vs_cublas/optimized_tcgen05_matmul.py    15a9a1828b5046d51581f7b83021cbb4
+         (adds AISP_TCGEN05_VARIANT=dual_cta_2sm branch)
+UNTOUCHED labs/custom_vs_cublas/tcgen05_dual_cta.cu           43b814c3f1ba7b815d7a0195941c1a18
+Originals backed up at /tmp/frontU/ (pod). Logs: /tmp/frontU/{ab_u.log,
+ab_u_full.log,sweep_u2.log,soak_run1.log,soak_run2.log}; ncu reports:
+/tmp/frontU/ncu_{plain_n256s2,2sm_n128s3,2sm_n256s2}.ncu-rep. Nothing committed.
+```
+
+## Named next lever
+
+**Warp-specialized leader + A-multicast on the 2SM footprint.** ncu says
+2sm(128,3) is STILL TMA-latency-bound (long_scoreboard 23.5 of 30.8 = 76%
+of stalls; DRAM 27%): (a) the leader's warp 0 still serializes
+empty-wait -> TMA-issue -> full-wait -> MMA -> commit; split producer and
+consumer across two warps (whole-warp roles, replay-safe) to overlap the
+leader's own TMA issue with its MMA stream; (b) n=128 tiling doubled A
+re-reads (L2 srcunit_tex 376.8M vs 257.5M sectors) — a (2,2,1) cluster with
+`SM100_TMA_2SM_LOAD_MULTICAST` on A across the N-mode halves that, and
+unlike E5's falsified B-multicast premise, this targets traffic that is NOT
+already L2-deduped (it shows up in the sector counts). Both are incremental
+on tcgen05_dual_cta_2sm.cu, not a rewrite.
