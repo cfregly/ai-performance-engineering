@@ -65,9 +65,45 @@ class VectorizedTopKMoE(nn.Module):
 
 
 class GroupedTopKMoE(VectorizedTopKMoE):
-    """Top-k router that groups assignments by expert (larger matmuls)."""
+    """Top-k router that groups assignments by expert (larger matmuls).
+
+    Dispatch is a sortless fixed-capacity dense layout so every op in the
+    forward has a static shape: rank-within-expert via one-hot cumsum,
+    index_copy_ into ``[num_experts * capacity, hidden]`` slots, batched GEMMs
+    over all experts at once, then gather back by the same slot indices (which
+    restores original token order for free). No ``nonzero``/boolean masking
+    and no per-expert Python loop, so the whole forward is CUDA-graph
+    capturable as a single graph.
+    """
+
+    def __init__(self, hidden_size: int, num_experts: int, top_k: int = 2, expansion: int = 2) -> None:
+        super().__init__(hidden_size, num_experts, top_k, expansion)
+        self.capacity: Optional[int] = None
+
+    @torch.no_grad()
+    def calibrate_capacity(self, tokens: torch.Tensor) -> int:
+        """Pick the static per-expert slot capacity from observed routing.
+
+        Must run eagerly (it is the ONLY host sync of the optimized path);
+        call it once in ``setup()`` BEFORE graph capture. Capacity is 2x the
+        observed max tokens/expert, rounded up to a multiple of 64, clamped to
+        the routed-token count.
+        """
+        logits = self.router(tokens)
+        _, expert_ids = torch.topk(logits, self.top_k, dim=-1)
+        counts = torch.bincount(expert_ids.reshape(-1), minlength=self.num_experts)
+        max_load = int(counts.max().item())
+        total_assignments = tokens.shape[0] * self.top_k
+        capacity = min(((max_load * 2 + 63) // 64) * 64, total_assignments)
+        self.capacity = max(capacity, 64)
+        return self.capacity
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:  # pragma: no cover - benchmarked
+        if self.capacity is None:
+            self.calibrate_capacity(tokens)
+        capacity = self.capacity
+        assert capacity is not None
+
         logits = self.router(tokens)
         top_scores, expert_ids = torch.topk(logits, self.top_k, dim=-1)
         probs = torch.softmax(top_scores, dim=-1, dtype=tokens.dtype)
@@ -78,17 +114,41 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         flat_probs = probs.reshape(-1, 1).to(tokens.dtype)
         token_indices = torch.arange(batch, device=tokens.device).repeat_interleave(self.top_k)
 
+        # Rank of each assignment within its expert: one-hot cumsum (sortless,
+        # static shapes, no nonzero). Layout is [E, N] so the scan runs along
+        # the contiguous inner dim (the [N, E] outer-dim scan has only E
+        # parallel lanes and is ~2 ms; this form is ~10 us).
+        expert_range = torch.arange(self.num_experts, device=tokens.device).unsqueeze(1)
+        one_hot_t = (flat_expert_ids.unsqueeze(0) == expert_range).long()
+        ranks = one_hot_t.cumsum(1).gather(0, flat_expert_ids.unsqueeze(0)).squeeze(0) - 1
+
+        # Unique slot per assignment; overflow beyond capacity (never happens
+        # with a calibrated capacity) is routed to a trash row so shapes stay
+        # static and writes stay in-bounds.
+        num_slots = self.num_experts * capacity
+        valid = ranks < capacity
+        slots = flat_expert_ids * capacity + ranks.clamp_max(capacity - 1)
+        slots = torch.where(valid, slots, torch.full_like(slots, num_slots))
+
+        x_dense = flat_tokens.new_zeros(num_slots + 1, self.hidden_size)
+        x_dense.index_copy_(0, slots, flat_tokens)
+        x_grouped = x_dense[:num_slots].view(self.num_experts, capacity, self.hidden_size)
+
+        # Batched expert MLPs over all experts at once; zero rows are inert.
+        # baddbmm folds the bias add into the GEMM epilogue (the standalone
+        # broadcast adds cost ~150 us each at these shapes).
+        hidden = torch.baddbmm(self.b1.unsqueeze(1), x_grouped, self.w1)
+        hidden = F.gelu(hidden)
+        expert_out = torch.baddbmm(self.b2.unsqueeze(1), hidden, self.w2)
+
+        # Gather back by the same slot indices (restores token order) and
+        # zero out any overflow rows before the weighted scatter-accumulate.
+        out_flat = expert_out.reshape(num_slots, self.hidden_size)
+        gathered = out_flat[slots.clamp_max(num_slots - 1)]
+        weighted = gathered * (flat_probs * valid.unsqueeze(1).to(tokens.dtype))
+
         output = torch.zeros_like(tokens, dtype=tokens.dtype)
-        for expert in range(self.num_experts):
-            mask = flat_expert_ids == expert
-            expert_tokens = flat_tokens[mask]
-            expert_probs = flat_probs[mask]
-
-            hidden = expert_tokens @ self.w1[expert] + self.b1[expert]
-            hidden = F.gelu(hidden)
-            expert_out = hidden @ self.w2[expert] + self.b2[expert]
-            output.index_add_(0, token_indices[mask], expert_out * expert_probs)
-
+        output.index_add_(0, token_indices, weighted)
         return output
 
 
@@ -115,18 +175,18 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         import gc
-        
+
         # CRITICAL: Clean up CUDA state from previous benchmarks
         gc.collect()
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
-        
+
         try:
             if hasattr(torch.cuda, 'graph_pool_trim'):
                 torch.cuda.graph_pool_trim()
         except Exception:
             pass
-        
+
         # Reset CUDA RNG state
         try:
             device_idx = torch.cuda.current_device()
@@ -135,17 +195,17 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
             gen.manual_seed(42)
         except Exception:
             pass
-        
+
         try:
             torch._dynamo.reset()
         except Exception:
             pass
-        
+
         try:
             torch._inductor.cudagraph_trees.reset_cudagraph_trees()
         except Exception:
             pass
-        
+
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         model = GroupedTopKMoE(self.hidden_size, self.num_experts, self.top_k, expansion=2)
@@ -161,6 +221,15 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).to(self.device)
 
         self.output = None
+
+        # Calibrate the static per-expert slot capacity and warm up kernels
+        # (cuBLAS workspaces, one-hot/cumsum) eagerly BEFORE graph capture:
+        # the only host sync of the optimized path lives in calibrate_capacity().
+        model.calibrate_capacity(self.inputs)
+        with torch.no_grad():
+            for _ in range(3):
+                model(self.inputs)
+        torch.cuda.synchronize(self.device)
 
         # Capture the forward pass into a CUDA graph to hide Python dispatch overhead.
         self.graph = None
