@@ -258,13 +258,16 @@ def load_tcgen05_dual_cta_module():
     """JIT-compile the dual-CTA (2 CTAs/SM) occupancy kernel.
 
     Tunables (env, read at first load):
-      AISP_DUAL_TILE_N: MMA tile N (default 128; 128-col fp32 acc in TMEM)
-      AISP_DUAL_STAGES: smem pipeline stages (default 3; ~96KB/CTA)
-    Both CTAs/SM fit because TMEM (2x128 of 512 cols) and smem (2x~96KB of
-    227KB) are halved vs the cluster kernel's full-TMEM 192KB footprint.
+      AISP_DUAL_TILE_N: MMA tile N (default 256; 256-col fp32 acc in TMEM)
+      AISP_DUAL_STAGES: smem pipeline stages (default 2; ~96KB/CTA)
+    Defaults are the measured-best config from the GB300 sweep (2026-06-10,
+    GPU 2): (256,2) = 838-915us vs (128,3) = 1050-1109us; see
+    docs/gb300-gemm-occupancy-rewrite.md. Both CTAs/SM fit because TMEM
+    (2x256 of 512 cols) and smem (2x~96KB of 227KB) leave room for a
+    co-resident CTA, unlike the cluster kernel's full-TMEM 192KB footprint.
     """
-    tile_n = int(os.environ.get("AISP_DUAL_TILE_N", "128"))
-    stages = int(os.environ.get("AISP_DUAL_STAGES", "3"))
+    tile_n = int(os.environ.get("AISP_DUAL_TILE_N", "256"))
+    stages = int(os.environ.get("AISP_DUAL_STAGES", "2"))
     return _load_tcgen05_dual_cta_module(tile_n, stages)
 
 

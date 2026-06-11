@@ -87,7 +87,8 @@ def main():
     rel = check(matmul_tcgen05_cluster, a, b, ref)
     report("cluster (incumbent)", bench(matmul_tcgen05_cluster, a, b), rel, M, N, K)
 
-    configs = [(128, 3)] if not args.sweep else [(128, 3), (128, 2), (256, 2)]
+    # Default = measured-best GB300 config (2026-06-10 sweep); --sweep tries all.
+    configs = [(256, 2)] if not args.sweep else [(128, 3), (128, 2), (256, 2)]
     for tile_n, stages in configs:
         try:
             fn = load_dual(tile_n, stages)

@@ -1,110 +1,102 @@
-# GB300 gemm_cluster Occupancy Rewrite (dual-CTA variant) — Front E
+# GB300 gemm_cluster Occupancy Rewrite (dual-CTA variant) — Fronts E + E2
 
 ## Verdict
 
-**BLOCKED-EXECUTION / IMPLEMENTATION DELIVERED.** The full higher-occupancy
-variant (kernel + loader + harness wiring + A/B bench) is implemented and
-ready to build, but this session had **no pod access**: `kubectl exec` and
-`kubectl cp` are on the permission ask-list and every request was auto-denied
-(only read-only `kubectl get/logs/describe` prefixes are allow-listed). No
-build, bench, ncu, or harness verify was possible. All numbers below are
-design-model predictions, clearly marked. Nothing was committed.
+**WIN (measured, verified) — config (256,2): 1311 TFLOPS best / 1222 median,
+35.0% / 32.6% FP16-SoL, beats the incumbent cluster kernel in every
+interleaved rep (median 1.163x) and lifts the harness contract 2.33x -> 2.63x
+with verification PASSED.** Short of the 40-48% prediction (mechanism below).
+Front E delivered the implementation without pod access; Front E2 (this doc,
+2026-06-10/11) built, measured, ncu-grounded, and gated it on the GB300 pod
+(aisp-gb300-runall, GPU 2, 8192x8192x8192 FP16, peak 3.75 PFLOPS).
 
-## Why the incumbent is capped at 1 CTA/SM (B35 diagnosis, measured)
+The kernel (`tcgen05_dual_cta.cu`) ran correct on first build — zero .cu
+fixes. rel_err = 0.0 vs torch.matmul on every config. No hangs.
 
-`tcgen05_cluster.cu` (904us, 1207 TFLOPS, 32.4% FP16-SoL, occupancy 6.2%):
+## Config sweep (CUDA events, 50 iters, GPU 2)
 
-1. **TMEM**: allocates `Sm100TmemCapacityColumns` = **512 cols (all of TMEM)**
-   for a 128x256 fp32 accumulator that only needs 256 cols, **and holds the
-   tcgen05 allocation permit until kernel end** — a second CTA's
-   `tcgen05.alloc` can never be served.
-2. **SMEM**: 4 stages x 48KB = ~192KB of 227KB -> Block Limit Shared Mem = 1.
-3. Result: one CTA must hide the full TMA round-trip alone; 4-stage lookahead
-   x ~166ns/MMA-ktile vs ~400-500ns TMA RT -> tensor core starves
-   (scoreboard-on-smem 46.5%, SM busy 58%).
+| variant | us (run A) | us (run B) | TFLOPS (best) | %SoL (best) | correct |
+|---|---|---|---|---|---|
+| cuBLAS (target) | 604.6 | 605.1 | 1818.7 | 48.5% | yes |
+| cluster (incumbent) | 949.8 | 962.2 | 1157.6 | 30.9% | yes |
+| dual_cta n=128 s=3 | 1054.4 | 1108.9 | 1042.7 | 27.8% | yes |
+| dual_cta n=128 s=2 | 909.1 | 949.4 | 1209.4 | 32.3% | yes |
+| **dual_cta n=256 s=2** | **838.3** | 914.8 | **1311.5** | **35.0%** | yes |
 
-## Design: `tcgen05_dual_cta.cu` (new file; existing kernels untouched)
+Front E's predicted default (128,3) is a measured **LOSS** (-8% vs cluster):
+halving tile N halves arithmetic intensity, and DRAM/L2 latency per delivered
+FLOP eats the occupancy gain. The winning config keeps the incumbent's
+128x256 tile (full AI) and pays for the second CTA with stages (4 -> 2):
+2 CTAs x 2 stages beats 1 CTA x 4 stages — concurrency from a second
+independent MMA+TMA stream is worth more than lookahead depth.
 
-One primary lever — restore SM-level concurrency (2 CTAs/SM) instead of
-deepening one CTA:
+Run-to-run thermal drift is real (~5-9% on this node): interleaved A/B
+(6 reps, alternating in one process) is the fair read:
 
-| Resource | incumbent (cluster) | dual_cta (default n=128 s=3) | 2-CTA fit |
-|---|---|---|---|
-| MMA tile | 128x256 | **128x128** (`SM100_MMA_F16BF16_SS`, N=128 legal: N%8, ≤256) | — |
-| TMEM acc | 512/512 cols + permit held | **128 cols** + `release_allocation_lock()` immediately after alloc | 2x128 ≤ 512 ✓ |
-| SMEM | 4 x 48KB ≈ 192KB | **3 x 32KB ≈ 96.3KB** | 2x96.3 ≤ 227KB ✓ |
-| launch | `__cluster_dims__(2,1)`, LB(128,1) | plain launch, **`__launch_bounds__(128, 2)`**, max-smem carveout | — |
-| pipeline | no-wait (racy stage overwrite) | **proper empty-barrier wait** before stage reuse (`umma_arrive` = `tcgen05.commit`, verified internally elected in CUTLASS 4.3.0 `barrier.h` -> exactly 1 arrival/call, so phase tracking with arrive-count 1 is sound) | — |
-| mainloop | all 4 warps spin every k-tile | **warp 0 only**; warps 1-3 park on `mma_barrier` until epilogue | — |
-
-Mechanism: per-CTA the strict empty-wait costs some MMA-pipe duty
-(~40-50% per CTA at 2-deep TMA lookahead), but the co-resident CTA fills the
-gaps -> predicted ~80-90% tensor-pipe duty per SM vs measured 58%.
-Cost: 128x128 tile halves arithmetic intensity (64 vs 85 FLOP/B of smem
-traffic) -> DRAM busy predicted ~55-60% (from measured 33% at 1207 TFLOPS);
-below the 8 TB/s roof, so latency — not bandwidth — remains the binding
-constraint being fixed. **Prediction (unmeasured): 1.5-1.8 PFLOPS, 40-48%
-SoL.** If DRAM saturates first, fallback config `n=256 s=2` keeps AI at 85
-with the same 2-CTA footprint (one env var, no code change).
-
-All CUTLASS API contracts were verified against the pinned CUTLASS 4.3.0
-(8cd5bef4, fetched read-only from GitHub): `Allocator1Sm::allocate` accepts
-any power-of-2 column count 32..512; `SM100_MMA_F16BF16_SS` and
-`umma_arrive` are internally `elect_one_sync`-guarded; `fma` asserts
-M∈{64,128}, N%8==0, N≤256.
-
-## Files (all in working tree, uncommitted; pod copies still needed)
-
-- `code/labs/custom_vs_cublas/tcgen05_dual_cta.cu` — NEW kernel
-  (`gemm_dual_cta`); compile-time tunables `-DDUAL_TILE_N`, `-DDUAL_STAGES`;
-  `static_assert` guards 2-CTA smem/TMEM fit.
-- `code/labs/custom_vs_cublas/tcgen05_loader.py` — `_load_kernel` gains
-  `extra_cuda_flags` (hash-keyed); new `load_tcgen05_dual_cta_module()` /
-  `matmul_tcgen05_dual_cta()`; env `AISP_DUAL_TILE_N` (128), `AISP_DUAL_STAGES` (3).
-- `code/labs/custom_vs_cublas/optimized_tcgen05_matmul.py` — variant switch
-  `AISP_TCGEN05_VARIANT=dual_cta|cluster`; **default unchanged (cluster)** so
-  the committed verify contract (2.329x) is untouched.
-- `code/labs/custom_vs_cublas/run_lab.py` — stage 13 "+ 2 CTAs/SM (Dual-CTA)".
-- `code/labs/custom_vs_cublas/bench_dual_cta.py` — NEW standalone kernel-only
-  A/B bench (cuBLAS vs cluster vs dual_cta, `--sweep` for n/s configs,
-  correctness vs torch.matmul).
-
-## Exact run plan (for whoever has pod exec)
-
-```bash
-# copy the 5 files to the pod (kubectl cp), then:
-kubectl exec aisp-gb300-runall -n hpc-verification -- bash -lc '
-  export CUDA_VISIBLE_DEVICES=2
-  cd /work/ai-performance-engineering/code
-  python labs/custom_vs_cublas/bench_dual_cta.py --sweep'
-
-# occupancy proof (Block Limit Shared Mem must read 2, achieved occ ~12.5%):
-kubectl exec aisp-gb300-runall -n hpc-verification -- bash -lc '
-  export CUDA_VISIBLE_DEVICES=2
-  cd /work/ai-performance-engineering/code
-  /usr/local/bin/ncu --set full --launch-skip 5 --launch-count 2 \
-    --kernel-name regex:gemm_dual_cta --target-processes application-only \
-    python labs/custom_vs_cublas/bench_dual_cta.py'
-
-# harness verify gate (only flips to dual_cta when env is set):
-kubectl exec aisp-gb300-runall -n hpc-verification -- bash -lc '
-  export CUDA_VISIBLE_DEVICES=2 AISP_TCGEN05_VARIANT=dual_cta
-  cd /work/ai-performance-engineering/code
-  python -m cli.aisp bench run --targets labs/custom_vs_cublas:tcgen05_matmul \
-    --profile none --single-gpu'
+```
+cluster      min  952.4  median 1046.7  max 1080.1 us   (drifts hot)
+dual(256,2)  min  885.5  median  899.7  max  917.2 us   (stable)
+per-rep speedup: 1.076x .. 1.178x, median 1.163x — dual wins ALL 6 reps
 ```
 
-Accept/iterate criteria: ncu Block Limit Shared Mem == 2 and achieved
-occupancy ~2x incumbent, else inspect TMEM alloc serialization; if
-kernel-only beats 904us, run the verify gate; if DRAM% > ~85, switch to
-`AISP_DUAL_TILE_N=256 AISP_DUAL_STAGES=2`. If 2 CTAs/SM are resident but the
-win does not materialize, the measured mechanism (where the stall moved) is
-the bankable negative.
+## ncu evidence (256,2) — the occupancy mechanism landed
+
+`--set full --launch-skip 5 --launch-count 2`, report at
+`/tmp/frontE2/dual_cta_n256s2.ncu-rep` on the pod. Both profiled launches
+agree:
+
+| metric | incumbent (B35) | dual_cta (256,2) |
+|---|---|---|
+| **Block Limit Shared Mem** | 1 | **2** (98.4KB + 1KB driver per CTA) |
+| Block Limit Registers | — | 2 (255 regs/thread, at the LB(128,2) cap) |
+| Theoretical / Achieved Occupancy | — / 6.2% | 12.5% / **12.06%** (2 CTAs/SM resident) |
+| Duration (locked clocks) | 904 us | **799.4 us** (= 1375 TFLOPS, 36.7% SoL) |
+| Tensor pipe (of elapsed) | 58% SM busy | **61.9%** (highest-utilized pipe) |
+| DRAM throughput | 33% | **21.8%** (1.73 TB/s — nowhere near the roof) |
+| L2 throughput | — | 45.2% |
+| Top stall | scoreboard-on-smem 46.5% | **long_scoreboard 28.5 of 38.9 warp-cycles/instr (~73%)** |
+
+Mechanism of the shortfall vs the 40-48% prediction: occupancy doubled but
+tensor-pipe duty rose only 58% -> 61.9%. The strict empty-barrier protocol
+(correct, but each CTA now waits for tcgen05.commit before stage reuse)
+costs per-CTA duty that the co-resident CTA only partially refills — with 2
+stages each, both CTAs tend to starve at the same time. DRAM (21.8%) is NOT
+the constraint; the kernel is still TMA-latency-bound (long_scoreboard
+dominant). The fix is more in-flight loads per SM, not more CTAs:
+multicast (halve B traffic) or 3+ stages at 2 CTAs (needs <75.8KB/CTA, i.e.
+a smaller B stage or A/B stage split).
+
+## Harness verify gates (all PASSED)
+
+```
+AISP_TCGEN05_VARIANT=dual_cta (loader defaults now 256,2):
+  verification PASSED, speedup 2.6317x   (run 20260611_031840)
+AISP_TCGEN05_VARIANT=dual_cta AISP_DUAL_TILE_N=256 AISP_DUAL_STAGES=2:
+  verification PASSED, speedup 2.5578x   (run 20260611_030506)
+default (cluster) regression check:
+  verification PASSED, speedup 2.4447x   (run 20260611_030548; contract 2.329x intact)
+```
+
+## Deltas vs Front E's delivery (documented deviations)
+
+- **Zero .cu changes.** Pipeline protocol (empty-barrier phase parity,
+  expect_tx bytes, umma_arrive single-arrival) verified by tracing and by
+  running: correct on first build for all three configs.
+- `tcgen05_loader.py`: env defaults flipped to the measured winner —
+  `AISP_DUAL_TILE_N` 128 -> **256**, `AISP_DUAL_STAGES` 3 -> **2**.
+- `bench_dual_cta.py`: non-sweep default config (128,3) -> **(256,2)**.
+
+Pod state preserved: base 2f7e30f9, all GB300 fixes untouched; originals of
+the 3 overwritten files backed up at `/tmp/frontE2/`. Nothing committed.
 
 ## Named next lever
 
-If dual-CTA banks: add **2x1 cluster + TMA multicast of B** on top of the
-dual-CTA footprint (halves B-side L2->SM traffic, recovering the AI lost to
-the 128-wide tile), then **persistent CTAs + tile-swizzled scheduler** to cut
-the 4096-CTA launch/epilogue overhead — i.e. converge on the CUTLASS sm100
-warp-specialized collective shape one verified step at a time.
+1. **2x1 cluster + TMA multicast of B** on top of the dual-CTA (256,2)
+   footprint: halves B-side L2->SM traffic, directly attacks the dominant
+   long_scoreboard stall while keeping 2-CTA-equivalent concurrency via the
+   cluster pair.
+2. **Persistent CTAs + tile-swizzled scheduler**: 4096 one-shot CTAs pay
+   launch + 255-reg epilogue (256 fp32/thread at n=256, at the register cap)
+   per tile; persistence amortizes both and enables L2-friendly tile order —
+   i.e. converge on the CUTLASS sm100 warp-specialized collective shape one
+   verified step at a time.

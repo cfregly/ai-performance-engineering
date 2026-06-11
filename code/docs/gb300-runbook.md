@@ -1169,6 +1169,26 @@ SoL framing (B), measured 2026-06-09:
   candidate; kernel-side 38.9 us = ~440 TFLOPS = 11.7% FP16-SoL at 2048^3 -- k-stage double-buffered
   pipelining is the deep candidate.
 
+- WIN + PREDICTION CALIBRATION (B37, custom_vs_cublas dual-CTA occupancy rewrite, measured): docs/
+  gb300-gemm-occupancy-rewrite.md. The B35-deferred occupancy lever LANDED as a new opt-in variant
+  (tcgen05_dual_cta.cu, AISP_TCGEN05_VARIANT=dual_cta): config (256,2) measures 838us best / 1311
+  TFLOPS / 35.0% FP16-SoL vs the incumbent cluster kernel 904us/32.4%, beating it in ALL 6 interleaved
+  A/B reps (1.076-1.178x, median 1.163x); harness contract 2.33x -> 2.63x, verification PASSED; default
+  cluster path regression-checked (2.44x PASS, contract intact). Kernel correct on first build (zero .cu
+  fixes, rel_err 0.0). MECHANISM PROVEN by ncu: Block Limit Shared Mem = 2, achieved occupancy 12.06%
+  vs the incumbent 6.2% -- 2 CTAs/SM resident. PREDICTION CORRECTED: the designed default (128,3)
+  is a measured LOSS (1054us, 27.8% -- halving tile N halves arithmetic intensity); the winner keeps
+  the incumbent's 128x256 tile and funds the 2nd CTA by cutting pipeline stages 4->2: CONCURRENCY BEATS
+  LOOKAHEAD DEPTH on this kernel. Shortfall vs the 40-48% prediction: occupancy doubled but tensor-pipe
+  duty rose only 58 -> 61.9% -- the correct empty-barrier wait costs per-CTA duty that the co-resident
+  CTA only partially refills (both 2-stage CTAs starve simultaneously on TMA latency; long_scoreboard
+  still ~73% of stall cycles); DRAM is NOT the constraint (21.8%, the saturation worry was unfounded).
+  Node thermal drift is real (~5-9%; cluster drifts hot across reps, dual stays flat) -- interleaved A/B
+  is the fair read. Gap to cuBLAS remains: 1818.7 TFLOPS / 48.5% same-session. NEXT LEVERS: (1) 2x1
+  cluster + TMA multicast of B on the (256,2) footprint (halves B-side L2->SM traffic, attacks the
+  dominant long_scoreboard stall); (2) persistent CTAs + tile-swizzled scheduler (4096 one-shot CTAs
+  each pay launch + a register-capped 256-fp32/thread epilogue).
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
