@@ -11,7 +11,7 @@ moves into the template epilogue (+58.6us on the GEMM1 template) instead of
 disappearing. Fusion saves only the intermediate's memory round-trip (~10.6us).
 Default stays B51; the fused path ships as opt-in `AISP_MOE_CUDA_GELU_EPILOGUE=1`.
 
-- Date: 2026-06-11, pod `aisp-gb300-runall` (GB300 NVL72), GPU 3 only, flock lease.
+- Date: 2026-06-11, pod `<gb300-pod>` (GB300 NVL72), GPU 3 only, flock lease.
 - Torch `2.12.0a0+5aff3928d8.nv26.05`. Baseline arm: B51 (commit `a21f4781`, 0.3932 ms).
 - B51 re-repro before any edit: **0.39083 ms**, verification passed, graph_breaks=0
   (`/tmp/frontM2/r01_b51_repro.*`) — within noise of the banked 0.3932.

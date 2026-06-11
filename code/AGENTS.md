@@ -39,6 +39,9 @@
 - Do not publish, compare, or store performance numbers from unsupported fallback paths as if they were valid results for the required benchmark contract.
 - Keep expected-unsupported classification explicit in structured outputs, logs, tests, and queue ledgers so unsupported environments cannot be mistaken for valid benchmark data.
 
+## Public-Repo Identifier Hygiene (CRITICAL)
+This repository is PUBLIC and widely forked. Never commit live-infrastructure identifiers: pod names, Kubernetes namespaces used as cluster references, kubectl-context strings, node names, org/tenant IDs, internal hostnames, or experiment labels that embed any of these. Use placeholders (`<gb300-pod>`, `<namespace>`) in docs/runbooks/field reports; the real values live in local operator memory/config outside the repo. Generic component names inside published telemetry contracts are fine; references to live cluster objects are not. The current tree was scrubbed 2026-06-11; history before that retains old identifiers — treat those as burned/rotatable, not as secrets, and do not reintroduce them.
+
 ## Toolchain Workarounds & Abort Attribution (CRITICAL)
 Origin: the 2026-06-11 GB300 sm_103a `tcgen05.wait.st` incident (runbook B69/B70/B71; mechanism evidence `code/upstream/triton-tcgen05-wait-st/STATUS.md`) — `core/benchmark/triton_compat.py` de-suffixed `sm_103a -> sm_103` and impersonated an upstream Triton bug for weeks, spawning guards that tainted banked measurements (B23c).
 - Before attributing an uncatchable native abort (LLVM `Cannot select`, ptxas error, SIGABRT in a JIT) to an upstream toolchain bug — and before adding any protective guard — reproduce on the VANILLA stack: strip repo monkey-patches, compat shims, import-time `configure_*` side effects, and env clamps first. They are invisible in the failing stack trace.

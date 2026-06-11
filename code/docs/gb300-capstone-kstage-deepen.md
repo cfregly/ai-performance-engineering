@@ -1,6 +1,6 @@
 # GB300 capstone tcgen05 k-stage deepen: bK 64->32 + 8-stage ring (Front D5b)
 
-**Date:** 2026-06-11 | **Pod:** aisp-gb300-runall (GPU 3) | **Base:** f4cab652 (B44) + uncommitted GB300 fixes
+**Date:** 2026-06-11 | **Pod:** <gb300-pod> (GPU 3) | **Base:** f4cab652 (B44) + uncommitted GB300 fixes
 **Verdict: HONEST NEGATIVE — 0.873x (CTA1 24.11us -> 27.62us), bit-identical, control-isolated, dual-front replicated.**
 
 The banked-next-lever from B44 — halve the k-tile (bK 64->32, SW64 swizzle atom,

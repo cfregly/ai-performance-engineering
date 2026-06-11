@@ -1,6 +1,6 @@
 # GB300 sm_103a unlock — fixing the self-inflicted tcgen05 "max-autotune wall" (Front T)
 
-Date: 2026-06-11. Pod `aisp-gb300-runall` (GB300 sm_103, CUDA 13.2,
+Date: 2026-06-11. Pod `<gb300-pod>` (GB300 sm_103, CUDA 13.2,
 torch 2.12.0a0+5aff3928d8.nv26.05, Triton 3.7.0), GPU 1 (flock /tmp/gpu1.lock),
 harness `--profile none`. Evidence tuples: `/tmp/frontT/` on the pod;
 mechanism evidence from Front P2: `/tmp/frontP2/` (4-probe repro).

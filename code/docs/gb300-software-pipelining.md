@@ -6,7 +6,7 @@
 **verification passed** on both reps (rtol 1e-4 / atol 2e-4 payload check plus the
 5e-4 max-abs-diff reference check; max_abs_diff stayed 7.15e-7, bit-identical math).
 
-- Hardware: NVIDIA GB300 (sm_103, 152 SMs, 276.6 GB HBM3e), GPU 3, pod `aisp-gb300-runall`
+- Hardware: NVIDIA GB300 (sm_103, 152 SMs, 276.6 GB HBM3e), GPU 3, pod `<gb300-pod>`
 - Workload: fp32 triad-style tile transform, length 2^25, 403 MB moved per iteration
   (2 read streams + 1 write stream); bytes are the workload (B27b gaming check done:
   `benchmark_fn` runs the full-tensor kernel; bytes_per_iteration is registered metadata)

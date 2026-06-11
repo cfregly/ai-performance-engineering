@@ -24,7 +24,7 @@ removal, not a faster MMA.
 
 ## Environment and provenance
 
-- Node `aisp-gb300-runall`, GB300 (Blackwell Ultra, sm_103, cc 10.3), 152 SMs, 284 GB, driver
+- Node `<gb300-pod>`, GB300 (Blackwell Ultra, sm_103, cc 10.3), 152 SMs, 284 GB, driver
   580.159.03, CUDA 13.2. GPU 0 (idle, no foreign CUDA process). Driver = CUDA 13.x, so no CUPTI
   image/driver skew. ncu 2026.1.1.0, nvcc 13.2, torch 2.12.0a0+...nv26.05.
 - Lab: `labs/nvfp4_group_gemm`, shape `COMPETITION_CASES[2]` = `g2_n3072_k4096`,

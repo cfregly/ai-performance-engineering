@@ -8,7 +8,7 @@ forward) holds, with one mechanism correction: the win is **dispatch-chain fusio
 (33 -> 16 kernels/replay), not GELU-epilogue fusion — GELU stayed a standalone kernel
 and is actually slower compiled; the eliminated `expand/copy` materializations dominate.
 
-- Date: 2026-06-11, pod `aisp-gb300-runall` (GB300 NVL72, Dell XE9712), GPU 1 only.
+- Date: 2026-06-11, pod `<gb300-pod>` (GB300 NVL72, Dell XE9712), GPU 1 only.
 - Torch `2.12.0a0+5aff3928d8.nv26.05`, CUDA 13.2. Local repo HEAD `222a8ac7`.
 - Target: `moe_cuda:router_vectorized` (pair `baseline_router.py` + `optimized_router_vectorized.py`).
 - Evidence: `/tmp/frontM/compile/` on the pod (every run as `.cmd/.stdout/.stderr/.exit`).

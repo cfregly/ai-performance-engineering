@@ -24,7 +24,7 @@ targets PASS in/at band; `persistent_decode_cuda` is an `informational_demo` ski
 
 Hardware: GB300 (cc 10.3, **152 SMs** — measured via the final grid, 304 = 2/SM),
 GPU3 quiet (pre-rep foreign-process checks, flock'd active runs only, no idle holds),
-pod `aisp-gb300-runall`. Pod repo md5-reconciled against local before editing (6/6
+pod `<gb300-pod>`. Pod repo md5-reconciled against local before editing (6/6
 files matched HEAD `b77108e8`-era state) and after every sync (4/4 changed files
 match). Evidence: `/tmp/frontR/` (r0–r13 tuples, `r3/r8/r9_*_ab.jsonl`,
 `frontR_summary.json`, `ALL_DONE`). Harness flags: `--profile none --single-gpu`;

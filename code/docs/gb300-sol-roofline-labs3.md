@@ -1,6 +1,6 @@
 # GB300 SoL Survey #3 — The Labs That Fell Through Every Prior Survey (Front S)
 
-- **Date:** 2026-06-11 | **Pod:** aisp-gb300-runall (hpc-verification), GPU 1 (CUDA_VISIBLE_DEVICES=1, flock /tmp/gpu1.lock)
+- **Date:** 2026-06-11 | **Pod:** <gb300-pod> (<namespace>), GPU 1 (CUDA_VISIBLE_DEVICES=1, flock /tmp/gpu1.lock)
 - **Repo:** /work/ai-performance-engineering/code @ 2f7e30f9 + uncommitted GB300 fixes
 - **Scope (B42 audit gap):** labs/parameterized_cuda_graphs, python_concurrency, training_hotpath, uma_memory, tcgen05_cluster_shapes, moe_parallelism (classify only), vllm-deepseek-tuning (classify only)
 - **B45 rule applied:** every cudagraph/compile wrapper in scope audited for silent capture-failure→eager fallbacks.

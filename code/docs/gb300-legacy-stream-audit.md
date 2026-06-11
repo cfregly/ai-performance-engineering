@@ -14,7 +14,7 @@ helpers, or vendored third_party — listed, untouched.
 Default-mode numbers match the banked band; verification PASS everywhere.
 
 Hardware: GB300 (cc 10.3), GPU3 quiet (foreign-process precheck on every run), pod
-`aisp-gb300-runall`, repo base 2f7e30f9. Evidence: `/tmp/frontA/a1*,a2*,a3*.{cmd,stdout,stderr,exit,precheck}`
+`<gb300-pod>`, repo base 2f7e30f9. Evidence: `/tmp/frontA/a1*,a2*,a3*.{cmd,stdout,stderr,exit,precheck}`
 + `/tmp/frontA/b62_audit.json` + `/tmp/frontA/a2_latent_smoke.json` on the pod.
 
 ## 1. Sweep coverage (the proof of completeness)

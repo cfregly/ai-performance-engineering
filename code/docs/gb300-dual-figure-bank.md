@@ -18,7 +18,7 @@ the tcgen05 GEMMs are ~1.25x off a structurally-capped floor and software_pipeli
 is closed.
 
 Hardware: GB300 (cc 10.3), GPU3 quiet (foreign-process precheck per run, flock'd,
-no idle holds), pod `aisp-gb300-runall`, pod repo md5-reconciled against local HEAD
+no idle holds), pod `<gb300-pod>`, pod repo md5-reconciled against local HEAD
 `41f50dd9` (12/12 files matched) before any run. Evidence:
 `/tmp/frontA2/a2_01..a2_16.{cmd,stdout,stderr,exit,precheck}` + `a2_summary.json`
 + `ALL_DONE` on the pod. Default-mode harness flags: `--profile none --single-gpu`.

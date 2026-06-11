@@ -18,7 +18,7 @@ kernel (59.2us vs the 104us Triton template) and Inductor fuses the bias adds
 into adjacent pointwise kernels for free. GEMM2's hidden 40us bias-copy (the
 `direct_copy` that B51's table mislabeled "gather-back") disappears too.
 
-- Date: 2026-06-11, pod `aisp-gb300-runall` (GB300 NVL72, Dell XE9712), GPU 3
+- Date: 2026-06-11, pod `<gb300-pod>` (GB300 NVL72, Dell XE9712), GPU 3
   only, flock lease (`flock -w 900 /tmp/gpu3.lock` around every GPU command).
 - Torch `2.12.0a0+5aff3928d8.nv26.05`. Incumbent arm: B51 compile-in-graph
   (banked 0.40292 ms; re-repro before any edit: **0.40288 ms**, verification

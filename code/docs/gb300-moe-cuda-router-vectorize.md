@@ -9,7 +9,7 @@ capture), so `self.graph` silently fell back to `None` and the measured loop ran
 sortless fixed-capacity dense dispatch makes every op static-shape; the existing capture
 plumbing (unchanged) now succeeds and the whole forward replays as ONE CUDA graph.
 
-- Date: 2026-06-11 | Pod: `aisp-gb300-runall` (hpc-verification), GPU 2, GB300 (sm_103)
+- Date: 2026-06-11 | Pod: `<gb300-pod>` (<namespace>), GPU 2, GB300 (sm_103)
 - Base: 2f7e30f9 + uncommitted GB300 fixes; only file changed:
   `labs/moe_cuda/optimized_router_vectorized.py` (optimized arm only; baseline untouched)
 - Precedent: `docs/gb300-moe-router-override.md` (B40, same lever in

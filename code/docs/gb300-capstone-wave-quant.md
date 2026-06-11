@@ -1,6 +1,6 @@
 # GB300 capstone tcgen05 wave quantization: balanced k-redistribution (Front W)
 
-**Date:** 2026-06-11 | **Pod:** aisp-gb300-runall (GPU 3) | **Base:** 222a8ac7 (B48-banked parameterized kernel, bK64/S4 incumbent) + uncommitted GB300 fixes
+**Date:** 2026-06-11 | **Pod:** <gb300-pod> (GPU 3) | **Base:** 222a8ac7 (B48-banked parameterized kernel, bK64/S4 incumbent) + uncommitted GB300 fixes
 **Verdict: HONEST NEGATIVE — refuted by measured wave math before any build. Zero-implementation-overhead ceiling is 1.045–1.074x and the mandatory costs of the only legal mechanism exceed the entire margin above the 1.05x gate. No code was changed; the incumbent stands.**
 
 The D5b-named lever — 128 CTAs on 152 SMs (84.2% fill, 15.8% idle) at the scored

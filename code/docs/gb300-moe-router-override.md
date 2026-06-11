@@ -7,7 +7,7 @@ baseline arm. Doing so removes every `torch.nonzero`, every per-expert DtoH sync
 entire ~1 ms un-graphable host gap — the whole model now executes as a single
 cudagraph-captured CompiledFxGraph.
 
-- Date: 2026-06-11 | Pod: `aisp-gb300-runall` (hpc-verification), GPU 2, GB300 (sm_103)
+- Date: 2026-06-11 | Pod: `<gb300-pod>` (<namespace>), GPU 2, GB300 (sm_103)
 - Toolchain: torch 2.12.0a0+5aff3928d8.nv26.05, CUDA 13.2, Triton 3.7 (max-autotune
   tcgen05 guard intact: `get_optimal_compile_mode` -> "default" -> promoted to
   "reduce-overhead", unchanged)

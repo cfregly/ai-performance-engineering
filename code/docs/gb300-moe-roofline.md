@@ -127,7 +127,7 @@ stands.
 
 ## Method / provenance
 
-GB300 node `aisp-gb300-runall`, ns `hpc-verification`, repo `/work/ai-performance-engineering/code`
+GB300 node `<gb300-pod>`, ns `<namespace>`, repo `/work/ai-performance-engineering/code`
 at `2f7e30f9` with the working-tree reduce-overhead fallback in `optimized_moe_pad_quant.py`
 and `moe_benchmark.py` (pre-existing, not introduced here). Run on free GPU0. Read-only roofline
 (harness bench + profiler probe + ncu --set full); no benchmark file was edited.

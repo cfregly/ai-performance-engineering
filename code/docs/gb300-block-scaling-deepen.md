@@ -1,6 +1,6 @@
 # GB300 block_scaling deepen: the tile_k structural lever (Front H2)
 
-**Date:** 2026-06-11 | **Pod:** aisp-gb300-runall (GPU 3) | **Base:** 2f7e30f9 + uncommitted GB300 fixes
+**Date:** 2026-06-11 | **Pod:** <gb300-pod> (GPU 3) | **Base:** 2f7e30f9 + uncommitted GB300 fixes
 **Verdict: HONEST NEGATIVE — refuted with implementation-grade evidence.**
 
 The prescribed lever (make `tile_k` configurable; test 384 and 256) was taken to

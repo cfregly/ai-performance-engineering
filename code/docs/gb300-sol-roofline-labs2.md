@@ -1,6 +1,6 @@
 # GB300 SoL / Roofline Grounding — Labs Batch 2 (Front F2)
 
-Date: 2026-06-11 (UTC) | Pod: aisp-gb300-runall (hpc-verification) | GPU: 3 only (CUDA_VISIBLE_DEVICES=3)
+Date: 2026-06-11 (UTC) | Pod: <gb300-pod> (<namespace>) | GPU: 3 only (CUDA_VISIBLE_DEVICES=3)
 Repo: /work/ai-performance-engineering/code @ 2f7e30f9 + uncommitted GB300 fixes
 Peaks used: NVFP4 15.0 PFLOPS / FP8 7.5 / BF16 3.75 PFLOPS / HBM3e 8.0 TB/s
 Harness: `python -m cli.aisp bench run --targets <lab> --profile none --single-gpu`, validity strict, 20 iters / 5 warmup unless noted.

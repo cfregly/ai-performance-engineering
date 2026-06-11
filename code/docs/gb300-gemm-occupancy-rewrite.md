@@ -8,7 +8,7 @@ interleaved rep (median 1.163x) and lifts the harness contract 2.33x -> 2.63x
 with verification PASSED.** Short of the 40-48% prediction (mechanism below).
 Front E delivered the implementation without pod access; Front E2 (this doc,
 2026-06-10/11) built, measured, ncu-grounded, and gated it on the GB300 pod
-(aisp-gb300-runall, GPU 2, 8192x8192x8192 FP16, peak 3.75 PFLOPS).
+(<gb300-pod>, GPU 2, 8192x8192x8192 FP16, peak 3.75 PFLOPS).
 
 The kernel (`tcgen05_dual_cta.cu`) ran correct on first build — zero .cu
 fixes. rel_err = 0.0 vs torch.matmul on every config. No hangs.
@@ -105,7 +105,7 @@ the 3 overwritten files backed up at `/tmp/frontE2/`. Nothing committed.
 
 # E5 verdict (2026-06-11): B-multicast (cluster_m=2) is an HONEST NEGATIVE — tie within noise, mechanism profiled
 
-Measurement-only session (Front E5, GPU 2, pod `aisp-gb300-runall`). Files
+Measurement-only session (Front E5, GPU 2, pod `<gb300-pod>`). Files
 reconciled: pod `tcgen05_dual_cta.cu` / `tcgen05_loader.py` /
 `bench_dual_cta.py` md5-match the committed c045227b state (pod copies
 backed up at `/tmp/frontE5/`). Sanity: plain dual (256,2,cm=1) measured
@@ -301,7 +301,7 @@ is the documented negative that closes this branch of the search tree).
 
 # U verdict (2026-06-11): 2-SM UMMA pair (cta_group::2) is a WIN — 2sm(128,3) beats plain dual 16/16 paired reps (median +4.6–6.6%), 33.5% SoL, shipped as a NEW selectable kernel
 
-Implementation session (Front U, GPU 2, pod `aisp-gb300-runall`, 8192^3 FP16,
+Implementation session (Front U, GPU 2, pod `<gb300-pod>`, 8192^3 FP16,
 peak 3.75 PFLOPS). The B43/B44-named lever — fuse the dual-CTA pair into one
 256-wide `SM100_MMA_F16BF16_2x1SM_SS` — landed as **`tcgen05_dual_cta_2sm.cu`**
 (new file; the measured plain dual `tcgen05_dual_cta.cu` is byte-untouched,
@@ -456,7 +456,7 @@ on tcgen05_dual_cta_2sm.cu, not a rewrite.
 
 # V2 verdict (2026-06-11): warp-split leader is a WIN (12/12 paired, 1.073x hot-median, new default); A-multicast is an HONEST NEGATIVE with the traffic premise PROVEN TRUE but latency-coupling cost 9% — and its V-front deadlock was the B53 expect-tx trap, now FIXED
 
-Continuation session (Front V2, GPU 2, pod `aisp-gb300-runall`, 8192^3 FP16).
+Continuation session (Front V2, GPU 2, pod `<gb300-pod>`, 8192^3 FP16).
 Front V died at its turn limit waiting on the first correctness build of its
 two B49 levers; this session recovered its in-flight state, finished both
 levers, and root-caused + fixed a real deadlock in lever (b).
@@ -594,7 +594,7 @@ per byte) at n=128 s=2.
 
 # V3 verdict (2026-06-11): tile_n=64 is an HONEST NEGATIVE on every axis — the 4th (even 5th) CTA/SM is REACHED and still loses 30-38%; kTileK=128 fallback also negative (-15%); the B57 incumbent (128,3,ws=1) stands
 
-Front V3 session (GPU 2, pod `aisp-gb300-runall`, 8192^3 FP16, base 2f7e30f9
+Front V3 session (GPU 2, pod `<gb300-pod>`, 8192^3 FP16, base 2f7e30f9
 + uncommitted B57 state, incumbent md5s verified before work). B57's named
 lever was tile_n=64 ("simultaneously opens a 4th CTA/SM and stages 5-6"),
 with kTileK=128 as the fallback axis. Both were implemented flag-gated,

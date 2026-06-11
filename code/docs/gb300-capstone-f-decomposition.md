@@ -1,6 +1,6 @@
 # GB300 capstone tcgen05: F decomposed — the "fixed cost" was the t2r epilogue atom (Front Y)
 
-**Date:** 2026-06-11 | **Pod:** aisp-gb300-runall (GPU 3) | **Base:** 2f7e30f9 (B53 state) + uncommitted GB300 fixes
+**Date:** 2026-06-11 | **Pod:** <gb300-pod> (GPU 3) | **Base:** 2f7e30f9 (B53 state) + uncommitted GB300 fixes
 **Verdict: WIN — 1.49x kernel (23.8 -> 16.0us at FP16 2048^3), bit-identical (torch.equal, CTA1 + CTA2), all 3 harness targets verify PASS x3.**
 
 B52 named the lever: ~15us of FIXED per-CTA cost (F), 62-65% of the 23.9-24.2us
