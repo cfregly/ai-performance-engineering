@@ -362,7 +362,13 @@ def build_padding_inputs(
 
 
 class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark):
-    """Benchmark scalar vs vectorized per-output metric aggregation."""
+    """Benchmark scalar per-output metric aggregation vs a fused single-pass reduction.
+
+    The optimized arm calls the lab extension's metric_reduction_fused kernel:
+    one read of preds and targets produces all three per-responder sums with
+    fp32 accumulation, instead of three separate mul+sum passes (plus
+    temporaries) over the same 25 MB of inputs.
+    """
 
     preferred_ncu_replay_mode = "application"
 
@@ -374,6 +380,7 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.preds: Optional[torch.Tensor] = None
         self.targets: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._extension = None
         self._custom_metrics: dict[str, float] = {}
         self._refresh_workload_metadata()
 
@@ -386,10 +393,15 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
             raise RuntimeError("labs.training_hotpath metric-reduction benchmarks require CUDA")
         self.preds, self.targets = build_metric_inputs(self.workload, self.device)
         self.output = None
+        if self.optimized:
+            self._extension = load_training_hotpath_extension()
+            self._extension.metric_reduction_fused(self.preds, self.targets)
+        else:
+            self._extension = None
         total = self.workload.batch_size * self.workload.max_num_tokens * self.workload.responders
         self._custom_metrics = {
             "metric_reduction.is_vectorized": 1.0 if self.optimized else 0.0,
-            "metric_reduction.uses_cuda_extension": 0.0,
+            "metric_reduction.uses_cuda_extension": 1.0 if self.optimized else 0.0,
             "metric_reduction.responders": float(self.workload.responders),
             "metric_reduction.total_elements": float(total),
         }
@@ -398,11 +410,12 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
     def benchmark_fn(self) -> None:
         if self.preds is None or self.targets is None:
             raise RuntimeError("Metric inputs not initialized")
-        self.output = (
-            vectorized_metric_reduction(self.preds, self.targets)
-            if self.optimized
-            else scalar_metric_reduction(self.preds, self.targets)
-        )
+        if self.optimized:
+            if self._extension is None:
+                raise RuntimeError("CUDA extension not loaded")
+            self.output = self._extension.metric_reduction_fused(self.preds, self.targets)
+        else:
+            self.output = scalar_metric_reduction(self.preds, self.targets)
 
     def capture_verification_payload(self) -> None:
         if self.output is None or self.preds is None or self.targets is None:
@@ -420,6 +433,7 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.preds = None
         self.targets = None
         self.output = None
+        self._extension = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

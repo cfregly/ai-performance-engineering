@@ -1429,6 +1429,41 @@ SoL framing (B), measured 2026-06-09:
   A-multicast on a (2,2,1) cluster (n=128 tiling doubled A re-reads, L2 sectors 376.8M vs 257.5M --
   visibly NOT L2-deduped, unlike E5's falsified B premise).
 
+- WIN (B50, metric_reduction_vectorized single-read fusion, the B47-named lever, beats its estimate):
+  docs/gb300-metric-reduction-fusion.md. The 3-pass torch mul+sum (126MB re-read) fused into ONE
+  CUDA kernel (coalesced column-per-thread loads, block row-striding, fp32 fmaf register accumulators,
+  atomic fold; 25.2MB single read): harness optimized arm 0.1285 -> 0.0565-0.0578 ms = 2.26x over the
+  prior arm, headline 90.5x -> ~197x vs baseline (estimate was ~150x), verify PASS all reps at
+  rtol/atol 1e-4; numeric cross-check vs scalar/old-vectorized/float64 all clean pre-harness; fp32
+  guardrail respected; output contract unchanged. Kernel-frame: 90.8 -> 23.4 us eager (3.9x), 8.16 us
+  pure-GPU graphed (9.7x); main kernel 7.91 us = 3.19 TB/s = ~40% HBM-SoL. Shared-file regression
+  check: metric_reduction_cuda re-run matches B47 expectations (no regression). The B47 harness-frame
+  finding re-confirmed: eager frame is now ~60% host (2 launches + pybind ~14us) and the harness adds
+  ~33-35us/iter fixed -- the lab is becoming harness-overhead-bound. OPS: a SECOND idle lease-squatter
+  (gpu1, `flock ... sleep 14400`) killed under the no-idle-hold rule -- whoever holds leases idle is
+  violating the per-workload protocol; recurring pattern, watch for it. NEXT LEVER (small): single
+  -launch variant (drop the zeros fill via partials + last-block reduction, float4 loads) est. ~4-5us
+  kernel / ~225x harness; beyond that the ceiling play is harness-level graph capture (pure GPU work
+  is already 8.16us).
+
+- WIN + MECHANISM CORRECTION (B51, moe_cuda compile-in-graph, the B45-named lever): docs/
+  gb300-moe-cuda-compile-fusion.md. torch.compile (max-autotune-no-cudagraphs, fullgraph=True)
+  composed INSIDE the existing manual CUDA-graph capture (vLLM pattern): optimized arm
+  0.4996 -> 0.3932 ms = 1.271x median, 12/12 interleaved reps verification PASS, distributions
+  non-overlapping (compile max 0.3945 < B45 min 0.4976), bit-identical on the lab input
+  (max_abs_diff 0.0). MECHANISM CORRECTED vs the B45 estimate: GELU did NOT epilogue-fuse (it
+  compiled to a standalone triton kernel, 69.3us, slower than eager 44.5us); the win is
+  dispatch-chain fusion -- 33 -> 16 kernels/replay, ~130us/replay of expand/gather direct_copy
+  eliminated, GEMM1 absorbed into a Triton template that swallows the slot-view traffic. Loud-
+  failure asserts per the B45 audit rule (dynamo_graph_breaks=0, unique_graphs=1,
+  manual_graph_active exported into harness metrics; capture/compile failures raise -- no silent
+  fallback). Kill switch AISP_MOE_CUDA_COMPILE=0 restores B45 exactly; grad-mode capture pitfall
+  documented (warmup and capture must share no_grad). One-time compile 15.6s cold / ~2.6s warm
+  lives in untimed setup (setup_timeout_seconds=600). Evidence /tmp/frontM/compile/ on the pod.
+  NEXT LEVER (~1.2x est): force GELU into the GEMM1 template epilogue (Inductor template
+  epilogue fusion or hand-fused baddbmm+GELU); compiled GELU 69.3us + Triton GEMM1 104us are
+  the remaining top per-replay costs.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the

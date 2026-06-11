@@ -69,6 +69,37 @@ __global__ void segment_abs_mean_kernel(
   }
 }
 
+// Fused metric reduction: a single pass over preds/targets computes all three
+// per-responder sums (pred*pred, target*target, pred*target) that the torch
+// path needs three separate mul+sum passes (plus temporaries) for. Layout is
+// row-major [num_rows, responders], so consecutive threads cover consecutive
+// responder columns and global loads coalesce. Each block strides over rows
+// with fp32 register accumulators, then atomically folds its partials into the
+// zero-initialized out[3 * responders] (gridDim.x partials per output element).
+__global__ void metric_reduction_fused_kernel(
+    const float* __restrict__ preds,
+    const float* __restrict__ targets,
+    float* __restrict__ out,
+    int64_t num_rows,
+    int64_t responders) {
+  for (int64_t col = threadIdx.x; col < responders; col += blockDim.x) {
+    float pred_sq = 0.0f;
+    float target_sq = 0.0f;
+    float covar = 0.0f;
+    for (int64_t row = blockIdx.x; row < num_rows; row += gridDim.x) {
+      int64_t idx = row * responders + col;
+      float pred = preds[idx];
+      float target = targets[idx];
+      pred_sq = fmaf(pred, pred, pred_sq);
+      target_sq = fmaf(target, target, target_sq);
+      covar = fmaf(pred, target, covar);
+    }
+    atomicAdd(&out[col], pred_sq);
+    atomicAdd(&out[responders + col], target_sq);
+    atomicAdd(&out[2 * responders + col], covar);
+  }
+}
+
 __global__ void pack_rows_kernel(
     const float* input,
     const int64_t* row_indices,
@@ -143,6 +174,49 @@ torch::Tensor segment_abs_mean(torch::Tensor flat, torch::Tensor offsets) {
   return out;
 }
 
+torch::Tensor metric_reduction_fused(torch::Tensor preds, torch::Tensor targets) {
+  TORCH_CHECK(preds.is_cuda(), "preds must be a CUDA tensor");
+  TORCH_CHECK(targets.is_cuda(), "targets must be a CUDA tensor");
+  TORCH_CHECK(preds.dtype() == torch::kFloat32, "preds must be float32");
+  TORCH_CHECK(targets.dtype() == torch::kFloat32, "targets must be float32");
+  TORCH_CHECK(preds.sizes() == targets.sizes(), "preds and targets must have matching shapes");
+  TORCH_CHECK(preds.dim() >= 1, "preds must have at least one dimension");
+
+  auto preds_contig = preds.contiguous();
+  auto targets_contig = targets.contiguous();
+  int64_t responders = preds_contig.size(-1);
+  TORCH_CHECK(responders > 0, "responders dimension must be positive");
+  int64_t num_rows = preds_contig.numel() / responders;
+
+  // Output layout matches torch.cat((pred_sq, target_sq, covar)): fp32
+  // accumulation into a zero-initialized buffer (atomic partial folds).
+  auto out = torch::zeros({3 * responders}, preds.options());
+  if (num_rows == 0) {
+    return out;
+  }
+
+  static const int sm_count = [device_index = preds_contig.get_device()] {
+    int count = 0;
+    CHECK_CUDA(cudaDeviceGetAttribute(&count, cudaDevAttrMultiProcessorCount, device_index));
+    return count;
+  }();
+
+  // Enough row-blocks to fill the device while keeping per-output atomic
+  // traffic bounded at gridDim partials per element.
+  int64_t blocks = std::min<int64_t>(num_rows, static_cast<int64_t>(sm_count) * 4);
+  blocks = std::max<int64_t>(1, blocks);
+
+  constexpr int threads = 256;
+  metric_reduction_fused_kernel<<<static_cast<unsigned int>(blocks), threads>>>(
+      preds_contig.data_ptr<float>(),
+      targets_contig.data_ptr<float>(),
+      out.data_ptr<float>(),
+      num_rows,
+      responders);
+  CHECK_CUDA(cudaGetLastError());
+  return out;
+}
+
 torch::Tensor pack_rows(torch::Tensor input, torch::Tensor row_indices) {
   TORCH_CHECK(input.is_cuda(), "input must be a CUDA tensor");
   TORCH_CHECK(row_indices.is_cuda(), "row_indices must be a CUDA tensor");
@@ -199,6 +273,10 @@ torch::Tensor scatter_rows(torch::Tensor packed, torch::Tensor row_indices, int6
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("segment_abs_mean", &segment_abs_mean, "Segmented abs-mean reduction");
+  m.def(
+      "metric_reduction_fused",
+      &metric_reduction_fused,
+      "Fused single-pass pred_sq/target_sq/covar metric reduction");
   m.def("pack_rows", &pack_rows, "Pack active rows into a dense tensor");
   m.def("scatter_rows", &scatter_rows, "Scatter packed rows back into padded layout");
 }
