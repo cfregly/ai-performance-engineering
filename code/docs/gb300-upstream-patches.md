@@ -154,6 +154,25 @@ pod artifacts). In-repo fixes are already landed on main and are not listed.
   signature is real but its 3.7 occurrences trace to the repo's arch
   de-suffixing; the upstream 3.5-release breakage is fixed on main.
 
+
+## Tier 2b — new candidates from B76 (attention serving-shapes survey, 2026-06-11)
+
+### 7. flashinfer: `cudnn_batch_prefill_with_kv_cache` broken on sm_103 (0.6.3)
+- **Repo:** flashinfer-ai/flashinfer
+- **Finding (B76):** stride BAD_PARAM -> "No valid execution plans built";
+  `backend="fa3"` ships sm90-only cubins; trtllm-gen/cutlass invalid on
+  sm_103. Working cuDNN prefill would be worth up to ~4.3x on long-context
+  prefill vs the FA2-class default (cuDNN SDPA measured at 98-106% real-SoL
+  at S=8-32k on GB300). Reproducer material in /tmp/frontAT2/ (attempt
+  failure evidence captured).
+
+### 8. flashinfer: `cudnn_batch_decode_with_kv_cache` seq-len API mismatch
+- **Repo:** flashinfer-ai/flashinfer
+- **Finding (B76):** docstring says 1-D seq-len tensors; the cuDNN frontend
+  rejects them — requires 4-D (B,1,1,1). With the workaround the path runs
+  92.9% HBM-SoL, bit-identical, 1.124x over flashinfer's default decode.
+  Docs fix or input normalization; small PR.
+
 ## Tier 3 — book/educational content (this repo's own publishing pipeline)
 
 - The durable lesson set (B36–B58): beta=0 dead-path class; TMEM_LOAD atom

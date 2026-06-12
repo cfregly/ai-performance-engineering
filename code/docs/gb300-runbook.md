@@ -1987,6 +1987,26 @@ SoL framing (B), measured 2026-06-09:
   lever generalizes (eo2-te1dh1 1.45x over eo2-te0) and stays available. FP16 gates 3/3 PASS;
   no defaults changed.
 
+- SURVEY + WIN + INVERTED VERDICT (B76, attention at serving shapes, the unexplored axis): docs/
+  gb300-attention-serving-shapes.md. The map (bf16 D=128, CUDA-graphed, clock-stable, cuBLAS
+  anchor per session): PREFILL (B1 Hq32 causal, S=8k/16k/32k): cuDNN SDPA at the MACHINE CEILING
+  -- 1877-2018 TFLOPS = 98.8-106.2% of the 1.9PF real-SoL frame (96-103% of the same-session GEMM
+  anchor; GQA identical structure); flex compiled (max-autotune) 34-40%; flashinfer-auto and
+  flash_attn2 21-24% = the serving-default FA2-class paths are 4.3-4.7x OFF AT PREFILL. DECODE
+  (B32 q1, KV 8k/32k): cuDNN 7491-7554 GB/s = 93.6-94.4% HBM (the strongest HBM streamer measured
+  on this machine); flashinfer default 80-83%; flex fails to lower at KV=32k (NoValidChoicesError).
+  PROTOTYPE LANDED: flashinfer cudnn_batch_decode_with_kv_cache paged+graphed = 92.9% HBM = 1.124x
+  over flashinfer's default decode, BIT-IDENTICAL (max_abs 0.0) -- workaround discovered: the cuDNN
+  frontend demands 4-D (B,1,1,1) seq-len tensors (the docstring's 1-D form is rejected). B38
+  VERDICT HOLDS, REASON INVERTED: still no kernel-engineering EV at serving shapes -- because the
+  at-ceiling kernel ALREADY SHIPS in cuDNN; the micro-shape close could not see the 4.3-4.7x
+  BACKEND-ROUTING gap that dominates at serving shapes. ACTIONABLE: routing policy (prefill ->
+  SDPA/cuDNN; decode -> flashinfer cudnn path with the 4-D workaround), not kernel work. NEW
+  UPSTREAM CANDIDATES (flashinfer 0.6.3 on sm_103): (1) cudnn_batch_prefill_with_kv_cache broken
+  (stride BAD_PARAM -> no valid execution plans; fa3 backend ships sm90-only cubins) -- EV up to
+  ~4.3x on long-context prefill through flashinfer; (2) cudnn_batch_decode docstring/API mismatch
+  (1-D vs required 4-D seq-lens). Cells + probe evidence /tmp/frontAT2/, 12 cell JSONs mirrored.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
