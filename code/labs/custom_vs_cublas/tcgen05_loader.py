@@ -533,3 +533,56 @@ def load_tcgen05_dual_2sm_fp8_module():
 def matmul_tcgen05_dual_2sm_fp8(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """Execute FP8 2-SM UMMA pair GEMM: C = A @ B^T (e4m3 in, fp16 out)."""
     return load_tcgen05_dual_2sm_fp8_module().matmul_tcgen05_dual_2sm_fp8(a, b)
+
+
+def _load_tcgen05_dual_2sm_nvfp4_module(tile_n: int = 128, stages: int = 3,
+                                        min_blocks: int = 2, tile_k: int = 256,
+                                        raster_gm: int = 4, tma_epi: int = 1,
+                                        d_half: int = 1, epi_atom: int = 32):
+    """JIT-compile the NVFP4 (block-scaled e2m1, SF_VEC=16 ue4m3) 2-SM port.
+
+    Front N4b: SM100_MMA_MXF4_2x1SM_SS (tcgen05.mma.cta_group::2.kind::
+    mxf4nvf4.block_scale.block16, atom K=64) on the FP8 champion's
+    persistent eo=0 structure. SFA/SFB ride the same stage ring
+    (TMA -> smem -> UTCCP 2cta -> TMEM); TMEM alloc is 256 cols/CTA
+    (acc 128 + SF; pow2 alloc law) -> 2 CTAs/SM. kTileN=128 only (B75:
+    n256 would need a 512-col alloc = 1 CTA/SM, inadmissible).
+    kTileK=256 -> SW128 e2m1 smem atom (A 16KB + B 8KB + SFA 2KB + SFB 2KB
+    per stage); 128 -> SW64. te1+dh1 carried verbatim from the FP8 champion.
+
+    Defaults = the N4b-ratified champion (2026-06-12, GPU 1, 12-rep
+    interleaves at 8192^3, exact dataset rel_err == 0.0 at 2048/4096/8192):
+    n128 s3 mb2 k256 rg4 te1 dh1 = 219.8us median = 5003 TFLOPS = 58.0% of
+    the warmed cuBLASLt NVFP4 ceiling (127.5us / 8622 TF; B61 method) =
+    0.594x cuBLASLt. Beats the FP8 champion's 313.5us ABSOLUTE time at the
+    same FLOP count (1.43x). Sweep: rg4 > rg16 > rg8 (1.02x, 12/12); s2
+    0.77x; k128 (SW64, te0) ~0.54x; see docs/gb300-nvfp4-dual2sm.md.
+    """
+    extra = (
+        f"-DDUAL2SM_TILE_N={tile_n}",
+        f"-DDUAL2SM_STAGES={stages}",
+        f"-DDUAL2SM_MIN_BLOCKS={min_blocks}",
+        f"-DDUAL2SM_TILE_K={tile_k}",
+        "-DDUAL2SM_PERSIST=1",
+        f"-DDUAL2SM_RASTER_GM={raster_gm}",
+        f"-DDUAL2SM_EPI_ATOM={epi_atom}",
+        f"-DDUAL2SM_TMA_EPI={tma_epi}",
+        f"-DDUAL2SM_D_HALF={d_half}",
+    )
+    return _load_kernel(
+        _LAB_DIR / "tcgen05_dual_2sm_nvfp4.cu",
+        f"lab_tcgen05_dual_2sm_nvfp4_n{tile_n}s{stages}mb{min_blocks}k{tile_k}"
+        f"rg{raster_gm}ea{epi_atom}te{tma_epi}dh{d_half}",
+        extra_cuda_flags=extra,
+    )
+
+
+def matmul_tcgen05_dual_2sm_nvfp4(a: torch.Tensor, b: torch.Tensor,
+                                  sfa: torch.Tensor, sfb: torch.Tensor) -> torch.Tensor:
+    """NVFP4 2-SM pair GEMM: D = (A*SFA) @ (B*SFB)^T.
+
+    a/b: packed uint8 [rows, k/2] (2 e2m1 per byte, low nibble first);
+    sfa/sfb: float8_e4m3fn flat in the cuBLASLt 128x4-blocked layout
+    (same convention as torch._scaled_mm NVFP4). fp16 out.
+    """
+    return _load_tcgen05_dual_2sm_nvfp4_module().matmul_tcgen05_dual_2sm_nvfp4(a, b, sfa, sfb)
