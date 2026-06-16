@@ -2007,6 +2007,32 @@ SoL framing (B), measured 2026-06-09:
   ~4.3x on long-context prefill through flashinfer; (2) cudnn_batch_decode docstring/API mismatch
   (1-D vs required 4-D seq-lens). Cells + probe evidence /tmp/frontAT2/, 12 cell JSONs mirrored.
 
+- HONEST NEGATIVE + L4 ncu (B77, NVFP4 dual_2sm contract port, the B72-named unlock):
+  labs/custom_vs_cublas/bench_dual_2sm_nvfp4.py on pod aisp-gb300-runall @ commit 66f6307a
+  (2026-06-16 sprint re-measure after repo sync). K4/R4/H4 custom
+  (`SM100_MMA_MXF4_2x1SM_SS` + TMA-2SM, tcgen05 dual-cluster) vs H4 baseline cuBLASLt
+  `torch._scaled_mm` NVFP4 (TN, 128x4-blocked ue4m3 scales). Shape: exact dataset,
+  8192^3 e2m1, 12 interleaved paired reps, GPU1, no cudagraph. cuBLASLt median 130.9 us
+  (8402 TFLOPS, 97.6% calSoL vs warmed ceiling 8607 TFLOPS); custom champion
+  n128s3mb2k256rg4te1dh1 median 220.7 us (4983 TFLOPS, 57.9% calSoL); paired
+  0.5923x, 0/12 wins. Correctness: rel_err == 0.0 both arms. ncu --set full on the custom
+  kernel (launch-skip 30, isolated replay): Duration ~222 us, Compute(SM) 71.2%,
+  DRAM ~15% HBM-SoL proxy, achieved occupancy 11.2% (230 KB smem/cluster, register-limited
+  1 block/SM). VERDICT: DRAFT scaffold only; cannot beat the production H4 library at
+  dense 8192^3 despite tensor-core engagement. The FP16 dual_2sm scheduling ladder (B68)
+  does not transfer: NVFP4 needs a mainloop/operand-geometry rewrite, not more
+  raster/prefetch/TMA-epilogue tuning. Next lever: structural NVFP4 mainloop (swizzle +
+  4-MMA feed path), same effort class as B68's epilogue win on FP16. Evidence:
+  /tmp/sprint-20260616/gpu1_nvfp4_full.log, /tmp/sprint-20260616/ncu_nvfp4_full.txt.
+
+- RATIFICATION (B78, FP16 dual_2sm V7 TMA epilogue re-check post-pull, no code delta):
+  /tmp/frontV7/ab_v7.py on GPU2 @ 66f6307a confirms B68 defaults still hold: challenger
+  TE=1 cfg (128,3,1,0,3,64,0,32,1,8,0,0,1) vs incumbent TE=0, FP16 8192^3, 12 paired reps.
+  Median 827.6 us vs 905.2 us = 1.0883x, 12/12 wins (~69.9% vs ~63.9% real SoL); cuBLAS
+  702.1 us (~82.4% real SoL). Scheduling frontier stays CLOSED at ~70% real SoL; gap to
+  cuBLAS is epilogue/mainloop geometry, not TE=0 vs TE=1. Evidence:
+  /tmp/sprint-20260616/gpu2_v7.log; /tmp/frontV7-backup-20260616T073829Z.tgz.
+
 Patterns (the durable GB300 lessons): (1) comm, reduce or reroute or re-engine the bytes
 (volume-reduction, routing, right-engine win; overlap/backend-swap tie on fast NVLink). (2) kernel,
 optimize the kernel structure not the byte movement (kernel-structure + CUDA-graph opts carry the
