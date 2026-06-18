@@ -255,8 +255,13 @@ Recent sessions:
 - [PyTorch Model Optimization](resources/PyTorch_Model_Optimization.pdf)
 
 ### Monthly Meetup Summaries
-- **Feb 16, 2026** - [YouTube Coming Soon](https://www.youtube.com/@AIPerformanceEngineering) & Slides: [NVFP4 Low Precision Numerics by Riccardo Mereu @ Verda](resources/NVFP4_Low_Precision_Numerics_Verda.pdf)
+- **Jun 15, 2026** - [YouTube](https://www.youtube.com/watch?v=1gALYQESnNU): Hacking AI Accelerators: Maxxing Tokens & Outcomes with Rob Ferguson @ Fireworks.AI
+- **May 19, 2026** - [YouTube](https://www.youtube.com/watch?v=Z_L-vowv_Io): OpenAI on AWS + Cerebras vs GPU vs TPU + High-Performance KV Cache Offload
+- **Apr 23, 2026** - [YouTube](https://www.youtube.com/watch?v=1i_9-4bx3Ms): Optimizing AI Inference for Heterogeneous Clusters by Natalie Serrino, Founder @ Gimlet Labs
+- **Mar 23, 2026** - [YouTube](https://www.youtube.com/watch?v=qDOxTI-4pnU) & Slides: [NVIDIA GTC 2026 Performance Recap](resources/NVIDIA_GTC_2026_Performance_Recap_including_Slides_and_Workshops.pdf): NVIDIA GTC 2026 Conf Recap + Inference Engines + Scaling Disaggregated Prefill-Decode + RadixAttention
+- **Feb 16, 2026** - [YouTube](https://www.youtube.com/watch?v=GdICZ0ov7Cw) & Slides: [NVFP4 Low Precision Numerics by Riccardo Mereu @ Verda](resources/NVFP4_Low_Precision_Numerics_Verda.pdf): OpenClaw/MCP for AI Systems Performance Tuning + NVFP4 Low Precision Optimizations
 - **Jan 19, 2026** - [YouTube](https://www.youtube.com/watch?v=o-etY6VLHZo) & Slides: [Optimizing_Data_Transfer_With_NVIDIA_Nsight_Systems_Profiler_by_Chaim_Rand](resources/Optimizing_Data_Transfer_With_NVIDIA_Nsight_Systems_Profiler_by_Chaim_Rand.pdf)
+- **Dec 16, 2025** - [YouTube: NeurIPS 2025 AI Systems Recap](https://www.youtube.com/watch?v=_8RoYhWhj1o), [YouTube: Advanced Data Curation and Visualization for LLMs with NVIDIA cuML](https://www.youtube.com/watch?v=MaUdaibdIxU) & Slides: [NVIDIA Data Curation](resources/nvidia_data_curation.pdf), and [YouTube: Automated Browser Use with Amazon AGI by Antje Barth](https://www.youtube.com/watch?v=bTRvIRfi-wk)
 - **November 17, 2025** - [YouTube](https://youtu.be/2EWDG_Dxjs8) & Slides: [SpeedOfLight_Inference_Modular_Nov_17_2025_Abdul_Dakkak](resources/SpeedOfLight_Inference_Modular_Nov_17_2025_Abdul_Dakkak.pdf): Speed of Light Inference with NVIDIA and AMD GPUs and Modular Platform by Abdul Dakkak
 - **October 20, 2025** - [YouTube](https://youtu.be/d3ZLodGTlAo): AI-Powered GPU Kernel Optimization + Distributed PyTorch with nbdistributed
 - **September 15, 2025** – [YouTube](https://www.youtube.com/watch?v=eLnHXL1xXfM): Dynamic Adaptive RL inference kernel tuning deep dive.
