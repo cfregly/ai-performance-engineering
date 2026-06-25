@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import torch
+
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.common.device_utils import require_cuda_device
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
@@ -891,7 +892,22 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.inputs.k.grad = None
 
         with self._nvtx_range(self.label):
-            if self.backend == "baseline":
+            if self.workload.mode == "forward":
+                with torch.inference_mode():
+                    if self.backend == "baseline":
+                        probs, indices = baseline_top_k_select(
+                            self.inputs.q,
+                            self.inputs.k,
+                            self.workload,
+                        )
+                    else:
+                        probs, indices = run_optimized_top_k_select(
+                            self.inputs.q,
+                            self.inputs.k,
+                            self.workload,
+                            self.backend,
+                        )
+            elif self.backend == "baseline":
                 probs, indices = baseline_top_k_select(
                     self.inputs.q,
                     self.inputs.k,
@@ -910,12 +926,12 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if self.workload.mode == "fwd_bwd":
                 loss = (probs * self.inputs.loss_weights).sum()
                 loss.backward()
-                q_grad = self.inputs.q.grad.detach().clone()
-                k_grad = self.inputs.k.grad.detach().clone()
+                q_grad = self.inputs.q.grad.detach()
+                k_grad = self.inputs.k.grad.detach()
 
         self.outputs = TopKKernelOutputs(
-            probs=probs.detach().clone(),
-            indices=indices.detach().clone(),
+            probs=probs.detach(),
+            indices=indices.detach(),
             q_grad=q_grad,
             k_grad=k_grad,
         )
