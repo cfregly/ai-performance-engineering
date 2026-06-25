@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Optional, List
+from typing import List, Optional
 
 import torch
 
+from core.benchmark.gpu_requirements import skip_if_insufficient_gpus
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from core.benchmark.gpu_requirements import skip_if_insufficient_gpus
 
 
 class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -62,7 +62,7 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.local_sums[idx].copy_(tensor.sum().view(1))
             torch.cuda.nccl.all_reduce(self.local_sums, outputs=self.reduced_sums)
             torch.cuda.synchronize()
-            self.output = self.reduced_sums[0].detach().clone()
+            self.output = self.reduced_sums[0]
 
     def capture_verification_payload(self) -> None:
         if not self.data:

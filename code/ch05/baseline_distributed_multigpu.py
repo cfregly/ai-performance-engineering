@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Optional, List
+from typing import List, Optional
 
 import torch
 
+from core.benchmark.gpu_requirements import skip_if_insufficient_gpus
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from core.benchmark.gpu_requirements import skip_if_insufficient_gpus
 
 
 class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -22,6 +22,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.data: List[torch.Tensor] = []
         self.device_ids: List[int] = []
         self.output: Optional[torch.Tensor] = None
+        self._cpu_total: Optional[float] = None
         self.num_elements = 200_000_000
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -54,11 +55,16 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             cpu_total = 0.0
             for tensor in self.data:
                 cpu_total += float(tensor.sum().cpu())
-            self.output = torch.tensor([cpu_total], device=f"cuda:{self.device_ids[0]}", dtype=torch.float32)
+            self._cpu_total = cpu_total
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or not self.data:
+        if self._cpu_total is None or not self.data:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+        self.output = torch.tensor(
+            [self._cpu_total],
+            device=f"cuda:{self.device_ids[0]}",
+            dtype=torch.float32,
+        )
         probe = self.data[0][:256].detach().cpu()
         self._set_verification_payload(
             inputs={"data_probe": probe},
@@ -77,6 +83,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.data = []
         self.output = None
+        self._cpu_total = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
