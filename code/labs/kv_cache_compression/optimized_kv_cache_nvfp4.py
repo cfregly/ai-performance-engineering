@@ -6,12 +6,17 @@ from typing import Optional
 
 import torch
 
-from labs.kv_cache_compression.baseline_kv_cache import BaselineKVCacheBenchmark, TE_AVAILABLE, TE_IMPORT_ERROR
+from labs.kv_cache_compression.baseline_kv_cache import (
+    TE_AVAILABLE,
+    TE_IMPORT_ERROR,
+    BaselineKVCacheBenchmark,
+)
 from labs.kv_cache_compression.kv_cache_common import reset_cache
 
 if TE_AVAILABLE:
-    from transformer_engine.pytorch import autocast as te_autocast, is_nvfp4_available
     from transformer_engine.common import recipe as te_recipe
+    from transformer_engine.pytorch import autocast as te_autocast
+    from transformer_engine.pytorch import is_nvfp4_available
 else:  # pragma: no cover
     te_autocast = is_nvfp4_available = te_recipe = None  # type: ignore
 
@@ -57,14 +62,10 @@ class OptimizedKVCacheNVFP4Benchmark(BaselineKVCacheBenchmark):
             for decode in self.decode_inputs:
                 _ = self.model(decode, self.cache, offset)
                 offset += decode.shape[1]
-        if self.cache is not None:
-            k_slice = self.cache.cache_k[:, : min(1, self.cache.cache_k.shape[1]), :1, : min(8, self.cache.cache_k.shape[-1])]
-            v_slice = self.cache.cache_v[:, : min(1, self.cache.cache_v.shape[1]), :1, : min(8, self.cache.cache_v.shape[-1])]
-            self.output = torch.stack([k_slice, v_slice], dim=0).detach().float().clone()
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._mark_cache_output_ready()
 
     def capture_verification_payload(self) -> None:
+        self.output = self._build_verification_output()
         self._set_verification_payload(
             inputs={
                 "batch_size": torch.tensor([self.batch_size], dtype=torch.int64, device="cpu"),

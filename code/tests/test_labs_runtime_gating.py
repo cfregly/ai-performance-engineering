@@ -10,10 +10,17 @@ import torch.nn as nn
 from core.harness.benchmark_harness import ExecutionMode
 from labs.kv_cache_compression import kv_cache_common
 from labs.kv_cache_compression.baseline_kv_cache import BaselineKVCacheBenchmark
-from labs.kv_cache_compression.kv_cache_common import KVCacheAttention, allocate_kv_cache, build_token_batches
+from labs.kv_cache_compression.kv_cache_common import (
+    KVCacheAttention,
+    allocate_kv_cache,
+    build_token_batches,
+)
+from labs.kv_cache_compression.optimized_kv_cache_nvfp4 import OptimizedKVCacheNVFP4Benchmark
 from labs.nvfp4_group_gemm import custom_cuda_submission
 from labs.persistent_decode import paged_kv_offload_common as paged_kv
-from labs.persistent_decode.optimized_paged_kv_offload import get_benchmark as get_optimized_paged_kv_offload
+from labs.persistent_decode.optimized_paged_kv_offload import (
+    get_benchmark as get_optimized_paged_kv_offload,
+)
 from labs.persistent_decode.paged_kv_offload_common import PagedKVConfig, PagedKVOffloadBenchmark
 from labs.trtllm_phi_3_5_moe import trtllm_common
 from labs.trtllm_phi_3_5_moe.baseline_trtllm_phi_3_5_moe import (
@@ -46,6 +53,45 @@ def test_kv_cache_benchmark_defaults_keep_single_gpu_shape_bounded() -> None:
     assert bench.prefill_seq == 4096
     assert bench.decode_seq == 128
     assert bench.decode_steps == 128
+
+
+@pytest.mark.parametrize(
+    "benchmark_cls",
+    (BaselineKVCacheBenchmark, OptimizedKVCacheNVFP4Benchmark),
+)
+def test_kv_cache_verification_output_is_built_after_benchmark(
+    benchmark_cls, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bench = benchmark_cls()
+    bench.device = torch.device("cpu")
+    bench.batch_size = 2
+    bench.prefill_seq = 4
+    bench.decode_seq = 2
+    bench.decode_steps = 1
+    bench.cache = allocate_kv_cache(
+        batch_size=2,
+        total_tokens=6,
+        num_heads=2,
+        head_dim=4,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    bench.cache.cache_k.copy_(torch.arange(bench.cache.cache_k.numel()).view_as(bench.cache.cache_k))
+    bench.cache.cache_v.copy_(torch.arange(bench.cache.cache_v.numel()).view_as(bench.cache.cache_v).mul_(2))
+
+    def fail_stack(*args, **kwargs):
+        raise AssertionError("benchmark_fn() should not stack verification output")
+
+    monkeypatch.setattr(torch, "stack", fail_stack)
+    bench._mark_cache_output_ready()
+    assert bench.output is None
+    monkeypatch.undo()
+
+    bench.capture_verification_payload()
+
+    verify_output = bench.get_verify_output()
+    assert verify_output.shape == (2, 2, 1, 1, 4)
+    assert verify_output.dtype == torch.float32
 
 
 class _DummyLayerNorm(nn.Module):

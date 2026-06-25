@@ -22,7 +22,6 @@ from labs.kv_cache_compression.kv_cache_common import (
     resolve_device,
 )
 
-
 apply_env_defaults()
 
 
@@ -46,11 +45,11 @@ def _preload_torch_cuda_symbols() -> None:
 _preload_torch_cuda_symbols()
 
 try:  # Transformer Engine is optional; fail fast in setup when missing.
-    from transformer_engine.pytorch import Linear as TELinear
+    from transformer_engine.common import recipe as te_recipe
     from transformer_engine.pytorch import LayerNorm as TELayerNorm
+    from transformer_engine.pytorch import Linear as TELinear
     from transformer_engine.pytorch import autocast as te_autocast
     from transformer_engine.pytorch import quantized_model_init
-    from transformer_engine.common import recipe as te_recipe
 
     TE_AVAILABLE = True
     TE_IMPORT_ERROR: Optional[Exception] = None
@@ -84,6 +83,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.runtime_recipe = self.fp8_recipe
         self.output: Optional[torch.Tensor] = None
+        self._cache_output_ready = False
 
     def _resolve_device(self) -> torch.device:
         return resolve_device()
@@ -130,6 +130,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.register_workload_metadata(tokens_per_iteration=float(tokens_per_iteration))
         self._calibrate_fp8(recipe)
         self._warmup_runtime(recipe)
+        self._cache_output_ready = False
         torch.cuda.synchronize()
 
     def _calibrate_fp8(self, recipe) -> None:
@@ -173,15 +174,32 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for decode in self.decode_inputs:
                 _ = self.model(decode, self.cache, offset)
                 offset += decode.shape[1]
-        # Capture a slice of the cache as verification output
-        if self.cache is not None:
-            k_slice = self.cache.cache_k[:, : min(1, self.cache.cache_k.shape[1]), :1, : min(8, self.cache.cache_k.shape[-1])]
-            v_slice = self.cache.cache_v[:, : min(1, self.cache.cache_v.shape[1]), :1, : min(8, self.cache.cache_v.shape[-1])]
-            self.output = torch.stack([k_slice, v_slice], dim=0).detach().float().clone()
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._mark_cache_output_ready()
+
+    def _mark_cache_output_ready(self) -> None:
+        if self.cache is None:
+            raise RuntimeError("Benchmark cache not initialized")
+        self._cache_output_ready = True
+
+    def _build_verification_output(self) -> torch.Tensor:
+        if self.cache is None or not self._cache_output_ready:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        k_slice = self.cache.cache_k[
+            :,
+            : min(1, self.cache.cache_k.shape[1]),
+            :1,
+            : min(8, self.cache.cache_k.shape[-1]),
+        ]
+        v_slice = self.cache.cache_v[
+            :,
+            : min(1, self.cache.cache_v.shape[1]),
+            :1,
+            : min(8, self.cache.cache_v.shape[-1]),
+        ]
+        return torch.stack([k_slice, v_slice], dim=0).detach().float().clone()
 
     def capture_verification_payload(self) -> None:
+        self.output = self._build_verification_output()
         self._set_verification_payload(
             inputs={
                 "batch_size": torch.tensor([self.batch_size], dtype=torch.int64, device="cpu"),
@@ -206,6 +224,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cache = None
         self.model = None
         self.output = None
+        self._cache_output_ready = False
         torch.cuda.empty_cache()
 
     def validate_result(self) -> Optional[str]:
