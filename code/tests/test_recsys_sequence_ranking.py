@@ -4,7 +4,9 @@ import torch
 
 from core.harness.benchmark_harness import BenchmarkConfig, ReadOnlyBenchmarkConfigView
 from labs.recsys_sequence_ranking.baseline_sequence_ranking import BaselineSequenceRankingBenchmark
-from labs.recsys_sequence_ranking.optimized_sequence_ranking import OptimizedSequenceRankingBenchmark
+from labs.recsys_sequence_ranking.optimized_sequence_ranking import (
+    OptimizedSequenceRankingBenchmark,
+)
 from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     SequenceRankingWorkload,
     apply_cli_overrides,
@@ -12,8 +14,10 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     build_inputs,
     build_model_state,
     build_workspace,
+    context_sum_vectorized,
     optimized_forward,
     resolve_score_backend,
+    sequence_mean_vectorized,
 )
 
 
@@ -71,6 +75,21 @@ def test_baseline_and_optimized_torch_paths_match_on_cpu() -> None:
     )
 
     torch.testing.assert_close(baseline_scores, optimized_scores, rtol=1e-6, atol=1e-6)
+
+
+def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
+    workload = _small_workload()
+    inputs = build_inputs(workload, torch.device("cpu"))
+    state = build_model_state(workload, torch.device("cpu"))
+    workspace = build_workspace(workload, torch.device("cpu"))
+
+    fallback_sequence = sequence_mean_vectorized(inputs, state)
+    workspace_sequence = sequence_mean_vectorized(inputs, state, workspace)
+    fallback_context = context_sum_vectorized(inputs, state)
+    workspace_context = context_sum_vectorized(inputs, state, workspace)
+
+    torch.testing.assert_close(workspace_sequence, fallback_sequence, rtol=1e-6, atol=1e-6)
+    torch.testing.assert_close(workspace_context, fallback_context, rtol=1e-6, atol=1e-6)
 
 
 def test_resolve_score_backend_respects_availability() -> None:

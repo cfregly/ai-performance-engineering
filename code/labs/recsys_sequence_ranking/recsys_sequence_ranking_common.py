@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from core.benchmark.triton_compat import ensure_triton_compat
 
@@ -63,7 +63,7 @@ class RankingModelState:
 
     item_embeddings: torch.Tensor
     context_embeddings: torch.Tensor
-    tower: "SequenceRankingTower"
+    tower: SequenceRankingTower
     parameter_count: int
 
 
@@ -74,6 +74,9 @@ class RankingWorkspace:
     sequence_accum: torch.Tensor
     context_accum: torch.Tensor
     score_output: torch.Tensor
+    sequence_mask_float: torch.Tensor
+    sequence_length_recip: torch.Tensor
+    context_table_index: torch.Tensor
 
 
 class SequenceRankingTower(nn.Module):
@@ -98,7 +101,9 @@ def default_workload() -> SequenceRankingWorkload:
     return SequenceRankingWorkload()
 
 
-def apply_cli_overrides(workload: SequenceRankingWorkload, argv: list[str]) -> SequenceRankingWorkload:
+def apply_cli_overrides(
+    workload: SequenceRankingWorkload, argv: list[str]
+) -> SequenceRankingWorkload:
     """Apply per-target CLI overrides without mutating global process state."""
 
     parser = argparse.ArgumentParser(add_help=False)
@@ -117,7 +122,7 @@ def apply_cli_overrides(workload: SequenceRankingWorkload, argv: list[str]) -> S
     parser.add_argument("--score-backend", choices=_SCORE_BACKEND_CHOICES, default=None)
     args, _ = parser.parse_known_args(argv)
 
-    updates: Dict[str, Any] = {}
+    updates: dict[str, Any] = {}
     for field_name in (
         "batch_size",
         "seq_len",
@@ -170,7 +175,9 @@ def _sample_zipf(
     return torch.multinomial(probs, count, replacement=True, generator=generator)
 
 
-def _randn(shape: tuple[int, ...], *, generator: torch.Generator, dtype: torch.dtype, scale: float = 0.02) -> torch.Tensor:
+def _randn(
+    shape: tuple[int, ...], *, generator: torch.Generator, dtype: torch.dtype, scale: float = 0.02
+) -> torch.Tensor:
     return torch.randn(shape, generator=generator, dtype=torch.float32).mul_(scale).to(dtype=dtype)
 
 
@@ -239,7 +246,9 @@ def build_model_state(workload: SequenceRankingWorkload, device: torch.device) -
         dtype=workload.dtype,
     ).to(device=device)
 
-    tower = SequenceRankingTower(workload.embedding_dim, workload.hidden_dim).to(device=device, dtype=workload.dtype)
+    tower = SequenceRankingTower(workload.embedding_dim, workload.hidden_dim).to(
+        device=device, dtype=workload.dtype
+    )
     with torch.no_grad():
         tower.in_proj.weight.copy_(
             _randn(
@@ -249,7 +258,9 @@ def build_model_state(workload: SequenceRankingWorkload, device: torch.device) -
             ).to(device=device)
         )
         tower.in_proj.bias.copy_(
-            _randn((workload.hidden_dim,), generator=generator, dtype=workload.dtype).to(device=device)
+            _randn((workload.hidden_dim,), generator=generator, dtype=workload.dtype).to(
+                device=device
+            )
         )
         tower.out_proj.weight.copy_(
             _randn(
@@ -259,12 +270,20 @@ def build_model_state(workload: SequenceRankingWorkload, device: torch.device) -
             ).to(device=device)
         )
         tower.out_proj.bias.copy_(
-            _randn((workload.embedding_dim,), generator=generator, dtype=workload.dtype).to(device=device)
+            _randn((workload.embedding_dim,), generator=generator, dtype=workload.dtype).to(
+                device=device
+            )
         )
-        tower.norm.weight.copy_(torch.ones(workload.embedding_dim, device=device, dtype=workload.dtype))
+        tower.norm.weight.copy_(
+            torch.ones(workload.embedding_dim, device=device, dtype=workload.dtype)
+        )
         tower.norm.bias.zero_()
 
-    parameter_count = int(item_embeddings.numel() + context_embeddings.numel() + sum(p.numel() for p in tower.parameters()))
+    parameter_count = int(
+        item_embeddings.numel()
+        + context_embeddings.numel()
+        + sum(p.numel() for p in tower.parameters())
+    )
     return RankingModelState(
         item_embeddings=item_embeddings,
         context_embeddings=context_embeddings,
@@ -276,6 +295,10 @@ def build_model_state(workload: SequenceRankingWorkload, device: torch.device) -
 def build_workspace(workload: SequenceRankingWorkload, device: torch.device) -> RankingWorkspace:
     """Allocate reusable scratch buffers in setup()."""
 
+    context_table_index = torch.arange(workload.num_tables, device=device, dtype=torch.int64)
+    context_table_index = (
+        context_table_index.view(1, workload.num_tables).expand(workload.batch_size, -1).clone()
+    )
     return RankingWorkspace(
         sequence_accum=torch.empty(
             workload.batch_size,
@@ -295,6 +318,20 @@ def build_workspace(workload: SequenceRankingWorkload, device: torch.device) -> 
             device=device,
             dtype=torch.float32,
         ),
+        sequence_mask_float=torch.empty(
+            workload.batch_size,
+            workload.seq_len,
+            1,
+            device=device,
+            dtype=workload.dtype,
+        ),
+        sequence_length_recip=torch.empty(
+            workload.batch_size,
+            1,
+            device=device,
+            dtype=workload.dtype,
+        ),
+        context_table_index=context_table_index,
     )
 
 
@@ -342,27 +379,47 @@ def candidate_scores_baseline(
     return out
 
 
-def sequence_mean_vectorized(inputs: RankingInputs, state: RankingModelState) -> torch.Tensor:
+def sequence_mean_vectorized(
+    inputs: RankingInputs,
+    state: RankingModelState,
+    workspace: RankingWorkspace | None = None,
+) -> torch.Tensor:
     seq_emb = F.embedding(inputs.sequence_ids, state.item_embeddings)
-    mask = inputs.sequence_mask.to(dtype=seq_emb.dtype).unsqueeze(-1)
-    lengths = inputs.sequence_lengths.to(dtype=seq_emb.dtype).clamp_min_(1).unsqueeze(1)
-    return (seq_emb * mask).sum(dim=1) / lengths
+    if workspace is None:
+        mask = inputs.sequence_mask.to(dtype=seq_emb.dtype).unsqueeze(-1)
+        lengths = inputs.sequence_lengths.to(dtype=seq_emb.dtype).clamp_min_(1).unsqueeze(1)
+        return (seq_emb * mask).sum(dim=1) / lengths
+
+    workspace.sequence_mask_float.copy_(inputs.sequence_mask.unsqueeze(-1))
+    workspace.sequence_length_recip.copy_(inputs.sequence_lengths.unsqueeze(1))
+    workspace.sequence_length_recip.clamp_min_(1).reciprocal_()
+    return (seq_emb * workspace.sequence_mask_float).sum(dim=1) * workspace.sequence_length_recip
 
 
-def context_sum_vectorized(inputs: RankingInputs, state: RankingModelState) -> torch.Tensor:
+def context_sum_vectorized(
+    inputs: RankingInputs,
+    state: RankingModelState,
+    workspace: RankingWorkspace | None = None,
+) -> torch.Tensor:
     batch_size, num_tables = inputs.context_ids.shape
-    table_index = torch.arange(num_tables, device=inputs.context_ids.device, dtype=torch.int64)
-    table_index = table_index.view(1, num_tables).expand(batch_size, -1)
+    if workspace is None:
+        table_index = torch.arange(num_tables, device=inputs.context_ids.device, dtype=torch.int64)
+        table_index = table_index.view(1, num_tables).expand(batch_size, -1)
+    else:
+        table_index = workspace.context_table_index
     context_vecs = state.context_embeddings[table_index, inputs.context_ids]
     return context_vecs.sum(dim=1)
 
 
-def candidate_scores_torch(user_vec: torch.Tensor, inputs: RankingInputs, state: RankingModelState) -> torch.Tensor:
+def candidate_scores_torch(
+    user_vec: torch.Tensor, inputs: RankingInputs, state: RankingModelState
+) -> torch.Tensor:
     candidate_emb = F.embedding(inputs.candidate_ids, state.item_embeddings)
     return torch.einsum("bd,bcd->bc", user_vec.to(torch.float32), candidate_emb.to(torch.float32))
 
 
 if TRITON_AVAILABLE:
+
     @triton.jit
     def _candidate_dot_kernel(
         user_ptr,
@@ -378,8 +435,8 @@ if TRITON_AVAILABLE:
         stride_candidate_d,
         stride_out_b,
         stride_out_c,
-        BLOCK_C: tl.constexpr,
-        BLOCK_D: tl.constexpr,
+        BLOCK_C: tl.constexpr,  # noqa: N803
+        BLOCK_D: tl.constexpr,  # noqa: N803
     ):
         batch_idx = tl.program_id(0)
         candidate_block_idx = tl.program_id(1)
@@ -475,14 +532,14 @@ def optimized_forward(
     inputs: RankingInputs,
     state: RankingModelState,
     *,
-    compiled_tower: Optional[nn.Module] = None,
+    compiled_tower: nn.Module | None = None,
     score_backend: str,
-    workspace: Optional[RankingWorkspace] = None,
+    workspace: RankingWorkspace | None = None,
 ) -> torch.Tensor:
     """Execute the vectorized sparse-ranking path."""
 
-    seq_vec = sequence_mean_vectorized(inputs, state)
-    context_vec = context_sum_vectorized(inputs, state)
+    seq_vec = sequence_mean_vectorized(inputs, state, workspace)
+    context_vec = context_sum_vectorized(inputs, state, workspace)
     tower = compiled_tower if compiled_tower is not None else state.tower
     user_vec = tower(seq_vec + context_vec)
     if score_backend == "triton":
@@ -492,10 +549,18 @@ def optimized_forward(
     return candidate_scores_torch(user_vec, inputs, state)
 
 
-def ranking_metrics(workload: SequenceRankingWorkload, inputs: RankingInputs, *, score_backend: str, compile_enabled: bool) -> dict:
+def ranking_metrics(
+    workload: SequenceRankingWorkload,
+    inputs: RankingInputs,
+    *,
+    score_backend: str,
+    compile_enabled: bool,
+) -> dict:
     avg_length = float(inputs.sequence_lengths.to(torch.float32).mean().item())
     hot_threshold = max(workload.item_vocab_size // 100, 1)
-    hot_share = float((inputs.candidate_ids < hot_threshold).to(torch.float32).mean().item() * 100.0)
+    hot_share = float(
+        (inputs.candidate_ids < hot_threshold).to(torch.float32).mean().item() * 100.0
+    )
     return {
         "ranking.avg_sequence_length": avg_length,
         "ranking.num_tables": float(workload.num_tables),
@@ -511,15 +576,15 @@ def warm_optimized_path(
     inputs: RankingInputs,
     state: RankingModelState,
     *,
-    compiled_tower: Optional[nn.Module],
+    compiled_tower: nn.Module | None,
     score_backend: str,
-    workspace: Optional[RankingWorkspace] = None,
+    workspace: RankingWorkspace | None = None,
 ) -> None:
     """Pay one-time compile/autotune costs before the measured loop."""
 
     with torch.no_grad():
-        seq_vec = sequence_mean_vectorized(inputs, state)
-        context_vec = context_sum_vectorized(inputs, state)
+        seq_vec = sequence_mean_vectorized(inputs, state, workspace)
+        context_vec = context_sum_vectorized(inputs, state, workspace)
         user_input = seq_vec + context_vec
         tower = compiled_tower if compiled_tower is not None else state.tower
         user_vec = tower(user_input)
