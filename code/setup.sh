@@ -251,10 +251,10 @@ VLLM_WHEEL_PATTERN="${VLLM_WHEEL_PATTERN:-${VLLM_WHEEL_DIR}/vllm-*-${PYTHON_ABI_
 #
 # CUTLASS 4.3.0 - Required for SM100a (Blackwell) support
 #   - Provides: tmem_allocator_sm100.hpp, mma_sm100_umma.hpp, copy_traits_sm100.hpp
-#   - Commit e67e63c331d6 is post-release with corrected version.h
+#   - Uses the release tag with corrected version metadata
 #
 # TransformerEngine v2.9 - Stable release with CUDA 13 wheels
-#   - IMPORTANT: TE v2.9 still bundles CUTLASS 4.2.0 (commit 57e3cfb47a2d)
+#   - IMPORTANT: TE v2.9 still bundles CUTLASS 4.2.0
 #   - CUTLASS 4.2.0 LACKS SM100a headers - symlink workaround REQUIRED
 #   - We replace TE's bundled CUTLASS with our 4.3.0 via symlink
 #   - Check: make verify-cutlass
@@ -263,6 +263,11 @@ VLLM_WHEEL_PATTERN="${VLLM_WHEEL_PATTERN:-${VLLM_WHEEL_DIR}/vllm-*-${PYTHON_ABI_
 #   - When TE bundles CUTLASS >= 4.3.0 with SM100a headers
 #   - Run: python core/scripts/check_upstream_versions.py --check-te-cutlass
 #   - If "TE main bundles: CUTLASS 4.3.0+" appears, symlink may be removable
+#
+# MLPerf v6 source trees
+#   - Inference README explicitly recommends the master branch for v6.0 submissions.
+#   - Training README carries a v6.0 section but does not publish a GitHub release tag,
+#     so we track its official branch ref and record the resolved commit at install time.
 #
 TE_REPO_URL="${TE_REPO_URL:-https://github.com/NVIDIA/TransformerEngine.git}"
 # TE v2.9 release (2025-11-11) - stable release with CUDA 13 support
@@ -275,6 +280,12 @@ CUTLASS_REPO_URL="${CUTLASS_REPO_URL:-https://github.com/NVIDIA/cutlass.git}"
 CUTLASS_REF="${CUTLASS_REF:-v4.3.0}"
 CUTLASS_TARGET_VERSION="${CUTLASS_TARGET_VERSION:-4.3.0}"
 CUTLASS_SRC_DIR="${CUTLASS_SRC_DIR:-${THIRD_PARTY_DIR}/cutlass}"
+MLPERF_INFERENCE_REPO_URL="${MLPERF_INFERENCE_REPO_URL:-https://github.com/mlcommons/inference.git}"
+MLPERF_INFERENCE_GIT_REF="${MLPERF_INFERENCE_GIT_REF:-master}"
+MLPERF_INFERENCE_SRC_DIR="${MLPERF_INFERENCE_SRC_DIR:-${THIRD_PARTY_DIR}/mlperf_inference}"
+MLPERF_TRAINING_REPO_URL="${MLPERF_TRAINING_REPO_URL:-https://github.com/mlcommons/training.git}"
+MLPERF_TRAINING_GIT_REF="${MLPERF_TRAINING_GIT_REF:-master}"
+MLPERF_TRAINING_SRC_DIR="${MLPERF_TRAINING_SRC_DIR:-${THIRD_PARTY_DIR}/mlperf_training}"
 PIP_ROOT_USER_ACTION="ignore"
 SOURCE_BUILD_ALLOWED=0
 GPU_COMPUTE_SM_NUM=""

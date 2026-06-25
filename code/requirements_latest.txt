@@ -114,11 +114,11 @@ compressed-tensors==0.13.0
 depyf==0.20.0
 watchfiles==1.1.1
 blake3==1.0.8
-anthropic==0.84.0
-openai==2.24.0
+anthropic==0.112.0
+openai==2.44.0
 openai-harmony==0.0.8
 model-hosting-container-standards==0.1.13
-mcp==1.26.0
+mcp==1.28.0
 grpcio-reflection==1.78.0
 ordered-set==4.1.0
 
