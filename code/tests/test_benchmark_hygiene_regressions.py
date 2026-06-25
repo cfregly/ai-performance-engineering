@@ -395,6 +395,20 @@ def test_dynamic_router_wrappers_defer_metric_tensors_outside_hot_loop() -> None
         assert "self.output = torch.tensor(self._metric_values, dtype=torch.float32).unsqueeze(0)" in capture_section
 
 
+def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "ch17" / "optimized_pipeline_parallelism.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_custom_streams", maxsplit=1
+    )[0]
+
+    assert "torch.cat(final_outputs" not in benchmark_section
+    assert "self._last_final_outputs = final_outputs" in benchmark_section
+    assert "self.output = torch.cat(self._last_final_outputs, dim=0)" in capture_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

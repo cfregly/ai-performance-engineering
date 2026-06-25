@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from typing import Optional, List
+from typing import List, Optional
 
 import torch
 import torch.nn as nn
@@ -48,6 +48,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self._input_data: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self._verification_payload = None
+        self._last_final_outputs: Optional[List[torch.Tensor]] = None
         tokens = self.batch_size * self.hidden_size
         self._workload = WorkloadMetadata(
             samples_per_iteration=float(self.batch_size),
@@ -141,6 +142,8 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         if not self.pipeline_stages or self.microbatch_inputs is None:
             raise RuntimeError("Pipeline not initialized")
 
+        self.output = None
+        self._last_final_outputs = None
         num_stages = len(self.pipeline_stages)
         self._last_stage_durations_ms = [0.0 for _ in range(num_stages)]
         stage_buffers: List[List[Optional[torch.Tensor]]] = [
@@ -183,15 +186,18 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         if final_outputs:
             with torch.cuda.device(stage_devices[-1]):
                 torch.cuda.current_stream(stage_devices[-1]).wait_stream(self.stage_streams[-1])
-            self.output = torch.cat(final_outputs, dim=0)
-        if self.output is None:
+            self._last_final_outputs = final_outputs
+        if self._last_final_outputs is None:
             raise RuntimeError("benchmark_fn() must produce output")
-        dtype = self.output.dtype
         self.parameter_count = self.parameter_count or sum(
             p.numel() for stage in self.pipeline_stages for p in stage.parameters()
         )
 
     def capture_verification_payload(self) -> None:
+        if self.output is None:
+            if self._last_final_outputs is None:
+                raise RuntimeError("benchmark_fn() must be called before capture_verification_payload()")
+            self.output = torch.cat(self._last_final_outputs, dim=0)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must be called before capture_verification_payload()")
         dtype = self.output.dtype
@@ -232,6 +238,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self.stage_events = []
         self._compiled_model = None
         self._input_data = None
+        self._last_final_outputs = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
@@ -293,4 +300,3 @@ def parse_args() -> argparse.Namespace:
         help="Number of microbatches to pipeline (default: 4)",
     )
     return parser.parse_args()
-
