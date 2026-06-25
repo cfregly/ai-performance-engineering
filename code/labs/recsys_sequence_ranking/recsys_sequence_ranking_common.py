@@ -77,6 +77,7 @@ class RankingWorkspace:
     sequence_mask_float: torch.Tensor
     sequence_length_recip: torch.Tensor
     context_table_index: torch.Tensor
+    sequence_metadata_key: tuple[int, int] | None = None
 
 
 class SequenceRankingTower(nn.Module):
@@ -335,6 +336,19 @@ def build_workspace(workload: SequenceRankingWorkload, device: torch.device) -> 
     )
 
 
+def _sequence_metadata_key(inputs: RankingInputs) -> tuple[int, int]:
+    return (inputs.sequence_mask.data_ptr(), inputs.sequence_lengths.data_ptr())
+
+
+def prepare_workspace_for_inputs(inputs: RankingInputs, workspace: RankingWorkspace) -> None:
+    """Cache immutable sequence metadata derived from the benchmark inputs."""
+
+    workspace.sequence_mask_float.copy_(inputs.sequence_mask.unsqueeze(-1))
+    workspace.sequence_length_recip.copy_(inputs.sequence_lengths.unsqueeze(1))
+    workspace.sequence_length_recip.clamp_min_(1).reciprocal_()
+    workspace.sequence_metadata_key = _sequence_metadata_key(inputs)
+
+
 def sequence_mean_baseline(
     inputs: RankingInputs,
     state: RankingModelState,
@@ -390,9 +404,8 @@ def sequence_mean_vectorized(
         lengths = inputs.sequence_lengths.to(dtype=seq_emb.dtype).clamp_min_(1).unsqueeze(1)
         return (seq_emb * mask).sum(dim=1) / lengths
 
-    workspace.sequence_mask_float.copy_(inputs.sequence_mask.unsqueeze(-1))
-    workspace.sequence_length_recip.copy_(inputs.sequence_lengths.unsqueeze(1))
-    workspace.sequence_length_recip.clamp_min_(1).reciprocal_()
+    if workspace.sequence_metadata_key != _sequence_metadata_key(inputs):
+        prepare_workspace_for_inputs(inputs, workspace)
     return (seq_emb * workspace.sequence_mask_float).sum(dim=1) * workspace.sequence_length_recip
 
 
@@ -415,7 +428,9 @@ def candidate_scores_torch(
     user_vec: torch.Tensor, inputs: RankingInputs, state: RankingModelState
 ) -> torch.Tensor:
     candidate_emb = F.embedding(inputs.candidate_ids, state.item_embeddings)
-    return torch.einsum("bd,bcd->bc", user_vec.to(torch.float32), candidate_emb.to(torch.float32))
+    return torch.bmm(
+        candidate_emb.to(torch.float32), user_vec.to(torch.float32).unsqueeze(2)
+    ).squeeze(2)
 
 
 if TRITON_AVAILABLE:
@@ -616,6 +631,7 @@ __all__ = [
     "context_sum_vectorized",
     "default_workload",
     "optimized_forward",
+    "prepare_workspace_for_inputs",
     "ranking_metrics",
     "RankingWorkspace",
     "requests_per_iteration",

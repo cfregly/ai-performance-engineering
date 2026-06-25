@@ -88,6 +88,7 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     fallback_context = context_sum_vectorized(inputs, state)
     workspace_context = context_sum_vectorized(inputs, state, workspace)
 
+    assert workspace.sequence_metadata_key is not None
     torch.testing.assert_close(workspace_sequence, fallback_sequence, rtol=1e-6, atol=1e-6)
     torch.testing.assert_close(workspace_context, fallback_context, rtol=1e-6, atol=1e-6)
 
