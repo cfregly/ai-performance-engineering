@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import importlib
-from pathlib import Path
 import signal
 import subprocess
-from types import SimpleNamespace
 import tempfile
 import time
+from pathlib import Path
+from types import SimpleNamespace
 
 import torch
 
@@ -15,22 +15,7 @@ from ch01.optimized_performance_fp16 import OptimizedPerformanceFP16Benchmark
 from ch02.baseline_cublas import BaselineCublasBenchmark
 from ch02.optimized_cublas import OptimizedCublasBenchmark
 from core.benchmark.verification import coerce_input_signature
-from core.harness.benchmark_harness import BaseBenchmark
-from labs.flexattention.baseline_flex_attention import BaselineFlexAttentionBenchmark
-from labs.flexattention.optimized_flex_attention import OptimizedFlexAttentionBenchmark
-from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn256_bk32 import (
-    get_benchmark as get_wide_n_benchmark,
-)
-from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn64_bk32_nw2 import (
-    get_benchmark as get_latency_benchmark,
-)
-from labs.real_world_models.deepseek_r1_moe_optimization import (
-    get_benchmark as get_deepseek_benchmark,
-)
-from labs.real_world_models.gpt4_architecture_optimization import (
-    get_benchmark as get_gpt4_benchmark,
-)
-from core.harness.benchmark_harness import _cleanup_process_group
+from core.harness.benchmark_harness import BaseBenchmark, _cleanup_process_group
 from core.harness.run_benchmarks import (
     INFORMATIONAL_BENCHMARKS,
     _collect_current_run_benchmark_orphan_pids,
@@ -38,7 +23,20 @@ from core.harness.run_benchmarks import (
     _reap_benchmark_process_leftovers,
     _reap_run_descendants,
 )
-
+from labs.flexattention.baseline_flex_attention import BaselineFlexAttentionBenchmark
+from labs.flexattention.optimized_flex_attention import OptimizedFlexAttentionBenchmark
+from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn64_bk32_nw2 import (
+    get_benchmark as get_latency_benchmark,
+)
+from labs.occupancy_tuning.optimized_proton_matmul_bm64_bn256_bk32 import (
+    get_benchmark as get_wide_n_benchmark,
+)
+from labs.real_world_models.deepseek_r1_moe_optimization import (
+    get_benchmark as get_deepseek_benchmark,
+)
+from labs.real_world_models.gpt4_architecture_optimization import (
+    get_benchmark as get_gpt4_benchmark,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KERNEL_FUSION_SIGNATURE_MODULES = (
@@ -267,6 +265,24 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     assert "q = self._q_bf16" in benchmark_section
     assert "k = self._k_bf16" in benchmark_section
     assert "v = self._v_bf16" in benchmark_section
+
+
+def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> None:
+    for name in (
+        "baseline_kv_transfer.py",
+        "optimized_kv_transfer.py",
+        "optimized_kv_transfer_graphs.py",
+    ):
+        source = (REPO_ROOT / "labs" / "moe_cuda" / name).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1]
+
+        assert "torch.tensor(" not in benchmark_section
+        assert ".clone()" not in benchmark_section
+        assert ".float()" not in benchmark_section
+        assert "output=self.output.detach().float().clone()" in capture_section
 
 
 def test_ch20_bf16_mlp_preconverts_activation_dtype_outside_hot_loop() -> None:

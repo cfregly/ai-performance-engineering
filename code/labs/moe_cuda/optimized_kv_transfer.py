@@ -61,6 +61,7 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.workspace = torch.zeros_like(self.input_chunks)
         self.kv_dest = torch.zeros_like(self.input_chunks)
+        self._payload_meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
         
         # Warmup the streams so the steady-state path doesn't include one-time setup overhead.
         with torch.cuda.stream(self.compute_stream):
@@ -99,11 +100,9 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.cuda.current_stream(self.device).wait_stream(self.copy_stream)
         if self.kv_dest is None:
             raise RuntimeError("KV destination missing")
-        self.output = self.kv_dest[0, :1, : min(8, self.hidden_size)].detach().float().clone()
+        self.output = self.kv_dest[0, :1, : min(8, self.hidden_size)]
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
-        meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
-        self._payload_meta = meta
 
     def capture_verification_payload(self) -> None:
         meta = self._payload_meta
@@ -111,7 +110,7 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
             inputs={"meta": meta},
-            output=self.output,
+            output=self.output.detach().float().clone(),
             batch_size=1,
             parameter_count=0,
             precision_flags={},
@@ -123,6 +122,8 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.weight = None
         self.workspace = None
         self.kv_dest = None
+        self.output = None
+        self._payload_meta = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
