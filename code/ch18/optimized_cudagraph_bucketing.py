@@ -37,9 +37,12 @@ from ch18.cudagraph_bucketing_common import (  # noqa: E402
 from ch18.cudagraph_bucketing_metrics import (  # noqa: E402
     export_stats_to_prometheus,
 )
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata  # noqa: E402
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-
+from core.harness.benchmark_harness import (  # noqa: E402
+    BaseBenchmark,
+    BenchmarkConfig,
+    WorkloadMetadata,
+)
 
 # ============================================================
 # CUDA Graph Bucketing for Real Inference
@@ -366,6 +369,7 @@ class OptimizedCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchma
         self._compile_stats: Optional[dict] = None
         self._graph_bucketing: Optional[CUDAGraphBucketing] = None
         self._graph_stats: Optional[Dict[str, int]] = None
+        self._output_values: Optional[list[float]] = None
         self._verification_payload = None
         
         # Simulator-only workload metadata (one traffic replay per iteration).
@@ -406,17 +410,14 @@ class OptimizedCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchma
         total_tokens = sum(batch * seqlen for batch, seqlen in traffic)
         sim = optimized.run()
         self._last_sim = sim
-        self.output = torch.tensor(
-            [
-                float(len(traffic)),
-                float(total_tokens),
-            ],
-            dtype=torch.float32,
-        )
+        self._output_values = [float(len(traffic)), float(total_tokens)]
         self._payload_traffic = traffic
 
     def capture_verification_payload(self) -> None:
         traffic = self._payload_traffic
+        if self._output_values is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self.output = torch.tensor(self._output_values, dtype=torch.float32)
         self._set_verification_payload(
             inputs={"traffic_shape": torch.tensor([len(traffic)], device=self.device)},
             output=self.output,
@@ -454,4 +455,3 @@ class OptimizedCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchma
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedCUDAGraphBucketingBenchmark()
-

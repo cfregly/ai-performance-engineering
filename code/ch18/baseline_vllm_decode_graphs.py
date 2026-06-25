@@ -8,7 +8,7 @@ import random
 import sys
 import threading
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple, Optional, Dict
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 # Workaround for importlib.util.spec_from_file_location loading:
 # Register this module in sys.modules so @dataclass works correctly
@@ -21,8 +21,8 @@ import torch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 
 # Defer decode_kernels import so the harness can load this module while still
 # surfacing dependency failures as explicit FAIL FAST errors.
@@ -30,7 +30,8 @@ DECODE_KERNEL_AVAILABLE = False
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 build_decode_kernel = None
 try:
-    from ch18.decode_kernels import DEVICE as _DEV, build_decode_kernel as _build  # noqa: E402
+    from ch18.decode_kernels import DEVICE as _DEV  # noqa: E402
+    from ch18.decode_kernels import build_decode_kernel as _build  # noqa: E402
     DEVICE = _DEV
     build_decode_kernel = _build
     DECODE_KERNEL_AVAILABLE = True
@@ -247,6 +248,7 @@ class VLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._driver: Optional[BaselineDecodeDriver] = None
         self._last_metrics: Optional[DecodeMetrics] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_values: Optional[list[float]] = None
         self._verification_payload = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
@@ -267,12 +269,12 @@ class VLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("FAIL FAST: decode driver not initialized")
         self._last_metrics = self._driver.run()
         total_tokens = float(sum(self._trace))
-        self.output = torch.tensor(
-            [float(len(self._trace)), total_tokens],
-            dtype=torch.float32,
-        )
+        self._output_values = [float(len(self._trace)), total_tokens]
 
     def capture_verification_payload(self) -> None:
+        if self._output_values is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self.output = torch.tensor(self._output_values, dtype=torch.float32)
         self._set_verification_payload(
             inputs={"trace": torch.tensor(self._trace, device=DEVICE)},
             output=self.output,
@@ -300,5 +302,3 @@ class VLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return VLLMDecodeGraphsBenchmark()
-
-

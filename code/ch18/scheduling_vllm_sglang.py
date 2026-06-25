@@ -24,6 +24,7 @@ class SchedulingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._history: Dict[str, float] = {}
         self.request_lengths: list[int] = []
         self.output: Optional[torch.Tensor] = None
+        self._output_values: Optional[list[float]] = None
 
     def setup(self) -> None:
         random.seed(42)
@@ -53,12 +54,13 @@ class SchedulingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 served += self._serve_batch(tokens)
         self._history["served_tokens"] = served
         self._history["batched_tokens"] = batch_tokens
-        self.output = torch.tensor([served, batch_tokens], dtype=torch.float32)
+        self._output_values = [float(served), float(batch_tokens)]
         return {"served_tokens": served, "batched_tokens": batch_tokens}
 
     def capture_verification_payload(self) -> None:
-        if self.output is None:
+        if self._output_values is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self.output = torch.tensor(self._output_values, dtype=torch.float32)
         self._set_verification_payload(
             inputs={
                 "request_lengths": torch.tensor(self.request_lengths, dtype=torch.int64),

@@ -17,8 +17,8 @@ from ch18.cudagraph_bucketing_common import (  # noqa: E402
     load_vllm_config,
     pad_fn_from_vllm_config,
 )
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 
 
 class BaselineCUDAGraphBucketing:
@@ -91,6 +91,7 @@ class BaselineCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.use_vllm_bins = True
         self._last = None
         self.output: Optional[torch.Tensor] = None
+        self._output_values: Optional[list[float]] = None
         self._verification_payload = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
@@ -117,14 +118,14 @@ class BaselineCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._last = sim
         traffic = getattr(runner, "traffic", demo_traffic())
         total_tokens = sum(batch * seqlen for batch, seqlen in traffic)
-        self.output = torch.tensor(
-            [float(len(traffic)), float(total_tokens)],
-            dtype=torch.float32,
-        )
+        self._output_values = [float(len(traffic)), float(total_tokens)]
         self._payload_traffic = traffic
 
     def capture_verification_payload(self) -> None:
         traffic = self._payload_traffic
+        if self._output_values is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self.output = torch.tensor(self._output_values, dtype=torch.float32)
         self._set_verification_payload(
             inputs={
                 "traffic_shape": torch.tensor([len(traffic)], dtype=torch.int64),
@@ -155,4 +156,3 @@ class BaselineCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchmar
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineCUDAGraphBucketingBenchmark()
-

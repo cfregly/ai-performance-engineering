@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from typing import Dict, Iterable, Tuple, Optional
+from typing import Dict, Iterable, Optional, Tuple
 
 # Workaround for importlib.util.spec_from_file_location loading:
 # Register this module in sys.modules so @dataclass works correctly
@@ -28,9 +28,9 @@ except ImportError as exc:
         "Ensure the benchmark is executed from repo root with `ch18` on PYTHONPATH."
     ) from exc
 
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from ch18.decode_kernels import DEVICE, build_decode_kernel  # noqa: E402
+from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 
 # Keep a moderately coarse bucket set that limits padding overhead while still
 # reducing shape churn relative to the ragged baseline.
@@ -252,6 +252,7 @@ class OptimizedVLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._driver: Optional[OptimizedDecodeDriver] = None
         self._last_metrics: Optional[DecodeMetrics] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_values: Optional[list[float]] = None
         self._verification_payload = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
@@ -271,12 +272,12 @@ class OptimizedVLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark
             raise RuntimeError("FAIL FAST: optimized decode driver not initialized")
         self._last_metrics = self._driver.run()
         total_tokens = float(sum(self._trace))
-        self.output = torch.tensor(
-            [float(len(self._trace)), total_tokens],
-            dtype=torch.float32,
-        )
+        self._output_values = [float(len(self._trace)), total_tokens]
 
     def capture_verification_payload(self) -> None:
+        if self._output_values is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self.output = torch.tensor(self._output_values, dtype=torch.float32)
         self._set_verification_payload(
             inputs={"trace": torch.tensor(self._trace, device=DEVICE)},
             output=self.output,
@@ -304,5 +305,4 @@ class OptimizedVLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedVLLMDecodeGraphsBenchmark()
-
 
