@@ -445,6 +445,26 @@ def test_persistent_decode_graphs_reuses_timing_events_outside_hot_loop() -> Non
     assert 'start_prefill = self._piecewise_events["start_prefill"]' in benchmark_section
 
 
+def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> None:
+    source = (REPO_ROOT / "labs" / "real_world_models" / "deepseek_r1_moe_optimization.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_custom_metrics", maxsplit=1
+    )[0]
+
+    assert "torch.cuda.Event(enable_timing=True)" in setup_section
+    assert "torch.cuda.Event(" not in benchmark_section
+    assert "start_event, end_event = self._timing_events" in benchmark_section
+    assert ".detach().float().clone()" not in benchmark_section
+    assert "self.output = output[:1, : min(4, output.shape[1]), : min(8, output.shape[2])]" in benchmark_section
+    assert "output=self.output.detach().float().clone()" in capture_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

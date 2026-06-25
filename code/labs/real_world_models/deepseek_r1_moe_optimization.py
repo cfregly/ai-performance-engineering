@@ -9,19 +9,20 @@ Demonstrates optimization of DeepSeek-R1 style MoE model:
 - NCCL tuning for MoE
 """
 
+import time
+from typing import Any, Dict, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, Any, Optional, Tuple
-import time
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -185,6 +186,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         self._last_metrics: Dict[str, Any] = {}
         self.output: Optional[torch.Tensor] = None
         self._timing_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
+        self._pending_timing_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._last_aux_metrics: Dict[str, torch.Tensor] = {}
         self._last_elapsed_ms: Optional[float] = None
 
@@ -212,6 +214,10 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.bfloat16
         )
+        self._timing_events = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
         
         logger.info(f"MoE model setup complete")
 
@@ -219,20 +225,21 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         """Execute MoE forward pass."""
         use_cuda_timing = self.device.type == "cuda"
         if use_cuda_timing:
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
+            if self._timing_events is None:
+                raise RuntimeError("Timing events not initialized")
+            start_event, end_event = self._timing_events
             start_event.record()
-            self._timing_events = (start_event, end_event)
+            self._pending_timing_events = (start_event, end_event)
             self._last_elapsed_ms = None
         else:
             start_time = time.perf_counter()
-            self._timing_events = None
+            self._pending_timing_events = None
 
         # Forward pass
         output, metrics = self.moe_layer(self.input)
-        self.output = output[:1, : min(4, output.shape[1]), : min(8, output.shape[2])].detach().float().clone()
+        self.output = output[:1, : min(4, output.shape[1]), : min(8, output.shape[2])]
         self._last_aux_metrics = {
-            key: value.detach().float()
+            key: value.detach()
             for key, value in metrics.items()
             if torch.is_tensor(value)
         }
@@ -245,12 +252,12 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, list[float]]]:
-        if self.device.type != "cuda" or self._timing_events is None:
+        if self.device.type != "cuda" or self._pending_timing_events is None:
             return None
-        start_event, end_event = self._timing_events
+        start_event, end_event = self._pending_timing_events
         elapsed_ms = float(start_event.elapsed_time(end_event))
         self._last_elapsed_ms = elapsed_ms
-        self._timing_events = None
+        self._pending_timing_events = None
         return {"latency_ms": [elapsed_ms]}
 
     def capture_verification_payload(self) -> None:
@@ -258,7 +265,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
             inputs={"input": self.input.detach()},
-            output=self.output,
+            output=self.output.detach().float().clone(),
             batch_size=self.batch_size,
             parameter_count=sum(p.numel() for p in self.moe_layer.parameters()),
             precision_flags={
@@ -289,6 +296,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         del self.input
         self.output = None
         self._timing_events = None
+        self._pending_timing_events = None
         self._last_aux_metrics = {}
         self._last_elapsed_ms = None
         super().teardown()
@@ -339,4 +347,3 @@ def run_benchmark(
 
 def get_benchmark() -> BaseBenchmark:
     return DeepSeekR1MoEOptimization()
-
