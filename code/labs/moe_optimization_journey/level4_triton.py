@@ -33,7 +33,6 @@ except ImportError:
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from labs.moe_optimization_journey import MoEConfig, get_config
 
-
 if TRITON_AVAILABLE:
     @triton.autotune(
         configs=[
@@ -273,6 +272,7 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         self.parameter_count: int = 0
         self.last_latency_ms: float = 0.0
         self.last_tokens_per_sec: float = 0.0
+        self._timing_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         
         total_tokens = self.config.batch_size * self.config.seq_len
@@ -320,20 +320,32 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
             if i == 0:
                 print(f"    First run (compile): done")
         torch.cuda.synchronize()
+        self._timing_events = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
         print("Ready")
+
+    def _get_timing_events(self) -> Tuple[torch.cuda.Event, torch.cuda.Event]:
+        if self._timing_events is None:
+            self._timing_events = (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+        return self._timing_events
     
     def benchmark_fn(self) -> None:
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
+        events = self._get_timing_events()
+        start_event, end_event = events
         start_event.record()
         
         with self._nvtx_range("level4_triton"):
             with torch.no_grad():
                 logits = self.model(self.input_ids)
-        self.output = logits[:, :1, : min(8, logits.shape[-1])].detach().float().clone()
+        self.output = logits[:, :1, : min(8, logits.shape[-1])].detach()
         
         end_event.record()
-        self._pending_events = (start_event, end_event)
+        self._pending_events = events
         if self.input_ids is None or self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -353,7 +365,7 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids.detach()},
-            output=self.output,
+            output=self.output.float().clone(),
             batch_size=self.config.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={"bf16": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -364,6 +376,9 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         del self.model
         self.model = None
         self.input_ids = None
+        self.output = None
+        self._timing_events = None
+        self._pending_events = None
         torch.cuda.empty_cache()
         super().teardown()
     
@@ -388,4 +403,3 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return Level4Triton()
-
