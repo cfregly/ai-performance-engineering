@@ -61,7 +61,7 @@ class BaselineFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchma
                 scores = torch.matmul(q, k.transpose(-1, -2)) * scale
                 probs = torch.softmax(scores, dim=-1)
                 result = torch.matmul(probs, v)
-                self.output = result.detach().float().clone()
+                self.output = result.detach()
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
         self._payload_k = k
@@ -74,7 +74,7 @@ class BaselineFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchma
         v = self._payload_v
         self._set_verification_payload(
             inputs={"q": q.detach(), "k": k.detach(), "v": v.detach()},
-            output=self.output,
+            output=self.output.float().clone(),
             batch_size=self.batch,
             parameter_count=0,
             precision_flags={"fp16": True, "bf16": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
