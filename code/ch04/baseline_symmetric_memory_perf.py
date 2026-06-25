@@ -9,11 +9,11 @@ from typing import Dict, Optional
 
 import torch
 
-from core.benchmark.cuda_event_timing import elapsed_ms
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from core.benchmark.metrics import compute_memory_transfer_metrics
 from ch04.symmetric_memory_perf_common import build_square_verification_probe
+from core.benchmark.cuda_event_timing import elapsed_ms
+from core.benchmark.metrics import compute_memory_transfer_metrics
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
 class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -37,6 +37,7 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         self.output: Optional[torch.Tensor] = None
         self._last_avg_ms = 0.0
         self._bytes_transferred = 0.0
+        self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
@@ -49,20 +50,32 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         torch.cuda.manual_seed_all(42)
         self.tensor = torch.randn(self.numel, device=self.device, dtype=torch.float32)
         self._verify_input, self._verify_numel = build_square_verification_probe(self.tensor)
+        self._timing_pair = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
         torch.cuda.synchronize(self.device)
+
+    def _get_timing_pair(self) -> tuple[torch.cuda.Event, torch.cuda.Event]:
+        if self._timing_pair is None:
+            self._timing_pair = (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+        return self._timing_pair
 
     def benchmark_fn(self) -> Optional[Dict[str, float]]:
         if self.tensor is None:
             raise RuntimeError("Tensor not initialized")
 
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
+        timing_pair = self._get_timing_pair()
+        start, end = timing_pair
 
         start.record()
         output = torch.empty_like(self.tensor)
         output.copy_(self.tensor, non_blocking=False)
         end.record()
-        self._pending_timing_pair = (start, end)
+        self._pending_timing_pair = timing_pair
         self.output = output
         return None
 
@@ -107,6 +120,8 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
     def teardown(self) -> None:
         self.tensor = None
         self.output = None
+        self._timing_pair = None
+        self._pending_timing_pair = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
