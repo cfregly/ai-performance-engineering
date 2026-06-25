@@ -40,8 +40,11 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.device = resolve_device()
         self.stages: Optional[nn.ModuleList] = None
         self.inputs: Optional[torch.Tensor] = None
+        self.microbatches: Optional[list[torch.Tensor]] = None
         self.stage_streams: list[torch.cuda.Stream] = []
+        self.stage_events: list[list[torch.cuda.Event]] = []
         self.output = None
+        self._last_outputs: Optional[list[torch.Tensor]] = None
         self.batch_size = 512
         self.hidden_dim = 1536
         self.num_stages = 4
@@ -62,31 +65,35 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
         ).eval()
         
         self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float16)
+        self.microbatches = [chunk.contiguous() for chunk in self.inputs.chunk(self.num_microbatches, dim=0)]
         self.stage_streams = [torch.cuda.Stream(device=self.device) for _ in range(self.num_stages)]
+        self.stage_events = [
+            [torch.cuda.Event(enable_timing=False) for _ in range(self.num_microbatches)]
+            for _ in range(self.num_stages)
+        ]
 
-    def _run_pipelined_once(self, microbatches: list[torch.Tensor]) -> list[torch.Tensor]:
-        assert self.stages is not None
+    def _run_pipelined_once(self) -> list[torch.Tensor]:
+        assert self.stages is not None and self.microbatches is not None
+        if not self.stage_events:
+            raise RuntimeError("Pipeline events not initialized")
         stage_outputs: list[list[Optional[torch.Tensor]]] = [
             [None for _ in range(self.num_microbatches)] for _ in range(self.num_stages)
         ]
-        stage_events = [
-            [torch.cuda.Event() for _ in range(self.num_microbatches)] for _ in range(self.num_stages)
-        ]
 
-        for microbatch_idx, microbatch in enumerate(microbatches):
+        for microbatch_idx, microbatch in enumerate(self.microbatches):
             for stage_idx, stage in enumerate(self.stages):
                 stream = self.stage_streams[stage_idx]
                 with torch.cuda.stream(stream):
                     if stage_idx == 0:
                         stage_input = microbatch
                     else:
-                        stream.wait_event(stage_events[stage_idx - 1][microbatch_idx])
+                        stream.wait_event(self.stage_events[stage_idx - 1][microbatch_idx])
                         stage_input = stage_outputs[stage_idx - 1][microbatch_idx]
                         if stage_input is None:
                             raise RuntimeError("Previous stage output missing during pipeline scheduling")
                     stage_output = stage(stage_input)
                     stage_outputs[stage_idx][microbatch_idx] = stage_output
-                    stage_events[stage_idx][microbatch_idx].record(stream)
+                    self.stage_events[stage_idx][microbatch_idx].record(stream)
 
         current_stream = torch.cuda.current_stream(self.device)
         for stream in self.stage_streams:
@@ -98,17 +105,17 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
         return [output for output in final_outputs if output is not None]
     
     def benchmark_fn(self) -> None:
-        assert self.inputs is not None and self.stages is not None
-        microbatches = [chunk.contiguous() for chunk in self.inputs.chunk(self.num_microbatches, dim=0)]
+        assert self.inputs is not None and self.stages is not None and self.microbatches is not None
         with self._nvtx_range("pipeline_sequential_optimized"):
             with torch.no_grad():
                 for _ in range(self.repeats):
-                    outputs = self._run_pipelined_once(microbatches)
-                self.output = torch.cat([out.detach() for out in outputs], dim=0)
+                    outputs = self._run_pipelined_once()
+                self._last_outputs = outputs
 
     def capture_verification_payload(self) -> None:
-        if self.inputs is None or self.output is None or self.stages is None:
+        if self.inputs is None or self._last_outputs is None or self.stages is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+        self.output = torch.cat([out.detach() for out in self._last_outputs], dim=0)
         self._set_verification_payload(
             inputs={"inputs": self.inputs},
             output=self.output.float(),
@@ -120,7 +127,11 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def teardown(self) -> None:
         self.stages = None
         self.inputs = None
+        self.microbatches = None
         self.stage_streams = []
+        self.stage_events = []
+        self.output = None
+        self._last_outputs = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

@@ -299,6 +299,33 @@ def test_ch20_bf16_mlp_preconverts_activation_dtype_outside_hot_loop() -> None:
     assert "self.output = self.model(self._x_model_dtype)" in benchmark_section
 
 
+def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> None:
+    baseline_source = (REPO_ROOT / "ch20" / "baseline_pipeline_sequential.py").read_text(encoding="utf-8")
+    optimized_source = (REPO_ROOT / "ch20" / "optimized_pipeline_sequential.py").read_text(encoding="utf-8")
+    optimized_setup = optimized_source.split("def _run_pipelined_once", maxsplit=1)[0]
+
+    for source in (baseline_source, optimized_source):
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert "self.microbatches = [chunk.contiguous() for chunk in self.inputs.chunk" in source
+        assert ".chunk(" not in benchmark_section
+        assert "torch.cat(" not in benchmark_section
+        assert "self._last_outputs = outputs" in benchmark_section
+        assert "self.output = torch.cat([out.detach() for out in self._last_outputs], dim=0)" in capture_section
+
+    assert "self.stage_events = [" in optimized_setup
+    assert "torch.cuda.Event(enable_timing=False)" in optimized_setup
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    assert "torch.cuda.Event(" not in optimized_benchmark
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
