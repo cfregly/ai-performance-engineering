@@ -8,13 +8,14 @@ on a simplified MLP-based decode loop.
 from __future__ import annotations
 
 import os
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
-from contextlib import nullcontext
 
 import torch
-from core.profiling.nvtx_helper import standardize_nvtx_label
 import torch.nn as nn
+
+from core.profiling.nvtx_helper import standardize_nvtx_label
 
 try:
     from core.harness.arch_config import prefer_sdpa_backends
@@ -23,19 +24,19 @@ except Exception:  # pragma: no cover - defensive import
     prefer_sdpa_backends = None  # type: ignore
     enable_tf32 = None  # type: ignore
 
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.benchmark.verification import InputSignature, PrecisionFlags
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.benchmark.wrapper_utils import attach_benchmark_metadata
-from core.harness.hardware_capabilities import detect_capabilities
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.hardware_capabilities import detect_capabilities
 
 try:  # Optional but strongly recommended for fast variants
     import transformer_engine.pytorch as te
-    from transformer_engine.pytorch import Linear as TELinear
-    from transformer_engine.pytorch import LayerNormMLP as TELayerNormMLP
-    from transformer_engine.pytorch import quantized_model_init
-    from transformer_engine.common.recipe import DelayedScaling
     import transformer_engine.pytorch.constants as te_constants
+    from transformer_engine.common.recipe import DelayedScaling
+    from transformer_engine.pytorch import LayerNormMLP as TELayerNormMLP
+    from transformer_engine.pytorch import Linear as TELinear
+    from transformer_engine.pytorch import quantized_model_init
 
     TE_AVAILABLE = True
 except Exception:  # pragma: no cover - safe fallback
@@ -46,6 +47,8 @@ except Exception:  # pragma: no cover - safe fallback
     DelayedScaling = None  # type: ignore
     te_constants = None  # type: ignore
     TE_AVAILABLE = False
+
+
 def _te_version_at_least(major: int, minor: int = 0) -> bool:
     if not TE_AVAILABLE or not hasattr(te, "__version__"):
         return False
@@ -62,7 +65,9 @@ def _is_blackwell_family() -> bool:
         # Treat Blackwell (SM100/SM103) and Grace-Blackwell (SM12x) as Blackwell-class for defaults.
         return cap.architecture in {"blackwell", "blackwell_ultra", "grace_blackwell"}
     if not torch.cuda.is_available():
-        raise RuntimeError("Cannot determine architecture: capability probe unavailable and CUDA not available.")
+        raise RuntimeError(
+            "Cannot determine architecture: capability probe unavailable and CUDA not available."
+        )
     cc_major, _ = torch.cuda.get_device_capability()
     return cc_major >= 10
 
@@ -111,7 +116,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._graph_error: Optional[str] = None
         self._compile_error: Optional[str] = None
         self._tf32_enabled: bool = False
-        self.sdpa_ctx_factory = prefer_sdpa_backends if prefer_sdpa_backends is not None else nullcontext
+        self.sdpa_ctx_factory = (
+            prefer_sdpa_backends if prefer_sdpa_backends is not None else nullcontext
+        )
         self.fp8_recipe = None
         self.output: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
@@ -122,6 +129,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_payload: Optional[torch.Tensor] = None
         self.gpu_payload: Optional[torch.Tensor] = None
         self._copy_done_events: list[torch.cuda.Event] = []
+        self._timing_events: dict[str, torch.cuda.Event] = {}
         self._payload_bytes = 0
 
         if self.cfg.prefetch_batches < 1:
@@ -133,7 +141,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.cfg.use_fp4 and self.cfg.use_fp8:
             raise ValueError("use_fp4 and use_fp8 are mutually exclusive")
         if self.cfg.use_te_mlp and not TE_AVAILABLE:
-            raise RuntimeError("SKIPPED: use_te_mlp requested but Transformer Engine is unavailable")
+            raise RuntimeError(
+                "SKIPPED: use_te_mlp requested but Transformer Engine is unavailable"
+            )
 
         if self.cfg.use_fp4:
             if not TE_AVAILABLE:
@@ -141,11 +151,15 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if not _is_blackwell_family():
                 raise RuntimeError("SKIPPED: FP4 decode requires Blackwell-class hardware")
             if getattr(te_constants, "NVFP4_BLOCK_SCALING_SIZE", None) is None:
-                raise RuntimeError("SKIPPED: FP4 decode requires NVFP4 support in Transformer Engine")
+                raise RuntimeError(
+                    "SKIPPED: FP4 decode requires NVFP4 support in Transformer Engine"
+                )
             try:
                 from transformer_engine.common.recipe import NVFP4BlockScaling
             except Exception as exc:
-                raise RuntimeError("SKIPPED: FP4 decode requires NVFP4BlockScaling support") from exc
+                raise RuntimeError(
+                    "SKIPPED: FP4 decode requires NVFP4BlockScaling support"
+                ) from exc
             self.fp8_recipe = DelayedScaling(float8_block_scaling=NVFP4BlockScaling())
             self._fp4_enabled = True
         elif self.cfg.use_fp8:
@@ -157,7 +171,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 # iteration-to-iteration jitter in short microbench loops.
                 from transformer_engine.common.recipe import Float8CurrentScaling
             except Exception as exc:
-                raise RuntimeError("SKIPPED: FP8 decode requires Float8CurrentScaling support") from exc
+                raise RuntimeError(
+                    "SKIPPED: FP8 decode requires Float8CurrentScaling support"
+                ) from exc
             self.fp8_recipe = Float8CurrentScaling()
             self._fp8_enabled = True
         self.register_workload_metadata(
@@ -171,19 +187,19 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         import gc
-        
+
         # CRITICAL: Clean up CUDA state from previous benchmarks
         # This prevents "Offset increment outside graph capture" errors
         gc.collect()
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
-        
+
         try:
-            if hasattr(torch.cuda, 'graph_pool_trim'):
+            if hasattr(torch.cuda, "graph_pool_trim"):
                 torch.cuda.graph_pool_trim()
         except Exception:
             pass
-        
+
         # Reset CUDA RNG state
         try:
             device_idx = torch.cuda.current_device()
@@ -192,17 +208,17 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             gen.manual_seed(42)
         except Exception:
             pass
-        
+
         try:
             torch._dynamo.reset()
         except Exception:
             pass
-        
+
         try:
             torch._inductor.cudagraph_trees.reset_cudagraph_trees()
         except Exception:
             pass
-        
+
         # Ensure deterministic RNG state for verification (harness seed is 42).
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
@@ -212,7 +228,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.set_float32_matmul_precision("high")
         # Pin TF32 backend flags explicitly for deterministic verification payloads.
         try:
-            if hasattr(torch.backends.cuda, "matmul") and hasattr(torch.backends.cuda.matmul, "allow_tf32"):
+            if hasattr(torch.backends.cuda, "matmul") and hasattr(
+                torch.backends.cuda.matmul, "allow_tf32"
+            ):
                 torch.backends.cuda.matmul.allow_tf32 = True
             if hasattr(torch.backends, "cudnn") and hasattr(torch.backends.cudnn, "allow_tf32"):
                 torch.backends.cudnn.allow_tf32 = True
@@ -229,6 +247,10 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._init_buffers()
         if torch.cuda.is_available():
             self._copy_done_events = [torch.cuda.Event() for _ in range(self.cfg.prefetch_batches)]
+            self._timing_events = {
+                name: torch.cuda.Event(enable_timing=True)
+                for name in ("prefill_start", "prefill_end", "decode_start", "decode_end")
+            }
         self._cache_te_weight_workspaces()
         # Default to eager helpers; swap in compiled variants below when enabled.
         self.prefill_fn = self._prefill
@@ -338,7 +360,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _cache_te_weight_workspaces(self) -> None:
         """Pre-quantize TE weights by running a warmup forward pass.
-        
+
         The correct way to initialize FP8 workspaces is via forward passes under
         fp8_autocast, not by calling get_weight_workspace() manually.
         """
@@ -348,14 +370,14 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or os.getenv("DECODE_SKIP_TE_CACHE") == "1"
         ):
             return
-        
+
         # Warmup FP8 caches by running forward passes - this is the proper API
         # Use CPU randn + to(device) to avoid CUDA RNG graph capture issues
         bsz = self.cfg.batch_size
         hs = self.cfg.hidden_size
         dummy_hidden = torch.randn(bsz, hs, dtype=self.dtype).to(self.device)
         dummy_seq = torch.randn(bsz, self.cfg.prompt_tokens, hs, dtype=self.dtype).to(self.device)
-        
+
         passes = 4 if self._fp4_enabled else 2
         with torch.no_grad(), te.fp8_autocast(enabled=True, fp8_recipe=self.fp8_recipe):
             for _ in range(passes):
@@ -365,7 +387,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 _ = self.decode_mlp(dummy_hidden)
                 # Warmup lm_head
                 _ = self.lm_head(dummy_hidden)
-        
+
         torch.cuda.synchronize()
 
     def _init_buffers(self) -> None:
@@ -392,7 +414,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.gpu_payloads.append(torch.empty_like(host_payload, device=self.device))
             self.host_payload = self.host_payloads[0]
             self.gpu_payload = self.gpu_payloads[0]
-        self.state_buffer = torch.zeros((bsz, self.cfg.hidden_size), device=self.device, dtype=self.dtype)
+        self.state_buffer = torch.zeros(
+            (bsz, self.cfg.hidden_size), device=self.device, dtype=self.dtype
+        )
         self.current_tokens = torch.empty((bsz,), device=self.device, dtype=torch.long)
         self.next_token_out = torch.empty_like(self.current_tokens)
 
@@ -410,7 +434,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Allocate static outputs once
         bsz = self.cfg.batch_size
         self.graph_stream = torch.cuda.Stream()
-        self.graph_logits = torch.empty((bsz, self.cfg.vocab_size), device=self.device, dtype=self.dtype)
+        self.graph_logits = torch.empty(
+            (bsz, self.cfg.vocab_size), device=self.device, dtype=self.dtype
+        )
         self.graph_next_token = torch.empty((bsz,), device=self.device, dtype=torch.long)
         # Ensure prompt buffer is initialized with valid tokens before capture
         self.gpu_prompt.copy_(self.host_prompt, non_blocking=False)
@@ -419,7 +445,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             prefill_state = self.prefill_fn(self.gpu_prompt)
             self.state_buffer.copy_(prefill_state)
             self.current_tokens.copy_(self.gpu_prompt[:, -1])
-        
+
         # NO FALLBACK - CUDA graph capture must succeed
         # Warm up to populate kernels/caches prior to capture
         with torch.cuda.stream(self.graph_stream):
@@ -428,7 +454,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for _ in range(2):
                 if self.cfg.graph_full_iteration:
                     _prime_decode_state()
-                logits, next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
+                logits, next_state, next_token = self.decode_fn(
+                    self.current_tokens, self.state_buffer
+                )
                 self.state_buffer.copy_(next_state)
                 self.graph_next_token.copy_(next_token)
                 self.current_tokens.copy_(next_token)
@@ -445,7 +473,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if self.cfg.graph_full_iteration:
                 _prime_decode_state()
             for _ in range(self.cfg.decode_tokens):
-                logits, next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
+                logits, next_state, next_token = self.decode_fn(
+                    self.current_tokens, self.state_buffer
+                )
                 self.state_buffer.copy_(next_state)
                 self.graph_logits.copy_(logits)
                 self.graph_next_token.copy_(next_token)
@@ -476,10 +506,14 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             logits = self.lm_head(hidden)
         next_token = torch.argmax(logits, dim=-1)
         return logits, hidden, next_token
-    
+
     def _get_fp8_context(self):
         """Return fp8_autocast context if FP8 is enabled, else nullcontext."""
-        if (self._fp8_enabled or self._fp4_enabled) and te is not None and self.fp8_recipe is not None:
+        if (
+            (self._fp8_enabled or self._fp4_enabled)
+            and te is not None
+            and self.fp8_recipe is not None
+        ):
             return te.fp8_autocast(enabled=True, fp8_recipe=self.fp8_recipe)
         return nullcontext()
 
@@ -520,6 +554,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 return event
         return None
 
+    def _timing_event(self, name: str) -> torch.cuda.Event:
+        try:
+            return self._timing_events[name]
+        except KeyError as exc:
+            raise RuntimeError("Decode timing events were not initialized") from exc
+
     def _run_prefill_decode(self, prompt: torch.Tensor, stream: torch.cuda.Stream) -> None:
         with torch.cuda.stream(stream):
             prefill_state = self.prefill_fn(prompt)
@@ -537,9 +577,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("prefetch_batches > 1 cannot run with CUDA graphs")
 
         # Timers via CUDA events
-        iter_start = torch.cuda.Event(enable_timing=True)
-        batch0_end = torch.cuda.Event(enable_timing=True)
-        iter_end = torch.cuda.Event(enable_timing=True)
+        iter_start = self._timing_event("prefill_start")
+        batch0_end = self._timing_event("prefill_end")
+        iter_end = self._timing_event("decode_end")
 
         # Streams for copy/compute
         prefill_stream = self.compute_stream or torch.cuda.current_stream()
@@ -597,10 +637,10 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._benchmark_prefetch_batches()
             return
         # Timers via CUDA events
-        prefill_start = torch.cuda.Event(enable_timing=True)
-        prefill_end = torch.cuda.Event(enable_timing=True)
-        decode_start = torch.cuda.Event(enable_timing=True)
-        decode_end = torch.cuda.Event(enable_timing=True)
+        prefill_start = self._timing_event("prefill_start")
+        prefill_end = self._timing_event("prefill_end")
+        decode_start = self._timing_event("decode_start")
+        decode_end = self._timing_event("decode_end")
 
         # Choose streams for work/timing
         prefill_stream = self.compute_stream or torch.cuda.current_stream()
@@ -651,7 +691,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             else:
                 with torch.cuda.stream(self.compute_stream or torch.cuda.current_stream()):
                     for _ in range(self.cfg.decode_tokens):
-                        logits, next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
+                        logits, next_state, next_token = self.decode_fn(
+                            self.current_tokens, self.state_buffer
+                        )
                         self.state_buffer.copy_(next_state)
                         self.current_tokens.copy_(next_token)
                 if self.compute_stream is not None:
@@ -679,7 +721,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         ttft_ms = prefill_start.elapsed_time(prefill_end) if prefill_end.query() else 0.0
         decode_ms = decode_start.elapsed_time(decode_end) if decode_end.query() else 0.0
-        total_ms = prefill_start.elapsed_time(decode_end) if decode_end.query() else ttft_ms + decode_ms
+        total_ms = (
+            prefill_start.elapsed_time(decode_end) if decode_end.query() else ttft_ms + decode_ms
+        )
 
         eps_ms = 1e-6
         ttft_ms = max(ttft_ms, eps_ms)
@@ -688,7 +732,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         tpot_ms = decode_ms / max(self.cfg.decode_tokens, 1)
         tokens_per_iter = float(
-            self.cfg.prefetch_batches * self.cfg.batch_size * (self.cfg.prompt_tokens + self.cfg.decode_tokens)
+            self.cfg.prefetch_batches
+            * self.cfg.batch_size
+            * (self.cfg.prompt_tokens + self.cfg.decode_tokens)
         )
         tokens_per_s = tokens_per_iter / max(total_ms / 1000.0, 1e-6)
 
@@ -736,10 +782,14 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             not hasattr(self, name) or getattr(self, name) is None
             for name in ("gpu_prompt", "state_buffer")
         ):
-            raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+            raise RuntimeError(
+                "setup() and benchmark_fn() must be called before capture_verification_payload()"
+            )
         self._finalize_output()
         if self.output is None:
-            raise RuntimeError("benchmark_fn() must populate output before capture_verification_payload()")
+            raise RuntimeError(
+                "benchmark_fn() must populate output before capture_verification_payload()"
+            )
         config_tensor = torch.tensor(
             [
                 self.cfg.batch_size,
@@ -800,7 +850,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             shapes=shapes,
             dtypes=dtypes,
             batch_size=int(self.cfg.batch_size * self.cfg.prefetch_batches),
-            parameter_count=int(self.parameter_count) if self.parameter_count else self._signature_parameter_count(),
+            parameter_count=int(self.parameter_count)
+            if self.parameter_count
+            else self._signature_parameter_count(),
             precision_flags=PrecisionFlags(
                 fp16=bool(self.dtype == torch.float16),
                 bf16=bool(self.dtype == torch.bfloat16),
@@ -847,6 +899,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "graph_logits",
             "graph_next_token",
             "_copy_done_events",
+            "_timing_events",
         ):
             if hasattr(self, attr):
                 setattr(self, attr, None)
@@ -871,7 +924,6 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             percentiles=[50, 90, 99],
             use_subprocess=True,
         )
-
 
     def get_custom_metrics(self) -> Dict[str, float]:
         return self._custom_metrics

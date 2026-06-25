@@ -1,11 +1,18 @@
+import pytest
+import torch
+
 from core.harness.benchmark_harness import ExecutionMode
 from labs.decode_optimization.baseline_decode import get_benchmark as get_baseline_decode
-from labs.decode_optimization.baseline_decode_pinned import get_benchmark as get_baseline_decode_pinned
+from labs.decode_optimization.baseline_decode_pinned import (
+    get_benchmark as get_baseline_decode_pinned,
+)
 from labs.decode_optimization.decode_common import DecodeBenchmark, DecodeConfig
 from labs.decode_optimization.optimized_decode_graph import (
     get_benchmark as get_optimized_decode_graph,
 )
-from labs.decode_optimization.optimized_decode_pinned import get_benchmark as get_optimized_decode_pinned
+from labs.decode_optimization.optimized_decode_pinned import (
+    get_benchmark as get_optimized_decode_pinned,
+)
 from labs.decode_optimization.optimized_decode_ultimate import (
     get_benchmark as get_optimized_decode_ultimate,
 )
@@ -47,3 +54,31 @@ def test_decode_pinned_pair_uses_transfer_heavy_workload_with_only_pin_state_cha
     assert optimized.cfg.use_pinned_host is True
     assert baseline.cfg.use_copy_stream is False
     assert optimized.cfg.use_copy_stream is False
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for decode event setup")
+def test_decode_benchmark_reuses_timing_events() -> None:
+    bench = DecodeBenchmark(
+        DecodeConfig(
+            batch_size=1,
+            prompt_tokens=4,
+            decode_tokens=1,
+            hidden_size=16,
+            vocab_size=64,
+            iterations=1,
+            warmup=0,
+        )
+    )
+    bench.setup()
+    try:
+        event_ids = {name: id(event) for name, event in bench._timing_events.items()}
+
+        bench.benchmark_fn()
+        bench.finalize_iteration_metrics()
+        bench.benchmark_fn()
+        bench.finalize_iteration_metrics()
+
+        assert set(event_ids) == {"prefill_start", "prefill_end", "decode_start", "decode_end"}
+        assert {name: id(event) for name, event in bench._timing_events.items()} == event_ids
+    finally:
+        bench.teardown()
