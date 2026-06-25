@@ -500,6 +500,44 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_loop() -> None:
+    training_pair = (
+        "baseline_precisionfp8.py",
+        "optimized_precisionfp8.py",
+    )
+    forward_pair = (
+        "baseline_precisionfp8_pad_inner.py",
+        "optimized_precisionfp8_pad_inner.py",
+    )
+
+    for name in training_pair:
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert "verify_out = self.model(self._verify_input_fp16)" not in benchmark_section
+        assert ".detach().float().clone()" not in benchmark_section
+        assert "verify_out = self.model(self._verify_input_fp16)" in capture_section
+        assert "output=self.output.detach().float().clone()" in capture_section
+
+    for name in forward_pair:
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert ".detach().float().clone()" not in benchmark_section
+        assert "self.output = benchmark_out" in benchmark_section
+        assert "output=self.output.detach().float().clone()" in capture_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
