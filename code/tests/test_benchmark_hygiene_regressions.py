@@ -465,6 +465,27 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "output=self.output.detach().float().clone()" in capture_section
 
 
+def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None:
+    baseline_source = (REPO_ROOT / "ch14" / "baseline_attention_eager_sdpa.py").read_text(encoding="utf-8")
+    optimized_source = (REPO_ROOT / "ch14" / "optimized_attention_eager_sdpa.py").read_text(encoding="utf-8")
+
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "float(stacked.sum())" not in baseline_benchmark
+    assert "torch.stack(" not in baseline_benchmark
+    assert "self._last_outputs = outputs" in baseline_benchmark
+    assert "stacked = torch.stack(self._last_outputs, dim=1)" in baseline_capture
+    assert "float(out.sum())" not in optimized_benchmark
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

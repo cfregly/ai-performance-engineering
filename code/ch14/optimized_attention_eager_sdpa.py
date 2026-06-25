@@ -6,6 +6,7 @@ from contextlib import nullcontext
 
 import torch
 import torch.nn.functional as F
+
 try:
     from torch.nn.attention import SDPBackend, sdpa_kernel
 except ImportError:  # pragma: no cover - older PyTorch fallback
@@ -15,7 +16,12 @@ except ImportError:  # pragma: no cover - older PyTorch fallback
 from typing import Optional
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata  # noqa: E402
+from core.harness.benchmark_harness import (  # noqa: E402
+    BaseBenchmark,
+    BenchmarkConfig,
+    WorkloadMetadata,
+)
+
 
 def _flash_sdp_context():
     """Prefer the new sdpa_kernel API; fall back to no-op if unavailable."""
@@ -82,7 +88,7 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
         """Benchmark: fused SDPA attention operations."""
         # Use conditional NVTX ranges - only enabled when profiling
 
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
         config = self.get_config()
 
@@ -93,7 +99,6 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
             if self.q is None or self.k is None or self.v is None:
                 raise RuntimeError("Tensors not initialized")
             out = self._attention(self.q, self.k, self.v)
-            self._last = float(out.sum())
             self.output = out.detach()
         if self.q is None or self.k is None or self.v is None or self.output is None:
             raise RuntimeError("Verification input/output not initialized")

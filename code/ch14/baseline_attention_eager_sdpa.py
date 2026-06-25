@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import math
-import torch
 from typing import Optional
+
+import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
@@ -35,6 +36,7 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
             tokens_per_iteration=float(tokens),
         )
         self.output = None
+        self._last_outputs: Optional[list[torch.Tensor]] = None
         self.parameter_count: int = 0
         self._verification_payload = None
         self.register_workload_metadata(
@@ -57,7 +59,7 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         """Benchmark: per-head attention computed serially."""
         # Use conditional NVTX ranges - only enabled when profiling
 
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
         config = self.get_config()
 
@@ -77,16 +79,18 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
                     scores = torch.matmul(qh, kh.transpose(0, 1)) * scale
                     attn = torch.softmax(scores, dim=-1)
                     outputs.append(torch.matmul(attn, vh))
-            stacked = torch.stack(outputs, dim=1)
-            self._last = float(stacked.sum())
-            # Flatten heads into the embedding dimension to match optimized output
-            self.output = stacked.permute(1, 0, 2).reshape(
-                1, self.seq_len, self.embed_dim * self.repeat_passes
-            ).contiguous()
-        if self.output is None or self.q is None or self.k is None or self.v is None:
+            self._last_outputs = outputs
+        if self._last_outputs is None or self.q is None or self.k is None or self.v is None:
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
+        if self._last_outputs is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        stacked = torch.stack(self._last_outputs, dim=1)
+        # Flatten heads into the embedding dimension to match optimized output
+        self.output = stacked.permute(1, 0, 2).reshape(
+            1, self.seq_len, self.embed_dim * self.repeat_passes
+        ).contiguous()
         self._set_verification_payload(
             inputs={
                 "q": self.q.detach(),
@@ -111,6 +115,8 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         self.q = None
         self.k = None
         self.v = None
+        self.output = None
+        self._last_outputs = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
