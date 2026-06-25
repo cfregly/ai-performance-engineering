@@ -118,6 +118,15 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
             self.kv_cache[batch_idx, layer_idx, 0, :, pos] = k[i]
             self.kv_cache[batch_idx, layer_idx, 1, :, pos] = v[i]
 
+    def append_active_layers(self, k: torch.Tensor, v: torch.Tensor, pos: int) -> None:
+        """Append the same decode-step K/V tensors across all active layers."""
+        if pos >= self.max_seq_length:
+            raise RuntimeError("KV cache overflow in baseline append")
+
+        active = slice(0, self.active_layers)
+        self.kv_cache[:, active, 0, :, pos, :].copy_(k.unsqueeze(1))
+        self.kv_cache[:, active, 1, :, pos, :].copy_(v.unsqueeze(1))
+
     def get_kv(
         self,
         layer_idx: int,
@@ -144,8 +153,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         for pos in range(num_decode_steps):
             new_k = self._generated_k_steps[pos]
             new_v = self._generated_v_steps[pos]
-            for layer_idx in range(self.active_layers):
-                self.append_kv(layer_idx, new_k, new_v, pos=pos)
+            self.append_active_layers(new_k, new_v, pos=pos)
             self.seq_lengths += 1
 
         end_event.record()
@@ -255,4 +263,3 @@ def run_benchmark(
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return BaselineKVStandard()
-

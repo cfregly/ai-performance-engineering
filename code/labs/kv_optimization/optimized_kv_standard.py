@@ -159,6 +159,22 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self.v_scales[layer_idx, pos] = v_scale
         self.kv_cache[:, layer_idx, 0, :, pos].copy_(k_quantized)
         self.kv_cache[:, layer_idx, 1, :, pos].copy_(v_quantized)
+
+    def append_active_layers(self, k: torch.Tensor, v: torch.Tensor, pos: int) -> None:
+        """Quantize once and append the same decode-step K/V across active layers."""
+        if pos >= self.max_seq_length:
+            raise RuntimeError("KV cache overflow in optimized append")
+
+        k_scale = self._compute_scale(k)
+        v_scale = self._compute_scale(v)
+        k_quantized = (k * k_scale).to(self.cache_dtype)
+        v_quantized = (v * v_scale).to(self.cache_dtype)
+
+        active = slice(0, self.active_layers)
+        self.k_scales[active, pos] = k_scale
+        self.v_scales[active, pos] = v_scale
+        self.kv_cache[:, active, 0, :, pos, :].copy_(k_quantized.unsqueeze(1))
+        self.kv_cache[:, active, 1, :, pos, :].copy_(v_quantized.unsqueeze(1))
     
     def get_kv(
         self,
@@ -193,8 +209,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         for pos in range(num_decode_steps):
             new_k = self._generated_k_steps[pos]
             new_v = self._generated_v_steps[pos]
-            for layer_idx in range(self.active_layers):
-                self.append_kv(layer_idx, new_k, new_v, pos=pos)
+            self.append_active_layers(new_k, new_v, pos=pos)
             self.seq_lengths += 1
 
         end_event.record()
