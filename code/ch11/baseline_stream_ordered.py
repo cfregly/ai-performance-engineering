@@ -6,15 +6,15 @@ multi-stream workload using the default (synchronizing) allocator path.
 
 from __future__ import annotations
 
-from typing import Optional
 from types import ModuleType
+from typing import Optional
 
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from core.profiling.stream_ordered import load_stream_ordered_module
 from core.profiling.nvtx_helper import canonicalize_nvtx_name
+from core.profiling.stream_ordered import load_stream_ordered_module
 
 
 class BaselineStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -31,7 +31,7 @@ class BaselineStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.profile_inner_iterations = 8
         self.num_streams = 8
         self.output: Optional[torch.Tensor] = None
-        self._payload_inputs: Optional[dict] = None
+        self._last_inner_iterations = self.inner_iterations
         self._module: Optional[ModuleType] = None
         # Application replay is not stable for this allocator-heavy profile on NCU.
         self.preferred_ncu_replay_mode = "kernel"
@@ -66,18 +66,18 @@ class BaselineStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.output = self._module.run_standard_allocator_capture(self.elements, inner_iterations)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
-        self._payload_inputs = {
-            "elements": torch.tensor([self.elements], dtype=torch.int64),
-            "inner_iterations": torch.tensor([inner_iterations], dtype=torch.int64),
-        }
+        self._last_inner_iterations = inner_iterations
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or self._payload_inputs is None:
+        if self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
-            inputs=self._payload_inputs,
+            inputs={
+                "elements": torch.tensor([self.elements], dtype=torch.int64),
+                "inner_iterations": torch.tensor([self._last_inner_iterations], dtype=torch.int64),
+            },
             output=self.output,
-            batch_size=int(self.inner_iterations),
+            batch_size=int(self._last_inner_iterations),
             precision_flags={"fp16": False, "bf16": False, "fp8": False, "tf32": False},
             output_tolerance=(0.0, 0.0),
         )
@@ -105,5 +105,4 @@ class BaselineStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineStreamOrderedBenchmark()
-
 
