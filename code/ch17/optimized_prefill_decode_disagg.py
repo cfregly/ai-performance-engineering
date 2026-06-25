@@ -11,15 +11,15 @@ from typing import Dict, Optional
 
 import torch
 
+from ch17.prefill_decode_disagg_monolithic_common import SimpleLLM
+from core.benchmark.cuda_event_timing import elapsed_ms, elapsed_ms_list
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.benchmark.cuda_event_timing import elapsed_ms, elapsed_ms_list
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
-from ch17.prefill_decode_disagg_monolithic_common import SimpleLLM
 
 
 class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -49,6 +49,8 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verification_payload = None
         self._pending_ttft_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_tpot_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._ttft_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
+        self._tpot_events: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -67,6 +69,36 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             _ = self.model.decode(kv_cache, num_tokens=1)
         torch.cuda.synchronize(self.device)
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
+        self._ttft_events = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
+        self._tpot_events = [
+            (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+            for _ in range(self.decode_seq)
+        ]
+
+    def _get_ttft_events(self) -> tuple[torch.cuda.Event, torch.cuda.Event]:
+        if self._ttft_events is None:
+            self._ttft_events = (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+        return self._ttft_events
+
+    def _get_tpot_events(self, num_tokens: int) -> list[tuple[torch.cuda.Event, torch.cuda.Event]]:
+        if len(self._tpot_events) != num_tokens:
+            self._tpot_events = [
+                (
+                    torch.cuda.Event(enable_timing=True),
+                    torch.cuda.Event(enable_timing=True),
+                )
+                for _ in range(num_tokens)
+            ]
+        return self._tpot_events
 
     def benchmark_fn(self) -> Dict[str, list[float]]:
         if self.model is None or self.prompt is None or self.prefill_stream is None or self.decode_stream is None or self._prefill_done is None:
@@ -75,8 +107,8 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         enable_nvtx = get_nvtx_enabled(self.get_config())
         with nvtx_range("optimized_disaggregated_multigpu.prefill_decode", enable=enable_nvtx):
             with torch.no_grad():
-                request_start = torch.cuda.Event(enable_timing=True)
-                prefill_end = torch.cuda.Event(enable_timing=True)
+                ttft_events = self._get_ttft_events()
+                request_start, prefill_end = ttft_events
                 request_start.record()
                 default_stream = torch.cuda.current_stream(device=self.device)
                 with torch.cuda.stream(self.prefill_stream):
@@ -86,19 +118,16 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     prefill_end.record()
 
                 token_output = kv_cache
-                token_event_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
-                for _ in range(self.decode_seq):
-                    token_start = torch.cuda.Event(enable_timing=True)
-                    token_end = torch.cuda.Event(enable_timing=True)
+                token_event_pairs = self._get_tpot_events(self.decode_seq)
+                for token_start, token_end in token_event_pairs:
                     with torch.cuda.stream(self.decode_stream):
                         token_start.record(self.decode_stream)
                         self.decode_stream.wait_event(self._prefill_done)
                         token_output = self.model.decode(token_output[:, -1:, :], num_tokens=1)
                         token_end.record()
-                    token_event_pairs.append((token_start, token_end))
 
                 self.output = token_output
-                self._pending_ttft_pair = (request_start, prefill_end)
+                self._pending_ttft_pair = ttft_events
                 self._pending_tpot_pairs = token_event_pairs
                 return {}
 
@@ -152,6 +181,10 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.decode_stream = None
         self._prefill_done = None
         self.output = None
+        self._ttft_events = None
+        self._tpot_events = []
+        self._pending_ttft_pair = None
+        self._pending_tpot_pairs = []
         self._history = {"ttft": [], "tpot": []}
         torch.cuda.empty_cache()
 
@@ -187,5 +220,4 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedDisaggregatedBenchmark()
-
 
