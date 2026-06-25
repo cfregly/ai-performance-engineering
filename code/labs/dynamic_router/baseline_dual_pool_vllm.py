@@ -8,8 +8,8 @@ from typing import Dict, Optional
 
 import torch
 
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.dynamic_router.topology import detect_topology
 from labs.dynamic_router.vllm_runner import run_dual_pool_vllm_with_topology
 
@@ -21,6 +21,7 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self._summary: Dict[str, float] = {}
         self.output: Optional[torch.Tensor] = None
+        self._metric_values: Optional[list[float]] = None
         self._topology = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
@@ -41,9 +42,12 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         metric_values = [float(v) for v in self._summary.values() if isinstance(v, Number)]
         if not metric_values:
             metric_values = [0.0]
-        self.output = torch.tensor(metric_values, dtype=torch.float32).unsqueeze(0)
+        self._metric_values = metric_values
 
     def capture_verification_payload(self) -> None:
+        if self._metric_values is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self.output = torch.tensor(self._metric_values, dtype=torch.float32).unsqueeze(0)
         self._set_verification_payload(
             inputs={
                 "mode": torch.tensor([0], dtype=torch.int64),
@@ -57,6 +61,7 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         self.output = None
+        self._metric_values = None
         self._topology = None
         super().teardown()
 
@@ -70,5 +75,4 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory for discover_benchmarks()."""
     return BaselineDualPoolVllmBenchmark()
-
 

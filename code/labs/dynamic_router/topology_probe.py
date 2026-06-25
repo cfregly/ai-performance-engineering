@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from numbers import Number
+from pathlib import Path
 from typing import Dict, Optional
 
 import torch
 
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.dynamic_router.topology import detect_topology, write_topology
 
 
@@ -25,6 +25,7 @@ class TopologyProbeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.snapshot = None
         self.output_path: Optional[Path] = None
         self.output: Optional[torch.Tensor] = None
+        self._metric_values: Optional[list[float]] = None
 
     def setup(self) -> None:
         # Nothing to initialize besides ensuring artifacts dir exists (handled by write_topology).
@@ -40,9 +41,12 @@ class TopologyProbeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         metric_values = [float(v) for v in metrics_dict.values() if isinstance(v, Number)]
         if not metric_values:
             metric_values = [0.0]
-        self.output = torch.tensor(metric_values, dtype=torch.float32).unsqueeze(0)
+        self._metric_values = metric_values
 
     def capture_verification_payload(self) -> None:
+        if self._metric_values is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self.output = torch.tensor(self._metric_values, dtype=torch.float32).unsqueeze(0)
         self._set_verification_payload(
             inputs={
                 "num_gpus": torch.tensor([len(self.snapshot.gpu_numa) if self.snapshot else 0], dtype=torch.int64),
@@ -72,6 +76,7 @@ class TopologyProbeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         self.output = None
+        self._metric_values = None
         self.snapshot = None
         self.output_path = None
         super().teardown()
@@ -80,5 +85,4 @@ class TopologyProbeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return TopologyProbeBenchmark()
-
 

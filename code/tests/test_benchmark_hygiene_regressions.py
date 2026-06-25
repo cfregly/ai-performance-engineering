@@ -374,6 +374,27 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
         assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_dynamic_router_wrappers_defer_metric_tensors_outside_hot_loop() -> None:
+    for relative in (
+        "labs/dynamic_router/baseline_dynamic_router_vllm.py",
+        "labs/dynamic_router/optimized_dynamic_router_vllm.py",
+        "labs/dynamic_router/baseline_dual_pool_vllm.py",
+        "labs/dynamic_router/optimized_dual_pool_vllm.py",
+        "labs/dynamic_router/topology_probe.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert "torch.tensor(" not in benchmark_section
+        assert "self._metric_values = metric_values" in benchmark_section
+        assert "self.output = torch.tensor(self._metric_values, dtype=torch.float32).unsqueeze(0)" in capture_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
