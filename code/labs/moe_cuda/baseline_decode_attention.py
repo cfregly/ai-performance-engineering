@@ -32,6 +32,9 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self._history: Dict[str, List[float]] = {"latency_ms": []}
+        self.output: Optional[torch.Tensor] = None
+        self._payload_meta: Optional[torch.Tensor] = None
+        self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
 
     def setup(self) -> None:
@@ -52,6 +55,23 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.v = torch.randn_like(self.k)
         torch.cuda.synchronize(self.device)
         self.output = None
+        self._payload_meta = torch.tensor(
+            [self.batch, self.kv_seq, self.num_heads, self.head_dim],
+            dtype=torch.int64,
+            device="cpu",
+        )
+        self._timing_pair = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
+
+    def _get_timing_pair(self) -> tuple[torch.cuda.Event, torch.cuda.Event]:
+        if self._timing_pair is None:
+            self._timing_pair = (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+        return self._timing_pair
 
     def benchmark_fn(self) -> Dict[str, List[float]]:
         if any(t is None for t in (self.q, self.k, self.v)):
@@ -60,8 +80,8 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         enable_nvtx = get_nvtx_enabled(self.get_config())
         with nvtx_range("moe_cuda_decode_naive", enable=enable_nvtx):
             with torch.inference_mode():
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
+                timing_pair = self._get_timing_pair()
+                start_event, end_event = timing_pair
                 start_event.record()
                 q = self.q
                 k = self.k
@@ -72,16 +92,10 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 attn = torch.matmul(probs, v)
                 attn_out = attn.transpose(1, 2).reshape(self.batch, 1, self.num_heads * self.head_dim)
                 end_event.record()
-                self._pending_timing_pair = (start_event, end_event)
-                self.output = attn_out.detach().float().clone()
+                self._pending_timing_pair = timing_pair
+                self.output = attn_out.detach()
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
-        meta = torch.tensor(
-            [self.batch, self.kv_seq, self.num_heads, self.head_dim],
-            dtype=torch.int64,
-            device="cpu",
-        )
-        self._payload_meta = meta
         return None
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, List[float]]]:
@@ -97,7 +111,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         meta = self._payload_meta
         self._set_verification_payload(
             inputs={"meta": meta, "q": self.q, "k": self.k, "v": self.v},
-            output=self.output,
+            output=self.output.float().clone(),
             batch_size=self.batch,
             parameter_count=0,
             precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -110,6 +124,9 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.k = None
         self.v = None
         self.output = None
+        self._payload_meta = None
+        self._timing_pair = None
+        self._pending_timing_pair = None
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=8, warmup=5)
@@ -132,5 +149,4 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineDecodeAttentionBenchmark()
-
 

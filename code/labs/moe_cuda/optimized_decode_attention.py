@@ -12,9 +12,9 @@ from typing import Dict, List, Optional
 import torch
 import torch.nn.functional as F
 
-from core.harness.arch_config import prefer_sdpa_backends
 from core.benchmark.cuda_event_timing import elapsed_ms
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.arch_config import prefer_sdpa_backends
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
@@ -52,6 +52,8 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
             tokens_per_iteration=float(tokens),
         )
         self._history: Dict[str, List[float]] = {"latency_ms": []}
+        self._payload_meta: Optional[torch.Tensor] = None
+        self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
 
     def setup(self) -> None:
@@ -78,6 +80,23 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._refresh_bf16_cache(force=True)
         torch.cuda.synchronize(self.device)
         self.output = None
+        self._payload_meta = torch.tensor(
+            [self.batch, self.kv_seq, self.num_heads, self.head_dim],
+            dtype=torch.int64,
+            device="cpu",
+        )
+        self._timing_pair = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
+
+    def _get_timing_pair(self) -> tuple[torch.cuda.Event, torch.cuda.Event]:
+        if self._timing_pair is None:
+            self._timing_pair = (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+        return self._timing_pair
 
     def _refresh_bf16_cache(self, *, force: bool = False) -> None:
         if any(t is None for t in (self.q, self.k, self.v)):
@@ -110,8 +129,8 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         enable_nvtx = get_nvtx_enabled(self.get_config())
         with nvtx_range("moe_cuda_decode_optimized", enable=enable_nvtx):
             with torch.inference_mode():
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
+                timing_pair = self._get_timing_pair()
+                start_event, end_event = timing_pair
                 start_event.record()
                 q = self._q_bf16
                 k = self._k_bf16
@@ -120,16 +139,10 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
                     attn = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, is_causal=False)
                 attn_out = attn.transpose(1, 2).reshape(self.batch, 1, self.num_heads * self.head_dim)
                 end_event.record()
-                self._pending_timing_pair = (start_event, end_event)
-                self.output = attn_out.detach().float().clone()
+                self._pending_timing_pair = timing_pair
+                self.output = attn_out.detach()
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
-        meta = torch.tensor(
-            [self.batch, self.kv_seq, self.num_heads, self.head_dim],
-            dtype=torch.int64,
-            device="cpu",
-        )
-        self._payload_meta = meta
         return None
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, List[float]]]:
@@ -145,7 +158,7 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         meta = self._payload_meta
         self._set_verification_payload(
             inputs={"meta": meta, "q": self.q, "k": self.k, "v": self.v},
-            output=self.output,
+            output=self.output.float().clone(),
             batch_size=self.batch,
             parameter_count=0,
             precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -163,6 +176,9 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._k_version = None
         self._v_version = None
         self.output = None
+        self._payload_meta = None
+        self._timing_pair = None
+        self._pending_timing_pair = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
