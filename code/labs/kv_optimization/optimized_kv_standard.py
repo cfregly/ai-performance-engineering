@@ -7,18 +7,19 @@ Optimized KV cache with:
 - Optional NVFP4 for extreme compression (4× savings)
 """
 
+from typing import Any, Dict, Optional, Tuple
+
 import torch
 import torch.nn as nn
-from typing import Dict, Any, Tuple, Optional
 
-from core.harness.benchmark_harness import (
-    BaseBenchmark,
-    BenchmarkHarness,
-    BenchmarkConfig,
-    BenchmarkMode,
-)
 from core.benchmark.cuda_event_timing import elapsed_ms
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import (
+    BaseBenchmark,
+    BenchmarkConfig,
+    BenchmarkHarness,
+    BenchmarkMode,
+)
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -58,6 +59,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self.num_decode_steps = num_decode_steps
         self._last_metrics: Dict[str, Any] = {}
         self.output: Optional[torch.Tensor] = None
+        self._timing_pair: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._generated_k_steps: Optional[torch.Tensor] = None
         self._generated_v_steps: Optional[torch.Tensor] = None
@@ -123,6 +125,19 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         logger.debug(f"  Compression: {self._compression_ratio}x")
         logger.debug(f"  Estimated memory: {self._estimated_memory_gb:.2f} GB")
         logger.debug("Compressed KV cache allocated")
+
+        self._timing_pair = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
+
+    def _get_timing_pair(self) -> Tuple[torch.cuda.Event, torch.cuda.Event]:
+        if self._timing_pair is None:
+            self._timing_pair = (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+        return self._timing_pair
     
     def _compute_scale(self, x: torch.Tensor) -> torch.Tensor:
         """Compute dynamic scaling factor."""
@@ -202,8 +217,8 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         num_decode_steps = self.num_decode_steps
         self.seq_lengths.zero_()
 
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
+        timing_pair = self._get_timing_pair()
+        start_event, end_event = timing_pair
         start_event.record()
 
         for pos in range(num_decode_steps):
@@ -213,18 +228,24 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             self.seq_lengths += 1
 
         end_event.record()
-        self._pending_timing_pair = (start_event, end_event)
+        self._pending_timing_pair = timing_pair
 
-        # Verification output: dequantize the first token of layer 0 so we compare against the BF16 baseline.
         head_window = min(8, self.head_dim)
-        kq0 = self.kv_cache[0, 0, 0, :, 0, :head_window]
-        vq0 = self.kv_cache[0, 0, 1, :, 0, :head_window]
+        self.output = self.kv_cache[:1, :1, :, :, :1, :head_window].detach()
+
+    def _build_verification_output(self) -> torch.Tensor:
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must run before verification capture")
+
+        # Dequantize the first token of layer 0 so we compare against the BF16 baseline.
+        kq0 = self.output[0, 0, 0, :, 0, :]
+        vq0 = self.output[0, 0, 1, :, 0, :]
         k_scale0 = self.k_scales[0, 0]
         v_scale0 = self.v_scales[0, 0]
         k0 = (kq0.float() / k_scale0).unsqueeze(1)
         v0 = (vq0.float() / v_scale0).unsqueeze(1)
         view = torch.stack([k0, v0], dim=0).unsqueeze(0).unsqueeze(0)
-        self.output = view.detach().clone()
+        return view.detach().clone()
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
@@ -233,7 +254,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
                 "batch_size": torch.tensor([self.batch_size], dtype=torch.int64, device="cpu"),
                 "seq_lengths": self.seq_lengths.detach().clone(),
             },
-            output=self.output,
+            output=self._build_verification_output(),
             batch_size=self.batch_size,
             parameter_count=0,
             precision_flags={
@@ -285,6 +306,8 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._generated_k_steps = None
         self._generated_v_steps = None
         self.output = None
+        self._timing_pair = None
+        self._pending_timing_pair = None
         super().teardown()
 
 

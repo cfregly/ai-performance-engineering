@@ -4,18 +4,19 @@
 Standard KV cache using BF16 precision without optimization.
 """
 
-import torch
-import torch.nn as nn
 from typing import Any, Dict, Optional, Tuple
 
-from core.harness.benchmark_harness import (
-    BaseBenchmark,
-    BenchmarkHarness,
-    BenchmarkConfig,
-    BenchmarkMode,
-)
+import torch
+import torch.nn as nn
+
 from core.benchmark.cuda_event_timing import elapsed_ms
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import (
+    BaseBenchmark,
+    BenchmarkConfig,
+    BenchmarkHarness,
+    BenchmarkMode,
+)
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -55,6 +56,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._last_metrics: Dict[str, Any] = {}
         self.precision_label = "bf16"
         self.output: Optional[torch.Tensor] = None
+        self._timing_pair: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._generated_k_steps: Optional[torch.Tensor] = None
         self._generated_v_steps: Optional[torch.Tensor] = None
@@ -99,6 +101,18 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         logger.debug("Baseline KV Cache (BF16)")
         logger.debug(f"  Estimated memory: {self._estimated_memory_gb:.2f} GB")
         logger.debug("KV cache allocated")
+        self._timing_pair = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
+
+    def _get_timing_pair(self) -> Tuple[torch.cuda.Event, torch.cuda.Event]:
+        if self._timing_pair is None:
+            self._timing_pair = (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+        return self._timing_pair
 
     def append_kv(
         self,
@@ -146,8 +160,8 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         num_decode_steps = self.num_decode_steps
         self.seq_lengths.zero_()
 
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
+        timing_pair = self._get_timing_pair()
+        start_event, end_event = timing_pair
         start_event.record()
 
         for pos in range(num_decode_steps):
@@ -157,11 +171,11 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
             self.seq_lengths += 1
 
         end_event.record()
-        self._pending_timing_pair = (start_event, end_event)
+        self._pending_timing_pair = timing_pair
 
         # Capture a slice of KV cache for verification (layer 0, first token/head window)
         view = self.kv_cache[:1, :1, :, :, : min(1, self.kv_cache.shape[4]), : min(8, self.kv_cache.shape[5])]
-        self.output = view.detach().float().clone()
+        self.output = view.detach()
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
@@ -170,7 +184,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
                 "batch_size": torch.tensor([self.batch_size], dtype=torch.int64, device="cpu"),
                 "seq_lengths": self.seq_lengths.detach().clone(),
             },
-            output=self.output,
+            output=self.output.float().clone(),
             batch_size=self.batch_size,
             parameter_count=0,
             precision_flags={"fp16": False, "bf16": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -217,6 +231,8 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._generated_k_steps = None
         self._generated_v_steps = None
         self.output = None
+        self._timing_pair = None
+        self._pending_timing_pair = None
         super().teardown()
 
 
