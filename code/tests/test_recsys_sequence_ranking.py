@@ -4,6 +4,7 @@ import torch
 
 from core.harness.benchmark_harness import BenchmarkConfig, ReadOnlyBenchmarkConfigView
 from labs.recsys_sequence_ranking.baseline_sequence_ranking import BaselineSequenceRankingBenchmark
+from labs.recsys_sequence_ranking.compare_sequence_ranking import _measure
 from labs.recsys_sequence_ranking.optimized_sequence_ranking import (
     OptimizedSequenceRankingBenchmark,
 )
@@ -19,6 +20,14 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     resolve_score_backend,
     sequence_mean_vectorized,
 )
+
+
+class _FakeMeasuredBenchmark:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def benchmark_fn(self) -> None:
+        self.calls += 1
 
 
 def _small_workload() -> SequenceRankingWorkload:
@@ -121,3 +130,13 @@ def test_optimized_benchmark_disables_compile_for_ncu_wrapper_runs() -> None:
     optimized._config = ReadOnlyBenchmarkConfigView.from_config(profiling_config)
 
     assert optimized._should_enable_compile() is False
+
+
+def test_compare_measure_cpu_path_counts_warmup_and_timed_iterations(monkeypatch) -> None:
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    bench = _FakeMeasuredBenchmark()
+
+    latency_ms = _measure(bench, warmup=3, iterations=5)
+
+    assert bench.calls == 8
+    assert latency_ms >= 0.0

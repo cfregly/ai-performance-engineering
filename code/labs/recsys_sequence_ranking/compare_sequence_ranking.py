@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import nullcontext
 import json
-from pathlib import Path
 import time
+from contextlib import nullcontext
+from pathlib import Path
 
 import torch
 
 from core.harness.benchmark_harness import lock_gpu_clocks
 from labs.recsys_sequence_ranking.baseline_sequence_ranking import BaselineSequenceRankingBenchmark
-from labs.recsys_sequence_ranking.optimized_sequence_ranking import OptimizedSequenceRankingBenchmark
-from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import apply_cli_overrides, default_workload
+from labs.recsys_sequence_ranking.optimized_sequence_ranking import (
+    OptimizedSequenceRankingBenchmark,
+)
+from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
+    apply_cli_overrides,
+    default_workload,
+)
 
 
 def _measure(bench, *, warmup: int, iterations: int) -> float:
@@ -23,21 +28,21 @@ def _measure(bench, *, warmup: int, iterations: int) -> float:
         torch.cuda.synchronize()
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        timings = []
+        total_ms = 0.0
         for _ in range(iterations):
             start.record()
             bench.benchmark_fn()
             end.record()
             torch.cuda.synchronize()
-            timings.append(start.elapsed_time(end))
-        return float(sum(timings) / len(timings))
+            total_ms += start.elapsed_time(end)
+        return float(total_ms / iterations)
 
-    timings = []
+    total_ms = 0.0
     for _ in range(iterations):
         t0 = time.perf_counter()
         bench.benchmark_fn()
-        timings.append((time.perf_counter() - t0) * 1000.0)
-    return float(sum(timings) / len(timings))
+        total_ms += (time.perf_counter() - t0) * 1000.0
+    return float(total_ms / iterations)
 
 
 def main() -> int:
