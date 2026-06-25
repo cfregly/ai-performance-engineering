@@ -63,14 +63,17 @@ class BaselineTrainingSpeedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if any(v is None for v in (self.model, self.input_ids, self.targets, self.optimizer, self.criterion)):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_training_speed"):
-            logits = self._train_step(self.input_ids, self.targets)
-            self.output = logits[:1, :1, :8].detach().float().clone()
-        if self.output is None or self.input_ids is None:
-            raise RuntimeError("benchmark_fn() must produce output for verification")
+            self._train_step(self.input_ids, self.targets)
+            self.output = None
+        if self.input_ids is None:
+            raise RuntimeError("benchmark_fn() requires input_ids for verification")
 
     def capture_verification_payload(self) -> None:
-        if self.input_ids is None or self.output is None:
-            raise RuntimeError("capture_verification_payload() requires benchmark output")
+        if self.model is None or self.input_ids is None:
+            raise RuntimeError("capture_verification_payload() requires model and inputs")
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=self.autocast_dtype):
+            verify_logits = self.model(self.input_ids)
+            self.output = verify_logits[:1, :1, :8].detach().float().clone()
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids.detach().clone()},
             output=self.output,
@@ -121,4 +124,3 @@ class BaselineTrainingSpeedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineTrainingSpeedBenchmark()
-

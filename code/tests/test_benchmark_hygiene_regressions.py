@@ -542,6 +542,35 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
         assert "output=self.output.detach().float().clone()" in capture_section
 
 
+def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot_loop() -> None:
+    for name in (
+        "baseline_training_standard.py",
+        "optimized_training_standard.py",
+        "baseline_training_speed.py",
+    ):
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert "logits[:1, :1, :8].detach().float().clone()" not in benchmark_section
+        assert "self.output = None" in benchmark_section
+        assert "verify_logits = self.model(self.input_ids)" in capture_section
+        assert "self.output = verify_logits[:1, :1, :8].detach().float().clone()" in capture_section
+
+    optimized_speed = (REPO_ROOT / "ch13" / "optimized_training_speed.py").read_text(encoding="utf-8")
+    optimized_benchmark = optimized_speed.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+
+    assert "output_buffer" not in optimized_speed
+    assert "logits[:1, :1, :8]" not in optimized_speed
+    assert "self.output = None" in optimized_benchmark
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

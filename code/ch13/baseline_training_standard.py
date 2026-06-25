@@ -159,7 +159,7 @@ class BaselineTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 logits.view(-1, self.vocab_size),
                 self.targets.view(-1)
             )
-            self.output = logits[:1, :1, :8].detach().float().clone()
+            self.output = None
             
             # Backward pass - uses stored activations
             loss.backward()
@@ -171,10 +171,15 @@ class BaselineTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._peak_memory_gb,
             torch.cuda.max_memory_allocated(self.device) / 1e9
         )
-        if self.input_ids is None or self.output is None:
-            raise RuntimeError("benchmark_fn() must produce output for verification")
+        if self.input_ids is None:
+            raise RuntimeError("benchmark_fn() requires input_ids for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.model is None or self.input_ids is None:
+            raise RuntimeError("capture_verification_payload() requires model and inputs")
+        with torch.no_grad():
+            verify_logits = self.model(self.input_ids)
+            self.output = verify_logits[:1, :1, :8].detach().float().clone()
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids.detach().clone()},
             output=self.output,
