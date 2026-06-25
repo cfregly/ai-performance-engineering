@@ -48,7 +48,7 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with nvtx_range("gpu_decompress_rle", enable=enable_nvtx):
             out = torch.repeat_interleave(self.values, self.counts_i64)
         latency_ms = self._record_stop(start)
-        self.output = out.detach().clone()
+        self.output = out.detach()
         self._payload_counts = self.counts
         self._payload_values = self.values
         return {"latency_ms": latency_ms, "decompressed_len": int(out.numel())}
