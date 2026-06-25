@@ -126,6 +126,19 @@ def test_ch06_ilp_benchmarks_defer_verification_clone_out_of_hot_path() -> None:
         assert "output=self.output.detach().clone()" in capture_text
 
 
+def test_ch17_static_routing_defers_verification_cast_and_clone() -> None:
+    for relative_path in (
+        "ch17/baseline_routing_static.py",
+        "ch17/optimized_routing_static.py",
+    ):
+        benchmark_text = _benchmark_section(relative_path)
+        capture_text = _read(relative_path).split("def capture_verification_payload", 1)[1]
+
+        assert ".clone()" not in benchmark_text
+        assert ".float()" not in benchmark_text
+        assert "output=self.output.detach().float().clone()" in capture_text
+
+
 def test_ch06_optimized_adaptive_uses_chunk_plan_without_extra_staging_buffers() -> None:
     optimized_text = _read("ch06/optimized_adaptive.py")
 

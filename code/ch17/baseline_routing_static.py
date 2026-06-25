@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import random
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -92,17 +91,17 @@ class BaselineRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     _ = torch.argmax(self.route_scores[idx])
             if self._verify_input is not None:
                 with torch.no_grad():
-                    self.output = self.model(self._verify_input).detach().float().clone()
+                    self.output = self.model(self._verify_input)
         if self.output is None or self._verify_input is None:
             raise RuntimeError("benchmark_fn() must produce output")
-        dtype = self.output.dtype
+        dtype = torch.float32
         self._payload_dtype = dtype
 
     def capture_verification_payload(self) -> None:
         dtype = self._payload_dtype
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
-            output=self.output,
+            output=self.output.detach().float().clone(),
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
