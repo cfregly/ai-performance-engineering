@@ -18,12 +18,12 @@ from typing import Dict, List, Optional
 import torch
 
 from core.benchmark.cuda_event_timing import elapsed_ms
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 _CACHE_SHAPE = (64, 1024, 512)
 _CACHE_ROWS = _CACHE_SHAPE[0] * _CACHE_SHAPE[1]
@@ -125,6 +125,7 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self._verification_payload = None
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
+        self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._last_bits = schedule_bits[-1]
 
     def setup(self) -> None:
@@ -156,7 +157,19 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._reference_cache = None
         self._quant_scratch = None
         self.output = None
+        self._timing_pair = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
         torch.cuda.synchronize(self.device)
+
+    def _get_timing_pair(self) -> tuple[torch.cuda.Event, torch.cuda.Event]:
+        if self._timing_pair is None:
+            self._timing_pair = (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+        return self._timing_pair
 
     def _refresh_reference_cache(self) -> None:
         if self._quant_scratch is None or self._reference_cache is None:
@@ -264,8 +277,8 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         elif self._packed_dst_bytes is None:
             raise RuntimeError("Quantized cache not initialized")
 
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
+        timing_pair = self._get_timing_pair()
+        start_event, end_event = timing_pair
         start_event.record()
 
         if self.use_fp32_baseline:
@@ -276,7 +289,7 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._adaptive_cache_update(bits)
 
         end_event.record()
-        self._pending_timing_pair = (start_event, end_event)
+        self._pending_timing_pair = timing_pair
         return {}
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, List[float]]]:
@@ -315,6 +328,8 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scale4_src = None
         self._packed_dst_bytes = None
         self._last_scale = None
+        self._timing_pair = None
+        self._pending_timing_pair = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
