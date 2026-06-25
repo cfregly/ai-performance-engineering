@@ -16,6 +16,7 @@ class OptimizedHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchm
     def __init__(self):
         super().__init__()
         self.data: Optional[torch.Tensor] = None
+        self.output: Optional[torch.Tensor] = None
         self.num_elements = 10_000_000
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -36,7 +37,7 @@ class OptimizedHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchm
         assert self.data is not None
         with self._nvtx_range("optimized_host_staged_reduction"):
             result = self.data.sum()
-        self.output = result.detach().clone()
+        self.output = result
 
     def capture_verification_payload(self) -> None:
         if self.data is None:
@@ -60,6 +61,7 @@ class OptimizedHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchm
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         self.data = None
+        self.output = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

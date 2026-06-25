@@ -18,6 +18,7 @@ class BaselineHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchma
     def __init__(self):
         super().__init__()
         self.data: Optional[torch.Tensor] = None
+        self.output: Optional[torch.Tensor] = None
         self.num_elements = 10_000_000
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -40,7 +41,7 @@ class BaselineHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchma
             cpu_result = self.data.cpu().sum()
             result = cpu_result.to(self.device)
             _ = result
-        self.output = result.detach().clone()
+        self.output = result
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
@@ -60,6 +61,7 @@ class BaselineHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchma
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         self.data = None
+        self.output = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

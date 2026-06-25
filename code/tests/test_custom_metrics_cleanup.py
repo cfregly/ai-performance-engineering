@@ -5,18 +5,20 @@ from pathlib import Path
 
 import torch
 
+from ch01.baseline_performance import BaselinePerformanceBenchmark
+from ch01.optimized_performance_fusion import OptimizedPerformanceFusionBenchmark
 from ch02.baseline_cublas import BaselineCublasBenchmark
 from ch02.baseline_memory_transfer import BaselineMemoryTransferBenchmark
 from ch02.optimized_cublas import OptimizedCublasBenchmark
 from ch02.optimized_memory_transfer import OptimizedMemoryTransferBenchmark
-from ch01.baseline_performance import BaselinePerformanceBenchmark
-from ch01.optimized_performance_fusion import OptimizedPerformanceFusionBenchmark
 from ch05.ai_common import TinyBlock as CommonTinyBlock
-from ch05.baseline_ai import BaselineAIBenchmark, TinyBlock as BaselineTinyBlock
+from ch05.baseline_ai import BaselineAIBenchmark
+from ch05.baseline_ai import TinyBlock as BaselineTinyBlock
 from ch05.baseline_host_staged_reduction import BaselineHostStagedReductionBenchmark
 from ch05.baseline_storage_cpu import BaselineStorageCpuBenchmark
 from ch05.baseline_vectorization import BaselineVectorizationBenchmark
-from ch05.optimized_ai import OptimizedAIBenchmark, TinyBlock as OptimizedTinyBlock
+from ch05.optimized_ai import OptimizedAIBenchmark
+from ch05.optimized_ai import TinyBlock as OptimizedTinyBlock
 from ch05.optimized_host_staged_reduction import OptimizedHostStagedReductionBenchmark
 from ch05.optimized_storage_cpu import OptimizedStorageCpuBenchmark
 from ch05.optimized_vectorization import OptimizedVectorizationBenchmark
@@ -25,18 +27,26 @@ from ch10.baseline_double_buffered_pipeline import BaselineDoubleBufferedPipelin
 from ch10.baseline_flash_attention import BaselineFlashAttentionBenchmark
 from ch10.baseline_matmul_tcgen05_pipelined import BaselineMatmulTCGen05PipelinedBenchmark
 from ch10.baseline_warp_spec_pingpong import BaselineWarpSpecPingPongBenchmark
-from ch10.baseline_warp_specialized_cluster_pipeline import BaselineWarpSpecializedClusterPipelineBenchmark
+from ch10.baseline_warp_specialized_cluster_pipeline import (
+    BaselineWarpSpecializedClusterPipelineBenchmark,
+)
 from ch10.baseline_warp_specialized_pipeline import BaselineWarpSpecializedPipelineBenchmark
-from ch10.baseline_warp_specialized_pipeline_enhanced import BaselineWarpSpecializedPipelineEnhancedBenchmark
-from ch10.optimized_flash_attention import OptimizedFlashAttentionBenchmark
+from ch10.baseline_warp_specialized_pipeline_enhanced import (
+    BaselineWarpSpecializedPipelineEnhancedBenchmark,
+)
 from ch10.optimized_batch import OptimizedBatchBenchmark
 from ch10.optimized_double_buffered_pipeline import OptimizedDoubleBufferedPipelineBenchmark
+from ch10.optimized_flash_attention import OptimizedFlashAttentionBenchmark
 from ch10.optimized_matmul_tcgen05_pipelined import OptimizedMatmulTCGen05PipelinedBenchmark
 from ch10.optimized_tcgen05_cluster_pipeline import OptimizedTcgen05ClusterPipelineBenchmark
 from ch10.optimized_warp_spec_pingpong import OptimizedWarpSpecPingPongBenchmark
-from ch10.optimized_warp_specialized_cluster_pipeline import OptimizedWarpSpecializedClusterPipelineBenchmark
+from ch10.optimized_warp_specialized_cluster_pipeline import (
+    OptimizedWarpSpecializedClusterPipelineBenchmark,
+)
 from ch10.optimized_warp_specialized_pipeline import OptimizedWarpSpecializedPipelineBenchmark
-from ch10.optimized_warp_specialized_pipeline_enhanced import OptimizedWarpSpecializedPipelineEnhancedBenchmark
+from ch10.optimized_warp_specialized_pipeline_enhanced import (
+    OptimizedWarpSpecializedPipelineEnhancedBenchmark,
+)
 from ch15.baseline_inference_monolithic import SimpleLLM as BaselineMonolithicLLM
 from ch15.inference_monolithic_common import SimpleLLM as CommonMonolithicLLM
 from ch15.optimized_inference_monolithic import SimpleLLM as OptimizedMonolithicLLM
@@ -169,6 +179,21 @@ def test_ch05_remaining_metrics_no_longer_emit_storage_bandwidth_placeholders() 
 
     assert baseline_reduction["reduction.host_staging_round_trips"] == 2.0
     assert optimized_reduction["reduction.keeps_reduction_on_device"] == 1.0
+
+
+def test_ch05_host_staged_reduction_keeps_scalar_output_without_hot_path_clone() -> None:
+    data = torch.arange(16, dtype=torch.float32)
+    for benchmark in (
+        BaselineHostStagedReductionBenchmark(),
+        OptimizedHostStagedReductionBenchmark(),
+    ):
+        benchmark.device = torch.device("cpu")
+        benchmark.data = data
+        benchmark.benchmark_fn()
+
+        assert benchmark.output is not None
+        assert benchmark.output.shape == ()
+        torch.testing.assert_close(benchmark.output, data.sum())
 
 
 def test_ch10_remaining_metrics_no_longer_emit_fake_pipeline_timing() -> None:
