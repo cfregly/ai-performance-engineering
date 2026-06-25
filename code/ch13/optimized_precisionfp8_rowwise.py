@@ -132,16 +132,17 @@ class OptimizedFP8RowwiseBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input not initialized")
         with self._nvtx_range("optimized_precisionfp8_rowwise"):
             self._train_step()
-            with torch.no_grad():
-                verify_out = self.model(self._verify_input_fp16)
-                self.output = verify_out.detach().float().clone()
-        if self.output is None:
-            raise RuntimeError("benchmark_fn() must produce output for verification")
+            self.output = None
 
     def capture_verification_payload(self) -> None:
+        if self.model is None or self._verify_input_fp16 is None:
+            raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
+        with torch.no_grad():
+            verify_out = self.model(self._verify_input_fp16)
+            self.output = verify_out
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output,
+            output=self.output.detach().float().clone(),
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -188,4 +189,3 @@ class OptimizedFP8RowwiseBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedFP8RowwiseBenchmark()
-

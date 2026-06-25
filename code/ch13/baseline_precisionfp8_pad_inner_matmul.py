@@ -60,16 +60,16 @@ class BaselinePrecisionFP8PadInnerMatmulBenchmark(VerificationPayloadMixin, Base
         with self._nvtx_range("baseline_precisionfp8_pad_inner_matmul"):
             with torch.no_grad():
                 out = torch.matmul(self.a, self.b)
-                self.output = out.detach().float().clone()
+                self.output = out
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
-        if self.a is None:
+        if self.a is None or self.b is None or self.output is None:
             raise RuntimeError("Benchmark not configured")
         self._set_verification_payload(
             inputs={"a": self.a, "b": self.b},
-            output=self.output,
+            output=self.output.detach().float().clone(),
             batch_size=self.a.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -97,5 +97,4 @@ class BaselinePrecisionFP8PadInnerMatmulBenchmark(VerificationPayloadMixin, Base
 
 def get_benchmark() -> BaseBenchmark:
     return BaselinePrecisionFP8PadInnerMatmulBenchmark()
-
 

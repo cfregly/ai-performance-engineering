@@ -504,10 +504,14 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
     training_pair = (
         "baseline_precisionfp8.py",
         "optimized_precisionfp8.py",
+        "optimized_precisionfp8_rowwise.py",
+        "optimized_precisionfp8_rowwise_gw_hp.py",
     )
     forward_pair = (
-        "baseline_precisionfp8_pad_inner.py",
-        "optimized_precisionfp8_pad_inner.py",
+        ("baseline_precisionfp8_pad_inner.py", "self.output = benchmark_out"),
+        ("optimized_precisionfp8_pad_inner.py", "self.output = benchmark_out"),
+        ("baseline_precisionfp8_pad_inner_matmul.py", "self.output = out"),
+        ("optimized_precisionfp8_pad_inner_matmul.py", "self.output = out"),
     )
 
     for name in training_pair:
@@ -524,7 +528,7 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
         assert "verify_out = self.model(self._verify_input_fp16)" in capture_section
         assert "output=self.output.detach().float().clone()" in capture_section
 
-    for name in forward_pair:
+    for name, expected_assignment in forward_pair:
         source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
@@ -534,7 +538,7 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
         )[0]
 
         assert ".detach().float().clone()" not in benchmark_section
-        assert "self.output = benchmark_out" in benchmark_section
+        assert expected_assignment in benchmark_section
         assert "output=self.output.detach().float().clone()" in capture_section
 
 

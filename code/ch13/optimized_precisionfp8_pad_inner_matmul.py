@@ -125,16 +125,16 @@ class OptimizedPrecisionFP8PadInnerMatmulBenchmark(VerificationPayloadMixin, Bas
                     axiswise_dim=0,
                 )
                 out = a_fp8 @ b_fp8
-                self.output = out.detach().float().clone()
+                self.output = out
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
-        if self.a is None:
+        if self.a is None or self.b is None or self.output is None:
             raise RuntimeError("Benchmark not configured")
         self._set_verification_payload(
             inputs={"a": self.a, "b": self.b},
-            output=self.output,
+            output=self.output.detach().float().clone(),
             batch_size=self.a.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -161,5 +161,4 @@ class OptimizedPrecisionFP8PadInnerMatmulBenchmark(VerificationPayloadMixin, Bas
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedPrecisionFP8PadInnerMatmulBenchmark()
-
 
