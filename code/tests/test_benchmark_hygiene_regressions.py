@@ -430,6 +430,21 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     assert "self.output = self.reduced_sums[0]" in optimized_benchmark
 
 
+def test_persistent_decode_graphs_reuses_timing_events_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "labs" / "persistent_decode" / "optimized_persistent_decode_graphs.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics", maxsplit=1
+    )[0]
+
+    assert "torch.cuda.Event(enable_timing=True)" in setup_section
+    assert "torch.cuda.Event(" not in benchmark_section
+    assert 'start = self._full_events["start"]' in benchmark_section
+    assert 'start_prefill = self._piecewise_events["start_prefill"]' in benchmark_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

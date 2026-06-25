@@ -12,8 +12,8 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.persistent_decode.optimized_persistent_decode_triton import persistent_decode_kernel
 from labs.persistent_decode.persistent_decode_common import (
-    build_inputs,
     build_decode_input_signature,
+    build_inputs,
     get_decode_options,
     get_decode_profile,
     resolve_device,
@@ -58,6 +58,8 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         self.max_capture_seq = max_capture_seq or self.seq_len
         self._history: dict[str, list[float]] = {}
         self._pending_iteration: dict[str, object] | None = None
+        self._full_events: dict[str, torch.cuda.Event] = {}
+        self._piecewise_events: dict[str, torch.cuda.Event] = {}
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
         self.output: torch.Tensor | None = None
 
@@ -67,6 +69,16 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
             torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
         self.prefill_out = torch.empty((self.batch, self.seq_len), device=self.device, dtype=torch.float32)
+        self._full_events = {
+            "start": torch.cuda.Event(enable_timing=True),
+            "end": torch.cuda.Event(enable_timing=True),
+        }
+        self._piecewise_events = {
+            "start_prefill": torch.cuda.Event(enable_timing=True),
+            "end_prefill": torch.cuda.Event(enable_timing=True),
+            "start_decode": torch.cuda.Event(enable_timing=True),
+            "end_decode": torch.cuda.Event(enable_timing=True),
+        }
         torch.cuda.synchronize()
         self._capture_graphs()
 
@@ -140,8 +152,8 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
             or (self.graph_mode == GraphMode.FULL_AND_PIECEWISE and self.seq_len <= self.max_capture_seq)
         )
         if use_full and self.full_graph is not None:
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
+            start = self._full_events["start"]
+            end = self._full_events["end"]
             with self._nvtx_range("full_graph"):
                 start.record()
                 self.full_graph.replay()
@@ -162,10 +174,10 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         with self._nvtx_range(
             "piecewise_graph" if self.graph_mode != GraphMode.FULL_AND_PIECEWISE else "graph_fallback_piecewise"
         ):
-            start_prefill = torch.cuda.Event(enable_timing=True)
-            end_prefill = torch.cuda.Event(enable_timing=True)
-            start_decode = torch.cuda.Event(enable_timing=True)
-            end_decode = torch.cuda.Event(enable_timing=True)
+            start_prefill = self._piecewise_events["start_prefill"]
+            end_prefill = self._piecewise_events["end_prefill"]
+            start_decode = self._piecewise_events["start_decode"]
+            end_decode = self._piecewise_events["end_decode"]
             start_prefill.record()
             self.prefill_graph.replay()
             end_prefill.record()
@@ -231,6 +243,8 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         self.decode_graph = None
         self.full_graph = None
         self.prefill_out = None
+        self._full_events = {}
+        self._piecewise_events = {}
         self.output = None
 
     def get_config(self) -> BenchmarkConfig:
