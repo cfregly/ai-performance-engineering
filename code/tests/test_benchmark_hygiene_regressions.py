@@ -486,6 +486,20 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "float(out.sum())" not in optimized_benchmark
 
 
+def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "ch17" / "baseline_dynamic_routing.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
+
+    assert "torch.tensor(" not in benchmark_section
+    assert "self._output_values = [float(served), float(rejects), float(offloaded)]" in benchmark_section
+    assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

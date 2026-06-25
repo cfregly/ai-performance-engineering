@@ -9,13 +9,13 @@ from typing import Dict, List, Optional
 
 import torch
 
+from ch17.dynamic_routing import DisaggregatedRouter, Priority, Request, WorkerMetrics  # noqa: E402
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
-from ch17.dynamic_routing import DisaggregatedRouter, Priority, Request, WorkerMetrics  # noqa: E402
 
 
 class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -32,6 +32,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(batch_size * 128),
         )
         self.output = None
+        self._output_values: Optional[list[float]] = None
         self._verification_payload = None
         self._iteration = 0
         self._queue_length_table: Optional[torch.Tensor] = None
@@ -165,7 +166,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._history["lat_ms"].append(elapsed_ms)
         served = len(requests) - rejects
 
-        self.output = torch.tensor([float(served), float(rejects), float(offloaded)])
+        self._output_values = [float(served), float(rejects), float(offloaded)]
         if queue_lengths is None:
             raise RuntimeError("Queue length inputs not initialized")
         self._payload_input_snapshot = queue_lengths
@@ -178,6 +179,9 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         input_snapshot = self._payload_input_snapshot
+        if self._output_values is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self.output = torch.tensor(self._output_values, dtype=torch.float32)
         self._set_verification_payload(
             inputs={"queue_lengths": input_snapshot},
             output=self.output,
@@ -213,5 +217,4 @@ class BaselineDynamicRoutingBenchmark(_DynamicRoutingBenchmark):
 
 def get_benchmark():
     return BaselineDynamicRoutingBenchmark()
-
 
