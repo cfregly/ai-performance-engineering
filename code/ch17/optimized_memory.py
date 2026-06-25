@@ -98,14 +98,16 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     # Make the discrete input population explicit on every replay.
                     self.device_buffer.random_(0, 256).floor_()
                     self.graph.replay()
-                self.output = self.graph_output.clone()
+                self.output = self.graph_output
         if self.output is None or self.device_buffer is None:
             raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
+        if self.device_buffer is None or self.output is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
             inputs={"input": self.device_buffer},
-            output=self.output,
+            output=self.output.detach().clone(),
             batch_size=self.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={"fp16": False, "bf16": False, "fp8": False, "tf32": torch.backends.cuda.matmul.allow_tf32},

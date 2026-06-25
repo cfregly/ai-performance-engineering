@@ -33,7 +33,7 @@ class BaselineEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark
         super().__init__()
         self.model: Optional[nn.Module] = None
         self.inputs: Optional[list[torch.Tensor]] = None
-        self.outputs: Optional[list[torch.Tensor]] = None
+        self.outputs: Optional[list[torch.Tensor | None]] = None
         self.output: Optional[torch.Tensor] = None
         self.batch_size = 32
         self.hidden_dim = 1024
@@ -52,27 +52,24 @@ class BaselineEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark
             torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
             for _ in range(self.num_batches)
         ]
-        self.outputs = []
+        self.outputs = [None for _ in range(self.num_batches)]
         self.output = None
         for inp in self.inputs[:3]:
             _ = self.model(inp)
     
     def benchmark_fn(self) -> None:
-        assert self.model is not None and self.inputs is not None
+        assert self.model is not None and self.inputs is not None and self.outputs is not None
         with self._nvtx_range("baseline_end_to_end_bandwidth"):
-            self.outputs = []
             with torch.no_grad():
-                for inp in self.inputs:
+                for batch_idx, inp in enumerate(self.inputs):
                     out = self.model(inp)
-                    self.outputs.append(out)
-            if self.outputs:
-                self.output = torch.stack(self.outputs)
-            else:
-                self.output = None
+                    self.outputs[batch_idx] = out
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self.inputs is None or self.output is None:
+        if self.model is None or self.inputs is None or self.outputs is None or any(out is None for out in self.outputs):
             raise RuntimeError("capture_verification_payload() requires completed benchmark run")
+        outputs = [out for out in self.outputs if out is not None]
+        self.output = torch.stack([out.detach() for out in outputs], dim=0)
         stacked_inputs = torch.stack(self.inputs)
         self._set_verification_payload(
             inputs={"inputs": stacked_inputs},
@@ -86,6 +83,7 @@ class BaselineEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.model = None
         self.inputs = None
         self.outputs = None
+        self.output = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

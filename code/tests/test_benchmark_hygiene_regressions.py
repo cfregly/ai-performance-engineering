@@ -326,6 +326,33 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
     assert "torch.cuda.Event(" not in optimized_benchmark
 
 
+def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None:
+    ch17_source = (REPO_ROOT / "ch17" / "optimized_memory.py").read_text(encoding="utf-8")
+    ch17_benchmark = ch17_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    ch17_capture = ch17_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+
+    assert "self.output = self.graph_output.clone()" not in ch17_benchmark
+    assert "self.output = self.graph_output" in ch17_benchmark
+    assert "output=self.output.detach().clone()" in ch17_capture
+
+    ch20_source = (REPO_ROOT / "ch20" / "baseline_end_to_end_bandwidth.py").read_text(encoding="utf-8")
+    ch20_benchmark = ch20_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    ch20_capture = ch20_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+
+    assert "torch.stack(" not in ch20_benchmark
+    assert "self.outputs = [None for _ in range(self.num_batches)]" in ch20_source
+    assert "self.outputs[batch_idx] = out" in ch20_benchmark
+    assert "self.output = torch.stack([out.detach() for out in outputs], dim=0)" in ch20_capture
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
