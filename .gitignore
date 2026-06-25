@@ -8,6 +8,9 @@ code/ch14/compiled_code_output/
 code/ch14/torch_compile_debug/
 code/ch16/gpt_oss_120b_results.json
 code/ch16/gpt_quick_results.txt
+zymtrace-official/
+code/third_party/mlperf_inference/
+code/third_party/mlperf_training/
 BENCHMARK_*.json
 code/cluster/results/structured/mcp_cluster_smoke_test*
 .venv/
