@@ -8,6 +8,7 @@ from typing import List, Optional
 import torch
 
 from core.benchmark.verification import PrecisionFlags
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.optimization.moe_inference import (
@@ -16,7 +17,6 @@ from core.optimization.moe_inference import (
     allocate_kv_cache,
     env_override_int,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
 @dataclass(frozen=True)
@@ -52,8 +52,10 @@ def _format_batched_decode_output(
     batch_size: int,
 ) -> torch.Tensor:
     """Match the legacy per-request output layout used by verification."""
-    per_request = final_tokens.reshape(requests_per_rank, batch_size, -1)
-    return torch.cat([per_request[idx].squeeze(0) for idx in range(requests_per_rank)], dim=0)
+    flattened = final_tokens.reshape(requests_per_rank * batch_size, -1)
+    if batch_size == 1:
+        return flattened.squeeze(1)
+    return flattened
 
 
 def _build_moe_config(cfg: DisaggConfig) -> MoeInferenceConfig:
