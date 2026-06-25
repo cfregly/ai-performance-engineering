@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 import torch
 
-from core.discovery import chapter_slug, discover_all_chapters, discover_benchmarks
-from ch15.speculative_decoding_benchmarks import SpeculativeDecodingBenchmark
 from ch08.tcgen05_custom_vs_cublas_benchmark_base import Tcgen05CustomVsCublasBase
 from ch08.threshold_tma_benchmark_base import ThresholdBenchmarkBaseTMA
 from ch08.tiling_benchmark_base import TilingBenchmarkBase
+from ch15.speculative_decoding_benchmarks import SpeculativeDecodingBenchmark
+from core.discovery import chapter_slug, discover_all_chapters, discover_benchmarks
 from core.harness.run_benchmarks import INFORMATIONAL_BENCHMARKS
 from scripts.canonical_queue_batches import (
     CAPABILITY_VALIDATION_BATCH,
@@ -110,6 +110,20 @@ def test_ch06_attention_ilp_pair_keeps_math_fixed_and_only_changes_ilp_schedule(
     assert "attention_heads: int = 16" in workload_text
     assert "attention_tokens: int = 2048" in workload_text
     assert "keep the math fixed while changing independent chains per thread" in readme_text
+
+
+def test_ch06_ilp_benchmarks_defer_verification_clone_out_of_hot_path() -> None:
+    for relative_path in (
+        "ch06/baseline_elementwise_ilp.py",
+        "ch06/optimized_elementwise_ilp.py",
+        "ch06/baseline_attention_ilp.py",
+        "ch06/optimized_attention_ilp.py",
+    ):
+        benchmark_text = _benchmark_section(relative_path)
+        capture_text = _read(relative_path).split("def capture_verification_payload", 1)[1]
+
+        assert ".clone()" not in benchmark_text
+        assert "output=self.output.detach().clone()" in capture_text
 
 
 def test_ch06_optimized_adaptive_uses_chunk_plan_without_extra_staging_buffers() -> None:

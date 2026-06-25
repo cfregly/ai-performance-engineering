@@ -76,12 +76,12 @@ class BaselineAttentionILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for _ in range(self.repeats):
                 self._extension.sequential_ops(dst, src)
                 src, dst = dst, (buf1 if dst is buf0 else buf0)
-        self.output = src[:4096].detach().clone()
+        self.output = src[:4096]
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
             inputs={"attention_terms": self.attention_terms},
-            output=self.output.detach(),
+            output=self.output.detach().clone(),
             batch_size=self.batch,
             parameter_count=0,
             output_tolerance=(1e-5, 1e-5),

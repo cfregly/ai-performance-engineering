@@ -6,9 +6,9 @@ from typing import Optional
 
 import torch
 
+from ch06.cuda_extensions import load_ilp_extension
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from ch06.cuda_extensions import load_ilp_extension
 
 
 class BaselineElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -54,14 +54,14 @@ class BaselineElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._extension.sequential_ops(dst, src)
                 src, dst = dst, (buf1 if dst is buf0 else buf0)
 
-        self.output = src[:1024].detach().clone()
+        self.output = src[:1024]
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
             inputs={"input": self.input},
-            output=self.output.detach(),
+            output=self.output.detach().clone(),
             batch_size=self.N,
             parameter_count=0,
             output_tolerance=(1e-4, 1e-4),
