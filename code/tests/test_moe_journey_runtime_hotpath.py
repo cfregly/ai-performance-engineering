@@ -84,6 +84,45 @@ def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
     assert benchmark_section.count("max_tokens=max_tokens") == 3
 
 
+def test_moe_bmm_fusion_reuses_offset_buffer_without_cat() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "labs"
+        / "moe_optimization_journey"
+        / "moe_model.py"
+    ).read_text(encoding="utf-8")
+    bmm_fusion_section = source.split("def forward_bmm_fused", maxsplit=1)[1].split(
+        "def _forward_bmm_fused_graphable",
+        maxsplit=1,
+    )[0]
+
+    assert "starts = torch.empty_like(counts)" in bmm_fusion_section
+    assert "starts[0] = 0" in bmm_fusion_section
+    assert "starts[1:].copy_(cumsum[:-1])" in bmm_fusion_section
+    assert "starts = torch.cat(" not in bmm_fusion_section
+
+
+def test_triton_fused_moe_uses_overwritten_output_and_inplace_offsets() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "labs"
+        / "moe_optimization_journey"
+        / "triton_fused_moe.py"
+    ).read_text(encoding="utf-8")
+    function_section = source.split("def triton_fused_moe", maxsplit=1)[1].split(
+        "def benchmark_triton_moe",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_triton_moe", maxsplit=1)[1]
+
+    assert "output = torch.empty_like(x)" in function_section
+    assert "torch.zeros_like(x)" not in function_section
+    assert "expert_offsets = torch.empty(E + 1, device=device, dtype=torch.long)" in benchmark_section
+    assert "expert_offsets[0] = 0" in benchmark_section
+    assert "expert_offsets[1:].copy_(counts.cumsum(0))" in benchmark_section
+    assert "expert_offsets = torch.cat(" not in benchmark_section
+
+
 @CUDA_REQUIRED
 @pytest.mark.parametrize(
     ("benchmark_factory", "model_attr", "input_attr"),

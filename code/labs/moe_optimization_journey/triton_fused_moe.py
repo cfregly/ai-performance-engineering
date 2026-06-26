@@ -122,7 +122,7 @@ def triton_fused_moe(
 ) -> torch.Tensor:
     """Launch Triton fused MoE kernel."""
     total_tokens = x.shape[0]
-    output = torch.zeros_like(x)
+    output = torch.empty_like(x)
     
     # Grid: (num_experts, max_tokens_per_expert / BLOCK_M)
     if max_tokens is None:
@@ -178,7 +178,9 @@ def benchmark_triton_moe():
     
     # Compute expert offsets
     counts = torch.bincount(sorted_expert_ids, minlength=E)
-    expert_offsets = torch.cat([torch.zeros(1, device=device, dtype=torch.long), counts.cumsum(0)])
+    expert_offsets = torch.empty(E + 1, device=device, dtype=torch.long)
+    expert_offsets[0] = 0
+    expert_offsets[1:].copy_(counts.cumsum(0))
     max_tokens = int(counts.max().item())
     
     # Test kernel
@@ -216,5 +218,4 @@ def benchmark_triton_moe():
 
 if __name__ == "__main__":
     benchmark_triton_moe()
-
 

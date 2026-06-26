@@ -445,7 +445,9 @@ class MoEExperts(nn.Module):
         
         # Vectorized scatter indices
         cumsum = counts.cumsum(0)
-        starts = torch.cat([torch.zeros(1, device=device, dtype=torch.long), cumsum[:-1]])
+        starts = torch.empty_like(counts)
+        starts[0] = 0
+        starts[1:].copy_(cumsum[:-1])
         expert_offsets = starts[sorted_expert_ids]
         positions = torch.arange(len(sorted_expert_ids), device=device) - expert_offsets
         padded_indices = sorted_expert_ids * max_count + positions
