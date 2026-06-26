@@ -18,7 +18,6 @@ from labs.kv_cache_compression.kv_cache_common import (
     allocate_kv_cache,
     build_token_batches,
     cache_is_finite,
-    reset_cache,
     resolve_device,
 )
 
@@ -136,7 +135,6 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _calibrate_fp8(self, recipe) -> None:
         if self.model is None or self.cache is None or recipe is None:
             return
-        reset_cache(self.cache)
         with te_autocast(enabled=True, recipe=recipe, calibrating=True):
             offset = 0
             for prefill in self.prefill_inputs:
@@ -145,12 +143,10 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for decode in self.decode_inputs:
                 _ = self.model(decode, self.cache, offset)
                 offset += decode.shape[1]
-        reset_cache(self.cache)
 
     def _warmup_runtime(self, recipe) -> None:
         if self.model is None or self.cache is None or recipe is None:
             return
-        reset_cache(self.cache)
         with te_autocast(enabled=True, recipe=recipe):
             offset = 0
             for prefill in self.prefill_inputs:
@@ -160,12 +156,10 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 _ = self.model(decode, self.cache, offset)
                 offset += decode.shape[1]
         torch.cuda.synchronize()
-        reset_cache(self.cache)
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.cache is None or self.runtime_recipe is None:
             raise RuntimeError("Benchmark not initialized")
-        reset_cache(self.cache)
         offset = 0
         with te_autocast(enabled=True, recipe=self.runtime_recipe):
             for prefill in self.prefill_inputs:

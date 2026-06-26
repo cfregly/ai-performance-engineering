@@ -11,7 +11,6 @@ from labs.kv_cache_compression.baseline_kv_cache import (
     TE_IMPORT_ERROR,
     BaselineKVCacheBenchmark,
 )
-from labs.kv_cache_compression.kv_cache_common import reset_cache
 
 if TE_AVAILABLE:
     from transformer_engine.common import recipe as te_recipe
@@ -50,7 +49,6 @@ class OptimizedKVCacheNVFP4Benchmark(BaselineKVCacheBenchmark):
     def benchmark_fn(self) -> None:
         if self.model is None or self.cache is None:
             raise RuntimeError("Benchmark not initialized")
-        reset_cache(self.cache)
         offset = 0
         recipe = self.runtime_recipe
         if recipe is None:

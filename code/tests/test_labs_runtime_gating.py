@@ -56,6 +56,19 @@ def test_kv_cache_benchmark_defaults_keep_single_gpu_shape_bounded() -> None:
     assert bench.decode_steps == 128
 
 
+def test_kv_cache_compression_benchmarks_overwrite_without_full_cache_reset() -> None:
+    for benchmark_cls in (BaselineKVCacheBenchmark, OptimizedKVCacheNVFP4Benchmark):
+        benchmark_source = inspect.getsource(benchmark_cls.benchmark_fn)
+        assert "reset_cache(self.cache)" not in benchmark_source
+
+    for method in (
+        BaselineKVCacheBenchmark._calibrate_fp8,
+        BaselineKVCacheBenchmark._warmup_runtime,
+    ):
+        source = inspect.getsource(method)
+        assert "reset_cache(self.cache)" not in source
+
+
 @pytest.mark.parametrize(
     "benchmark_cls",
     (BaselineKVCacheBenchmark, OptimizedKVCacheNVFP4Benchmark),
