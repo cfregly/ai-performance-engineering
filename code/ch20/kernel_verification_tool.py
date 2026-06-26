@@ -16,10 +16,7 @@ guarantees.
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
 from typing import Optional, List, Tuple, Dict, Any
-import random
-import time
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
@@ -282,14 +279,14 @@ class BaselineKernelVerificationBenchmark(VerificationPayloadMixin, BaseBenchmar
                 raise RuntimeError("setup() must initialize verification input")
             if self.test_kernel is None:
                 raise RuntimeError("setup() must initialize test kernel")
-            self.output = self.test_kernel(self._verify_input)[:32, :32].contiguous()
+            self.output = self.test_kernel(self._verify_input)[:32, :32]
 
     def capture_verification_payload(self) -> None:
         if self._verify_input is None or self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output,
+            output=self.output.contiguous(),
             batch_size=int(self.shape[0]),
             parameter_count=0,
             precision_flags={
@@ -347,4 +344,3 @@ class BaselineKernelVerificationBenchmark(VerificationPayloadMixin, BaseBenchmar
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return BaselineKernelVerificationBenchmark()
-

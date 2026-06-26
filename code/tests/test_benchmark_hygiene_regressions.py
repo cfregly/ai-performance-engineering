@@ -737,6 +737,24 @@ def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None
     assert "self.output = torch.stack([out.detach() for out in outputs], dim=0)" in ch20_capture
 
 
+def test_ch20_kernel_verifiers_defer_contiguous_payload_slice_outside_hot_loop() -> None:
+    for relative in (
+        "ch20/kernel_verification_tool.py",
+        "ch20/proofwright_verify_tool.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert "[:32, :32].contiguous()" not in benchmark_section
+        assert "self.output = self.test_kernel(self._verify_input)[:32, :32]" in benchmark_section
+        assert "output=self.output.contiguous()" in capture_section
+
+
 def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
     for relative in (
         "ch18/baseline_cudagraph_bucketing.py",
