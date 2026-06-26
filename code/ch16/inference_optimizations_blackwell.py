@@ -118,6 +118,7 @@ class DynamicQuantizedKVCache:
         
         # Current sequence length per batch
         self.seq_lens = torch.zeros(max_batch_size, dtype=torch.long, device=device)
+        self._batch_index_cache = torch.arange(max_batch_size, dtype=torch.long, device=device)
         self._seq_lens_host = [0] * max_batch_size
         
         print(f"KV Cache initialized:")
@@ -149,19 +150,19 @@ class DynamicQuantizedKVCache:
             Updated (key, value) tensors from cache
         """
         if batch_indices is None:
-            batch_index_list = [int(batch_idx)]
-            batch_indices = torch.tensor(
-                batch_index_list, device=self.seq_lens.device, dtype=torch.long
-            )
+            cache_idx = int(batch_idx)
+            batch_index_list = [cache_idx]
+            batch_indices = self._batch_index_cache.narrow(0, cache_idx, 1)
         elif not torch.is_tensor(batch_indices):
-            batch_index_list = (
-                [int(batch_indices)]
-                if isinstance(batch_indices, int)
-                else [int(idx) for idx in batch_indices]
-            )
-            batch_indices = torch.tensor(
-                batch_index_list, device=self.seq_lens.device, dtype=torch.long
-            )
+            if isinstance(batch_indices, int):
+                cache_idx = int(batch_indices)
+                batch_index_list = [cache_idx]
+                batch_indices = self._batch_index_cache.narrow(0, cache_idx, 1)
+            else:
+                batch_index_list = [int(idx) for idx in batch_indices]
+                batch_indices = torch.tensor(
+                    batch_index_list, device=self.seq_lens.device, dtype=torch.long
+                )
         else:
             if batch_indices.dim() == 0:
                 batch_indices = batch_indices.unsqueeze(0)

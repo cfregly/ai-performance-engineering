@@ -211,10 +211,11 @@ class TestNumericalCorrectness:
         clear_source = inspect.getsource(blackwell.DynamicQuantizedKVCache.clear)
         assert "self.cache = torch.empty(" in init_source
         assert "self.cache = torch.zeros(" not in init_source
+        assert "self._batch_index_cache = torch.arange(max_batch_size" in init_source
         assert "self.cache.zero_()" not in clear_source
         assert "self.cache[:, :, batch_idx].zero_()" not in clear_source
         assert "unique_rows" in source
-        assert "batch_index_list = [int(batch_idx)]" in source
+        assert "batch_indices = self._batch_index_cache.narrow(0, cache_idx, 1)" in source
         assert "if isinstance(batch_indices, int)" in source
         assert 'batch_indices.device.type == "cpu"' in source
         assert "batch_indices.detach().cpu().tolist()" in source
