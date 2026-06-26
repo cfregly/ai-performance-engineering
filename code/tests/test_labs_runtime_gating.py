@@ -228,6 +228,17 @@ def test_trtllm_capture_verification_payload_uses_small_cpu_slice() -> None:
     assert verify_output.device.type == "cpu"
 
 
+def test_optimized_trtllm_reuses_static_batch_inputs() -> None:
+    setup_source = inspect.getsource(OptimizedTrtLlmPhi35MoeBenchmark.setup)
+    benchmark_source = inspect.getsource(OptimizedTrtLlmPhi35MoeBenchmark.benchmark_fn)
+
+    assert "self._batch_inputs = [" in setup_source
+    assert "self.input_ids[i, :valid_len].contiguous()" in setup_source
+    assert "batch_inputs = []" not in benchmark_source
+    assert "self.input_ids[i, :valid_len].contiguous()" not in benchmark_source
+    assert "self.runner.generate(self._batch_inputs" in benchmark_source
+
+
 def test_trtllm_benchmarks_use_wall_clock_timing() -> None:
     baseline_config = BaselineTrtLlmPhi35MoeBenchmark().get_config()
     optimized_config = OptimizedTrtLlmPhi35MoeBenchmark().get_config()

@@ -40,6 +40,7 @@ class OptimizedTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input_ids: Optional[torch.Tensor] = None
         self.attention_mask: Optional[torch.Tensor] = None
         self.prompt_lengths: Optional[list[int]] = None
+        self._batch_inputs: Optional[list[torch.Tensor]] = None
         self.pad_token_id: int = 0
         self._generated_output_ids: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
@@ -76,6 +77,10 @@ class OptimizedTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prompt_lengths = [int(length) for length in attention_mask.sum(dim=1).tolist()]
         self.input_ids = input_ids.to(self.device)
         self.attention_mask = attention_mask.to(self.device)
+        self._batch_inputs = [
+            self.input_ids[i, :valid_len].contiguous()
+            for i, valid_len in enumerate(self.prompt_lengths)
+        ]
         ensure_trtllm_assets(
             self.model_path,
             engine_path=self.engine_path,
@@ -112,12 +117,9 @@ class OptimizedTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with self._nvtx_range("optimized_trtllm_phi_3_5_moe"):
             if self.attention_mask is None:
                 raise RuntimeError("Attention mask not initialized")
-            if self.prompt_lengths is None:
-                raise RuntimeError("Prompt lengths not initialized")
-            batch_inputs = []
-            for i, valid_len in enumerate(self.prompt_lengths):
-                batch_inputs.append(self.input_ids[i, :valid_len].contiguous())
-            outputs = self.runner.generate(batch_inputs, sampling_config=self.sampling_config)
+            if self._batch_inputs is None:
+                raise RuntimeError("Prompt input batch not initialized")
+            outputs = self.runner.generate(self._batch_inputs, sampling_config=self.sampling_config)
             output_ids = self._normalize_output_ids(outputs)
             self._generated_output_ids = output_ids.detach()
             self.output = self._generated_output_ids
@@ -186,6 +188,7 @@ class OptimizedTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input_ids = None
         self.attention_mask = None
         self.prompt_lengths = None
+        self._batch_inputs = None
         self._generated_output_ids = None
         self.output = None
         del runner
