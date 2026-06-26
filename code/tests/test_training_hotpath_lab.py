@@ -130,6 +130,13 @@ def test_baseline_segment_abs_mean_reuses_abs_buffer_on_cpu() -> None:
     torch.testing.assert_close(abs_buf, flat.abs())
     torch.testing.assert_close(result, torch.tensor([1.5, 4.0], dtype=torch.float32))
 
+    source = (LAB_DIR / "training_hotpath_common.py").read_text(encoding="utf-8")
+    helper_source = source.split("def baseline_segment_abs_mean", maxsplit=1)[1].split(
+        "def active_mask_and_rows", maxsplit=1
+    )[0]
+    assert "out.zero_()" not in helper_source
+    assert 'out.scatter_reduce_(0, segment_ids, values, reduce="sum", include_self=False)' in helper_source
+
 
 def test_padding_inputs_return_mask_and_host_active_token_count() -> None:
     common_source = (LAB_DIR / "training_hotpath_common.py").read_text(encoding="utf-8")

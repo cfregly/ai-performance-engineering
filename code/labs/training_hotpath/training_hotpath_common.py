@@ -208,13 +208,12 @@ def baseline_segment_abs_mean(
 ) -> torch.Tensor:
     """Baseline torch segmented reduction without host round-trips."""
 
-    out.zero_()
     if abs_buf is not None and not (torch.is_grad_enabled() and flat.requires_grad):
         torch.abs(flat, out=abs_buf)
         values = abs_buf
     else:
         values = flat.abs()
-    out.scatter_add_(0, segment_ids, values)
+    out.scatter_reduce_(0, segment_ids, values, reduce="sum", include_self=False)
     out.div_(segment_lengths.clamp_min(1.0))
     return out
 
