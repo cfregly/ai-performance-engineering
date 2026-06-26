@@ -768,14 +768,28 @@ class DeepSeekHybridEPModule(nn.Module):
                 remote_count,
                 device=hidden.device,
             )
-        total_routes = max(float(route_counts_global.sum().item()), 1.0)
+        route_counts_cpu = route_counts_global.detach().cpu().tolist()
+        total_routes = max(float(sum(route_counts_cpu)), 1.0)
+        (
+            load_balance_loss,
+            router_entropy,
+            gini_coefficient,
+            expert_usage_variance,
+        ) = torch.stack(
+            (
+                aux["balance_loss"],
+                aux["router_entropy"],
+                aux["gini_coefficient"],
+                aux["expert_usage_variance"],
+            )
+        ).detach().cpu().tolist()
         metrics = compute_moe_metrics(
             num_experts=self.num_experts,
             active_experts=self.top_k,
-            tokens_per_expert=[int(x) for x in route_counts_global.tolist()],
+            tokens_per_expert=[int(x) for x in route_counts_cpu],
             routing_time_ms=routing_ms,
             expert_compute_time_ms=same_rank_metrics[1] + same_node_metrics[1] + remote_metrics[1],
-            load_balance_loss=float(aux["balance_loss"].detach().item()),
+            load_balance_loss=float(load_balance_loss),
         )
         metrics.update(
             {
@@ -799,9 +813,9 @@ class DeepSeekHybridEPModule(nn.Module):
                 "moe.step.expert_compute_intra_node_ms": same_node_metrics[1],
                 "moe.step.expert_compute_inter_node_ms": remote_metrics[1],
                 "moe.step.overlap_pct": overlap_pct,
-                "moe.router_entropy": float(aux["router_entropy"].detach().item()),
-                "moe.gini_coefficient": float(aux["gini_coefficient"].detach().item()),
-                "moe.expert_usage_variance": float(aux["expert_usage_variance"].detach().item()),
+                "moe.router_entropy": float(router_entropy),
+                "moe.gini_coefficient": float(gini_coefficient),
+                "moe.expert_usage_variance": float(expert_usage_variance),
             }
         )
         return loss, metrics
