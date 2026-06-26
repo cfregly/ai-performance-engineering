@@ -723,6 +723,25 @@ def test_ch06_ch12_cuda_output_buffers_skip_setup_zero_fill() -> None:
     assert "output[idx] = sum;" in work_queue_kernels
 
 
+def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
+    source = (REPO_ROOT / "ch04" / "optimized_nccl.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._output_buffer = torch.empty(" in setup_section
+    assert "self._reduction_buffer = torch.empty_like(self._output_buffer)" in setup_section
+    assert "self._output_buffer = torch.zeros(" not in setup_section
+    assert "self._reduction_buffer = torch.zeros(" not in setup_section
+    assert "self._reduction_buffer.zero_()" in benchmark_section
+    assert "self._output_buffer.copy_(self._reduction_buffer)" in benchmark_section
+
+
 def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
     dual_cta = (REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_cta.py").read_text(
         encoding="utf-8"

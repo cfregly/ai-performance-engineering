@@ -60,8 +60,8 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         self.input = torch.randn(self.batch_size, self.hidden_dim, device=self.device)
         shard_size = self.batch_size // self.num_shards
-        self._output_buffer = torch.zeros(shard_size, self.hidden_dim, device=self.device)
-        self._reduction_buffer = torch.zeros(shard_size, self.hidden_dim, device=self.device)
+        self._output_buffer = torch.empty(shard_size, self.hidden_dim, device=self.device)
+        self._reduction_buffer = torch.empty_like(self._output_buffer)
         self._bytes_transferred = 0.0
         torch.cuda.synchronize(self.device)
 
