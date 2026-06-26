@@ -3068,6 +3068,9 @@ def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
     assert "self._baseline_perm = torch.cat(baseline_perm_parts, dim=0)" in setup_section
     assert "self._baseline_packed = torch.empty_like(flat)" in setup_section
     assert "self._local_packed = torch.empty(" in setup_section
+    assert "self._group_offsets = torch.empty(" in setup_section
+    assert "self._group_offsets = torch.zeros(" not in setup_section
+    assert "torch.cumsum(group_counts, dim=0, out=self._group_offsets[1:])" in setup_section
     assert "self._baseline_out" not in source
     assert "self._local_out" not in source
     assert "self._remote_out" not in source

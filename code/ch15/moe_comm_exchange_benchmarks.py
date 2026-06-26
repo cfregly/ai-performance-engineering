@@ -136,8 +136,9 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._hierarchical_cpu_sorted = flat.index_select(0, self._hierarchical_perm).detach().cpu().pin_memory()
         self._hierarchical_packed = torch.empty_like(flat)
         group_counts = torch.bincount(self._dest_groups, minlength=self.logical_world_size // self.ranks_per_group)
-        self._group_offsets = torch.zeros(group_counts.numel() + 1, device=self.device, dtype=torch.int64)
-        self._group_offsets[1:] = torch.cumsum(group_counts, dim=0)
+        self._group_offsets = torch.empty(group_counts.numel() + 1, device=self.device, dtype=torch.int64)
+        self._group_offsets[0] = 0
+        torch.cumsum(group_counts, dim=0, out=self._group_offsets[1:])
         group_offsets_host = self._group_offsets.detach().cpu().tolist()
         self._group_ranges = [
             (int(start), int(end))
