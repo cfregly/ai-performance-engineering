@@ -675,6 +675,27 @@ def test_ch13_arithmetic_intensity_setup_avoids_redundant_zero_fill() -> None:
     assert "self.C.zero_()" in chunked_section
 
 
+def test_ch03_ch05_accumulator_buffers_skip_setup_zero_fill() -> None:
+    targets = (
+        ("ch03/baseline_gemm.py", "self._output_buffer = torch.empty(", "result.zero_()"),
+        ("ch05/baseline_vectorization.py", "self._output_buffer = torch.empty(", "result.zero_()"),
+    )
+    for filename, allocation, reset in targets:
+        source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert allocation in setup_section
+        assert "self._output_buffer = torch.zeros(" not in setup_section
+        assert reset in benchmark_section
+
+
 def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
     dual_cta = (REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_cta.py").read_text(
         encoding="utf-8"

@@ -7,7 +7,7 @@ host-side scheduling overhead is measurable.
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Optional
 
 import torch
 
@@ -59,7 +59,7 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Create input matrices - same as optimized version
         self.left = torch.randn(self.m, self.k, device=self.device, dtype=torch.float32)
         self.right = torch.randn(self.k, self.n, device=self.device, dtype=torch.float32)
-        self._output_buffer = torch.zeros(self.m, self.n, device=self.device, dtype=torch.float32)
+        self._output_buffer = torch.empty(self.m, self.n, device=self.device, dtype=torch.float32)
         self.output = None
         self._synchronize()
 
