@@ -383,6 +383,7 @@ class GPT(nn.Module):
         cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim)
         self.register_buffer("cos", cos, persistent=False) # persistent=False means it's not saved to the checkpoint
         self.register_buffer("sin", sin, persistent=False)
+        self.register_buffer("_position_offsets", torch.empty(0, dtype=torch.long), persistent=False)
 
     def init_weights(self):
         self.apply(self._init_weights)
@@ -431,6 +432,13 @@ class GPT(nn.Module):
 
     def get_device(self):
         return self.transformer.wte.weight.device
+
+    def _position_offsets_for(self, length: int, device: torch.device) -> torch.Tensor:
+        offsets = self._position_offsets
+        if offsets.device != device or offsets.numel() < length:
+            self._position_offsets = torch.arange(length, device=device, dtype=torch.long)
+            offsets = self._position_offsets
+        return offsets[:length]
 
     def estimate_flops(self):
         """ Return the estimated FLOPs per token for the model. Ref: https://arxiv.org/abs/2204.02311 """
@@ -493,7 +501,7 @@ class GPT(nn.Module):
         if kv_cache is not None and kv_cache.get_row_pos() is not None and self.config.use_padded_attention:
             row_pos = kv_cache.get_row_pos()
             assert row_pos.numel() == B, f"kv_cache row_pos mismatch: {row_pos.numel()} != {B}"
-            positions = row_pos[:, None] + torch.arange(T, device=idx.device)
+            positions = row_pos[:, None] + self._position_offsets_for(T, idx.device)
             max_pos = int(positions.max().item()) + 1
             assert max_pos <= self.cos.size(1), f"Sequence length grew beyond the rotary embeddings cache: {max_pos} > {self.cos.size(1)}"
             cos_sin = self.cos[:, positions, :, :].squeeze(0), self.sin[:, positions, :, :].squeeze(0)

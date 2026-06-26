@@ -87,6 +87,22 @@ def test_clustered_attention_custom_impl_from_flag():
     assert out.shape == (1, 2, config.vocab_size)
 
 
+def test_gpt_reuses_position_offsets_for_padded_kv_cache():
+    model = GPT(_cfg(use_padded_attention=True))
+
+    first = model._position_offsets_for(4, torch.device("cpu"))
+    first_ptr = first.data_ptr()
+    second = model._position_offsets_for(3, torch.device("cpu"))
+
+    assert second.data_ptr() == first_ptr
+    torch.testing.assert_close(second, torch.arange(3, dtype=torch.long))
+
+    grown = model._position_offsets_for(8, torch.device("cpu"))
+    assert grown.numel() == 8
+    assert grown.data_ptr() != first_ptr
+    torch.testing.assert_close(grown, torch.arange(8, dtype=torch.long))
+
+
 def test_persistent_decode_kernel_stub_raises():
     config = _cfg(use_persistent_decode_kernel=True, allow_kernel_stub_fallback=False)
     model = GPT(config)
