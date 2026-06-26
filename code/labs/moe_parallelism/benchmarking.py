@@ -20,8 +20,10 @@ _PLAN_ERROR: Optional[str] = None
 
 try:
     from .plan import (  # noqa: E402
+        ClusterSpec,
         DEFAULT_CLUSTER,
         DEFAULT_MODEL,
+        ModelSpec,
         get_default_cluster_spec,
         get_default_model_spec,
         ParallelismPlan,
@@ -35,6 +37,8 @@ except ModuleNotFoundError as exc:
     # Define stubs so the module can import
     DEFAULT_CLUSTER = None
     DEFAULT_MODEL = None
+    ClusterSpec = None  # type: ignore
+    ModelSpec = None  # type: ignore
     def get_default_cluster_spec(): return None
     def get_default_model_spec(): return None
     ParallelismPlan = None  # type: ignore
@@ -101,6 +105,7 @@ class PlanBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._summary: Optional[str] = None
         self._config: Optional[BenchmarkConfig] = None
         self.metrics: Optional[torch.Tensor] = None
+        self._summary_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
@@ -113,6 +118,8 @@ class PlanBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._summary = None
         if self.metrics is None or tuple(self.metrics.shape) != (1, 3):
             self.metrics = torch.zeros((1, 3), dtype=torch.float32)
+        if self._summary_buffer is None or tuple(self._summary_buffer.shape) != (1, 3):
+            self._summary_buffer = torch.empty((1, 3), dtype=torch.float32)
 
     def benchmark_fn(self) -> None:
         report = self.evaluator.analyze(self.plan)
@@ -142,6 +149,7 @@ class PlanBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.report = None
         self._summary = None
         self.metrics = None
+        self._summary_buffer = None
         self.output = None
         super().teardown()
 
@@ -181,10 +189,16 @@ class PlanBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _finalize_output(self, metric_values: List[float]) -> None:
         expected_shape = (1, len(metric_values))
-        if self.metrics is None or tuple(self.metrics.shape) != expected_shape:
+        if (
+            self.metrics is None
+            or self._summary_buffer is None
+            or tuple(self.metrics.shape) != expected_shape
+            or tuple(self._summary_buffer.shape) != expected_shape
+        ):
             raise RuntimeError("setup() must preallocate metric buffers for PlanBenchmark")
-        summary_tensor = torch.tensor([metric_values], dtype=torch.float32)
-        self.output = (summary_tensor + self.metrics).detach()
+        for index, value in enumerate(metric_values):
+            self._summary_buffer[0, index] = float(value)
+        self.output = self._summary_buffer.detach()
 
 
 def run_benchmark(benchmark: PlanBenchmark) -> None:

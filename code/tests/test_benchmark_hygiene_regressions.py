@@ -1472,6 +1472,27 @@ def test_ch15_inference_placement_defers_output_tensor_outside_hot_loop() -> Non
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:
+    source = (REPO_ROOT / "labs" / "moe_parallelism" / "benchmarking.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    finalize_section = source.split("def _finalize_output", maxsplit=1)[1].split(
+        "def run_benchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "self._summary_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._summary_buffer = torch.empty((1, 3), dtype=torch.float32)" in setup_section
+    assert "torch.tensor([metric_values]" not in finalize_section
+    assert "for index, value in enumerate(metric_values):" in finalize_section
+    assert "self._summary_buffer[0, index] = float(value)" in finalize_section
+    assert "self.output = self._summary_buffer.detach()" in finalize_section
+
+
 def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch19" / "fp8_calibration_free_tool.py").read_text(encoding="utf-8")
     run_section = source.split("def run(self) -> torch.Tensor", maxsplit=1)[1].split(
