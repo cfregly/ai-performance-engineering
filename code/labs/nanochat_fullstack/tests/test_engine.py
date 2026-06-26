@@ -5,6 +5,7 @@ python -m pytest tests/test_engine.py -v
 """
 
 import torch
+from pathlib import Path
 from types import SimpleNamespace
 from nanochat.engine import Engine, KVCache
 from nanochat.gpt import CausalSelfAttention, GPTConfig, apply_rotary_emb
@@ -290,6 +291,22 @@ def test_decode_step_helpers_reuse_token_and_active_mask_buffers():
     assert engine._active_mask_device.data_ptr() == mask_ptr
     torch.testing.assert_close(refreshed, torch.tensor([True, True, True]))
     assert refreshed_rows == [0, 1, 2]
+
+
+def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
+    source = Path(__file__).resolve().parents[1] / "nanochat" / "engine.py"
+    generate_batched = source.read_text(encoding="utf-8").split(
+        "def generate_batched", maxsplit=1,
+    )[1]
+    prompt_pack_section = generate_batched.split(
+        "attention_mask = self._build_attention_mask", maxsplit=1,
+    )[0]
+
+    assert "lengths_host = torch.empty(" in prompt_pack_section
+    assert "ids_host = torch.full(" in prompt_pack_section
+    assert "ids_host.to(device=device, non_blocking=use_pinned_transfer)" in prompt_pack_section
+    assert "lengths.max().item()" not in prompt_pack_section
+    assert "torch.tensor(seq, dtype=torch.long, device=device)" not in prompt_pack_section
 
 
 def test_attention_reuses_cu_seqlens_buffers():

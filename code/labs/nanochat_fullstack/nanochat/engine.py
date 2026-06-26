@@ -763,15 +763,27 @@ class Engine:
         row_max_tokens = [mt if mt is not None else fallback_max for mt in max_tokens_list]
         generated_counts = [0] * batch_size
 
-        lengths = torch.tensor([len(p) for p in prompt_tokens_batch], device=device, dtype=torch.long)
-        max_prompt_len = int(lengths.max().item())
+        use_pinned_transfer = device.type == "cuda"
+        lengths_host = torch.empty(batch_size, dtype=torch.long, pin_memory=use_pinned_transfer)
+        max_prompt_len = 0
+        for i, seq in enumerate(prompt_tokens_batch):
+            seq_len = len(seq)
+            lengths_host[i] = seq_len
+            max_prompt_len = max(max_prompt_len, seq_len)
         if max_prompt_len == 0:
             raise ValueError("prompt batch must contain at least one token")
-        ids = torch.full((batch_size, max_prompt_len), pad_id, dtype=torch.long, device=device)
+        ids_host = torch.full(
+            (batch_size, max_prompt_len),
+            pad_id,
+            dtype=torch.long,
+            pin_memory=use_pinned_transfer,
+        )
         for i, seq in enumerate(prompt_tokens_batch):
             if len(seq) == 0:
                 continue
-            ids[i, :len(seq)] = torch.tensor(seq, dtype=torch.long, device=device)
+            ids_host[i, :len(seq)] = torch.as_tensor(seq, dtype=torch.long)
+        lengths = lengths_host.to(device=device, non_blocking=use_pinned_transfer)
+        ids = ids_host.to(device=device, non_blocking=use_pinned_transfer)
 
         attention_mask = self._build_attention_mask(lengths, max_prompt_len)
 
