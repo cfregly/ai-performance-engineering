@@ -123,6 +123,7 @@ class MoELayer(nn.Module):
         self.hidden_size = hidden_size
         self.num_experts = num_experts
         self.top_k = top_k
+        self._route_token_cache: Dict[Tuple[int, str], torch.Tensor] = {}
         
         self.router = LoadBalancedRouter(hidden_size, num_experts, top_k)
         
@@ -131,6 +132,14 @@ class MoELayer(nn.Module):
             ExpertMLP(hidden_size, intermediate_size)
             for _ in range(num_experts)
         ])
+
+    def _route_token_ids(self, num_tokens: int, device: torch.device) -> torch.Tensor:
+        key = (num_tokens, str(device))
+        token_ids = self._route_token_cache.get(key)
+        if token_ids is None or token_ids.device != device:
+            token_ids = torch.arange(num_tokens, device=device, dtype=torch.int64).repeat_interleave(self.top_k)
+            self._route_token_cache[key] = token_ids
+        return token_ids
     
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
         """
@@ -149,27 +158,24 @@ class MoELayer(nn.Module):
         # Flatten for expert processing
         x_flat = x.view(-1, hidden_size)  # [batch * seq_len, hidden_size]
         output_flat = torch.zeros_like(x_flat)
-        
-        # Process each expert
-        for expert_idx in range(self.num_experts):
-            # Find tokens routed to this expert
-            expert_mask = (selected_experts == expert_idx)  # [batch, seq_len, top_k]
-            token_indices = expert_mask.any(dim=-1).view(-1).nonzero(as_tuple=True)[0]
-            
-            if len(token_indices) == 0:
-                continue
-            
-            # Get tokens and weights for this expert
-            tokens_for_expert = x_flat[token_indices]
-            expert_output = self.experts[expert_idx](tokens_for_expert)
-            
-            # Weighted accumulation
-            for k in range(self.top_k):
-                k_mask = selected_experts[:, :, k].view(-1) == expert_idx
-                k_indices = k_mask.nonzero(as_tuple=True)[0]
-                if len(k_indices) > 0:
-                    weights = routing_weights[:, :, k].view(-1)[k_indices].unsqueeze(-1)
-                    output_flat[k_indices] += weights * expert_output[:len(k_indices)]
+
+        flat_experts = selected_experts.reshape(-1)
+        flat_weights = routing_weights.reshape(-1)
+        route_order = torch.argsort(flat_experts)
+        route_count_list = torch.bincount(flat_experts, minlength=self.num_experts).detach().cpu().tolist()
+        flat_token_ids = self._route_token_ids(batch_size * seq_len, x.device)
+
+        offset = 0
+        for expert_idx, route_count in enumerate(route_count_list):
+            next_offset = offset + int(route_count)
+            if next_offset > offset:
+                route_indices = route_order[offset:next_offset]
+                token_indices = flat_token_ids.index_select(0, route_indices)
+                tokens_for_expert = x_flat.index_select(0, token_indices)
+                expert_output = self.experts[expert_idx](tokens_for_expert)
+                weights = flat_weights.index_select(0, route_indices).to(dtype=expert_output.dtype).unsqueeze(-1)
+                output_flat.index_add_(0, token_indices, expert_output * weights)
+            offset = next_offset
         
         output = output_flat.view(batch_size, seq_len, hidden_size)
         

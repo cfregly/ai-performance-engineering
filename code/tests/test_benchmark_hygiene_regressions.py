@@ -1651,6 +1651,10 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
         "class ExpertMLP",
         maxsplit=1,
     )[0]
+    moe_forward = source.split("class MoELayer", maxsplit=1)[1].split(
+        "class DeepSeekR1MoEOptimization",
+        maxsplit=1,
+    )[0]
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def finalize_iteration_metrics", maxsplit=1
@@ -1663,6 +1667,11 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert 'self.register_buffer(\n            "_gini_index",' in router_forward
     assert "def _gini_index_for" in router_forward
     assert "torch.arange(1, n + 1" not in router_forward
+    assert "def _route_token_ids" in moe_forward
+    assert "torch.argsort(flat_experts)" in moe_forward
+    assert "torch.bincount(flat_experts, minlength=self.num_experts).detach().cpu().tolist()" in moe_forward
+    assert ".nonzero(" not in moe_forward
+    assert "output_flat.index_add_(0, token_indices, expert_output * weights)" in moe_forward
     assert "torch.cuda.Event(" not in benchmark_section
     assert "start_event, end_event = self._timing_events" in benchmark_section
     assert ".detach().float().clone()" not in benchmark_section
