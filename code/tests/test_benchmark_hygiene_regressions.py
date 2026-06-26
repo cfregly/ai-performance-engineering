@@ -3065,6 +3065,8 @@ def test_ch15_kv_cache_math_preconcats_static_inputs() -> None:
     )[0]
 
     assert "self._sequence_inputs: Optional[torch.Tensor] = None" in source
+    assert "self.cache_buffer = torch.empty(" in setup_section
+    assert "self.cache_buffer = torch.zeros(" not in setup_section
     assert "self._sequence_inputs = torch.empty_like(self.cache_buffer)" in setup_section
     assert "torch.cat(self.inputs, dim=1, out=self._sequence_inputs)" in setup_section
     assert "torch.cat(self.inputs" not in benchmark_section

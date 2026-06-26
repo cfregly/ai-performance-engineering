@@ -75,7 +75,7 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
         for module in (self.q_proj, self.k_proj, self.v_proj, self.out_proj):
             module.eval()
         
-        self.cache_buffer = torch.zeros(self.batch_size, self.steps, self.hidden_dim, device=self.device, dtype=torch.bfloat16)
+        self.cache_buffer = torch.empty(self.batch_size, self.steps, self.hidden_dim, device=self.device, dtype=torch.bfloat16)
         self.inputs = [
             torch.randn(self.batch_size, 1, self.hidden_dim, device=self.device, dtype=torch.bfloat16)
             for _ in range(self.steps)
@@ -173,4 +173,3 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return KVCacheManagementMathBenchmark()
-
