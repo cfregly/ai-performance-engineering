@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -16,6 +18,8 @@ from labs.decode_optimization.optimized_decode_pinned import (
 from labs.decode_optimization.optimized_decode_ultimate import (
     get_benchmark as get_optimized_decode_ultimate,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_decode_benchmark_uses_subprocess_execution() -> None:
@@ -38,6 +42,23 @@ def test_decode_variants_inherit_subprocess_execution() -> None:
         config = factory().get_config()
         assert config.use_subprocess is True
         assert config.execution_mode == ExecutionMode.SUBPROCESS
+
+
+def test_decode_graph_capture_avoids_unused_full_vocab_output_copy() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    graph_section = source.split("def _capture_decode_graph", maxsplit=1)[1].split(
+        "def _prefill", maxsplit=1
+    )[0]
+
+    assert "self.graph_logits = torch.empty" not in graph_section
+    assert "self.graph_next_token = torch.empty" not in graph_section
+    assert "self.graph_logits.copy_" not in graph_section
+    assert "self.graph_next_token.copy_" not in graph_section
+    assert "self.next_token_out = torch.empty_like" not in source
+    assert graph_section.count("self.current_tokens.copy_(next_token)") == 2
+    assert "if self.cfg.graph_full_iteration:\n                    self.current_tokens.copy_(next_token)" not in graph_section
 
 
 def test_decode_pinned_pair_uses_transfer_heavy_workload_with_only_pin_state_changed() -> None:

@@ -26,7 +26,7 @@ except Exception:  # pragma: no cover - defensive import
 
 from core.benchmark.verification import InputSignature, PrecisionFlags
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.benchmark.wrapper_utils import attach_benchmark_metadata
+from core.benchmark.wrapper_utils import attach_benchmark_metadata as attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.harness.hardware_capabilities import detect_capabilities
 
@@ -418,7 +418,6 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             (bsz, self.cfg.hidden_size), device=self.device, dtype=self.dtype
         )
         self.current_tokens = torch.empty((bsz,), device=self.device, dtype=torch.long)
-        self.next_token_out = torch.empty_like(self.current_tokens)
 
     # Compiled / graphed helpers
     def _maybe_compile(self) -> None:
@@ -431,13 +430,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._compile_error = None
 
     def _capture_decode_graph(self) -> None:
-        # Allocate static outputs once
-        bsz = self.cfg.batch_size
         self.graph_stream = torch.cuda.Stream()
-        self.graph_logits = torch.empty(
-            (bsz, self.cfg.vocab_size), device=self.device, dtype=self.dtype
-        )
-        self.graph_next_token = torch.empty((bsz,), device=self.device, dtype=torch.long)
         # Ensure prompt buffer is initialized with valid tokens before capture
         self.gpu_prompt.copy_(self.host_prompt, non_blocking=False)
 
@@ -454,11 +447,10 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for _ in range(2):
                 if self.cfg.graph_full_iteration:
                     _prime_decode_state()
-                logits, next_state, next_token = self.decode_fn(
+                _, next_state, next_token = self.decode_fn(
                     self.current_tokens, self.state_buffer
                 )
                 self.state_buffer.copy_(next_state)
-                self.graph_next_token.copy_(next_token)
                 self.current_tokens.copy_(next_token)
         torch.cuda.synchronize()
         self.decode_graph = torch.cuda.CUDAGraph()
@@ -473,14 +465,11 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if self.cfg.graph_full_iteration:
                 _prime_decode_state()
             for _ in range(self.cfg.decode_tokens):
-                logits, next_state, next_token = self.decode_fn(
+                _, next_state, next_token = self.decode_fn(
                     self.current_tokens, self.state_buffer
                 )
                 self.state_buffer.copy_(next_state)
-                self.graph_logits.copy_(logits)
-                self.graph_next_token.copy_(next_token)
-                if self.cfg.graph_full_iteration:
-                    self.current_tokens.copy_(next_token)
+                self.current_tokens.copy_(next_token)
         torch.cuda.synchronize()
         self.graph_includes_prefill = bool(self.cfg.graph_full_iteration)
         self._graph_error = None
