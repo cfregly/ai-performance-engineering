@@ -17,7 +17,7 @@ import json
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict
 
 import torch
 import torch.nn as nn
@@ -68,7 +68,7 @@ class MoEFeedForward(nn.Module):
         scores = F.softmax(logits, dim=-1)
         top_scores, top_indices = torch.topk(scores, k=self.top_k, dim=-1)
 
-        output = torch.zeros_like(flat)
+        output = torch.empty_like(flat)
         for k in range(self.top_k):
             expert_ids = top_indices[:, k]
             weights = top_scores[:, k].unsqueeze(-1)
@@ -77,7 +77,11 @@ class MoEFeedForward(nn.Module):
                 if mask.any():
                     expert_input = flat[mask]
                     expert_out = expert(expert_input)
-                    output[mask] += expert_out * weights[mask]
+                    weighted_out = expert_out * weights[mask]
+                    if k == 0:
+                        output[mask] = weighted_out
+                    else:
+                        output[mask] += weighted_out
 
         return output.view(batch, seq, hidden)
 

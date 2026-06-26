@@ -2071,6 +2071,22 @@ def test_ch16_inference_serving_tracks_packed_max_tokens_on_host() -> None:
     assert ".max().item()" not in generate_batch_section
 
 
+def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
+    source = (REPO_ROOT / "ch16" / "moe_performance_benchmark.py").read_text(
+        encoding="utf-8"
+    )
+    forward_section = source.split("class MoEFeedForward", maxsplit=1)[1].split(
+        "class DenseFeedForward",
+        maxsplit=1,
+    )[0]
+
+    assert "output = torch.empty_like(flat)" in forward_section
+    assert "torch.zeros_like(flat)" not in forward_section
+    assert "if k == 0:" in forward_section
+    assert "output[mask] = weighted_out" in forward_section
+    assert "output[mask] += weighted_out" in forward_section
+
+
 def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:
     source = (REPO_ROOT / "ch16" / "perplexity_eval.py").read_text(encoding="utf-8")
     loop_section = source.split("with torch.no_grad():", maxsplit=1)[1].split(
