@@ -1507,6 +1507,12 @@ def test_hf_decoder_cache_defers_verification_copy_outside_hot_loop() -> None:
     source = (
         REPO_ROOT / "core" / "benchmark" / "hf_decoder_cache_benchmark.py"
     ).read_text(encoding="utf-8")
+    baseline_source = (
+        REPO_ROOT / "labs" / "decode_optimization" / "baseline_decode_hf_cache.py"
+    ).read_text(encoding="utf-8")
+    optimized_source = (
+        REPO_ROOT / "labs" / "decode_optimization" / "optimized_decode_hf_cache.py"
+    ).read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
         "def _prepare_iteration",
         maxsplit=1,
@@ -1528,6 +1534,8 @@ def test_hf_decoder_cache_defers_verification_copy_outside_hot_loop() -> None:
     assert "cache_position=self._prompt_pos" in benchmark_section
     assert "self._verification_token.copy_(self.output)" in capture_section
     assert "self.output = self._verification_token" in capture_section
+    assert 'eos_sync_mode="blocking"' in baseline_source
+    assert 'eos_sync_mode="async_streamed"' in optimized_source
 
 
 def test_continuous_batching_reuses_state_buffers() -> None:

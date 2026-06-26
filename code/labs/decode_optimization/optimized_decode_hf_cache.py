@@ -23,7 +23,7 @@ def get_benchmark() -> HFDecoderCacheBenchmark:
         num_heads=4,
         cache_mode="static",
         compile_decode_step=True,
-        eos_sync_mode="blocking",
+        eos_sync_mode="async_streamed",
         eos_poll_interval=8,
         stop_on_all_done=False,
         iterations=6,
@@ -31,5 +31,4 @@ def get_benchmark() -> HFDecoderCacheBenchmark:
         label="optimized_decode_hf_cache",
     )
     return attach_benchmark_metadata(HFDecoderCacheBenchmark(cfg), __file__)  # type: ignore[return-value]
-
 
