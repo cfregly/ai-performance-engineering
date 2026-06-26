@@ -275,7 +275,7 @@ class PlacementSimulator:
 
     @staticmethod
     def _dtype_bytes(dtype: torch.dtype) -> int:
-        return torch.tensor([], dtype=dtype).element_size()
+        return torch.finfo(dtype).bits // 8
 
     @staticmethod
     def _allreduce_ms(bytes_total: float, bw_gbps: float, *, shards: int) -> float:

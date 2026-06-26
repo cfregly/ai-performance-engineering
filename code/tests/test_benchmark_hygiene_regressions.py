@@ -215,6 +215,32 @@ def test_ch04_gradient_fusion_uses_dtype_byte_constant() -> None:
     assert "total_bytes = self.num_tensors * numel * FLOAT32_BYTES" in source
 
 
+def test_dtype_byte_sizing_avoids_empty_tensor_metadata_allocations() -> None:
+    files = [
+        "ch04/gradient_fusion_multigpu.py",
+        "ch04/nvshmem_vs_nccl_benchmark.py",
+        "ch15/placement_sim.py",
+        "ch16/symmetric_memory_inference.py",
+        "labs/flexattention/flexattention_common.py",
+        "labs/train_distributed/baseline_zero2_multigpu.py",
+        "labs/train_distributed/optimized_zero2_multigpu.py",
+    ]
+
+    for filename in files:
+        source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        assert "torch.tensor([], dtype=" not in source
+
+    assert "FLOAT16_BYTES = torch.finfo(torch.float16).bits // 8" in (
+        REPO_ROOT / "ch04" / "gradient_fusion_multigpu.py"
+    ).read_text(encoding="utf-8")
+    assert "FLOAT16_BYTES = torch.finfo(torch.float16).bits // 8" in (
+        REPO_ROOT / "ch04" / "nvshmem_vs_nccl_benchmark.py"
+    ).read_text(encoding="utf-8")
+    assert "return torch.finfo(dtype).bits // 8" in (
+        REPO_ROOT / "ch15" / "placement_sim.py"
+    ).read_text(encoding="utf-8")
+
+
 def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
     source = (REPO_ROOT / "ch09" / "fusion_pytorch.py").read_text(encoding="utf-8")
 

@@ -6,15 +6,16 @@ from __future__ import annotations
 import argparse
 import datetime
 import os
-
-from core.common.device_utils import resolve_local_rank
 from typing import Tuple
 
 import torch
 import torch.distributed as dist
 
-from core.benchmark.gpu_requirements import require_min_gpus
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from core.benchmark.gpu_requirements import require_min_gpus
+from core.common.device_utils import resolve_local_rank
+
+FLOAT16_BYTES = torch.finfo(torch.float16).bits // 8
 
 
 def init_distributed() -> Tuple[int, int, torch.device]:
@@ -48,8 +49,7 @@ def run_benchmark(
         raise RuntimeError("gradient_fusion_multigpu requires >=2 GPUs")
 
     dtype = torch.float16
-    elem_size = torch.tensor([], dtype=dtype).element_size()
-    numel = max(1, (tensor_kb * 1024) // elem_size)
+    numel = max(1, (tensor_kb * 1024) // FLOAT16_BYTES)
 
     tensors = [
         torch.randn(numel, device=device, dtype=dtype) for _ in range(num_tensors)
@@ -79,7 +79,7 @@ def run_benchmark(
     torch.cuda.synchronize(device)
 
     elapsed_ms = start.elapsed_time(end)
-    total_bytes = num_tensors * numel * elem_size
+    total_bytes = num_tensors * numel * FLOAT16_BYTES
     bw_gbps = (total_bytes / (elapsed_ms / iterations / 1000.0)) / 1e9
 
     if rank == 0:

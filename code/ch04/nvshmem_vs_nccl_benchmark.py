@@ -20,26 +20,24 @@ Usage:
         --min-bytes 1024 --max-bytes 67108864 --steps 6 --mode nccl
 """
 
-import os
-
-from core.common.device_utils import resolve_local_rank
-
-from core.optimization.symmetric_memory_patch import (
-    maybe_create_symmetric_memory_handle,
-    symmetric_memory_available,
-)
-
-from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
-
-
 import argparse
 import datetime
 import math
+import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 import torch
 import torch.distributed as dist
+
+from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from core.common.device_utils import resolve_local_rank
+from core.optimization.symmetric_memory_patch import (
+    maybe_create_symmetric_memory_handle,
+    symmetric_memory_available,
+)
+
+FLOAT16_BYTES = torch.finfo(torch.float16).bits // 8
 
 
 # ============================================================================
@@ -93,7 +91,7 @@ def _format_bytes(num_bytes: int) -> str:
 def _measure_nccl_broadcast(bytes_per_rank: int, iterations: int) -> BenchmarkResult:
     device = torch.cuda.current_device()
     dtype = torch.float16
-    numel = bytes_per_rank // torch.tensor([], dtype=dtype).element_size()
+    numel = bytes_per_rank // FLOAT16_BYTES
     numel = max(1, numel)
 
     tensor = torch.randn(numel, device=device, dtype=dtype)
@@ -142,7 +140,7 @@ def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Option
 
     device = torch.cuda.current_device()
     dtype = torch.float16
-    numel = bytes_per_rank // torch.tensor([], dtype=dtype).element_size()
+    numel = bytes_per_rank // FLOAT16_BYTES
     numel = max(1, numel)
 
     local = torch.randn(numel, device=device, dtype=dtype)

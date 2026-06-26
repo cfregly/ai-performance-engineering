@@ -11,14 +11,15 @@ Key knobs exposed by the lab:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from functools import partial
 import inspect
 import math
+from dataclasses import dataclass
+from functools import partial
 from typing import Callable
 
 import torch
 from torch.nn.attention.flex_attention import BlockMask, create_block_mask
+
 from core.common.device_utils import require_cuda_device
 
 
@@ -134,7 +135,7 @@ def compute_attention_workload_metrics(
     dtype: torch.dtype = torch.bfloat16,
 ) -> dict[str, float]:
     """Return attention-specific workload metrics for the FlexAttention lab."""
-    bytes_per_element = float(torch.tensor([], dtype=dtype).element_size())
+    bytes_per_element = float(torch.finfo(dtype).bits // 8)
     span = max(doc_span, 1)
     num_docs = max(1, math.ceil(seq_len / span))
     active_pairs_per_head = 0.0

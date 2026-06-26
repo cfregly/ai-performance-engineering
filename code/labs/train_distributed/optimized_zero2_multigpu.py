@@ -6,8 +6,8 @@ import argparse
 import inspect
 import sys
 import traceback
-from time import perf_counter
 from pathlib import Path
+from time import perf_counter
 
 import torch
 import torch.distributed as dist
@@ -17,8 +17,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from core.benchmark.gpu_requirements import require_min_gpus
 from labs.train_distributed.training_utils.memory import print_memory_stats
-from labs.train_distributed.training_utils.utils import get
 from labs.train_distributed.training_utils.torchrun_harness import TorchrunScriptBenchmark
+from labs.train_distributed.training_utils.utils import get
 
 
 def parse_args():
@@ -124,7 +124,7 @@ def main():
         model = _build_model(args.hidden_size, device).to(torch.bfloat16)
         extra_param = None
         if args.extra_grad_mb > 0:
-            elem_bytes = torch.tensor([], dtype=torch.bfloat16).element_size()
+            elem_bytes = torch.finfo(torch.bfloat16).bits // 8
             numel = (args.extra_grad_mb * 1024 * 1024) // elem_bytes
             extra_param = torch.nn.Parameter(torch.zeros(numel, device=device, dtype=torch.bfloat16))
             model.register_parameter("extra_grad_payload", extra_param)

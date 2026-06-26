@@ -32,21 +32,26 @@ from __future__ import annotations
 import argparse
 import datetime
 import os
-
-from core.common.device_utils import resolve_local_rank
 import random
 import string
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 
+import torch
+import torch.distributed as dist
+
+from core.common.device_utils import resolve_local_rank
 from core.optimization.symmetric_memory_patch import (
     SymmetricMemoryHandle,
     maybe_create_symmetric_memory_handle,
+)
+from core.optimization.symmetric_memory_patch import (
     symmetric_memory_available as _symmetric_memory_available,
 )
 
-import torch
-import torch.distributed as dist
+
+def _dtype_bytes(dtype: torch.dtype) -> int:
+    return torch.finfo(dtype).bits // 8
 
 
 # ============================================================================
@@ -229,7 +234,7 @@ class MultiModelSymmetricPool:
         self.snapshots: Dict[str, ModelWeightsSnapshot] = {}
 
     def register(self, name: str, size_mb: int = 512) -> None:
-        elements = max(1, (size_mb * 1024 * 1024) // torch.tensor([], dtype=self.dtype).element_size())
+        elements = max(1, (size_mb * 1024 * 1024) // _dtype_bytes(self.dtype))
         generator = torch.Generator(device=self.device.type)
         generator.manual_seed(abs(hash(name)) % (2**31))
         tensor = torch.randn(elements, device=self.device, dtype=self.dtype, generator=generator)
