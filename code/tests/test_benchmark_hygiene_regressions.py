@@ -2716,9 +2716,11 @@ def test_ch17_monolithic_decode_fast_paths_single_token() -> None:
     )
     decode_section = source.split("def decode", maxsplit=1)[1]
 
-    assert "if num_tokens == 1:" in decode_section
+    assert "if token_count == 1:" in decode_section
     assert "return x" in decode_section
-    assert "return torch.cat(outputs, dim=1)" in decode_section
+    assert "output = kv_cache.new_empty(" in decode_section
+    assert "output[:, token_idx : token_idx + 1, :].copy_(x)" in decode_section
+    assert "torch.cat(outputs" not in decode_section
 
 
 def test_ch03_pageable_copy_is_not_marked_informational() -> None:

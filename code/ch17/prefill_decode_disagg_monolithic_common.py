@@ -29,12 +29,18 @@ class SimpleLLM(nn.Module):
 
     def decode(self, kv_cache: torch.Tensor, num_tokens: int = 16) -> torch.Tensor:
         """Decode a small number of tokens (memory-bound path)."""
-        outputs = []
+        token_count = int(num_tokens)
+        if token_count <= 0:
+            return kv_cache.new_empty(kv_cache.shape[0], 0, kv_cache.shape[-1])
         x = kv_cache
-        for _ in range(num_tokens):
+        if token_count == 1:
             for layer in self.layers:
                 x = torch.relu(layer(x))
-            if num_tokens == 1:
-                return x
-            outputs.append(x)
-        return torch.cat(outputs, dim=1)
+            return x
+
+        output = kv_cache.new_empty(kv_cache.shape[0], token_count, kv_cache.shape[-1])
+        for token_idx in range(token_count):
+            for layer in self.layers:
+                x = torch.relu(layer(x))
+            output[:, token_idx : token_idx + 1, :].copy_(x)
+        return output
