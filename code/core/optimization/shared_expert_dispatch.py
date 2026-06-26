@@ -7,8 +7,6 @@ paying realistic dispatch costs (grouping, gather/scatter, kernel launch count).
 
 from __future__ import annotations
 
-from typing import Iterable
-
 import torch
 import torch.nn as nn
 
@@ -66,7 +64,6 @@ def dispatch_shared_expert_active_experts(
     """Dispatch by iterating only active experts (unique expert ids)."""
     _validate_dispatch_inputs(flat_tokens, expert_ids, out)
 
-    out.zero_()
     active = torch.unique(expert_ids)
     for idx in range(active.numel()):
         expert_id = active[idx]

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import inspect
+
 import pytest
 import torch
 import torch.nn as nn
 
 from core.optimization.shared_expert_dispatch import (
+    dispatch_shared_expert_active_experts,
     dispatch_shared_expert_packed_scatter,
     dispatch_shared_expert_sort_scatter,
 )
@@ -44,6 +47,34 @@ def test_packed_scatter_matches_sort_scatter() -> None:
     )
 
     assert torch.allclose(actual, expected)
+
+
+def test_active_experts_overwrites_output_without_zero_fill() -> None:
+    source = inspect.getsource(dispatch_shared_expert_active_experts)
+    assert "out.zero_()" not in source
+
+    expert = _build_expert()
+    flat_tokens = torch.randn(8, 4)
+    expert_ids = torch.tensor([1, 0, 1, 2, 0, 2, 1, 0], dtype=torch.int64)
+    expected = torch.empty_like(flat_tokens)
+    actual = torch.full_like(flat_tokens, float("nan"))
+
+    dispatch_shared_expert_sort_scatter(
+        flat_tokens,
+        expert_ids,
+        expert,
+        out=expected,
+        sort_idx=torch.argsort(expert_ids),
+    )
+    dispatch_shared_expert_active_experts(
+        flat_tokens,
+        expert_ids,
+        expert,
+        out=actual,
+    )
+
+    assert not torch.isnan(actual).any()
+    torch.testing.assert_close(actual, expected)
 
 
 def test_packed_scatter_rejects_mismatched_sort_index_length() -> None:
