@@ -1197,6 +1197,20 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
         assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
+    source = (REPO_ROOT / "ch18" / "run_vllm_decoder.py").read_text(encoding="utf-8")
+    decode_section = source.split("def decode(", maxsplit=1)[1].split(
+        "def _maybe_adjust_chunk",
+        maxsplit=1,
+    )[0]
+
+    assert "match_count, all_matches = torch.stack(" in decode_section
+    assert "self.accepted_tokens += int(match_count)" in decode_section
+    assert "if not all_matches:" in decode_section
+    assert "matches.sum().item()" not in decode_section
+    assert "if not matches.all()" not in decode_section
+
+
 def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     from ch18.rope_q_cache_common import apply_rope, apply_rope_inplace
 

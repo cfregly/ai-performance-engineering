@@ -218,7 +218,13 @@ class SpeculativeDecoder:
 
                     target_next = torch.argmax(target_logits[:, -1, :], dim=-1, keepdim=True)
                     matches = candidate.eq(target_next)
-                    self.accepted_tokens += matches.sum().item()
+                    match_count, all_matches = torch.stack(
+                        (
+                            matches.sum(),
+                            matches.all().to(dtype=torch.long),
+                        )
+                    ).tolist()
+                    self.accepted_tokens += int(match_count)
                     self.total_tokens += matches.numel()
                     tokens = torch.where(matches, candidate, target_next)
 
@@ -226,7 +232,7 @@ class SpeculativeDecoder:
                     per_token_times.append((time.perf_counter() - start) * 1000.0)
                     emitted += 1
 
-                    if not matches.all():
+                    if not all_matches:
                         break
         self._maybe_adjust_chunk()
         return tokens, per_token_times
@@ -878,5 +884,4 @@ def main(argv: Optional[List[str]] = None) -> int:
         args.max_capture_tokens,
     )
     return 0
-
 
