@@ -269,6 +269,52 @@ def test_attention_reuses_cu_seqlens_buffers():
     torch.testing.assert_close(cu_q_grown, torch.tensor([0, 5, 10], dtype=torch.int32))
 
 
+def test_attention_reuses_causal_mask_buffers():
+    config = GPTConfig(
+        sequence_len=8,
+        vocab_size=32,
+        n_layer=1,
+        n_head=2,
+        n_kv_head=2,
+        n_embd=8,
+        use_flash3=False,
+    )
+    attn = CausalSelfAttention(config, layer_idx=0)
+
+    causal = attn._causal_mask_for(3, 3, torch.device("cpu"))
+    causal_ptr = causal.data_ptr()
+    causal_again = attn._causal_mask_for(3, 3, torch.device("cpu"))
+
+    assert causal_again.data_ptr() == causal_ptr
+    torch.testing.assert_close(
+        causal_again,
+        torch.tensor(
+            [
+                [True, False, False],
+                [True, True, False],
+                [True, True, True],
+            ],
+            dtype=torch.bool,
+        ),
+    )
+
+    prefix = attn._prefix_causal_mask_for(2, 5, torch.device("cpu"))
+    prefix_ptr = prefix.data_ptr()
+    prefix_again = attn._prefix_causal_mask_for(2, 5, torch.device("cpu"))
+
+    assert prefix_again.data_ptr() == prefix_ptr
+    torch.testing.assert_close(
+        prefix_again,
+        torch.tensor(
+            [
+                [True, True, True, True, False],
+                [True, True, True, True, True],
+            ],
+            dtype=torch.bool,
+        ),
+    )
+
+
 def test_apply_rotary_emb_inference_matches_reference():
     x = torch.randn(2, 3, 4, 8, dtype=torch.float32)
     cos = torch.randn(1, 3, 1, 4, dtype=torch.float32)

@@ -144,6 +144,8 @@ class CausalSelfAttention(nn.Module):
         self.flash3_error = None
         self._cu_q_cache = None
         self._cu_k_cache = None
+        self._causal_mask_cache = None
+        self._prefix_causal_mask_cache = None
         if self.use_flash3:
             self._init_flash3()
 
@@ -186,6 +188,29 @@ class CausalSelfAttention(nn.Module):
             setattr(self, cache_name, cached)
             setattr(self, spec_name, spec)
         return cached
+
+    def _causal_mask_for(self, t_q, t_k, device):
+        spec = (t_q, t_k, device)
+        if self._causal_mask_cache is None or getattr(self, "_causal_mask_spec", None) != spec:
+            self._causal_mask_cache = torch.tril(
+                torch.ones((t_q, t_k), dtype=torch.bool, device=device)
+            )
+            self._causal_mask_spec = spec
+        return self._causal_mask_cache
+
+    def _prefix_causal_mask_for(self, t_q, t_k, device):
+        spec = (t_q, t_k, device)
+        if self._prefix_causal_mask_cache is None or getattr(self, "_prefix_causal_mask_spec", None) != spec:
+            prefix_len = t_k - t_q
+            mask = torch.zeros((t_q, t_k), dtype=torch.bool, device=device)
+            if prefix_len > 0:
+                mask[:, :prefix_len] = True
+            mask[:, prefix_len:] = torch.tril(
+                torch.ones((t_q, t_q), dtype=torch.bool, device=device)
+            )
+            self._prefix_causal_mask_cache = mask
+            self._prefix_causal_mask_spec = spec
+        return self._prefix_causal_mask_cache
 
     def _flash3_attention(self, q, k, v, kv_cache, enable_gqa, use_clustering=False):
         """Varlen FlashAttention-3 path (no masks). Returns None on fallback."""
@@ -294,13 +319,10 @@ class CausalSelfAttention(nn.Module):
                 key_mask = attention_mask
             key_mask = key_mask.to(dtype=torch.bool, device=q.device)
             assert key_mask.size(-1) == Tk, f"attention_mask length mismatch: {key_mask.size(-1)} != {Tk}"
-            causal = torch.tril(torch.ones((Tq, Tk), dtype=torch.bool, device=q.device))
             if kv_cache is not None and Tq != Tk:
-                prefix_len = Tk - Tq
-                causal = torch.zeros((Tq, Tk), dtype=torch.bool, device=q.device)
-                if prefix_len > 0:
-                    causal[:, :prefix_len] = True
-                causal[:, prefix_len:] = torch.tril(torch.ones((Tq, Tq), dtype=torch.bool, device=q.device))
+                causal = self._prefix_causal_mask_for(Tq, Tk, q.device)
+            else:
+                causal = self._causal_mask_for(Tq, Tk, q.device)
             attn_mask = key_mask & causal
         fa3_out = None
         if attn_mask is None and self._flash3_supported(q, attn_mask):
@@ -327,11 +349,7 @@ class CausalSelfAttention(nn.Module):
                     elif Tq == 1:
                         y = F.scaled_dot_product_attention(q, k, v, is_causal=False, enable_gqa=enable_gqa)
                     else:
-                        attn_mask = torch.zeros((Tq, Tk), dtype=torch.bool, device=q.device) # True = keep, False = mask
-                        prefix_len = Tk - Tq
-                        if prefix_len > 0: # can't be negative but could be zero
-                            attn_mask[:, :prefix_len] = True
-                        attn_mask[:, prefix_len:] = torch.tril(torch.ones((Tq, Tq), dtype=torch.bool, device=q.device))
+                        attn_mask = self._prefix_causal_mask_for(Tq, Tk, q.device)
                         y = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, enable_gqa=enable_gqa)
 
         # Re-assemble the heads side by side and project back to residual stream
