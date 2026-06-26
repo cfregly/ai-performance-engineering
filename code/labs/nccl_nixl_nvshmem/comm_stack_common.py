@@ -197,6 +197,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.dst: Optional[torch.Tensor] = None
         self.host_stage: Optional[torch.Tensor] = None
         self.gpu_stage: Optional[torch.Tensor] = None
+        self.packed_stage: Optional[torch.Tensor] = None
         self.selected_idx: Optional[torch.Tensor] = None
         self.copy_stream: Optional[torch.cuda.Stream] = None
         self.copy_ready: Optional[torch.cuda.Event] = None
@@ -241,6 +242,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float32,
         )
+        self.packed_stage = torch.empty_like(self.gpu_stage) if self.optimized else None
         self.selected_idx = _selected_indices(self.workload, self.device)
         self.copy_stream = torch.cuda.Stream(device=self.device) if self.optimized else None
         self.copy_ready = torch.cuda.Event() if self.optimized else None
@@ -271,12 +273,12 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             copy_calls = float(self.workload.selected_blocks * 2 * self.workload.inner_iterations)
             uses_copy_stream = 0.0
         else:
-            if self.copy_stream is None or self.copy_ready is None:
+            if self.copy_stream is None or self.copy_ready is None or self.packed_stage is None:
                 raise RuntimeError("Optimized path requires a copy stream and event")
             for _ in range(self.workload.inner_iterations):
-                packed = self.src.index_select(0, self.selected_idx)
+                torch.index_select(self.src, 0, self.selected_idx, out=self.packed_stage)
                 with torch.cuda.stream(self.copy_stream):
-                    self.host_stage.copy_(packed, non_blocking=True)
+                    self.host_stage.copy_(self.packed_stage, non_blocking=True)
                     self.gpu_stage.copy_(self.host_stage, non_blocking=True)
                     self.copy_ready.record(self.copy_stream)
                 torch.cuda.current_stream().wait_event(self.copy_ready)
@@ -320,6 +322,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.dst = None
         self.host_stage = None
         self.gpu_stage = None
+        self.packed_stage = None
         self.selected_idx = None
         self.copy_stream = None
         self.copy_ready = None
