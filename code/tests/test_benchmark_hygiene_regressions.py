@@ -868,6 +868,32 @@ def test_ch19_fp4_helpers_cache_lookup_values_per_device() -> None:
         assert "fp4_vals = _fp4_values_for(device)" in dequantize_section
 
 
+def test_ch19_native_fp4_caches_lookup_values_per_device() -> None:
+    source = (REPO_ROOT / "ch19" / "native_fp4_quantization.py").read_text(
+        encoding="utf-8"
+    )
+    helpers_section = source.split("def _fp4_values_for", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+    quantize_section = source.split("def quantize_to_fp4_packed", maxsplit=1)[1].split(
+        "def dequantize_from_fp4_packed",
+        maxsplit=1,
+    )[0]
+    dequantize_section = source.split("def dequantize_from_fp4_packed", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+
+    assert "_FP4_VALUES_CACHE: dict[torch.device, torch.Tensor] = {}" in source
+    assert "cached = _FP4_VALUES_CACHE.get(device)" in helpers_section
+    assert "FP4_VALUES.to(device=device)" in helpers_section
+    assert "FP4_VALUES.to(device)" not in quantize_section
+    assert "FP4_VALUES.to(device)" not in dequantize_section
+    assert "fp4_vals = _fp4_values_for(device)" in quantize_section
+    assert "fp4_vals = _fp4_values_for(device)" in dequantize_section
+
+
 def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:
     source = (REPO_ROOT / "labs" / "flashattention4" / "flashattention4_common.py").read_text(
         encoding="utf-8"

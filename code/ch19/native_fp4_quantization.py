@@ -61,6 +61,17 @@ def has_scaled_mm() -> bool:
 # Sign bit gives us 16 total values: ±{0, 0.5, 1, 1.5, 2, 3, 4, 6}
 FP4_VALUES = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0])
 FP4_MAX = 6.0
+_FP4_VALUES_CACHE: dict[torch.device, torch.Tensor] = {}
+
+
+def _fp4_values_for(device: torch.device) -> torch.Tensor:
+    if device.type == "cpu":
+        return FP4_VALUES
+    cached = _FP4_VALUES_CACHE.get(device)
+    if cached is None:
+        cached = FP4_VALUES.to(device=device)
+        _FP4_VALUES_CACHE[device] = cached
+    return cached
 
 
 # ============================================================================
@@ -102,7 +113,7 @@ def quantize_to_fp4_packed(
     normalized = normalized.clamp(-FP4_MAX, FP4_MAX)
     
     # Quantize to FP4 values
-    fp4_vals = FP4_VALUES.to(device)
+    fp4_vals = _fp4_values_for(device)
     abs_normalized = normalized.abs()
     
     # Find nearest FP4 value (vectorized)
@@ -135,7 +146,7 @@ def dequantize_from_fp4_packed(
     Dequantize FP4 packed data back to original dtype.
     """
     device = packed_data.device
-    fp4_vals = FP4_VALUES.to(device)
+    fp4_vals = _fp4_values_for(device)
     
     # Unpack bytes to pairs of 4-bit codes
     high = (packed_data >> 4) & 0x0F
