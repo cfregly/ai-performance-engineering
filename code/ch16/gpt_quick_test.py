@@ -5,6 +5,7 @@ Quick GPT-style model test - NO HEAVY COMPILATION
 Shows realistic torch.compile speedup on B200
 """
 import time
+
 from tqdm import tqdm
 
 from core.utils.compile_utils import enable_tf32
@@ -91,7 +92,7 @@ def main():
         
         # Input
         x = torch.randn(batch, seq_len, d_model, device='cuda', dtype=run_dtype)
-        bytes_per_elem = torch.tensor([], dtype=run_dtype).element_size()
+        bytes_per_elem = torch.finfo(run_dtype).bits // 8
         mem = x.numel() * bytes_per_elem / 1e9
         print(f"Input size: {mem:.2f} GB")
         

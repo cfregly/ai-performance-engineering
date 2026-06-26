@@ -2,14 +2,14 @@
 
 import argparse
 import os
-
-from core.common.device_utils import resolve_local_rank
 from time import perf_counter
 from types import SimpleNamespace
 
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+
+from core.common.device_utils import resolve_local_rank
 
 
 def parse_args():
@@ -136,8 +136,8 @@ def _int8_allreduce_hook(
 
 
 def main():
-    from torch.nn.parallel import DistributedDataParallel as DDP
     from torch.distributed.algorithms.ddp_comm_hooks import powerSGD
+    from torch.nn.parallel import DistributedDataParallel as DDP
 
     from labs.train_distributed.training_utils.utils import (
         build_dataloader,
@@ -254,7 +254,7 @@ def main():
 
     extra_param = None
     if args.extra_grad_mb > 0:
-        elem_bytes = torch.tensor([], dtype=torch.bfloat16).element_size()
+        elem_bytes = torch.finfo(torch.bfloat16).bits // 8
         numel = (args.extra_grad_mb * 1024 * 1024) // elem_bytes
         rows = min(4096, max(1, numel))
         cols = max(1, numel // rows)
@@ -266,7 +266,7 @@ def main():
 
     comm_buffer = None
     if args.simulate_single_gpu_comm and world_size < 2 and args.extra_grad_mb > 0:
-        elem_bytes = torch.tensor([], dtype=torch.float32).element_size()
+        elem_bytes = torch.finfo(torch.float32).bits // 8
         numel = (args.extra_grad_mb * 1024 * 1024) // elem_bytes
         comm_buffer = torch.randn(numel, device=device, dtype=torch.float32)
 

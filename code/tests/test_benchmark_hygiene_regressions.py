@@ -221,8 +221,11 @@ def test_dtype_byte_sizing_avoids_empty_tensor_metadata_allocations() -> None:
         "ch04/nvshmem_vs_nccl_benchmark.py",
         "ch15/placement_sim.py",
         "ch16/symmetric_memory_inference.py",
+        "ch16/gpt_quick_test.py",
+        "labs/blackwell_matmul/run_blackwell_matmul.py",
         "labs/flexattention/flexattention_common.py",
         "labs/train_distributed/baseline_zero2_multigpu.py",
+        "labs/train_distributed/ddp_compression.py",
         "labs/train_distributed/optimized_zero2_multigpu.py",
     ]
 

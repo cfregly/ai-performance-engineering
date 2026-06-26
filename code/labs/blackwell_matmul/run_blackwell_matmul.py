@@ -10,8 +10,8 @@ from typing import Optional
 
 import torch
 
-from labs.blackwell_matmul import is_cluster_launch_supported
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkHarness, BenchmarkMode
+from labs.blackwell_matmul import is_cluster_launch_supported
 
 _VARIANT_MODULES = {
     "baseline": "labs.blackwell_matmul.baseline_blackwell_matmul",
@@ -80,7 +80,7 @@ def _emit_dual_roofline_meta(
         return
     m, n, k = benchmark.get_problem_shape()  # type: ignore[attr-defined]
     dtype = getattr(benchmark, "tensor_dtype", torch.float16)
-    dtype_bytes = torch.tensor([], dtype=dtype).element_size()
+    dtype_bytes = torch.finfo(dtype).bits // 8
     flops = float(2 * m * n * k)
     bytes_moved = float((m * k) + (k * n) + (m * n)) * dtype_bytes
     if bytes_moved <= 0:
