@@ -132,6 +132,29 @@ def test_ch07_lookup_pytorch_reuses_table_and_timing_events() -> None:
     assert "ms = run(coalesced_indices, table=table, events=events)" in main_section
 
 
+def test_kv_locality_microbench_reuses_copy_stream_and_defers_output_tensor() -> None:
+    source = (REPO_ROOT / "core" / "scripts" / "kv_locality_microbench.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def _bench_copy", maxsplit=1)[0]
+    copy_section = source.split("def _bench_copy", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_custom_metrics", maxsplit=1
+    )[0]
+
+    assert "self.copy_stream = torch.cuda.Stream(device=self.device)" in setup_section
+    assert "torch.cuda.Stream(" not in copy_section
+    assert "with torch.cuda.stream(self.copy_stream)" in copy_section
+    assert "torch.tensor(" not in benchmark_section
+    assert "self._output_values = ordered" in benchmark_section
+    assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
+
+
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()
