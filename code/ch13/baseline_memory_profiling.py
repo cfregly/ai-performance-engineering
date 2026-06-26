@@ -74,7 +74,7 @@ class BaselineMemoryProfilingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             loss = self.criterion(outputs, self.targets)
             loss.backward()
             self.peak_memory_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
-            self.output = outputs.detach().clone()
+            self.output = outputs.detach()
         if self.inputs is None or self.targets is None or self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 

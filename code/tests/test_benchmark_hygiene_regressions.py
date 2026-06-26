@@ -885,18 +885,26 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
     assert "output=self._output.detach().float().clone()" in capture_section
 
 
-def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
-    source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
-    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
-        "def capture_verification_payload", maxsplit=1
-    )[0]
-    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
-        "def teardown", maxsplit=1
-    )[0]
+def test_ch13_regional_compile_moves_verification_materialization_out_of_hot_loop() -> None:
+    targets = {
+        "baseline_regional_compile.py": "self.output = self.compiled_model(x).detach()",
+        "optimized_regional_compile.py": "self.output = self.model(x).detach()",
+    }
 
-    assert ".detach().float().clone()" not in benchmark_section
-    assert "self.output = self.model(x).detach().clone()" in benchmark_section
-    assert "output=self._verify_output.float().clone()" in capture_section
+    for name, output_assignment in targets.items():
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert ".detach().float().clone()" not in benchmark_section
+        assert ".detach().clone()" not in benchmark_section
+        assert output_assignment in benchmark_section
+        assert "self._verify_output = self.output" in benchmark_section
+        assert "output=self._verify_output.float().clone()" in capture_section
 
 
 def test_ch13_memory_profiling_pair_keeps_compute_dtype_fixed_and_direct_output_capture() -> None:
@@ -916,8 +924,12 @@ def test_ch13_memory_profiling_pair_keeps_compute_dtype_fixed_and_direct_output_
     assert "self.targets_fp32" not in optimized_source
     for source in (baseline_source, optimized_source):
         assert "dtype=torch.float32" in source
-    assert "self.output = outputs.detach().clone()" in baseline_benchmark
-    assert "self.output = outputs.detach().clone()" in optimized_benchmark
+    assert ".detach().clone()" not in baseline_benchmark
+    assert ".detach().clone()" not in optimized_benchmark
+    assert "self.output = outputs.detach()" in baseline_benchmark
+    assert "self.output = outputs.detach()" in optimized_benchmark
+    assert "output=self.output.detach().float().clone()" in baseline_source
+    assert "output=self.output.detach().float().clone()" in optimized_source
     assert "self.output_buffer" not in optimized_source
     assert 'return "memory"' in baseline_source
     assert 'return "memory"' in optimized_source

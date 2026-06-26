@@ -14,13 +14,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
 )
+from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 
 
 class MLP(nn.Module):
@@ -146,12 +146,12 @@ class BaselineFullGraphCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
         x = self.inputs[seq_len]
 
         with torch.no_grad(), self._nvtx_range("baseline_full_graph_compile"):
-            self.output = self.compiled_model(x).detach().clone()
+            self.output = self.compiled_model(x).detach()
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
         if self._verify_x is None:
             self._verify_x = x
-            self._verify_output = self.output.detach().clone()
+            self._verify_output = self.output
 
     def capture_verification_payload(self) -> None:
         if self._verify_x is None or self._verify_output is None:
