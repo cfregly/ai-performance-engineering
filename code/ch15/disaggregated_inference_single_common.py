@@ -122,6 +122,8 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self.prompts: Optional[torch.Tensor] = None
         self.kv_caches: List[torch.Tensor] = []
         self.batched_kv_cache: Optional[torch.Tensor] = None
+        self._baseline_kv_cache: Optional[torch.Tensor] = None
+        self._kv_host_staging: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
         self._param_count = 0
@@ -154,6 +156,12 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
             self.cfg.dtype,
             self.device,
         )
+
+    def _allocate_host_staging(self, shape: torch.Size, dtype: torch.dtype) -> torch.Tensor:
+        try:
+            return torch.empty(shape, device="cpu", dtype=dtype, pin_memory=True)
+        except RuntimeError:
+            return torch.empty(shape, device="cpu", dtype=dtype)
 
     def _run_decode_loop(self, kv_cache: torch.Tensor, seed_tokens: torch.Tensor) -> torch.Tensor:
         if self.decode_model is None:
@@ -209,6 +217,8 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self.prompts = None
         self.kv_caches = []
         self.batched_kv_cache = None
+        self._baseline_kv_cache = None
+        self._kv_host_staging = None
         self._output = None
         self._pending_outputs = []
         torch.cuda.empty_cache()
@@ -242,9 +252,25 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
 
     allowed_benchmark_fn_antipatterns = ("host_transfer",)
 
+    def setup(self) -> None:
+        super().setup()
+        self._baseline_kv_cache = self._allocate_kv_cache()
+        self._kv_host_staging = self._allocate_host_staging(
+            torch.Size(
+                (
+                    self.cfg.batch_size,
+                    self.cfg.context_window,
+                    self.cfg.hidden_size,
+                )
+            ),
+            self.cfg.dtype,
+        )
+
     def benchmark_fn(self) -> None:
         if self.prefill_model is None or self.prompts is None:
             raise RuntimeError("setup() must run before benchmark_fn()")
+        if self._baseline_kv_cache is None or self._kv_host_staging is None:
+            raise RuntimeError("Baseline KV staging buffers not initialized")
 
         outputs: List[torch.Tensor] = []
         with torch.no_grad():
@@ -252,10 +278,12 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
                 prompt = self.prompts[idx]
                 hidden, logits = self.prefill_model.prefill(prompt)
                 seed_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
-                kv_cpu = hidden.cpu()
-                kv_cache = self._allocate_kv_cache()
-                kv_cache[:, : self.cfg.context_window].copy_(kv_cpu)
-                outputs.append(self._run_decode_loop(kv_cache, seed_tokens))
+                self._kv_host_staging.copy_(hidden, non_blocking=False)
+                self._baseline_kv_cache[:, : self.cfg.context_window].copy_(
+                    self._kv_host_staging,
+                    non_blocking=False,
+                )
+                outputs.append(self._run_decode_loop(self._baseline_kv_cache, seed_tokens))
 
         self._set_output_from_tokens(outputs)
 

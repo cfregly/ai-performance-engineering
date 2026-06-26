@@ -75,3 +75,25 @@ def test_prefill_decode_disagg_common_hot_path_checks_stay_clean(
 
     assert sync_ok, sync_warnings
     assert antipattern_ok, antipattern_warnings
+
+
+def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    source = (repo_root / "ch15" / "prefill_decode_disagg_common.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _handoff_kv", maxsplit=1
+    )[0]
+    handoff_section = source.split("def _handoff_kv", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+
+    assert "self._host_staging = {}" in setup_section
+    assert "self._handoff_staging = {}" in setup_section
+    assert "self._handoff_staging[staging_key] = torch.empty(" in setup_section
+    assert "prefill_out.cpu()" not in handoff_section
+    assert "kv_cpu.to(decode_device)" not in handoff_section
+    assert "host_buf.copy_(prefill_out, non_blocking=False)" in handoff_section
+    assert "decode_buf.copy_(host_buf, non_blocking=False)" in handoff_section
+    assert "decode_buf.copy_(prefill_out, non_blocking=True)" in handoff_section

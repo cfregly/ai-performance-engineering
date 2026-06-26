@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import Optional, Sequence
 
 import torch
 import torch.nn as nn
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.benchmark.gpu_requirements import require_peer_access
-from core.benchmark.wrapper_utils import attach_benchmark_metadata
+from core.benchmark.wrapper_utils import attach_benchmark_metadata as attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
@@ -60,6 +60,8 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefill_models: list[nn.Module] = []
         self.decode_models: list[nn.Module] = []
         self.prefill_inputs: list[torch.Tensor] = []
+        self._host_staging: dict[str, torch.Tensor] = {}
+        self._handoff_staging: dict[str, torch.Tensor] = {}
         self._verify_probe: Optional[torch.Tensor] = None
         self._output_shards: Optional[list[torch.Tensor]] = None
         self._parameter_count = 0
@@ -112,6 +114,12 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("batch_size must be >= number of GPU pairs")
         return [base + (1 if idx < remainder else 0) for idx in range(num_pairs)]
 
+    def _empty_cpu_staging(self, shape: torch.Size, dtype: torch.dtype) -> torch.Tensor:
+        try:
+            return torch.empty(shape, device="cpu", dtype=dtype, pin_memory=True)
+        except RuntimeError:
+            return torch.empty(shape, device="cpu", dtype=dtype)
+
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for prefill/decode disaggregation")
@@ -135,6 +143,8 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefill_models = []
         self.decode_models = []
         self.prefill_inputs = []
+        self._host_staging = {}
+        self._handoff_staging = {}
         self._output_shards = None
         self._parameter_count = 0
 
@@ -156,6 +166,18 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             slice_end = offset + split_size
             batch_slice = cpu_inputs[offset:slice_end].to(prefill_device)
             self.prefill_inputs.append(batch_slice)
+            staging_key = str(decode_device)
+            staging_shape = torch.Size((1, self.prefill_length, self.hidden_size))
+            self._handoff_staging[staging_key] = torch.empty(
+                staging_shape,
+                device=decode_device,
+                dtype=torch.bfloat16,
+            )
+            if self.use_host_staging:
+                self._host_staging[staging_key] = self._empty_cpu_staging(
+                    staging_shape,
+                    torch.bfloat16,
+                )
             offset = slice_end
 
         self._verify_probe = self.prefill_inputs[0][:1, :1, :256].detach()
@@ -164,10 +186,23 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.cuda.synchronize(decode_device)
 
     def _handoff_kv(self, prefill_out: torch.Tensor, decode_device: torch.device) -> torch.Tensor:
+        staging_key = str(decode_device)
+        decode_buf = self._handoff_staging.get(staging_key)
+        if decode_buf is None or decode_buf.shape != prefill_out.shape:
+            decode_buf = torch.empty_like(prefill_out, device=decode_device)
+            self._handoff_staging[staging_key] = decode_buf
         if self.use_host_staging:
-            kv_cpu = prefill_out.cpu()
-            return kv_cpu.to(decode_device)
-        return prefill_out.to(decode_device, non_blocking=True)
+            host_buf = self._host_staging.get(staging_key)
+            if host_buf is None or host_buf.shape != prefill_out.shape:
+                host_buf = self._empty_cpu_staging(prefill_out.shape, prefill_out.dtype)
+                self._host_staging[staging_key] = host_buf
+            host_buf.copy_(prefill_out, non_blocking=False)
+            decode_buf.copy_(host_buf, non_blocking=False)
+            return decode_buf
+        if prefill_out.device == decode_device:
+            return prefill_out
+        decode_buf.copy_(prefill_out, non_blocking=True)
+        return decode_buf
 
     def benchmark_fn(self) -> None:
         if not self.prefill_models or not self.decode_models or not self.prefill_inputs:
@@ -218,6 +253,8 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.decode_models = []
         self.prefill_inputs = []
         self.pairs = []
+        self._host_staging = {}
+        self._handoff_staging = {}
         self._verify_probe = None
         self._output_shards = None
         self._parameter_count = 0

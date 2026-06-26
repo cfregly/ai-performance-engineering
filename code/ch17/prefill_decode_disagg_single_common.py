@@ -38,6 +38,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self.decode_model: Optional[TinyPrefillDecode] = None
         self.prompts: Optional[torch.Tensor] = None
         self.kv_caches: List[torch.Tensor] = []
+        self._kv_host_staging: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
         self._param_count = 0
 
@@ -64,6 +65,12 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
             p.numel() for p in self.decode_model.parameters()
         )
         torch.cuda.synchronize(self.device)
+
+    def _allocate_host_staging(self, shape: torch.Size, dtype: torch.dtype) -> torch.Tensor:
+        try:
+            return torch.empty(shape, device="cpu", dtype=dtype, pin_memory=True)
+        except RuntimeError:
+            return torch.empty(shape, device="cpu", dtype=dtype)
 
     def _set_output(self, outputs: List[torch.Tensor]) -> None:
         self._output = torch.stack(outputs, dim=0)
@@ -99,6 +106,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self.decode_model = None
         self.prompts = None
         self.kv_caches = []
+        self._kv_host_staging = None
         self._output = None
         torch.cuda.empty_cache()
 
@@ -114,16 +122,31 @@ class BaselinePrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
 
     allowed_benchmark_fn_antipatterns = ("host_transfer",)
 
+    def setup(self) -> None:
+        super().setup()
+        self._kv_host_staging = self._allocate_host_staging(
+            torch.Size(
+                (
+                    self.cfg.batch_size,
+                    self.cfg.context_window,
+                    self.cfg.hidden_size,
+                )
+            ),
+            self.cfg.dtype,
+        )
+
     def benchmark_fn(self) -> None:
         if self.prefill_model is None or self.decode_model is None or self.prompts is None:
             raise RuntimeError("setup() must run before benchmark_fn()")
+        if self._kv_host_staging is None:
+            raise RuntimeError("Baseline KV host staging buffer not initialized")
 
         outputs: List[torch.Tensor] = []
         with torch.no_grad():
             for idx in range(self.cfg.requests_per_rank):
                 kv_cache, seed = self.prefill_model.prefill(self.prompts[idx])
-                kv_cpu = kv_cache.cpu()
-                kv_cache.copy_(kv_cpu)
+                self._kv_host_staging.copy_(kv_cache, non_blocking=False)
+                kv_cache.copy_(self._kv_host_staging, non_blocking=False)
                 outputs.append(self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens))
 
         self._set_output(outputs)
