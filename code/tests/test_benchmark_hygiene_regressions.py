@@ -1308,6 +1308,19 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
         assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None:
+    source = (REPO_ROOT / "ch18" / "optimized_vllm_decode_graphs.py").read_text(encoding="utf-8")
+    workspace_section = source.split("class BucketWorkspace", maxsplit=1)[1].split(
+        "@dataclass\nclass KVBlock", maxsplit=1
+    )[0]
+
+    assert "def pad_to_bucket" not in source
+    assert "mask:" not in workspace_section
+    assert "torch.ones(self.batch, dtype=torch.bool" not in workspace_section
+    assert "self.mask.numel()" not in workspace_section
+    assert "seq_lens[batch_size:bucket].zero_()" in source
+
+
 def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     source = (REPO_ROOT / "ch18" / "run_vllm_decoder.py").read_text(encoding="utf-8")
     decode_section = source.split("def decode(", maxsplit=1)[1].split(

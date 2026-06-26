@@ -46,17 +46,6 @@ def pick_bucket(size: int) -> int:
     return BUCKETS[-1]
 
 
-def pad_to_bucket(tensor: torch.Tensor, bucket: int) -> Tuple[torch.Tensor, torch.Tensor | None]:
-    """Pad to the bucket size and return a mask for the real rows."""
-    if tensor.size(0) == bucket:
-        return tensor, None
-    pad = bucket - tensor.size(0)
-    padding = torch.empty((pad, *tensor.shape[1:]), dtype=tensor.dtype, device=tensor.device)
-    mask = torch.ones(bucket, dtype=torch.bool, device=tensor.device)
-    mask[tensor.size(0) :] = False
-    return torch.cat([tensor, padding], dim=0), mask
-
-
 @dataclass
 class BucketWorkspace:
     batch: int
@@ -65,7 +54,6 @@ class BucketWorkspace:
     tokens_kv: torch.Tensor | None = None
     tokens: torch.Tensor | None = None
     kv: torch.Tensor | None = None
-    mask: torch.Tensor | None = None
     logits: torch.Tensor | None = None
     tmp: torch.Tensor | None = None
     stream: torch.cuda.Stream | None = None
@@ -79,7 +67,6 @@ class BucketWorkspace:
         self.tokens_kv = torch.empty((2, self.batch, self.hidden), device=self.device, dtype=dtype)
         self.tokens = self.tokens_kv[0]
         self.kv = self.tokens_kv[1]
-        self.mask = torch.ones(self.batch, dtype=torch.bool, device=self.device)
         # Populate once and reuse to avoid per-step RNG overhead in the optimized path.
         self.tokens_kv.normal_(mean=0.0, std=1.0)
         if torch.cuda.is_available():
@@ -95,13 +82,12 @@ class BucketWorkspace:
 
     @property
     def bytes(self) -> int:
-        if self.logits is None or self.tmp is None or self.tokens is None or self.kv is None or self.mask is None:
+        if self.logits is None or self.tmp is None or self.tokens is None or self.kv is None:
             return 0
         return (
             (self.logits.numel() + self.tmp.numel()) * self.logits.element_size()
             + self.tokens.numel() * self.tokens.element_size()
             + self.kv.numel() * self.kv.element_size()
-            + self.mask.numel() * self.mask.element_size()
         )
 
 
@@ -305,4 +291,3 @@ class OptimizedVLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedVLLMDecodeGraphsBenchmark()
-
