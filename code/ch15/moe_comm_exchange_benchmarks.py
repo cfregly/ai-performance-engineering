@@ -58,18 +58,14 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._out_flat: Optional[torch.Tensor] = None
         self._baseline_perm: Optional[torch.Tensor] = None
         self._baseline_packed: Optional[torch.Tensor] = None
-        self._baseline_out: Optional[torch.Tensor] = None
         self._local_perm: Optional[torch.Tensor] = None
         self._local_packed: Optional[torch.Tensor] = None
-        self._local_out: Optional[torch.Tensor] = None
         self._remote_perm: Optional[torch.Tensor] = None
         self._remote_cpu_sorted: Optional[torch.Tensor] = None
         self._remote_packed: Optional[torch.Tensor] = None
-        self._remote_out: Optional[torch.Tensor] = None
         self._hierarchical_perm: Optional[torch.Tensor] = None
         self._hierarchical_cpu_sorted: Optional[torch.Tensor] = None
         self._hierarchical_packed: Optional[torch.Tensor] = None
-        self._hierarchical_out: Optional[torch.Tensor] = None
         self._group_offsets: Optional[torch.Tensor] = None
         self._group_ranges: Optional[list[tuple[int, int]]] = None
         self._comm_stream: Optional[torch.cuda.Stream] = None
@@ -103,7 +99,6 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Routing produced no tokens for any logical rank")
         self._baseline_perm = torch.cat(baseline_perm_parts, dim=0)
         self._baseline_packed = torch.empty_like(flat)
-        self._baseline_out = torch.empty_like(flat)
 
         local_mask = self._dest_groups == 0
         remote_mask = ~local_mask
@@ -116,10 +111,8 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 device=self.device,
                 dtype=self.dtype,
             )
-            self._local_out = torch.empty_like(self._local_packed)
         else:
             self._local_packed = None
-            self._local_out = None
 
         if self._remote_perm.numel() > 0:
             remote_sort = torch.argsort(
@@ -134,17 +127,14 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 device=self.device,
                 dtype=self.dtype,
             )
-            self._remote_out = torch.empty_like(self._remote_packed)
         else:
             self._remote_cpu_sorted = None
             self._remote_packed = None
-            self._remote_out = None
 
         hierarchical_key = (self._dest_groups * self.logical_world_size) + self._dest_ranks
         self._hierarchical_perm = torch.argsort(hierarchical_key)
         self._hierarchical_cpu_sorted = flat.index_select(0, self._hierarchical_perm).detach().cpu().pin_memory()
         self._hierarchical_packed = torch.empty_like(flat)
-        self._hierarchical_out = torch.empty_like(flat)
         group_counts = torch.bincount(self._dest_groups, minlength=self.logical_world_size // self.ranks_per_group)
         self._group_offsets = torch.zeros(group_counts.numel() + 1, device=self.device, dtype=torch.int64)
         self._group_offsets[1:] = torch.cumsum(group_counts, dim=0)
@@ -195,7 +185,6 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._out_flat is None
             or self._baseline_perm is None
             or self._baseline_packed is None
-            or self._baseline_out is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
@@ -204,8 +193,8 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with self._nvtx_range(self.label):
             with torch.no_grad():
                 torch.index_select(flat, 0, self._baseline_perm, out=self._baseline_packed)
-                self._baseline_out.copy_(self.expert(self._baseline_packed))
-                self._out_flat.index_copy_(0, self._baseline_perm, self._baseline_out)
+                baseline_out = self.expert(self._baseline_packed)
+                self._out_flat.index_copy_(0, self._baseline_perm, baseline_out)
                 self.output = self._out_flat.view(self.batch, self.seq, self.hidden_size)
 
     def _run_overlap(self) -> None:
@@ -214,11 +203,10 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.inputs is None
             or self._out_flat is None
             or self._local_perm is None
-            or (self._local_perm.numel() > 0 and (self._local_packed is None or self._local_out is None))
+            or (self._local_perm.numel() > 0 and self._local_packed is None)
             or self._remote_perm is None
             or self._remote_cpu_sorted is None
             or self._remote_packed is None
-            or self._remote_out is None
             or self._comm_stream is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
@@ -232,12 +220,12 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         self._remote_packed.copy_(self._remote_cpu_sorted, non_blocking=True)
                 if self._local_perm.numel() > 0:
                     torch.index_select(flat, 0, self._local_perm, out=self._local_packed)
-                    self._local_out.copy_(self.expert(self._local_packed))
-                    self._out_flat.index_copy_(0, self._local_perm, self._local_out)
+                    local_out = self.expert(self._local_packed)
+                    self._out_flat.index_copy_(0, self._local_perm, local_out)
                 if self._remote_perm.numel() > 0:
                     torch.cuda.current_stream(self.device).wait_stream(self._comm_stream)
-                    self._remote_out.copy_(self.expert(self._remote_packed))
-                    self._out_flat.index_copy_(0, self._remote_perm, self._remote_out)
+                    remote_out = self.expert(self._remote_packed)
+                    self._out_flat.index_copy_(0, self._remote_perm, remote_out)
                 self.output = self._out_flat.view(self.batch, self.seq, self.hidden_size)
 
     def _run_hierarchical(self) -> None:
@@ -247,7 +235,6 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._hierarchical_perm is None
             or self._hierarchical_cpu_sorted is None
             or self._hierarchical_packed is None
-            or self._hierarchical_out is None
             or self._group_ranges is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
@@ -258,8 +245,8 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 for start, end in self._group_ranges:
                     if end <= start:
                         continue
-                    self._hierarchical_out[start:end].copy_(self.expert(self._hierarchical_packed[start:end]))
-                self._out_flat.index_copy_(0, self._hierarchical_perm, self._hierarchical_out)
+                    group_out = self.expert(self._hierarchical_packed[start:end])
+                    self._out_flat.index_copy_(0, self._hierarchical_perm[start:end], group_out)
                 self.output = self._out_flat.view(self.batch, self.seq, self.hidden_size)
 
     def capture_verification_payload(self) -> None:
@@ -296,18 +283,14 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._out_flat = None
         self._baseline_perm = None
         self._baseline_packed = None
-        self._baseline_out = None
         self._local_perm = None
         self._local_packed = None
-        self._local_out = None
         self._remote_perm = None
         self._remote_cpu_sorted = None
         self._remote_packed = None
-        self._remote_out = None
         self._hierarchical_perm = None
         self._hierarchical_cpu_sorted = None
         self._hierarchical_packed = None
-        self._hierarchical_out = None
         self._group_offsets = None
         self._group_ranges = None
         self._comm_stream = None
