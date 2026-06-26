@@ -1505,6 +1505,22 @@ def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
     assert "num_tokens.item()" not in logging_section
 
 
+def test_nanochat_chat_eval_batches_count_reductions() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_eval.py"
+    ).read_text(encoding="utf-8")
+
+    assert "def _reduce_counts(num_passed, total, device):" in source
+    assert "counts = torch.tensor([num_passed, total], dtype=torch.long, device=device)" in source
+    assert "dist.all_reduce(counts, op=dist.ReduceOp.SUM)" in source
+    assert "num_passed, total = counts.detach().cpu().tolist()" in source
+    assert source.count("num_passed, total = _reduce_counts(num_passed, total, device)") == 2
+    assert "num_passed_tensor = torch.tensor" not in source
+    assert "total_tensor = torch.tensor" not in source
+    assert "num_passed_tensor.item()" not in source
+    assert "total_tensor.item()" not in source
+
+
 def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"

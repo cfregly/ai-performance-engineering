@@ -26,6 +26,15 @@ from tasks.gsm8k import GSM8K
 from tasks.spellingbee import SpellingBee
 
 # -----------------------------------------------------------------------------
+
+def _reduce_counts(num_passed, total, device):
+    counts = torch.tensor([num_passed, total], dtype=torch.long, device=device)
+    dist.all_reduce(counts, op=dist.ReduceOp.SUM)
+    num_passed, total = counts.detach().cpu().tolist()
+    return int(num_passed), int(total)
+
+
+# -----------------------------------------------------------------------------
 # Generative evaluation loop (we go one problem at a time, sample, evaluate)
 
 def run_generative_eval(task_object, tokenizer, model, engine, num_samples, max_new_tokens, temperature, top_k, max_problems=None):
@@ -69,12 +78,7 @@ def run_generative_eval(task_object, tokenizer, model, engine, num_samples, max_
 
     # Aggregate results across all ranks
     if ddp:
-        num_passed_tensor = torch.tensor([num_passed], dtype=torch.long, device=device)
-        total_tensor = torch.tensor([total], dtype=torch.long, device=device)
-        dist.all_reduce(num_passed_tensor, op=dist.ReduceOp.SUM)
-        dist.all_reduce(total_tensor, op=dist.ReduceOp.SUM)
-        num_passed = num_passed_tensor.item()
-        total = total_tensor.item()
+        num_passed, total = _reduce_counts(num_passed, total, device)
 
     print0("=" * 50)
     print0(f"Final: {num_passed}/{total} ({100*num_passed/total:.2f}%)")
@@ -143,12 +147,7 @@ def run_categorical_eval(task_object, tokenizer, model, batch_size, max_problems
 
     # Aggregate results across all ranks
     if ddp:
-        num_passed_tensor = torch.tensor([num_passed], dtype=torch.long, device=device)
-        total_tensor = torch.tensor([total], dtype=torch.long, device=device)
-        dist.all_reduce(num_passed_tensor, op=dist.ReduceOp.SUM)
-        dist.all_reduce(total_tensor, op=dist.ReduceOp.SUM)
-        num_passed = num_passed_tensor.item()
-        total = total_tensor.item()
+        num_passed, total = _reduce_counts(num_passed, total, device)
 
     average = num_passed/total
     print0(f"Final: {num_passed}/{total} ({100*average:.2f}%)")
