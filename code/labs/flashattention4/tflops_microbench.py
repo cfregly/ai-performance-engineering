@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import json
+import statistics
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
-import json
 from pathlib import Path
-import statistics
 from typing import Callable, Optional
 
 import torch
@@ -18,8 +18,8 @@ from core.benchmark.utils import calculate_tflops
 from core.harness.benchmark_harness import lock_gpu_clocks
 from labs.flashattention4.flashattention4_common import (
     FlashAttention4Config,
-    build_reference_inputs,
     build_flashattention4_mode_table_payload,
+    build_reference_inputs,
     compile_flashattention4_provider,
     eager_flex_attention,
     estimate_attention_forward_flops,
@@ -242,9 +242,9 @@ def _benchmark_cuda_callable(fn: Callable[[], torch.Tensor], *, warmup: int, ite
     torch.cuda.synchronize()
 
     times_ms: list[float] = []
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
     for _ in range(iterations):
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
         start.record()
         _ = fn()
         end.record()
