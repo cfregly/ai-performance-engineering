@@ -5,8 +5,9 @@ import json
 import math
 import statistics
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 import torch
 
@@ -200,7 +201,7 @@ def _compare_outputs(
 ) -> float:
     diffs: list[float] = []
     with torch.no_grad():
-        for batch, ref in zip(batches, refs):
+        for batch, ref in zip(batches, refs, strict=True):
             out = run_decode_step(experts, batch, scenario=scenario)
             diffs.append(float(torch.max(torch.abs(out.float() - ref.float())).item()))
     return max(diffs, default=0.0)
@@ -274,9 +275,9 @@ def measure_scenario(
     torch.cuda.synchronize(device)
 
     elapsed_per_step_ms: list[float] = []
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
     for _ in range(scenario.repeats):
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
         start_event.record()
         for batch in batches:
             run_decode_step(experts, batch, scenario=scenario)

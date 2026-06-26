@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import torch
 
 from ch01.optimized_performance import OptimizedPerformanceBatchBenchmark
@@ -398,6 +399,18 @@ def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:
         "for _ in range(iterations):\n        start = torch.cuda.Event"
         not in microbench_timing_section
     )
+
+
+def test_timed_loops_reuse_cuda_events() -> None:
+    files = [
+        "labs/moe_decode_blackwell_matrix/runner.py",
+        "labs/cutlass_profiler_kernel_selector/run_triton_matmul.py",
+    ]
+
+    for filename in files:
+        source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        assert "for _ in range(scenario.repeats):\n        start_event = torch.cuda.Event" not in source
+        assert "for _ in range(iters):\n        start = torch.cuda.Event" not in source
 
 
 def test_occupancy_tuning_variants_match_their_filenames() -> None:

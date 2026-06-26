@@ -1,4 +1,5 @@
 """Optional Triton matmul runner to compare against CUTLASS profiler output."""
+# ruff: noqa: N803
 
 from __future__ import annotations
 
@@ -6,10 +7,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import torch
+
 import arch_config  # noqa: F401  # triggers triton_compat patch
+
+from .shapes import GemmShape, transformer_gemm_shapes
 
 try:
     import triton
@@ -18,8 +21,6 @@ try:
     TRITON_AVAILABLE = True
 except Exception:  # pylint: disable=broad-except
     TRITON_AVAILABLE = False
-
-from .shapes import GemmShape, transformer_gemm_shapes
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -86,7 +87,9 @@ def _matmul_kernel(
     )
 
 
-def benchmark_triton_matmul(shape: GemmShape, warmup: int, iters: int, dtype: torch.dtype) -> Optional[Dict[str, float]]:
+def benchmark_triton_matmul(
+    shape: GemmShape, warmup: int, iters: int, dtype: torch.dtype
+) -> dict[str, float] | None:
     if not torch.cuda.is_available() or not TRITON_AVAILABLE:
         return None
 
@@ -122,10 +125,10 @@ def benchmark_triton_matmul(shape: GemmShape, warmup: int, iters: int, dtype: to
         )
     torch.cuda.synchronize()
 
-    times_ms: List[float] = []
+    times_ms: list[float] = []
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
     for _ in range(iters):
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
         start.record()
         _matmul_kernel[grid](
             a,
@@ -157,7 +160,7 @@ def benchmark_triton_matmul(shape: GemmShape, warmup: int, iters: int, dtype: to
     return {"runtime_ms": best_ms, "tflops": tflops}
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run Triton matmul on transformer-ish shapes.")
     parser.add_argument("--output-dir", type=Path, default=ARTIFACT_DIR, help="Where to store JSON results.")
     parser.add_argument("--warmup", type=int, default=5, help="Warmup iterations for Triton matmul.")
