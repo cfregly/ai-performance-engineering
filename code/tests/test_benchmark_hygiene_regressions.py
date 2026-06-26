@@ -1488,6 +1488,23 @@ def test_nanochat_base_train_defers_grad_norm_sync_until_logging() -> None:
     assert "grad_norm = float(grad_norm_tensor) if grad_clip_enabled else 0.0" in logging_section
 
 
+def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_sft.py"
+    ).read_text(encoding="utf-8")
+    logging_section = source.split("# logging", maxsplit=1)[1].split(
+        "step += 1",
+        maxsplit=1,
+    )[0]
+
+    assert "torch.stack((" in logging_section
+    assert "train_loss.to(torch.float64)" in logging_section
+    assert "num_tokens.to(torch.float64)" in logging_section
+    assert ")).detach().cpu().tolist()" in logging_section
+    assert "train_loss.item()" not in logging_section
+    assert "num_tokens.item()" not in logging_section
+
+
 def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"

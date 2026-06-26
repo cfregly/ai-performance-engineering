@@ -213,7 +213,7 @@ for step in range(num_iterations):
 
     # evaluate the gradient
     num_tokens = torch.tensor(0, device=device) # the number of "active" tokens of supervision seen
-    for micro_step in range(grad_accum_steps):
+    for _ in range(grad_accum_steps):
         train_inputs, train_targets = next(train_iter)
         with autocast_ctx:
             loss = model(train_inputs, train_targets)
@@ -236,8 +236,11 @@ for step in range(num_iterations):
     model.zero_grad(set_to_none=True)
 
     # logging
-    train_loss_item = train_loss.item()
-    num_tokens_item = num_tokens.item()
+    train_loss_item, num_tokens_item = torch.stack((
+        train_loss.to(torch.float64),
+        num_tokens.to(torch.float64),
+    )).detach().cpu().tolist()
+    num_tokens_item = int(num_tokens_item)
     print0(f"Step {step:05d}/{num_iterations:05d} | Training loss: {train_loss_item:.6f}| lrm: {lrm:.6f}| num_tokens: {num_tokens_item:,}")
     wandb_run.log({
         "step": step,
