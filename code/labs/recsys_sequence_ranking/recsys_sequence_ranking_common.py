@@ -406,7 +406,12 @@ def sequence_mean_vectorized(
 
     if workspace.sequence_metadata_key != _sequence_metadata_key(inputs):
         prepare_workspace_for_inputs(inputs, workspace)
-    return (seq_emb * workspace.sequence_mask_float).sum(dim=1) * workspace.sequence_length_recip
+    if torch.is_grad_enabled() and seq_emb.requires_grad:
+        return (seq_emb * workspace.sequence_mask_float).sum(dim=1) * workspace.sequence_length_recip
+    seq_emb.mul_(workspace.sequence_mask_float)
+    torch.sum(seq_emb, dim=1, out=workspace.sequence_accum)
+    workspace.sequence_accum.mul_(workspace.sequence_length_recip)
+    return workspace.sequence_accum
 
 
 def context_sum_vectorized(
@@ -421,7 +426,10 @@ def context_sum_vectorized(
     else:
         table_index = workspace.context_table_index
     context_vecs = state.context_embeddings[table_index, inputs.context_ids]
-    return context_vecs.sum(dim=1)
+    if workspace is None or (torch.is_grad_enabled() and context_vecs.requires_grad):
+        return context_vecs.sum(dim=1)
+    torch.sum(context_vecs, dim=1, out=workspace.context_accum)
+    return workspace.context_accum
 
 
 def candidate_scores_torch(
@@ -556,7 +564,7 @@ def optimized_forward(
     seq_vec = sequence_mean_vectorized(inputs, state, workspace)
     context_vec = context_sum_vectorized(inputs, state, workspace)
     tower = compiled_tower if compiled_tower is not None else state.tower
-    user_vec = tower(seq_vec + context_vec)
+    user_vec = tower(seq_vec.add_(context_vec))
     if score_backend == "triton":
         if workspace is None:
             raise RuntimeError("Triton scoring requires a RankingWorkspace")
@@ -600,7 +608,7 @@ def warm_optimized_path(
     with torch.no_grad():
         seq_vec = sequence_mean_vectorized(inputs, state, workspace)
         context_vec = context_sum_vectorized(inputs, state, workspace)
-        user_input = seq_vec + context_vec
+        user_input = seq_vec.add_(context_vec)
         tower = compiled_tower if compiled_tower is not None else state.tower
         user_vec = tower(user_input)
         if score_backend == "triton":
