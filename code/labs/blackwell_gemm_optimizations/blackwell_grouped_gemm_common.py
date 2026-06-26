@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import math
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional
 
 import torch
 
@@ -117,11 +117,31 @@ def _build_assignments(
     if workload.histogram == "balanced":
         return token_ids % workload.num_experts
 
+    counts_cpu = _assignment_counts_cpu(workload)
+    expert_ids = torch.arange(workload.num_experts, device=device, dtype=torch.long)
+    repeats = torch.tensor(counts_cpu, device=device, dtype=torch.long)
+    return torch.repeat_interleave(
+        expert_ids,
+        repeats,
+        output_size=workload.num_tokens,
+    )
+
+
+def _assignment_counts_cpu(workload: BlackwellGroupedGemmWorkload) -> tuple[int, ...]:
+    if workload.histogram == "balanced":
+        tokens_per_expert, remainder = divmod(
+            workload.num_tokens,
+            workload.num_experts,
+        )
+        return tuple(
+            tokens_per_expert + int(expert_id < remainder)
+            for expert_id in range(workload.num_experts)
+        )
+
     weights = torch.linspace(
         1.85,
         0.35,
         steps=workload.num_experts,
-        device=device,
         dtype=torch.float32,
     )
     normalized = weights / weights.sum()
@@ -129,14 +149,7 @@ def _build_assignments(
     remainder = int(workload.num_tokens - int(counts.sum().item()))
     if remainder > 0:
         counts[:remainder] += 1
-    assignments = []
-    for expert_id, count in enumerate(counts.tolist()):
-        if count <= 0:
-            continue
-        assignments.append(
-            torch.full((count,), expert_id, device=device, dtype=torch.long)
-        )
-    return torch.cat(assignments, dim=0)
+    return tuple(int(count) for count in counts.tolist())
 
 
 def _build_route_weights(
@@ -200,8 +213,8 @@ def build_state(
     assignments = _build_assignments(workload, device)
     route_weights = _build_route_weights(workload, assignments)
 
-    counts = torch.bincount(assignments, minlength=workload.num_experts).to(torch.int32)
-    counts_cpu = tuple(int(v) for v in counts.detach().cpu().tolist())
+    counts_cpu = _assignment_counts_cpu(workload)
+    counts = torch.tensor(counts_cpu, device=device, dtype=torch.int32)
     max_count = int(max(counts_cpu, default=0))
     sentinel = workload.num_tokens
 
@@ -216,13 +229,23 @@ def build_state(
         device=device,
         dtype=torch.float32,
     )
-    for expert_id in range(workload.num_experts):
-        token_ids = torch.nonzero(assignments == expert_id, as_tuple=False).flatten()
-        count = int(token_ids.numel())
-        if count == 0:
-            continue
-        padded_indices[expert_id, :count] = token_ids
-        padded_route_weights[expert_id, :count] = route_weights.index_select(0, token_ids)
+    sorted_token_ids = torch.argsort(assignments, stable=True)
+    sorted_experts = assignments.index_select(0, sorted_token_ids)
+    counts_long = counts.to(torch.long)
+    cumulative_counts = torch.cumsum(counts_long, dim=0)
+    expert_starts = torch.empty_like(cumulative_counts)
+    expert_starts[0] = 0
+    expert_starts[1:] = cumulative_counts[:-1]
+    packed_offsets = torch.arange(
+        workload.num_tokens,
+        device=device,
+        dtype=torch.long,
+    ) - expert_starts.index_select(0, sorted_experts)
+    padded_indices[sorted_experts, packed_offsets] = sorted_token_ids
+    padded_route_weights[sorted_experts, packed_offsets] = route_weights.index_select(
+        0,
+        sorted_token_ids,
+    )
 
     zero_row = torch.zeros(
         1,

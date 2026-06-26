@@ -84,6 +84,61 @@ def test_blackwell_grouped_gemm_schedule_registry_is_complete() -> None:
     }
 
 
+@pytest.mark.parametrize("histogram", ["balanced", "skewed"])
+def test_blackwell_grouped_gemm_build_state_packs_routes_on_cpu(
+    histogram: str,
+) -> None:
+    workload = BlackwellGroupedGemmWorkload(
+        num_tokens=17,
+        num_experts=4,
+        hidden_dim=32,
+        expert_ffn_dim=64,
+        dtype=torch.float16,
+        histogram=histogram,
+    )
+    state = build_state(workload, torch.device("cpu"))
+
+    counts = tuple(int(count) for count in state.counts.tolist())
+    padded_indices = state.flat_padded_indices.view(
+        workload.num_experts,
+        state.max_count,
+    )
+    assert counts == state.counts_cpu
+
+    for expert_id, count in enumerate(counts):
+        valid_indices = padded_indices[expert_id, :count]
+        if histogram == "balanced":
+            expected_indices = torch.arange(
+                expert_id,
+                workload.num_tokens,
+                workload.num_experts,
+                dtype=torch.long,
+            )
+        else:
+            start = sum(counts[:expert_id])
+            expected_indices = torch.arange(start, start + count, dtype=torch.long)
+        assert torch.equal(valid_indices, expected_indices)
+
+        padded_tail = padded_indices[expert_id, count:]
+        route_tail = state.padded_route_weights[expert_id, count:]
+        assert torch.all(padded_tail == workload.num_tokens)
+        assert torch.count_nonzero(route_tail).item() == 0
+
+    gathered = torch.index_select(
+        state.x_with_padding,
+        0,
+        state.flat_padded_indices,
+    ).view(
+        workload.num_experts,
+        state.max_count,
+        workload.hidden_dim,
+    )
+    reference = torch.bmm(gathered.float(), state.expert_weights.float())
+    reference *= state.padded_route_weights.unsqueeze(-1)
+    reference = reference.to(workload.dtype)
+    torch.testing.assert_close(reference.float(), state.reference_output.float())
+
+
 @pytest.mark.skipif(
     not torch.cuda.is_available(),
     reason="CUDA required for Blackwell grouped GEMM validation",

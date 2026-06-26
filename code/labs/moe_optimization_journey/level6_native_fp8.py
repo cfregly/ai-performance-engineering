@@ -91,16 +91,17 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
         self.scale = torch.ones((), device=self.device)
         
         # Routing - use CPU tensors + to(device)
-        self.expert_indices = torch.randint(0, E, (batch_seq, K)).to(self.device)
-        self.expert_weights = F.softmax(
+        expert_indices_cpu = torch.randint(0, E, (batch_seq, K))
+        expert_weights_cpu = F.softmax(
             torch.randn(batch_seq, K), dim=-1
-        ).to(torch.bfloat16).to(self.device)
+        ).to(torch.bfloat16)
+        self.expert_indices = expert_indices_cpu.to(self.device)
+        self.expert_weights = expert_weights_cpu.to(self.device)
         
         # Pre-compute routing
         flat_idx = self.expert_indices.view(-1)
         self.sorted_order = torch.argsort(flat_idx, stable=True)
-        sorted_expert_ids = flat_idx[self.sorted_order]
-        self.counts = torch.bincount(sorted_expert_ids, minlength=E).tolist()
+        self.counts = torch.bincount(expert_indices_cpu.view(-1), minlength=E).tolist()
         expanded_token_indices = torch.arange(batch_seq, device=self.device).repeat_interleave(K)
         self._sorted_token_indices = expanded_token_indices.index_select(0, self.sorted_order)
         self._sorted_weights = self.expert_weights.view(-1).index_select(0, self.sorted_order)

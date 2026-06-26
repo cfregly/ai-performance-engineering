@@ -1615,6 +1615,9 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     )[0]
 
     assert ".detach().float().clone()" not in moe_benchmark
+    assert "expert_indices_cpu = torch.randint(0, E, (batch_seq, K))" in moe_setup
+    assert "torch.bincount(expert_indices_cpu.view(-1), minlength=E).tolist()" in moe_setup
+    assert "torch.bincount(sorted_expert_ids, minlength=E).tolist()" not in moe_setup
     assert "self._sorted_token_indices = expanded_token_indices.index_select(0, self.sorted_order)" in moe_setup
     assert "self._sorted_weights = self.expert_weights.view(-1).index_select(0, self.sorted_order)" in moe_setup
     assert "self._sorted_tokens = torch.empty(" in moe_setup
