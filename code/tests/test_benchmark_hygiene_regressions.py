@@ -1162,6 +1162,9 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     run_iteration_section = source.split("def run_iteration", maxsplit=1)[1].split(
         "reduced = torch.tensor", maxsplit=1
     )[0]
+    reduced_metrics_section = source.split("if rank == 0:", maxsplit=1)[1].split(
+        "dist.destroy_process_group()", maxsplit=1
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -1179,6 +1182,8 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "seed_buffer," in benchmark_section
     assert "_extend_cache_buffer(" in run_iteration_section
     assert "_extend_cache_buffer(" in benchmark_section
+    assert "reduced_values = reduced.detach().cpu().tolist()" in reduced_metrics_section
+    assert ".item()" not in reduced_metrics_section
 
 
 def test_nanochat_kv_cache_growth_avoids_cat_with_uninitialized_tail() -> None:

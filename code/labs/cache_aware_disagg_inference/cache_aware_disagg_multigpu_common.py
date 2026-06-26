@@ -622,25 +622,37 @@ def _run_torchrun_worker(
     dist.all_reduce(reduced, op=dist.ReduceOp.SUM)
 
     if rank == 0:
-        total_requests = max(float(reduced[8].item()), 1.0)
-        cache_decisions = max(float(reduced[0].item() + reduced[1].item()), 1.0)
+        reduced_values = reduced.detach().cpu().tolist()
+        (
+            cache_hits,
+            cache_misses,
+            worker_switches,
+            peer_handoffs,
+            kv_transfer_bytes,
+            shared_reload_bytes,
+            ttft_reduced_ms,
+            tpot_reduced_ms,
+            request_count,
+        ) = reduced_values
+        total_requests = max(float(request_count), 1.0)
+        cache_decisions = max(float(cache_hits + cache_misses), 1.0)
         total_generated_tokens = (
             cfg.requests_per_rank * prefill_ranks * cfg.batch_size * cfg.decode_tokens
         )
         custom_metrics = {
             **compute_inference_metrics(
-                ttft_ms=float(reduced[6].item()) / total_requests,
-                tpot_ms=float(reduced[7].item()) / total_requests,
+                ttft_ms=float(ttft_reduced_ms) / total_requests,
+                tpot_ms=float(tpot_reduced_ms) / total_requests,
                 total_tokens=total_generated_tokens,
                 total_requests=int(cfg.requests_per_rank * prefill_ranks * cfg.batch_size),
                 batch_size=cfg.batch_size,
                 max_batch_size=max(cfg.batch_size * decode_ranks, cfg.batch_size),
             ),
-            "cache_aware.cache_hit_rate": float(reduced[0].item()) / cache_decisions,
-            "cache_aware.kv_transfer_mb": float(reduced[4].item()) / 1e6,
-            "cache_aware.worker_switches_per_request": float(reduced[2].item()) / total_requests,
-            "cache_aware.peer_handoffs": float(reduced[3].item()),
-            "cache_aware.shared_reload_mb": float(reduced[5].item()) / 1e6,
+            "cache_aware.cache_hit_rate": float(cache_hits) / cache_decisions,
+            "cache_aware.kv_transfer_mb": float(kv_transfer_bytes) / 1e6,
+            "cache_aware.worker_switches_per_request": float(worker_switches) / total_requests,
+            "cache_aware.peer_handoffs": float(peer_handoffs),
+            "cache_aware.shared_reload_mb": float(shared_reload_bytes) / 1e6,
             "cache_aware.time_per_iter_ms": (elapsed_s / max(int(iters), 1)) * 1000.0,
             "cache_aware.wall_tokens_per_second": (
                 total_generated_tokens * (max(int(iters), 1) / elapsed_s)
