@@ -94,6 +94,25 @@ def test_ch02_cublas_metrics_report_gemm_workload_not_transfer_placeholders() ->
     assert "transfer.achieved_gbps" not in optimized_metrics
 
 
+def test_ch04_optimized_dataparallel_reuses_gradient_staging_buffers() -> None:
+    source = (REPO_ROOT / "ch04" / "optimized_dataparallel_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self._grad_staging: List[List[torch.Tensor]] = []" in source
+    assert "self._grad_staging = [" in setup_section
+    assert "torch.empty_like(param, device=master_device)" in setup_section
+    assert "grad.to(master_device" not in benchmark_section
+    assert "staging.copy_(grad, non_blocking=True)" in benchmark_section
+    assert "reduced.add_(staging)" in benchmark_section
+
+
 def test_ch07_and_ch08_sources_do_not_ship_artificial_baseline_penalties() -> None:
     hbm_copy_source = (REPO_ROOT / "ch07" / "baseline_hbm_copy.cu").read_text(encoding="utf-8")
     threshold_source = (REPO_ROOT / "ch08" / "threshold_common.cuh").read_text(encoding="utf-8")

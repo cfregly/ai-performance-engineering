@@ -46,6 +46,7 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
         self.inputs: List[torch.Tensor] = []
         self.targets: List[torch.Tensor] = []
         self.streams: List[torch.cuda.Stream] = []
+        self._grad_staging: List[List[torch.Tensor]] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_state: Optional[dict] = None
         self._verify_input: Optional[torch.Tensor] = None
@@ -111,6 +112,15 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
             self.inputs.append(cpu_input[start:end].to(device))
             self.targets.append(cpu_target[start:end].to(device))
 
+        master_device = next(self.models[0].parameters()).device
+        self._grad_staging = [
+            [
+                torch.empty_like(param, device=master_device)
+                for param in self.models[0].parameters()
+            ]
+            for _ in self.models[1:]
+        ]
+
         self._sync_all()
 
     def benchmark_fn(self) -> None:
@@ -138,16 +148,17 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
                     torch.cuda.current_stream(device_id).wait_stream(stream)
 
             # Reduce gradients onto GPU0 and update master parameters.
-            for param_group in zip(*(model.parameters() for model in self.models)):
+            for param_idx, param_group in enumerate(zip(*(model.parameters() for model in self.models))):
                 grads = [param.grad for param in param_group]
                 if grads[0] is None:
                     continue
                 reduced = grads[0].detach()
-                master_device = reduced.device
-                for grad in grads[1:]:
+                for replica_idx, grad in enumerate(grads[1:]):
                     if grad is None:
                         continue
-                    reduced.add_(grad.to(master_device, non_blocking=True))
+                    staging = self._grad_staging[replica_idx][param_idx]
+                    staging.copy_(grad, non_blocking=True)
+                    reduced.add_(staging)
                 param_group[0].grad = reduced
 
 
@@ -200,6 +211,7 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
         self.inputs = []
         self.targets = []
         self.streams = []
+        self._grad_staging = []
         self._verify_state = None
         self._verify_input = None
         self._verify_target = None
