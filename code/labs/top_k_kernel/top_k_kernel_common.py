@@ -198,7 +198,7 @@ def build_inputs(workload: TopKKernelWorkload, device: torch.device) -> TopKKern
 
     # Add a deterministic routing feature so Top-K cutoffs are not dominated by
     # near-ties across numerically different backends.
-    q[..., 0] += torch.tensor(1.0, dtype=workload.dtype)
+    q[..., 0] += 1.0
     block_bias = (
         torch.arange(workload.num_blocks, dtype=torch.float32)
         .repeat_interleave(workload.positions_per_block)

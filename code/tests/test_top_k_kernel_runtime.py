@@ -22,6 +22,8 @@ def test_softmax_topk_backward_reuses_grad_probs_cast() -> None:
 
     assert "grad_probs_float = grad_probs.float()" in backward_section
     assert backward_section.count("grad_probs.float()") == 1
+    assert "q[..., 0] += 1.0" in source
+    assert "torch.tensor(1.0" not in source
 
 
 @CUDA_REQUIRED
