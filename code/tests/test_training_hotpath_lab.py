@@ -134,8 +134,10 @@ def test_baseline_segment_abs_mean_reuses_abs_buffer_on_cpu() -> None:
 def test_padding_inputs_return_mask_and_host_active_token_count() -> None:
     common_source = (LAB_DIR / "training_hotpath_common.py").read_text(encoding="utf-8")
 
-    assert "active_tokens = int(seq_lens_cpu.sum().item())" in common_source
+    assert "active_tokens = sum(int(seq_len) for seq_len in seq_lens_cpu.tolist())" in common_source
     assert "active_tokens = int(self.seq_lens.sum().item())" not in common_source
+    assert "self.flat, self.offsets, total = build_gradient_inputs" in common_source
+    assert "self.offsets[-1].item()" not in common_source
     assert "self._active_mask" in common_source
 
     workload = PaddingAwareWorkload(

@@ -171,7 +171,7 @@ def vectorized_metric_reduction(preds: torch.Tensor, targets: torch.Tensor) -> t
 def build_gradient_inputs(
     workload: GradientReductionWorkload,
     device: torch.device,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, int]:
     cpu_generator = torch.Generator()
     cpu_generator.manual_seed(4242)
     lengths = torch.randint(
@@ -183,9 +183,9 @@ def build_gradient_inputs(
     )
     offsets = torch.zeros(workload.num_segments + 1, dtype=torch.int64)
     offsets[1:] = torch.cumsum(lengths, dim=0)
-    total = int(offsets[-1].item())
+    total = sum(int(length) for length in lengths.tolist())
     values = torch.randn(total, generator=cpu_generator, dtype=torch.float32)
-    return values.to(device=device), offsets.to(device=device)
+    return values.to(device=device), offsets.to(device=device), total
 
 
 def build_segment_metadata(offsets: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -356,7 +356,7 @@ def build_padding_inputs(
         generator=cpu_generator,
         dtype=torch.int64,
     )
-    active_tokens = int(seq_lens_cpu.sum().item())
+    active_tokens = sum(int(seq_len) for seq_len in seq_lens_cpu.tolist())
     seq_lens = seq_lens_cpu.to(device=device)
     inputs = torch.randn(
         workload.batch_size,
@@ -506,7 +506,7 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("labs.training_hotpath metric-reduction benchmarks require CUDA")
-        self.flat, self.offsets = build_gradient_inputs(self.workload, self.device)
+        self.flat, self.offsets, total = build_gradient_inputs(self.workload, self.device)
         self.segment_ids, self.segment_lengths = build_segment_metadata(self.offsets)
         self._baseline_out = torch.empty(self.workload.num_segments, device=self.device, dtype=torch.float32)
         self._baseline_abs = torch.empty_like(self.flat) if not self.optimized else None
@@ -516,7 +516,6 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._extension.segment_abs_mean(self.flat, self.offsets)
         else:
             self._extension = None
-        total = int(self.offsets[-1].item()) if self.offsets is not None else 0
         self._custom_metrics = {
             "metric_reduction.is_fused_cuda": 1.0 if self.optimized else 0.0,
             "metric_reduction.uses_cuda_extension": 1.0 if self.optimized else 0.0,
