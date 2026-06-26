@@ -43,15 +43,15 @@ def build_bsr_from_block_mask(
     device: torch.device,
 ) -> Tuple[torch.Tensor, torch.Tensor, float]:
     blocks = block_mask.shape[0]
-    indices_list = []
-    indptr_list = [0]
-    for row in range(blocks):
-        cols = torch.nonzero(block_mask[row], as_tuple=False).flatten().tolist()
-        indices_list.extend(cols)
-        indptr_list.append(len(indices_list))
-    indptr = torch.tensor(indptr_list, dtype=torch.int32, device=device)
-    indices = torch.tensor(indices_list, dtype=torch.int32, device=device)
+    mask = block_mask.to(dtype=torch.bool)
+    row_counts = mask.sum(dim=1, dtype=torch.int32)
+    indptr_src = torch.empty(blocks + 1, dtype=torch.int32, device=mask.device)
+    indptr_src[0] = 0
+    torch.cumsum(row_counts, dim=0, out=indptr_src[1:])
+    indices_src = torch.nonzero(mask, as_tuple=False)[:, 1].to(torch.int32)
+    indptr = indptr_src.to(device=device)
+    indices = indices_src.to(device=device)
     total_blocks = float(blocks * blocks)
-    allowed_blocks = float(block_mask.sum().item())
+    allowed_blocks = float(indices_src.numel())
     sparsity_ratio = 1.0 - (allowed_blocks / total_blocks)
     return indptr, indices, sparsity_ratio

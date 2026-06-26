@@ -1615,6 +1615,35 @@ def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:
     assert "perplexity = math.exp(avg_loss)" in source
 
 
+def test_ch16_block_sparse_bsr_build_uses_vectorized_metadata() -> None:
+    from ch16.block_sparse_attention_utils import build_bsr_from_block_mask
+
+    source = (REPO_ROOT / "ch16" / "block_sparse_attention_utils.py").read_text(
+        encoding="utf-8"
+    )
+    bsr_section = source.split("def build_bsr_from_block_mask", maxsplit=1)[1]
+
+    block_mask = torch.tensor(
+        [
+            [True, False, True],
+            [False, True, True],
+            [True, False, False],
+        ]
+    )
+    indptr, indices, sparsity_ratio = build_bsr_from_block_mask(
+        block_mask,
+        device=torch.device("cpu"),
+    )
+
+    torch.testing.assert_close(indptr, torch.tensor([0, 2, 4, 5], dtype=torch.int32))
+    torch.testing.assert_close(indices, torch.tensor([0, 2, 1, 2, 0], dtype=torch.int32))
+    assert sparsity_ratio == 1.0 - (5.0 / 9.0)
+    assert "torch.nonzero(mask, as_tuple=False)[:, 1]" in bsr_section
+    assert "torch.cumsum(row_counts, dim=0, out=indptr_src[1:])" in bsr_section
+    assert ".tolist()" not in bsr_section
+    assert "block_mask.sum().item()" not in bsr_section
+
+
 def test_ch15_moe_validation_batches_report_loss_reads() -> None:
     source = (REPO_ROOT / "ch15" / "moe_validation" / "moe_validation.py").read_text(
         encoding="utf-8"
