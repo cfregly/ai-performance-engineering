@@ -1241,7 +1241,11 @@ def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None
 
     assert "self.output = self.graph_output.clone()" not in ch17_benchmark
     assert "self.output = self.graph_output" in ch17_benchmark
+    assert ".floor_()" not in ch17_benchmark
     assert "output=self.output.detach().clone()" in ch17_capture
+    probe = torch.empty(128, dtype=torch.float32)
+    probe.random_(0, 256)
+    torch.testing.assert_close(probe, probe.floor())
 
     ch20_source = (REPO_ROOT / "ch20" / "baseline_end_to_end_bandwidth.py").read_text(encoding="utf-8")
     ch20_benchmark = ch20_source.split("def benchmark_fn", maxsplit=1)[1].split(

@@ -70,8 +70,9 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.graph = torch.cuda.CUDAGraph()
         # Keep the float buffer on the same discrete 0..255 population as the
-        # baseline's uint8 staging path instead of relying on implicit behavior.
-        self.device_buffer.random_(0, 256).floor_()
+        # baseline's uint8 staging path. random_(low, high) already emits
+        # integer-valued floats, so no extra floor kernel is needed.
+        self.device_buffer.random_(0, 256)
         self._synchronize()
         with torch.cuda.graph(self.graph):
             self.transform_buffer.copy_(self.device_buffer)
@@ -96,7 +97,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.no_grad():
                 for _ in range(self.repetitions):
                     # Make the discrete input population explicit on every replay.
-                    self.device_buffer.random_(0, 256).floor_()
+                    self.device_buffer.random_(0, 256)
                     self.graph.replay()
                 self.output = self.graph_output
         if self.output is None or self.device_buffer is None:
