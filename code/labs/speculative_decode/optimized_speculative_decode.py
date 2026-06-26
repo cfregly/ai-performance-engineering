@@ -44,6 +44,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._output_ids: Optional[torch.Tensor] = None
         self._draft_ids: Optional[torch.Tensor] = None
         self._verify_prev: Optional[torch.Tensor] = None
+        self._accept_prefix: Optional[torch.Tensor] = None
+        self._accept_count: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
 
         self._metrics: Dict[str, float] = {}
@@ -76,6 +78,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
         self._draft_ids = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
         self._verify_prev = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
+        self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)
+        self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)
 
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
         self.output = None
@@ -90,6 +94,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             or self._output_ids is None
             or self._draft_ids is None
             or self._verify_prev is None
+            or self._accept_prefix is None
+            or self._accept_count is None
         ):
             raise RuntimeError("Benchmark not initialized")
 
@@ -127,11 +133,10 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 target_next = logits_t.argmax(dim=-1)  # [1, k]
                 matches = target_next.eq(self._draft_ids[:, :k])  # [1, k]
 
-                mismatch = (~matches[0]).nonzero(as_tuple=False)
-                if mismatch.numel() == 0:
-                    accept_k = k
-                else:
-                    accept_k = int(mismatch[0].item())
+                accept_prefix = self._accept_prefix[:k]
+                torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)
+                torch.sum(accept_prefix, dim=0, out=self._accept_count)
+                accept_k = int(self._accept_count.item())
 
                 if accept_k == k:
                     out[:, pos + 1 : pos + k + 1] = self._draft_ids[:, :k]
@@ -174,6 +179,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._output_ids = None
         self._draft_ids = None
         self._verify_prev = None
+        self._accept_prefix = None
+        self._accept_count = None
         self.output = None
         torch.cuda.empty_cache()
 
@@ -196,4 +203,3 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedSpeculativeDecodeBenchmark()
-
