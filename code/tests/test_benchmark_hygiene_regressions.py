@@ -1323,6 +1323,8 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
         "def capture_verification_payload", maxsplit=1
     )[0]
 
+    assert "self.cache = torch.empty(" in setup_section
+    assert "self.cache = torch.zeros(" not in setup_section
     assert "self.rope_scratch = torch.empty(" in setup_section
     assert "apply_rope_inplace(q, cos_t, sin_t, self.rope_scratch)" in benchmark_section
     assert "apply_rope(q, cos_t, sin_t)" not in benchmark_section

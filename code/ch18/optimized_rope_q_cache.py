@@ -57,7 +57,7 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
-        self.cache = torch.zeros(
+        self.cache = torch.empty(
             self.cfg.batch_size,
             self.cfg.heads,
             self.cfg.max_seq_len,
