@@ -270,24 +270,59 @@ def main():
         numel = (args.extra_grad_mb * 1024 * 1024) // elem_bytes
         comm_buffer = torch.randn(numel, device=device, dtype=torch.float32)
 
+    def _empty_cpu_staging(shape: torch.Size, dtype: torch.dtype) -> torch.Tensor:
+        pin_memory = device.type == "cuda" and torch.cuda.is_available()
+        try:
+            return torch.empty(shape, device="cpu", dtype=dtype, pin_memory=pin_memory)
+        except RuntimeError:
+            return torch.empty(shape, device="cpu", dtype=dtype)
+
+    comm_staging = {}
+    if comm_buffer is not None:
+        if args.compression == "none":
+            comm_staging["cpu_float"] = _empty_cpu_staging(comm_buffer.shape, comm_buffer.dtype)
+        elif args.compression == "int8":
+            comm_staging["work"] = torch.empty_like(comm_buffer)
+            comm_staging["quant"] = torch.empty(comm_buffer.shape, device=device, dtype=torch.int8)
+            comm_staging["cpu_quant"] = _empty_cpu_staging(comm_buffer.shape, torch.int8)
+        elif args.compression == "powersgd":
+            stride = max(1, 8 // max(1, args.powersgd_rank))
+            sample_numel = comm_buffer.view(-1)[::stride].numel()
+            comm_staging["powersgd_stride"] = stride
+            comm_staging["sample"] = torch.empty(sample_numel, device=device, dtype=comm_buffer.dtype)
+            comm_staging["cpu_sample"] = _empty_cpu_staging(
+                torch.Size((sample_numel,)), comm_buffer.dtype
+            )
+
     def _simulate_single_gpu_comm(buffer: torch.Tensor) -> None:
         if args.compression == "none":
-            cpu_buf = buffer.cpu()
-            buffer.copy_(cpu_buf.to(device))
+            cpu_buf = comm_staging["cpu_float"]
+            cpu_buf.copy_(buffer, non_blocking=False)
+            buffer.copy_(cpu_buf, non_blocking=False)
         elif args.compression == "int8":
-            max_val = buffer.abs().max()
-            scale = max_val / 127.0 if max_val > 0 else 1.0
-            quant = torch.clamp((buffer / scale).round(), -127, 127).to(torch.int8)
-            cpu_buf = quant.cpu()
-            dequant = cpu_buf.to(device).float() * scale
-            buffer.copy_(dequant)
+            work = comm_staging["work"]
+            quant = comm_staging["quant"]
+            cpu_quant = comm_staging["cpu_quant"]
+            scale = buffer.abs().max().clamp_min(1e-12).div(127.0)
+            torch.div(buffer, scale, out=work)
+            work.round_().clamp_(-127, 127)
+            quant.copy_(work)
+            cpu_quant.copy_(quant, non_blocking=False)
+            quant.copy_(cpu_quant, non_blocking=False)
+            buffer.copy_(quant)
+            buffer.mul_(scale)
         elif args.compression == "powersgd":
             flat = buffer.view(-1)
-            stride = max(1, 8 // max(1, args.powersgd_rank))
-            sampled = flat[::stride].contiguous()
-            cpu_buf = sampled.cpu()
-            flat[::stride].copy_(cpu_buf.to(device))
-        torch.cuda.synchronize(device)
+            stride = comm_staging["powersgd_stride"]
+            sample = comm_staging["sample"]
+            cpu_sample = comm_staging["cpu_sample"]
+            sample_view = flat[::stride]
+            sample.copy_(sample_view)
+            cpu_sample.copy_(sample, non_blocking=False)
+            sample.copy_(cpu_sample, non_blocking=False)
+            sample_view.copy_(sample)
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
 
     if args.naive_allreduce and dist.is_initialized() and world_size < 2:
         raise RuntimeError("--naive-allreduce requires >=2 GPUs")
