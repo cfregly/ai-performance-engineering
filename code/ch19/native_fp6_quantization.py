@@ -26,13 +26,12 @@ Requirements:
 - torch._scaled_mm support
 
 """
-import os
+import time
+from typing import Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple
-import time
 
 # Check if running on Blackwell
 def is_blackwell() -> bool:
@@ -80,7 +79,7 @@ class FP6Tensor:
         abs_max = data.abs().max()
         
         # FP6 can represent up to 16, scale accordingly
-        scale = abs_max / 16.0 if abs_max > 0 else torch.tensor(1.0, device=data.device)
+        scale = torch.where(abs_max > 0, abs_max / 16.0, torch.ones_like(abs_max))
         
         # Scale data to FP6 range
         scaled_data = data / scale

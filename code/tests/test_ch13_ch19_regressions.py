@@ -8,6 +8,7 @@ import ch19.mxfp8_moe_common as mxfp8_moe_common
 import ch19.optimized_mxfp8_moe as optimized_mxfp8_moe
 from ch13.optimized_autograd_standard import OptimizedAutogradCompiledBenchmark
 from ch19.mxfp8_moe_common import bucket_by_expert, restore_bucketed_reduce
+from ch19.native_fp6_quantization import FP6Tensor
 
 
 def test_optimized_autograd_standard_uses_wall_clock_with_full_sync() -> None:
@@ -107,3 +108,16 @@ def test_optimized_mxfp8_moe_reuses_token_ids_and_keeps_reorder_on_device() -> N
         optimized_mxfp8_moe._flat_topk_token_ids(3, 2, torch.device("cpu")),
         torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.int64),
     )
+
+
+def test_native_fp6_quantization_avoids_tensor_bool_scale_branch() -> None:
+    source = inspect.getsource(FP6Tensor._quantize_fp6)
+
+    assert "if abs_max > 0" not in source
+    assert "torch.where(abs_max > 0, abs_max / 16.0, torch.ones_like(abs_max))" in source
+
+    data = torch.zeros(8, dtype=torch.float16)
+    fp6 = FP6Tensor(data)
+
+    assert fp6.scales.device == data.device
+    torch.testing.assert_close(fp6.scales, torch.ones_like(fp6.scales))
