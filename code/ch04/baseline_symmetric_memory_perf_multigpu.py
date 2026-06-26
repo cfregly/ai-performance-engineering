@@ -6,26 +6,24 @@ Use the optimized variant to see the uplift when using SymmetricMemory + direct 
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import datetime
 import os
-
-from core.common.device_utils import resolve_local_rank
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 
+from core.benchmark.cuda_event_timing import elapsed_ms
+from core.benchmark.metrics import compute_memory_transfer_metrics
+from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.common.device_utils import resolve_local_rank
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     LaunchVia,
     TorchrunLaunchSpec,
 )
-from core.benchmark.cuda_event_timing import elapsed_ms
-from core.benchmark.metrics import compute_memory_transfer_metrics
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 
 def init_distributed() -> Tuple[int, int, int]:
@@ -62,6 +60,7 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         self._last_gbps = 0.0
         self._bytes_transferred = 0.0
         self._inner_iterations = 2000
+        self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
@@ -78,6 +77,10 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         torch.cuda.manual_seed_all(42)
         self.tensor = torch.randn(self.numel, device=device, dtype=torch.float32)
         self.recv_tensor = torch.empty_like(self.tensor)
+        self._timing_pair = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> Optional[Dict[str, float]]:
@@ -85,8 +88,9 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         if self.tensor is None or self.recv_tensor is None:
             raise RuntimeError("Tensor not initialized")
 
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
+        if self._timing_pair is None:
+            raise RuntimeError("Timing events not initialized")
+        start, end = self._timing_pair
 
         start.record()
         next_rank = (self.rank + 1) % self.world_size
@@ -158,6 +162,8 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         """Cleanup distributed resources."""
         self.tensor = None
         self.recv_tensor = None
+        self._timing_pair = None
+        self._pending_timing_pair = None
         if dist.is_initialized():
             dist.barrier()
         if torch.cuda.is_available():
@@ -206,5 +212,4 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return BaselineSymmetricMemoryPerfBenchmark(size_mb=0.0625)
-
 

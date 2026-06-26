@@ -673,6 +673,24 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "Copy events not initialized" in benchmark_section
 
 
+def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() -> None:
+    targets = (
+        ("baseline_symmetric_memory_perf_multigpu.py", "self._timing_pair"),
+        ("optimized_symmetric_memory_perf_multigpu.py", "self._timing_pairs"),
+    )
+    for filename, expected_field in targets:
+        source = (REPO_ROOT / "ch04" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def finalize_iteration_metrics", maxsplit=1
+        )[0]
+
+        assert "torch.cuda.Event(enable_timing=True)" in setup_section
+        assert "torch.cuda.Event(" not in benchmark_section
+        assert expected_field in benchmark_section
+        assert "Timing events not initialized" in benchmark_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

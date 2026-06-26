@@ -6,26 +6,24 @@ Demonstrates the uplift from using direct GPU-to-GPU memory access vs NCCL colle
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import datetime
 import os
-
-from core.common.device_utils import resolve_local_rank
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 
+from core.benchmark.cuda_event_timing import max_elapsed_ms
+from core.benchmark.metrics import compute_memory_transfer_metrics
+from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.common.device_utils import resolve_local_rank
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     LaunchVia,
     TorchrunLaunchSpec,
 )
-from core.benchmark.cuda_event_timing import max_elapsed_ms
-from core.benchmark.metrics import compute_memory_transfer_metrics
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.optimization.symmetric_memory_patch import (
     SymmetricMemoryHandle,
     create_symmetric_memory_handle,
@@ -77,6 +75,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._last_gbps = 0.0
         self._bytes_transferred = 0.0
         self._inner_iterations = 2000
+        self._timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
@@ -119,6 +118,13 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
                 torch.cuda.Stream(device=device),
                 torch.cuda.Stream(device=device),
             )
+        self._timing_pairs = [
+            (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+            for _ in range(2)
+        ]
         
         torch.cuda.synchronize()
 
@@ -132,7 +138,9 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         ):
             raise RuntimeError("Tensors not initialized")
 
-        timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        timing_pairs = self._timing_pairs
+        if len(timing_pairs) < 2:
+            raise RuntimeError("Timing events not initialized")
         if self._copy_streams is None:
             self._copy_streams = (
                 torch.cuda.Stream(device=self.device),
@@ -141,12 +149,9 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         send_stream, recv_stream = self._copy_streams
         send_stream.wait_stream(torch.cuda.current_stream())
         recv_stream.wait_stream(torch.cuda.current_stream())
-        for stream in (send_stream, recv_stream):
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
+        for stream, (start_event, _) in zip((send_stream, recv_stream), timing_pairs):
             with torch.cuda.stream(stream):
                 start_event.record()
-            timing_pairs.append((start_event, end_event))
         for _ in range(self._inner_iterations):
             with torch.cuda.stream(send_stream):
                 self._peer_buffer.copy_(self._local_buffer, non_blocking=True)
@@ -225,6 +230,8 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._copy_streams = None
         self._buffer_events = None
         self._buffer_inflight = None
+        self._timing_pairs = []
+        self._pending_timing_pairs = []
         self._verify_output = None
         self._local_buffer = None
         self._peer_buffer = None
@@ -282,5 +289,4 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return OptimizedSymmetricMemoryPerfBenchmark(size_mb=0.0625)
-
 
