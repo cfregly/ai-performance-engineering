@@ -7,7 +7,6 @@ from typing import Dict, Optional
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 from ch15.speculative_decoding_common import (
@@ -37,6 +36,8 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_ids: Optional[torch.Tensor] = None
         self._draft_ids: Optional[torch.Tensor] = None
         self._verify_prev: Optional[torch.Tensor] = None
+        self._accept_prefix: Optional[torch.Tensor] = None
+        self._accept_count: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._metrics: Dict[str, float] = {}
 
@@ -79,10 +80,14 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.draft_model = None
             self._draft_ids = None
             self._verify_prev = None
+            self._accept_prefix = None
+            self._accept_count = None
             return
 
         self._draft_ids = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
         self._verify_prev = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
+        self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)
+        self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)
         if self.target_model is None:
             raise RuntimeError("Target model not initialized")
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
@@ -127,6 +132,8 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._output_ids is None
             or self._draft_ids is None
             or self._verify_prev is None
+            or self._accept_prefix is None
+            or self._accept_count is None
         ):
             raise RuntimeError("Benchmark not initialized")
 
@@ -163,11 +170,10 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     target_next = logits_t.argmax(dim=-1)
                     matches = target_next.eq(self._draft_ids[:, :k])
 
-                    mismatch = (~matches[0]).nonzero(as_tuple=False)
-                    if mismatch.numel() == 0:
-                        accept_k = k
-                    else:
-                        accept_k = int(mismatch[0].item())
+                    accept_prefix = self._accept_prefix[:k]
+                    torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)
+                    torch.sum(accept_prefix, dim=0, out=self._accept_count)
+                    accept_k = int(self._accept_count.item())
 
                     if accept_k == k:
                         out[:, pos + 1 : pos + k + 1] = self._draft_ids[:, :k]
@@ -209,6 +215,8 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_ids = None
         self._draft_ids = None
         self._verify_prev = None
+        self._accept_prefix = None
+        self._accept_count = None
         self.output = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

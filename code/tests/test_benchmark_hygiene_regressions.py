@@ -2556,6 +2556,26 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
 
 
+def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
+    source = (REPO_ROOT / "ch15" / "speculative_decoding_benchmarks.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def _run_speculative_decode", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)" in setup_section
+    assert "self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)" in setup_section
+    assert ".nonzero(" not in benchmark_section
+    assert "mismatch =" not in benchmark_section
+    assert "torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)" in benchmark_section
+    assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
+    assert "accept_k = int(self._accept_count.item())" in benchmark_section
+
+
 def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     source = (
         REPO_ROOT / "labs" / "speculative_decode" / "optimized_speculative_decode.py"
