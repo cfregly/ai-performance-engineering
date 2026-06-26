@@ -1521,6 +1521,29 @@ def test_nanochat_chat_eval_batches_count_reductions() -> None:
     assert "total_tensor.item()" not in source
 
 
+def test_nanochat_chat_rl_batches_eval_and_rollout_syncs() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_rl.py"
+    ).read_text(encoding="utf-8")
+
+    assert "eval_totals = torch.empty(device_batch_size + 1" in source
+    assert "dist.all_reduce(eval_totals, op=dist.ReduceOp.SUM)" in source
+    assert "eval_values = eval_totals.detach().cpu().tolist()" in source
+    assert "passk_values = [value / num_records for value in eval_values[1:]]" in source
+    assert "loss_item, reward_item = torch.stack((" in source
+    assert "rewards_list.append(rewards_all.mean())" in source
+    assert "mean_reward_tensor = torch.stack(rewards_list).mean()" in source
+    assert "dist.all_reduce(summary, op=dist.ReduceOp.AVG)" in source
+    assert "mean_reward, mean_sequence_length = summary.detach().cpu().tolist()" in source
+    assert "num_records.item()" not in source
+    assert "passk[k - 1].item()" not in source
+    assert "loss.item()" not in source
+    assert "rewards.mean().item()" not in source
+    assert "rewards_all.mean().item()" not in source
+    assert "mean_reward_tensor.item()" not in source
+    assert "mean_sequence_length_tensor.item()" not in source
+
+
 def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"

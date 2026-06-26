@@ -18,7 +18,6 @@ torchrun --standalone --nproc_per_node=4 -m labs.nanochat_fullstack.scripts.chat
 
 import os
 import itertools
-import re
 import wandb
 import torch
 import torch.distributed as dist
@@ -225,14 +224,17 @@ for step in range(num_steps):
             records = list(records_iter) # collect all records
         for k in range(1, device_batch_size + 1):
             passk[k - 1] = sum(any(o["is_correct"] for o in r["outcomes"][:k]) for r in records)
-        num_records = torch.tensor(len(records), dtype=torch.long, device=device)
+        eval_totals = torch.empty(device_batch_size + 1, dtype=torch.float64, device=device)
+        eval_totals[0] = float(len(records))
+        eval_totals[1:].copy_(passk.to(torch.float64))
         if ddp:
-            dist.all_reduce(num_records, op=dist.ReduceOp.SUM)
-            dist.all_reduce(passk, op=dist.ReduceOp.SUM)
-        passk = passk / num_records.item() # normalize by the total number of records
-        print_passk = [f"Pass@{k}: {passk[k - 1].item():.4f}" for k in range(1, device_batch_size + 1)]
+            dist.all_reduce(eval_totals, op=dist.ReduceOp.SUM)
+        eval_values = eval_totals.detach().cpu().tolist()
+        num_records = max(eval_values[0], 1.0)
+        passk_values = [value / num_records for value in eval_values[1:]]
+        print_passk = [f"Pass@{k}: {passk_values[k - 1]:.4f}" for k in range(1, device_batch_size + 1)]
         print0(f"Step {step} | {', '.join(print_passk)}")
-        log_passk = {f"pass@{k}": passk[k - 1].item() for k in range(1, device_batch_size + 1)}
+        log_passk = {f"pass@{k}": passk_values[k - 1] for k in range(1, device_batch_size + 1)}
         wandb_run.log({
             "step": step,
             **log_passk,
@@ -268,21 +270,25 @@ for step in range(num_steps):
             # Finally, formulate the loss that we want to minimize (instead of objective we wish to maximize)
             loss = -pg_obj
             loss.backward()
-            print0(f"Step {step}/{num_steps} | Example step {example_step} | Pass {pass_idx} | loss: {loss.item():.6f} | Average reward: {rewards.mean().item()}")
+            loss_item, reward_item = torch.stack((
+                loss.detach().to(torch.float64),
+                rewards.mean().to(torch.float64),
+            )).detach().cpu().tolist()
+            print0(f"Step {step}/{num_steps} | Example step {example_step} | Pass {pass_idx} | loss: {loss_item:.6f} | Average reward: {reward_item}")
         # For logging
-        rewards_list.append(rewards_all.mean().item())
+        rewards_list.append(rewards_all.mean())
         sequence_lengths.extend(len(seq) for seq in sequences_all)
 
     # A bunch of logging for how the rollouts went this step
-    mean_reward = sum(rewards_list) / len(rewards_list)
+    mean_reward_tensor = torch.stack(rewards_list).mean()
     mean_sequence_length = sum(sequence_lengths) / len(sequence_lengths)
+    summary = torch.stack((
+        mean_reward_tensor.to(torch.float64),
+        torch.tensor(float(mean_sequence_length), dtype=torch.float64, device=device),
+    ))
     if ddp: # aggregate across ranks
-        mean_reward_tensor = torch.tensor(mean_reward, dtype=torch.float, device=device)
-        mean_sequence_length_tensor = torch.tensor(mean_sequence_length, dtype=torch.float, device=device)
-        dist.all_reduce(mean_reward_tensor, op=dist.ReduceOp.AVG)
-        dist.all_reduce(mean_sequence_length_tensor, op=dist.ReduceOp.AVG)
-        mean_reward = mean_reward_tensor.item()
-        mean_sequence_length = mean_sequence_length_tensor.item()
+        dist.all_reduce(summary, op=dist.ReduceOp.AVG)
+    mean_reward, mean_sequence_length = summary.detach().cpu().tolist()
     print0(f"Step {step}/{num_steps} | Average reward: {mean_reward} | Average sequence length: {mean_sequence_length:.2f}")
     wandb_run.log({
         "step": step,
