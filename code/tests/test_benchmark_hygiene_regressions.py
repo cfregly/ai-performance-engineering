@@ -1050,8 +1050,12 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert 'token_indices.div_(top_k, rounding_mode="floor")' in source
     assert "model.configure_static_dispatch_buffers(self.batch_size, self.inputs.device)" in setup_section
     assert "token_indices = self._token_indices_for(tokens, batch)" in forward_section
+    assert "flat_tokens = tokens.index_select(0, token_indices)" in forward_section
     assert "expert_range = self._expert_range_for(tokens)" in forward_section
     assert "self._overflow_slots_for(slots, num_slots)" in forward_section
+    assert "self._dense_input_for(flat_tokens, num_slots)" in forward_section
+    assert "self._output_buffer_for(tokens, batch)" in forward_section
+    assert "model.assume_static_no_overflow = True" in setup_section
     assert ".item()) == num_slots" not in source
 
     from labs.moe_cuda.optimized_router_vectorized import GroupedTopKMoE, _flat_token_indices
@@ -1075,19 +1079,43 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     token_ptr = model._static_token_indices.data_ptr()
     expert_ptr = model._static_expert_range.data_ptr()
     overflow_ptr = model._static_overflow_slots.data_ptr()
+    dense_ptr = model._static_dense_input.data_ptr()
+    output_ptr = model._static_output_buffer.data_ptr()
 
-    output = model(torch.randn(3, 8))
+    x = torch.randn(3, 8)
+    expected = model(x).clone()
+    model.assume_static_no_overflow = True
+    output = model(x)
 
     assert output.shape == (3, 8)
+    torch.testing.assert_close(output, expected)
     assert model._static_token_indices.data_ptr() == token_ptr
     assert model._static_expert_range.data_ptr() == expert_ptr
     assert model._static_overflow_slots.data_ptr() == overflow_ptr
+    assert model._static_dense_input.data_ptr() == dense_ptr
+    assert model._static_output_buffer.data_ptr() == output_ptr
     torch.testing.assert_close(
         model._static_token_indices,
         torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.int64),
     )
     assert model._static_expert_range.shape == (4, 1)
     assert model._static_overflow_slots.unique().item() == 4 * 64
+    assert model._static_dense_input.shape == (4 * 64 + 1, 8)
+    assert model._static_output_buffer.shape == (3, 8)
+
+
+def test_moe_cuda_topk_router_configures_static_dispatch_once() -> None:
+    source = (REPO_ROOT / "labs" / "moe_cuda" / "optimized_router.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "model.calibrate_capacity(self.inputs)" in setup_section
+    assert "model.configure_static_dispatch_buffers(self.batch_size, self.inputs.device)" in setup_section
+    assert "model.assume_static_no_overflow = True" in setup_section
+    assert "calibrate_capacity" not in benchmark_section
+    assert "configure_static_dispatch_buffers" not in benchmark_section
 
 
 def test_ch20_bf16_mlp_preconverts_activation_dtype_outside_hot_loop() -> None:

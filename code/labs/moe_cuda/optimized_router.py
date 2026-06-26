@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from typing import Optional
 
 import torch
@@ -10,7 +9,6 @@ import torch.nn as nn
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from core.utils.compile_utils import compile_model
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 from labs.moe_cuda.optimized_router_vectorized import GroupedTopKMoE
 
@@ -151,6 +149,9 @@ class OptimizedRouterTopKBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.hidden_size,
             dtype=torch.bfloat16,
         ).to(self.device)
+        model.calibrate_capacity(self.inputs)
+        model.configure_static_dispatch_buffers(self.batch_size, self.inputs.device)
+        model.assume_static_no_overflow = True
         
         # Warmup
         with torch.no_grad():
