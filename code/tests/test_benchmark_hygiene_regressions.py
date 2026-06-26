@@ -1658,6 +1658,25 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
     assert "token_loss.item()" not in report_section
 
 
+def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
+    source = (REPO_ROOT / "ch15" / "expert_parallelism.py").read_text(encoding="utf-8")
+    local_section = source.split("def forward_local", maxsplit=1)[1].split(
+        "def forward_distributed",
+        maxsplit=1,
+    )[0]
+    distributed_section = source.split("def forward_distributed", maxsplit=1)[1].split(
+        "def _run_local",
+        maxsplit=1,
+    )[0]
+
+    for section in (local_section, distributed_section):
+        assert "overflow_flags = [bool(flag) for flag in mask_overflow.detach().cpu().tolist()]" in section
+        assert "eid.item()" not in section
+        assert "mask.any()" not in section
+    assert "unique_expert_ids = [int(eid) for eid in torch.unique(expert_ids).detach().cpu().tolist()]" in local_section
+    assert "for eid_int in [int(eid) for eid in torch.unique(recv_ids).detach().cpu().tolist()]" in distributed_section
+
+
 def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch17" / "baseline_dynamic_routing.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

@@ -102,20 +102,20 @@ class Top2MoE(nn.Module):
         cap = int(self.capacity_factor * (batch * seq) / self.num_experts)
         counts = torch.bincount(flat_idx.view(-1), minlength=self.num_experts)
         mask_overflow = counts > cap
+        overflow_flags = [bool(flag) for flag in mask_overflow.detach().cpu().tolist()]
 
         partials: list[torch.Tensor] = []
         for slot, stream in enumerate(self._local_streams):
             expert_ids = flat_idx[:, slot]
             local_out = torch.zeros_like(flat_tokens)
+            unique_expert_ids = [int(eid) for eid in torch.unique(expert_ids).detach().cpu().tolist()]
             with torch.cuda.stream(stream):
-                for eid in torch.unique(expert_ids):
-                    eid_int = int(eid.item())
-                    if mask_overflow[eid_int]:
+                for eid_int in unique_expert_ids:
+                    if overflow_flags[eid_int]:
                         continue
-                    mask = expert_ids == eid
-                    if mask.any():
-                        contrib = self.experts[eid_int](flat_tokens[mask]) * flat_w[mask, slot:slot + 1]
-                        local_out[mask] += contrib
+                    mask = expert_ids == eid_int
+                    contrib = self.experts[eid_int](flat_tokens[mask]) * flat_w[mask, slot:slot + 1]
+                    local_out[mask] += contrib
             partials.append(local_out)
 
         current = torch.cuda.current_stream(tokens.device)
@@ -133,6 +133,7 @@ class Top2MoE(nn.Module):
         cap = int(self.capacity_factor * (batch * seq) / self.num_experts)
         counts = torch.bincount(flat_idx.view(-1), minlength=self.num_experts)
         mask_overflow = counts > cap
+        overflow_flags = [bool(flag) for flag in mask_overflow.detach().cpu().tolist()]
 
         world_size = ctx.world_size
         rank = ctx.rank
@@ -173,15 +174,13 @@ class Top2MoE(nn.Module):
         dist.all_to_all_single(recv_pos, send_pos, out_split_sizes=recv_splits, in_split_sizes=send_splits)
 
         local_out = torch.zeros_like(recv_buf)
-        for eid in torch.unique(recv_ids):
-            eid_int = int(eid.item())
-            if mask_overflow[eid_int]:
+        for eid_int in [int(eid) for eid in torch.unique(recv_ids).detach().cpu().tolist()]:
+            if overflow_flags[eid_int]:
                 continue
             if _expert_to_rank(eid_int, experts_per_rank) != rank:
                 continue
-            mask = recv_ids == eid
-            if mask.any():
-                local_out[mask] = self.experts[eid_int](recv_buf[mask])
+            mask = recv_ids == eid_int
+            local_out[mask] = self.experts[eid_int](recv_buf[mask])
 
         send_back_splits = recv_splits
         recv_back_splits = send_splits
