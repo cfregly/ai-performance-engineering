@@ -53,27 +53,22 @@ def bucket_by_expert(
     """
     if token_ids is None:
         token_ids = torch.arange(tokens.shape[0], device=tokens.device, dtype=torch.int64)
-    buckets = []
-    bucket_indices: List[torch.Tensor] = []
-    expert_order: List[int] = []
-    bucket_token_ids: List[torch.Tensor] = []
-    for expert in range(num_experts):
-        idx = torch.nonzero(assignments == expert, as_tuple=False).flatten()
-        if idx.numel() == 0:
-            continue
-        bucket_indices.append(idx)
-        buckets.append(tokens.index_select(0, idx))
-        expert_order.append(expert)
-        bucket_token_ids.append(token_ids.index_select(0, idx))
-    if not buckets:
+    flat_assignments = assignments.reshape(-1)
+    if flat_assignments.numel() != tokens.shape[0]:
+        raise ValueError("assignments must contain one expert id per token row")
+
+    gather_index = torch.argsort(flat_assignments)
+    counts = torch.bincount(flat_assignments, minlength=num_experts).detach().cpu().tolist()
+    m_splits = [int(count) for count in counts[:num_experts] if count]
+    expert_order_list = [expert for expert, count in enumerate(counts[:num_experts]) if count]
+    if not m_splits:
         raise RuntimeError("No expert received tokens; assignment mapping is empty.")
-    bucketed = torch.cat(buckets, dim=0)
-    m_splits = [b.shape[0] for b in buckets]
-    gather_index = torch.cat(bucket_indices, dim=0)
-    expert_order_tensor = torch.tensor(expert_order, device=tokens.device, dtype=torch.int64)
-    bucket_token_ids_tensor = torch.cat(bucket_token_ids, dim=0)
+
+    bucketed = tokens.index_select(0, gather_index)
+    expert_order_tensor = torch.tensor(expert_order_list, device=tokens.device, dtype=torch.int64)
+    bucket_token_ids_tensor = token_ids.index_select(0, gather_index)
     if return_expert_order_list:
-        return bucketed, m_splits, gather_index, expert_order_tensor, bucket_token_ids_tensor, expert_order
+        return bucketed, m_splits, gather_index, expert_order_tensor, bucket_token_ids_tensor, expert_order_list
     return bucketed, m_splits, gather_index, expert_order_tensor, bucket_token_ids_tensor
 
 
