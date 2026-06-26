@@ -12,21 +12,20 @@ on every forward pass.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple
-import math
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
-
 
 # FP4 E2M1 representable values
 FP4_VALUES = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0])
@@ -49,8 +48,7 @@ def quantize_fp4_baseline(
     
     # Per-tensor scale (baseline: no per-channel/block)
     absmax = flat.abs().max()
-    scale = absmax / FP4_MAX
-    scale = max(scale.item(), 1e-8)
+    scale = (absmax / FP4_MAX).clamp(min=1e-8)
     
     # Normalize to FP4 range
     normalized = flat / scale
@@ -77,7 +75,7 @@ def quantize_fp4_baseline(
     packed = (pairs[:, 0] << 4) | pairs[:, 1]
     
     # Return packed data and scalar scale
-    scale_tensor = torch.tensor([scale], dtype=dtype, device=device)
+    scale_tensor = scale.reshape(1).to(dtype=dtype, device=device)
     return packed.to(torch.uint8), scale_tensor
 
 
@@ -105,7 +103,7 @@ def dequantize_fp4_baseline(
     values = torch.where(signs.bool(), -values, values)
     
     # Apply scale
-    dequantized = values * scale.item()
+    dequantized = values * scale.to(values.dtype)
     
     # Reshape to original
     n_orig = math.prod(original_shape)

@@ -271,6 +271,25 @@ def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
     assert "float(top2[0] - top2[1])" not in confidence_section
 
 
+def test_ch19_fp4_baseline_keeps_scale_on_device() -> None:
+    source = (REPO_ROOT / "ch19" / "baseline_fp4_weight_quantization.py").read_text(
+        encoding="utf-8"
+    )
+    quantize_section = source.split("def quantize_fp4_baseline", maxsplit=1)[1].split(
+        "def dequantize_fp4_baseline", maxsplit=1
+    )[0]
+    dequantize_section = source.split("def dequantize_fp4_baseline", maxsplit=1)[1].split(
+        "class BaselineFP4Linear", maxsplit=1
+    )[0]
+
+    assert "scale.item()" not in quantize_section
+    assert "torch.tensor([scale]" not in quantize_section
+    assert "scale = (absmax / FP4_MAX).clamp(min=1e-8)" in quantize_section
+    assert "scale_tensor = scale.reshape(1).to(dtype=dtype, device=device)" in quantize_section
+    assert "scale.item()" not in dequantize_section
+    assert "dequantized = values * scale.to(values.dtype)" in dequantize_section
+
+
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()
