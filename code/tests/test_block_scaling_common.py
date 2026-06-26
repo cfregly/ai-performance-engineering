@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import inspect
+
 import torch
 
 from labs.block_scaling.block_scaling_common import (
     BlockScalingConfig,
+    BlockScalingProblem,
     DEFAULT_CLUSTER_SHAPE_MN,
     DEFAULT_MMA_TILER_MN,
     DEFAULT_MNKL,
@@ -85,3 +88,11 @@ def test_verification_output_slice_caps_to_small_tile() -> None:
 
     assert sliced.shape == (128, 128, 1)
     torch.testing.assert_close(sliced, output[:128, :128, :1].float())
+
+
+def test_block_scaling_verify_close_batches_error_materialization() -> None:
+    source = inspect.getsource(BlockScalingProblem.verify_close)
+
+    assert "max_abs_error, mean_abs_error = torch.stack((diff.max(), diff.mean())).tolist()" in source
+    assert "diff.max().item()" not in source
+    assert "diff.mean().item()" not in source
