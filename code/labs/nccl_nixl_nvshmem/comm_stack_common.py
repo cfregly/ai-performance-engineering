@@ -204,6 +204,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.packed_stage: Optional[torch.Tensor] = None
         self.selected_idx: Optional[torch.Tensor] = None
         self.selected_cpu: Optional[list[int]] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self.copy_stream: Optional[torch.cuda.Stream] = None
         self.copy_ready: Optional[torch.cuda.Event] = None
         self.output: Optional[torch.Tensor] = None
@@ -248,6 +249,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.float32,
         )
         self.packed_stage = torch.empty_like(self.gpu_stage) if self.optimized else None
+        self._output_buffer = torch.empty_like(self.gpu_stage)
         selected_cpu = _selected_indices_cpu(self.workload)
         self.selected_idx = selected_cpu.to(device=self.device)
         self.selected_cpu = [int(idx) for idx in selected_cpu.tolist()] if not self.optimized else None
@@ -264,6 +266,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.host_stage is None
             or self.gpu_stage is None
             or self.selected_idx is None
+            or self._output_buffer is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
@@ -295,8 +298,8 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             copy_calls = float(2 * self.workload.inner_iterations)
             uses_copy_stream = 1.0
 
-        torch.cuda.synchronize(self.device)
-        self.output = self.dst.index_select(0, self.selected_idx)
+        torch.index_select(self.dst, 0, self.selected_idx, out=self._output_buffer)
+        self.output = self._output_buffer
         self._metrics = {
             "tier_handoff.selected_blocks": float(self.workload.selected_blocks),
             "tier_handoff.block_kib": float(self.workload.block_kib),
@@ -334,6 +337,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.packed_stage = None
         self.selected_idx = None
         self.selected_cpu = None
+        self._output_buffer = None
         self.copy_stream = None
         self.copy_ready = None
         self.output = None
