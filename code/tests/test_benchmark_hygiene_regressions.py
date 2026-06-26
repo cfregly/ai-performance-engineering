@@ -883,6 +883,21 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "Prefetch event not initialized for async two-buffer prefetch" in benchmark_section
 
 
+def test_nvlink_offload_copies_directly_between_preallocated_buffers() -> None:
+    source = (REPO_ROOT / "labs" / "persistent_decode" / "nvlink_offload_common.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert ".to(self.device" not in benchmark_section
+    assert '.to("cpu"' not in benchmark_section
+    assert "copy_(cpu_slice, non_blocking=self.cfg.non_blocking)" in benchmark_section
+    assert "target.copy_(self.gpu_cache[..., :slice_len, :], non_blocking=self.cfg.non_blocking)" in benchmark_section
+
+
 def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> None:
     source = (REPO_ROOT / "labs" / "cache_aware_disagg_inference" / "cache_aware_disagg_common.py").read_text(
         encoding="utf-8"

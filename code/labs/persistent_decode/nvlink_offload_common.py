@@ -85,10 +85,10 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         cpu_slice = self.cpu_cache[..., start:end, :]
         if self.copy_stream is not None:
             with torch.cuda.stream(self.copy_stream):
-                self.gpu_cache[..., :slice_len, :].copy_(cpu_slice.to(self.device, non_blocking=self.cfg.non_blocking))
+                self.gpu_cache[..., :slice_len, :].copy_(cpu_slice, non_blocking=self.cfg.non_blocking)
             torch.cuda.current_stream().wait_stream(self.copy_stream)
         else:
-            self.gpu_cache[..., :slice_len, :].copy_(cpu_slice.to(self.device, non_blocking=self.cfg.non_blocking))
+            self.gpu_cache[..., :slice_len, :].copy_(cpu_slice, non_blocking=self.cfg.non_blocking)
 
         # Lightweight compute to keep the slice "hot"
         self.gpu_cache[..., :slice_len, :].mul_(1.0001)
@@ -96,11 +96,11 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.copy_stream is not None:
             with torch.cuda.stream(self.copy_stream):
                 target = self.cpu_cache[..., start:end, :]
-                target.copy_(self.gpu_cache[..., :slice_len, :].to("cpu", non_blocking=self.cfg.non_blocking))
+                target.copy_(self.gpu_cache[..., :slice_len, :], non_blocking=self.cfg.non_blocking)
             torch.cuda.current_stream().wait_stream(self.copy_stream)
         else:
             target = self.cpu_cache[..., start:end, :]
-            target.copy_(self.gpu_cache[..., :slice_len, :].to("cpu", non_blocking=self.cfg.non_blocking))
+            target.copy_(self.gpu_cache[..., :slice_len, :], non_blocking=self.cfg.non_blocking)
 
         # Capture a representative slice for verification (GPU slice to avoid host sync patterns)
         self.output = self.gpu_cache[..., : min(1, self.cfg.max_seq_len), : min(8, self.cfg.head_dim)].detach()
