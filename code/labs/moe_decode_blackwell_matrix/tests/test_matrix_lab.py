@@ -6,7 +6,12 @@ import torch
 
 from labs.moe_decode_blackwell_matrix.matrix_catalog import load_playbook
 from labs.moe_decode_blackwell_matrix.matrix_types import MatrixScenario
-from labs.moe_decode_blackwell_matrix.runner import _routing_stats, build_decode_batches, summarize_rows
+from labs.moe_decode_blackwell_matrix.runner import (
+    _compare_outputs,
+    _routing_stats,
+    build_decode_batches,
+    summarize_rows,
+)
 
 
 def test_smoke_playbook_loads() -> None:
@@ -62,6 +67,15 @@ def test_routing_stats_batches_scalar_materialization() -> None:
     assert entropy > 0.0
     assert active == 1.0
     assert max_tokens == 3
+
+
+def test_compare_outputs_batches_diff_materialization() -> None:
+    source = inspect.getsource(_compare_outputs)
+
+    assert "diff_tensors: list[torch.Tensor]" in source
+    assert "torch.stack(diff_tensors).amax().tolist()" in source
+    assert "diffs.append(float(" not in source
+    assert "torch.max(torch.abs(out.float() - ref.float())).item()" not in source
 
 
 def test_summary_builds_pairwise_sections() -> None:

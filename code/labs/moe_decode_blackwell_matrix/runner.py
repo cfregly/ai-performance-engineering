@@ -211,12 +211,14 @@ def _compare_outputs(
     *,
     scenario: MatrixScenario,
 ) -> float:
-    diffs: list[float] = []
+    diff_tensors: list[torch.Tensor] = []
     with torch.no_grad():
         for batch, ref in zip(batches, refs, strict=True):
             out = run_decode_step(experts, batch, scenario=scenario)
-            diffs.append(float(torch.max(torch.abs(out.float() - ref.float())).item()))
-    return max(diffs, default=0.0)
+            diff_tensors.append(torch.abs(out.float() - ref.float()).amax())
+    if not diff_tensors:
+        return 0.0
+    return float(torch.stack(diff_tensors).amax().tolist())
 
 
 def measure_scenario(
