@@ -1358,12 +1358,16 @@ def test_ch18_paged_vllm_cache_reset_is_metadata_only() -> None:
 def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     from ch18.rope_q_cache_common import apply_rope, apply_rope_inplace
 
+    baseline_source = (REPO_ROOT / "ch18" / "baseline_rope_q_cache.py").read_text(encoding="utf-8")
+    baseline_setup = baseline_source.split("def benchmark_fn", maxsplit=1)[0]
     source = (REPO_ROOT / "ch18" / "optimized_rope_q_cache.py").read_text(encoding="utf-8")
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
 
+    assert "self.cache = torch.empty(" in baseline_setup
+    assert "self.cache = torch.zeros(" not in baseline_setup
     assert "self.cache = torch.empty(" in setup_section
     assert "self.cache = torch.zeros(" not in setup_section
     assert "self.rope_scratch = torch.empty(" in setup_section
