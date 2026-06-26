@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 
 from core.common.device_utils import resolve_local_rank
@@ -94,6 +93,36 @@ class PhaseEvents:
 class StepArtifacts:
     metrics: Dict[str, float]
     loss: float
+
+
+_AVERAGED_REDUCED_METRIC_KEYS = frozenset(
+    {
+        "moe.load_imbalance",
+        "moe.expert_utilization_pct",
+        "moe.routing_time_ms",
+        "moe.expert_compute_time_ms",
+        "moe.routing_overhead_pct",
+        "moe.load_balance_loss",
+        "moe.hybrid_enabled",
+        "moe.intra_node_only",
+        "moe.local_world_size",
+        "moe.inter_node_world_size",
+        "moe.num_experts",
+        "moe.active_experts",
+        "moe.total_tokens",
+        "moe.max_tokens_per_expert",
+        "moe.min_tokens_per_expert",
+        "moe.router_entropy",
+        "moe.gini_coefficient",
+        "moe.expert_usage_variance",
+        "moe.routing_uniform",
+        "moe.routing_topology_aware",
+    }
+)
+
+
+def _metric_should_average(key: str) -> bool:
+    return key.endswith("_pct") or key.endswith("_ms") or key in _AVERAGED_REDUCED_METRIC_KEYS
 
 
 def init_topology(backend: str = "nccl") -> TopologyInfo:
@@ -275,6 +304,10 @@ class DeepSeekHybridEPModule(nn.Module):
         self._cached_bias: Optional[torch.Tensor] = None
         self._buffer_cache: Dict[Tuple[str, Tuple[int, ...], torch.dtype], torch.Tensor] = {}
         self._token_index_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
+        self._event_pair_cache: Dict[str, Tuple[torch.cuda.Event, torch.cuda.Event]] = {}
+        self._phase_event_cache: Dict[str, PhaseEvents] = {}
+        self._route_count_reduce_buffer: Optional[torch.Tensor] = None
+        self._route_count_reduce_host_buffer: Optional[torch.Tensor] = None
         self._comm_stream = torch.cuda.Stream() if optimized else None
 
     @property
@@ -311,6 +344,51 @@ class DeepSeekHybridEPModule(nn.Module):
             cached = torch.empty(shape, device=self.cuda_device, dtype=dtype)
             self._buffer_cache[key] = cached
         return cached
+
+    def _event_pair(self, name: str) -> Tuple[torch.cuda.Event, torch.cuda.Event]:
+        cached = self._event_pair_cache.get(name)
+        if cached is None:
+            cached = (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+            self._event_pair_cache[name] = cached
+        return cached
+
+    def _phase_events(self, name: str) -> PhaseEvents:
+        cached = self._phase_event_cache.get(name)
+        if cached is None:
+            cached = PhaseEvents(
+                start=torch.cuda.Event(enable_timing=True),
+                mid=torch.cuda.Event(enable_timing=True),
+                mid2=torch.cuda.Event(enable_timing=True),
+                end=torch.cuda.Event(enable_timing=True),
+            )
+            self._phase_event_cache[name] = cached
+        return cached
+
+    def _reduce_route_counts(
+        self,
+        same_rank_count: float,
+        same_node_count: float,
+        remote_count: float,
+        *,
+        device: torch.device,
+    ) -> Tuple[float, float, float]:
+        if self._route_count_reduce_buffer is None or self._route_count_reduce_buffer.device != device:
+            self._route_count_reduce_buffer = torch.empty(3, device=device, dtype=torch.float32)
+            self._route_count_reduce_host_buffer = torch.empty(3, dtype=torch.float32)
+        assert self._route_count_reduce_host_buffer is not None
+        reduce_buffer = self._route_count_reduce_buffer
+        host_buffer = self._route_count_reduce_host_buffer
+        host_buffer[0] = same_rank_count
+        host_buffer[1] = same_node_count
+        host_buffer[2] = remote_count
+        reduce_buffer.copy_(host_buffer, non_blocking=False)
+        dist.all_reduce(reduce_buffer, op=dist.ReduceOp.SUM)
+        host_buffer.copy_(reduce_buffer, non_blocking=False)
+        reduced = host_buffer.tolist()
+        return float(reduced[0]), float(reduced[1]), float(reduced[2])
 
     def _token_indices(self, num_tokens: int, device: torch.device) -> torch.Tensor:
         key = (num_tokens, device)
@@ -405,6 +483,7 @@ class DeepSeekHybridEPModule(nn.Module):
         group_rank: int,
         use_single: bool,
         reuse: bool,
+        event_label: str,
     ) -> Tuple[torch.Tensor, Optional[PhaseEvents]]:
         if tokens.numel() == 0:
             return tokens, None
@@ -418,11 +497,8 @@ class DeepSeekHybridEPModule(nn.Module):
         send_counts = torch.bincount(dest_ranks, minlength=group_size).tolist()
         recv_counts = self._exchange_counts(send_counts, group=group, group_size=group_size, group_rank=group_rank)
 
-        start_evt = torch.cuda.Event(enable_timing=True)
-        dispatch_end_evt = torch.cuda.Event(enable_timing=True)
-        expert_end_evt = torch.cuda.Event(enable_timing=True)
-        end_evt = torch.cuda.Event(enable_timing=True)
-        start_evt.record(torch.cuda.current_stream())
+        events = self._phase_events(event_label)
+        events.start.record(torch.cuda.current_stream())
 
         meta = torch.stack((sorted_token_indices, sorted_local_ids), dim=1)
         if use_single:
@@ -433,27 +509,22 @@ class DeepSeekHybridEPModule(nn.Module):
             recv_tokens = self._all_to_all_list(sorted_tokens, send_counts, recv_counts, group=group)
             recv_weights = self._all_to_all_list(sorted_weights, send_counts, recv_counts, group=group)
             recv_meta = self._all_to_all_list(meta, send_counts, recv_counts, group=group)
-        dispatch_end_evt.record(torch.cuda.current_stream())
+        events.mid.record(torch.cuda.current_stream())
 
         expert_outputs = self._apply_local_experts(
             recv_tokens,
             recv_meta[:, 1].to(torch.int64),
             recv_weights,
         )
-        expert_end_evt.record(torch.cuda.current_stream())
+        events.mid2.record(torch.cuda.current_stream())
 
         if use_single:
             returned = self._all_to_all_single(expert_outputs, recv_counts, send_counts, group=group, label="return_tokens", reuse=reuse)
         else:
             returned = self._all_to_all_list(expert_outputs, recv_counts, send_counts, group=group)
-        end_evt.record(torch.cuda.current_stream())
+        events.end.record(torch.cuda.current_stream())
 
-        return returned.index_select(0, inverse_sort), PhaseEvents(
-            start=start_evt,
-            mid=dispatch_end_evt,
-            mid2=expert_end_evt,
-            end=end_evt,
-        )
+        return returned.index_select(0, inverse_sort), events
 
     def _route_tokens(
         self,
@@ -489,8 +560,7 @@ class DeepSeekHybridEPModule(nn.Module):
         aux_loss_scale: float,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         hidden = self.input_proj(inputs)
-        routing_start = torch.cuda.Event(enable_timing=True)
-        routing_end = torch.cuda.Event(enable_timing=True)
+        routing_start, routing_end = self._event_pair("routing")
         routing_start.record(torch.cuda.current_stream())
         expanded_tokens, top_indices, route_counts, aux, route_payload = self._route_tokens(hidden)
         routing_end.record(torch.cuda.current_stream())
@@ -518,8 +588,7 @@ class DeepSeekHybridEPModule(nn.Module):
         overlap_window_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
 
         if self.optimized and self.topology.world_size == 1:
-            same_rank_start = torch.cuda.Event(enable_timing=True)
-            same_rank_end = torch.cuda.Event(enable_timing=True)
+            same_rank_start, same_rank_end = self._event_pair("same_rank_single")
             same_rank_start.record(torch.cuda.current_stream())
             local_outputs = self._apply_local_experts(
                 expanded_tokens,
@@ -542,12 +611,9 @@ class DeepSeekHybridEPModule(nn.Module):
             remote_outputs: Optional[torch.Tensor] = None
             overlap_active = bool(remote_node_mask.any()) and self.topology.world_size > 1 and overlap_mode == "local_remote"
             if overlap_active:
-                local_branch_start = torch.cuda.Event(enable_timing=True)
-                local_branch_end = torch.cuda.Event(enable_timing=True)
-                remote_branch_start = torch.cuda.Event(enable_timing=True)
-                remote_branch_end = torch.cuda.Event(enable_timing=True)
-                overlap_window_start = torch.cuda.Event(enable_timing=True)
-                overlap_window_end = torch.cuda.Event(enable_timing=True)
+                local_branch_start, local_branch_end = self._event_pair("local_branch")
+                remote_branch_start, remote_branch_end = self._event_pair("remote_branch")
+                overlap_window_start, overlap_window_end = self._event_pair("overlap_window")
                 local_branch_events = (local_branch_start, local_branch_end)
                 remote_branch_events = (remote_branch_start, remote_branch_end)
                 overlap_window_events = (overlap_window_start, overlap_window_end)
@@ -568,14 +634,14 @@ class DeepSeekHybridEPModule(nn.Module):
                         group_rank=self.topology.rank,
                         use_single=True,
                         reuse=True,
+                        event_label="remote",
                     )
                     remote_branch_end.record(self._comm_stream)
 
             if overlap_active and local_branch_events is not None:
                 local_branch_events[0].record(torch.cuda.current_stream())
             if bool(same_rank_mask.any()):
-                same_rank_start = torch.cuda.Event(enable_timing=True)
-                same_rank_end = torch.cuda.Event(enable_timing=True)
+                same_rank_start, same_rank_end = self._event_pair("same_rank")
                 same_rank_start.record(torch.cuda.current_stream())
                 local_outputs = self._apply_local_experts(
                     expanded_tokens[same_rank_mask],
@@ -598,6 +664,7 @@ class DeepSeekHybridEPModule(nn.Module):
                     group_rank=self.topology.local_rank,
                     use_single=True,
                     reuse=True,
+                    event_label="same_node",
                 )
                 combined.index_add_(0, token_indices[same_node_mask], same_node_outputs)
             else:
@@ -619,6 +686,7 @@ class DeepSeekHybridEPModule(nn.Module):
                     group_rank=self.topology.rank,
                     use_single=True,
                     reuse=True,
+                    event_label="remote",
                 )
                 if remote_branch_events is not None:
                     remote_branch_events[1].record(torch.cuda.current_stream())
@@ -644,6 +712,7 @@ class DeepSeekHybridEPModule(nn.Module):
                 group_rank=self.topology.rank,
                 use_single=False,
                 reuse=False,
+                event_label="baseline",
             )
             combined.index_add_(0, token_indices, baseline_outputs)
             same_node_metrics = baseline_events.to_metrics() if baseline_events is not None else (0.0, 0.0, 0.0)
@@ -678,18 +747,15 @@ class DeepSeekHybridEPModule(nn.Module):
                 overlap_saved_ms = max(0.0, (local_branch_ms + remote_branch_ms) - overlap_window_ms)
                 overlap_pct = 100.0 * overlap_saved_ms / max(local_branch_ms + remote_branch_ms, 1e-6)
 
-        route_counts_global = route_counts.clone()
+        route_counts_global = route_counts
         if self.topology.world_size > 1 and dist.is_initialized():
             dist.all_reduce(route_counts_global)
-            same_rank_tensor = torch.tensor(same_rank_count, device=hidden.device, dtype=torch.float32)
-            same_node_tensor = torch.tensor(same_node_count, device=hidden.device, dtype=torch.float32)
-            remote_tensor = torch.tensor(remote_count, device=hidden.device, dtype=torch.float32)
-            dist.all_reduce(same_rank_tensor)
-            dist.all_reduce(same_node_tensor)
-            dist.all_reduce(remote_tensor)
-            same_rank_count = float(same_rank_tensor.item())
-            same_node_count = float(same_node_tensor.item())
-            remote_count = float(remote_tensor.item())
+            same_rank_count, same_node_count, remote_count = self._reduce_route_counts(
+                same_rank_count,
+                same_node_count,
+                remote_count,
+                device=hidden.device,
+            )
         total_routes = max(float(route_counts_global.sum().item()), 1.0)
         metrics = compute_moe_metrics(
             num_experts=self.num_experts,
@@ -772,6 +838,15 @@ class HybridEPTrainer:
             dtype=self.dtype,
             generator=generator,
         )
+        self._step_events: Dict[str, torch.cuda.Event] = {
+            "start": torch.cuda.Event(enable_timing=True),
+            "after_forward": torch.cuda.Event(enable_timing=True),
+            "after_backward": torch.cuda.Event(enable_timing=True),
+            "after_sync": torch.cuda.Event(enable_timing=True),
+            "end": torch.cuda.Event(enable_timing=True),
+        }
+        self._metric_reduce_buffer: Optional[torch.Tensor] = None
+        self._metric_reduce_host_buffer: Optional[torch.Tensor] = None
 
     def _sync_replicated_grads(self) -> None:
         if self.topology.world_size <= 1:
@@ -784,11 +859,11 @@ class HybridEPTrainer:
 
     def run_step(self) -> StepArtifacts:
         self.optimizer.zero_grad(set_to_none=True)
-        total_start = torch.cuda.Event(enable_timing=True)
-        total_after_forward = torch.cuda.Event(enable_timing=True)
-        total_after_backward = torch.cuda.Event(enable_timing=True)
-        total_after_sync = torch.cuda.Event(enable_timing=True)
-        total_end = torch.cuda.Event(enable_timing=True)
+        total_start = self._step_events["start"]
+        total_after_forward = self._step_events["after_forward"]
+        total_after_backward = self._step_events["after_backward"]
+        total_after_sync = self._step_events["after_sync"]
+        total_end = self._step_events["end"]
 
         total_start.record(torch.cuda.current_stream())
         loss, metrics = self.model.forward_loss(
@@ -820,34 +895,31 @@ class HybridEPTrainer:
     def _reduce_metrics(self, metrics: Dict[str, float]) -> Dict[str, float]:
         if self.topology.world_size <= 1:
             return metrics
+        if not metrics:
+            return {}
+
+        keys = tuple(metrics.keys())
+        num_metrics = len(keys)
+        if self._metric_reduce_buffer is None or self._metric_reduce_buffer.numel() != num_metrics:
+            self._metric_reduce_buffer = torch.empty(num_metrics, device=self.device, dtype=torch.float64)
+            self._metric_reduce_host_buffer = torch.empty(num_metrics, dtype=torch.float64)
+        assert self._metric_reduce_host_buffer is not None
+        device_buffer = self._metric_reduce_buffer
+        host_buffer = self._metric_reduce_host_buffer
+        for index, key in enumerate(keys):
+            host_buffer[index] = float(metrics[key])
+        device_buffer.copy_(host_buffer, non_blocking=False)
+        dist.all_reduce(device_buffer, op=dist.ReduceOp.SUM)
+        host_buffer.copy_(device_buffer, non_blocking=False)
+
+        world_size = float(self.topology.world_size)
+        values = host_buffer.tolist()
         reduced: Dict[str, float] = {}
-        for key, value in metrics.items():
-            tensor = torch.tensor(float(value), device=self.device, dtype=torch.float64)
-            dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
-            if key.endswith("_pct") or key.endswith("_ms") or key in {
-                "moe.load_imbalance",
-                "moe.expert_utilization_pct",
-                "moe.routing_time_ms",
-                "moe.expert_compute_time_ms",
-                "moe.routing_overhead_pct",
-                "moe.load_balance_loss",
-                "moe.hybrid_enabled",
-                "moe.intra_node_only",
-                "moe.local_world_size",
-                "moe.inter_node_world_size",
-                "moe.num_experts",
-                "moe.active_experts",
-                "moe.total_tokens",
-                "moe.max_tokens_per_expert",
-                "moe.min_tokens_per_expert",
-                "moe.router_entropy",
-                "moe.gini_coefficient",
-                "moe.expert_usage_variance",
-                "moe.routing_uniform",
-                "moe.routing_topology_aware",
-            }:
-                tensor.div_(float(self.topology.world_size))
-            reduced[key] = float(tensor.item())
+        for index, key in enumerate(keys):
+            value = float(values[index])
+            if _metric_should_average(key):
+                value /= world_size
+            reduced[key] = value
         return reduced
 
 

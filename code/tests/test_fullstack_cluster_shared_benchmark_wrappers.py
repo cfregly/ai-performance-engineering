@@ -176,6 +176,73 @@ def test_moe_hybrid_ep_run_cli_discards_multigpu_warmup_steps() -> None:
     assert result == {"moe.step.total_ms": 4.0}
 
 
+def test_moe_hybrid_ep_metric_reduction_batches_all_reduce_and_reuses_buffers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from labs.fullstack_cluster import moe_hybrid_ep_common as common
+
+    trainer = object.__new__(common.HybridEPTrainer)
+    trainer.topology = SimpleNamespace(world_size=4)
+    trainer.device = torch.device("cpu")
+    trainer._metric_reduce_buffer = None
+    trainer._metric_reduce_host_buffer = None
+    observed_tensors = []
+
+    def fake_all_reduce(tensor: torch.Tensor, op=None) -> None:
+        observed_tensors.append(tensor.clone())
+        tensor.mul_(float(trainer.topology.world_size))
+
+    monkeypatch.setattr(common.dist, "all_reduce", fake_all_reduce)
+
+    metrics = {"moe.step.total_ms": 2.0, "custom.count": 3.0}
+    reduced = trainer._reduce_metrics(metrics)
+    first_device_ptr = trainer._metric_reduce_buffer.data_ptr()
+    first_host_ptr = trainer._metric_reduce_host_buffer.data_ptr()
+    reduced_again = trainer._reduce_metrics(metrics)
+
+    assert common._metric_should_average("moe.step.total_ms")
+    assert not common._metric_should_average("custom.count")
+    assert len(observed_tensors) == 2
+    assert observed_tensors[0].shape == (2,)
+    torch.testing.assert_close(observed_tensors[0], torch.tensor([2.0, 3.0], dtype=torch.float64))
+    assert reduced["moe.step.total_ms"] == pytest.approx(2.0)
+    assert reduced["custom.count"] == pytest.approx(12.0)
+    assert reduced_again == reduced
+    assert trainer._metric_reduce_buffer.data_ptr() == first_device_ptr
+    assert trainer._metric_reduce_host_buffer.data_ptr() == first_host_ptr
+
+
+def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductions() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "labs"
+        / "fullstack_cluster"
+        / "moe_hybrid_ep_common.py"
+    ).read_text(encoding="utf-8")
+    forward_section = source.split("def forward_loss(", maxsplit=1)[1].split(
+        "class HybridEPTrainer",
+        maxsplit=1,
+    )[0]
+    run_step_section = source.split("def run_step", maxsplit=1)[1].split(
+        "def _reduce_metrics",
+        maxsplit=1,
+    )[0]
+    reduce_section = source.split("def _reduce_metrics", maxsplit=1)[1].split(
+        "def summarize_and_write_report",
+        maxsplit=1,
+    )[0]
+
+    assert "def _event_pair" in source
+    assert "def _phase_events" in source
+    assert "torch.cuda.Event(enable_timing=True)" not in forward_section
+    assert "torch.cuda.Event(enable_timing=True)" not in run_step_section
+    assert "route_counts_global = route_counts" in forward_section
+    assert "self._reduce_route_counts(" in forward_section
+    assert "same_rank_tensor = torch.tensor" not in forward_section
+    assert "dist.all_reduce(device_buffer, op=dist.ReduceOp.SUM)" in reduce_section
+    assert "for key, value in metrics.items()" not in reduce_section
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for benchmark wrappers")
 def test_single_gpu_moe_hybrid_ep_uses_inprocess_step_runner() -> None:
     from labs.fullstack_cluster.baseline_moe_hybrid_ep import get_benchmark
