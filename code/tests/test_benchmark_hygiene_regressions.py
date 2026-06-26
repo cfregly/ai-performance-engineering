@@ -692,6 +692,43 @@ def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
     assert "float(top2[0] - top2[1])" not in confidence_section
 
 
+def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
+    common_source = (REPO_ROOT / "ch19" / "dynamic_precision_benchmark_common.py").read_text(
+        encoding="utf-8"
+    )
+    switching_source = (REPO_ROOT / "ch19" / "dynamic_precision_switching.py").read_text(
+        encoding="utf-8"
+    )
+    host_policy_section = common_source.split("def decode_host_policy_baseline", maxsplit=1)[
+        1
+    ].split(
+        "def decode_dynamic_precision",
+        maxsplit=1,
+    )[0]
+    decision_section = switching_source.split("def should_use_low_precision", maxsplit=1)[
+        1
+    ].split(
+        "def quantize_kv_cache_on_memory_pressure",
+        maxsplit=1,
+    )[0]
+    demo_entropy_section = switching_source.split("high_conf_logits[0, 42] = 10.0", maxsplit=1)[
+        1
+    ].split(
+        "should_use_fp8_high = should_use_low_precision",
+        maxsplit=1,
+    )[0]
+
+    assert "policy_metrics = torch.stack(" in host_policy_section
+    assert "compute_entropy(host_logits).mean().item()" not in host_policy_section
+    assert "values.mean().item()" not in host_policy_section
+    assert "entropy, max_prob = torch.stack(" in decision_section
+    assert "compute_entropy(logits).mean().item()" not in decision_section
+    assert "probs.max(dim=-1).values.mean().item()" not in decision_section
+    assert "high_entropy, low_entropy = torch.stack(" in demo_entropy_section
+    assert "compute_entropy(high_conf_logits).item()" not in demo_entropy_section
+    assert "compute_entropy(low_conf_logits).item()" not in demo_entropy_section
+
+
 def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     files = [
         "ch19/dynamic_precision_benchmark_common.py",

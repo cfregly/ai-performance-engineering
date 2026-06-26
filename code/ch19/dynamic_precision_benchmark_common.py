@@ -117,10 +117,15 @@ def decode_host_policy_baseline(
         if device.type == "cuda":
             torch.cuda.synchronize(device)
         host_logits = last_step_logits.to(torch.float32).cpu()
-        _ = float(compute_entropy(host_logits).mean().item())
-        _ = float(torch.softmax(host_logits, dim=-1).max(dim=-1).values.mean().item())
-        _ = float(torch.topk(host_logits, k=2, dim=-1).values.mean().item())
-        _ = float(torch.sort(host_logits, dim=-1).values[:, -1].mean().item())
+        policy_metrics = torch.stack(
+            (
+                compute_entropy(host_logits).mean(),
+                torch.softmax(host_logits, dim=-1).max(dim=-1).values.mean(),
+                torch.topk(host_logits, k=2, dim=-1).values.mean(),
+                torch.sort(host_logits, dim=-1).values[:, -1].mean(),
+            )
+        )
+        _ = policy_metrics.tolist()
         next_token = torch.argmax(last_step_logits, dim=-1, keepdim=True)
         generated[:, current_len : current_len + 1].copy_(next_token)
         current_len += 1

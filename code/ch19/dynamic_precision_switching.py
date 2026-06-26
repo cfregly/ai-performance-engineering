@@ -411,12 +411,13 @@ def should_use_low_precision(
     Returns:
         True if low precision is safe to use
     """
-    # Compute entropy
-    entropy = compute_entropy(logits).mean().item()
-    
-    # Compute max probability
     probs = torch.softmax(logits, dim=-1)
-    max_prob = probs.max(dim=-1).values.mean().item()
+    entropy, max_prob = torch.stack(
+        (
+            compute_entropy(logits).mean(),
+            probs.max(dim=-1).values.mean(),
+        )
+    ).tolist()
     
     # Use low precision if confident (low entropy, high max prob)
     return entropy < entropy_threshold and max_prob > max_prob_threshold
@@ -533,8 +534,12 @@ if __name__ == '__main__':
     # Low confidence logits (flat distribution)
     low_conf_logits = torch.randn(1, 1000, device=device) * 0.1  # Flat
     
-    high_entropy = compute_entropy(high_conf_logits).item()
-    low_entropy = compute_entropy(low_conf_logits).item()
+    high_entropy, low_entropy = torch.stack(
+        (
+            compute_entropy(high_conf_logits).mean(),
+            compute_entropy(low_conf_logits).mean(),
+        )
+    ).tolist()
     
     print(f"High confidence entropy:  {high_entropy:.3f} (should be low)")
     print(f"Low confidence entropy:   {low_entropy:.3f} (should be high)")
