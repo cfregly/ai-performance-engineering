@@ -36,14 +36,14 @@ class BaselineLaunchBoundsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         torch.manual_seed(42)
         self.input_data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
-        self.output_data = torch.zeros(self.N, dtype=torch.float32, device=self.device)
+        self.output_data = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._synchronize()
         # Warmup to trigger compilation and setup costs outside timing.
         self._extension.launch_bounds_baseline(self.input_data, self.output_data, 8)
         self._synchronize()
         torch.manual_seed(42)
         self.input_data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
-        self.output_data = torch.zeros(self.N, dtype=torch.float32, device=self.device)
+        self.output_data = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._synchronize()
     
     def benchmark_fn(self) -> None:

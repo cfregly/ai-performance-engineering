@@ -696,6 +696,33 @@ def test_ch03_ch05_accumulator_buffers_skip_setup_zero_fill() -> None:
         assert reset in benchmark_section
 
 
+def test_ch06_ch12_cuda_output_buffers_skip_setup_zero_fill() -> None:
+    targets = (
+        "ch06/baseline_launch_bounds.py",
+        "ch06/optimized_launch_bounds.py",
+        "ch12/baseline_work_queue.py",
+        "ch12/optimized_work_queue.py",
+    )
+    for filename in targets:
+        source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+
+        assert "self.output_data = torch.empty(self.N, dtype=torch.float32, device=self.device)" in setup_section
+        assert "self.output_data = torch.zeros(" not in setup_section
+
+    launch_kernels = (REPO_ROOT / "ch06" / "cuda_extensions" / "launch_bounds_kernels.cu").read_text(
+        encoding="utf-8"
+    )
+    work_queue_kernels = (
+        REPO_ROOT / "ch12" / "cuda_extensions" / "work_queue_kernels.cu"
+    ).read_text(encoding="utf-8")
+    assert "output[idx] = launch_bounds_workload(input[idx]);" in launch_kernels
+    assert "output[idx] = sum;" in work_queue_kernels
+
+
 def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
     dual_cta = (REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_cta.py").read_text(
         encoding="utf-8"

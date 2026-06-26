@@ -43,7 +43,7 @@ class OptimizedWorkQueueBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
         self.input_data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
-        self.output_data = torch.zeros(self.N, dtype=torch.float32, device=self.device)
+        self.output_data = torch.empty(self.N, dtype=torch.float32, device=self.device)
         torch.cuda.synchronize(self.device)
         self._extension.dynamic_work_queue(self.input_data, self.output_data, 1)
         torch.cuda.synchronize()
@@ -51,7 +51,7 @@ class OptimizedWorkQueueBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
         self.input_data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
-        self.output_data = torch.zeros(self.N, dtype=torch.float32, device=self.device)
+        self.output_data = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._verify_input = self.input_data.detach().clone()
         torch.cuda.synchronize()
     
