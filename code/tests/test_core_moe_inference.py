@@ -4,7 +4,7 @@ import inspect
 
 import torch
 
-from core.optimization.moe_inference import MoEFeedForwardSortedDispatch, allocate_kv_cache
+from core.optimization.moe_inference import MoEFeedForwardSortedDispatch, SimpleMoEBlock, allocate_kv_cache
 
 
 def test_allocate_kv_cache_avoids_zero_fill() -> None:
@@ -15,6 +15,13 @@ def test_allocate_kv_cache_avoids_zero_fill() -> None:
     cache = allocate_kv_cache(2, 3, 4, torch.float32, torch.device("cpu"))
     assert cache.shape == (2, 3, 4)
     assert cache.dtype == torch.float32
+
+
+def test_simple_moe_block_reuses_attention_norm_once() -> None:
+    source = inspect.getsource(SimpleMoEBlock.forward)
+    assert "attn_input = self.ln_attn(hidden)" in source
+    assert "self.attn(attn_input, attn_input, attn_input" in source
+    assert source.count("self.ln_attn(hidden)") == 1
 
 
 def test_sorted_dispatch_reuses_flat_token_id_cache_on_cpu() -> None:

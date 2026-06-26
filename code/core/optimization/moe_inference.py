@@ -413,7 +413,8 @@ class SimpleMoEBlock(nn.Module):
             self.ff = DenseFeedForward(config.hidden_size, config.ffn_size, device=device, dtype=config.dtype_obj)
 
     def forward(self, hidden: torch.Tensor, *, collect_router_stats: bool = False) -> torch.Tensor | Tuple[torch.Tensor, Optional[dict]]:
-        attn_out, _ = self.attn(self.ln_attn(hidden), self.ln_attn(hidden), self.ln_attn(hidden), need_weights=False)
+        attn_input = self.ln_attn(hidden)
+        attn_out, _ = self.attn(attn_input, attn_input, attn_input, need_weights=False)
         hidden = hidden + attn_out
         if collect_router_stats and isinstance(self.ff, MoEFeedForward):
             ff_out, stats = self.ff(self.ln_mlp(hidden), collect_router_stats=True)
