@@ -86,11 +86,10 @@ import datetime
 import hashlib
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 
 
 # ============================================================================
@@ -604,12 +603,13 @@ class LockFreeRingBuffer:
         if data.numel() != self.element_size:
             raise ValueError(f"Data size mismatch: {data.numel()} vs {self.element_size}")
         
-        # Read current tail
-        current_tail = self.tail.item()
+        # Read current queue pointers in a single host transfer.
+        current_tail, current_head = (
+            int(value) for value in torch.stack((self.tail[0], self.head[0])).tolist()
+        )
         next_tail = (current_tail + 1) % self.capacity
         
         # Check if full
-        current_head = self.head.item()
         if next_tail == current_head:
             return False  # Full
         
@@ -627,9 +627,10 @@ class LockFreeRingBuffer:
         
         Returns None if buffer is empty.
         """
-        # Read current head
-        current_head = self.head.item()
-        current_tail = self.tail.item()
+        # Read current queue pointers in a single host transfer.
+        current_head, current_tail = (
+            int(value) for value in torch.stack((self.head[0], self.tail[0])).tolist()
+        )
         
         # Check if empty
         if current_head == current_tail:
@@ -646,8 +647,7 @@ class LockFreeRingBuffer:
     
     def size(self) -> int:
         """Get current number of elements in buffer."""
-        head = self.head.item()
-        tail = self.tail.item()
+        head, tail = (int(value) for value in torch.stack((self.head[0], self.tail[0])).tolist())
         if tail >= head:
             return tail - head
         else:

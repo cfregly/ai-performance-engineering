@@ -2609,6 +2609,21 @@ def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() 
         assert "Timing events not initialized" in benchmark_section
 
 
+def test_ch04_symmetric_queue_batches_head_tail_reads() -> None:
+    source = (REPO_ROOT / "ch04" / "symmetric_memory_data_structures.py").read_text(
+        encoding="utf-8"
+    )
+    queue_section = source.split("class LockFreeRingBuffer", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+
+    assert "torch.stack((self.tail[0], self.head[0])).tolist()" in queue_section
+    assert "torch.stack((self.head[0], self.tail[0])).tolist()" in queue_section
+    assert "self.tail.item()" not in queue_section
+    assert "self.head.item()" not in queue_section
+
+
 def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_bandwidth_benchmark_suite_multigpu.py").read_text(
         encoding="utf-8"
