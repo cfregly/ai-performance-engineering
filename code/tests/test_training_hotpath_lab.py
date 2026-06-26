@@ -15,7 +15,10 @@ from labs.training_hotpath.training_hotpath_common import (
     MetricReductionCudaBenchmark,
     MetricReductionVectorizedBenchmark,
     PaddingAwareTransformerBenchmark,
+    PaddingAwareWorkload,
+    active_mask_and_rows,
     baseline_segment_abs_mean,
+    build_padding_inputs,
     build_segment_metadata,
 )
 
@@ -126,6 +129,32 @@ def test_baseline_segment_abs_mean_reuses_abs_buffer_on_cpu() -> None:
     assert result.data_ptr() == out.data_ptr()
     torch.testing.assert_close(abs_buf, flat.abs())
     torch.testing.assert_close(result, torch.tensor([1.5, 4.0], dtype=torch.float32))
+
+
+def test_padding_inputs_return_mask_and_host_active_token_count() -> None:
+    common_source = (LAB_DIR / "training_hotpath_common.py").read_text(encoding="utf-8")
+
+    assert "active_tokens = int(seq_lens_cpu.sum().item())" in common_source
+    assert "active_tokens = int(self.seq_lens.sum().item())" not in common_source
+    assert "self._active_mask" in common_source
+
+    workload = PaddingAwareWorkload(
+        batch_size=3,
+        max_num_tokens=8,
+        min_num_tokens=2,
+        input_size=4,
+    )
+    inputs, seq_lens, active_mask, active_rows, active_tokens = build_padding_inputs(
+        workload,
+        torch.device("cpu"),
+    )
+    expected_mask, expected_rows = active_mask_and_rows(seq_lens, workload.max_num_tokens)
+
+    assert inputs.shape == (workload.batch_size, workload.max_num_tokens, workload.input_size)
+    assert active_tokens == int(seq_lens.sum().item())
+    assert active_rows.numel() == active_tokens
+    torch.testing.assert_close(active_mask, expected_mask)
+    torch.testing.assert_close(active_rows, expected_rows)
 
 
 def test_metric_reduction_fused_optimized_path_reuses_output_buffer_source() -> None:

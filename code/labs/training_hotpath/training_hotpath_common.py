@@ -346,16 +346,18 @@ class ToyTransformer(nn.Module):
 def build_padding_inputs(
     workload: PaddingAwareWorkload,
     device: torch.device,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int]:
     cpu_generator = torch.Generator()
     cpu_generator.manual_seed(4242)
-    seq_lens = torch.randint(
+    seq_lens_cpu = torch.randint(
         workload.min_num_tokens,
         workload.max_num_tokens + 1,
         (workload.batch_size,),
         generator=cpu_generator,
         dtype=torch.int64,
-    ).to(device=device)
+    )
+    active_tokens = int(seq_lens_cpu.sum().item())
+    seq_lens = seq_lens_cpu.to(device=device)
     inputs = torch.randn(
         workload.batch_size,
         workload.max_num_tokens,
@@ -364,7 +366,7 @@ def build_padding_inputs(
         dtype=torch.float32,
     ).to(device=device)
     active_mask, active_rows = active_mask_and_rows(seq_lens, workload.max_num_tokens)
-    return inputs, seq_lens, active_rows
+    return inputs, seq_lens, active_mask, active_rows, active_tokens
 
 
 class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -624,9 +626,13 @@ class PaddingAwareTransformerBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("labs.training_hotpath padding-aware transformer benchmark requires CUDA")
-        self.inputs, self.seq_lens, self.active_rows = build_padding_inputs(self.workload, self.device)
-        active_mask, _ = active_mask_and_rows(self.seq_lens, self.workload.max_num_tokens)
-        self._active_mask = active_mask
+        (
+            self.inputs,
+            self.seq_lens,
+            self._active_mask,
+            self.active_rows,
+            active_tokens,
+        ) = build_padding_inputs(self.workload, self.device)
         self._extension = load_training_hotpath_extension() if self.optimized else None
         if self._extension is not None:
             flat = self.inputs.reshape(-1, self.inputs.shape[-1]).contiguous()
@@ -634,7 +640,6 @@ class PaddingAwareTransformerBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._extension.scatter_rows(packed, self.active_rows, flat.shape[0])
         self.model = ToyTransformer(self.workload, optimized=self.optimized, device=self.device).to(self.device)
         self.output = None
-        active_tokens = int(self.seq_lens.sum().item())
         total_tokens = self.workload.batch_size * self.workload.max_num_tokens
         active_fraction = active_tokens / float(total_tokens)
         self._custom_metrics = {
