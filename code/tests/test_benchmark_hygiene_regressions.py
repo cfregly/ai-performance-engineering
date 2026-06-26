@@ -745,7 +745,9 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     assert "self._reduction_buffer = torch.empty_like(self._output_buffer)" in setup_section
     assert "self._output_buffer = torch.zeros(" not in setup_section
     assert "self._reduction_buffer = torch.zeros(" not in setup_section
-    assert "self._reduction_buffer.zero_()" in benchmark_section
+    assert "self._reduction_buffer.copy_(shards[0])" in benchmark_section
+    assert "for shard in shards[1:]" in benchmark_section
+    assert "self._reduction_buffer.zero_()" not in benchmark_section
     assert "self._output_buffer.copy_(self._reduction_buffer)" in benchmark_section
 
 

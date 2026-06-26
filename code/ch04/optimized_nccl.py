@@ -82,8 +82,8 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
             shards = torch.chunk(out, chunks=self.num_shards, dim=0)
             
             # In-place sum reduction (stays on GPU)
-            self._reduction_buffer.zero_()
-            for shard in shards:
+            self._reduction_buffer.copy_(shards[0])
+            for shard in shards[1:]:
                 self._reduction_buffer.add_(shard)
             
             # Average
