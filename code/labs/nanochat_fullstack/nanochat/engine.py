@@ -165,10 +165,12 @@ class KVCache:
             round_step = max(round_step, self.page_size)
         t_needed = ((t_needed + round_step - 1) // round_step) * round_step
         t_needed = self._round_seq_len(t_needed)
-        additional_shape = list(self.kv_cache.shape)
-        additional_shape[4] = t_needed - self.kv_cache.size(4)
-        additional_cache = torch.empty(additional_shape, dtype=dtype, device=device)
-        self.kv_cache = torch.cat([self.kv_cache, additional_cache], dim=4).contiguous()
+        grown_shape = list(self.kv_cache.shape)
+        old_seq_len = self.kv_cache.size(4)
+        grown_shape[4] = t_needed
+        grown_cache = torch.empty(grown_shape, dtype=dtype, device=device)
+        grown_cache[:, :, :, :, :old_seq_len, :].copy_(self.kv_cache)
+        self.kv_cache = grown_cache
         self.kv_shape = self.kv_cache.shape
 
     def get_block_info(self):
@@ -823,7 +825,7 @@ if __name__ == "__main__":
     torch.cuda.synchronize()
     t0 = time.time()
     with autocast_ctx:
-        for token_column, token_masks in stream:
+        for token_column, _token_masks in stream:
             token = token_column[0] # only print out the first row
             generated_tokens.append(token)
             chunk = tokenizer.decode([token])

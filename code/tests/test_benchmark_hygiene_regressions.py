@@ -807,6 +807,19 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "self.output = torch.stack(self._last_outputs, dim=0)" in capture_section
 
 
+def test_nanochat_kv_cache_growth_avoids_cat_with_uninitialized_tail() -> None:
+    source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "engine.py").read_text(
+        encoding="utf-8"
+    )
+    grow_section = source.split("def _maybe_grow_cache", maxsplit=1)[1].split(
+        "def get_block_info", maxsplit=1
+    )[0]
+
+    assert "torch.cat([self.kv_cache, additional_cache]" not in grow_section
+    assert "grown_cache = torch.empty(grown_shape, dtype=dtype, device=device)" in grow_section
+    assert "grown_cache[:, :, :, :, :old_seq_len, :].copy_(self.kv_cache)" in grow_section
+
+
 def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_stack() -> None:
     source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_multigpu_common.py").read_text(
         encoding="utf-8"
