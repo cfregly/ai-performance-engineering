@@ -575,13 +575,17 @@ class GPT(nn.Module):
         for _ in range(max_tokens):
             logits = self.forward(ids[:, :cur_len]) # (B, T, vocab_size)
             logits = logits[:, -1, :] # (B, vocab_size)
-            if top_k is not None:
-                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = -float('Inf')
             if temperature > 0:
-                logits = logits / temperature
-                probs = F.softmax(logits, dim=-1)
-                next_ids = torch.multinomial(probs, num_samples=1, generator=rng)
+                if top_k is not None:
+                    top_vals, top_idx = torch.topk(logits, min(top_k, logits.size(-1)), dim=-1)
+                    top_vals = top_vals / temperature
+                    probs = F.softmax(top_vals, dim=-1)
+                    choice = torch.multinomial(probs, num_samples=1, generator=rng)
+                    next_ids = top_idx.gather(1, choice)
+                else:
+                    logits = logits / temperature
+                    probs = F.softmax(logits, dim=-1)
+                    next_ids = torch.multinomial(probs, num_samples=1, generator=rng)
             else:
                 next_ids = torch.argmax(logits, dim=-1, keepdim=True)
             ids[:, cur_len:cur_len + 1].copy_(next_ids)

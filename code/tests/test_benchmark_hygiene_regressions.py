@@ -1560,8 +1560,11 @@ def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
 
     assert "ids = torch.empty((1, total_len), dtype=torch.long, device=device)" in generate_section
     assert "logits = self.forward(ids[:, :cur_len])" in generate_section
+    assert "top_vals, top_idx = torch.topk(logits, min(top_k, logits.size(-1)), dim=-1)" in generate_section
+    assert "next_ids = top_idx.gather(1, choice)" in generate_section
     assert "ids[:, cur_len:cur_len + 1].copy_(next_ids)" in generate_section
     assert "ids = torch.cat((ids, next_ids), dim=1)" not in generate_section
+    assert "logits[logits <" not in generate_section
 
 
 def test_nanochat_loss_eval_batches_reduced_totals() -> None:
