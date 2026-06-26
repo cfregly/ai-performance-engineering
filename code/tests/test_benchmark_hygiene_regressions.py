@@ -1224,6 +1224,25 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
     assert "self.output = None" in optimized_benchmark
 
 
+def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
+    source = (REPO_ROOT / "ch13" / "baseline_sequence_parallel_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._full_sequence = torch.empty(" in setup_section
+    assert "torch.cat([out_partial] * self._world_size, dim=1, out=self._full_sequence)" in benchmark_section
+    assert "full_sequence = torch.cat([out_partial]" not in benchmark_section
+    assert "full_sequence = self._norms[layer_idx](self._full_sequence)" in benchmark_section
+
+
 def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> None:
     perchannel_source = (REPO_ROOT / "ch13" / "fp8_perchannel_demo.py").read_text(encoding="utf-8")
     perchannel_benchmark = perchannel_source.split("def benchmark_fn", maxsplit=1)[1].split(
@@ -1502,6 +1521,25 @@ def test_ch15_inference_placement_defers_output_tensor_outside_hot_loop() -> Non
     assert "torch.tensor(" not in benchmark_section
     assert "self._output_values = [" in benchmark_section
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
+
+
+def test_ch15_kv_cache_math_preconcats_static_inputs() -> None:
+    source = (REPO_ROOT / "ch15" / "kv_cache_management_math.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._sequence_inputs: Optional[torch.Tensor] = None" in source
+    assert "self._sequence_inputs = torch.empty_like(self.cache_buffer)" in setup_section
+    assert "torch.cat(self.inputs, dim=1, out=self._sequence_inputs)" in setup_section
+    assert "torch.cat(self.inputs" not in benchmark_section
+    assert "queries = self._sequence_inputs" in benchmark_section
+    assert "k_cache = self._sequence_inputs" in benchmark_section
 
 
 def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:

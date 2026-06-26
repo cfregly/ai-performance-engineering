@@ -43,6 +43,7 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.v_proj: Optional[nn.Linear] = None
         self.out_proj: Optional[nn.Linear] = None
         self.inputs: Optional[list[torch.Tensor]] = None
+        self._sequence_inputs: Optional[torch.Tensor] = None
         self.cache_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.batch_size = 8
@@ -79,16 +80,18 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.randn(self.batch_size, 1, self.hidden_dim, device=self.device, dtype=torch.bfloat16)
             for _ in range(self.steps)
         ]
+        self._sequence_inputs = torch.empty_like(self.cache_buffer)
+        torch.cat(self.inputs, dim=1, out=self._sequence_inputs)
         self._synchronize()
         self._verify_input = self.inputs[0].detach()
     
     def benchmark_fn(self) -> None:
         assert self.q_proj is not None and self.k_proj is not None and self.v_proj is not None and self.out_proj is not None
-        assert self.inputs is not None and self.cache_buffer is not None
+        assert self.inputs is not None and self.cache_buffer is not None and self._sequence_inputs is not None
         with self._nvtx_range("kv_cache_management_math"):
             with torch.no_grad():
-                queries = torch.cat(self.inputs, dim=1)
-                k_cache = torch.cat(self.inputs, dim=1)
+                queries = self._sequence_inputs
+                k_cache = self._sequence_inputs
                 
                 q = self.q_proj(queries)
                 k = self.k_proj(k_cache)
@@ -135,6 +138,7 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.v_proj = None
         self.out_proj = None
         self.inputs = None
+        self._sequence_inputs = None
         self.cache_buffer = None
         torch.cuda.empty_cache()
     
@@ -169,5 +173,4 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return KVCacheManagementMathBenchmark()
-
 

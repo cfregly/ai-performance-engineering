@@ -79,6 +79,7 @@ class BaselineSequenceParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBe
         self._norms = None
         self._input = None
         self._output = None
+        self._full_sequence = None
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -91,16 +92,29 @@ class BaselineSequenceParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBe
             device=self.device,
             dtype=self._sp_config.dtype,
         )
+        self._full_sequence = torch.empty(
+            self._sp_config.batch_size,
+            self._seq_len,
+            self._sp_config.hidden_size,
+            device=self.device,
+            dtype=self._sp_config.dtype,
+        )
 
     def benchmark_fn(self) -> None:
-        if self._input is None or self._up_proj is None or self._down_proj is None or self._norms is None:
+        if (
+            self._input is None
+            or self._up_proj is None
+            or self._down_proj is None
+            or self._norms is None
+            or self._full_sequence is None
+        ):
             raise RuntimeError("setup() must run before benchmark_fn()")
         x = self._input
         for layer_idx in range(self._sp_config.num_layers):
             hidden_local = torch.nn.functional.gelu(self._up_proj[layer_idx](x), approximate="tanh")
             out_partial = self._down_proj[layer_idx](hidden_local)
-            full_sequence = torch.cat([out_partial] * self._world_size, dim=1)
-            full_sequence = self._norms[layer_idx](full_sequence)
+            torch.cat([out_partial] * self._world_size, dim=1, out=self._full_sequence)
+            full_sequence = self._norms[layer_idx](self._full_sequence)
             x = full_sequence[:, : self._input.size(1)]
         self._output = x
 
