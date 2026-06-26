@@ -1922,8 +1922,11 @@ def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
     assert "rejects_tensor = self.batch_size - self._admit_mask.sum()" in vectorized_timed_section
     assert "offloaded_tensor = self._served_offload_mask.sum()" in vectorized_timed_section
     assert ".item()" not in vectorized_timed_section
-    assert "rejects = int(rejects_tensor.item())" in post_timing_section
-    assert "offloaded = int(offloaded_tensor.item())" in post_timing_section
+    assert "rejects_value, offloaded_value = torch.stack(" in post_timing_section
+    assert "rejects = int(rejects_value)" in post_timing_section
+    assert "offloaded = int(offloaded_value)" in post_timing_section
+    assert "rejects_tensor.item()" not in post_timing_section
+    assert "offloaded_tensor.item()" not in post_timing_section
 
 
 def test_hf_decoder_cache_defers_verification_copy_outside_hot_loop() -> None:

@@ -202,8 +202,11 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         elapsed_ms = self._record_stop(start)
         if rejects_tensor is not None and offloaded_tensor is not None:
-            rejects = int(rejects_tensor.item())
-            offloaded = int(offloaded_tensor.item())
+            rejects_value, offloaded_value = torch.stack(
+                (rejects_tensor, offloaded_tensor)
+            ).tolist()
+            rejects = int(rejects_value)
+            offloaded = int(offloaded_value)
         self._history["lat_ms"].append(elapsed_ms)
         served = len(requests) - rejects
 
