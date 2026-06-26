@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import inspect
+
 import torch
 
 from labs.moe_decode_blackwell_matrix.matrix_catalog import load_playbook
 from labs.moe_decode_blackwell_matrix.matrix_types import MatrixScenario
-from labs.moe_decode_blackwell_matrix.runner import build_decode_batches, summarize_rows
+from labs.moe_decode_blackwell_matrix.runner import _routing_stats, build_decode_batches, summarize_rows
 
 
 def test_smoke_playbook_loads() -> None:
@@ -45,6 +47,21 @@ def test_build_decode_batches_cpu_contract() -> None:
             torch.ones(4),
             atol=1e-5,
         )
+
+
+def test_routing_stats_batches_scalar_materialization() -> None:
+    source = inspect.getsource(_routing_stats)
+    indices = torch.tensor([[0, 1], [1, 2], [2, 3], [2, 0]], dtype=torch.long)
+
+    entropy, active, max_tokens = _routing_stats(indices, num_experts=4)
+
+    assert "torch.stack(" in source
+    assert ".tolist()" in source
+    assert ".sum().item()" not in source
+    assert ".max().item()" not in source
+    assert entropy > 0.0
+    assert active == 1.0
+    assert max_tokens == 3
 
 
 def test_summary_builds_pairwise_sections() -> None:

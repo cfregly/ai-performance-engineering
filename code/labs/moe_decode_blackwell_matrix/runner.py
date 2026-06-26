@@ -80,14 +80,26 @@ def _policy_probs(
 
 def _routing_stats(indices: torch.Tensor, *, num_experts: int) -> tuple[float, float, int]:
     counts = torch.bincount(indices.reshape(-1), minlength=num_experts).to(torch.float32)
-    total = float(counts.sum().item())
-    active = float((counts > 0).sum().item()) / float(num_experts)
-    max_tokens = int(counts.max().item()) if total > 0 else 0
+    total_tensor = counts.sum()
+    probs = counts / total_tensor.clamp_min(1.0)
+    nz = probs[probs > 0]
+    entropy_tensor = (
+        -(nz * nz.log()).sum() / math.log(num_experts)
+        if num_experts > 1
+        else counts.new_zeros(())
+    )
+    total, active_count, max_tokens_float, entropy = torch.stack(
+        (
+            total_tensor,
+            (counts > 0).sum().to(counts.dtype),
+            counts.max(),
+            entropy_tensor,
+        )
+    ).tolist()
+    active = float(active_count) / float(num_experts)
+    max_tokens = int(max_tokens_float) if total > 0 else 0
     if total <= 0:
         return 0.0, active, max_tokens
-    probs = counts / total
-    nz = probs[probs > 0]
-    entropy = float((-(nz * nz.log()).sum() / math.log(num_experts)).item()) if num_experts > 1 else 0.0
     return entropy, active, max_tokens
 
 
