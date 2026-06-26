@@ -15,6 +15,8 @@ from labs.training_hotpath.training_hotpath_common import (
     MetricReductionCudaBenchmark,
     MetricReductionVectorizedBenchmark,
     PaddingAwareTransformerBenchmark,
+    baseline_segment_abs_mean,
+    build_segment_metadata,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -112,6 +114,20 @@ def test_training_hotpath_setup_requires_cuda(factory) -> None:
         bench.setup()
 
 
+def test_baseline_segment_abs_mean_reuses_abs_buffer_on_cpu() -> None:
+    flat = torch.tensor([-1.0, 2.0, -3.0, 4.0, -5.0], dtype=torch.float32)
+    offsets = torch.tensor([0, 2, 5], dtype=torch.int64)
+    segment_ids, segment_lengths = build_segment_metadata(offsets)
+    out = torch.empty(2, dtype=torch.float32)
+    abs_buf = torch.empty_like(flat)
+
+    result = baseline_segment_abs_mean(flat, segment_ids, segment_lengths, out, abs_buf)
+
+    assert result.data_ptr() == out.data_ptr()
+    torch.testing.assert_close(abs_buf, flat.abs())
+    torch.testing.assert_close(result, torch.tensor([1.5, 4.0], dtype=torch.float32))
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for training-hotpath lab parity checks")
 def test_metric_reduction_vectorized_pair_matches_output_and_metrics() -> None:
     baseline = MetricReductionVectorizedBenchmark(
@@ -133,7 +149,7 @@ def test_metric_reduction_vectorized_pair_matches_output_and_metrics() -> None:
     assert baseline_metrics["metric_reduction.is_vectorized"] == 0.0
     assert optimized_metrics["metric_reduction.is_vectorized"] == 1.0
     assert baseline_metrics["metric_reduction.uses_cuda_extension"] == 0.0
-    assert optimized_metrics["metric_reduction.uses_cuda_extension"] == 0.0
+    assert optimized_metrics["metric_reduction.uses_cuda_extension"] == 1.0
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for training-hotpath lab parity checks")

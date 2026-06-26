@@ -204,11 +204,17 @@ def baseline_segment_abs_mean(
     segment_ids: torch.Tensor,
     segment_lengths: torch.Tensor,
     out: torch.Tensor,
+    abs_buf: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Baseline torch segmented reduction without host round-trips."""
 
     out.zero_()
-    out.scatter_add_(0, segment_ids, flat.abs())
+    if abs_buf is not None and not (torch.is_grad_enabled() and flat.requires_grad):
+        torch.abs(flat, out=abs_buf)
+        values = abs_buf
+    else:
+        values = flat.abs()
+    out.scatter_add_(0, segment_ids, values)
     out.div_(segment_lengths.clamp_min(1.0))
     return out
 
@@ -481,6 +487,7 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.segment_ids: Optional[torch.Tensor] = None
         self.segment_lengths: Optional[torch.Tensor] = None
         self._baseline_out: Optional[torch.Tensor] = None
+        self._baseline_abs: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._extension = None
         self._custom_metrics: dict[str, float] = {}
@@ -497,6 +504,7 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.flat, self.offsets = build_gradient_inputs(self.workload, self.device)
         self.segment_ids, self.segment_lengths = build_segment_metadata(self.offsets)
         self._baseline_out = torch.empty(self.workload.num_segments, device=self.device, dtype=torch.float32)
+        self._baseline_abs = torch.empty_like(self.flat) if not self.optimized else None
         self.output = None
         if self.optimized:
             self._extension = load_training_hotpath_extension()
@@ -520,13 +528,18 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 raise RuntimeError("CUDA extension not loaded")
             self.output = self._extension.segment_abs_mean(self.flat, self.offsets)
         else:
-            if self.segment_ids is None or self.segment_lengths is None or self._baseline_out is None:
+            if (
+                self.segment_ids is None
+                or self.segment_lengths is None
+                or self._baseline_out is None
+            ):
                 raise RuntimeError("Baseline segment metadata not initialized")
             self.output = baseline_segment_abs_mean(
                 self.flat,
                 self.segment_ids,
                 self.segment_lengths,
                 self._baseline_out,
+                self._baseline_abs,
             )
 
     def capture_verification_payload(self) -> None:
@@ -547,6 +560,7 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.segment_ids = None
         self.segment_lengths = None
         self._baseline_out = None
+        self._baseline_abs = None
         self.output = None
         self._extension = None
         torch.cuda.empty_cache()
