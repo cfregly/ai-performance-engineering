@@ -17,10 +17,12 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     build_inputs,
     build_model_state,
     build_workspace,
+    context_sum_baseline,
     context_sum_vectorized,
     optimized_forward,
     ranking_metrics,
     resolve_score_backend,
+    sequence_mean_baseline,
     sequence_mean_vectorized,
 )
 
@@ -116,6 +118,16 @@ def test_baseline_and_optimized_torch_paths_match_on_cpu() -> None:
     )
 
     torch.testing.assert_close(baseline_scores, optimized_scores, rtol=1e-6, atol=1e-6)
+
+
+def test_baseline_poolers_seed_reusable_outputs_before_accumulating() -> None:
+    sequence_source = inspect.getsource(sequence_mean_baseline)
+    context_source = inspect.getsource(context_sum_baseline)
+
+    assert "out.copy_(token_vec * mask[:, 0:1])" in sequence_source
+    assert "for t in range(1, inputs.sequence_ids.shape[1]):" in sequence_source
+    assert "out.copy_(state.context_embeddings[0, inputs.context_ids[:, 0]])" in context_source
+    assert "for table_idx in range(1, inputs.context_ids.shape[1]):" in context_source
 
 
 def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:

@@ -369,9 +369,13 @@ def sequence_mean_baseline(
 ) -> torch.Tensor:
     """Conservative sequence pooling using one embedding lookup per time step."""
 
-    out.zero_()
     mask = inputs.sequence_mask.to(dtype=state.item_embeddings.dtype)
-    for t in range(inputs.sequence_ids.shape[1]):
+    if inputs.sequence_ids.shape[1] == 0:
+        out.zero_()
+        return out
+    token_vec = state.item_embeddings[inputs.sequence_ids[:, 0]]
+    out.copy_(token_vec * mask[:, 0:1])
+    for t in range(1, inputs.sequence_ids.shape[1]):
         token_vec = state.item_embeddings[inputs.sequence_ids[:, t]]
         out.add_(token_vec * mask[:, t : t + 1])
     lengths = inputs.sequence_lengths.to(dtype=state.item_embeddings.dtype).clamp_min(1)
@@ -386,8 +390,11 @@ def context_sum_baseline(
 ) -> torch.Tensor:
     """Conservative context lookup using one table at a time."""
 
-    out.zero_()
-    for table_idx in range(inputs.context_ids.shape[1]):
+    if inputs.context_ids.shape[1] == 0:
+        out.zero_()
+        return out
+    out.copy_(state.context_embeddings[0, inputs.context_ids[:, 0]])
+    for table_idx in range(1, inputs.context_ids.shape[1]):
         out += state.context_embeddings[table_idx, inputs.context_ids[:, table_idx]]
     return out
 
