@@ -30,6 +30,17 @@ from core.harness.benchmark_harness import (
 # FP4 E2M1 representable values
 FP4_VALUES = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0])
 FP4_MAX = 6.0
+_FP4_VALUES_CACHE: dict[torch.device, torch.Tensor] = {}
+
+
+def _fp4_values_for(device: torch.device) -> torch.Tensor:
+    if device.type == "cpu":
+        return FP4_VALUES
+    cached = _FP4_VALUES_CACHE.get(device)
+    if cached is None:
+        cached = FP4_VALUES.to(device=device)
+        _FP4_VALUES_CACHE[device] = cached
+    return cached
 
 
 def quantize_fp4_baseline(
@@ -55,7 +66,7 @@ def quantize_fp4_baseline(
     normalized = normalized.clamp(-FP4_MAX, FP4_MAX)
     
     # Quantize to nearest FP4 value (sequential loop - slow)
-    fp4_vals = FP4_VALUES.to(device)
+    fp4_vals = _fp4_values_for(device)
     abs_normalized = normalized.abs()
     
     # Find nearest FP4 value
@@ -87,7 +98,7 @@ def dequantize_fp4_baseline(
 ) -> torch.Tensor:
     """Baseline FP4 dequantization - no caching."""
     device = packed_data.device
-    fp4_vals = FP4_VALUES.to(device)
+    fp4_vals = _fp4_values_for(device)
     
     # Unpack bytes
     high = (packed_data >> 4) & 0x0F
