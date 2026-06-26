@@ -1598,16 +1598,31 @@ def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
 
+    assert "self._dest_ranks = torch.div(" in baseline_setup
+    assert "self._dest_ranks = torch.div(" in optimized_setup
+    assert "self._perm = torch.argsort(self._dest_ranks)" in optimized_setup
+    assert "dest_ranks = torch.div(" not in baseline_benchmark
+    assert "dest_ranks = torch.div(" not in optimized_benchmark
+    assert "torch.argsort(" not in optimized_benchmark
     assert "send_buf = torch.cat(send_tokens" not in baseline_benchmark
     assert "recv_buf.copy_(send_buf)" not in baseline_benchmark
     assert "torch.cat(send_tokens, dim=0, out=recv_buf)" in baseline_benchmark
     assert "send_buf = flat.index_select(0, perm)" not in optimized_benchmark
     assert "recv_buf.copy_(send_buf)" not in optimized_benchmark
+    assert "perm = self._perm" in optimized_benchmark
     assert "torch.index_select(flat, 0, perm, out=recv_buf)" in optimized_benchmark
 
 

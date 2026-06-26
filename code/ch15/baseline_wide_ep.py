@@ -61,6 +61,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.expert: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
         self.expert_ids: Optional[torch.Tensor] = None
+        self._dest_ranks: Optional[torch.Tensor] = None
         self._recv_buf: Optional[torch.Tensor] = None
         self._recv_back: Optional[torch.Tensor] = None
         self._out_flat: Optional[torch.Tensor] = None
@@ -87,6 +88,8 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         token_ids = torch.arange(self.batch * self.seq, device=self.device, dtype=torch.int64)
         self.expert_ids = _pseudo_uniform_expert_ids(token_ids, self.num_experts).view(self.batch, self.seq)
+        expert_ids_flat = self.expert_ids.reshape(-1)
+        self._dest_ranks = torch.div(expert_ids_flat, self.experts_per_rank, rounding_mode="floor")
         flat = self.inputs.view(-1, self.hidden_size)
         self._recv_buf = torch.empty_like(flat)
         self._recv_back = torch.empty_like(flat)
@@ -106,7 +109,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if (
             self.expert is None
             or self.inputs is None
-            or self.expert_ids is None
+            or self._dest_ranks is None
             or self._recv_buf is None
             or self._recv_back is None
             or self._out_flat is None
@@ -114,8 +117,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         flat = self.inputs.view(-1, self.hidden_size)
-        expert_ids_flat = self.expert_ids.reshape(-1)
-        dest_ranks = torch.div(expert_ids_flat, self.experts_per_rank, rounding_mode="floor")
+        dest_ranks = self._dest_ranks
 
         with self._nvtx_range("baseline_wide_ep"):
             with torch.no_grad():
@@ -172,6 +174,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.expert = None
         self.inputs = None
         self.expert_ids = None
+        self._dest_ranks = None
         self._recv_buf = None
         self._recv_back = None
         self._out_flat = None
@@ -192,4 +195,3 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineWideEPBenchmark()
-
