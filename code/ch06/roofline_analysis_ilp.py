@@ -7,10 +7,10 @@ from typing import Dict, Optional
 
 import torch
 
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from ch06.baseline_elementwise_ilp import BaselineElementwiseILPBenchmark
 from ch06.optimized_elementwise_ilp import OptimizedElementwiseILPBenchmark
+from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
 class RooflineAnalyzer:
@@ -90,6 +90,8 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.results: Optional[Dict] = None
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._output_values: Optional[list[float]] = None
+        self._ridge_point_value: Optional[float] = None
     
     def setup(self) -> None:
         """Setup: Initialize roofline analyzer."""
@@ -118,19 +120,22 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "optimized": optimized_result,
                 "ridge_point": self.analyzer.ridge_point,
             }
-            # Convert key metrics to tensor for verification
-            self.output = torch.tensor([
+            self._output_values = [
                 baseline_result.get("achieved_tflops", 0.0),
                 baseline_result.get("efficiency", 0.0),
                 optimized_result.get("achieved_tflops", 0.0),
                 optimized_result.get("efficiency", 0.0),
                 self.analyzer.ridge_point,
-            ], dtype=torch.float32)
-            self._verify_input = torch.tensor([self.analyzer.ridge_point], dtype=torch.float32)
+            ]
+            self._ridge_point_value = self.analyzer.ridge_point
+            self.output = None
+            self._verify_input = None
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or self._verify_input is None:
+        if self._output_values is None or self._ridge_point_value is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self.output = torch.tensor(self._output_values, dtype=torch.float32)
+        self._verify_input = torch.tensor([self._ridge_point_value], dtype=torch.float32)
         self._set_verification_payload(
             inputs={"ridge_point": self._verify_input},
             output=self.output,
@@ -148,6 +153,10 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         self.results = None
+        self.output = None
+        self._verify_input = None
+        self._output_values = None
+        self._ridge_point_value = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

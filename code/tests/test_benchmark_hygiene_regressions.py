@@ -548,6 +548,22 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_ch06_roofline_ilp_defers_verification_tensors_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "ch06" / "roofline_analysis_ilp.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+
+    assert "torch.tensor(" not in benchmark_section
+    assert "self._output_values = [" in benchmark_section
+    assert "self._ridge_point_value = self.analyzer.ridge_point" in benchmark_section
+    assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
+    assert "self._verify_input = torch.tensor([self._ridge_point_value], dtype=torch.float32)" in capture_section
+
+
 def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_loop() -> None:
     training_pair = (
         "baseline_precisionfp8.py",
