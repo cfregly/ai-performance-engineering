@@ -2041,6 +2041,9 @@ def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     assert "has_padding = False" in cached_attention_section
     assert "if write_pos + delta_len < required_seq_len:" in cached_attention_section
     assert "if has_padding" in cached_attention_section
+    assert "attn_k.zero_()" not in cached_attention_section
+    assert "attn_v.zero_()" not in cached_attention_section
+    assert "valid_mask.fill_(False)" in cached_attention_section
 
 
 def test_ch16_inference_serving_tracks_packed_max_tokens_on_host() -> None:

@@ -832,8 +832,6 @@ class TensorParallelAttention(nn.Module):
             attn_k = self._attn_k_workspace[:batch_size, :, :required_seq_len, :]
             attn_v = self._attn_v_workspace[:batch_size, :, :required_seq_len, :]
             valid_mask = self._valid_mask_workspace[:batch_size, :required_seq_len]
-            attn_k.zero_()
-            attn_v.zero_()
             valid_mask.fill_(False)
 
             for idx, (cache_len, cache_k, cache_v) in enumerate(cache_entries):
