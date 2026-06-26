@@ -16,12 +16,9 @@ def build_block_sparse_pattern(
     if seq_len % block_size != 0:
         raise ValueError("seq_len must be divisible by block_size")
     blocks = seq_len // block_size
-    mask = torch.zeros((blocks, blocks), dtype=torch.bool)
-    for row in range(blocks):
-        start = max(0, row - window_blocks)
-        end = min(blocks, row + window_blocks + 1)
-        mask[row, start:end] = True
-    return mask
+    row_ids = torch.arange(blocks).unsqueeze(1)
+    col_ids = torch.arange(blocks).unsqueeze(0)
+    return (col_ids >= row_ids - window_blocks) & (col_ids <= row_ids + window_blocks)
 
 
 def build_dense_attention_mask(

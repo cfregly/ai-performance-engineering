@@ -1622,13 +1622,26 @@ def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:
 
 
 def test_ch16_block_sparse_bsr_build_uses_vectorized_metadata() -> None:
-    from ch16.block_sparse_attention_utils import build_bsr_from_block_mask
+    from ch16.block_sparse_attention_utils import build_block_sparse_pattern, build_bsr_from_block_mask
 
     source = (REPO_ROOT / "ch16" / "block_sparse_attention_utils.py").read_text(
         encoding="utf-8"
     )
+    pattern_section = source.split("def build_block_sparse_pattern", maxsplit=1)[1].split(
+        "def build_dense_attention_mask", maxsplit=1
+    )[0]
     bsr_section = source.split("def build_bsr_from_block_mask", maxsplit=1)[1]
 
+    pattern = build_block_sparse_pattern(seq_len=16, block_size=4, window_blocks=1)
+    expected_pattern = torch.tensor(
+        [
+            [True, True, False, False],
+            [True, True, True, False],
+            [False, True, True, True],
+            [False, False, True, True],
+        ],
+        dtype=torch.bool,
+    )
     block_mask = torch.tensor(
         [
             [True, False, True],
@@ -1641,9 +1654,13 @@ def test_ch16_block_sparse_bsr_build_uses_vectorized_metadata() -> None:
         device=torch.device("cpu"),
     )
 
+    torch.testing.assert_close(pattern, expected_pattern)
     torch.testing.assert_close(indptr, torch.tensor([0, 2, 4, 5], dtype=torch.int32))
     torch.testing.assert_close(indices, torch.tensor([0, 2, 1, 2, 0], dtype=torch.int32))
     assert sparsity_ratio == 1.0 - (5.0 / 9.0)
+    assert "row_ids = torch.arange(blocks).unsqueeze(1)" in pattern_section
+    assert "col_ids = torch.arange(blocks).unsqueeze(0)" in pattern_section
+    assert "for row in range(blocks)" not in pattern_section
     assert "torch.nonzero(mask, as_tuple=False)[:, 1]" in bsr_section
     assert "torch.cumsum(row_counts, dim=0, out=indptr_src[1:])" in bsr_section
     assert ".tolist()" not in bsr_section
