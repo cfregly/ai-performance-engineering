@@ -204,6 +204,37 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     assert "dist.reduce_scatter(reducescatter_output, reducescatter_input)" in collective_section
 
 
+def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
+    baseline_source = (REPO_ROOT / "ch14" / "baseline_nccl_quantization.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_source = (REPO_ROOT / "ch14" / "optimized_nccl_quantization.py").read_text(
+        encoding="utf-8"
+    )
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    baseline_capture = baseline_source.split(
+        "def capture_verification_payload", maxsplit=1
+    )[1].split("def teardown", maxsplit=1)[0]
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    optimized_capture = optimized_source.split(
+        "def capture_verification_payload", maxsplit=1
+    )[1].split("def teardown", maxsplit=1)[0]
+
+    assert "self.tensor.detach().clone()" not in baseline_benchmark
+    assert "self.output = self.tensor.detach()" in baseline_benchmark
+    assert "output=self.output.detach().clone()" in baseline_capture
+    assert "float(dequant.sum())" not in optimized_benchmark
+    assert "self.output = dequant.clone()" not in optimized_benchmark
+    assert "self.quantized = quantized" in optimized_benchmark
+    assert "self.dequantized = dequant" in optimized_benchmark
+    assert "self.output = dequant.detach()" in optimized_benchmark
+    assert "output=self.output.detach().clone()" in optimized_capture
+
+
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()

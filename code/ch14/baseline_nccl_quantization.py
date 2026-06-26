@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import torch
 from typing import Optional
+
+import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
@@ -45,7 +46,7 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
     def benchmark_fn(self) -> None:
         """Benchmark: CPU quantization + host/device transfers."""
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
         config = self.get_config()
 
@@ -65,14 +66,14 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 total += float(dq.sum())
                 self.tensor[idx].copy_(dq.to(self.device))
             self._last = total
-            self.output = self.tensor.detach().clone()
+            self.output = self.tensor.detach()
         if self.output is None or self.tensor is None:
             raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
             inputs={"input": self.tensor.detach().clone()},
-            output=self.output,
+            output=self.output.detach().clone(),
             batch_size=self.num_chunks,
             parameter_count=0,
             precision_flags={
@@ -118,4 +119,3 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return BaselineNCCLQuantizationBenchmark()
-

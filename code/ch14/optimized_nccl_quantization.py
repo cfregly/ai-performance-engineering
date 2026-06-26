@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import torch
-
 from typing import Optional
+
+import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
@@ -12,6 +12,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
+
 
 class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: Quantization with NCCL collective operations."""
@@ -47,7 +48,7 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
     
     def benchmark_fn(self) -> None:
         """Benchmark: Quantization operations with NCCL."""
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
         config = self.get_config()
 
@@ -61,8 +62,9 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
                 scales = 127.0 / max_abs
                 quantized = torch.clamp(torch.round(self.tensor * scales), -127, 127).to(torch.int8)
                 dequant = quantized.float() / scales
-                self._last = float(dequant.sum())
-                self.output = dequant.clone()
+                self.quantized = quantized
+                self.dequantized = dequant
+                self.output = dequant.detach()
             torch.cuda.current_stream(device=self.device).wait_stream(self.stream)
         if self.output is None or self.tensor is None:
             raise RuntimeError("benchmark_fn() must produce output")
@@ -70,7 +72,7 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
             inputs={"input": self.tensor},
-            output=self.output,
+            output=self.output.detach().clone(),
             batch_size=self.num_chunks,
             parameter_count=0,
             precision_flags={
