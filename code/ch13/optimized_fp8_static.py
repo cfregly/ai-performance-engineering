@@ -28,14 +28,13 @@ REQUIREMENTS:
 
 from __future__ import annotations
 
-from pathlib import Path
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, List, Optional
-from dataclasses import dataclass, field
-from contextlib import contextmanager
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
@@ -51,14 +50,22 @@ class CalibrationStats:
     amax_history: List[float] = field(default_factory=list)
     running_amax: float = 0.0
     num_samples: int = 0
+    _amax_tensors: List[torch.Tensor] = field(default_factory=list, repr=False)
     
     def update(self, tensor: torch.Tensor):
-        current_amax = tensor.abs().max().item()
-        self.amax_history.append(current_amax)
-        self.running_amax = max(self.running_amax, current_amax)
+        self._amax_tensors.append(tensor.detach().abs().amax())
         self.num_samples += 1
+
+    def _materialize_amax_history(self) -> None:
+        if not self._amax_tensors:
+            return
+        values = torch.stack(self._amax_tensors).detach().cpu().tolist()
+        self.amax_history.extend(float(value) for value in values)
+        self.running_amax = max(self.running_amax, max(float(value) for value in values))
+        self._amax_tensors.clear()
     
     def get_scale(self, fp8_max: float = 448.0, margin: float = 0.0) -> float:
+        self._materialize_amax_history()
         amax = self.running_amax * (1.0 + margin)
         return max(amax / fp8_max, 1e-12)
 
@@ -339,5 +346,4 @@ class StaticFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return StaticFP8Benchmark()
-
 

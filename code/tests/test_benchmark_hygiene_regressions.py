@@ -2268,6 +2268,37 @@ def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:
         assert "output=self.output.detach().clone()" in capture_section
 
 
+def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
+    targets = ("fp8_static_demo.py", "optimized_fp8_static.py")
+
+    for name in targets:
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        stats_section = source.split("class CalibrationStats", maxsplit=1)[1].split(
+            "class StaticFP8Linear",
+            maxsplit=1,
+        )[0]
+
+        assert "self._amax_tensors.append(tensor.detach().abs().amax())" in stats_section
+        assert "torch.stack(self._amax_tensors).detach().cpu().tolist()" in stats_section
+        assert "tensor.abs().max().item()" not in stats_section
+        assert "self.running_amax = max(self.running_amax, current_amax)" not in stats_section
+
+    demo_source = (REPO_ROOT / "ch13" / "fp8_static_demo.py").read_text(encoding="utf-8")
+    scale_section = demo_source.split("def get_all_scales", maxsplit=1)[1].split(
+        "#============================================================================",
+        maxsplit=1,
+    )[0]
+    info_section = demo_source.split("def get_calibration_info", maxsplit=1)[1].split(
+        "class StaticFP8Model",
+        maxsplit=1,
+    )[0]
+
+    assert "scale_values = torch.stack(" in scale_section
+    assert "layer.input_scale.item()" not in scale_section
+    assert "self.is_calibrated.item()" not in info_section
+    assert "is_calibrated, input_scale, weight_scale = torch.stack(" in info_section
+
+
 def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_loop() -> None:
     precision_targets = {
         "baseline_precisionmixed.py": "output=self.output.detach().clone()",
