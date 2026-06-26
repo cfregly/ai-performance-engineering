@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Optional
 
 import torch
 import torch.nn as nn
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.benchmark.wrapper_utils import attach_benchmark_metadata
+from core.benchmark.wrapper_utils import attach_benchmark_metadata as attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.optimization.moe_inference import ExpertMLP
 
@@ -56,7 +56,12 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._dest_ranks: Optional[torch.Tensor] = None
         self._dest_groups: Optional[torch.Tensor] = None
         self._out_flat: Optional[torch.Tensor] = None
+        self._baseline_perm: Optional[torch.Tensor] = None
+        self._baseline_packed: Optional[torch.Tensor] = None
+        self._baseline_out: Optional[torch.Tensor] = None
         self._local_perm: Optional[torch.Tensor] = None
+        self._local_packed: Optional[torch.Tensor] = None
+        self._local_out: Optional[torch.Tensor] = None
         self._remote_perm: Optional[torch.Tensor] = None
         self._remote_cpu_sorted: Optional[torch.Tensor] = None
         self._remote_packed: Optional[torch.Tensor] = None
@@ -89,10 +94,32 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._dest_groups = torch.div(self._dest_ranks, self.ranks_per_group, rounding_mode="floor")
         self._out_flat = torch.empty_like(flat)
 
+        baseline_perm_parts: list[torch.Tensor] = []
+        for rank in range(self.logical_world_size):
+            indices = (self._dest_ranks == rank).nonzero(as_tuple=False).squeeze(-1)
+            if indices.numel() > 0:
+                baseline_perm_parts.append(indices)
+        if not baseline_perm_parts:
+            raise RuntimeError("Routing produced no tokens for any logical rank")
+        self._baseline_perm = torch.cat(baseline_perm_parts, dim=0)
+        self._baseline_packed = torch.empty_like(flat)
+        self._baseline_out = torch.empty_like(flat)
+
         local_mask = self._dest_groups == 0
         remote_mask = ~local_mask
         self._local_perm = local_mask.nonzero(as_tuple=False).squeeze(-1)
         self._remote_perm = remote_mask.nonzero(as_tuple=False).squeeze(-1)
+        if self._local_perm.numel() > 0:
+            self._local_packed = torch.empty(
+                self._local_perm.numel(),
+                self.hidden_size,
+                device=self.device,
+                dtype=self.dtype,
+            )
+            self._local_out = torch.empty_like(self._local_packed)
+        else:
+            self._local_packed = None
+            self._local_out = None
 
         if self._remote_perm.numel() > 0:
             remote_sort = torch.argsort(
@@ -162,27 +189,23 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._run_hierarchical()
 
     def _run_baseline(self) -> None:
-        if self.expert is None or self.inputs is None or self._out_flat is None or self._dest_ranks is None:
+        if (
+            self.expert is None
+            or self.inputs is None
+            or self._out_flat is None
+            or self._baseline_perm is None
+            or self._baseline_packed is None
+            or self._baseline_out is None
+        ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         flat = self.inputs.view(-1, self.hidden_size)
-        send_tokens: list[torch.Tensor] = []
-        send_pos: list[torch.Tensor] = []
 
         with self._nvtx_range(self.label):
             with torch.no_grad():
-                for rank in range(self.logical_world_size):
-                    indices = (self._dest_ranks == rank).nonzero(as_tuple=False).squeeze(-1)
-                    if indices.numel() == 0:
-                        continue
-                    send_tokens.append(flat.index_select(0, indices))
-                    send_pos.append(indices)
-                if not send_tokens:
-                    raise RuntimeError("Routing produced no tokens for any logical rank")
-                perm = torch.cat(send_pos, dim=0)
-                packed = torch.cat(send_tokens, dim=0)
-                recv_out = self.expert(packed)
-                self._out_flat.index_copy_(0, perm, recv_out)
+                torch.index_select(flat, 0, self._baseline_perm, out=self._baseline_packed)
+                self._baseline_out.copy_(self.expert(self._baseline_packed))
+                self._out_flat.index_copy_(0, self._baseline_perm, self._baseline_out)
                 self.output = self._out_flat.view(self.batch, self.seq, self.hidden_size)
 
     def _run_overlap(self) -> None:
@@ -191,6 +214,7 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.inputs is None
             or self._out_flat is None
             or self._local_perm is None
+            or (self._local_perm.numel() > 0 and (self._local_packed is None or self._local_out is None))
             or self._remote_perm is None
             or self._remote_cpu_sorted is None
             or self._remote_packed is None
@@ -207,9 +231,9 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     with torch.cuda.stream(self._comm_stream):
                         self._remote_packed.copy_(self._remote_cpu_sorted, non_blocking=True)
                 if self._local_perm.numel() > 0:
-                    local_tokens = flat.index_select(0, self._local_perm)
-                    local_out = self.expert(local_tokens)
-                    self._out_flat.index_copy_(0, self._local_perm, local_out)
+                    torch.index_select(flat, 0, self._local_perm, out=self._local_packed)
+                    self._local_out.copy_(self.expert(self._local_packed))
+                    self._out_flat.index_copy_(0, self._local_perm, self._local_out)
                 if self._remote_perm.numel() > 0:
                     torch.cuda.current_stream(self.device).wait_stream(self._comm_stream)
                     self._remote_out.copy_(self.expert(self._remote_packed))
@@ -270,7 +294,12 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._dest_ranks = None
         self._dest_groups = None
         self._out_flat = None
+        self._baseline_perm = None
+        self._baseline_packed = None
+        self._baseline_out = None
         self._local_perm = None
+        self._local_packed = None
+        self._local_out = None
         self._remote_perm = None
         self._remote_cpu_sorted = None
         self._remote_packed = None

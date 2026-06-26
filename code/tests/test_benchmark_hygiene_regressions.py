@@ -1583,6 +1583,39 @@ def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
     assert "torch.index_select(flat, 0, perm, out=recv_buf)" in optimized_benchmark
 
 
+def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
+    source = (REPO_ROOT / "ch15" / "moe_comm_exchange_benchmarks.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def get_custom_streams",
+        maxsplit=1,
+    )[0]
+    baseline_section = source.split("def _run_baseline", maxsplit=1)[1].split(
+        "def _run_overlap",
+        maxsplit=1,
+    )[0]
+    overlap_section = source.split("def _run_overlap", maxsplit=1)[1].split(
+        "def _run_hierarchical",
+        maxsplit=1,
+    )[0]
+
+    assert "self._baseline_perm = torch.cat(baseline_perm_parts, dim=0)" in setup_section
+    assert "self._baseline_packed = torch.empty_like(flat)" in setup_section
+    assert "self._baseline_out = torch.empty_like(flat)" in setup_section
+    assert "self._local_packed = torch.empty(" in setup_section
+    assert "send_tokens" not in baseline_section
+    assert "send_pos" not in baseline_section
+    assert ".nonzero(" not in baseline_section
+    assert "torch.cat(" not in baseline_section
+    assert "torch.index_select(flat, 0, self._baseline_perm, out=self._baseline_packed)" in baseline_section
+    assert "self._baseline_out.copy_(self.expert(self._baseline_packed))" in baseline_section
+    assert "local_tokens = flat.index_select" not in overlap_section
+    assert "local_out = self.expert" not in overlap_section
+    assert "torch.index_select(flat, 0, self._local_perm, out=self._local_packed)" in overlap_section
+    assert "self._local_out.copy_(self.expert(self._local_packed))" in overlap_section
+
+
 def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:
     source = (REPO_ROOT / "labs" / "moe_parallelism" / "benchmarking.py").read_text(
         encoding="utf-8"
