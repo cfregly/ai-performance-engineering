@@ -12,13 +12,15 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-from enum import Enum
 import os
+from enum import Enum
 
 import torch
 
+from core.benchmark.blackwell_requirements import ensure_blackwell_tma_supported
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.harness.cuda_capabilities import tma_support_status
 from labs.persistent_decode.persistent_decode_common import (
     build_inputs,
     get_stream_priorities,
@@ -26,8 +28,6 @@ from labs.persistent_decode.persistent_decode_common import (
     resolve_shapes,
     tokens_per_iteration,
 )
-from core.benchmark.blackwell_requirements import ensure_blackwell_tma_supported
-from core.harness.cuda_capabilities import tma_support_status
 
 
 def _enable_blackwell_compiler_defaults() -> None:
@@ -299,6 +299,8 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._history: dict[str, list[float]] = {}
         self._pending_iteration: dict[str, object] | None = None
         self._tma_ext: object | None = None
+        self._full_events: dict[str, torch.cuda.Event] = {}
+        self._piecewise_events: dict[str, torch.cuda.Event] = {}
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
         self.output: torch.Tensor | None = None
 
@@ -323,6 +325,16 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.graph_k = self.inputs.k.clone()
         self.graph_v = self.inputs.v.clone()
         self.graph_out = torch.zeros_like(self.inputs.out)
+        self._full_events = {
+            "start": torch.cuda.Event(enable_timing=True),
+            "end": torch.cuda.Event(enable_timing=True),
+        }
+        self._piecewise_events = {
+            "start_prefill": torch.cuda.Event(enable_timing=True),
+            "end_prefill": torch.cuda.Event(enable_timing=True),
+            "start_decode": torch.cuda.Event(enable_timing=True),
+            "end_decode": torch.cuda.Event(enable_timing=True),
+        }
 
         torch.cuda.synchronize()
         with torch.cuda.graph(self.decode_graph, stream=self.decode_stream):
@@ -405,8 +417,8 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             or (self.graph_mode == GraphMode.FULL_AND_PIECEWISE and self.seq_len <= self.max_capture_seq)
         )
         if use_full and self.full_graph is not None:
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
+            start = self._full_events["start"]
+            end = self._full_events["end"]
             with self._nvtx_range("full_graph_high_pri"):
                 with torch.cuda.stream(self.decode_stream):
                     start.record(self.decode_stream)
@@ -427,15 +439,15 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             return
 
         with self._nvtx_range("prefill_shaped_low_pri"):
-            start_prefill = torch.cuda.Event(enable_timing=True)
-            end_prefill = torch.cuda.Event(enable_timing=True)
+            start_prefill = self._piecewise_events["start_prefill"]
+            end_prefill = self._piecewise_events["end_prefill"]
             start_prefill.record()
             pref_events = self._prefill_shaped(async_only=True)
         with self._nvtx_range(
             "decode_graph_high_pri" if self.graph_mode != GraphMode.FULL_AND_PIECEWISE else "graph_fallback_piecewise"
         ):
-            start_decode = torch.cuda.Event(enable_timing=True)
-            end_decode = torch.cuda.Event(enable_timing=True)
+            start_decode = self._piecewise_events["start_decode"]
+            end_decode = self._piecewise_events["end_decode"]
             with torch.cuda.stream(self.decode_stream):
                 start_decode.record(self.decode_stream)
                 self._decode_graph()
@@ -535,4 +547,3 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedTmaPrefillDecodeBenchmark()
-
