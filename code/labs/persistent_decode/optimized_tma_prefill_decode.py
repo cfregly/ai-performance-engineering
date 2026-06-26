@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 import os
 from enum import Enum
+from typing import Optional
 
 import torch
 
@@ -301,6 +302,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._tma_ext: object | None = None
         self._full_events: dict[str, torch.cuda.Event] = {}
         self._piecewise_events: dict[str, torch.cuda.Event] = {}
+        self._prefill_events: list[torch.cuda.Event] = []
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
         self.output: torch.Tensor | None = None
 
@@ -335,6 +337,10 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             "start_decode": torch.cuda.Event(enable_timing=True),
             "end_decode": torch.cuda.Event(enable_timing=True),
         }
+        self._prefill_events = [
+            torch.cuda.Event(enable_timing=False, blocking=False)
+            for _ in range(self.prefill_chunks)
+        ]
 
         torch.cuda.synchronize()
         with torch.cuda.graph(self.decode_graph, stream=self.decode_stream):
@@ -372,6 +378,8 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         """Launch cp.async.bulk.tensor copies on multiple streams with a max_in_flight cap."""
         if self._tma_ext is None:
             raise RuntimeError("TMA extension not initialized")
+        if len(self._prefill_events) < self.prefill_chunks:
+            raise RuntimeError("Prefill events not initialized")
         events = []
         for idx in range(self.prefill_chunks):
             stream = self.prefill_streams[idx % len(self.prefill_streams)]
@@ -381,7 +389,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
                     self.prefill_dst[idx],
                     self.cfg.chunk_k,
                 )
-            evt = torch.cuda.Event(enable_timing=False, blocking=False)
+            evt = self._prefill_events[idx]
             evt.record(stream)
             events.append(evt)
             if len(events) > self.cfg.max_in_flight:
@@ -522,6 +530,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.inputs = None
         self.full_graph = None
         self.output = None
+        self._prefill_events = []
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(
