@@ -1199,6 +1199,20 @@ def test_nanochat_kv_cache_growth_avoids_cat_with_uninitialized_tail() -> None:
     assert "grown_cache[:, :, :, :, :old_seq_len, :].copy_(self.kv_cache)" in grow_section
 
 
+def test_nanochat_loss_eval_batches_reduced_totals() -> None:
+    source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "loss_eval.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "totals = torch.stack((total_nats.to(torch.float64), total_bytes.to(torch.float64)))" in source
+    assert "dist.all_reduce(totals, op=dist.ReduceOp.SUM)" in source
+    assert "total_nats, total_bytes = totals.detach().cpu().tolist()" in source
+    assert "dist.all_reduce(total_nats" not in source
+    assert "dist.all_reduce(total_bytes" not in source
+    assert "total_nats = total_nats.item()" not in source
+    assert "total_bytes = total_bytes.item()" not in source
+
+
 def test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa(monkeypatch: pytest.MonkeyPatch) -> None:
     from labs.nanochat_fullstack.nanochat.kernels import clustered_attention as clustered_attention_module
 

@@ -51,14 +51,13 @@ def evaluate_bpb(model, batches, steps, token_bytes):
             num_bytes2d = token_bytes[y]
             total_nats += (loss2d * (num_bytes2d > 0)).sum()
             total_bytes += num_bytes2d.sum()
+    totals = torch.stack((total_nats.to(torch.float64), total_bytes.to(torch.float64)))
     # sum reduce across all ranks
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     if world_size > 1:
-        dist.all_reduce(total_nats, op=dist.ReduceOp.SUM)
-        dist.all_reduce(total_bytes, op=dist.ReduceOp.SUM)
+        dist.all_reduce(totals, op=dist.ReduceOp.SUM)
     # move both to cpu, calculate bpb and return
-    total_nats = total_nats.item()
-    total_bytes = total_bytes.item()
+    total_nats, total_bytes = totals.detach().cpu().tolist()
     if total_bytes == 0:
         return float('inf')
     bpb = total_nats / (math.log(2) * total_bytes)
