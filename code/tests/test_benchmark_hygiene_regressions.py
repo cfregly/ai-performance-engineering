@@ -1335,11 +1335,19 @@ def test_ch18_dynamic_flex_attention_mask_avoids_scalar_tensor_allocation() -> N
         "def compile_module",
         maxsplit=1,
     )[0]
+    large_source = (REPO_ROOT / "ch18" / "flex_attention_large_model.py").read_text(encoding="utf-8")
+    large_flex_section = large_source.split("class FlexAttentionModel", maxsplit=1)[1].split(
+        "def estimate_memory",
+        maxsplit=1,
+    )[0]
 
+    assert source.count("create_block_mask(self.mask_fn, B, H, T, T, device=Q.device)") == 3
     assert "window_sizes = self.window_sizes_tensor" in dynamic_section
     assert "if window_sizes.device != q_idx.device:" in dynamic_section
     assert "window_size = window_sizes[int(h)]" in dynamic_section
     assert "torch.tensor(h" not in dynamic_section
+    assert "device=x.device" in large_flex_section
+    assert ".to(x.device)" not in large_flex_section
 
 
 def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None:

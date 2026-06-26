@@ -103,7 +103,7 @@ class SlidingWindowCausalAttention(nn.Module):
     
     def forward(self, Q, K, V):
         B, H, T, D = Q.shape
-        block_mask = create_block_mask(self.mask_fn, B, H, T, T)
+        block_mask = create_block_mask(self.mask_fn, B, H, T, T, device=Q.device)
         return flex_attention(Q, K, V, block_mask=block_mask)
 
 
@@ -135,7 +135,7 @@ class LocalGlobalAttention(nn.Module):
     
     def forward(self, Q, K, V):
         B, H, T, D = Q.shape
-        block_mask = create_block_mask(self.mask_fn, B, H, T, T)
+        block_mask = create_block_mask(self.mask_fn, B, H, T, T, device=Q.device)
         return flex_attention(Q, K, V, block_mask=block_mask)
 
 
@@ -191,7 +191,7 @@ class DynamicSlidingWindowAttention(nn.Module):
     
     def forward(self, Q, K, V):
         B, H, T, D = Q.shape
-        block_mask = create_block_mask(self.mask_fn, B, H, T, T)
+        block_mask = create_block_mask(self.mask_fn, B, H, T, T, device=Q.device)
         return flex_attention(Q, K, V, block_mask=block_mask)
 
 

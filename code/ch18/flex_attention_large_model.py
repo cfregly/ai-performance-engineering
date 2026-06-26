@@ -15,6 +15,7 @@ Test configurations:
 Hardware: NVIDIA B200 (SM 10.0, 178 GB HBM3e)
 """
 import os
+import sys
 
 try:
     pass
@@ -127,7 +128,7 @@ class TransformerBlock(nn.Module):
         if block_mask is None:
             def sliding_window(b, h, q_idx, kv_idx):
                 return (q_idx - kv_idx).abs() <= window_size
-            block_mask = create_block_mask(sliding_window, batch, self.n_heads, seq_len, seq_len)
+            block_mask = create_block_mask(sliding_window, batch, self.n_heads, seq_len, seq_len, device=x.device)
         attn_out = flex_attention(q, k, v, block_mask=block_mask)
         attn_out = attn_out.transpose(1, 2).reshape(batch, seq_len, self.d_model)
         x = self.out_proj(attn_out) + residual
@@ -178,7 +179,14 @@ class FlexAttentionModel(nn.Module):
         if block_mask is None or block_mask.device != x.device:
             def sliding_window(b, h, q_idx, kv_idx):
                 return (q_idx - kv_idx).abs() <= self.window_size
-            block_mask = create_block_mask(sliding_window, batch, self.blocks[0].n_heads, seq_len, seq_len).to(x.device)
+            block_mask = create_block_mask(
+                sliding_window,
+                batch,
+                self.blocks[0].n_heads,
+                seq_len,
+                seq_len,
+                device=x.device,
+            )
             self._mask_cache[cache_key] = block_mask
 
         for block in self.blocks:
