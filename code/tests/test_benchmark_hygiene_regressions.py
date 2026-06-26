@@ -612,6 +612,31 @@ def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:
     assert ".abs().max().item()" not in verify_section
 
 
+def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
+    dual_cta = (REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_cta.py").read_text(
+        encoding="utf-8"
+    )
+    dual_fp8 = (
+        REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_2sm_fp8.py"
+    ).read_text(encoding="utf-8")
+    dual_nvfp4 = (
+        REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_2sm_nvfp4.py"
+    ).read_text(encoding="utf-8")
+
+    dual_cta_check = dual_cta.split("def check", maxsplit=1)[1].split("def report", maxsplit=1)[0]
+    dual_fp8_check = dual_fp8.split("def check", maxsplit=1)[1].split("def report", maxsplit=1)[0]
+    dual_fp8_main = dual_fp8.split("if args.with_fp16:", maxsplit=1)[1].split(
+        "if args.sol > 0:",
+        maxsplit=1,
+    )[0]
+    dual_nvfp4_rel = dual_nvfp4.split("def rel_err", maxsplit=1)[1].split("def report", maxsplit=1)[0]
+
+    for section in (dual_cta_check, dual_fp8_check, dual_fp8_main, dual_nvfp4_rel):
+        assert "torch.stack(" in section
+        assert ".abs().max().item()" not in section
+        assert ".abs().max().item() /" not in section
+
+
 def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     ch14_source = (REPO_ROOT / "ch14" / "baseline_sliding_window.py").read_text(
         encoding="utf-8"

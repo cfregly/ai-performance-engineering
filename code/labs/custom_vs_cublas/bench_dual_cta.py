@@ -20,7 +20,6 @@ arms equally. Use this mode for any perf claim.
 from __future__ import annotations
 
 import argparse
-import os
 import statistics
 import sys
 from pathlib import Path
@@ -51,8 +50,13 @@ def bench(fn, a, b, warmup=10, iters=50):
 
 def check(fn, a, b, ref):
     out = fn(a, b).float()
-    max_diff = (ref - out).abs().max().item()
-    rel = max_diff / ref.abs().max().item()
+    max_diff, ref_abs_max = torch.stack(
+        (
+            (ref - out).abs().max(),
+            ref.abs().max(),
+        )
+    ).tolist()
+    rel = max_diff / ref_abs_max
     return rel
 
 
@@ -146,7 +150,7 @@ def main():
 
     if args.interleave > 0:
         times: dict[str, list[float]] = {name: [] for name, _, _ in arms}
-        for rep in range(args.interleave):
+        for _rep in range(args.interleave):
             for name, fn, _ in arms:
                 times[name].append(bench(fn, a, b, warmup=5, iters=20))
         print(f"Interleaved A/B: {args.interleave} reps x (warmup=5, iters=20) per arm, round-robin\n")

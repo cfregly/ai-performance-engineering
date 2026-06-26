@@ -156,8 +156,12 @@ def bench(fn, args, warmup=10, iters=50):
 
 def rel_err(out: torch.Tensor, ref_f32: torch.Tensor) -> float:
     ref16 = ref_f32.to(torch.float16).float()
-    max_diff = (ref16 - out.float()).abs().max().item()
-    denom = ref16.abs().max().item()
+    max_diff, denom = torch.stack(
+        (
+            (ref16 - out.float()).abs().max(),
+            ref16.abs().max(),
+        )
+    ).tolist()
     return max_diff / denom if denom else max_diff
 
 
@@ -275,14 +279,14 @@ def main():
 
     if args.interleave > 0:
         print(f"Interleaved A/B: {args.interleave} round-robin reps/arm (median +/- spread)")
-        for name, fn, _ in arms:
+        for _name, fn, _ in arms:
             bench(fn, data, warmup=5, iters=10)
         samples = {name: [] for name, *_ in arms}
         for _ in range(args.interleave):
             for name, fn, _ in arms:
                 samples[name].append(bench(fn, data, warmup=2, iters=10))
         print()
-        for name, fn, r in arms:
+        for name, _fn, r in arms:
             med = statistics.median(samples[name])
             lo, hi = min(samples[name]), max(samples[name])
             report(name, med, r, M, N, K, exact_mode)
