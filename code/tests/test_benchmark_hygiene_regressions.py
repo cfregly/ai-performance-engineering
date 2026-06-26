@@ -1340,8 +1340,10 @@ def test_ch18_dynamic_flex_attention_mask_avoids_scalar_tensor_allocation() -> N
         "def estimate_memory",
         maxsplit=1,
     )[0]
+    native_source = (REPO_ROOT / "ch18" / "flex_attention_native.py").read_text(encoding="utf-8")
 
     assert source.count("create_block_mask(self.mask_fn, B, H, T, T, device=Q.device)") == 3
+    assert native_source.count("device=Q.device") == 2
     assert "window_sizes = self.window_sizes_tensor" in dynamic_section
     assert "if window_sizes.device != q_idx.device:" in dynamic_section
     assert "window_size = window_sizes[int(h)]" in dynamic_section

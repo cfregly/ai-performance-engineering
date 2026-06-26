@@ -7,6 +7,7 @@ performance. FlexAttention must be compiled to generate fused kernels;
 without compilation it materializes the full attention matrix.
 """
 import os
+import sys
 
 try:
     pass
@@ -105,7 +106,7 @@ class FlexAttentionWRONG(nn.Module):
         def sliding_window(b, h, q_idx, kv_idx):
             return (q_idx - kv_idx).abs() <= self.window_size
         
-        block_mask = create_block_mask(sliding_window, B, H, T, T)
+        block_mask = create_block_mask(sliding_window, B, H, T, T, device=Q.device)
         
         # WITHOUT torch.compile - this is SLOW!
         return flex_attention(Q, K, V, block_mask=block_mask)
@@ -125,7 +126,7 @@ class FlexAttentionCORRECT(nn.Module):
         B, H, T, D = Q.shape
         
         # Create block mask using pre-defined function
-        block_mask = create_block_mask(self.mask_fn, B, H, T, T)
+        block_mask = create_block_mask(self.mask_fn, B, H, T, T, device=Q.device)
         
         # Will be compiled by torch.compile wrapper - generates fused kernel!
         return flex_attention(Q, K, V, block_mask=block_mask)
