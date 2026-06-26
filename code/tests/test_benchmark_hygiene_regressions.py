@@ -2772,6 +2772,20 @@ def test_ch12_kernel_launches_pair_keeps_hot_path_work_fixed() -> None:
     assert "self.graph_output = self.work_a" in optimized_source
 
 
+def test_ch12_bias_relu_residual_batches_verification_metric_reads() -> None:
+    source = (REPO_ROOT / "ch12" / "bias_relu_residual_fusion_benchmark.py").read_text(
+        encoding="utf-8"
+    )
+    correctness_section = source.split("# Correctness check", maxsplit=1)[1].split(
+        "baseline_ms = time_kernel",
+        maxsplit=1,
+    )[0]
+
+    assert "max_abs_baseline, max_abs_fused, l2_baseline, l2_fused = torch.stack(" in source
+    assert "torch.linalg.vector_norm(baseline_error)" in source
+    assert ".item()" not in correctness_section
+
+
 def test_ch13_precisionfp8_pad_inner_runs_single_forward_per_timed_iteration() -> None:
     baseline_source = (REPO_ROOT / "ch13" / "baseline_precisionfp8_pad_inner.py").read_text(encoding="utf-8")
     optimized_source = (REPO_ROOT / "ch13" / "optimized_precisionfp8_pad_inner.py").read_text(encoding="utf-8")
