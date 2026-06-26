@@ -273,6 +273,17 @@ class TestNumericalCorrectness:
         torch.testing.assert_close(out_k4, single_key)
         torch.testing.assert_close(out_v4, single_value)
 
+    def test_blackwell_inference_generate_preallocates_output_tokens(self):
+        blackwell = pytest.importorskip("ch16.inference_optimizations_blackwell")
+
+        source = inspect.getsource(blackwell.BlackwellInferencePipeline.generate)
+        assert "output_ids = torch.empty(" in source
+        assert "output_ids[:, :seq_len].copy_(input_ids)" in source
+        assert "output_ids[:, seq_len : seq_len + 1].copy_(next_token)" in source
+        assert "generated = [next_token]" not in source
+        assert "generated.append(next_token)" not in source
+        assert "torch.cat(generated" not in source
+
 
 # ============================================================================
 # 2. Performance Tests

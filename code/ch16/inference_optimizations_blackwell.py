@@ -480,22 +480,28 @@ class BlackwellInferencePipeline:
         
         # Clear KV cache
         self.kv_cache.clear()
+        if max_new_tokens <= 0:
+            return input_ids
+        output_ids = torch.empty(
+            batch_size,
+            seq_len + max_new_tokens,
+            device=input_ids.device,
+            dtype=input_ids.dtype,
+        )
+        output_ids[:, :seq_len].copy_(input_ids)
         
         # Prefill phase (process all input tokens)
         logits = self.model(input_ids)
         next_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)
-        
-        generated = [next_token]
+        output_ids[:, seq_len : seq_len + 1].copy_(next_token)
         
         # Decode phase (autoregressive generation)
-        for _ in range(max_new_tokens - 1):
+        for step in range(1, max_new_tokens):
             logits = self.model(next_token)
             next_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)
-            generated.append(next_token)
+            output_ids[:, seq_len + step : seq_len + step + 1].copy_(next_token)
         
-        # Concatenate all generated tokens
-        generated_tokens = torch.cat(generated, dim=1)
-        return torch.cat([input_ids, generated_tokens], dim=1)
+        return output_ids
     
     def benchmark(self, seq_len: int = 1024, num_iterations: int = 100):
         """Benchmark inference performance"""
