@@ -1371,6 +1371,7 @@ class InferenceServerMultiGPU:
         temperatures = self._temperature_workspace[:batch_size]
         lengths = self._length_workspace[:batch_size]
         token_counts = [0] * batch_size
+        max_tokens = 1
 
         # Materialise prompts/tokens into the reusable GPU workspace
         for pack_idx, (_orig_idx, state) in enumerate(eligible):
@@ -1379,17 +1380,19 @@ class InferenceServerMultiGPU:
             else:
                 token_source = [state.generated_tokens[-1]]
 
+            seq_len = len(token_source)
+
             token_tensor = torch.as_tensor(
                 token_source,
                 dtype=torch.long,
                 device=self.device,
             )
 
-            seq_len = token_tensor.numel()
             if seq_len > self.max_seq_len:
                 raise ValueError(
                     f"Sequence length {seq_len} exceeds configured max_seq_len={self.max_seq_len}"
                 )
+            max_tokens = max(max_tokens, seq_len)
 
             lengths[pack_idx] = seq_len
             temperatures[pack_idx] = state.request.temperature
@@ -1402,8 +1405,6 @@ class InferenceServerMultiGPU:
                 self._token_workspace[pack_idx, seq_len:prev_len].zero_()
             self._last_token_lengths[pack_idx] = seq_len
 
-        max_tokens = int(lengths[:batch_size].max().item())
-        max_tokens = max(max_tokens, 1)
         input_ids = self._token_workspace[:batch_size, :max_tokens]
 
         needs_cache_fetch = any(

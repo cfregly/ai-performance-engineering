@@ -1602,6 +1602,22 @@ def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     assert "if has_padding" in cached_attention_section
 
 
+def test_ch16_inference_serving_tracks_packed_max_tokens_on_host() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    generate_batch_section = source.split("def generate_batch", maxsplit=1)[1].split(
+        "needs_cache_fetch = any(",
+        maxsplit=1,
+    )[0]
+
+    assert "max_tokens = 1" in generate_batch_section
+    assert "seq_len = len(token_source)" in generate_batch_section
+    assert "max_tokens = max(max_tokens, seq_len)" in generate_batch_section
+    assert "lengths[:batch_size].max().item()" not in generate_batch_section
+    assert ".max().item()" not in generate_batch_section
+
+
 def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:
     source = (REPO_ROOT / "ch16" / "perplexity_eval.py").read_text(encoding="utf-8")
     loop_section = source.split("with torch.no_grad():", maxsplit=1)[1].split(
