@@ -14,7 +14,6 @@ Expected speedup: 1.2-1.5x over Level 2
 
 from __future__ import annotations
 
-import time
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -147,13 +146,13 @@ class GroupedMoEExperts(nn.Module):
         # Compute expert boundaries
         expert_counts = torch.bincount(sorted_expert_ids, minlength=self.num_experts)
         expert_offsets = torch.cumsum(expert_counts, dim=0) - expert_counts
+        expert_counts_cpu = [int(count) for count in expert_counts.detach().cpu().tolist()]
+        expert_offsets_cpu = [int(offset) for offset in expert_offsets.detach().cpu().tolist()]
         
         # Process each expert's tokens (grouped by expert for coalescing)
         output = torch.zeros_like(sorted_x)
         
-        for expert_id in range(self.num_experts):
-            start = expert_offsets[expert_id].item()
-            count = expert_counts[expert_id].item()
+        for expert_id, (start, count) in enumerate(zip(expert_offsets_cpu, expert_counts_cpu)):
             if count == 0:
                 continue
             end = start + count

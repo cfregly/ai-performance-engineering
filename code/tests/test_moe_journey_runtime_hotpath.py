@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 import torch
@@ -21,6 +22,25 @@ class _FakeForward:
         self.calls += 1
         assert input_ids.is_cuda
         return self.logits
+
+
+def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "labs"
+        / "moe_optimization_journey"
+        / "level4_triton.py"
+    ).read_text(encoding="utf-8")
+    grouped_section = source.split("class GroupedMoEExperts", maxsplit=1)[1].split(
+        "class TritonMoELayer",
+        maxsplit=1,
+    )[0]
+
+    assert "expert_counts_cpu = [int(count) for count in expert_counts.detach().cpu().tolist()]" in grouped_section
+    assert "expert_offsets_cpu = [int(offset) for offset in expert_offsets.detach().cpu().tolist()]" in grouped_section
+    assert "for expert_id, (start, count) in enumerate(zip(expert_offsets_cpu, expert_counts_cpu))" in grouped_section
+    assert "expert_offsets[expert_id].item()" not in grouped_section
+    assert "expert_counts[expert_id].item()" not in grouped_section
 
 
 @CUDA_REQUIRED
