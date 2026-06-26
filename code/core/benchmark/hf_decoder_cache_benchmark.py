@@ -6,14 +6,13 @@ https://chaimrand.medium.com/optimizing-token-generation-in-pytorch-decoder-mode
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from typing import Callable, Dict, Literal, Optional, Tuple
 
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.benchmark.wrapper_utils import attach_benchmark_metadata
+from core.benchmark.wrapper_utils import attach_benchmark_metadata as attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 try:
@@ -170,6 +169,8 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model: Optional[torch.nn.Module] = None
         self.prompt_ids: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verification_token: Optional[torch.Tensor] = None
+        self._prompt_pos: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self._static_cache: Optional[StaticCache] = None
         self._decode_step_fn: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None
@@ -275,6 +276,12 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = self._build_model()
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
         self.prompt_ids = self._build_prompts()
+        self._verification_token = torch.empty(
+            self.cfg.batch_size,
+            dtype=torch.int32,
+            device=self.device,
+        )
+        self._prompt_pos = torch.arange(self.cfg.prompt_tokens, device=self.device, dtype=torch.long)
         if self.cfg.cache_mode == "static":
             self._setup_static_cache()
         self._setup_eos_polling()
@@ -421,22 +428,21 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 prefill_logits = prefill[0]
                 past_key_values = prefill[1]
                 next_token = torch.argmax(prefill_logits[:, -1, :], dim=-1)
-                verification_token = next_token.detach().to(torch.int32).clone()
+                verification_token = next_token.detach()
                 self._prefill_end_event.record(current_stream)
                 _ = self._decode_dynamic(next_token, past_key_values)
             else:
-                if self._static_cache is None:
+                if self._static_cache is None or self._prompt_pos is None:
                     raise RuntimeError("Static cache mode selected but static cache is not initialized")
-                prompt_pos = torch.arange(self.cfg.prompt_tokens, device=self.device, dtype=torch.long)
                 prefill_logits = self.model(
                     input_ids=self.prompt_ids,
                     past_key_values=self._static_cache,
-                    cache_position=prompt_pos,
+                    cache_position=self._prompt_pos,
                     use_cache=True,
                     return_dict=False,
                 )[0]
                 next_token = torch.argmax(prefill_logits[:, -1, :], dim=-1)
-                verification_token = next_token.detach().to(torch.int32).clone()
+                verification_token = next_token.detach()
                 self._prefill_end_event.record(current_stream)
                 _ = self._decode_static(next_token)
 
@@ -450,9 +456,11 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = verification_token
 
     def capture_verification_payload(self) -> None:
-        if self.prompt_ids is None or self.output is None:
+        if self.prompt_ids is None or self.output is None or self._verification_token is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         self._refresh_iteration_metrics()
+        self._verification_token.copy_(self.output)
+        self.output = self._verification_token
         self._set_verification_payload(
             inputs={"prompt_ids": self.prompt_ids},
             output=self.output,
@@ -471,6 +479,8 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.prompt_ids = None
         self.output = None
+        self._verification_token = None
+        self._prompt_pos = None
         self._static_cache = None
         self._decode_step_fn = None
         self._poll_stream = None

@@ -1165,6 +1165,33 @@ def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
     assert "out=self._served_offload_mask" in benchmark_section
 
 
+def test_hf_decoder_cache_defers_verification_copy_outside_hot_loop() -> None:
+    source = (
+        REPO_ROOT / "core" / "benchmark" / "hf_decoder_cache_benchmark.py"
+    ).read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _prepare_iteration",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+
+    assert "self._verification_token = torch.empty(" in setup_section
+    assert "self._prompt_pos = torch.arange(" in setup_section
+    assert "verification_token = next_token.detach().to(torch.int32).clone()" not in benchmark_section
+    assert "prompt_pos = torch.arange(" not in benchmark_section
+    assert "verification_token = next_token.detach()" in benchmark_section
+    assert "cache_position=self._prompt_pos" in benchmark_section
+    assert "self._verification_token.copy_(self.output)" in capture_section
+    assert "self.output = self._verification_token" in capture_section
+
+
 def test_ch06_roofline_ilp_defers_verification_tensors_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch06" / "roofline_analysis_ilp.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
