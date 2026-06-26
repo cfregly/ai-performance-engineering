@@ -244,6 +244,10 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "torch.cuda.Event(enable_timing=True)" not in forward_section
     assert "torch.cuda.Event(enable_timing=True)" not in run_step_section
     assert "route_counts_global = route_counts" in forward_section
+    assert "route_type_counts = torch.stack(" in forward_section
+    assert "same_rank_mask.sum().item()" not in forward_section
+    assert "same_node_mask.sum().item()" not in forward_section
+    assert "remote_node_mask.sum().item()" not in forward_section
     assert "self._reduce_route_counts(" in forward_section
     assert "route_counts_cpu = route_counts_global.detach().cpu().tolist()" in forward_section
     assert "tokens_per_expert=[int(x) for x in route_counts_cpu]" in forward_section

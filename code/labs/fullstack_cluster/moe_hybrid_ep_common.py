@@ -709,9 +709,16 @@ class DeepSeekHybridEPModule(nn.Module):
                 combined.index_add_(0, token_indices[remote_node_mask], remote_outputs)
             if overlap_active and overlap_window_events is not None:
                 overlap_window_events[1].record(torch.cuda.current_stream())
-            same_rank_count = float(int(same_rank_mask.sum().item()))
-            same_node_count = float(int(same_node_mask.sum().item()))
-            remote_count = float(int(remote_node_mask.sum().item()))
+            route_type_counts = torch.stack(
+                (
+                    same_rank_mask.sum(),
+                    same_node_mask.sum(),
+                    remote_node_mask.sum(),
+                )
+            ).detach().cpu().tolist()
+            same_rank_count, same_node_count, remote_count = (
+                float(int(count)) for count in route_type_counts
+            )
         else:
             baseline_outputs, baseline_events = self._roundtrip_routes(
                 tokens=expanded_tokens,
