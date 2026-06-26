@@ -493,6 +493,34 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "self.output = torch.stack(self._last_outputs, dim=0)" in capture_section
 
 
+def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_stack() -> None:
+    source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_multigpu_common.py").read_text(
+        encoding="utf-8"
+    )
+    worker_section = source.split("def _run_torchrun_worker", maxsplit=1)[1].split(
+        "class _PrefillDecodeMultiGPUBenchmark", maxsplit=1
+    )[0]
+    run_iteration_section = worker_section.split("def run_iteration", maxsplit=1)[1].split(
+        "_barrier()", maxsplit=1
+    )[0]
+    class_section = source.split("class _PrefillDecodeMultiGPUBenchmark", maxsplit=1)[1]
+    benchmark_section = class_section.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = class_section.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def _prepare_verification_payload", maxsplit=1
+    )[0]
+
+    assert "torch.cuda.Event(blocking=False)" in worker_section
+    assert "ready = ready_events[group_idx]" in run_iteration_section
+    assert "torch.cuda.Event(" not in run_iteration_section
+    assert "torch.stack(" not in benchmark_section
+    assert ".detach().cpu()" not in benchmark_section
+    assert "self._pending_outputs = outputs" in benchmark_section
+    assert "self._output = torch.stack(" in capture_section
+    assert "[out.detach().cpu() for out in self._pending_outputs]" in capture_section
+
+
 def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> None:
     source = (REPO_ROOT / "labs" / "real_world_models" / "deepseek_r1_moe_optimization.py").read_text(
         encoding="utf-8"

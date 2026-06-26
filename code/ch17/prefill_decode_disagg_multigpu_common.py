@@ -324,6 +324,11 @@ def _run_torchrun_worker(
         (start, min(group_size, cfg.requests_per_rank - start))
         for start in range(0, cfg.requests_per_rank, group_size)
     ]
+    ready_events = (
+        [torch.cuda.Event(blocking=False) for _ in group_slices]
+        if is_prefill and use_overlap
+        else []
+    )
 
     if not is_prefill:
         assigned_prefills = _decode_assigned_prefills(rank, prefill_ranks, decode_ranks)
@@ -361,7 +366,7 @@ def _run_torchrun_worker(
                 handles: List[dist.Work] = []
                 inflight: List[torch.Tensor] = []
                 with torch.no_grad():
-                    for start, group_len in group_slices:
+                    for group_idx, (start, group_len) in enumerate(group_slices):
                         group_prompts = prompts[start:start + group_len].reshape(
                             group_len * cfg.batch_size,
                             cfg.context_window,
@@ -377,7 +382,7 @@ def _run_torchrun_worker(
                         seed_group = seed.view(group_len, cfg.batch_size, cfg.hidden_size)
                         inflight.append(kv_group)
                         inflight.append(seed_group)
-                        ready = torch.cuda.Event()
+                        ready = ready_events[group_idx]
                         ready.record()
                         handles.extend(
                             _batch_isend(
@@ -546,6 +551,7 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.label = label
         self._pairs: List[_LocalPair] = []
         self._output: Optional[torch.Tensor] = None
+        self._pending_outputs: List[torch.Tensor] = []
         self._verify_prompt: Optional[torch.Tensor] = None
         self._param_count: int = 0
 
@@ -623,6 +629,8 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
 
         self._param_count = total_params
+        self._output = None
+        self._pending_outputs = []
         if not self._pairs:
             raise RuntimeError("Failed to initialize prompts for verification")
         self._verify_prompt = self._pairs[0].prompts[0]
@@ -652,11 +660,17 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     decoded = _run_decode(self.cfg, pair.decode_model, kv_chunks, seed_chunks)
                     outputs.extend(decoded)
 
-        self._output = torch.stack([out.detach().cpu() for out in outputs], dim=0)
+        self._pending_outputs = outputs
+        self._output = None
 
     def capture_verification_payload(self) -> None:
-        if self._output is None or self._verify_prompt is None:
+        if self._verify_prompt is None or (self._output is None and not self._pending_outputs):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if self._output is None:
+            self._output = torch.stack(
+                [out.detach().cpu() for out in self._pending_outputs],
+                dim=0,
+            )
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
         meta_dtype = torch.float32
         self._set_verification_payload(
@@ -699,11 +713,12 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self._pairs = []
         self._output = None
+        self._pending_outputs = []
         self._verify_prompt = None
         torch.cuda.empty_cache()
 
     def validate_result(self) -> Optional[str]:
-        if self._output is None:
+        if self._output is None and not self._pending_outputs:
             return "No output captured"
         return None
 
