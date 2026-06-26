@@ -181,9 +181,10 @@ def build_gradient_inputs(
         generator=cpu_generator,
         dtype=torch.int64,
     )
-    offsets = torch.zeros(workload.num_segments + 1, dtype=torch.int64)
+    offsets = torch.empty(workload.num_segments + 1, dtype=torch.int64)
+    offsets[0] = 0
     offsets[1:] = torch.cumsum(lengths, dim=0)
-    total = sum(int(length) for length in lengths.tolist())
+    total = int(offsets[-1].item())
     values = torch.randn(total, generator=cpu_generator, dtype=torch.float32)
     return values.to(device=device), offsets.to(device=device), total
 
@@ -355,7 +356,7 @@ def build_padding_inputs(
         generator=cpu_generator,
         dtype=torch.int64,
     )
-    active_tokens = sum(int(seq_len) for seq_len in seq_lens_cpu.tolist())
+    active_tokens = int(seq_lens_cpu.sum().item())
     seq_lens = seq_lens_cpu.to(device=device)
     inputs = torch.randn(
         workload.batch_size,
