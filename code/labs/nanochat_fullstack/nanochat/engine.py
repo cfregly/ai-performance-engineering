@@ -524,7 +524,23 @@ class Engine:
         active_indices = active_mask.nonzero(as_tuple=False).squeeze(-1)
         if active_indices.numel() == 0:
             return sampled_tokens
-        for idx in active_indices.tolist():
+        active_rows = active_indices.tolist()
+        first_idx = active_rows[0]
+        first_temp = temperatures[first_idx]
+        first_top_k = top_ks[first_idx]
+        if all(temperatures[idx] == first_temp and top_ks[idx] == first_top_k for idx in active_rows):
+            active_logits = logits if len(active_rows) == logits.size(0) else logits.index_select(0, active_indices)
+            next_ids = sample_next_token(
+                active_logits,
+                rng,
+                temperature=first_temp,
+                top_k=first_top_k,
+            )
+            for idx, token in zip(active_rows, next_ids[:, 0].tolist()):
+                sampled_tokens[idx] = token
+            return sampled_tokens
+
+        for idx in active_rows:
             temp = temperatures[idx]
             top_k = top_ks[idx]
             next_id = sample_next_token(logits[idx:idx+1], rng, temperature=temp, top_k=top_k)

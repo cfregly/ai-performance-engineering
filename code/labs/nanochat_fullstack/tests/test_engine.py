@@ -5,7 +5,7 @@ python -m pytest tests/test_engine.py -v
 """
 
 import torch
-from nanochat.engine import KVCache
+from nanochat.engine import Engine, KVCache
 
 def test_kv_cache_resize():
     """
@@ -64,3 +64,57 @@ def test_kv_cache_resize():
             original_v = original_cache[layer_idx, 1, :, :, token_idx, :]
             assert (actual_k == original_k).all(), f"Layer {layer_idx}, token {token_idx}: key doesn't match original"
             assert (actual_v == original_v).all(), f"Layer {layer_idx}, token {token_idx}: value doesn't match original"
+
+
+def test_sample_batch_tokens_batches_uniform_sampling(monkeypatch):
+    calls = []
+
+    def fake_sample_next_token(logits, rng, temperature=1.0, top_k=None):
+        calls.append((logits.shape[0], temperature, top_k))
+        return torch.arange(10, 10 + logits.shape[0], dtype=torch.long).view(-1, 1)
+
+    monkeypatch.setitem(
+        Engine._sample_batch_tokens.__globals__, "sample_next_token", fake_sample_next_token
+    )
+    logits = torch.zeros((4, 8), dtype=torch.float32)
+    active_mask = torch.tensor([True, False, True, True])
+
+    tokens = Engine._sample_batch_tokens(
+        object(),
+        logits,
+        rng=None,
+        temperatures=[0.7, 0.7, 0.7, 0.7],
+        top_ks=[4, 4, 4, 4],
+        active_mask=active_mask,
+        pad_id=0,
+    )
+
+    assert calls == [(3, 0.7, 4)]
+    assert tokens == [10, 0, 11, 12]
+
+
+def test_sample_batch_tokens_preserves_mixed_sampling_fallback(monkeypatch):
+    calls = []
+
+    def fake_sample_next_token(logits, rng, temperature=1.0, top_k=None):
+        calls.append((logits.shape[0], temperature, top_k))
+        return torch.tensor([[len(calls) + 20]], dtype=torch.long)
+
+    monkeypatch.setitem(
+        Engine._sample_batch_tokens.__globals__, "sample_next_token", fake_sample_next_token
+    )
+    logits = torch.zeros((3, 8), dtype=torch.float32)
+    active_mask = torch.tensor([True, True, False])
+
+    tokens = Engine._sample_batch_tokens(
+        object(),
+        logits,
+        rng=None,
+        temperatures=[0.7, 0.9, 0.7],
+        top_ks=[4, 4, 4],
+        active_mask=active_mask,
+        pad_id=0,
+    )
+
+    assert calls == [(1, 0.7, 4), (1, 0.9, 4)]
+    assert tokens == [21, 22, 0]
