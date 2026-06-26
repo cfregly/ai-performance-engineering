@@ -106,10 +106,11 @@ def _extend_cache_buffer(
 ) -> torch.Tensor:
     current_kv_len = cache.size(1)
     next_kv_len = current_kv_len + chunk_kv.size(1)
+    target_device = cache.device
     kv_buffer = kv_buffers.get(request_id)
     if (
         kv_buffer is None
-        or kv_buffer.device != chunk_kv.device
+        or kv_buffer.device != target_device
         or kv_buffer.dtype != chunk_kv.dtype
         or kv_buffer.size(1) < next_kv_len
     ):
@@ -118,14 +119,14 @@ def _extend_cache_buffer(
             cfg.batch_size,
             buffer_tokens,
             cfg.hidden_size,
-            device=chunk_kv.device,
+            device=target_device,
             dtype=chunk_kv.dtype,
         )
         kv_buffers[request_id] = kv_buffer
 
     if current_kv_len and cache.data_ptr() != kv_buffer.data_ptr():
         kv_buffer[:, :current_kv_len].copy_(cache)
-    kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)
+    kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv, non_blocking=True)
     return kv_buffer[:, :next_kv_len]
 
 
@@ -699,6 +700,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._warm_cache_store: Dict[int, Dict[int, torch.Tensor]] = {}
         self._prefill_seed_store: Dict[int, torch.Tensor] = {}
         self._empty_kv_by_device: Dict[str, torch.Tensor] = {}
+        self._decode_seed_buffers: Dict[int, torch.Tensor] = {}
         self._verify_output = torch.zeros(1, dtype=torch.float32)
         self._register_workload_metadata(
             world_size=_world_size_hint(),
@@ -813,6 +815,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._output_parts = []
         self._custom_metrics = {}
         self._empty_kv_by_device = {}
+        self._decode_seed_buffers = {}
         total_params = 0
 
         for rank in range(prefill_ranks, world_size):
@@ -828,6 +831,12 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             self._empty_kv_by_device[str(device)] = torch.empty(
                 self.cfg.batch_size,
                 0,
+                self.cfg.hidden_size,
+                device=device,
+                dtype=self.cfg.dtype,
+            )
+            self._decode_seed_buffers[rank] = torch.empty(
+                self.cfg.batch_size,
                 self.cfg.hidden_size,
                 device=device,
                 dtype=self.cfg.dtype,
@@ -933,7 +942,6 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                     metrics=metrics,
                 )
                 chunk_kv, seed = self._prefill_models[plan.prefill_rank].prefill(chunks[chunk_idx])
-                chunk_kv = chunk_kv.to(self._decode_device_for_rank(target_rank))
                 active_caches[target_rank][plan.global_request_idx] = _extend_cache_buffer(
                     self.cfg,
                     request_id=plan.global_request_idx,
@@ -964,8 +972,12 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             if seed is None:
                 raise RuntimeError(f"Request {plan.global_request_idx} has no decode seed")
             decode_device = self._decode_device_for_rank(decode_rank)
+            seed_buffer = self._decode_seed_buffers.get(decode_rank)
+            if seed_buffer is None or seed_buffer.device != decode_device:
+                raise RuntimeError(f"Decode seed buffer missing for rank {decode_rank}")
+            seed_buffer.copy_(seed, non_blocking=True)
             output = self._decode_models[decode_rank].decode(
-                seed.to(decode_device),
+                seed_buffer,
                 cache,
                 self.cfg.decode_tokens,
             )
@@ -1061,6 +1073,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.output = None
         self._output_parts = []
         self._empty_kv_by_device = {}
+        self._decode_seed_buffers = {}
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 

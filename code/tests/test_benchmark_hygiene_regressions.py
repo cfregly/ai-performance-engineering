@@ -978,9 +978,16 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     )[0]
 
     assert "kv_buffer = torch.empty(" in helper_section
-    assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)" in helper_section
+    assert "target_device = cache.device" in helper_section
+    assert "device=target_device" in helper_section
+    assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv, non_blocking=True)" in helper_section
     assert "torch.cat((base, recv_chunk), dim=1)" not in run_iteration_section
     assert "torch.cat((cache, chunk_kv), dim=1)" not in benchmark_section
+    assert "chunk_kv = chunk_kv.to(" not in benchmark_section
+    assert "seed.to(decode_device)" not in benchmark_section
+    assert "self._decode_seed_buffers[rank] = torch.empty(" in source
+    assert "seed_buffer.copy_(seed, non_blocking=True)" in benchmark_section
+    assert "seed_buffer," in benchmark_section
     assert "_extend_cache_buffer(" in run_iteration_section
     assert "_extend_cache_buffer(" in benchmark_section
 
