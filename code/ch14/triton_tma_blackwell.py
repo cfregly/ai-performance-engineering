@@ -16,7 +16,6 @@ import torch
 import triton
 import triton.language as tl
 import triton.testing
-from typing import Tuple
 from triton.runtime import _allocation as triton_allocation
 
 
@@ -414,15 +413,18 @@ def benchmark_tma_vs_standard(
         C_bias = tma_gemm_bias_silu(A, B, bias)
         C_ref = torch.matmul(A_fp32, B_fp32) + bias.float()
         C_ref = torch.nn.functional.silu(C_ref)
-        max_bias_diff = torch.abs(C_bias - C_ref).max().item()
 
         print(f"  TMA GEMM:      {tma_gemm_time*1e3:.2f} ms ({tma_tflops:.2f} TFLOPS)")
         print(f"  PyTorch GEMM:  {torch_gemm_time*1e3:.2f} ms ({torch_tflops:.2f} TFLOPS)")
         print(f"  Speedup:       {speedup_gemm:.2f}x")
         print(f"  TMA GEMM + SiLU/bias: {tma_bias_time*1e3:.2f} ms ({tma_bias_tflops:.2f} TFLOPS)")
+        max_bias_diff, max_diff = torch.stack(
+            (
+                torch.abs(C_bias - C_ref).max(),
+                torch.abs(C_tma - C_torch).max(),
+            )
+        ).tolist()
         print(f"  Max Difference (bias+SiLU): {max_bias_diff:.2e}")
-
-        max_diff = torch.abs(C_tma - C_torch).max().item()
         print(f"  Max Difference: {max_diff:.2e}")
 
         results[size] = {

@@ -582,6 +582,21 @@ def test_ch14_triton_examples_batches_fp8_error_reads() -> None:
     assert ".abs().mean().item()" not in fp8_section
 
 
+def test_ch14_triton_tma_batches_correctness_error_reads() -> None:
+    source = (REPO_ROOT / "ch14" / "triton_tma_blackwell.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = source.split("def benchmark_tma_vs_standard", maxsplit=1)[1].split(
+        "def demonstrate_tma_features",
+        maxsplit=1,
+    )[0]
+
+    assert "max_bias_diff, max_diff = torch.stack(" in benchmark_section
+    assert "torch.abs(C_bias - C_ref).max()" in benchmark_section
+    assert "torch.abs(C_tma - C_torch).max()" in benchmark_section
+    assert ".max().item()" not in benchmark_section
+
+
 def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     ch14_source = (REPO_ROOT / "ch14" / "baseline_sliding_window.py").read_text(
         encoding="utf-8"
