@@ -54,10 +54,9 @@ class Dep2Workload:
         for slot in range(self.cfg.top_k):
             expert_ids = idx[:, slot]
             for expert in range(self.cfg.num_experts):
-                mask = expert_ids == expert
-                if not torch.any(mask):
+                token_ids = (expert_ids == expert).nonzero(as_tuple=True)[0]
+                if token_ids.numel() == 0:
                     continue
-                token_ids = mask.nonzero(as_tuple=True)[0]
                 x_e = tokens[token_ids]
                 h = x_e @ self.w1[expert]
                 h = torch.relu(h)

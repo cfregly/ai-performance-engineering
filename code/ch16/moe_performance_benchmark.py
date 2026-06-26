@@ -73,15 +73,16 @@ class MoEFeedForward(nn.Module):
             expert_ids = top_indices[:, k]
             weights = top_scores[:, k].unsqueeze(-1)
             for expert_id, expert in enumerate(self.experts):
-                mask = expert_ids == expert_id
-                if mask.any():
-                    expert_input = flat[mask]
-                    expert_out = expert(expert_input)
-                    weighted_out = expert_out * weights[mask]
-                    if k == 0:
-                        output[mask] = weighted_out
-                    else:
-                        output[mask] += weighted_out
+                token_ids = (expert_ids == expert_id).nonzero(as_tuple=True)[0]
+                if token_ids.numel() == 0:
+                    continue
+                expert_input = flat[token_ids]
+                expert_out = expert(expert_input)
+                weighted_out = expert_out * weights[token_ids]
+                if k == 0:
+                    output[token_ids] = weighted_out
+                else:
+                    output[token_ids] += weighted_out
 
         return output.view(batch, seq, hidden)
 

@@ -45,9 +45,13 @@ def test_dep2_naive_moe_seeds_output_from_first_route() -> None:
     assert "out = torch.empty_like(tokens)" in source
     assert "torch.zeros_like(tokens)" not in source
     assert "for slot in range(self.cfg.top_k):" in source
+    assert "token_ids = (expert_ids == expert).nonzero(as_tuple=True)[0]" in source
+    assert "if token_ids.numel() == 0:" in source
     assert "if slot == 0:" in source
     assert "out[token_ids] = weighted" in source
     assert "out[token_ids] += weighted" in source
+    assert "torch.any(mask)" not in source
+    assert "mask.nonzero" not in source
 
     torch.manual_seed(1)
     cfg = Dep2Config(

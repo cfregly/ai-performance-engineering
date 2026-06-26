@@ -481,14 +481,14 @@ def run_layer_baseline(
     output.zero_()
     for expert_idx in range(workload.num_experts):
         for slot_idx in range(workload.top_k):
-            mask = state.expert_indices[:, slot_idx] == expert_idx
-            if not torch.any(mask):
+            token_ids = (state.expert_indices[:, slot_idx] == expert_idx).nonzero(as_tuple=True)[0]
+            if token_ids.numel() == 0:
                 continue
-            tokens_e = state.x[mask]
+            tokens_e = state.x[token_ids]
             gate = F.silu(tokens_e @ state.gate_proj[expert_idx])
             up = tokens_e @ state.up_proj[expert_idx]
             expert_out = (gate * up) @ state.down_proj[expert_idx]
-            output[mask] += expert_out * state.expert_weights[mask, slot_idx].unsqueeze(-1)
+            output[token_ids] += expert_out * state.expert_weights[token_ids, slot_idx].unsqueeze(-1)
     return output
 
 

@@ -2329,9 +2329,12 @@ def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
 
     assert "output = torch.empty_like(flat)" in forward_section
     assert "torch.zeros_like(flat)" not in forward_section
+    assert "token_ids = (expert_ids == expert_id).nonzero(as_tuple=True)[0]" in forward_section
+    assert "if token_ids.numel() == 0:" in forward_section
     assert "if k == 0:" in forward_section
-    assert "output[mask] = weighted_out" in forward_section
-    assert "output[mask] += weighted_out" in forward_section
+    assert "output[token_ids] = weighted_out" in forward_section
+    assert "output[token_ids] += weighted_out" in forward_section
+    assert "mask.any()" not in forward_section
 
 
 def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:

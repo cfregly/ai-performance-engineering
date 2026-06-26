@@ -156,9 +156,12 @@ def test_naive_moe_path_seeds_output_from_first_route() -> None:
     assert "output = torch.empty_like(x)" in naive_section
     assert "torch.zeros_like(x)" not in naive_section
     assert "for k in range(num_experts_per_tok):" in naive_section
+    assert "token_ids = (expert_indices[:, k] == expert_idx).nonzero(as_tuple=True)[0]" in naive_section
+    assert "if token_ids.numel() == 0:" in naive_section
     assert "if k == 0:" in naive_section
-    assert "output[mask] = weighted_output" in naive_section
-    assert "output[mask] += weighted_output" in naive_section
+    assert "output[token_ids] = weighted_output" in naive_section
+    assert "output[token_ids] += weighted_output" in naive_section
+    assert "mask.any()" not in naive_section
 
 
 def test_graphable_moe_path_matches_level5_bmm_fused_outputs() -> None:

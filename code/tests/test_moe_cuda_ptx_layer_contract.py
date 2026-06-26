@@ -303,3 +303,14 @@ def test_moe_cuda_ptx_baseline_output_buffer_avoids_double_zero_fill() -> None:
     assert "torch.empty_like(state.x)" in source
     assert "torch.zeros_like(state.x)" not in source
     assert "output.zero_()" in source
+
+
+def test_moe_cuda_ptx_baseline_skips_redundant_mask_any_sync() -> None:
+    source = inspect.getsource(moe_common.run_layer_baseline)
+
+    assert "token_ids = (state.expert_indices[:, slot_idx] == expert_idx).nonzero(as_tuple=True)[0]" in source
+    assert "if token_ids.numel() == 0:" in source
+    assert "state.x[token_ids]" in source
+    assert "state.expert_weights[token_ids, slot_idx]" in source
+    assert "torch.any(mask)" not in source
+    assert "mask]" not in source

@@ -222,19 +222,20 @@ class MoEExperts(nn.Module):
         
         for k in range(num_experts_per_tok):
             for expert_idx in range(self.num_experts):
-                mask = expert_indices[:, k] == expert_idx
-                if mask.any():
-                    expert_input = x[mask]
-                    expert = self.experts[expert_idx]
-                    gate = F.silu(expert['w1'](expert_input))
-                    up = expert['w3'](expert_input)
-                    expert_output = expert['w2'](gate * up)
-                    weights = expert_weights[mask, k].unsqueeze(-1)
-                    weighted_output = weights * expert_output
-                    if k == 0:
-                        output[mask] = weighted_output
-                    else:
-                        output[mask] += weighted_output
+                token_ids = (expert_indices[:, k] == expert_idx).nonzero(as_tuple=True)[0]
+                if token_ids.numel() == 0:
+                    continue
+                expert_input = x[token_ids]
+                expert = self.experts[expert_idx]
+                gate = F.silu(expert['w1'](expert_input))
+                up = expert['w3'](expert_input)
+                expert_output = expert['w2'](gate * up)
+                weights = expert_weights[token_ids, k].unsqueeze(-1)
+                weighted_output = weights * expert_output
+                if k == 0:
+                    output[token_ids] = weighted_output
+                else:
+                    output[token_ids] += weighted_output
         return output
     
     def forward_batched(
