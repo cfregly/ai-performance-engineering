@@ -8,18 +8,17 @@ from __future__ import annotations
 
 from functools import partial
 from pathlib import Path
+from typing import Optional
 
 import torch
 import torch.nn as nn
 
-from typing import Optional
-
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.common.device_utils import require_cuda_device
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 
 resolve_device = partial(require_cuda_device, "CUDA required for ch19")
 
@@ -36,6 +35,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         self.buffer_b = None
         self.copy_stream = None
         self.compute_stream = None
+        self.copy_events: list[torch.cuda.Event] = []
         self.batch_size = 4
         self.seq_len = 1024
         self.hidden_dim = 1024
@@ -85,12 +85,13 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         # Create streams for overlapping operations
         self.copy_stream = torch.cuda.Stream()
         self.compute_stream = torch.cuda.Stream()
+        self.copy_events = [torch.cuda.Event(blocking=False) for _ in range(2)]
     
     def benchmark_fn(self) -> None:
         """Benchmark: Double buffering with overlapping operations."""
         # Use conditional NVTX ranges - only enabled when profiling
 
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
+        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
         config = self.get_config()
 
@@ -100,7 +101,9 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         with nvtx_range("optimized_memory_double_buffering", enable=enable_nvtx):
             with torch.no_grad():
                 buffers = [self.buffer_a, self.buffer_b]
-                copy_events = [torch.cuda.Event(blocking=False) for _ in buffers]
+                copy_events = self.copy_events
+                if len(copy_events) < len(buffers):
+                    raise RuntimeError("Copy events not initialized")
 
                 # Preload first buffer on the copy stream and signal completion.
                 with torch.cuda.stream(self.copy_stream):
@@ -149,6 +152,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         del self.model, self.buffer_a, self.buffer_b
         self.copy_stream = None
         self.compute_stream = None
+        self.copy_events = []
         self.host_batches = []
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

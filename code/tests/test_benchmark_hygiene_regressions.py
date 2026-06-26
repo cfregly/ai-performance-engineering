@@ -660,6 +660,19 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "verify_time_ms=None" in benchmark_section
 
 
+def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "ch19" / "optimized_memory_double_buffering.py").read_text(encoding="utf-8")
+    setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self.copy_events = [torch.cuda.Event(blocking=False) for _ in range(2)]" in setup_section
+    assert "torch.cuda.Event(" not in benchmark_section
+    assert "copy_events = self.copy_events" in benchmark_section
+    assert "Copy events not initialized" in benchmark_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
