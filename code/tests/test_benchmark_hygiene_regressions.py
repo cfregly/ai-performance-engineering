@@ -2629,6 +2629,58 @@ def test_flash_blockwise_attention_reuses_workspace_for_cached_kv() -> None:
     assert actual_v.data_ptr() == layer._workspace_v.data_ptr()
 
 
+def test_ch13_paged_kv_cache_releases_slabs_without_zero_fill() -> None:
+    source = (REPO_ROOT / "ch13" / "optimized_kv_cache_naive.py").read_text(encoding="utf-8")
+    acquire_section = source.split("def _acquire_buffer", maxsplit=1)[1].split(
+        "def _release_buffer", maxsplit=1
+    )[0]
+    release_section = source.split("def _release_buffer", maxsplit=1)[1].split(
+        "def allocate", maxsplit=1
+    )[0]
+
+    assert "torch.empty(" in acquire_section
+    assert "torch.empty_like(k_buf)" in acquire_section
+    assert "torch.zeros(" not in acquire_section
+    assert ".zero_()" not in release_section
+    assert "self._empty" in source
+
+    from ch13.optimized_kv_cache_naive import PagedKVCache
+
+    cache = PagedKVCache(
+        page_size=4,
+        batch_size=1,
+        num_layers=1,
+        num_heads=1,
+        head_dim=2,
+        dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    missing_k, missing_v = cache.get("missing", 0, 0, 4)
+    assert missing_k.shape == (0, 1, 1, 2)
+    assert missing_v.shape == (0, 1, 1, 2)
+
+    old_k = torch.tensor([[[[1.0, 2.0]]], [[[3.0, 4.0]]]])
+    old_v = old_k + 10.0
+    cache.append_block("old", 0, old_k, old_v, 0)
+    old_buffer = cache.allocations["old"][0]["buffer"]
+    old_ptr = old_buffer[0].data_ptr()
+    cache.free("old")
+
+    cache.allocate("new", 2)
+    new_buffer = cache.allocations["new"][0]["buffer"]
+    assert new_buffer[0].data_ptr() == old_ptr
+    empty_k, empty_v = cache.get("new", 0, 0, 4)
+    assert empty_k.shape == (0, 1, 1, 2)
+    assert empty_v.shape == (0, 1, 1, 2)
+
+    new_k = torch.tensor([[[[7.0, 8.0]]]])
+    new_v = new_k + 20.0
+    cache.append_block("new", 0, new_k, new_v, 0)
+    actual_k, actual_v = cache.get("new", 0, 0, 4)
+    torch.testing.assert_close(actual_k, new_k)
+    torch.testing.assert_close(actual_v, new_v)
+
+
 def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
     source = (REPO_ROOT / "ch16" / "radix_attention_example.py").read_text(encoding="utf-8")
     forward_section = source.split("def forward(self, token: int", maxsplit=1)[1].split(
