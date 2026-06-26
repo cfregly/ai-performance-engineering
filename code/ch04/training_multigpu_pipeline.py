@@ -326,7 +326,7 @@ def train_step(
     model: nn.Module,
     batch: torch.Tensor,
     optimizer: torch.optim.Optimizer,
-) -> float:
+) -> torch.Tensor:
     """Single training step."""
     input_ids = batch["input_ids"]
     labels = batch["labels"]
@@ -352,7 +352,7 @@ def train_step(
     optimizer.step()
     optimizer.zero_grad()
     
-    return loss.item()
+    return loss.detach()
 
 
 def train(
@@ -402,8 +402,9 @@ def train(
         step_time = time.time() - step_start
         
         if rank == 0 and step % 10 == 0:
+            loss_value = float(loss)
             tokens_per_sec = (batch_size * seq_len * world_size) / step_time
-            print(f"Step {step:4d} | Loss: {loss:.4f} | "
+            print(f"Step {step:4d} | Loss: {loss_value:.4f} | "
                   f"Tokens/sec: {tokens_per_sec/1e6:.2f}M | "
                   f"Time: {step_time*1000:.1f}ms")
         

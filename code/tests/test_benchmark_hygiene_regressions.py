@@ -392,6 +392,24 @@ def test_ch04_nvshmem_pipeline_defers_loss_materialization() -> None:
     assert "torch.stack(loss_tensors).detach().cpu().tolist()" in schedule_section
 
 
+def test_ch04_training_pipeline_defers_step_loss_sync_until_logging() -> None:
+    source = (REPO_ROOT / "ch04" / "training_multigpu_pipeline.py").read_text(
+        encoding="utf-8"
+    )
+    train_step_section = source.split("def train_step", maxsplit=1)[1].split(
+        "def train",
+        maxsplit=1,
+    )[0]
+    train_loop_section = source.split("def train", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+
+    assert "return loss.item()" not in train_step_section
+    assert "return loss.detach()" in train_step_section
+    assert "loss_value = float(loss)" in train_loop_section
+
+
 def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
     source = (REPO_ROOT / "ch09" / "fusion_pytorch.py").read_text(encoding="utf-8")
 
