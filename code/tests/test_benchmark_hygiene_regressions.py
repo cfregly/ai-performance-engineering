@@ -636,6 +636,27 @@ def test_ch14_tma_config_benchmark_avoids_zero_filling_output() -> None:
     assert "C = torch.zeros(M, N, device='cuda', dtype=torch.float32)" not in source
 
 
+def test_ch14_cublas_vs_cutlass_pair_skips_unused_setup_output_allocation() -> None:
+    for filename, assignment in (
+        ("baseline_cublas_vs_cutlass.py", "self.C = self._cublas_gemm(self.A, self.B)"),
+        ("optimized_cublas_vs_cutlass.py", "self.C = self._cutlass_gemm(self.A, self.B)"),
+    ):
+        source = (REPO_ROOT / "ch14" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self.C = None" in setup_section
+        assert "self.C = torch.zeros(" not in setup_section
+        assert "self.C = torch.empty(" not in setup_section
+        assert assignment in benchmark_section
+
+
 def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
     dual_cta = (REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_cta.py").read_text(
         encoding="utf-8"

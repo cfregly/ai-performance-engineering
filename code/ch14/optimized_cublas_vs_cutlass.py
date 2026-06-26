@@ -58,7 +58,7 @@ class OptimizedCublasVsCutlassBenchmark(VerificationPayloadMixin, BaseBenchmark)
         # Use float16 matrices for tensor core acceleration
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float16)
         self.B = torch.randn(self.k, self.n, device=self.device, dtype=torch.float16)
-        self.C = torch.zeros(self.m, self.n, device=self.device, dtype=torch.float16)
+        self.C = None
         
         try:
             from core.benchmark.cutlass_binding import cutlass_gemm_fp16

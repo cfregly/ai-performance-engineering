@@ -57,7 +57,7 @@ class BaselineCublasVsCutlassBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float16)
         self.B = torch.randn(self.k, self.n, device=self.device, dtype=torch.float16)
-        self.C = torch.zeros(self.m, self.n, device=self.device, dtype=torch.float16)
+        self.C = None
         try:
             from core.benchmark.cutlass_binding import cublas_gemm_fp16
         except Exception as exc:
