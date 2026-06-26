@@ -599,6 +599,10 @@ def test_ch14_triton_tma_batches_correctness_error_reads() -> None:
 
 def test_ch14_triton_nvshmem_batches_result_reads() -> None:
     source = (REPO_ROOT / "ch14" / "triton_nvshmem_example.py").read_text(encoding="utf-8")
+    operation_section = source.split("def triton_multi_gpu_operation", maxsplit=1)[1].split(
+        "def pytorch_symmetric_memory_approach",
+        maxsplit=1,
+    )[0]
     example_section = source.split("results = triton_multi_gpu_operation(tensors)", maxsplit=1)[
         1
     ].split(
@@ -609,6 +613,9 @@ def test_ch14_triton_nvshmem_batches_result_reads() -> None:
     assert "result_values = torch.cat(" in example_section
     assert "non_blocking=True" in example_section
     assert "[r.item() for r in results]" not in example_section
+    assert "tl.store(output_ptr, local_sum)" in source
+    assert "outputs = [torch.empty(1, device=t.device, dtype=t.dtype) for t in tensors]" in operation_section
+    assert "outputs = [torch.zeros(" not in operation_section
 
 
 def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:

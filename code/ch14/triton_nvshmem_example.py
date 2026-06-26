@@ -90,7 +90,7 @@ def triton_multi_gpu_operation(tensors: list[torch.Tensor]) -> torch.Tensor:
     n_elements = tensors[0].numel()
     
     # Allocate output on each GPU
-    outputs = [torch.zeros(1, device=t.device, dtype=t.dtype) for t in tensors]
+    outputs = [torch.empty(1, device=t.device, dtype=t.dtype) for t in tensors]
     
     # Launch kernel on each GPU
     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
