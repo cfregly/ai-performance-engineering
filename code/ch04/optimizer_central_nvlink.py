@@ -12,7 +12,7 @@ from typing import List, Optional
 import torch
 import torch.nn as nn
 
-from core.benchmark.gpu_requirements import skip_if_insufficient_gpus, require_peer_access
+from core.benchmark.gpu_requirements import skip_if_insufficient_gpus
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 
@@ -25,6 +25,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self.models: List[nn.Linear] = []
         self.master_weights: List[torch.Tensor] = []
         self.momentum: List[torch.Tensor] = []
+        self.grad_root_buffers: List[torch.Tensor] = []
         self.inputs: List[torch.Tensor] = []
         self.batch_size = 8
         self.hidden = 512
@@ -65,24 +66,44 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
             master_m = torch.zeros_like(master_w, dtype=torch.float32, device=self.root_device)
             self.master_weights.append(master_w)
             self.momentum.append(master_m)
+            self.grad_root_buffers.append(torch.empty_like(master_w, device=self.root_device))
             self.inputs.append(torch.randn(self.batch_size, self.hidden, device=device, dtype=torch.float32))
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        assert len(self.models) == len(self.master_weights) == len(self.momentum) == len(self.inputs)
+        assert (
+            len(self.models)
+            == len(self.master_weights)
+            == len(self.momentum)
+            == len(self.grad_root_buffers)
+            == len(self.inputs)
+        )
         with self._nvtx_range("optimized_optimizer_central_nvlink"):
-            for model, master_w, mom, x in zip(self.models, self.master_weights, self.momentum, self.inputs):
+            for model, master_w, mom, grad_root_buf, x in zip(
+                self.models,
+                self.master_weights,
+                self.momentum,
+                self.grad_root_buffers,
+                self.inputs,
+            ):
                 y = model(x)
                 loss = y.pow(2).mean()
                 loss.backward()
 
                 # Ship gradient to root over NVLink (non-blocking if available)
-                grad_root = model.weight.grad.to(self.root_device, non_blocking=True)
+                grad = model.weight.grad
+                if grad is None:
+                    raise RuntimeError("Expected weight gradient after backward")
+                if grad.device == self.root_device:
+                    grad_root = grad
+                else:
+                    grad_root_buf.copy_(grad, non_blocking=True)
+                    grad_root = grad_root_buf
                 with torch.no_grad():
                     mom.mul_(0.9).add_(grad_root)
                     master_w.add_(-1e-3, mom)
                 # Multicast updated weights back
-                model.weight.data.copy_(master_w.to(model.weight.device, non_blocking=True))
+                model.weight.data.copy_(master_w, non_blocking=True)
                 model.bias.grad.zero_()
                 model.weight.grad.zero_()
 
@@ -110,6 +131,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self.models.clear()
         self.master_weights.clear()
         self.momentum.clear()
+        self.grad_root_buffers.clear()
         self.inputs.clear()
         torch.cuda.empty_cache()
 
@@ -148,5 +170,3 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedOptimizerCentralNvlinkBenchmark()
-
-

@@ -113,6 +113,25 @@ def test_ch04_optimized_dataparallel_reuses_gradient_staging_buffers() -> None:
     assert "reduced.add_(staging)" in benchmark_section
 
 
+def test_ch04_optimizer_central_nvlink_uses_direct_copy_staging() -> None:
+    source = (REPO_ROOT / "ch04" / "optimizer_central_nvlink.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self.grad_root_buffers: List[torch.Tensor] = []" in source
+    assert "self.grad_root_buffers.append(torch.empty_like(master_w, device=self.root_device))" in setup_section
+    assert "model.weight.grad.to(self.root_device" not in benchmark_section
+    assert "master_w.to(model.weight.device" not in benchmark_section
+    assert "grad_root_buf.copy_(grad, non_blocking=True)" in benchmark_section
+    assert "model.weight.data.copy_(master_w, non_blocking=True)" in benchmark_section
+
+
 def test_ch07_and_ch08_sources_do_not_ship_artificial_baseline_penalties() -> None:
     hbm_copy_source = (REPO_ROOT / "ch07" / "baseline_hbm_copy.cu").read_text(encoding="utf-8")
     threshold_source = (REPO_ROOT / "ch08" / "threshold_common.cuh").read_text(encoding="utf-8")
