@@ -173,6 +173,18 @@ def test_ch04_gradient_compression_int8_reuses_cast_buffers() -> None:
     assert "int8_buf[sl].copy_(float_buf[sl])" in naive_section
 
 
+def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
+    source = (REPO_ROOT / "ch19" / "baseline_dynamic_quantized_cache.py").read_text(
+        encoding="utf-8"
+    )
+    prepare_section = source.split("def _prepare_quantized_sources", maxsplit=1)[1].split(
+        "def _non_adaptive_cache_update", maxsplit=1
+    )[0]
+
+    assert "self._quant_scratch.to(torch.int8)" not in prepare_section
+    assert "self._quantized_int8_src.copy_(self._quant_scratch)" in prepare_section
+
+
 def test_ch07_and_ch08_sources_do_not_ship_artificial_baseline_penalties() -> None:
     hbm_copy_source = (REPO_ROOT / "ch07" / "baseline_hbm_copy.cu").read_text(encoding="utf-8")
     threshold_source = (REPO_ROOT / "ch08" / "threshold_common.cuh").read_text(encoding="utf-8")

@@ -194,7 +194,7 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scale8_src.copy_(self._reference_cache.abs().amax(dim=-1, keepdim=True).clamp(min=1e-6) / 127.0)
         torch.div(self._reference_cache, self._scale8_src, out=self._quant_scratch)
         self._quant_scratch.round_().clamp_(-127, 127)
-        self._quantized_int8_src.copy_(self._quant_scratch.to(torch.int8))
+        self._quantized_int8_src.copy_(self._quant_scratch)
 
         self._scale6_src.copy_(self._reference_cache.abs().amax(dim=-1, keepdim=True).clamp(min=1e-6) / 31.0)
         torch.div(self._reference_cache, self._scale6_src, out=self._quant_scratch)
