@@ -96,6 +96,39 @@ def _empty_kv(cfg: CacheAwareDisaggMultiGPUConfig, device: torch.device) -> torc
     )
 
 
+def _extend_cache_buffer(
+    cfg: CacheAwareDisaggMultiGPUConfig,
+    *,
+    request_id: int,
+    cache: torch.Tensor,
+    chunk_kv: torch.Tensor,
+    kv_buffers: Dict[int, torch.Tensor],
+) -> torch.Tensor:
+    current_kv_len = cache.size(1)
+    next_kv_len = current_kv_len + chunk_kv.size(1)
+    kv_buffer = kv_buffers.get(request_id)
+    if (
+        kv_buffer is None
+        or kv_buffer.device != chunk_kv.device
+        or kv_buffer.dtype != chunk_kv.dtype
+        or kv_buffer.size(1) < next_kv_len
+    ):
+        buffer_tokens = max(cfg.context_window, next_kv_len)
+        kv_buffer = torch.empty(
+            cfg.batch_size,
+            buffer_tokens,
+            cfg.hidden_size,
+            device=chunk_kv.device,
+            dtype=chunk_kv.dtype,
+        )
+        kv_buffers[request_id] = kv_buffer
+
+    if current_kv_len and cache.data_ptr() != kv_buffer.data_ptr():
+        kv_buffer[:, :current_kv_len].copy_(cache)
+    kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)
+    return kv_buffer[:, :next_kv_len]
+
+
 def _world_size_hint() -> int:
     if not torch.cuda.is_available():
         return 2
@@ -414,6 +447,7 @@ def _run_torchrun_worker(
 
     def run_iteration() -> tuple[Dict[str, float], float, float, int]:
         active_caches: Dict[int, torch.Tensor] = {}
+        kv_buffers: Dict[int, torch.Tensor] = {}
         local_metrics = {
             "cache_hits": 0.0,
             "cache_misses": 0.0,
@@ -479,7 +513,13 @@ def _run_torchrun_worker(
                     base = active_caches.get(plan.global_request_idx)
                     if base is None:
                         base = _empty_kv(cfg, device)
-                    active_caches[plan.global_request_idx] = torch.cat((base, recv_chunk), dim=1)
+                    active_caches[plan.global_request_idx] = _extend_cache_buffer(
+                        cfg,
+                        request_id=plan.global_request_idx,
+                        cache=base,
+                        chunk_kv=recv_chunk,
+                        kv_buffers=kv_buffers,
+                    )
                 _sync_and_barrier(device)
 
                 current_owner = target_rank
@@ -847,6 +887,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         assert self._resolved_decode_ranks is not None
 
         active_caches = {rank: {} for rank in self._decode_models}
+        kv_buffers = {rank: {} for rank in self._decode_models}
         outputs: List[torch.Tensor] = []
         ttft_history: List[float] = []
         tpot_history: List[float] = []
@@ -893,7 +934,13 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 )
                 chunk_kv, seed = self._prefill_models[plan.prefill_rank].prefill(chunks[chunk_idx])
                 chunk_kv = chunk_kv.to(self._decode_device_for_rank(target_rank))
-                active_caches[target_rank][plan.global_request_idx] = torch.cat((cache, chunk_kv), dim=1)
+                active_caches[target_rank][plan.global_request_idx] = _extend_cache_buffer(
+                    self.cfg,
+                    request_id=plan.global_request_idx,
+                    cache=cache,
+                    chunk_kv=chunk_kv,
+                    kv_buffers=kv_buffers[target_rank],
+                )
                 metrics["kv_transfer_bytes"] += _tensor_nbytes(chunk_kv)
                 current_owner = target_rank
 

@@ -807,6 +807,31 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "self.output = torch.stack(self._last_outputs, dim=0)" in capture_section
 
 
+def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
+    source = (
+        REPO_ROOT
+        / "labs"
+        / "cache_aware_disagg_inference"
+        / "cache_aware_disagg_multigpu_common.py"
+    ).read_text(encoding="utf-8")
+    helper_section = source.split("def _extend_cache_buffer", maxsplit=1)[1].split(
+        "def _world_size_hint", maxsplit=1
+    )[0]
+    run_iteration_section = source.split("def run_iteration", maxsplit=1)[1].split(
+        "reduced = torch.tensor", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "kv_buffer = torch.empty(" in helper_section
+    assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)" in helper_section
+    assert "torch.cat((base, recv_chunk), dim=1)" not in run_iteration_section
+    assert "torch.cat((cache, chunk_kv), dim=1)" not in benchmark_section
+    assert "_extend_cache_buffer(" in run_iteration_section
+    assert "_extend_cache_buffer(" in benchmark_section
+
+
 def test_nanochat_kv_cache_growth_avoids_cat_with_uninitialized_tail() -> None:
     source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "engine.py").read_text(
         encoding="utf-8"
