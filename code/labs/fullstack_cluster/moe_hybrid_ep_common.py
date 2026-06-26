@@ -414,13 +414,19 @@ class DeepSeekHybridEPModule(nn.Module):
         if tokens.numel() == 0:
             return tokens
         outputs = torch.zeros_like(tokens)
+        sort_idx = torch.argsort(expert_ids)
+        sorted_tokens = tokens.index_select(0, sort_idx)
+        sorted_weights = weights.index_select(0, sort_idx)
+        sorted_outputs = torch.empty_like(sorted_tokens)
+        expert_count_list = torch.bincount(expert_ids, minlength=self.local_experts).detach().cpu().tolist()
+        offset = 0
         for local_id, expert in enumerate(self.experts):
-            mask = expert_ids == local_id
-            if not bool(mask.any()):
-                continue
-            indices = mask.nonzero(as_tuple=False).squeeze(-1)
-            expert_out = expert(tokens.index_select(0, indices))
-            outputs.index_copy_(0, indices, expert_out * weights.index_select(0, indices))
+            next_offset = offset + int(expert_count_list[local_id])
+            if next_offset > offset:
+                expert_out = expert(sorted_tokens[offset:next_offset])
+                sorted_outputs[offset:next_offset] = expert_out * sorted_weights[offset:next_offset]
+            offset = next_offset
+        outputs.index_copy_(0, sort_idx, sorted_outputs)
         return outputs
 
     def _exchange_counts(

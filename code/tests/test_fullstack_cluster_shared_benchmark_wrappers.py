@@ -235,6 +235,10 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
         "class ExpertMLP",
         maxsplit=1,
     )[0]
+    apply_local_section = source.split("def _apply_local_experts", maxsplit=1)[1].split(
+        "def _exchange_counts",
+        maxsplit=1,
+    )[0]
     exchange_counts_section = source.split("def _exchange_counts", maxsplit=1)[1].split(
         "def _split_list",
         maxsplit=1,
@@ -245,6 +249,11 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert 'self.register_buffer(\n            "_gini_index",' in router_section
     assert "def _gini_index_for" in router_section
     assert "torch.arange(1, n + 1" not in router_section
+    assert "sort_idx = torch.argsort(expert_ids)" in apply_local_section
+    assert "torch.bincount(expert_ids, minlength=self.local_experts).detach().cpu().tolist()" in apply_local_section
+    assert ".nonzero(" not in apply_local_section
+    assert "bool(mask.any())" not in apply_local_section
+    assert "outputs.index_copy_(0, sort_idx, sorted_outputs)" in apply_local_section
     assert "gathered_counts = torch.stack(gathered, dim=0)[:, group_rank]" in exchange_counts_section
     assert "g[group_rank].item()" not in exchange_counts_section
     assert "torch.cuda.Event(enable_timing=True)" not in forward_section
