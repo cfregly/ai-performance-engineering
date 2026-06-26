@@ -748,7 +748,7 @@ class TensorParallelMultiGPU:
         # All-gather outputs across GPUs
         import torch.distributed as dist
         if dist.is_initialized():
-            gathered_outputs = [torch.zeros_like(outputs) for _ in range(self.num_gpus)]
+            gathered_outputs = [torch.empty_like(outputs) for _ in range(self.num_gpus)]
             dist.all_gather(gathered_outputs, outputs)
             final_output = torch.cat(gathered_outputs, dim=-1)
         else:
