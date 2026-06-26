@@ -165,9 +165,10 @@ class VectorizedTopKMoE(nn.Module):
         expert_out = torch.bmm(hidden.unsqueeze(1), w2).squeeze(1) + b2
         weighted = expert_out * flat_probs
 
-        output = torch.zeros_like(tokens, dtype=tokens.dtype)
         token_indices = _flat_token_indices(tokens.shape[0], self.top_k, tokens.device)
-        output.index_add_(0, token_indices, weighted)
+        output = torch.empty_like(tokens, dtype=tokens.dtype)
+        combine_index = token_indices.unsqueeze(-1).expand_as(weighted)
+        output.scatter_reduce_(0, combine_index, weighted, reduce="sum", include_self=False)
         return output
 
 
@@ -396,8 +397,8 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         weighted = gathered * flat_weights
 
         output = self._output_buffer_for(tokens, batch)
-        output.zero_()
-        output.index_add_(0, token_indices, weighted)
+        combine_index = token_indices.unsqueeze(-1).expand_as(weighted)
+        output.scatter_reduce_(0, combine_index, weighted, reduce="sum", include_self=False)
         return output
 
 

@@ -1063,6 +1063,10 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "self._overflow_slots_for(slots, num_slots)" in forward_section
     assert "self._dense_input_for(flat_tokens, num_slots)" in forward_section
     assert "self._output_buffer_for(tokens, batch)" in forward_section
+    assert "torch.zeros_like(tokens" not in source
+    assert "output.zero_()" not in forward_section
+    assert "output.index_add_(0, token_indices, weighted)" not in source
+    assert 'output.scatter_reduce_(0, combine_index, weighted, reduce="sum", include_self=False)' in source
     assert "model.assume_static_no_overflow = True" in setup_section
     assert ".item()) == num_slots" not in source
 
@@ -1092,10 +1096,12 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
 
     x = torch.randn(3, 8)
     expected = model(x).clone()
+    model._static_output_buffer.fill_(float("nan"))
     model.assume_static_no_overflow = True
     output = model(x)
 
     assert output.shape == (3, 8)
+    assert not torch.isnan(output).any()
     torch.testing.assert_close(output, expected)
     assert model._static_token_indices.data_ptr() == token_ptr
     assert model._static_expert_range.data_ptr() == expert_ptr
