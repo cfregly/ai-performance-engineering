@@ -20,8 +20,6 @@ demonstrates the conceptual improvements through torch.compile optimizations.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -120,6 +118,8 @@ class FA3PipelinedAttention(nn.Module):
         self.num_heads = num_heads
         self.head_dim = head_dim or hidden_dim // num_heads
         self.num_kv_heads = num_kv_heads or num_heads
+        if self.num_heads % self.num_kv_heads != 0:
+            raise ValueError("num_heads must be divisible by num_kv_heads for GQA")
         self.dropout = dropout
         self.use_fp8 = use_fp8 and self._check_fp8_support()
         self.scale = 1.0 / math.sqrt(self.head_dim)
@@ -144,6 +144,7 @@ class FA3PipelinedAttention(nn.Module):
         k: torch.Tensor,
         v: torch.Tensor,
         is_causal: bool = False,
+        enable_gqa: bool = False,
     ) -> torch.Tensor:
         """Core attention with FA3-style pipelining.
         
@@ -162,6 +163,7 @@ class FA3PipelinedAttention(nn.Module):
             dropout_p=self.dropout if self.training else 0.0,
             is_causal=is_causal,
             scale=self.scale,
+            enable_gqa=enable_gqa,
         )
     
     def forward(
@@ -181,15 +183,17 @@ class FA3PipelinedAttention(nn.Module):
         q = self.q_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(x).view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(x).view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
-
-        if self.num_kv_heads != self.num_heads:
-            n_rep = self.num_heads // self.num_kv_heads
-            k = k.repeat_interleave(n_rep, dim=1)
-            v = v.repeat_interleave(n_rep, dim=1)
+        enable_gqa = self.num_kv_heads != self.num_heads
         
         # Pipelined attention with optimal backend
         with fa3_optimized_backend():
-            attn_output = self._attention_with_pipelining(q, k, v, is_causal)
+            attn_output = self._attention_with_pipelining(
+                q,
+                k,
+                v,
+                is_causal,
+                enable_gqa=enable_gqa,
+            )
         
         # Reshape and project output
         attn_output = attn_output.transpose(1, 2).reshape(batch_size, seq_len, -1)
@@ -368,4 +372,3 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return OptimizedFlashAttention3Benchmark()
-
