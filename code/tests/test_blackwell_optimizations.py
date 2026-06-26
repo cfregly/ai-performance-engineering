@@ -208,8 +208,13 @@ class TestNumericalCorrectness:
 
         source = inspect.getsource(blackwell.DynamicQuantizedKVCache.update)
         assert "unique_rows" in source
+        assert "batch_index_list = [int(batch_idx)]" in source
+        assert "if isinstance(batch_indices, int)" in source
+        assert 'batch_indices.device.type == "cpu"' in source
+        assert "batch_indices.detach().cpu().tolist()" in source
         assert "current_lengths = [self._seq_lens_host[idx] for idx in batch_index_list]" in source
         assert "self.seq_lens[cache_idx_int].item()" not in source
+        assert "batch_index_list = [int(idx) for idx in batch_indices.tolist()]" in source
         assert "self.cache[layer_idx, 0, batch_indices, :, current_len:end_pos, :] = k_store" in source
 
         cache = blackwell.DynamicQuantizedKVCache(
@@ -250,6 +255,23 @@ class TestNumericalCorrectness:
         cache.clear()
         torch.testing.assert_close(cache.seq_lens, torch.tensor([0, 0], dtype=torch.long))
         assert cache._seq_lens_host == [0, 0]
+
+        out_k3, out_v3 = cache.update(0, key1, value1, batch_indices=[0, 1])
+
+        torch.testing.assert_close(cache.seq_lens, torch.tensor([2, 2], dtype=torch.long))
+        assert cache._seq_lens_host == [2, 2]
+        torch.testing.assert_close(out_k3, key1)
+        torch.testing.assert_close(out_v3, value1)
+
+        cache.clear()
+        single_key = key1[:1]
+        single_value = value1[:1]
+        out_k4, out_v4 = cache.update(0, single_key, single_value, batch_indices=0)
+
+        torch.testing.assert_close(cache.seq_lens, torch.tensor([2, 0], dtype=torch.long))
+        assert cache._seq_lens_host == [2, 0]
+        torch.testing.assert_close(out_k4, single_key)
+        torch.testing.assert_close(out_v4, single_value)
 
 
 # ============================================================================

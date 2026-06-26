@@ -149,23 +149,34 @@ class DynamicQuantizedKVCache:
             Updated (key, value) tensors from cache
         """
         if batch_indices is None:
+            batch_index_list = [int(batch_idx)]
             batch_indices = torch.tensor(
-                [batch_idx], device=self.seq_lens.device, dtype=torch.long
+                batch_index_list, device=self.seq_lens.device, dtype=torch.long
+            )
+        elif not torch.is_tensor(batch_indices):
+            batch_index_list = (
+                [int(batch_indices)]
+                if isinstance(batch_indices, int)
+                else [int(idx) for idx in batch_indices]
+            )
+            batch_indices = torch.tensor(
+                batch_index_list, device=self.seq_lens.device, dtype=torch.long
             )
         else:
-            if not torch.is_tensor(batch_indices):
-                batch_indices = torch.tensor(batch_indices, device=self.seq_lens.device, dtype=torch.long)
-            else:
-                batch_indices = batch_indices.to(self.seq_lens.device, dtype=torch.long)
             if batch_indices.dim() == 0:
                 batch_indices = batch_indices.unsqueeze(0)
+            if batch_indices.device.type == "cpu":
+                batch_index_list = [int(idx) for idx in batch_indices.tolist()]
+            else:
+                batch_index_list = [
+                    int(idx) for idx in batch_indices.detach().cpu().tolist()
+                ]
+            batch_indices = batch_indices.to(self.seq_lens.device, dtype=torch.long)
         
         assert key.shape[0] == batch_indices.numel(), (
             f"Batch size mismatch: key batch={key.shape[0]}, "
             f"indices={batch_indices.numel()}"
         )
-
-        batch_index_list = [int(idx) for idx in batch_indices.tolist()]
         unique_rows = len(set(batch_index_list)) == len(batch_index_list)
         current_lengths = [self._seq_lens_host[idx] for idx in batch_index_list]
         same_length = all(length == current_lengths[0] for length in current_lengths)
