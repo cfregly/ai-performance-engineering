@@ -293,6 +293,20 @@ def test_decode_step_helpers_reuse_token_and_active_mask_buffers():
     assert refreshed_rows == [0, 1, 2]
 
 
+def test_kv_cache_reuses_token_mask_row_sums():
+    source = Path(__file__).resolve().parents[1] / "nanochat" / "engine.py"
+    insert_section = source.read_text(encoding="utf-8").split(
+        "def insert_kv", maxsplit=1,
+    )[1].split(
+        "# Return the full cached keys/values",
+        maxsplit=1,
+    )[0]
+
+    assert "token_increments = token_mask.sum(dim=1)" in insert_section
+    assert "next_row_pos = base_row_pos + token_increments" in insert_section
+    assert insert_section.count("token_mask.sum(dim=1)") == 1
+
+
 def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     source = Path(__file__).resolve().parents[1] / "nanochat" / "engine.py"
     generate_batched = source.read_text(encoding="utf-8").split(

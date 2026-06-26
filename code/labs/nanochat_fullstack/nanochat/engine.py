@@ -237,7 +237,9 @@ class KVCache:
                 token_mask = torch.ones((B, T_add), device=k.device, dtype=torch.bool)
             # ensure we have enough capacity for the maximum position that will be written
             base_row_pos = self.row_pos
-            max_needed = int((base_row_pos + token_mask.sum(dim=1)).max().item())
+            token_increments = token_mask.sum(dim=1)
+            next_row_pos = base_row_pos + token_increments
+            max_needed = int(next_row_pos.max().item())
             self._maybe_grow_cache(max_needed, k.dtype, k.device)
             batch_idx = self._batch_index_buffer(B, k.device)
             for t in range(T_add):
@@ -249,9 +251,9 @@ class KVCache:
                 self.kv_cache[layer_idx, 0, rows, :, positions] = k[active, :, t, :]
                 self.kv_cache[layer_idx, 1, rows, :, positions] = v[active, :, t, :]
             if layer_idx == self.kv_cache.size(0) - 1:
-                self.row_pos = base_row_pos + token_mask.sum(dim=1)
+                self.row_pos = next_row_pos
                 self.pos = int(self.row_pos.max().item())
-            t1_source = self.row_pos if layer_idx == self.kv_cache.size(0) - 1 else base_row_pos + token_mask.sum(dim=1)
+            t1_source = self.row_pos if layer_idx == self.kv_cache.size(0) - 1 else next_row_pos
             t1 = int(t1_source.max().item())
         else:
             t0, t1 = self.pos, self.pos + T_add
