@@ -206,7 +206,13 @@ class TestNumericalCorrectness:
         blackwell = pytest.importorskip("ch16.inference_optimizations_blackwell")
         monkeypatch.setattr(blackwell, "FP8_AVAILABLE", False)
 
+        init_source = inspect.getsource(blackwell.DynamicQuantizedKVCache.__init__)
         source = inspect.getsource(blackwell.DynamicQuantizedKVCache.update)
+        clear_source = inspect.getsource(blackwell.DynamicQuantizedKVCache.clear)
+        assert "self.cache = torch.empty(" in init_source
+        assert "self.cache = torch.zeros(" not in init_source
+        assert "self.cache.zero_()" not in clear_source
+        assert "self.cache[:, :, batch_idx].zero_()" not in clear_source
         assert "unique_rows" in source
         assert "batch_index_list = [int(batch_idx)]" in source
         assert "if isinstance(batch_indices, int)" in source

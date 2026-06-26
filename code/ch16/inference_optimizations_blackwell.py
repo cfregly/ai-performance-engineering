@@ -108,7 +108,7 @@ class DynamicQuantizedKVCache:
         # Allocate cache (num_layers, 2, max_batch, num_heads, max_seq, head_dim)
         # 2 for key and value
         cache_shape = (num_layers, 2, max_batch_size, num_heads, max_seq_len, head_dim)
-        self.cache = torch.zeros(cache_shape, dtype=self.cache_dtype, device=device)
+        self.cache = torch.empty(cache_shape, dtype=self.cache_dtype, device=device)
         
         # Scaling factors for FP8 quantization
         if FP8_AVAILABLE:
@@ -265,11 +265,9 @@ class DynamicQuantizedKVCache:
     def clear(self, batch_idx: Optional[int] = None):
         """Clear cache"""
         if batch_idx is None:
-            self.cache.zero_()
             self.seq_lens.zero_()
             self._seq_lens_host = [0] * self.max_batch_size
         else:
-            self.cache[:, :, batch_idx].zero_()
             self.seq_lens[batch_idx] = 0
             self._seq_lens_host[batch_idx] = 0
 
