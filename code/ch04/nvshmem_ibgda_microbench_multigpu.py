@@ -12,9 +12,9 @@ from typing import Dict, Optional
 
 import torch
 
-from core.harness.benchmark_harness import BenchmarkConfig
 from core.benchmark.cuda_binary_benchmark import BinaryRunResult, CudaBinaryBenchmark
 from core.benchmark.verification import simple_signature
+from core.harness.benchmark_harness import BenchmarkConfig
 
 
 def _default_symmetric_size() -> str:
@@ -59,6 +59,7 @@ class NvshmemIbgdaMicrobench(CudaBinaryBenchmark):
         self.nvshmemrun: Optional[str] = None
         self._parsed_metrics: Dict[str, float] = {}
         self._last_output: Optional[torch.Tensor] = None
+        self._last_output_values: Optional[list[float]] = None
 
         args = self._build_run_args()
 
@@ -273,15 +274,19 @@ class NvshmemIbgdaMicrobench(CudaBinaryBenchmark):
     def benchmark_fn(self) -> None:
         self._last_result = self._run_once()
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._last_output = torch.tensor(
-            [self._parsed_metrics.get("bandwidth_gbps", 0.0)],
-            device=device,
-            dtype=torch.float32,
-        )
+        self._last_output_values = [self._parsed_metrics.get("bandwidth_gbps", 0.0)]
+        self._last_output = None
         self._payload_device = device
 
     def capture_verification_payload(self) -> None:
+        if self._last_output_values is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         device = self._payload_device
+        self._last_output = torch.tensor(
+            self._last_output_values,
+            device=device,
+            dtype=torch.float32,
+        )
         self._set_verification_payload(
             inputs={
                 "mode": torch.tensor([ord(self.mode[0])], device=device, dtype=torch.int64),

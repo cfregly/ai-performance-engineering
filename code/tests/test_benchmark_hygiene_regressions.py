@@ -871,6 +871,22 @@ def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() 
     assert "Timing events not initialized" in benchmark_section
 
 
+def test_ch04_nvshmem_microbench_defers_output_tensor_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "ch04" / "nvshmem_ibgda_microbench_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
+
+    assert "torch.tensor(" not in benchmark_section
+    assert "self._last_output_values = [self._parsed_metrics.get(\"bandwidth_gbps\", 0.0)]" in benchmark_section
+    assert "self._last_output = torch.tensor(" in capture_section
+
+
 def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch15" / "disaggregated_inference_single_common.py").read_text(encoding="utf-8")
     output_helper = source.split("def _set_output_from_tokens", maxsplit=1)[1].split(
