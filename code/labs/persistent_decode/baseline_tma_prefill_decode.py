@@ -46,7 +46,7 @@ class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.prefill_src = torch.randn(
             self.prefill_chunks, self.prefill_chunk_elems, device=self.device
         )
-        self.prefill_dst = torch.zeros_like(self.prefill_src)
+        self.prefill_dst = torch.empty_like(self.prefill_src)
         self._synchronize()
 
     def _prefill_sequential(self) -> None:

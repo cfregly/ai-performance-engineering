@@ -320,13 +320,13 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.prefill_src = torch.randn(
             self.prefill_chunks, self.prefill_chunk_elems, device=self.device
         )
-        self.prefill_dst = torch.zeros_like(self.prefill_src)
+        self.prefill_dst = torch.empty_like(self.prefill_src)
 
         # Graph-captured decode loop to cut host gaps during profiling.
         self.graph_q = self.inputs.q.clone()
         self.graph_k = self.inputs.k.clone()
         self.graph_v = self.inputs.v.clone()
-        self.graph_out = torch.zeros_like(self.inputs.out)
+        self.graph_out = torch.empty_like(self.inputs.out)
         self._full_events = {
             "start": torch.cuda.Event(enable_timing=True),
             "end": torch.cuda.Event(enable_timing=True),
@@ -411,7 +411,6 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             self.graph_q.copy_(self.inputs.q)
             self.graph_k.copy_(self.inputs.k)
             self.graph_v.copy_(self.inputs.v)
-            self.graph_out.zero_()
             self.decode_graph.replay()
             # Mirror back to inputs.out so validation stays consistent.
             self.inputs.out.copy_(self.graph_out)

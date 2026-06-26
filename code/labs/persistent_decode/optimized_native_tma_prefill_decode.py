@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -58,13 +60,13 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
         self.prefill_src = torch.randn(
             self.prefill_chunks, self.prefill_chunk_elems, device=self.device
         )
-        self.prefill_dst = torch.zeros_like(self.prefill_src)
+        self.prefill_dst = torch.empty_like(self.prefill_src)
         self._tma_ext = load_native_tma()  # raises if unsupported
 
         self.graph_q = self.inputs.q.clone()
         self.graph_k = self.inputs.k.clone()
         self.graph_v = self.inputs.v.clone()
-        self.graph_out = torch.zeros_like(self.inputs.out)
+        self.graph_out = torch.empty_like(self.inputs.out)
 
         torch.cuda.synchronize()
         with torch.cuda.graph(self.decode_graph, stream=self.decode_stream):
@@ -106,7 +108,6 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
             self.graph_q.copy_(self.inputs.q)
             self.graph_k.copy_(self.inputs.k)
             self.graph_v.copy_(self.inputs.v)
-            self.graph_out.zero_()
             self.decode_graph.replay()
             self.inputs.out.copy_(self.graph_out)
 
@@ -174,4 +175,3 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedNativeTmaPrefillDecodeBenchmark()
-

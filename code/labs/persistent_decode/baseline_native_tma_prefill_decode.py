@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -39,7 +41,7 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
         self.prefill_src = torch.randn(
             self.prefill_chunks, self.prefill_chunk_elems, device=self.device
         )
-        self.prefill_dst = torch.zeros_like(self.prefill_src)
+        self.prefill_dst = torch.empty_like(self.prefill_src)
         self._tma_ext = load_native_tma()  # raises if unsupported
         self._synchronize()
 
@@ -116,4 +118,3 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineNativeTmaPrefillDecodeBenchmark()
-

@@ -1471,6 +1471,27 @@ def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
     assert 'start_decode = self._piecewise_events["start_decode"]' in benchmark_section
 
 
+def test_persistent_decode_tma_buffers_avoid_zero_fill_before_overwrite() -> None:
+    prefill_targets = [
+        REPO_ROOT / "labs" / "persistent_decode" / "baseline_tma_prefill_decode.py",
+        REPO_ROOT / "labs" / "persistent_decode" / "baseline_native_tma_prefill_decode.py",
+        REPO_ROOT / "labs" / "persistent_decode" / "optimized_tma_prefill_decode.py",
+        REPO_ROOT / "labs" / "persistent_decode" / "optimized_native_tma_prefill_decode.py",
+    ]
+    for path in prefill_targets:
+        source = path.read_text(encoding="utf-8")
+        assert "self.prefill_dst = torch.empty_like(self.prefill_src)" in source
+        assert "self.prefill_dst = torch.zeros_like(self.prefill_src)" not in source
+
+    for path in prefill_targets[2:]:
+        source = path.read_text(encoding="utf-8")
+        decode_graph_section = source.split("def _decode_graph", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
+        assert "self.graph_out = torch.empty_like(self.inputs.out)" in source
+        assert "self.graph_out.zero_()" not in decode_graph_section
+
+
 def test_optimized_flexdecode_graph_reuses_static_input_without_zero_fill() -> None:
     source = (REPO_ROOT / "ch18" / "optimized_flexdecoding_graphs.py").read_text(encoding="utf-8")
     setup_section = source.split("def _initialize_and_capture", maxsplit=1)[1].split(
