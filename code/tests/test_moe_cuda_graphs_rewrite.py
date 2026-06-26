@@ -137,9 +137,28 @@ def test_level5_bmm_path_reuses_padding_workspaces() -> None:
     assert '"_bmm_padded_tokens",' in bmm_section
     assert 'padded_weights = self._bmm_workspace(' in bmm_section
     assert '"_bmm_padded_weights",' in bmm_section
-    assert "padded_tokens.zero_()" in bmm_section
-    assert "padded_weights.zero_()" in bmm_section
+    assert "padded_tokens.zero_()" not in bmm_section
+    assert "padded_weights.zero_()" not in bmm_section
+    assert "padded_tokens.scatter_(" in bmm_section
+    assert "padded_weights.scatter_(" in bmm_section
     assert "torch.zeros(self.num_experts * max_count" not in bmm_section
+
+
+def test_naive_moe_path_seeds_output_from_first_route() -> None:
+    source = Path(__file__).resolve().parents[1] / "labs" / "moe_optimization_journey" / "moe_model.py"
+    text = source.read_text(encoding="utf-8")
+
+    naive_section = text.split("def forward_naive", maxsplit=1)[1].split(
+        "def forward_batched",
+        maxsplit=1,
+    )[0]
+
+    assert "output = torch.empty_like(x)" in naive_section
+    assert "torch.zeros_like(x)" not in naive_section
+    assert "for k in range(num_experts_per_tok):" in naive_section
+    assert "if k == 0:" in naive_section
+    assert "output[mask] = weighted_output" in naive_section
+    assert "output[mask] += weighted_output" in naive_section
 
 
 def test_graphable_moe_path_matches_level5_bmm_fused_outputs() -> None:
@@ -183,6 +202,8 @@ def test_grouped_moe_path_uses_shared_bucket_helpers() -> None:
 
     assert "bucket_grouped_tokens(" in grouped_section
     assert "return_expert_order_list=True" in grouped_section
+    assert "output = torch.empty(" in grouped_section
+    assert "torch.zeros(sorted_tokens.shape[0]" not in grouped_section
     assert "for expert_id, count in zip(expert_order_host, counts)" in grouped_section
     assert "expert_order.tolist()" not in grouped_section
     assert "restore_grouped_tokens(" in grouped_section

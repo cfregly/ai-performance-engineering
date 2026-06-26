@@ -211,17 +211,17 @@ class MoEExperts(nn.Module):
         """Level 0: NAIVE - Python loops over experts.
         
         This is how you might write MoE naively:
+        - Loop over each top-K selection
         - Loop over each expert
-        - Loop over each top-K selection  
         - Compute expert output
         - Accumulate weighted results
         
         Problems: Python loop overhead, no parallelism, memory inefficient
         """
-        output = torch.zeros_like(x)
+        output = torch.empty_like(x)
         
-        for expert_idx in range(self.num_experts):
-            for k in range(num_experts_per_tok):
+        for k in range(num_experts_per_tok):
+            for expert_idx in range(self.num_experts):
                 mask = expert_indices[:, k] == expert_idx
                 if mask.any():
                     expert_input = x[mask]
@@ -230,7 +230,11 @@ class MoEExperts(nn.Module):
                     up = expert['w3'](expert_input)
                     expert_output = expert['w2'](gate * up)
                     weights = expert_weights[mask, k].unsqueeze(-1)
-                    output[mask] += weights * expert_output
+                    weighted_output = weights * expert_output
+                    if k == 0:
+                        output[mask] = weighted_output
+                    else:
+                        output[mask] += weighted_output
         return output
     
     def forward_batched(
@@ -380,8 +384,12 @@ class MoEExperts(nn.Module):
         sorted_weights = expert_weights.view(-1).index_select(0, bucket_indices)
 
         # Per-expert GEMM on contiguous tokens
-        output = torch.zeros(sorted_tokens.shape[0], self.hidden_size,
-                           device=x.device, dtype=x.dtype)
+        output = torch.empty(
+            sorted_tokens.shape[0],
+            self.hidden_size,
+            device=x.device,
+            dtype=x.dtype,
+        )
 
         offset = 0
         for expert_id, count in zip(expert_order_host, counts):
@@ -449,7 +457,7 @@ class MoEExperts(nn.Module):
             device=device,
             dtype=x.dtype,
         )
-        padded_tokens.zero_()
+        # Only rows addressed by padded_indices are gathered after the BMM.
         padded_tokens.scatter_(0, padded_indices.unsqueeze(1).expand(-1, self.hidden_size), sorted_tokens)
         padded_tokens = padded_tokens.view(self.num_experts, max_count, self.hidden_size)
         
@@ -467,7 +475,7 @@ class MoEExperts(nn.Module):
             device=device,
             dtype=x.dtype,
         )
-        padded_weights.zero_()
+        # Padding rows are ignored by the gather, so clearing the workspace is unnecessary.
         padded_weights.scatter_(0, padded_indices.unsqueeze(1), sorted_weights.unsqueeze(1))
         padded_weights = padded_weights.view(self.num_experts, max_count, 1)
         out = out * padded_weights
