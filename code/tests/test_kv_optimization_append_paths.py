@@ -23,8 +23,18 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         assert "seq_len = self._seq_lengths_host[batch_idx]" in get_kv_source
         assert ".item()" not in get_kv_source
         assert "self.seq_lengths += 1" not in benchmark_source
+        assert "self.seq_lengths.zero_()" not in benchmark_source
         assert "self.seq_lengths.fill_(num_decode_steps)" in benchmark_source
         assert "self._seq_lengths_host = [num_decode_steps] * self.batch_size" in benchmark_source
+
+
+def test_kv_standard_cache_allocation_avoids_zero_fill() -> None:
+    for benchmark_cls in (BaselineKVStandard, OptimizedKVFP8Compressed):
+        setup_source = inspect.getsource(benchmark_cls.setup)
+        cache_allocation = setup_source.split("# Current sequence lengths", maxsplit=1)[0]
+
+        assert "self.kv_cache = torch.empty(" in cache_allocation
+        assert "self.kv_cache = torch.zeros(" not in cache_allocation
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for KV append parity")

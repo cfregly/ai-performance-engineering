@@ -75,7 +75,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
             torch.cuda.manual_seed_all(42)
         # Pre-allocate KV cache
         # Shape: [batch, num_layers, 2, num_heads, max_seq, head_dim]
-        self.kv_cache = torch.zeros(
+        self.kv_cache = torch.empty(
             self.batch_size,
             self.num_layers,
             2,  # K and V
@@ -159,7 +159,6 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must precompute decode-step inputs before benchmarking")
         # Simulate decoding
         num_decode_steps = self.num_decode_steps
-        self.seq_lengths.zero_()
         self._seq_lengths_host = [0] * self.batch_size
 
         timing_pair = self._get_timing_pair()

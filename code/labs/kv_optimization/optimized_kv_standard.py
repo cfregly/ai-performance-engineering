@@ -94,7 +94,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             torch.cuda.manual_seed_all(42)
         """Initialize compressed KV cache."""
         # Pre-allocate KV cache in compressed format
-        self.kv_cache = torch.zeros(
+        self.kv_cache = torch.empty(
             self.batch_size,
             self.num_layers,
             2,
@@ -216,7 +216,6 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         if self._generated_k_steps is None or self._generated_v_steps is None:
             raise RuntimeError("setup() must precompute decode-step inputs before benchmarking")
         num_decode_steps = self.num_decode_steps
-        self.seq_lengths.zero_()
         self._seq_lengths_host = [0] * self.batch_size
 
         timing_pair = self._get_timing_pair()
