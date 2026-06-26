@@ -281,28 +281,28 @@ def slice_generated_token_ids(
     if max_new_tokens <= 0:
         raise ValueError(f"max_new_tokens must be positive, got {max_new_tokens}")
 
-    rows = []
+    prompt_lengths_list = [int(prompt_len) for prompt_len in prompt_lengths]
     pad_value = int(pad_token_id)
-    for batch_idx, prompt_len in enumerate(prompt_lengths):
-        prompt_len = int(prompt_len)
+    for prompt_len in prompt_lengths_list:
         if prompt_len < 0 or prompt_len > output_ids.size(1):
             raise ValueError(
                 f"Prompt length {prompt_len} is out of bounds for output_ids shape "
                 f"{tuple(output_ids.shape)}"
             )
-        generated = output_ids[batch_idx, prompt_len:]
-        if generated.numel() > max_new_tokens:
-            generated = generated[:max_new_tokens]
-        elif generated.numel() < max_new_tokens:
-            pad = torch.full(
-                (max_new_tokens - generated.numel(),),
-                pad_value,
-                dtype=output_ids.dtype,
-                device=output_ids.device,
-            )
-            generated = torch.cat((generated, pad), dim=0)
-        rows.append(generated)
-    return torch.stack(rows, dim=0).contiguous()
+    if output_ids.size(1) == 0:
+        return torch.full(
+            (output_ids.size(0), max_new_tokens),
+            pad_value,
+            dtype=output_ids.dtype,
+            device=output_ids.device,
+        )
+
+    prompt_offsets = torch.tensor(prompt_lengths_list, device=output_ids.device, dtype=torch.long)
+    token_offsets = torch.arange(max_new_tokens, device=output_ids.device, dtype=torch.long)
+    gather_positions = prompt_offsets.unsqueeze(1) + token_offsets.unsqueeze(0)
+    valid_positions = gather_positions < output_ids.size(1)
+    gathered = output_ids.gather(1, gather_positions.clamp_max(output_ids.size(1) - 1))
+    return torch.where(valid_positions, gathered, torch.full_like(gathered, pad_value)).contiguous()
 
 
 def verification_token_prefix_length(max_new_tokens: int) -> int:

@@ -281,6 +281,7 @@ def test_optimized_trtllm_teardown_calls_runner_release_hooks_without_local_desc
 
 
 def test_trtllm_generated_token_slice_normalizes_beams_and_padding() -> None:
+    source = inspect.getsource(trtllm_common.slice_generated_token_ids)
     output_ids = torch.tensor(
         [
             [[11, 12, 13, 21, 22], [91, 92, 93, 94, 95]],
@@ -306,6 +307,10 @@ def test_trtllm_generated_token_slice_normalizes_beams_and_padding() -> None:
             dtype=torch.long,
         ),
     )
+    assert "gather_positions = prompt_offsets.unsqueeze(1) + token_offsets.unsqueeze(0)" in source
+    assert "torch.where(valid_positions, gathered" in source
+    assert "generated = torch.cat" not in source
+    assert "rows.append" not in source
 
 
 def test_trtllm_generated_token_slice_normalizes_output_dtype_to_int64() -> None:
