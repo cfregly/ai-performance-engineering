@@ -204,6 +204,15 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     assert "dist.reduce_scatter(reducescatter_output, reducescatter_input)" in collective_section
 
 
+def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
+    source = (REPO_ROOT / "ch09" / "fusion_pytorch.py").read_text(encoding="utf-8")
+
+    assert "GELU_TANH_SCALE = math.sqrt(2.0 / math.pi)" in source
+    assert "torch.sqrt(torch.tensor(2.0 / torch.pi))" not in source
+    assert "GELU_TANH_SCALE * (x + 0.044715 * torch.pow(x, 3))" in source
+    assert "GELU_TANH_SCALE * (scaled + 0.044715 * torch.pow(scaled, 3))" in source
+
+
 def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
     baseline_source = (REPO_ROOT / "ch14" / "baseline_nccl_quantization.py").read_text(
         encoding="utf-8"

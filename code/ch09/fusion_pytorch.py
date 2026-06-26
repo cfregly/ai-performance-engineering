@@ -1,5 +1,8 @@
-import torch
+import math
 import os
+
+import torch
+
 from core.utils.architecture_runtime import (
     get_arch_config,
     get_architecture,
@@ -13,10 +16,13 @@ Chapter 9: Kernel Efficiency & Arithmetic Intensity Examples
 
 Kernel fusion demonstrations targeting Blackwell GPUs."""
 
+import time
+
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-import time
-import numpy as np
+
+GELU_TANH_SCALE = math.sqrt(2.0 / math.pi)
 
 # Custom fused activation functions
 class FusedGELU(nn.Module):
@@ -27,7 +33,7 @@ class FusedGELU(nn.Module):
     def forward(self, x):
         # Standard GELU: 0.5 * x * (1 + tanh(sqrt(2/π) * (x + 0.044715 * x^3)))
         return 0.5 * x * (1.0 + torch.tanh(
-            torch.sqrt(torch.tensor(2.0 / torch.pi)) * (x + 0.044715 * torch.pow(x, 3))
+            GELU_TANH_SCALE * (x + 0.044715 * torch.pow(x, 3))
         ))
 
 class FusedLayerNormGELU(nn.Module):
@@ -48,7 +54,7 @@ class FusedLayerNormGELU(nn.Module):
         
         # Apply GELU activation
         return 0.5 * scaled * (1.0 + torch.tanh(
-            torch.sqrt(torch.tensor(2.0 / torch.pi)) * (scaled + 0.044715 * torch.pow(scaled, 3))
+            GELU_TANH_SCALE * (scaled + 0.044715 * torch.pow(scaled, 3))
         ))
 
 class FusedLinearBiasGELU(nn.Module):
