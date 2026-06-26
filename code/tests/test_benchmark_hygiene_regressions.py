@@ -1613,7 +1613,10 @@ def test_ch16_inference_serving_tracks_packed_max_tokens_on_host() -> None:
 
     assert "max_tokens = 1" in generate_batch_section
     assert "seq_len = len(token_source)" in generate_batch_section
+    assert "seq_len = 1" in generate_batch_section
+    assert "self._token_workspace[pack_idx, 0] = int(state.generated_tokens[-1])" in generate_batch_section
     assert "max_tokens = max(max_tokens, seq_len)" in generate_batch_section
+    assert "token_source = [state.generated_tokens[-1]]" not in generate_batch_section
     assert "lengths[:batch_size].max().item()" not in generate_batch_section
     assert ".max().item()" not in generate_batch_section
 

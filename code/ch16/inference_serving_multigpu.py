@@ -1377,29 +1377,26 @@ class InferenceServerMultiGPU:
         for pack_idx, (_orig_idx, state) in enumerate(eligible):
             if len(state.generated_tokens) == 0:
                 token_source = state.request.prompt_tokens
-            else:
-                token_source = [state.generated_tokens[-1]]
-
-            seq_len = len(token_source)
-
-            token_tensor = torch.as_tensor(
-                token_source,
-                dtype=torch.long,
-                device=self.device,
-            )
-
-            if seq_len > self.max_seq_len:
-                raise ValueError(
-                    f"Sequence length {seq_len} exceeds configured max_seq_len={self.max_seq_len}"
+                seq_len = len(token_source)
+                if seq_len > self.max_seq_len:
+                    raise ValueError(
+                        f"Sequence length {seq_len} exceeds configured max_seq_len={self.max_seq_len}"
+                    )
+                token_tensor = torch.as_tensor(
+                    token_source,
+                    dtype=torch.long,
+                    device=self.device,
                 )
+                self._token_workspace[pack_idx, :seq_len].copy_(token_tensor)
+            else:
+                seq_len = 1
+                self._token_workspace[pack_idx, 0] = int(state.generated_tokens[-1])
             max_tokens = max(max_tokens, seq_len)
 
             lengths[pack_idx] = seq_len
             temperatures[pack_idx] = state.request.temperature
             token_counts[pack_idx] = seq_len
 
-            workspace_view = self._token_workspace[pack_idx, :seq_len]
-            workspace_view.copy_(token_tensor)
             prev_len = self._last_token_lengths[pack_idx]
             if seq_len < prev_len:
                 self._token_workspace[pack_idx, seq_len:prev_len].zero_()
