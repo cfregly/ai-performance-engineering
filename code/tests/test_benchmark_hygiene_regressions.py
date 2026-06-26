@@ -2876,7 +2876,8 @@ def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
     assert "rep_x = x.index_select(0, token_ids)" in vectorized_router
     assert "torch.zeros(" not in vectorized_router
     assert "padded = _dispatch_slot_buffer(" in vectorized_router
-    assert "padded.zero_()" in vectorized_router
+    assert "padded.zero_()" not in vectorized_router
+    assert "Every row selected by `slots` is overwritten" in vectorized_router
     assert "module._dispatch_token_ids = None" in install_section
     assert "module._dispatch_padded = None" in install_section
 

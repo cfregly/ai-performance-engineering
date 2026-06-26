@@ -93,8 +93,8 @@ def _vectorized_forward_grouped(
     `_dispatch_capacity` is calibrated once, eagerly, in setup() (the only
     host sync, outside the measured path): 2x the observed max tokens/expert,
     rounded up to a multiple of 64 and clamped to the routed-token count.
-    Zero-filled slots are mathematically inert (each GEMM output row depends
-    only on its own input row).
+    Unfilled slots are ignored by the final gather (each GEMM output row depends
+    only on its own input row), so clearing the dispatch buffer is unnecessary.
     """
     batch_seq, top_k = expert_indices.shape
     flat_ids = expert_indices.reshape(-1)
@@ -121,7 +121,7 @@ def _vectorized_forward_grouped(
         device=x.device,
         dtype=x.dtype,
     )
-    padded.zero_()
+    # Every row selected by `slots` is overwritten; unselected padding rows are never gathered.
     padded.index_copy_(0, slots, rep_x)
     padded = padded.view(self.num_experts, cap, self.hidden_size)
 
