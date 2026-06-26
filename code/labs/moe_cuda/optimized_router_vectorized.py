@@ -193,7 +193,63 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         self.capacity_rightsize: bool = False
         self.capacity_override: Optional[int] = None
         self.capacity_guard: bool = False
+        self._static_overflow_num_slots: Optional[int] = None
         self.register_buffer("overflow_total", torch.zeros((), dtype=torch.int64), persistent=False)
+        self.register_buffer("_static_token_indices", torch.empty(0, dtype=torch.int64), persistent=False)
+        self.register_buffer("_static_expert_range", torch.empty(0, dtype=torch.int64), persistent=False)
+        self.register_buffer("_static_overflow_slots", torch.empty(0, dtype=torch.int64), persistent=False)
+
+    @torch.no_grad()
+    def configure_static_dispatch_buffers(self, batch_size: int, device: torch.device | str) -> None:
+        """Precompute static index tensors used by the graph-captured dispatch path."""
+
+        device = torch.device(device)
+        assignments = int(batch_size) * self.top_k
+        self._static_token_indices = torch.arange(
+            int(batch_size),
+            device=device,
+            dtype=torch.int64,
+        ).repeat_interleave(self.top_k)
+        self._static_expert_range = torch.arange(
+            self.num_experts,
+            device=device,
+            dtype=torch.int64,
+        ).unsqueeze(1)
+        if self.capacity is not None:
+            self._static_overflow_num_slots = self.num_experts * int(self.capacity)
+            self._static_overflow_slots = torch.full(
+                (assignments,),
+                self._static_overflow_num_slots,
+                device=device,
+                dtype=torch.int64,
+            )
+
+    def _token_indices_for(self, tokens: torch.Tensor, batch: int) -> torch.Tensor:
+        expected = batch * self.top_k
+        if (
+            self._static_token_indices.device == tokens.device
+            and self._static_token_indices.numel() == expected
+        ):
+            return self._static_token_indices
+        return torch.arange(batch, device=tokens.device, dtype=torch.int64).repeat_interleave(self.top_k)
+
+    def _expert_range_for(self, tokens: torch.Tensor) -> torch.Tensor:
+        if (
+            self._static_expert_range.device == tokens.device
+            and tuple(self._static_expert_range.shape) == (self.num_experts, 1)
+        ):
+            return self._static_expert_range
+        return torch.arange(self.num_experts, device=tokens.device, dtype=torch.int64).unsqueeze(1)
+
+    def _overflow_slots_for(self, slots: torch.Tensor, num_slots: int) -> torch.Tensor:
+        if (
+            self._static_overflow_slots.device == slots.device
+            and self._static_overflow_slots.numel() == slots.numel()
+            and self._static_overflow_slots.numel() > 0
+            and self._static_overflow_num_slots == num_slots
+        ):
+            return self._static_overflow_slots
+        return torch.full_like(slots, num_slots)
 
     @torch.no_grad()
     def calibrate_capacity(self, tokens: torch.Tensor) -> int:
@@ -234,13 +290,13 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         flat_tokens = tokens.unsqueeze(1).expand(-1, self.top_k, -1).reshape(-1, self.hidden_size)
         flat_expert_ids = expert_ids.reshape(-1)
         flat_probs = probs.reshape(-1, 1).to(tokens.dtype)
-        token_indices = torch.arange(batch, device=tokens.device).repeat_interleave(self.top_k)
+        token_indices = self._token_indices_for(tokens, batch)
 
         # Rank of each assignment within its expert: one-hot cumsum (sortless,
         # static shapes, no nonzero). Layout is [E, N] so the scan runs along
         # the contiguous inner dim (the [N, E] outer-dim scan has only E
         # parallel lanes and is ~2 ms; this form is ~10 us).
-        expert_range = torch.arange(self.num_experts, device=tokens.device).unsqueeze(1)
+        expert_range = self._expert_range_for(tokens)
         one_hot_t = (flat_expert_ids.unsqueeze(0) == expert_range).long()
         ranks = one_hot_t.cumsum(1).gather(0, flat_expert_ids.unsqueeze(0)).squeeze(0) - 1
 
@@ -250,7 +306,7 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         num_slots = self.num_experts * capacity
         valid = ranks < capacity
         slots = flat_expert_ids * capacity + ranks.clamp_max(capacity - 1)
-        slots = torch.where(valid, slots, torch.full_like(slots, num_slots))
+        slots = torch.where(valid, slots, self._overflow_slots_for(slots, num_slots))
 
         if self.capacity_guard:
             # Front M4 AUDIT RULE: overflow must be LOUD, never a silent drop.
@@ -384,6 +440,7 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         model.capacity_override = capacity_override
         model.capacity_guard = self._capacity_rightsize_enabled or capacity_override is not None
         self._capacity = model.calibrate_capacity(self.inputs)
+        model.configure_static_dispatch_buffers(self.batch_size, self.inputs.device)
         with torch.no_grad():
             for _ in range(3):
                 model(self.inputs)

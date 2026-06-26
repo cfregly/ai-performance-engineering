@@ -596,6 +596,47 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
         assert "output=self.output.detach().float().clone()" in capture_section
 
 
+def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
+    source = (
+        REPO_ROOT / "labs" / "moe_cuda" / "optimized_router_vectorized.py"
+    ).read_text(encoding="utf-8")
+    forward_section = source.split("def forward(self, tokens: torch.Tensor)", maxsplit=2)[2].split(
+        "class VectorizedRouterBenchmark", maxsplit=1
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _check_capacity_overflow", maxsplit=1
+    )[0]
+
+    assert "configure_static_dispatch_buffers" in source
+    assert "model.configure_static_dispatch_buffers(self.batch_size, self.inputs.device)" in setup_section
+    assert "token_indices = self._token_indices_for(tokens, batch)" in forward_section
+    assert "expert_range = self._expert_range_for(tokens)" in forward_section
+    assert "self._overflow_slots_for(slots, num_slots)" in forward_section
+    assert ".item()) == num_slots" not in source
+
+    from labs.moe_cuda.optimized_router_vectorized import GroupedTopKMoE
+
+    model = GroupedTopKMoE(hidden_size=8, num_experts=4, top_k=2, expansion=1)
+    model.capacity = 64
+    model.configure_static_dispatch_buffers(batch_size=3, device=torch.device("cpu"))
+    token_ptr = model._static_token_indices.data_ptr()
+    expert_ptr = model._static_expert_range.data_ptr()
+    overflow_ptr = model._static_overflow_slots.data_ptr()
+
+    output = model(torch.randn(3, 8))
+
+    assert output.shape == (3, 8)
+    assert model._static_token_indices.data_ptr() == token_ptr
+    assert model._static_expert_range.data_ptr() == expert_ptr
+    assert model._static_overflow_slots.data_ptr() == overflow_ptr
+    torch.testing.assert_close(
+        model._static_token_indices,
+        torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.int64),
+    )
+    assert model._static_expert_range.shape == (4, 1)
+    assert model._static_overflow_slots.unique().item() == 4 * 64
+
+
 def test_ch20_bf16_mlp_preconverts_activation_dtype_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch20" / "optimized_bf16_mlp.py").read_text(encoding="utf-8")
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
