@@ -556,6 +556,20 @@ def test_ch14_benchmarks_do_not_force_output_sum_syncs() -> None:
         assert "float(self.output.detach().sum())" not in benchmark_section
 
 
+def test_ch14_triton_persistent_demo_batches_correctness_error_reads() -> None:
+    source = (REPO_ROOT / "ch14" / "triton_persistent_demo.py").read_text(
+        encoding="utf-8"
+    )
+    verify_section = source.split("print(\"\\nVerifying correctness...\")", maxsplit=1)[1].split(
+        "#============================================================================",
+        maxsplit=1,
+    )[0]
+
+    assert "std_err, pers_err, atom_err = torch.stack(" in verify_section
+    assert ").tolist()" in verify_section
+    assert ".abs().max().item()" not in verify_section
+
+
 def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     ch14_source = (REPO_ROOT / "ch14" / "baseline_sliding_window.py").read_text(
         encoding="utf-8"

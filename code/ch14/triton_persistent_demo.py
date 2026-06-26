@@ -434,9 +434,13 @@ def benchmark_kernels():
     c_pers = matmul_persistent(a, b, num_sms)
     c_atom = matmul_persistent_atomic(a, b, num_sms)
     
-    std_err = (c_std - ref).abs().max().item()
-    pers_err = (c_pers - ref).abs().max().item()
-    atom_err = (c_atom - ref).abs().max().item()
+    std_err, pers_err, atom_err = torch.stack(
+        (
+            (c_std - ref).abs().max(),
+            (c_pers - ref).abs().max(),
+            (c_atom - ref).abs().max(),
+        )
+    ).tolist()
     
     print(f"Standard max error: {std_err:.6f}")
     print(f"Persistent max error: {pers_err:.6f}")
