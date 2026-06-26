@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import pytest
 import torch
 
@@ -41,6 +43,16 @@ def test_adaptive_parallelism_baseline_and_vectorized_paths_match_on_cpu() -> No
     optimized = classify_vectorized(workload).cpu()
 
     assert torch.equal(baseline, optimized)
+
+
+def test_adaptive_parallelism_baseline_materializes_feature_rows_once() -> None:
+    source = inspect.getsource(classify_baseline)
+
+    assert "feature_rows = torch.stack(" in source
+    assert ").detach().cpu().tolist()" in source
+    assert "for seq_len, gpu_mem_util, concurrent_reqs, batch_size, prefill_tokens, decode_tokens in feature_rows" in source
+    assert "[idx].item()" not in source
+    assert 'workload["seq_len"].detach().cpu()' not in source
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for chapter 19 adaptive-parallelism benchmark pair")

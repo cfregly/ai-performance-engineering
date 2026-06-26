@@ -78,23 +78,27 @@ def classify_baseline(workload: Dict[str, torch.Tensor], *, device: torch.device
     sync per scalar read (~6× per request), which dominates timing and dwarfs the
     actual routing logic—this path keeps the same semantics without that artifact.
     """
-    seq_len = workload["seq_len"].detach().cpu()
-    batch_size = workload["batch_size"].detach().cpu()
-    gpu_mem_util = workload["gpu_mem_util"].detach().cpu()
-    concurrent_reqs = workload["concurrent_reqs"].detach().cpu()
-    prefill_tokens = workload["prefill_tokens"].detach().cpu()
-    decode_tokens = workload["decode_tokens"].detach().cpu()
+    feature_rows = torch.stack(
+        (
+            workload["seq_len"].to(dtype=torch.float64),
+            workload["gpu_mem_util"].to(dtype=torch.float64),
+            workload["concurrent_reqs"].to(dtype=torch.float64),
+            workload["batch_size"].to(dtype=torch.float64),
+            workload["prefill_tokens"].to(dtype=torch.float64),
+            workload["decode_tokens"].to(dtype=torch.float64),
+        ),
+        dim=1,
+    ).detach().cpu().tolist()
 
-    n = int(seq_len.numel())
     strategy_ids: list[int] = []
-    for idx in range(n):
+    for seq_len, gpu_mem_util, concurrent_reqs, batch_size, prefill_tokens, decode_tokens in feature_rows:
         config = choose_worker_pool(
-            seq_len=int(seq_len[idx].item()),
-            gpu_mem_util=float(gpu_mem_util[idx].item()),
-            concurrent_reqs=int(concurrent_reqs[idx].item()),
-            batch_size=int(batch_size[idx].item()),
-            prefill_tokens=int(prefill_tokens[idx].item()),
-            decode_tokens=int(decode_tokens[idx].item()),
+            seq_len=int(seq_len),
+            gpu_mem_util=float(gpu_mem_util),
+            concurrent_reqs=int(concurrent_reqs),
+            batch_size=int(batch_size),
+            prefill_tokens=int(prefill_tokens),
+            decode_tokens=int(decode_tokens),
         )
         strategy_ids.append(STRATEGY_TO_ID[config.strategy])
 
