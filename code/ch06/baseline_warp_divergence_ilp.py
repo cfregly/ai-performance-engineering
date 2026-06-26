@@ -18,6 +18,7 @@ class BaselineWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmark
         super().__init__()
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self.routing_logits: Optional[torch.Tensor] = None
         self.workload = WORKLOAD
         self.N = self.workload.warp_elements
@@ -33,15 +34,17 @@ class BaselineWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmark
         torch.cuda.manual_seed_all(42)
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.output = None  # Will be set by benchmark_fn
+        self._output_buffer = torch.empty_like(self.input)
         self.routing_logits = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
         """Benchmark: ILP operations with warp divergence."""
-        assert self.input is not None and self.routing_logits is not None
+        assert self.input is not None and self.routing_logits is not None and self._output_buffer is not None
         with self._nvtx_range("baseline_warp_divergence_ilp"):
             mask_source = self.routing_logits
-            result = self.input.clone()
+            result = self._output_buffer
+            result.copy_(self.input)
             for iteration in range(self.branch_iterations):
                 activations = torch.sigmoid(mask_source)
                 mask = activations > 0.5
@@ -76,6 +79,8 @@ class BaselineWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmark
         """Teardown: Clean up resources."""
         self.input = None
         self.output = None
+        self._output_buffer = None
+        self.routing_logits = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

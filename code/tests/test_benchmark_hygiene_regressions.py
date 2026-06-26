@@ -1153,6 +1153,27 @@ def test_ch06_roofline_ilp_defers_verification_tensors_outside_hot_loop() -> Non
     assert "self._verify_input = torch.tensor([self._ridge_point_value], dtype=torch.float32)" in capture_section
 
 
+def test_ch06_warp_divergence_baseline_reuses_result_buffer() -> None:
+    source = (REPO_ROOT / "ch06" / "baseline_warp_divergence_ilp.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._output_buffer = torch.empty_like(self.input)" in setup_section
+    assert "result = self.input.clone()" not in benchmark_section
+    assert "result = self._output_buffer" in benchmark_section
+    assert "result.copy_(self.input)" in benchmark_section
+    assert "positive = result[mask]" in benchmark_section
+    assert "negative = result[~mask]" in benchmark_section
+
+
 def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_loop() -> None:
     training_pair = (
         "baseline_precisionfp8.py",
