@@ -82,6 +82,39 @@ def _empty_kv(cfg: CacheAwareDisaggConfig, device: torch.device) -> torch.Tensor
     )
 
 
+def _extend_cache_buffer(
+    cfg: CacheAwareDisaggConfig,
+    *,
+    request_id: int,
+    cache: torch.Tensor,
+    chunk_kv: torch.Tensor,
+    kv_buffers: Dict[int, torch.Tensor],
+) -> torch.Tensor:
+    current_kv_len = cache.size(1)
+    next_kv_len = current_kv_len + chunk_kv.size(1)
+    kv_buffer = kv_buffers.get(request_id)
+    if (
+        kv_buffer is None
+        or kv_buffer.device != chunk_kv.device
+        or kv_buffer.dtype != chunk_kv.dtype
+        or kv_buffer.size(1) < next_kv_len
+    ):
+        buffer_tokens = max(cfg.context_window, next_kv_len)
+        kv_buffer = torch.empty(
+            cfg.batch_size,
+            buffer_tokens,
+            cfg.hidden_size,
+            device=chunk_kv.device,
+            dtype=chunk_kv.dtype,
+        )
+        kv_buffers[request_id] = kv_buffer
+
+    if current_kv_len and cache.data_ptr() != kv_buffer.data_ptr():
+        kv_buffer[:, :current_kv_len].copy_(cache)
+    kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)
+    return kv_buffer[:, :next_kv_len]
+
+
 class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Single-GPU logical-worker benchmark for cache-aware disaggregation."""
 
@@ -134,6 +167,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_event_pool: List[tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]] = []
         self._request_event_triplets: List[tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_metrics: Dict[str, float] = {}
+        self._kv_buffers: Dict[int, torch.Tensor] = {}
 
     def _build_request_plans(self) -> List[RequestPlan]:
         warm_requests = int(round(self.cfg.requests_per_iteration * self.cfg.warm_request_ratio))
@@ -202,6 +236,16 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
+        self._kv_buffers = {
+            plan.request_idx: torch.empty(
+                self.cfg.batch_size,
+                self.cfg.context_window,
+                self.cfg.hidden_size,
+                device=self.device,
+                dtype=self.cfg.dtype,
+            )
+            for plan in self.request_plans
+        }
         with torch.no_grad():
             assert self.prompts is not None
             for plan in self.request_plans:
@@ -306,6 +350,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         worker_caches = [{} for _ in range(self.cfg.logical_decode_workers)]
         owners: Dict[int, int] = {}
+        kv_buffers = self._kv_buffers
         outputs: List[torch.Tensor] = []
         metrics = {
             "cache_hits": 0.0,
@@ -338,18 +383,6 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     owners=owners,
                     metrics=metrics,
                 )
-                kv_buffer = torch.empty(
-                    (
-                        self.cfg.batch_size,
-                        prompt.size(1),
-                        self.cfg.hidden_size,
-                    ),
-                    device=self.device,
-                    dtype=self.cfg.dtype,
-                )
-                current_kv_len = accumulated_kv.size(1)
-                if current_kv_len:
-                    kv_buffer[:, :current_kv_len].copy_(accumulated_kv)
                 if plan.is_warm and owners.get(plan.request_idx) == current_worker:
                     metrics["warm_requests_served_local"] += 1.0
 
@@ -367,10 +400,13 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         metrics=metrics,
                     )
                     chunk_kv, seed = self.prefill_model.prefill(chunk)
-                    next_kv_len = current_kv_len + chunk_kv.size(1)
-                    kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)
-                    current_kv_len = next_kv_len
-                    accumulated_kv = kv_buffer[:, :current_kv_len]
+                    accumulated_kv = _extend_cache_buffer(
+                        self.cfg,
+                        request_id=plan.request_idx,
+                        cache=accumulated_kv,
+                        chunk_kv=chunk_kv,
+                        kv_buffers=kv_buffers,
+                    )
                     worker_caches[current_worker][plan.request_idx] = accumulated_kv
                     owners[plan.request_idx] = current_worker
 
@@ -475,6 +511,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_event_pool = []
         self._request_event_triplets = []
         self._pending_metrics = {}
+        self._kv_buffers = {}
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

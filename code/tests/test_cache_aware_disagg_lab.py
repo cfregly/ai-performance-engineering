@@ -13,11 +13,12 @@ from core.harness.benchmark_harness import BaseBenchmark
 from labs.cache_aware_disagg_inference.cache_aware_disagg_common import (
     CacheAwareDisaggBenchmark,
     CacheAwareDisaggConfig,
+    _extend_cache_buffer as _extend_cache_buffer_single,
 )
 from labs.cache_aware_disagg_inference.cache_aware_disagg_multigpu_common import (
     CacheAwareDisaggMultiGPUBenchmark,
     CacheAwareDisaggMultiGPUConfig,
-    _extend_cache_buffer,
+    _extend_cache_buffer as _extend_cache_buffer_multi,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +68,38 @@ def test_cache_aware_disagg_wrappers_attach_metadata(relative_path: str) -> None
     assert Path(bench.script_path) == module_path
 
 
+def test_cache_aware_disagg_single_gpu_extend_cache_buffer_reuses_storage() -> None:
+    cfg = CacheAwareDisaggConfig(
+        hidden_size=4,
+        batch_size=1,
+        context_window=6,
+        dtype=torch.float32,
+    )
+    kv_buffers = {}
+    empty = torch.empty((1, 0, 4), dtype=torch.float32)
+    first_chunk = torch.arange(8, dtype=torch.float32).view(1, 2, 4)
+    second_chunk = torch.arange(8, 16, dtype=torch.float32).view(1, 2, 4)
+
+    first = _extend_cache_buffer_single(
+        cfg,
+        request_id=7,
+        cache=empty,
+        chunk_kv=first_chunk,
+        kv_buffers=kv_buffers,
+    )
+    second = _extend_cache_buffer_single(
+        cfg,
+        request_id=7,
+        cache=first,
+        chunk_kv=second_chunk,
+        kv_buffers=kv_buffers,
+    )
+
+    assert first.data_ptr() == second.data_ptr()
+    torch.testing.assert_close(second[:, :2], first_chunk)
+    torch.testing.assert_close(second[:, 2:4], second_chunk)
+
+
 def test_cache_aware_disagg_multigpu_extend_cache_buffer_reuses_storage() -> None:
     cfg = CacheAwareDisaggMultiGPUConfig(
         hidden_size=4,
@@ -79,14 +112,14 @@ def test_cache_aware_disagg_multigpu_extend_cache_buffer_reuses_storage() -> Non
     first_chunk = torch.arange(8, dtype=torch.float32).view(1, 2, 4)
     second_chunk = torch.arange(8, 16, dtype=torch.float32).view(1, 2, 4)
 
-    first = _extend_cache_buffer(
+    first = _extend_cache_buffer_multi(
         cfg,
         request_id=7,
         cache=empty,
         chunk_kv=first_chunk,
         kv_buffers=kv_buffers,
     )
-    second = _extend_cache_buffer(
+    second = _extend_cache_buffer_multi(
         cfg,
         request_id=7,
         cache=first,

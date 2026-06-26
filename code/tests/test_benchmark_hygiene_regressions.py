@@ -888,6 +888,10 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
         encoding="utf-8"
     )
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+    helper_section = source.split("def _extend_cache_buffer", maxsplit=1)[1].split(
+        "class CacheAwareDisaggBenchmark",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -898,8 +902,12 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "torch.cuda.Event(enable_timing=True)" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
     assert "torch.stack(" not in benchmark_section
-    assert "kv_buffer = torch.empty(" in benchmark_section
-    assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)" in benchmark_section
+    assert "self._kv_buffers = {" in setup_section
+    assert "kv_buffer = torch.empty(" in helper_section
+    assert "kv_buffer = torch.empty(" not in benchmark_section
+    assert "kv_buffers = self._kv_buffers" in benchmark_section
+    assert "_extend_cache_buffer(" in benchmark_section
+    assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)" in helper_section
     assert "torch.cat((accumulated_kv, chunk_kv), dim=1)" not in benchmark_section
     assert "request_start, prefill_end, decode_end = request_events[event_idx]" in benchmark_section
     assert "self._last_outputs = outputs" in benchmark_section
