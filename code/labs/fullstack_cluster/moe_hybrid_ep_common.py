@@ -599,7 +599,7 @@ class DeepSeekHybridEPModule(nn.Module):
         top_weights, top_indices, aux = self.router(hidden, expert_bias=expert_bias)
         route_counts = torch.bincount(top_indices.reshape(-1), minlength=self.num_experts)
         token_indices = self._token_indices(hidden.size(0), hidden.device)
-        expanded_tokens = hidden.repeat_interleave(self.top_k, dim=0)
+        expanded_tokens = hidden.index_select(0, token_indices)
         expanded_weights = top_weights.reshape(-1, 1).to(hidden.dtype)
         expanded_experts = top_indices.reshape(-1).to(torch.int64)
         owner_ranks = torch.div(expanded_experts, self.local_experts, rounding_mode="floor")
