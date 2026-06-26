@@ -378,6 +378,44 @@ def test_dtype_byte_sizing_avoids_empty_tensor_metadata_allocations() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_ch15_placement_sim_batches_session_rng_samples() -> None:
+    source = (REPO_ROOT / "ch15" / "placement_sim.py").read_text(encoding="utf-8")
+    simulate_section = source.split("def simulate", maxsplit=1)[1].split(
+        "def _prefill_latency_ms",
+        maxsplit=1,
+    )[0]
+
+    assert "prompt_token_samples = torch.randint(" in simulate_section
+    assert "decode_token_samples = torch.randint(" in simulate_section
+    assert "(sessions,)" in simulate_section
+    assert "for sess_idx, (prompt_tokens, decode_tokens) in enumerate(" in simulate_section
+    assert ".item()" not in simulate_section
+
+    from ch15.placement_sim import PlacementConfig, PlacementSimulator
+
+    cfg = PlacementConfig(
+        prefill_tp_size=2,
+        prefill_span_nodes=False,
+        decode_tp_size=1,
+        decode_span_nodes=False,
+        decode_microbatch=4,
+        remote_expert_fraction=0.25,
+        router_sticky_decode=True,
+        kv_transfer_policy="local_only",
+        prompt_tokens=(8, 16),
+        decode_tokens=(2, 6),
+    )
+    simulator = PlacementSimulator()
+
+    first = simulator.simulate(cfg, sessions=8, seed=123)
+    second = simulator.simulate(cfg, sessions=8, seed=123)
+
+    assert first == second
+    assert first.sessions == 8
+    assert len(first.ttft_ms) == 8
+    assert len(first.decode_ms) == 8
+
+
 def test_ch16_symmetric_memory_checksum_reduces_on_device() -> None:
     source = (REPO_ROOT / "ch16" / "symmetric_memory_inference.py").read_text(
         encoding="utf-8"

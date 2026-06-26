@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 import warnings
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import List, Tuple
 
 import torch
 
@@ -120,9 +120,22 @@ class PlacementSimulator:
         cross_node_collectives = 0
         tokens_processed = 0
 
-        for sess_idx in range(sessions):
-            prompt_tokens = int(torch.randint(cfg.prompt_tokens[0], cfg.prompt_tokens[1] + 1, (1,), generator=g).item())
-            decode_tokens = int(torch.randint(cfg.decode_tokens[0], cfg.decode_tokens[1] + 1, (1,), generator=g).item())
+        prompt_token_samples = torch.randint(
+            cfg.prompt_tokens[0],
+            cfg.prompt_tokens[1] + 1,
+            (sessions,),
+            generator=g,
+        ).tolist()
+        decode_token_samples = torch.randint(
+            cfg.decode_tokens[0],
+            cfg.decode_tokens[1] + 1,
+            (sessions,),
+            generator=g,
+        ).tolist()
+
+        for sess_idx, (prompt_tokens, decode_tokens) in enumerate(
+            zip(prompt_token_samples, decode_token_samples)
+        ):
             tokens_processed += prompt_tokens + decode_tokens
 
             prefill_node = self.nodes[sess_idx % len(self.nodes)]
