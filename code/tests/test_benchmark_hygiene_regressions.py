@@ -1719,16 +1719,26 @@ def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
     )[0]
 
     assert "self._dest_ranks = torch.div(" in baseline_setup
+    assert "self._rank_indices.append(indices)" in baseline_setup
+    assert "self._rank_offsets.append((offset, next_offset))" in baseline_setup
+    assert "self._perm = torch.cat(self._rank_indices, dim=0)" in baseline_setup
     assert "self._dest_ranks = torch.div(" in optimized_setup
     assert "self._perm = torch.argsort(self._dest_ranks)" in optimized_setup
     assert "dest_ranks = torch.div(" not in baseline_benchmark
     assert "dest_ranks = torch.div(" not in optimized_benchmark
+    assert "mask = dest_ranks == r" not in baseline_benchmark
+    assert ".nonzero(" not in baseline_benchmark
     assert "torch.argsort(" not in optimized_benchmark
     assert "send_buf = torch.cat(send_tokens" not in baseline_benchmark
     assert "recv_buf.copy_(send_buf)" not in baseline_benchmark
-    assert "torch.cat(send_tokens, dim=0, out=recv_buf)" in baseline_benchmark
+    assert "torch.cat(send_tokens" not in baseline_benchmark
+    assert "torch.index_select(flat, 0, indices, out=recv_buf[start:end])" in baseline_benchmark
     assert "send_buf = flat.index_select(0, perm)" not in optimized_benchmark
     assert "recv_buf.copy_(send_buf)" not in optimized_benchmark
+    assert "recv_back.copy_(recv_out)" not in baseline_benchmark
+    assert "recv_back.copy_(recv_out)" not in optimized_benchmark
+    assert "out_flat.index_copy_(0, perm, recv_out)" in baseline_benchmark
+    assert "out_flat.index_copy_(0, perm, recv_out)" in optimized_benchmark
     assert "perm = self._perm" in optimized_benchmark
     assert "torch.index_select(flat, 0, perm, out=recv_buf)" in optimized_benchmark
 

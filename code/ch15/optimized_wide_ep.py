@@ -61,7 +61,6 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._dest_ranks: Optional[torch.Tensor] = None
         self._perm: Optional[torch.Tensor] = None
         self._recv_buf: Optional[torch.Tensor] = None
-        self._recv_back: Optional[torch.Tensor] = None
         self._out_flat: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._verify_probe: Optional[torch.Tensor] = None
@@ -91,7 +90,6 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._perm = torch.argsort(self._dest_ranks)
         flat = self.inputs.view(-1, self.hidden_size)
         self._recv_buf = torch.empty_like(flat)
-        self._recv_back = torch.empty_like(flat)
         self._out_flat = torch.empty_like(flat)
 
         self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
@@ -110,7 +108,6 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.inputs is None
             or self._perm is None
             or self._recv_buf is None
-            or self._recv_back is None
             or self._out_flat is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
@@ -125,11 +122,8 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
                 recv_out = self.expert(recv_buf)
 
-                recv_back = self._recv_back
-                recv_back.copy_(recv_out)
-
                 out_flat = self._out_flat
-                out_flat.index_copy_(0, perm, recv_back)
+                out_flat.index_copy_(0, perm, recv_out)
                 self.output = out_flat.view(self.batch, self.seq, self.hidden_size)
 
 
@@ -163,7 +157,6 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._dest_ranks = None
         self._perm = None
         self._recv_buf = None
-        self._recv_back = None
         self._out_flat = None
         self.output = None
         super().teardown()
