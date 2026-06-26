@@ -92,7 +92,7 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.counts is None:
             return None
         run_count = int(self.counts.numel())
-        run_length = int(self.counts[0].item()) if run_count > 0 else 0
+        run_length = self._run_len if run_count > 0 else 0
         return compute_decompression_metrics(
             run_count=run_count,
             run_length=run_length,

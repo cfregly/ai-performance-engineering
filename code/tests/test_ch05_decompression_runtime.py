@@ -47,6 +47,8 @@ def test_gpu_decompression_reuses_preallocated_broadcast_output() -> None:
     assert "torch.repeat_interleave" not in benchmark_section
     assert "self._output_matrix.copy_(self.values.unsqueeze(1))" in benchmark_section
     assert "out = self._output_flat" in benchmark_section
+    assert "self.counts[0].item()" not in source
+    assert "run_length = self._run_len if run_count > 0 else 0" in source
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for GPU decompression")
