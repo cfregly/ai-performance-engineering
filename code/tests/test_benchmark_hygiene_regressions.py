@@ -452,6 +452,32 @@ def test_ch14_benchmarks_do_not_force_output_sum_syncs() -> None:
         assert "float(self.output.detach().sum())" not in benchmark_section
 
 
+def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
+    ch14_source = (REPO_ROOT / "ch14" / "baseline_sliding_window.py").read_text(
+        encoding="utf-8"
+    )
+    ch14_forward = ch14_source.split("def forward", maxsplit=1)[1].split(
+        "class BaselineSlidingWindowBenchmark",
+        maxsplit=1,
+    )[0]
+    assert 'self.register_buffer(\n            "_causal_mask",' in ch14_source
+    assert "def _causal_mask_for" in ch14_source
+    assert "causal_mask = self._causal_mask_for(S, x.device)" in ch14_forward
+    assert "torch.ones(S, S" not in ch14_forward
+
+    ch10_source = (REPO_ROOT / "ch10" / "baseline_flashattention3_pipeline.py").read_text(
+        encoding="utf-8"
+    )
+    ch10_forward = ch10_source.split("def forward", maxsplit=1)[1].split(
+        "class BaselineFlashAttention3Benchmark",
+        maxsplit=1,
+    )[0]
+    assert 'self.register_buffer(\n            "_causal_mask",' in ch10_source
+    assert "def _causal_mask_for" in ch10_source
+    assert "mask = self._causal_mask_for(seq_len, x.device)" in ch10_forward
+    assert "torch.ones(seq_len, seq_len" not in ch10_forward
+
+
 def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
     source = (REPO_ROOT / "ch19" / "token_precision_switching.py").read_text(
         encoding="utf-8"

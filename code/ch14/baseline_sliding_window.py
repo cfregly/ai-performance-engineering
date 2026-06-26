@@ -44,6 +44,21 @@ class NaiveAttentionModule(nn.Module):
         
         self.qkv_proj = nn.Linear(embed_dim, 3 * embed_dim, bias=False)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.register_buffer(
+            "_causal_mask",
+            torch.empty(0, 0, dtype=torch.bool),
+            persistent=False,
+        )
+
+    def _causal_mask_for(self, seq_len: int, device: torch.device) -> torch.Tensor:
+        mask = self._causal_mask
+        if mask.device != device or mask.size(0) < seq_len:
+            self._causal_mask = torch.triu(
+                torch.ones(seq_len, seq_len, device=device, dtype=torch.bool),
+                diagonal=1,
+            )
+            mask = self._causal_mask
+        return mask[:seq_len, :seq_len]
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Naive O(n²) attention with explicit matmul operations."""
@@ -59,10 +74,7 @@ class NaiveAttentionModule(nn.Module):
         scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale
         
         # Causal mask
-        causal_mask = torch.triu(
-            torch.ones(S, S, device=x.device, dtype=torch.bool),
-            diagonal=1
-        )
+        causal_mask = self._causal_mask_for(S, x.device)
         scores = scores.masked_fill(causal_mask, float('-inf'))
         
         # Softmax and weighted sum

@@ -16,8 +16,6 @@ FlashAttention-3 Key Innovations (not used in baseline):
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -63,6 +61,21 @@ class BaselineFlashAttention3(nn.Module):
         self.k_proj = nn.Linear(hidden_dim, num_heads * self.head_dim, bias=False)
         self.v_proj = nn.Linear(hidden_dim, num_heads * self.head_dim, bias=False)
         self.out_proj = nn.Linear(num_heads * self.head_dim, hidden_dim, bias=False)
+        self.register_buffer(
+            "_causal_mask",
+            torch.empty(0, 0, dtype=torch.bool),
+            persistent=False,
+        )
+
+    def _causal_mask_for(self, seq_len: int, device: torch.device) -> torch.Tensor:
+        mask = self._causal_mask
+        if mask.device != device or mask.size(0) < seq_len:
+            self._causal_mask = torch.triu(
+                torch.ones(seq_len, seq_len, device=device, dtype=torch.bool),
+                diagonal=1,
+            )
+            mask = self._causal_mask
+        return mask[:seq_len, :seq_len]
         
     def forward(
         self,
@@ -96,7 +109,7 @@ class BaselineFlashAttention3(nn.Module):
         
         # Apply causal mask if needed
         if is_causal:
-            mask = torch.triu(torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool), diagonal=1)
+            mask = self._causal_mask_for(seq_len, x.device)
             scores = scores.masked_fill(mask, float('-inf'))
         
         # Softmax (full matrix in memory)
@@ -268,5 +281,3 @@ class BaselineFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return BaselineFlashAttention3Benchmark()
-
-
