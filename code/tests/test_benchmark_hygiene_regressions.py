@@ -2710,6 +2710,17 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "self.model.decode(decode_state, num_tokens=1)" in source
 
 
+def test_ch17_monolithic_decode_fast_paths_single_token() -> None:
+    source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_monolithic_common.py").read_text(
+        encoding="utf-8"
+    )
+    decode_section = source.split("def decode", maxsplit=1)[1]
+
+    assert "if num_tokens == 1:" in decode_section
+    assert "return x" in decode_section
+    assert "return torch.cat(outputs, dim=1)" in decode_section
+
+
 def test_ch03_pageable_copy_is_not_marked_informational() -> None:
     assert "pageable_copy" not in INFORMATIONAL_BENCHMARKS.get("ch03", set())
 

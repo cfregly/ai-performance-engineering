@@ -34,5 +34,7 @@ class SimpleLLM(nn.Module):
         for _ in range(num_tokens):
             for layer in self.layers:
                 x = torch.relu(layer(x))
+            if num_tokens == 1:
+                return x
             outputs.append(x)
         return torch.cat(outputs, dim=1)
