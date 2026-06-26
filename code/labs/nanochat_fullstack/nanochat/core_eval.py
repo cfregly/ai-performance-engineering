@@ -231,8 +231,12 @@ def evaluate_example(idx, model, tokenizer, data, device, task_meta):
         is_correct = torch.all(predicted_tokens == actual_tokens).item()
     elif task_type in ['multiple_choice', 'schema']:
         # For MC/schema: find the option with lowest average loss
-        mean_losses = [losses[i, si-1:ei-1].mean().item()
-                        for i, (si, ei) in enumerate(zip(start_idxs, end_idxs))]
+        mean_losses = torch.stack(
+            [
+                losses[i, si-1:ei-1].mean()
+                for i, (si, ei) in enumerate(zip(start_idxs, end_idxs))
+            ]
+        ).detach().cpu().tolist()
         pred_idx = mean_losses.index(min(mean_losses))
         is_correct = pred_idx == item['gold']
     else:

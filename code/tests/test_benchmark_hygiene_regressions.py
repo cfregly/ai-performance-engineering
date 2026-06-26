@@ -1248,6 +1248,20 @@ def test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa(monkeypatch:
     assert calls == {"k_heads": 2, "v_heads": 2, "enable_gqa": True, "is_causal": True}
 
 
+def test_nanochat_core_eval_batches_option_loss_reads() -> None:
+    source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "core_eval.py").read_text(
+        encoding="utf-8"
+    )
+    option_section = source.split("elif task_type in ['multiple_choice', 'schema']:", maxsplit=1)[1].split(
+        "else:",
+        maxsplit=1,
+    )[0]
+
+    assert "mean_losses = torch.stack(" in option_section
+    assert ").detach().cpu().tolist()" in option_section
+    assert ".mean().item()" not in option_section
+
+
 def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     source = (
         REPO_ROOT / "ch15" / "baseline_disaggregated_inference_multigpu.py"
