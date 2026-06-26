@@ -190,6 +190,7 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._aux_layers: Optional[nn.ModuleList] = None
         self._input: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
+        self._full_out: Optional[torch.Tensor] = None
         self._world_size = 1
         self._hidden = _DEFAULT_HIDDEN
         self._hidden_per_rank = _DEFAULT_HIDDEN
@@ -214,18 +215,31 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._full_out = torch.empty(
+            _DEFAULT_BATCH,
+            _DEFAULT_SEQ,
+            self._hidden,
+            device=self.device,
+            dtype=torch.bfloat16,
+        )
 
     def benchmark_fn(self) -> None:
-        if self._input is None or self._shard_layers is None or self._proj_layers is None or self._aux_layers is None:
+        if (
+            self._input is None
+            or self._shard_layers is None
+            or self._proj_layers is None
+            or self._aux_layers is None
+            or self._full_out is None
+        ):
             raise RuntimeError("setup() must run before benchmark_fn()")
         x = self._input
         for layer_idx in range(_DEFAULT_LAYERS):
             local_out = self._shard_layers[layer_idx](x)
-            full_out = torch.cat([local_out] * self._world_size, dim=-1)
+            torch.cat([local_out] * self._world_size, dim=-1, out=self._full_out)
             aux_out = x
             for _ in range(_AUX_PASSES):
                 aux_out = self._aux_layers[layer_idx](aux_out)
-            proj_out = self._proj_layers[layer_idx](full_out)
+            proj_out = self._proj_layers[layer_idx](self._full_out)
             x = proj_out + aux_out
         self._output = x
 
@@ -269,6 +283,7 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._aux_layers = None
         self._input = None
         self._output = None
+        self._full_out = None
         torch.cuda.empty_cache()
 
     def validate_result(self) -> Optional[str]:
@@ -302,4 +317,3 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineTensorParallelBenchmark()
-

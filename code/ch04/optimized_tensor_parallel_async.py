@@ -108,6 +108,7 @@ def _run_worker(
     inputs = torch.randn(batch, seq_length, hidden, device=device, dtype=torch.bfloat16)
     gather_list = [torch.empty(batch, seq_length, hidden_per_rank, device=device, dtype=torch.bfloat16)
                    for _ in range(world_size)]
+    full_out = torch.empty(batch, seq_length, hidden, device=device, dtype=torch.bfloat16)
     comm_stream = torch.cuda.Stream()
 
     def _step() -> None:
@@ -119,7 +120,7 @@ def _run_worker(
                 work = dist.all_gather(gather_list, local_out, async_op=True)
             aux_out = aux_layers[layer_idx](x)
             work.wait()
-            full_out = torch.cat(gather_list, dim=-1)
+            torch.cat(gather_list, dim=-1, out=full_out)
             proj_out = proj_layers[layer_idx](full_out)
             x = proj_out + aux_out
 
@@ -180,6 +181,7 @@ class OptimizedTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._aux_layers: Optional[nn.ModuleList] = None
         self._input: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
+        self._full_out: Optional[torch.Tensor] = None
         self._world_size = 1
         self._hidden = _DEFAULT_HIDDEN
         self._hidden_per_rank = _DEFAULT_HIDDEN
@@ -204,16 +206,29 @@ class OptimizedTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._full_out = torch.empty(
+            _DEFAULT_BATCH,
+            _DEFAULT_SEQ,
+            self._hidden,
+            device=self.device,
+            dtype=torch.bfloat16,
+        )
 
     def benchmark_fn(self) -> None:
-        if self._input is None or self._shard_layers is None or self._proj_layers is None or self._aux_layers is None:
+        if (
+            self._input is None
+            or self._shard_layers is None
+            or self._proj_layers is None
+            or self._aux_layers is None
+            or self._full_out is None
+        ):
             raise RuntimeError("setup() must run before benchmark_fn()")
         x = self._input
         for layer_idx in range(_DEFAULT_LAYERS):
             local_out = self._shard_layers[layer_idx](x)
-            full_out = torch.cat([local_out] * self._world_size, dim=-1)
+            torch.cat([local_out] * self._world_size, dim=-1, out=self._full_out)
             aux_out = self._aux_layers[layer_idx](x)
-            proj_out = self._proj_layers[layer_idx](full_out)
+            proj_out = self._proj_layers[layer_idx](self._full_out)
             x = proj_out + aux_out
         self._output = x
 
@@ -253,6 +268,7 @@ class OptimizedTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._aux_layers = None
         self._input = None
         self._output = None
+        self._full_out = None
         torch.cuda.empty_cache()
 
     def validate_result(self) -> Optional[str]:

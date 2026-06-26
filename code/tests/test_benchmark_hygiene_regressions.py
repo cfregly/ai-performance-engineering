@@ -205,6 +205,38 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     assert "dist.reduce_scatter(reducescatter_output, reducescatter_input)" in collective_section
 
 
+def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
+    files = [
+        "baseline_tensor_parallel.py",
+        "optimized_tensor_parallel_async.py",
+        "baseline_tensor_parallel_allgather_multigpu.py",
+        "optimized_tensor_parallel_allgather_multigpu.py",
+        "baseline_tensor_parallel_multigpu.py",
+        "optimized_tensor_parallel_multigpu.py",
+    ]
+
+    for filename in files:
+        source = (REPO_ROOT / "ch04" / filename).read_text(encoding="utf-8")
+        worker_section = source.split("def _run_worker", maxsplit=1)[1].split(
+            "def main",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self._full_out: Optional[torch.Tensor] = None" in source
+        assert "self._full_out = torch.empty(" in source
+        assert "torch.cat([local_out] * self._world_size, dim=-1, out=self._full_out)" in benchmark_section
+        assert "proj_out = self._proj_layers[layer_idx](self._full_out)" in benchmark_section
+        assert "full_out = torch.cat([local_out] * self._world_size" not in benchmark_section
+        assert "self._full_out = None" in source
+        assert "full_out = torch.cat(gather_list, dim=-1)" not in worker_section
+        if "torch.cat(gather_list" in worker_section:
+            assert "torch.cat(gather_list, dim=-1, out=full_out)" in worker_section
+
+
 def test_ch04_gradient_fusion_uses_dtype_byte_constant() -> None:
     source = (REPO_ROOT / "ch04" / "gradient_fusion_common.py").read_text(
         encoding="utf-8"
