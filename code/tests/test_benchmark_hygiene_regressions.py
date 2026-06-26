@@ -256,6 +256,21 @@ def test_ch14_benchmarks_do_not_force_output_sum_syncs() -> None:
         assert "float(self.output.detach().sum())" not in benchmark_section
 
 
+def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
+    source = (REPO_ROOT / "ch19" / "token_precision_switching.py").read_text(
+        encoding="utf-8"
+    )
+    confidence_section = source.split("def _confidence", maxsplit=1)[1].split(
+        "def _choose_precision", maxsplit=1
+    )[0]
+
+    assert "metrics = torch.stack(" in confidence_section
+    assert ").detach().cpu()" in confidence_section
+    assert "float(probs.max())" not in confidence_section
+    assert "float(-(probs * log_probs).sum())" not in confidence_section
+    assert "float(top2[0] - top2[1])" not in confidence_section
+
+
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()

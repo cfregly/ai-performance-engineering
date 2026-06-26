@@ -1,15 +1,12 @@
 """Chapter 19: Token precision switching and cache quantization helpers."""
 from __future__ import annotations
 
-import os
-
-
-
+import contextlib
 import logging
 import math
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-import contextlib
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Tuple
@@ -62,11 +59,16 @@ class TokenPrecisionController:
     def _confidence(logits: torch.Tensor, temperature: float = 1.0) -> ConfidenceMetrics:
         scaled = logits / temperature
         probs = F.softmax(scaled, dim=-1)
-        max_prob = float(probs.max())
         log_probs = F.log_softmax(scaled, dim=-1)
-        entropy = float(-(probs * log_probs).sum())
         top2 = torch.topk(scaled, k=2).values
-        diff = float(top2[0] - top2[1]) if top2.numel() == 2 else 0.0
+        metrics = torch.stack(
+            (
+                probs.max(),
+                -(probs * log_probs).sum(),
+                top2[0] - top2[1] if top2.numel() == 2 else scaled.new_zeros(()),
+            )
+        ).detach().cpu()
+        max_prob, entropy, diff = (float(value) for value in metrics.tolist())
         return ConfidenceMetrics(max_prob, entropy, diff)
 
     def _choose_precision(self, metrics: ConfidenceMetrics) -> PrecisionLevel:
@@ -122,6 +124,7 @@ class TokenPrecisionController:
 # ----------------------------
 # NEW PyTorch 2.10 API (no warnings!)
 enable_tf32()
+_ARCH_PREFER_BFLOAT16 = bool(torch.cuda.is_available() and torch.cuda.is_bf16_supported())
 # If you compile models elsewhere, keep it outside this loop; don't pay compile cost per-step.
 
 # ----------------------------
