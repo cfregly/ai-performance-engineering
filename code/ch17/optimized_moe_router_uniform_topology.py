@@ -96,11 +96,10 @@ class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmar
 
         # Controlled spill: every 8th token routes to the next island to simulate overflow.
         spill = (token_ids % 8 == 0)
-        if spill.any():
-            spill_island = (local_island + 1) % int(self.num_islands)
-            spill_local = _pseudo_uniform_expert_ids(token_ids + 17, experts_per_island)
-            spill_ids = spill_island * experts_per_island + spill_local
-            expert_ids = torch.where(spill, spill_ids, expert_ids)
+        spill_island = (local_island + 1) % int(self.num_islands)
+        spill_local = _pseudo_uniform_expert_ids(token_ids + 17, experts_per_island)
+        spill_ids = spill_island * experts_per_island + spill_local
+        expert_ids = torch.where(spill, spill_ids, expert_ids)
 
         self.expert_ids = expert_ids.view(self.batch, self.seq)
 
@@ -195,4 +194,3 @@ class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmar
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedMoERouterTopologyBenchmark()
-

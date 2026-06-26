@@ -2497,6 +2497,9 @@ def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
         assert "self._remote_buf_b = torch.empty(" in setup_section
         assert "self._remote_buf_a = torch.zeros(" not in setup_section
         assert "self._remote_buf_b = torch.zeros(" not in setup_section
+        if relative.endswith("optimized_moe_router_uniform_topology.py"):
+            assert "spill.any()" not in setup_section
+            assert "expert_ids = torch.where(spill, spill_ids, expert_ids)" in setup_section
         assert "torch.index_select(flat, 0, self._remote_idx, out=self._remote_buf_a[:, : self.hidden_size])" in benchmark_section
         assert "self._remote_buf_b.copy_(self._remote_buf_a)" in benchmark_section
         assert "self._remote_buf_a.copy_(self._remote_buf_b)" in benchmark_section
