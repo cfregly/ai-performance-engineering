@@ -561,7 +561,9 @@ class Engine:
             target.copy_(host, non_blocking=True)
         return ids_buf[:count]
 
-    def _active_mask_for_rows(self, row_states, generated_counts, row_max_tokens, device):
+    def _active_mask_for_rows(
+        self, row_states, generated_counts, row_max_tokens, device, return_active_rows=False,
+    ):
         count = len(row_states)
         if (
             self._active_mask_device is None
@@ -570,27 +572,47 @@ class Engine:
         ):
             self._active_mask_device = torch.empty(count, dtype=torch.bool, device=device)
         active_mask = self._active_mask_device[:count]
+        active_rows = [] if return_active_rows else None
         if active_mask.device.type == "cpu":
             for idx, state in enumerate(row_states):
-                active_mask[idx] = (not state.completed) and generated_counts[idx] < row_max_tokens[idx]
+                is_active = (not state.completed) and generated_counts[idx] < row_max_tokens[idx]
+                active_mask[idx] = is_active
+                if is_active and active_rows is not None:
+                    active_rows.append(idx)
         else:
             host = self._host_bool_buffer(count)
             for idx, state in enumerate(row_states):
-                host[idx] = (not state.completed) and generated_counts[idx] < row_max_tokens[idx]
+                is_active = (not state.completed) and generated_counts[idx] < row_max_tokens[idx]
+                host[idx] = is_active
+                if is_active and active_rows is not None:
+                    active_rows.append(idx)
             active_mask.copy_(host, non_blocking=True)
+        if return_active_rows:
+            return active_mask, active_rows
         return active_mask
 
-    def _sample_batch_tokens(self, logits, rng, temperatures, top_ks, active_mask, pad_id):
+    def _sample_batch_tokens(
+        self, logits, rng, temperatures, top_ks, active_mask, pad_id, active_rows=None,
+    ):
         sampled_tokens = [pad_id] * logits.size(0)
-        active_indices = active_mask.nonzero(as_tuple=False).squeeze(-1)
-        if active_indices.numel() == 0:
+        active_indices = None
+        if active_rows is None:
+            active_indices = active_mask.nonzero(as_tuple=False).squeeze(-1)
+            if active_indices.numel() == 0:
+                return sampled_tokens
+            active_rows = active_indices.tolist()
+        elif len(active_rows) == 0:
             return sampled_tokens
-        active_rows = active_indices.tolist()
         first_idx = active_rows[0]
         first_temp = temperatures[first_idx]
         first_top_k = top_ks[first_idx]
         if all(temperatures[idx] == first_temp and top_ks[idx] == first_top_k for idx in active_rows):
-            active_logits = logits if len(active_rows) == logits.size(0) else logits.index_select(0, active_indices)
+            if len(active_rows) == logits.size(0):
+                active_logits = logits
+            else:
+                if active_indices is None:
+                    active_indices = torch.as_tensor(active_rows, device=logits.device, dtype=torch.long)
+                active_logits = logits.index_select(0, active_indices)
             next_ids = sample_next_token(
                 active_logits,
                 rng,
@@ -761,7 +783,15 @@ class Engine:
         logits = logits[torch.arange(batch_size, device=device), last_indices, :]
 
         active_mask = torch.ones(batch_size, dtype=torch.bool, device=device)
-        sampled_tokens = self._sample_batch_tokens(logits, rng, temps, top_ks, active_mask, pad_id)
+        sampled_tokens = self._sample_batch_tokens(
+            logits,
+            rng,
+            temps,
+            top_ks,
+            active_mask,
+            pad_id,
+            active_rows=list(range(batch_size)),
+        )
 
         kv_cache_decode = KVCache(**self._kv_cache_params(batch_size=batch_size, seq_len=kv_length_hint))
         kv_cache_decode.prefill(kv_cache_prefill)
@@ -800,18 +830,27 @@ class Engine:
                     step_ids = self._fill_ids_buffer_from_tokens(ids_buf, token_column)
                 else:
                     step_ids = torch.tensor(token_column, dtype=torch.long, device=device).unsqueeze(1)
-                active_mask = self._active_mask_for_rows(
+                active_mask, active_rows = self._active_mask_for_rows(
                     row_states,
                     generated_counts,
                     row_max_tokens,
                     device,
+                    return_active_rows=True,
                 )
                 step_token_mask = active_mask.unsqueeze(1)
                 next_lengths = lengths_by_batch + step_token_mask[:, 0].to(lengths_by_batch.dtype)
                 attn_mask = self._build_attention_mask(next_lengths)
                 logits = self._execute_decode(step_ids, kv_cache_decode, attention_mask=attn_mask, token_mask=step_token_mask)
                 logits = logits[:, -1, :]
-                sampled_tokens = self._sample_batch_tokens(logits, rng, temps, top_ks, active_mask, pad_id)
+                sampled_tokens = self._sample_batch_tokens(
+                    logits,
+                    rng,
+                    temps,
+                    top_ks,
+                    active_mask,
+                    pad_id,
+                    active_rows=active_rows,
+                )
                 lengths_by_batch = next_lengths
                 current_tokens = sampled_tokens
 

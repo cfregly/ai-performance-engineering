@@ -100,7 +100,7 @@ def test_sample_batch_tokens_batches_uniform_sampling(monkeypatch):
         Engine._sample_batch_tokens.__globals__, "sample_next_token", fake_sample_next_token
     )
     logits = torch.zeros((4, 8), dtype=torch.float32)
-    active_mask = torch.tensor([True, False, True, True])
+    active_mask = object()
 
     tokens = Engine._sample_batch_tokens(
         object(),
@@ -110,6 +110,7 @@ def test_sample_batch_tokens_batches_uniform_sampling(monkeypatch):
         top_ks=[4, 4, 4, 4],
         active_mask=active_mask,
         pad_id=0,
+        active_rows=[0, 2, 3],
     )
 
     assert calls == [(3, 0.7, 4)]
@@ -265,26 +266,30 @@ def test_decode_step_helpers_reuse_token_and_active_mask_buffers():
         SimpleNamespace(completed=True),
         SimpleNamespace(completed=False),
     ]
-    active_mask = engine._active_mask_for_rows(
+    active_mask, active_rows = engine._active_mask_for_rows(
         row_states,
         generated_counts=[0, 0, 2],
         row_max_tokens=[2, 2, 2],
         device=torch.device("cpu"),
+        return_active_rows=True,
     )
     mask_ptr = engine._active_mask_device.data_ptr()
 
     torch.testing.assert_close(active_mask, torch.tensor([True, False, False]))
+    assert active_rows == [0]
 
     row_states[1].completed = False
-    refreshed = engine._active_mask_for_rows(
+    refreshed, refreshed_rows = engine._active_mask_for_rows(
         row_states,
         generated_counts=[1, 1, 1],
         row_max_tokens=[2, 2, 2],
         device=torch.device("cpu"),
+        return_active_rows=True,
     )
 
     assert engine._active_mask_device.data_ptr() == mask_ptr
     torch.testing.assert_close(refreshed, torch.tensor([True, True, True]))
+    assert refreshed_rows == [0, 1, 2]
 
 
 def test_attention_reuses_cu_seqlens_buffers():
