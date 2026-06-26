@@ -1775,12 +1775,19 @@ def test_ch02_grace_coherent_memory_defers_verification_slice_clone() -> None:
 
 def test_ch15_guided_decoding_reuses_mask_and_slice_buffers() -> None:
     source = (REPO_ROOT / "ch15" / "guided_decoding_common.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
 
     assert "self.masked_logits_buffer = torch.empty_like(self.logits)" in source
     assert "self.output_buffer = torch.empty(" in source
+    assert "self.allowed_mask" not in source
+    assert "self.disallowed_mask_buffer = torch.logical_not(mask)" not in setup_section
+    assert "disallowed = torch.ones(self.vocab_size, dtype=torch.bool, device=self.device)" in setup_section
+    assert "disallowed[self.allowed_token_ids.to(self.device)] = False" in setup_section
     assert "masked = logits.masked_fill" not in benchmark_section
     assert ".index_select(1, self.slice_ids)" not in benchmark_section
     assert "masked_logits.masked_fill_(self.disallowed_mask_buffer, float(\"-inf\"))" in benchmark_section

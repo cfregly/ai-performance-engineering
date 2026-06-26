@@ -55,7 +55,6 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.logits: Optional[torch.Tensor] = None
         self.allowed_token_ids: Optional[torch.Tensor] = None
-        self.allowed_mask: Optional[torch.Tensor] = None
         self.slice_ids: Optional[torch.Tensor] = None
         self.cpu_mask_buffer: Optional[torch.Tensor] = None
         self.gpu_mask_buffer: Optional[torch.Tensor] = None
@@ -82,16 +81,14 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )[: self.allowed_count]
 
         if self.reuse_gpu_mask:
-            mask = torch.zeros(self.vocab_size, dtype=torch.bool, device=self.device)
-            mask[self.allowed_token_ids.to(self.device)] = True
-            self.allowed_mask = mask
-            self.disallowed_mask_buffer = torch.logical_not(mask)
+            disallowed = torch.ones(self.vocab_size, dtype=torch.bool, device=self.device)
+            disallowed[self.allowed_token_ids.to(self.device)] = False
+            self.disallowed_mask_buffer = disallowed
             self.slice_ids = self.allowed_token_ids[: self.output_slice].to(self.device)
             self.cpu_mask_buffer = None
             self.gpu_mask_buffer = None
             self.slice_ids_buffer = None
         else:
-            self.allowed_mask = None
             self.slice_ids = None
             self.cpu_mask_buffer = torch.empty(self.vocab_size, dtype=torch.bool, device="cpu")
             self.gpu_mask_buffer = torch.empty(self.vocab_size, dtype=torch.bool, device=self.device)
@@ -172,7 +169,6 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.logits = None
         self.allowed_token_ids = None
-        self.allowed_mask = None
         self.slice_ids = None
         self.cpu_mask_buffer = None
         self.gpu_mask_buffer = None
