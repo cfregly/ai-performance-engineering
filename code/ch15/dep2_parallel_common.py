@@ -89,15 +89,10 @@ class Dep2Workload:
         )
 
     def forward_vectorized(self) -> torch.Tensor:
-        outputs = []
-        # Match baseline replica-by-replica semantics so gating/top-k choices are comparable.
-        for replica in range(self.cfg.dp_replicas):
-            tokens = self.x[replica].reshape(-1, self.cfg.hidden_size)
-            attn = tokens @ self.attn_weight
-            moe = self._moe_vectorized(tokens)
-            outputs.append(attn + moe)
-        stacked = torch.stack(outputs, dim=0)
-        return stacked.view(
+        tokens = self.x.reshape(-1, self.cfg.hidden_size)
+        attn = tokens @ self.attn_weight
+        moe = self._moe_vectorized(tokens)
+        return (attn + moe).view(
             self.cfg.dp_replicas,
             self.cfg.batch_size,
             self.cfg.seq_len,
