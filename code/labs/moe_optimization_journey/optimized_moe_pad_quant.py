@@ -28,6 +28,23 @@ from labs.moe_optimization_journey.moe_model import MoEExperts
 from labs.moe_optimization_journey.moe_pad_quant_common import build_moe_pad_quant_model
 
 
+def _flat_topk_token_ids(batch_seq: int, top_k: int, device: torch.device) -> torch.Tensor:
+    token_ids = torch.arange(batch_seq * top_k, device=device, dtype=torch.int64)
+    if top_k > 1:
+        token_ids.div_(top_k, rounding_mode="floor")
+    return token_ids
+
+
+def _cached_topk_token_ids(self: MoEExperts, batch_seq: int, top_k: int, device: torch.device) -> torch.Tensor:
+    expected = batch_seq * top_k
+    cached = getattr(self, "_dispatch_token_ids", None)
+    if isinstance(cached, torch.Tensor) and cached.device == device and cached.numel() == expected:
+        return cached
+    token_ids = _flat_topk_token_ids(batch_seq, top_k, device)
+    self._dispatch_token_ids = token_ids
+    return token_ids
+
+
 def _vectorized_forward_grouped(
     self: MoEExperts,
     x: torch.Tensor,
@@ -60,7 +77,8 @@ def _vectorized_forward_grouped(
     """
     batch_seq, top_k = expert_indices.shape
     flat_ids = expert_indices.reshape(-1)
-    rep_x = x.repeat_interleave(top_k, dim=0)
+    token_ids = _cached_topk_token_ids(self, batch_seq, top_k, x.device)
+    rep_x = x.index_select(0, token_ids)
     flat_w = expert_weights.reshape(-1).to(x.dtype)
     n = flat_ids.numel()
 
@@ -124,6 +142,7 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         for module in self.model.modules():
             if isinstance(module, MoEExperts):
                 module._dispatch_capacity = None
+                module._dispatch_token_ids = None
                 module.forward_grouped = types.MethodType(
                     _vectorized_forward_grouped, module
                 )

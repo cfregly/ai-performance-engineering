@@ -1626,6 +1626,37 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "output=self.output.detach().float().clone()" in moe_capture
 
 
+def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
+    source = (
+        REPO_ROOT / "labs" / "moe_optimization_journey" / "optimized_moe_pad_quant.py"
+    ).read_text(encoding="utf-8")
+    vectorized_router = source.split("def _vectorized_forward_grouped", maxsplit=1)[1].split(
+        "class OptimizedMoEPadQuantBenchmark", maxsplit=1
+    )[0]
+    install_section = source.split("def _install_vectorized_router", maxsplit=1)[1].split(
+        "def setup", maxsplit=1
+    )[0]
+
+    assert "def _flat_topk_token_ids" in source
+    assert "def _cached_topk_token_ids" in source
+    assert 'token_ids.div_(top_k, rounding_mode="floor")' in source
+    assert "x.repeat_interleave(top_k" not in vectorized_router
+    assert "token_ids = _cached_topk_token_ids(self, batch_seq, top_k, x.device)" in vectorized_router
+    assert "rep_x = x.index_select(0, token_ids)" in vectorized_router
+    assert "module._dispatch_token_ids = None" in install_section
+
+    from labs.moe_optimization_journey.optimized_moe_pad_quant import _flat_topk_token_ids
+
+    torch.testing.assert_close(
+        _flat_topk_token_ids(3, 1, torch.device("cpu")),
+        torch.tensor([0, 1, 2], dtype=torch.int64),
+    )
+    torch.testing.assert_close(
+        _flat_topk_token_ids(3, 2, torch.device("cpu")),
+        torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.int64),
+    )
+
+
 def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:
     targets = {
         "fp8_perchannel_bench.py": "self.output = output.detach()",
