@@ -246,8 +246,8 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.cfg.head_dim,
         )
         buffer_count = 2 if (self.cfg.prefetch_next_page and self.cfg.use_async_stream) else 1
-        self.hot_k_bufs = [torch.zeros(head_shape, device=self.device, dtype=self.runtime_dtype) for _ in range(buffer_count)]
-        self.hot_v_bufs = [torch.zeros_like(self.hot_k_bufs[0]) for _ in range(buffer_count)]
+        self.hot_k_bufs = [torch.empty(head_shape, device=self.device, dtype=self.runtime_dtype) for _ in range(buffer_count)]
+        self.hot_v_bufs = [torch.empty_like(self.hot_k_bufs[0]) for _ in range(buffer_count)]
         self.hot_k = self.hot_k_bufs[0]
         self.hot_v = self.hot_v_bufs[0]
         self.active_buf_idx = 0

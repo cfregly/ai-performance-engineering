@@ -1516,6 +1516,18 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "Prefetch event not initialized for async two-buffer prefetch" in benchmark_section
 
 
+def test_paged_kv_offload_hot_page_buffers_avoid_zero_fill() -> None:
+    source = (REPO_ROOT / "labs" / "persistent_decode" / "paged_kv_offload_common.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "# -------------------- Benchmark --------------------", maxsplit=1
+    )[0]
+
+    assert "self.hot_k_bufs = [torch.empty(" in setup_section
+    assert "self.hot_v_bufs = [torch.empty_like(self.hot_k_bufs[0])" in setup_section
+    assert "self.hot_k_bufs = [torch.zeros(" not in setup_section
+    assert "self.hot_v_bufs = [torch.zeros_like(" not in setup_section
+
+
 def test_nvlink_offload_copies_directly_between_preallocated_buffers() -> None:
     source = (REPO_ROOT / "labs" / "persistent_decode" / "nvlink_offload_common.py").read_text(
         encoding="utf-8"
