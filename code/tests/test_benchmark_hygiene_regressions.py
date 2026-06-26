@@ -597,6 +597,21 @@ def test_ch14_triton_tma_batches_correctness_error_reads() -> None:
     assert ".max().item()" not in benchmark_section
 
 
+def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:
+    source = (REPO_ROOT / "labs" / "custom_vs_cublas" / "run_lab.py").read_text(
+        encoding="utf-8"
+    )
+    verify_section = source.split("def verify_correctness", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+
+    assert "max_diff, ref_abs_max = torch.stack(" in verify_section
+    assert "(ref_fp32 - result_fp32).abs().max()" in verify_section
+    assert "ref_fp32.abs().max()" in verify_section
+    assert ".abs().max().item()" not in verify_section
+
+
 def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     ch14_source = (REPO_ROOT / "ch14" / "baseline_sliding_window.py").read_text(
         encoding="utf-8"

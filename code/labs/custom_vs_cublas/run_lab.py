@@ -359,8 +359,13 @@ def verify_correctness(A, B_T, verbose=True):
             result = fn(A, B_T)
             ref_fp32 = ref.float()
             result_fp32 = result.float()
-            max_diff = (ref_fp32 - result_fp32).abs().max().item()
-            rel_err = max_diff / ref_fp32.abs().max().item()
+            max_diff, ref_abs_max = torch.stack(
+                (
+                    (ref_fp32 - result_fp32).abs().max(),
+                    ref_fp32.abs().max(),
+                )
+            ).tolist()
+            rel_err = max_diff / ref_abs_max
             passed = rel_err < 0.01
             if verbose:
                 status = "✓" if passed else "✗"
