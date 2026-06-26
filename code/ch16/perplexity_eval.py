@@ -72,14 +72,14 @@ def main() -> None:
         state = torch.load(args.state_dict, map_location="cpu")
         model.load_state_dict(state, strict=False)
 
+    token_ids_i64 = torch.tensor(tokens, device=device, dtype=torch.int64)
+    token_ids_i32 = token_ids_i64.to(torch.int32)
     total_loss = torch.zeros((), device=device, dtype=torch.float32)
     total_tokens = 0
     with torch.no_grad():
         for start in range(0, len(tokens) - args.seq_len - 1, args.stride):
-            context = tokens[start : start + args.seq_len]
-            target = tokens[start + 1 : start + args.seq_len + 1]
-            input_ids = torch.tensor(context, device=device, dtype=torch.int32).unsqueeze(0)
-            target_ids = torch.tensor(target, device=device, dtype=torch.int64).unsqueeze(0)
+            input_ids = token_ids_i32.narrow(0, start, args.seq_len).unsqueeze(0)
+            target_ids = token_ids_i64.narrow(0, start + 1, args.seq_len).unsqueeze(0)
             logits = model(input_ids)
             # Match sizes: logits and targets should have same length
             min_len = min(logits.size(1), target_ids.size(1))

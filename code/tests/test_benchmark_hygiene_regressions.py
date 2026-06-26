@@ -1610,6 +1610,12 @@ def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:
     )[0]
 
     assert "total_loss = torch.zeros((), device=device, dtype=torch.float32)" in source
+    assert "token_ids_i64 = torch.tensor(tokens, device=device, dtype=torch.int64)" in source
+    assert "token_ids_i32 = token_ids_i64.to(torch.int32)" in source
+    assert "token_ids_i32.narrow(0, start, args.seq_len).unsqueeze(0)" in loop_section
+    assert "token_ids_i64.narrow(0, start + 1, args.seq_len).unsqueeze(0)" in loop_section
+    assert "torch.tensor(context" not in loop_section
+    assert "torch.tensor(target" not in loop_section
     assert "loss.item()" not in loop_section
     assert "total_loss += loss.detach()" in loop_section
     assert "perplexity = math.exp(avg_loss)" in source
