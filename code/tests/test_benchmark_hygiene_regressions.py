@@ -1829,11 +1829,23 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
     source = (REPO_ROOT / "ch15" / "moe_validation" / "moe_validation.py").read_text(
         encoding="utf-8"
     )
+    stats_logger_section = source.split("class MoEStatsLogger", maxsplit=1)[1].split(
+        "def _set_router_config",
+        maxsplit=1,
+    )[0]
     report_section = source.split("summary = moe_logger.summarize()", maxsplit=1)[1].split(
         "record = {",
         maxsplit=1,
     )[0]
 
+    assert "self._overflow_tensors.append(overflow_mask.detach().sum())" in stats_logger_section
+    assert (
+        "self._entropy_tensors.append(entropy_val.detach().to(dtype=torch.float32).reshape(()))"
+        in stats_logger_section
+    )
+    assert "torch.stack(self._overflow_tensors).sum().detach().cpu().tolist()" in stats_logger_section
+    assert "overflow_mask.sum().item()" not in stats_logger_section
+    assert "self.entropy.append(float(entropy_val))" not in stats_logger_section
     assert "loss_values = torch.stack((token_loss.detach(), *(loss.detach() for loss in decode_losses))).cpu().tolist()" in report_section
     assert "sum(loss.item() for loss in decode_losses)" not in report_section
     assert "token_loss.item()" not in report_section

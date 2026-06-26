@@ -44,6 +44,8 @@ class MoEStatsLogger:
         self.overflow_tokens = 0
         self.total_tokens = 0
         self.entropy: List[float] = []
+        self._overflow_tensors: List[torch.Tensor] = []
+        self._entropy_tensors: List[torch.Tensor] = []
 
     def update(self, stats: Dict[str, torch.Tensor]) -> None:
         if not stats:
@@ -61,13 +63,24 @@ class MoEStatsLogger:
 
         overflow_mask = stats.get("overflow_mask")
         if overflow_mask is not None:
-            self.overflow_tokens += int(overflow_mask.sum().item())
+            self._overflow_tensors.append(overflow_mask.detach().sum())
 
         entropy_val = stats.get("router_entropy")
         if entropy_val is not None:
-            self.entropy.append(float(entropy_val))
+            self._entropy_tensors.append(entropy_val.detach().to(dtype=torch.float32).reshape(()))
+
+    def _materialize_pending_scalars(self) -> None:
+        if self._overflow_tensors:
+            overflow = torch.stack(self._overflow_tensors).sum().detach().cpu().tolist()
+            self.overflow_tokens += int(overflow)
+            self._overflow_tensors.clear()
+        if self._entropy_tensors:
+            entropy_values = torch.stack(self._entropy_tensors).detach().cpu().tolist()
+            self.entropy.extend(float(value) for value in entropy_values)
+            self._entropy_tensors.clear()
 
     def summarize(self) -> Dict[str, float]:
+        self._materialize_pending_scalars()
         overflow_rate = self.overflow_tokens / self.total_tokens if self.total_tokens > 0 else 0.0
         gini = compute_gini(self.expert_counts)
         entropy = statistics.mean(self.entropy) if self.entropy else 0.0
