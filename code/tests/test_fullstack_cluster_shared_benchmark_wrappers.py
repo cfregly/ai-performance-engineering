@@ -269,7 +269,7 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "sort_idx = torch.argsort(expert_ids)" in apply_local_section
     assert '"local_outputs"' in apply_local_section
     assert '"local_sorted_outputs"' in apply_local_section
-    assert "outputs.zero_()" in apply_local_section
+    assert "outputs.zero_()" not in apply_local_section
     assert "torch.zeros_like(tokens)" not in apply_local_section
     assert "torch.empty_like(sorted_tokens)" not in apply_local_section
     assert "torch.bincount(expert_ids, minlength=self.local_experts).detach().cpu().tolist()" in apply_local_section

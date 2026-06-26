@@ -432,7 +432,6 @@ class DeepSeekHybridEPModule(nn.Module):
             reuse=self.optimized,
             device=tokens.device,
         )
-        outputs.zero_()
         sort_idx = torch.argsort(expert_ids)
         sorted_tokens = tokens.index_select(0, sort_idx)
         sorted_weights = weights.index_select(0, sort_idx)
