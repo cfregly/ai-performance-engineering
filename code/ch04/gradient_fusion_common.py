@@ -6,9 +6,11 @@ from typing import Optional
 
 import torch
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from core.benchmark.verification_mixin import VerificationPayloadMixin
+
+FLOAT32_BYTES = torch.finfo(torch.float32).bits // 8
 
 
 class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -30,9 +32,8 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.reduction_repeats = max(1, int(reduction_repeats))
         self.signature_equivalence_group = equivalence_group
         self.signature_equivalence_ignore_fields = ("precision_flags",)
-        elem_bytes = torch.tensor([], dtype=torch.float32).element_size()
-        numel = max(1, (self.tensor_kb * 1024) // elem_bytes)
-        total_bytes = self.num_tensors * numel * elem_bytes
+        numel = max(1, (self.tensor_kb * 1024) // FLOAT32_BYTES)
+        total_bytes = self.num_tensors * numel * FLOAT32_BYTES
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.reduction_repeats),
             tokens_per_iteration=float(total_bytes * self.reduction_repeats),
@@ -51,8 +52,7 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("SKIPPED: CUDA required for gradient fusion benchmark")
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        elem_bytes = torch.tensor([], dtype=torch.float32).element_size()
-        numel = max(1, (self.tensor_kb * 1024) // elem_bytes)
+        numel = max(1, (self.tensor_kb * 1024) // FLOAT32_BYTES)
         self.tensors = [
             torch.randn(numel, device=self.device, dtype=torch.float32)
             for _ in range(self.num_tensors)

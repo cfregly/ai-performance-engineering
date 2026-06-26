@@ -204,6 +204,17 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     assert "dist.reduce_scatter(reducescatter_output, reducescatter_input)" in collective_section
 
 
+def test_ch04_gradient_fusion_uses_dtype_byte_constant() -> None:
+    source = (REPO_ROOT / "ch04" / "gradient_fusion_common.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "FLOAT32_BYTES = torch.finfo(torch.float32).bits // 8" in source
+    assert "torch.tensor([], dtype=torch.float32).element_size()" not in source
+    assert "(self.tensor_kb * 1024) // FLOAT32_BYTES" in source
+    assert "total_bytes = self.num_tensors * numel * FLOAT32_BYTES" in source
+
+
 def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
     source = (REPO_ROOT / "ch09" / "fusion_pytorch.py").read_text(encoding="utf-8")
 
