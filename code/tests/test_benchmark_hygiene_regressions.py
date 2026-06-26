@@ -132,6 +132,30 @@ def test_ch04_optimizer_central_nvlink_uses_direct_copy_staging() -> None:
     assert "model.weight.data.copy_(master_w, non_blocking=True)" in benchmark_section
 
 
+def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
+    source = (REPO_ROOT / "ch04" / "ddp_nvlink_overlap.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _async_reduce_to_root", maxsplit=1
+    )[0]
+    reduce_section = source.split("def _async_reduce_to_root", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self._root_grad_staging: List[List[torch.Tensor]] = []" in source
+    assert "self._grad_ready_events: List[List[torch.cuda.Event]] = []" in source
+    assert "self._update_buffers: List[torch.Tensor] = []" in source
+    assert "self._grad_ready_events = [" in setup_section
+    assert "[torch.cuda.Event() for _ in self.models]" in setup_section
+    assert "torch.cuda.Event()" not in reduce_section
+    assert "g.to(self.root_device" not in reduce_section
+    assert "root_buf.to(model.weight.device" not in benchmark_section
+    assert "staging.copy_(g, non_blocking=True)" in reduce_section
+    assert "root_local.copy_(root_buf, non_blocking=True)" in benchmark_section
+
+
 def test_ch07_and_ch08_sources_do_not_ship_artificial_baseline_penalties() -> None:
     hbm_copy_source = (REPO_ROOT / "ch07" / "baseline_hbm_copy.cu").read_text(encoding="utf-8")
     threshold_source = (REPO_ROOT / "ch08" / "threshold_common.cuh").read_text(encoding="utf-8")

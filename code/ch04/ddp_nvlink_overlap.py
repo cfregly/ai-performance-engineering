@@ -50,6 +50,9 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.hidden = 512
         self.root_device = torch.device("cuda:0")
         self._reduce_buffers: List[torch.Tensor] = []
+        self._root_grad_staging: List[List[torch.Tensor]] = []
+        self._grad_ready_events: List[List[torch.cuda.Event]] = []
+        self._update_buffers: List[torch.Tensor] = []
         tokens = self.batch_size * self.hidden * self.microbatches
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size * self.microbatches),
@@ -68,7 +71,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
             device = f"cuda:{rank}"
             self.models.append(nn.Linear(self.hidden, self.hidden).to(device))
         self._inputs = []
-        for micro in range(self.microbatches):
+        for _micro in range(self.microbatches):
             micro_inputs: List[torch.Tensor] = []
             for model in self.models:
                 micro_inputs.append(torch.randn(self.batch_size, self.hidden, device=model.weight.device))
@@ -77,22 +80,42 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
             torch.zeros_like(self.models[0].weight, device=self.root_device)
             for _ in range(self.microbatches)
         ]
+        self._root_grad_staging = [
+            [
+                torch.empty_like(self.models[0].weight, device=self.root_device)
+                for _ in self.models
+            ]
+            for _ in range(self.microbatches)
+        ]
+        self._grad_ready_events = [
+            [torch.cuda.Event() for _ in self.models]
+            for _ in range(self.microbatches)
+        ]
+        self._update_buffers = [
+            torch.empty_like(model.weight, device=model.weight.device)
+            for model in self.models
+        ]
         self._synchronize()
 
     def _async_reduce_to_root(self, grads: List[torch.Tensor], buffer_index: int) -> torch.Tensor:
         """Asynchronously accumulate gradients on the root device."""
         root_buf = self._reduce_buffers[buffer_index]
         root_buf.zero_()
-        events = []
-        for g in grads:
-            evt = torch.cuda.Event()
-            evt.record()
-            events.append((g, evt))
+        event_row = self._grad_ready_events[buffer_index]
+        staging_row = self._root_grad_staging[buffer_index]
+        for idx, _ in enumerate(grads):
+            event_row[idx].record()
 
         with torch.cuda.stream(self.comm_stream):
-            for g, evt in events:
+            for idx, g in enumerate(grads):
+                evt = event_row[idx]
                 self.comm_stream.wait_event(evt)
-                root_buf.add_(g.to(self.root_device, non_blocking=True))
+                if g.device == self.root_device:
+                    root_buf.add_(g)
+                else:
+                    staging = staging_row[idx]
+                    staging.copy_(g, non_blocking=True)
+                    root_buf.add_(staging)
         return root_buf
 
     def benchmark_fn(self) -> None:
@@ -117,9 +140,10 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
 
             # Finalize reductions and apply updates
             torch.cuda.current_stream(self.root_device).wait_stream(self.comm_stream)
-            for model, root_buf in zip(self.models, reduction_results):
+            for model_idx, (model, root_buf) in enumerate(zip(self.models, reduction_results)):
                 if root_buf.device != model.weight.device:
-                    root_local = root_buf.to(model.weight.device, non_blocking=True)
+                    root_local = self._update_buffers[model_idx]
+                    root_local.copy_(root_buf, non_blocking=True)
                 else:
                     root_local = root_buf
                 with torch.no_grad():
@@ -153,6 +177,9 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.models.clear()
         self._inputs = []
         self._reduce_buffers = []
+        self._root_grad_staging = []
+        self._grad_ready_events = []
+        self._update_buffers = []
         self.output = None
         torch.cuda.empty_cache()
 
@@ -191,5 +218,3 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedDdpNvlinkOverlapBenchmark()
-
-
