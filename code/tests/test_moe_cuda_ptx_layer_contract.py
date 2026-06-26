@@ -119,6 +119,48 @@ def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
     )
 
 
+def test_grouped_ffn_cuda_does_not_clear_discarded_padding_rows() -> None:
+    source = inspect.getsource(moe_common.grouped_ffn_cuda)
+    assert "padded_tokens = torch.empty(" in source
+    assert "padded_tokens.zero_()" not in source
+    assert "torch.zeros(flat_slots" not in source
+
+    torch.manual_seed(0)
+    x = torch.randn(4, 3)
+    expert_indices = torch.tensor([[0], [0], [0], [1]], dtype=torch.long)
+    expert_weights = torch.ones(4, 1)
+    packed = moe_common.pack_topk_routes(
+        x,
+        expert_indices,
+        expert_weights,
+        num_experts=3,
+        counts_cpu=(3, 1, 0),
+    )
+    gate_proj = torch.randn(3, 3, 5)
+    up_proj = torch.randn(3, 3, 5)
+    down_proj = torch.randn(3, 5, 3)
+    padded = torch.empty(3 * packed.max_count, 3).fill_(float("nan"))
+
+    expected = moe_common.grouped_ffn_reference(
+        packed.packed_tokens,
+        packed.counts_cpu,
+        gate_proj,
+        up_proj,
+        down_proj,
+    )
+    actual = moe_common.grouped_ffn_cuda(
+        packed.packed_tokens,
+        packed,
+        gate_proj,
+        up_proj,
+        down_proj,
+        padded_tokens_buffer=padded,
+    )
+
+    assert not torch.isnan(actual).any()
+    torch.testing.assert_close(actual, expected)
+
+
 def test_moe_cuda_ptx_skewed_routes_use_cpu_counts_without_fragment_cat() -> None:
     source = inspect.getsource(moe_common._build_primary_routes)
     count_source = "\n".join(
