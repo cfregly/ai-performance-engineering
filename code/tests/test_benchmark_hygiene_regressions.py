@@ -1449,6 +1449,23 @@ def test_ch14_training_large_model_defers_step_loss_sync() -> None:
     assert "return loss.detach()" in train_step_section
 
 
+def test_nanochat_base_train_defers_grad_norm_sync_until_logging() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "base_train.py"
+    ).read_text(encoding="utf-8")
+    loop_section = source.split("# single training step", maxsplit=1)[1].split(
+        "# state update",
+        maxsplit=1,
+    )[0]
+    step_section = loop_section.split("# logging", maxsplit=1)[0]
+    logging_section = loop_section.split("# logging", maxsplit=1)[1]
+
+    assert "grad_norm_tensor.item()" not in loop_section
+    assert "grad_norm_tensor = None" in step_section
+    assert "grad_norm_tensor = torch.nn.utils.clip_grad_norm_" in step_section
+    assert "grad_norm = float(grad_norm_tensor) if grad_clip_enabled else 0.0" in logging_section
+
+
 def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"

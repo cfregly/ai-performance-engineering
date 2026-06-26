@@ -332,7 +332,7 @@ while True:
     # evaluate the gradient
     synchronize()
     t0 = time.time()
-    for micro_step in range(grad_accum_steps):
+    for _micro_step in range(grad_accum_steps):
         with autocast_ctx:
             loss = model(x, y)
         train_loss = loss.detach() # for logging
@@ -341,9 +341,9 @@ while True:
         x, y, dataloader_state_dict = next(train_loader) # prefetch the next batch while the GPU is busy with forward/backward
     # gradient clipping
     grad_clip_enabled = grad_clip > 0.0
+    grad_norm_tensor = None
     if grad_clip_enabled:
         grad_norm_tensor = torch.nn.utils.clip_grad_norm_(orig_model.parameters(), grad_clip)
-        grad_norm = grad_norm_tensor.item() # GPU tensor -> CPU float (note: cpu-gpu sync point)
     # step the optimizers
     lrm = get_lr_multiplier(step)
     for opt in optimizers:
@@ -361,6 +361,7 @@ while True:
     # -------------------------------------------------------------------------
 
     # logging
+    grad_norm = float(grad_norm_tensor) if grad_clip_enabled else 0.0
     ema_beta = 0.9 # EMA decay factor for some smoothing just for nicer logging
     smooth_train_loss = ema_beta * smooth_train_loss + (1 - ema_beta) * train_loss.item() # EMA the training loss
     debiased_smooth_loss = smooth_train_loss / (1 - ema_beta**(step + 1)) # debias the EMA
