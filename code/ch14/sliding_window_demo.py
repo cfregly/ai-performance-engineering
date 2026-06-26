@@ -35,6 +35,7 @@ from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
@@ -42,7 +43,6 @@ from core.harness.benchmark_harness import (
     BenchmarkConfig,
     WorkloadMetadata,
 )
-import torch.nn.functional as F
 
 
 class SlidingWindowSelfAttention(nn.Module):
@@ -77,7 +77,7 @@ class SlidingWindowSelfAttention(nn.Module):
         
         # Try to import flex_attention
         try:
-            from torch.nn.attention.flex_attention import flex_attention, create_block_mask
+            from torch.nn.attention.flex_attention import create_block_mask, flex_attention
             self._has_flex = True
             self._flex_attention = torch.compile(flex_attention)
             self._create_block_mask = create_block_mask
@@ -461,7 +461,6 @@ class SlidingWindowDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: SDPA/Flash Attention forward pass."""
         with torch.no_grad():
             self.output = self.model(self.x)
-            self._last = float(self.output.sum())
         if self.output is None or self.x is None:
             raise RuntimeError("benchmark_fn() must produce output")
 
@@ -511,4 +510,3 @@ class SlidingWindowDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return SlidingWindowDemoBenchmark()
-

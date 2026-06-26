@@ -27,10 +27,11 @@ REQUIREMENTS:
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import triton
 import triton.language as tl
-from typing import Optional
 
 from ch14.triton_persistent_batched import matmul_persistent_batched
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -39,7 +40,6 @@ from core.harness.benchmark_harness import (
     BenchmarkConfig,
     WorkloadMetadata,
 )
-
 
 #============================================================================
 # Standard (Non-Persistent) GEMM Kernel
@@ -496,7 +496,6 @@ class TritonPersistentDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: Persistent GEMM kernel."""
         self.output = matmul_persistent_batched(self.a, self.b, self.num_sms, out=self._output_buffer)
-        self._last = float(self.output.sum())
         if self.output is None or self.a is None or self.b is None:
             raise RuntimeError("benchmark_fn() must produce output")
 
@@ -547,4 +546,3 @@ class TritonPersistentDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return TritonPersistentDemoBenchmark()
-

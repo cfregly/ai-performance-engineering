@@ -24,22 +24,21 @@ REQUIREMENTS:
 from __future__ import annotations
 
 import math
-from typing import Optional, Callable
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
+from torch.nn.attention.flex_attention import (
+    _DEFAULT_SPARSE_BLOCK_SIZE,
+    create_block_mask,
+    flex_attention,
+)
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
-)
-
-from torch.nn.attention.flex_attention import (
-    flex_attention,
-    create_block_mask,
-    _DEFAULT_SPARSE_BLOCK_SIZE,
 )
 
 # Ensure we have the flex_attention API
@@ -473,7 +472,6 @@ class FlexAttentionSparseDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.demo_benchmark.v,
                 block_mask=self._block_mask,
             )
-            self._last = float(self.output.detach().sum())
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
         inputs = {

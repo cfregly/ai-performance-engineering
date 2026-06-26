@@ -101,7 +101,6 @@ class TritonPersistentBatchedBenchBenchmark(VerificationPayloadMixin, BaseBenchm
             num_warps=NUM_WARPS,
             num_stages=NUM_STAGES,
         )
-        self._last = float(self.output.sum())
         if self.output is None or self.a is None or self.b is None:
             raise RuntimeError("benchmark_fn() must produce output")
 

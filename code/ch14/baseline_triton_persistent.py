@@ -6,10 +6,11 @@ batched matrix multiplications, which persistent kernels optimize away.
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import triton
 import triton.language as tl
-from typing import Optional
 
 from ch14.triton_persistent_batched import compute_persistent_batched_metrics
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -158,7 +159,6 @@ class BaselineTritonPersistentBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def benchmark_fn(self) -> None:
         """Benchmark: Multiple kernel launches."""
         self.output = matmul_standard_batched(self.a, self.b, out=self._output_buffer)
-        self._last = float(self.output.sum())
         if self.output is None or self.a is None or self.b is None:
             raise RuntimeError("benchmark_fn() must produce output")
 

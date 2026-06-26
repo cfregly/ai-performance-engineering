@@ -11,10 +11,11 @@ via scaled_dot_product_attention for O(n) memory and fused kernels.
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
@@ -123,7 +124,6 @@ class BaselineSlidingWindowBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: Naive attention."""
         with torch.no_grad():
             self.output = self.model(self.x)
-            self._last = float(self.output.sum())
         if self.output is None or self.x is None:
             raise RuntimeError("benchmark_fn() must produce output")
 

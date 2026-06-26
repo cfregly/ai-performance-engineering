@@ -235,6 +235,27 @@ def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
     assert "output=self.output.detach().clone()" in optimized_capture
 
 
+def test_ch14_benchmarks_do_not_force_output_sum_syncs() -> None:
+    files = [
+        "baseline_sliding_window.py",
+        "optimized_sliding_window.py",
+        "sliding_window_demo.py",
+        "baseline_triton_persistent.py",
+        "optimized_triton_persistent.py",
+        "triton_persistent_batched_bench.py",
+        "triton_persistent_demo.py",
+        "flex_attention_sparse_demo.py",
+    ]
+
+    for filename in files:
+        source = (REPO_ROOT / "ch14" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        assert "float(self.output.sum())" not in benchmark_section
+        assert "float(self.output.detach().sum())" not in benchmark_section
+
+
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()
