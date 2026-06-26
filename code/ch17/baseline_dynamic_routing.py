@@ -128,6 +128,8 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         requests = self._cached_requests
         rejects = 0
         offloaded = 0
+        rejects_tensor: Optional[torch.Tensor] = None
+        offloaded_tensor: Optional[torch.Tensor] = None
         start = self._record_start()
         queue_lengths: Optional[torch.Tensor] = None
         if self._queue_length_table is not None:
@@ -175,9 +177,9 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             else:
                 self._admit_mask.fill_(True)
 
-            rejects = self.batch_size - int(self._admit_mask.sum().item())
+            rejects_tensor = self.batch_size - self._admit_mask.sum()
             torch.logical_and(self._admit_mask, self._offload_mask, out=self._served_offload_mask)
-            offloaded = int(self._served_offload_mask.sum().item())
+            offloaded_tensor = self._served_offload_mask.sum()
         else:
             # Python loop-based routing (sequential, one-at-a-time)
             for idx, req in enumerate(requests):
@@ -192,6 +194,9 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     offloaded += 1
 
         elapsed_ms = self._record_stop(start)
+        if rejects_tensor is not None and offloaded_tensor is not None:
+            rejects = int(rejects_tensor.item())
+            offloaded = int(offloaded_tensor.item())
         self._history["lat_ms"].append(elapsed_ms)
         served = len(requests) - rejects
 
