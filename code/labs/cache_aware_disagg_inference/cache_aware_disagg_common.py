@@ -130,6 +130,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._timing_history: Dict[str, List[float]] = {"ttft": [], "tpot": []}
         self._custom_metrics: Dict[str, float] = {}
         self._empty_kv_template: Optional[torch.Tensor] = None
+        self._last_outputs: List[torch.Tensor] = []
+        self._request_event_pool: List[tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]] = []
         self._request_event_triplets: List[tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_metrics: Dict[str, float] = {}
 
@@ -218,8 +220,17 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     self.shared_seed_store[plan.request_idx] = seed
 
         self.output = None
+        self._last_outputs = []
         self._timing_history = {"ttft": [], "tpot": []}
         self._custom_metrics = {}
+        self._request_event_pool = [
+            (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
+            for _ in self.request_plans
+        ]
         self._request_event_triplets = []
         self._pending_metrics = {}
         torch.cuda.synchronize(self.device)
@@ -306,13 +317,13 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "warm_requests": float(sum(1 for plan in self.request_plans if plan.is_warm)),
             "warm_requests_served_local": 0.0,
         }
-        request_events: List[tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]] = []
+        request_events = self._request_event_pool
+        if len(request_events) < len(self.request_plans):
+            raise RuntimeError("Request timing events not initialized")
 
         with torch.no_grad():
-            for plan in self.request_plans:
-                request_start = torch.cuda.Event(enable_timing=True)
-                prefill_end = torch.cuda.Event(enable_timing=True)
-                decode_end = torch.cuda.Event(enable_timing=True)
+            for event_idx, plan in enumerate(self.request_plans):
+                request_start, prefill_end, decode_end = request_events[event_idx]
                 request_start.record()
 
                 prompt = self.prompts[plan.request_idx]
@@ -366,15 +377,17 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 output = self.decode_model.decode(seed, accumulated_kv, self.cfg.decode_tokens)
                 decode_end.record()
                 outputs.append(output)
-                request_events.append((request_start, prefill_end, decode_end))
 
-        self.output = torch.stack(outputs, dim=0)
-        self._request_event_triplets = request_events
+        self._last_outputs = outputs
+        self.output = None
+        self._request_event_triplets = request_events[: len(self.request_plans)]
         self._pending_metrics = metrics
 
     def capture_verification_payload(self) -> None:
-        if self.prompts is None or self.output is None:
+        if self.prompts is None or not self._last_outputs:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
+        if self.output is None:
+            self.output = torch.stack(self._last_outputs, dim=0)
         request_ttft = [elapsed_ms((start, prefill_end)) for start, prefill_end, _ in self._request_event_triplets]
         request_tpot: List[float] = []
         for start, prefill_end, decode_end in self._request_event_triplets:
@@ -442,7 +455,9 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.shared_prefix_store = {}
         self.shared_seed_store = {}
         self.output = None
+        self._last_outputs = []
         self._empty_kv_template = None
+        self._request_event_pool = []
         self._request_event_triplets = []
         self._pending_metrics = {}
         torch.cuda.empty_cache()
