@@ -477,7 +477,7 @@ def run_layer_baseline(
     *,
     output_buffer: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    output = output_buffer if output_buffer is not None else torch.zeros_like(state.x)
+    output = output_buffer if output_buffer is not None else torch.empty_like(state.x)
     output.zero_()
     for expert_idx in range(workload.num_experts):
         for slot_idx in range(workload.top_k):

@@ -295,3 +295,11 @@ def test_moe_cuda_ptx_build_state_reuses_route_count_tuple() -> None:
     assert "_build_routes_with_counts(workload, device)" in source
     assert "route_counts_cpu=route_counts_cpu" in source
     assert "route_counts_cpu=_route_counts_cpu(workload)" not in source
+
+
+def test_moe_cuda_ptx_baseline_output_buffer_avoids_double_zero_fill() -> None:
+    source = inspect.getsource(moe_common.run_layer_baseline)
+
+    assert "torch.empty_like(state.x)" in source
+    assert "torch.zeros_like(state.x)" not in source
+    assert "output.zero_()" in source
