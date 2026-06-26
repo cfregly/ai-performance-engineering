@@ -2044,6 +2044,20 @@ def test_ch04_multi_node_training_defers_repeated_loss_syncs() -> None:
     assert "float(torch.stack(epoch_loss_tensors).sum())" in train_section
 
 
+def test_ch13_expert_parallel_batches_recv_split_materialization() -> None:
+    source = (REPO_ROOT / "ch13" / "expert_parallel_common.py").read_text(
+        encoding="utf-8"
+    )
+    split_section = source.split("def gather_recv_splits", maxsplit=1)[1].split(
+        "def pack_tokens",
+        maxsplit=1,
+    )[0]
+
+    assert "recv_counts = torch.stack(gathered, dim=0)[:, rank]" in split_section
+    assert "recv_counts.detach().cpu().tolist()" in split_section
+    assert "gathered[src][rank].item()" not in split_section
+
+
 def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
     source = (REPO_ROOT / "ch13" / "baseline_sequence_parallel_multigpu.py").read_text(
         encoding="utf-8"
