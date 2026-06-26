@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import torch
 
 from core.harness.benchmark_harness import BenchmarkConfig, ReadOnlyBenchmarkConfigView
@@ -17,6 +19,7 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     build_workspace,
     context_sum_vectorized,
     optimized_forward,
+    ranking_metrics,
     resolve_score_backend,
     sequence_mean_vectorized,
 )
@@ -65,6 +68,32 @@ def test_build_inputs_is_deterministic() -> None:
     assert torch.equal(inputs_a.sequence_lengths, inputs_b.sequence_lengths)
     assert torch.equal(inputs_a.context_ids, inputs_b.context_ids)
     assert torch.equal(inputs_a.candidate_ids, inputs_b.candidate_ids)
+    assert inputs_a.avg_sequence_length == inputs_b.avg_sequence_length
+    assert inputs_a.hot_candidate_share_pct == inputs_b.hot_candidate_share_pct
+
+
+def test_ranking_metrics_reuse_cpu_generated_input_metadata() -> None:
+    workload = _small_workload()
+    inputs = build_inputs(workload, torch.device("cpu"))
+    source = inspect.getsource(ranking_metrics)
+
+    expected_avg = float(inputs.sequence_lengths.to(torch.float32).mean().item())
+    hot_threshold = max(workload.item_vocab_size // 100, 1)
+    expected_hot_share = float(
+        (inputs.candidate_ids < hot_threshold).to(torch.float32).mean().item() * 100.0
+    )
+    metrics = ranking_metrics(
+        workload,
+        inputs,
+        score_backend="torch",
+        compile_enabled=False,
+    )
+
+    assert "inputs.avg_sequence_length" in source
+    assert "inputs.hot_candidate_share_pct" in source
+    assert ".item()" not in source
+    assert metrics["ranking.avg_sequence_length"] == expected_avg
+    assert metrics["ranking.hot_candidate_share_pct"] == expected_hot_share
 
 
 def test_baseline_and_optimized_torch_paths_match_on_cpu() -> None:

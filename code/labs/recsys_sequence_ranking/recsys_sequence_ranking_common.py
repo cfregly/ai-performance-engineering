@@ -55,6 +55,8 @@ class RankingInputs:
     sequence_lengths: torch.Tensor
     context_ids: torch.Tensor
     candidate_ids: torch.Tensor
+    avg_sequence_length: float
+    hot_candidate_share_pct: float
 
 
 @dataclass
@@ -220,6 +222,11 @@ def build_inputs(workload: SequenceRankingWorkload, device: torch.device) -> Ran
 
     time_index = torch.arange(workload.seq_len, dtype=torch.int64).view(1, workload.seq_len)
     sequence_mask = time_index < lengths.view(-1, 1)
+    hot_threshold = max(workload.item_vocab_size // 100, 1)
+    avg_sequence_length = float(lengths.to(torch.float32).mean().item())
+    hot_candidate_share_pct = float(
+        (candidate_ids < hot_threshold).to(torch.float32).mean().item() * 100.0
+    )
 
     return RankingInputs(
         sequence_ids=sequence_ids.to(device=device, dtype=torch.int64),
@@ -227,6 +234,8 @@ def build_inputs(workload: SequenceRankingWorkload, device: torch.device) -> Ran
         sequence_lengths=lengths.to(device=device, dtype=torch.int64),
         context_ids=context_ids.to(device=device, dtype=torch.int64),
         candidate_ids=candidate_ids.to(device=device, dtype=torch.int64),
+        avg_sequence_length=avg_sequence_length,
+        hot_candidate_share_pct=hot_candidate_share_pct,
     )
 
 
@@ -579,16 +588,11 @@ def ranking_metrics(
     score_backend: str,
     compile_enabled: bool,
 ) -> dict:
-    avg_length = float(inputs.sequence_lengths.to(torch.float32).mean().item())
-    hot_threshold = max(workload.item_vocab_size // 100, 1)
-    hot_share = float(
-        (inputs.candidate_ids < hot_threshold).to(torch.float32).mean().item() * 100.0
-    )
     return {
-        "ranking.avg_sequence_length": avg_length,
+        "ranking.avg_sequence_length": inputs.avg_sequence_length,
         "ranking.num_tables": float(workload.num_tables),
         "ranking.num_candidates": float(workload.num_candidates),
-        "ranking.hot_candidate_share_pct": hot_share,
+        "ranking.hot_candidate_share_pct": inputs.hot_candidate_share_pct,
         "ranking.compile_enabled": 1.0 if compile_enabled else 0.0,
         "ranking.score_backend_triton": 1.0 if score_backend == "triton" else 0.0,
     }
