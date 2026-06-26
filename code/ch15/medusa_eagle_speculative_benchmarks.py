@@ -287,14 +287,13 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.target_model is not None:
             parameter_count = sum(p.numel() for p in self.target_model.parameters())
         in_vocab = ((self.output >= 0) & (self.output < self.workload.vocab_size)).sum()
-        verify_summary = torch.tensor(
-            [
-                float(self.input_ids[0, 0].item()),
-                float(self.output.shape[-1]),
-                float(in_vocab.item()),
-            ],
-            dtype=torch.float32,
-        )
+        verify_summary = torch.stack(
+            (
+                self.input_ids[0, 0].to(torch.float32),
+                torch.full((), float(self.output.shape[-1]), device=self.output.device, dtype=torch.float32),
+                in_vocab.to(torch.float32),
+            )
+        ).detach().cpu()
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids},
             output=verify_summary,
