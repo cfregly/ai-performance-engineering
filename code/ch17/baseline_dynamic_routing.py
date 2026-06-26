@@ -75,7 +75,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._cached_lengths = torch.tensor(
                 [r.prefix_cached_length for r in self._cached_requests], dtype=torch.int32
             )
-            self._queue_lengths = torch.zeros(self.batch_size, dtype=torch.int32)
+            self._queue_lengths = torch.empty(self.batch_size, dtype=torch.int32)
             self._priorities = torch.tensor(
                 [0 if r.priority is Priority.LOW else (2 if r.priority is Priority.HIGH else 1) 
                  for r in self._cached_requests], dtype=torch.int32

@@ -2240,6 +2240,8 @@ def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
         maxsplit=1,
     )[0]
 
+    assert "self._queue_lengths = torch.empty(self.batch_size, dtype=torch.int32)" in setup_section
+    assert "self._queue_lengths = torch.zeros(self.batch_size, dtype=torch.int32)" not in setup_section
     assert "self._remaining_lengths = torch.empty_like(self._prompt_lengths)" in setup_section
     assert "self._long_prefill = torch.empty_like(self._priorities, dtype=torch.bool)" in setup_section
     assert "self._served_offload_mask = torch.empty_like(self._long_prefill)" in setup_section
