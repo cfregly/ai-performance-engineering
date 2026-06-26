@@ -7,7 +7,7 @@ python -m pytest tests/test_engine.py -v
 import torch
 from types import SimpleNamespace
 from nanochat.engine import Engine, KVCache
-from nanochat.gpt import apply_rotary_emb
+from nanochat.gpt import CausalSelfAttention, GPTConfig, apply_rotary_emb
 
 def test_kv_cache_resize():
     """
@@ -243,6 +243,30 @@ def test_build_attention_mask_reuses_position_buffer():
 
     assert engine._attention_positions.numel() >= 6
     torch.testing.assert_close(grown, torch.ones((1, 6), dtype=torch.bool))
+
+
+def test_attention_reuses_cu_seqlens_buffers():
+    config = GPTConfig(
+        sequence_len=8,
+        vocab_size=32,
+        n_layer=1,
+        n_head=2,
+        n_kv_head=2,
+        n_embd=8,
+        use_flash3=False,
+    )
+    attn = CausalSelfAttention(config, layer_idx=0)
+
+    cu_q = attn._cu_seqlens_buffer(2, 4, torch.device("cpu"), "_cu_q_cache")
+    cu_q_ptr = cu_q.data_ptr()
+    cu_q_again = attn._cu_seqlens_buffer(2, 4, torch.device("cpu"), "_cu_q_cache")
+
+    assert cu_q_again.data_ptr() == cu_q_ptr
+    torch.testing.assert_close(cu_q_again, torch.tensor([0, 4, 8], dtype=torch.int32))
+
+    cu_q_grown = attn._cu_seqlens_buffer(2, 5, torch.device("cpu"), "_cu_q_cache")
+
+    torch.testing.assert_close(cu_q_grown, torch.tensor([0, 5, 10], dtype=torch.int32))
 
 
 def test_apply_rotary_emb_inference_matches_reference():

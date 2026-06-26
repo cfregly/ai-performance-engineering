@@ -142,6 +142,8 @@ class CausalSelfAttention(nn.Module):
                 self.use_flash3 = False
         self.flash3_fn = None
         self.flash3_error = None
+        self._cu_q_cache = None
+        self._cu_k_cache = None
         if self.use_flash3:
             self._init_flash3()
 
@@ -175,6 +177,16 @@ class CausalSelfAttention(nn.Module):
             return max(3, self.cta_cluster_size)
         return self.cta_cluster_size
 
+    def _cu_seqlens_buffer(self, batch, seq_len, device, cache_name):
+        spec_name = f"{cache_name}_spec"
+        spec = (batch, seq_len, device)
+        cached = getattr(self, cache_name)
+        if cached is None or getattr(self, spec_name, None) != spec:
+            cached = torch.arange(0, (batch + 1) * seq_len, step=seq_len, device=device, dtype=torch.int32)
+            setattr(self, cache_name, cached)
+            setattr(self, spec_name, spec)
+        return cached
+
     def _flash3_attention(self, q, k, v, kv_cache, enable_gqa, use_clustering=False):
         """Varlen FlashAttention-3 path (no masks). Returns None on fallback."""
         Tq, Tk = q.size(2), k.size(2)
@@ -194,8 +206,8 @@ class CausalSelfAttention(nn.Module):
         q_flat = q.transpose(1, 2).reshape(B * Tq, Hq, D)
         k_flat = k.transpose(1, 2).reshape(B * Tk, Hk, D)
         v_flat = v.transpose(1, 2).reshape(B * Tk, Hk, D)
-        cu_q = torch.arange(0, (B + 1) * Tq, step=Tq, device=q.device, dtype=torch.int32)
-        cu_k = torch.arange(0, (B + 1) * Tk, step=Tk, device=q.device, dtype=torch.int32)
+        cu_q = self._cu_seqlens_buffer(B, Tq, q.device, "_cu_q_cache")
+        cu_k = self._cu_seqlens_buffer(B, Tk, q.device, "_cu_k_cache")
         
         # CTA clustering hint: Some FlashAttention-3 builds support num_sm_clusters
         # to enable cooperative thread array clustering on Hopper/Blackwell
