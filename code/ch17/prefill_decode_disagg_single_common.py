@@ -7,7 +7,7 @@ from typing import List, Optional
 import torch
 
 from core.benchmark.verification import PrecisionFlags
-from core.benchmark.wrapper_utils import attach_benchmark_metadata
+from core.benchmark.wrapper_utils import attach_benchmark_metadata as attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from ch17.prefill_decode_disagg_multigpu_common import PrefillDecodeConfig, TinyPrefillDecode
@@ -123,7 +123,7 @@ class BaselinePrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
             for idx in range(self.cfg.requests_per_rank):
                 kv_cache, seed = self.prefill_model.prefill(self.prompts[idx])
                 kv_cpu = kv_cache.cpu()
-                kv_cache = kv_cpu.to(self.device)
+                kv_cache.copy_(kv_cpu)
                 outputs.append(self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens))
 
         self._set_output(outputs)

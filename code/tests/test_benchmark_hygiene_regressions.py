@@ -1647,7 +1647,22 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "torch.cat(" not in output_helper
     assert "self._pending_outputs = outputs" in output_helper
     assert "torch.cat(" not in baseline_benchmark
+    assert "kv_cpu.to(self.device)" not in baseline_benchmark
+    assert "kv_cache[:, : self.cfg.context_window].copy_(kv_cpu)" in baseline_benchmark
     assert "self._output = torch.cat(self._pending_outputs, dim=0)" in capture_section
+
+
+def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache() -> None:
+    source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_single_common.py").read_text(
+        encoding="utf-8"
+    )
+    baseline_benchmark = source.split("class BaselinePrefillDecodeSingleGPUBenchmark", maxsplit=1)[1].split(
+        "class OptimizedPrefillDecodeSingleGPUBenchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "kv_cache = kv_cpu.to(self.device)" not in baseline_benchmark
+    assert "kv_cache.copy_(kv_cpu)" in baseline_benchmark
 
 
 def test_ch15_inference_placement_defers_output_tensor_outside_hot_loop() -> None:

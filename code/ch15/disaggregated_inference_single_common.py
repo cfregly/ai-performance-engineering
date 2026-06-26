@@ -9,7 +9,7 @@ import torch
 
 from core.benchmark.verification import PrecisionFlags
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.benchmark.wrapper_utils import attach_benchmark_metadata
+from core.benchmark.wrapper_utils import attach_benchmark_metadata as attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.optimization.moe_inference import (
     MoeInferenceConfig,
@@ -254,7 +254,7 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
                 seed_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
                 kv_cpu = hidden.cpu()
                 kv_cache = self._allocate_kv_cache()
-                kv_cache[:, : self.cfg.context_window] = kv_cpu.to(self.device)
+                kv_cache[:, : self.cfg.context_window].copy_(kv_cpu)
                 outputs.append(self._run_decode_loop(kv_cache, seed_tokens))
 
         self._set_output_from_tokens(outputs)
