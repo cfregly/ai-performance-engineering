@@ -1322,6 +1322,20 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "if not matches.all()" not in decode_section
 
 
+def test_ch18_paged_vllm_cache_reset_is_metadata_only() -> None:
+    source = (REPO_ROOT / "ch18" / "run_vllm_decoder.py").read_text(encoding="utf-8")
+    cache_section = source.split("class PagedKVCache", maxsplit=1)[1].split(
+        "class SpeculativeDecoder",
+        maxsplit=1,
+    )[0]
+
+    assert "self.buffer = torch.empty(" in cache_section
+    assert "self.buffer = torch.zeros(" not in cache_section
+    assert "self.buffer.zero_()" not in cache_section
+    assert "self.tokens_written = 0" in cache_section
+    assert "self.page_faults = 0" in cache_section
+
+
 def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     from ch18.rope_q_cache_common import apply_rope, apply_rope_inplace
 

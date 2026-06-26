@@ -134,14 +134,13 @@ class PagedKVCache:
         device: torch.device,
         page_size: int,
     ) -> None:
-        self.buffer = torch.zeros(batch_size, max_tokens, hidden, dtype=dtype, device=device)
+        self.buffer = torch.empty(batch_size, max_tokens, hidden, dtype=dtype, device=device)
         self.page_size = max(1, page_size)
         self.max_tokens = max_tokens
         self.tokens_written = 0
         self.page_faults = 0
 
     def reset(self) -> None:
-        self.buffer.zero_()
         self.tokens_written = 0
         self.page_faults = 0
 
@@ -884,4 +883,3 @@ def main(argv: Optional[List[str]] = None) -> int:
         args.max_capture_tokens,
     )
     return 0
-
