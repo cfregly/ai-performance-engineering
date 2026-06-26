@@ -100,7 +100,7 @@ def benchmark_config(M, N, K, config_name, block_m, block_n, block_k, num_warps,
     """Benchmark a specific configuration"""
     A = torch.randn(M, K, device='cuda', dtype=torch.float16)
     B = torch.randn(K, N, device='cuda', dtype=torch.float16)
-    C = torch.zeros(M, N, device='cuda', dtype=torch.float32)
+    C = torch.empty(M, N, device='cuda', dtype=torch.float32)
     
     grid = (triton.cdiv(M, block_m), triton.cdiv(N, block_n))
     

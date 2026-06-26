@@ -628,6 +628,14 @@ def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:
     assert "C = torch.zeros(M, N, device='cuda', dtype=torch.float32)" not in source
 
 
+def test_ch14_tma_config_benchmark_avoids_zero_filling_output() -> None:
+    source = (REPO_ROOT / "ch14" / "benchmark_tma_configs.py").read_text(encoding="utf-8")
+
+    assert "tl.store(c_ptrs, acc, mask=c_mask)" in source
+    assert "C = torch.empty(M, N, device='cuda', dtype=torch.float32)" in source
+    assert "C = torch.zeros(M, N, device='cuda', dtype=torch.float32)" not in source
+
+
 def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
     dual_cta = (REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_cta.py").read_text(
         encoding="utf-8"
