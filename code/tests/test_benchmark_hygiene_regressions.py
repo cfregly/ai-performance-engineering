@@ -1542,6 +1542,26 @@ def test_ch15_kv_cache_math_preconcats_static_inputs() -> None:
     assert "k_cache = self._sequence_inputs" in benchmark_section
 
 
+def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
+    baseline_source = (REPO_ROOT / "ch15" / "baseline_wide_ep.py").read_text(encoding="utf-8")
+    optimized_source = (REPO_ROOT / "ch15" / "optimized_wide_ep.py").read_text(encoding="utf-8")
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "send_buf = torch.cat(send_tokens" not in baseline_benchmark
+    assert "recv_buf.copy_(send_buf)" not in baseline_benchmark
+    assert "torch.cat(send_tokens, dim=0, out=recv_buf)" in baseline_benchmark
+    assert "send_buf = flat.index_select(0, perm)" not in optimized_benchmark
+    assert "recv_buf.copy_(send_buf)" not in optimized_benchmark
+    assert "torch.index_select(flat, 0, perm, out=recv_buf)" in optimized_benchmark
+
+
 def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:
     source = (REPO_ROOT / "labs" / "moe_parallelism" / "benchmarking.py").read_text(
         encoding="utf-8"

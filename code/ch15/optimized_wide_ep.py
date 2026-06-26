@@ -117,10 +117,8 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with self._nvtx_range("optimized_wide_ep"):
             with torch.no_grad():
                 perm = torch.argsort(dest_ranks)
-                send_buf = flat.index_select(0, perm)
-
                 recv_buf = self._recv_buf
-                recv_buf.copy_(send_buf)
+                torch.index_select(flat, 0, perm, out=recv_buf)
 
                 recv_out = self.expert(recv_buf)
 
@@ -179,5 +177,4 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedWideEPBenchmark()
-
 

@@ -132,10 +132,8 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     raise RuntimeError("Routing produced no tokens for any rank")
 
                 perm = torch.cat(send_pos, dim=0)
-                send_buf = torch.cat(send_tokens, dim=0)
-
                 recv_buf = self._recv_buf
-                recv_buf.copy_(send_buf)
+                torch.cat(send_tokens, dim=0, out=recv_buf)
 
                 recv_out = self.expert(recv_buf)
 
@@ -194,5 +192,4 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineWideEPBenchmark()
-
 
