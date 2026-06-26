@@ -36,8 +36,6 @@ from core.harness.arch_config import prefer_sdpa_backends
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 
-
-
 def _supports_fp8_kv() -> bool:
     """Return True if FP8 KV is even representable in this build of PyTorch."""
     return hasattr(torch, "float8_e4m3fn") and torch.cuda.is_available()
@@ -470,7 +468,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     prefetch_idx = 1 - active_idx
                     self.prefetch_buf_idx = prefetch_idx
                     if self.prefetch_event is None:
-                        self.prefetch_event = torch.cuda.Event()
+                        raise RuntimeError("Prefetch event not initialized for async two-buffer prefetch")
                     self._copy_to_device(
                         staged_prefetch,
                         pref_len,

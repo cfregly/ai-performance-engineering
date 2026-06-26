@@ -461,6 +461,18 @@ def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
     assert 'start_decode = self._piecewise_events["start_decode"]' in benchmark_section
 
 
+def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "labs" / "persistent_decode" / "paged_kv_offload_common.py").read_text(encoding="utf-8")
+    setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self.prefetch_event = torch.cuda.Event() if buffer_count == 2 else None" in setup_section
+    assert "torch.cuda.Event(" not in benchmark_section
+    assert "Prefetch event not initialized for async two-buffer prefetch" in benchmark_section
+
+
 def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> None:
     source = (REPO_ROOT / "labs" / "real_world_models" / "deepseek_r1_moe_optimization.py").read_text(
         encoding="utf-8"
