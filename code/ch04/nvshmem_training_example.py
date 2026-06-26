@@ -29,7 +29,6 @@ import argparse
 import datetime
 import os
 
-from core.common.device_utils import resolve_local_rank
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
@@ -185,19 +184,19 @@ def demo_gradient_buckets(batch: torch.Tensor, model: nn.Module, steps: int = 1)
     for p in model.parameters():
         p.register_hook(lambda grad, p=p: _hook(p, grad))
 
-    reduced_norm = 0.0
     for _ in range(steps):
+        offset = 0
         output = model(batch)
         loss = output.float().sum()
         loss.backward()
         bucket.allreduce_ring(rank)
-        reduced_norm = bucket.tensor.norm().item()
         model.zero_grad(set_to_none=True)
     dist.barrier()
-    bucket.close()
 
     if rank == 0:
+        reduced_norm = float(bucket.tensor.norm())
         print(f"[gradient_bucket] Reduced norm={reduced_norm:.3f}")
+    bucket.close()
 
 
 # ============================================================================

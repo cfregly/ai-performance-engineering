@@ -410,6 +410,25 @@ def test_ch04_training_pipeline_defers_step_loss_sync_until_logging() -> None:
     assert "loss_value = float(loss)" in train_loop_section
 
 
+def test_ch04_nvshmem_training_example_defers_reduced_norm_sync() -> None:
+    source = (REPO_ROOT / "ch04" / "nvshmem_training_example.py").read_text(
+        encoding="utf-8"
+    )
+    bucket_demo = source.split("def demo_gradient_bucket", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+    loop_section = bucket_demo.split("for _ in range(steps):", maxsplit=1)[1].split(
+        "dist.barrier()",
+        maxsplit=1,
+    )[0]
+
+    assert "bucket.tensor.norm().item()" not in bucket_demo
+    assert "offset = 0" in loop_section
+    assert "bucket.tensor.norm()" not in loop_section
+    assert "reduced_norm = float(bucket.tensor.norm())" in bucket_demo
+
+
 def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
     source = (REPO_ROOT / "ch09" / "fusion_pytorch.py").read_text(encoding="utf-8")
 
