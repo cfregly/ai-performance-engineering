@@ -1485,7 +1485,10 @@ def test_nanochat_base_train_defers_grad_norm_sync_until_logging() -> None:
     assert "grad_norm_tensor.item()" not in loop_section
     assert "grad_norm_tensor = None" in step_section
     assert "grad_norm_tensor = torch.nn.utils.clip_grad_norm_" in step_section
-    assert "grad_norm = float(grad_norm_tensor) if grad_clip_enabled else 0.0" in logging_section
+    assert "log_tensors = [train_loss.to(torch.float64)]" in logging_section
+    assert "log_values = torch.stack(log_tensors).detach().cpu().tolist()" in logging_section
+    assert "grad_norm = log_values[1] if grad_clip_enabled else 0.0" in logging_section
+    assert "train_loss.item()" not in logging_section
 
 
 def test_nanochat_chat_sft_batches_training_log_syncs() -> None:

@@ -361,9 +361,14 @@ while True:
     # -------------------------------------------------------------------------
 
     # logging
-    grad_norm = float(grad_norm_tensor) if grad_clip_enabled else 0.0
+    log_tensors = [train_loss.to(torch.float64)]
+    if grad_clip_enabled:
+        log_tensors.append(grad_norm_tensor.to(torch.float64))
+    log_values = torch.stack(log_tensors).detach().cpu().tolist()
+    train_loss_value = log_values[0]
+    grad_norm = log_values[1] if grad_clip_enabled else 0.0
     ema_beta = 0.9 # EMA decay factor for some smoothing just for nicer logging
-    smooth_train_loss = ema_beta * smooth_train_loss + (1 - ema_beta) * train_loss.item() # EMA the training loss
+    smooth_train_loss = ema_beta * smooth_train_loss + (1 - ema_beta) * train_loss_value # EMA the training loss
     debiased_smooth_loss = smooth_train_loss / (1 - ema_beta**(step + 1)) # debias the EMA
     pct_done = 100 * step / num_iterations
     tok_per_sec = int(total_batch_size / dt)
