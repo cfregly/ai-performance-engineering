@@ -95,6 +95,8 @@ class MoEExperts(nn.Module):
         self._cuda_graph_replays = 0
         self._cuda_graph_capture_failures = 0
         self._cuda_graph_last_error: Optional[str] = None
+        self._bmm_padded_tokens: Optional[torch.Tensor] = None
+        self._bmm_padded_weights: Optional[torch.Tensor] = None
 
     @staticmethod
     def _is_torch_compiling() -> bool:
@@ -122,6 +124,26 @@ class MoEExperts(nn.Module):
             str(expert_weights.dtype),
             device_index,
         )
+
+    def _bmm_workspace(
+        self,
+        name: str,
+        shape: Tuple[int, ...],
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        cached = getattr(self, name)
+        if (
+            isinstance(cached, torch.Tensor)
+            and cached.shape == shape
+            and cached.device == device
+            and cached.dtype == dtype
+        ):
+            return cached
+        workspace = torch.empty(shape, device=device, dtype=dtype)
+        setattr(self, name, workspace)
+        return workspace
 
     def _reset_cuda_graph_cache(self) -> None:
         self._cuda_graph = None
@@ -421,8 +443,13 @@ class MoEExperts(nn.Module):
         padded_indices = sorted_expert_ids * max_count + positions
         
         # Scatter tokens into padded tensor (vectorized!)
-        padded_tokens = torch.zeros(self.num_experts * max_count, self.hidden_size, 
-                                   device=device, dtype=x.dtype)
+        padded_tokens = self._bmm_workspace(
+            "_bmm_padded_tokens",
+            (self.num_experts * int(max_count), self.hidden_size),
+            device=device,
+            dtype=x.dtype,
+        )
+        padded_tokens.zero_()
         padded_tokens.scatter_(0, padded_indices.unsqueeze(1).expand(-1, self.hidden_size), sorted_tokens)
         padded_tokens = padded_tokens.view(self.num_experts, max_count, self.hidden_size)
         
@@ -434,7 +461,13 @@ class MoEExperts(nn.Module):
         out = torch.bmm(hidden, self.w2_stacked)           # [E, max_count, H]
         
         # Scatter weights and apply
-        padded_weights = torch.zeros(self.num_experts * max_count, 1, device=device, dtype=x.dtype)
+        padded_weights = self._bmm_workspace(
+            "_bmm_padded_weights",
+            (self.num_experts * int(max_count), 1),
+            device=device,
+            dtype=x.dtype,
+        )
+        padded_weights.zero_()
         padded_weights.scatter_(0, padded_indices.unsqueeze(1), sorted_weights.unsqueeze(1))
         padded_weights = padded_weights.view(self.num_experts, max_count, 1)
         out = out * padded_weights

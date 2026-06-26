@@ -64,8 +64,14 @@ def test_graphable_bmm_fused_path_matches_dynamic_bmm_path() -> None:
     expert_weights = torch.ones(4, 1)
 
     dynamic = experts.forward_bmm_fused(x, expert_indices, expert_weights)
+    token_workspace_ptr = experts._bmm_padded_tokens.data_ptr()
+    weight_workspace_ptr = experts._bmm_padded_weights.data_ptr()
+    dynamic_again = experts.forward_bmm_fused(x, expert_indices, expert_weights)
     graphable = experts._forward_bmm_fused_graphable(x, expert_indices, expert_weights)
 
+    assert experts._bmm_padded_tokens.data_ptr() == token_workspace_ptr
+    assert experts._bmm_padded_weights.data_ptr() == weight_workspace_ptr
+    torch.testing.assert_close(dynamic_again, dynamic)
     torch.testing.assert_close(graphable, dynamic)
 
 
@@ -114,6 +120,26 @@ def test_graphable_moe_path_uses_fixed_capacity_dense_dispatch() -> None:
     assert "F.one_hot(" in graphable_section
     assert "counts.max().item()" not in implementation
     assert "torch.argsort" not in implementation
+
+
+def test_level5_bmm_path_reuses_padding_workspaces() -> None:
+    source = Path(__file__).resolve().parents[1] / "labs" / "moe_optimization_journey" / "moe_model.py"
+    text = source.read_text(encoding="utf-8")
+
+    bmm_section = text.split("def forward_bmm_fused", maxsplit=1)[1].split(
+        "def _forward_bmm_fused_graphable", maxsplit=1
+    )[0]
+
+    assert "def _bmm_workspace" in text
+    assert "self._bmm_padded_tokens: Optional[torch.Tensor] = None" in text
+    assert "self._bmm_padded_weights: Optional[torch.Tensor] = None" in text
+    assert 'padded_tokens = self._bmm_workspace(' in bmm_section
+    assert '"_bmm_padded_tokens",' in bmm_section
+    assert 'padded_weights = self._bmm_workspace(' in bmm_section
+    assert '"_bmm_padded_weights",' in bmm_section
+    assert "padded_tokens.zero_()" in bmm_section
+    assert "padded_weights.zero_()" in bmm_section
+    assert "torch.zeros(self.num_experts * max_count" not in bmm_section
 
 
 def test_graphable_moe_path_matches_level5_bmm_fused_outputs() -> None:
