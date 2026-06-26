@@ -100,14 +100,22 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
     def _async_reduce_to_root(self, grads: List[torch.Tensor], buffer_index: int) -> torch.Tensor:
         """Asynchronously accumulate gradients on the root device."""
         root_buf = self._reduce_buffers[buffer_index]
-        root_buf.zero_()
         event_row = self._grad_ready_events[buffer_index]
         staging_row = self._root_grad_staging[buffer_index]
         for idx, _ in enumerate(grads):
             event_row[idx].record()
 
         with torch.cuda.stream(self.comm_stream):
-            for idx, g in enumerate(grads):
+            first = grads[0]
+            self.comm_stream.wait_event(event_row[0])
+            if first.device == self.root_device:
+                root_buf.copy_(first)
+            else:
+                staging = staging_row[0]
+                staging.copy_(first, non_blocking=True)
+                root_buf.copy_(staging)
+
+            for idx, g in enumerate(grads[1:], start=1):
                 evt = event_row[idx]
                 self.comm_stream.wait_event(evt)
                 if g.device == self.root_device:
