@@ -333,7 +333,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return "Output not produced"
         if self.output.shape[-1] != self.workload.total_tokens + 1:
             return "Unexpected output shape"
-        if torch.any(self.output < 0) or torch.any(self.output >= self.workload.vocab_size):
+        if torch.any((self.output < 0) | (self.output >= self.workload.vocab_size)):
             return "Output contains out-of-vocabulary token ids"
         family_key = f"speculative.family_{self.variant}"
         if self._metrics.get(family_key, 0.0) != 1.0:

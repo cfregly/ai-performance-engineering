@@ -3167,6 +3167,19 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
 
 
+def test_medusa_eagle_validation_batches_output_bounds_check() -> None:
+    source = (REPO_ROOT / "ch15" / "medusa_eagle_speculative_benchmarks.py").read_text(
+        encoding="utf-8"
+    )
+    validate_section = source.split("def validate_result", maxsplit=1)[1].split(
+        "def get_benchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "torch.any((self.output < 0) | (self.output >= self.workload.vocab_size))" in validate_section
+    assert "torch.any(self.output < 0) or torch.any(self.output >= self.workload.vocab_size)" not in validate_section
+
+
 def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     source = (REPO_ROOT / "ch15" / "speculative_decoding_benchmarks.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
