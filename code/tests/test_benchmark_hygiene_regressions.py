@@ -119,6 +119,19 @@ def test_ch07_tma_copy_surfaces_scalar_vs_strict_descriptor_tma_story() -> None:
     assert "strict tensor-map/TMA-capable run only" in readme
 
 
+def test_ch07_lookup_pytorch_reuses_table_and_timing_events() -> None:
+    source = (REPO_ROOT / "ch07" / "lookup_pytorch.py").read_text(encoding="utf-8")
+    run_section = source.split("def run", maxsplit=1)[1].split("def main", maxsplit=1)[0]
+    main_section = source.split("def main", maxsplit=1)[1]
+
+    assert "out = torch.empty_like" not in source
+    assert "events: tuple[torch.cuda.Event, torch.cuda.Event] | None = None" in run_section
+    assert "start_event, end_event = events" in run_section
+    assert "table = torch.arange(N, device=device, dtype=torch.float32)" in main_section
+    assert "ms = run(random_indices, table=table, events=events)" in main_section
+    assert "ms = run(coalesced_indices, table=table, events=events)" in main_section
+
+
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()
