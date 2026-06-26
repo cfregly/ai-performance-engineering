@@ -1132,6 +1132,26 @@ def test_ch20_bf16_mlp_preconverts_activation_dtype_outside_hot_loop() -> None:
     assert "self.output = self.model(self._x_model_dtype)" in benchmark_section
 
 
+def test_ch20_optimized_memory_standard_uses_scalar_addcmul_constants() -> None:
+    source = (REPO_ROOT / "ch20" / "optimized_memory_standard.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self.result = torch.empty_like(self.data).contiguous()" in setup_section
+    assert "self.offset = torch.tensor(1.1" in setup_section
+    assert "self.scale_tensor = torch.tensor(2.0" in setup_section
+    assert "torch.full_like(self.data" not in setup_section
+    assert "torch.zeros_like(self.data)" not in setup_section
+    assert "torch.addcmul(self.offset, self.data, self.scale_tensor, out=self.result)" in benchmark_section
+
+    data = torch.randn(8)
+    output = torch.empty_like(data)
+    torch.addcmul(torch.tensor(1.1), data, torch.tensor(2.0), out=output)
+    torch.testing.assert_close(output, 1.1 + data * 2.0)
+
+
 def test_ch20_integrated_kv_cache_releases_slabs_without_zero_fill() -> None:
     source = (REPO_ROOT / "ch20" / "optimized_integrated_kv_cache.py").read_text(encoding="utf-8")
     acquire_section = source.split("def _acquire_buffer", maxsplit=1)[1].split(

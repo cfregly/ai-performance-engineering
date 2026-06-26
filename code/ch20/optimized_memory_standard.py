@@ -40,9 +40,9 @@ class OptimizedMemoryStandardBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         
         self.data = torch.randn(self.num_elements, device=self.device, dtype=torch.float32).contiguous()
-        self.result = torch.zeros_like(self.data).contiguous()
-        self.offset = torch.full_like(self.data, 1.1)
-        self.scale_tensor = torch.full_like(self.data, 2.0)
+        self.result = torch.empty_like(self.data).contiguous()
+        self.offset = torch.tensor(1.1, device=self.device, dtype=self.data.dtype)
+        self.scale_tensor = torch.tensor(2.0, device=self.device, dtype=self.data.dtype)
         for _ in range(3):
             torch.addcmul(self.offset, self.data, self.scale_tensor, out=self.result)
     
