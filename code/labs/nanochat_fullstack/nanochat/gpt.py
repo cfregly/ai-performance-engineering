@@ -566,9 +566,14 @@ class GPT(nn.Module):
         if temperature > 0:
             rng = torch.Generator(device=device)
             rng.manual_seed(seed)
-        ids = torch.tensor([tokens], dtype=torch.long, device=device) # add batch dim
+        prompt_len = len(tokens)
+        total_len = prompt_len + max(max_tokens, 0)
+        ids = torch.empty((1, total_len), dtype=torch.long, device=device)
+        if prompt_len:
+            ids[:, :prompt_len] = torch.tensor([tokens], dtype=torch.long, device=device)
+        cur_len = prompt_len
         for _ in range(max_tokens):
-            logits = self.forward(ids) # (B, T, vocab_size)
+            logits = self.forward(ids[:, :cur_len]) # (B, T, vocab_size)
             logits = logits[:, -1, :] # (B, vocab_size)
             if top_k is not None:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
@@ -579,6 +584,7 @@ class GPT(nn.Module):
                 next_ids = torch.multinomial(probs, num_samples=1, generator=rng)
             else:
                 next_ids = torch.argmax(logits, dim=-1, keepdim=True)
-            ids = torch.cat((ids, next_ids), dim=1)
+            ids[:, cur_len:cur_len + 1].copy_(next_ids)
+            cur_len += 1
             token = next_ids.item()
             yield token

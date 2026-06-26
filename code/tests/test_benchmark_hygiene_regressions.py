@@ -1552,6 +1552,18 @@ def test_nanochat_kv_cache_growth_avoids_cat_with_uninitialized_tail() -> None:
     assert "grown_cache[:, :, :, :, :old_seq_len, :].copy_(self.kv_cache)" in grow_section
 
 
+def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
+    source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "gpt.py").read_text(
+        encoding="utf-8"
+    )
+    generate_section = source.split("def generate(self, tokens, max_tokens", maxsplit=1)[1]
+
+    assert "ids = torch.empty((1, total_len), dtype=torch.long, device=device)" in generate_section
+    assert "logits = self.forward(ids[:, :cur_len])" in generate_section
+    assert "ids[:, cur_len:cur_len + 1].copy_(next_ids)" in generate_section
+    assert "ids = torch.cat((ids, next_ids), dim=1)" not in generate_section
+
+
 def test_nanochat_loss_eval_batches_reduced_totals() -> None:
     source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "loss_eval.py").read_text(
         encoding="utf-8"
