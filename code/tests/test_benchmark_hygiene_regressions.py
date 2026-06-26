@@ -330,6 +330,23 @@ def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
     assert "float(top2[0] - top2[1])" not in confidence_section
 
 
+def test_ch19_decode_loops_preallocate_token_buffers() -> None:
+    files = [
+        "ch19/dynamic_precision_benchmark_common.py",
+        "ch19/dynamic_precision_switching.py",
+        "ch19/token_precision_switching.py",
+    ]
+
+    for filename in files:
+        source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        assert "torch.empty(\n        (batch_size, prompt_len + max_steps)" in source or (
+            "torch.empty(\n            (batch_size, prompt_len + max_length)" in source
+        )
+        assert "torch.cat([generated, next_token]" not in source
+        assert "torch.cat([tokens, next_token]" not in source
+        assert "torch.cat([tokens, next_token.unsqueeze(0)]" not in source
+
+
 def test_ch19_fp4_baseline_keeps_scale_on_device() -> None:
     source = (REPO_ROOT / "ch19" / "baseline_fp4_weight_quantization.py").read_text(
         encoding="utf-8"

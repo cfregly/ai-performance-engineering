@@ -3,9 +3,6 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import math
-import os
-import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
@@ -97,11 +94,20 @@ class TokenPrecisionController:
         return logits
 
     def generate(self, input_ids: torch.Tensor, max_length: int = 20, temperature: float = 1.0) -> Tuple[torch.Tensor, List[Dict[str, float]]]:
-        tokens = input_ids.clone()
+        prompt = input_ids.clone()
+        batch_size, prompt_len = prompt.shape
+        tokens = torch.empty(
+            (batch_size, prompt_len + max_length),
+            device=prompt.device,
+            dtype=prompt.dtype,
+        )
+        tokens[:, :prompt_len].copy_(prompt)
+        current_len = prompt_len
         stats: List[Dict[str, float]] = []
-        for step in range(max_length):
+        for _step in range(max_length):
+            active_tokens = tokens[:, :current_len]
             with torch.no_grad():
-                logits = self.model(tokens).logits[0, -1, :]
+                logits = self.model(active_tokens).logits[0, -1, :]
                 logits = self._cast_logits(logits, self.current_precision)
                 metrics = self._confidence(logits, temperature)
                 next_precision = self._choose_precision(metrics)
@@ -110,11 +116,12 @@ class TokenPrecisionController:
                 self.current_precision = next_precision
                 probs = F.softmax(logits / temperature, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1)
-                tokens = torch.cat([tokens, next_token.unsqueeze(0)], dim=1)
+                tokens[:, current_len : current_len + 1].copy_(next_token.unsqueeze(0))
+                current_len += 1
                 stats.append({"confidence": metrics.confidence_score, "precision": self.current_precision.value})
                 if next_token.item() == 0:
                     break
-        return tokens, stats
+        return tokens[:, :current_len].contiguous(), stats
 
 
 #
@@ -189,7 +196,15 @@ def decode_with_dynamic_precision(
     assert exit_fp8_threshold <= enter_fp8_threshold, "Hysteresis requires exit <= enter threshold"
 
     model.eval()
-    tokens = tokens.to(device, non_blocking=True)
+    prompt = tokens.to(device, non_blocking=True)
+    batch_size, prompt_len = prompt.shape
+    tokens = torch.empty(
+        (batch_size, prompt_len + max_steps),
+        device=device,
+        dtype=prompt.dtype,
+    )
+    tokens[:, :prompt_len].copy_(prompt)
+    current_len = prompt_len
 
     # Internal state
     use_fp8: bool = False  # start in AMP; upgrade to FP8 when sustained confidence permits
@@ -209,20 +224,22 @@ def decode_with_dynamic_precision(
 
     # Decode
     for step in range(max_steps):
+        active_tokens = tokens[:, :current_len]
         # 1) Precision context (exactly one). No nested contexts, no leakage across iterations.
         with _precision_context(device, use_fp8, prefer_bfloat16, enable_fp8):
             # Forward pass (HF-style or plain)
             try:
-                logits = model(input_ids=tokens)  # HF models often return logits tensor or a ModelOutput
+                logits = model(input_ids=active_tokens)  # HF models often return logits tensor or a ModelOutput
                 if hasattr(logits, "logits"):
                     logits = logits.logits
             except TypeError:
-                logits = model(tokens)
+                logits = model(active_tokens)
 
             # 2) Pick next token from the *last* position
             last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
             next_token = torch.argmax(last_step_logits, dim=-1, keepdim=True)  # [B, 1]
-            tokens = torch.cat([tokens, next_token], dim=1)
+            tokens[:, current_len : current_len + 1].copy_(next_token)
+            current_len += 1
 
         # 3) Update on-device EMA signal every step (no host sync yet)
         conf_dev = _update_confidence_ema(logits)
@@ -238,10 +255,10 @@ def decode_with_dynamic_precision(
 
         # 5) EOS handling
         if eos_id is not None:
-            if (tokens[:, -1] == eos_id).all():
+            if (tokens[:, current_len - 1] == eos_id).all():
                 break
 
-    return tokens
+    return tokens[:, :current_len].contiguous()
 # ===== END dynamic_precision_inference =====
 
 

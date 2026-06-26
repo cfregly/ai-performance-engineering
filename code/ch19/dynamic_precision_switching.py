@@ -224,7 +224,15 @@ def decode_with_dynamic_precision(
             "FP4 hysteresis requires exit <= enter threshold"
     
     model.eval()
-    tokens = tokens.to(device, non_blocking=True)
+    prompt = tokens.to(device, non_blocking=True)
+    batch_size, prompt_len = prompt.shape
+    generated = torch.empty(
+        (batch_size, prompt_len + max_steps),
+        device=device,
+        dtype=prompt.dtype,
+    )
+    generated[:, :prompt_len].copy_(prompt)
+    current_len = prompt_len
     
     # Internal state
     default_mode = PrecisionMode.BF16 if prefer_bfloat16 else PrecisionMode.FP16
@@ -252,16 +260,18 @@ def decode_with_dynamic_precision(
     
     # Decode
     for step in range(max_steps):
+        active_tokens = generated[:, :current_len]
+
         # 1) Precision context (exactly one).
         # No nested contexts, no leakage across iterations.
         with _precision_context(device, precision_mode, prefer_bfloat16, enable_fp8):
             # Forward pass (HF-style or plain)
             try:
-                logits = model(input_ids=tokens)
+                logits = model(input_ids=active_tokens)
                 if hasattr(logits, "logits"):
                     logits = logits.logits
             except TypeError:
-                logits = model(tokens)
+                logits = model(active_tokens)
 
         if precision_mode == PrecisionMode.FP4:
             logits = _simulate_fp4_quantize(logits)
@@ -269,14 +279,15 @@ def decode_with_dynamic_precision(
         # 2) Pick next token from the *last* position
         last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
         next_token = torch.argmax(last_step_logits, dim=-1, keepdim=True)  # [B, 1]
-        tokens = torch.cat([tokens, next_token], dim=1)
+        generated[:, current_len : current_len + 1].copy_(next_token)
+        current_len += 1
         
         # 3) Update on-device EMA signal every step (no host sync yet)
         conf_dev = _update_confidence_ema(logits)
         
         # 4) Update statistics
         if stats:
-            stats.record_tokens(precision_mode, tokens.size(0))
+            stats.record_tokens(precision_mode, batch_size)
         
         # 5) Periodically re-evaluate precision choice on host to avoid per-step sync
         if (step + 1) % reeval_interval == 0:
@@ -327,10 +338,10 @@ def decode_with_dynamic_precision(
             
         # 6) EOS handling
         if eos_id is not None:
-            if (tokens[:, -1] == eos_id).all():
+            if (generated[:, current_len - 1] == eos_id).all():
                 break
     
-    return tokens, stats
+    return generated[:, :current_len].contiguous(), stats
 
 
 class DynamicPrecisionModel(nn.Module):

@@ -68,15 +68,25 @@ def decode_fixed_precision(
     max_steps: int,
     device: torch.device,
 ) -> torch.Tensor:
-    generated = tokens.to(device, non_blocking=True)
+    prompt = tokens.to(device, non_blocking=True)
+    batch_size, prompt_len = prompt.shape
+    generated = torch.empty(
+        (batch_size, prompt_len + max_steps),
+        device=device,
+        dtype=prompt.dtype,
+    )
+    generated[:, :prompt_len].copy_(prompt)
+    current_len = prompt_len
     for _ in range(max_steps):
-        logits = model(input_ids=generated)
+        active_tokens = generated[:, :current_len]
+        logits = model(input_ids=active_tokens)
         if hasattr(logits, "logits"):
             logits = logits.logits
         last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
         next_token = torch.argmax(last_step_logits, dim=-1, keepdim=True)
-        generated = torch.cat([generated, next_token], dim=1)
-    return generated
+        generated[:, current_len : current_len + 1].copy_(next_token)
+        current_len += 1
+    return generated[:, :current_len].contiguous()
 
 
 @torch.no_grad()
@@ -88,9 +98,18 @@ def decode_host_policy_baseline(
     device: torch.device,
 ) -> torch.Tensor:
     """Naive baseline: fixed precision plus host-visible confidence checks."""
-    generated = tokens.to(device, non_blocking=True)
+    prompt = tokens.to(device, non_blocking=True)
+    batch_size, prompt_len = prompt.shape
+    generated = torch.empty(
+        (batch_size, prompt_len + max_steps),
+        device=device,
+        dtype=prompt.dtype,
+    )
+    generated[:, :prompt_len].copy_(prompt)
+    current_len = prompt_len
     for _ in range(max_steps):
-        logits = model(input_ids=generated)
+        active_tokens = generated[:, :current_len]
+        logits = model(input_ids=active_tokens)
         if hasattr(logits, "logits"):
             logits = logits.logits
         last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
@@ -103,8 +122,9 @@ def decode_host_policy_baseline(
         _ = float(torch.topk(host_logits, k=2, dim=-1).values.mean().item())
         _ = float(torch.sort(host_logits, dim=-1).values[:, -1].mean().item())
         next_token = torch.argmax(last_step_logits, dim=-1, keepdim=True)
-        generated = torch.cat([generated, next_token], dim=1)
-    return generated
+        generated[:, current_len : current_len + 1].copy_(next_token)
+        current_len += 1
+    return generated[:, :current_len].contiguous()
 
 
 @torch.no_grad()
