@@ -34,7 +34,7 @@ Requirements:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple
+from typing import Tuple
 import time
 import math
 
@@ -513,8 +513,13 @@ def benchmark_fp4():
     with torch.no_grad():
         for name, data in [('Cached', out_cached)]:
             error = (out_fp16 - data).abs()
-            mean_err = error.mean().item()
-            rel_err = mean_err / out_fp16.abs().mean().item() * 100
+            mean_err, fp16_abs_mean = torch.stack(
+                (
+                    error.mean(),
+                    out_fp16.abs().mean(),
+                )
+            ).tolist()
+            rel_err = mean_err / fp16_abs_mean * 100
             print(f"  {name}: Mean abs error = {mean_err:.6f}, Relative = {rel_err:.2f}%")
     
     print("\n" + "=" * 80)

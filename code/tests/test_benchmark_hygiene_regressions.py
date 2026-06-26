@@ -750,6 +750,20 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "compute_entropy(low_conf_logits).item()" not in demo_entropy_section
 
 
+def test_ch19_native_fp4_batches_accuracy_metric_reads() -> None:
+    source = (REPO_ROOT / "ch19" / "native_fp4_quantization.py").read_text(
+        encoding="utf-8"
+    )
+    accuracy_section = source.split("# Accuracy", maxsplit=1)[1].split(
+        "print(\"\\n\" + \"=\" * 80)",
+        maxsplit=1,
+    )[0]
+
+    assert "mean_err, fp16_abs_mean = torch.stack(" in accuracy_section
+    assert "error.mean().item()" not in accuracy_section
+    assert "out_fp16.abs().mean().item()" not in accuracy_section
+
+
 def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     files = [
         "ch19/dynamic_precision_benchmark_common.py",
