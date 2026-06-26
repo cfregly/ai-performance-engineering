@@ -31,11 +31,19 @@ def test_run_layer_cuda_forward_skips_standalone_quantize_roundtrip(monkeypatch)
         assert packed is sentinel_packed
         return "sorted_outputs"
 
-    def _combine_weighted_outputs(sorted_outputs, packed, num_tokens, *, output_buffer=None):
+    def _combine_weighted_outputs(
+        sorted_outputs,
+        packed,
+        num_tokens,
+        *,
+        output_buffer=None,
+        consume_sorted_outputs=False,
+    ):
         calls["combine"] += 1
         assert sorted_outputs == "sorted_outputs"
         assert packed is sentinel_packed
         assert num_tokens == workload.num_tokens
+        assert consume_sorted_outputs is True
         return "combined_outputs"
 
     monkeypatch.setattr(moe_common, "pack_topk_routes", _pack_topk_routes)
@@ -65,6 +73,32 @@ def test_run_layer_cuda_forward_skips_standalone_quantize_roundtrip(monkeypatch)
 
     assert result == "combined_outputs"
     assert calls == {"pack": 1, "grouped": 1, "combine": 1}
+    source = inspect.getsource(moe_common.run_layer_cuda)
+    assert "consume_sorted_outputs=True" in source
+
+
+def test_combine_weighted_outputs_can_consume_sorted_outputs() -> None:
+    source = inspect.getsource(moe_common.combine_weighted_outputs)
+    assert "consume_sorted_outputs: bool = False" in source
+    assert "weighted_outputs.mul_(weights)" in source
+    assert "sorted_outputs * packed.packed_weights.unsqueeze(-1)" not in source
+
+    sorted_outputs = torch.tensor([[2.0, 4.0], [3.0, 6.0], [5.0, 10.0]])
+    original = sorted_outputs.clone()
+    packed = SimpleNamespace(
+        token_indices=torch.tensor([0, 0, 1], dtype=torch.long),
+        packed_weights=torch.tensor([0.25, 0.75, 0.5]),
+    )
+
+    combined = moe_common.combine_weighted_outputs(
+        sorted_outputs,
+        packed,
+        num_tokens=2,
+        consume_sorted_outputs=True,
+    )
+
+    torch.testing.assert_close(sorted_outputs, original * packed.packed_weights.unsqueeze(-1))
+    torch.testing.assert_close(combined, torch.tensor([[2.75, 5.5], [2.5, 5.0]]))
 
 
 def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:

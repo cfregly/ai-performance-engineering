@@ -446,13 +446,20 @@ def combine_weighted_outputs(
     num_tokens: int,
     *,
     output_buffer: Optional[torch.Tensor] = None,
+    consume_sorted_outputs: bool = False,
 ) -> torch.Tensor:
     combined = output_buffer
     if combined is None or tuple(combined.shape) != (num_tokens, sorted_outputs.shape[1]):
         combined = torch.zeros(num_tokens, sorted_outputs.shape[1], device=sorted_outputs.device, dtype=sorted_outputs.dtype)
     else:
         combined.zero_()
-    combined.index_add_(0, packed.token_indices, sorted_outputs * packed.packed_weights.unsqueeze(-1))
+    weighted_outputs = sorted_outputs
+    weights = packed.packed_weights.unsqueeze(-1)
+    if consume_sorted_outputs:
+        weighted_outputs.mul_(weights)
+    else:
+        weighted_outputs = sorted_outputs * weights
+    combined.index_add_(0, packed.token_indices, weighted_outputs)
     return combined
 
 
@@ -504,7 +511,13 @@ def run_layer_cuda(
         state.down_proj,
         padded_tokens_buffer=padded_tokens_buffer,
     )
-    return combine_weighted_outputs(sorted_outputs, packed, workload.num_tokens, output_buffer=combined_buffer)
+    return combine_weighted_outputs(
+        sorted_outputs,
+        packed,
+        workload.num_tokens,
+        output_buffer=combined_buffer,
+        consume_sorted_outputs=True,
+    )
 
 
 def _compute_scale_blocks(matrix: torch.Tensor) -> tuple[torch.Tensor, int]:
