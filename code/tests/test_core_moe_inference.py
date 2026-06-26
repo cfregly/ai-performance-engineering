@@ -4,7 +4,14 @@ import inspect
 
 import torch
 
-from core.optimization.moe_inference import MoEFeedForwardSortedDispatch, SimpleMoEBlock, allocate_kv_cache
+from core.optimization import moe_inference
+from core.optimization.moe_inference import (
+    MoEFeedForward,
+    MoEFeedForwardNoHostSync,
+    MoEFeedForwardSortedDispatch,
+    SimpleMoEBlock,
+    allocate_kv_cache,
+)
 
 
 def test_allocate_kv_cache_avoids_zero_fill() -> None:
@@ -50,3 +57,27 @@ def test_sorted_dispatch_reuses_flat_token_id_cache_on_cpu() -> None:
 
     assert layer._token_ids_cache.numel() == 4
     assert layer._token_ids_cache.data_ptr() != cache1.data_ptr()
+
+
+def test_moe_capacity_mask_avoids_float_mask_materialization() -> None:
+    source = inspect.getsource(moe_inference)
+    assert "(~drop_mask).float()" not in source
+    assert source.count("top_scores.masked_fill_(drop_mask, 0.0)") == 3
+
+    x = torch.randn(2, 3, 8)
+    for layer_cls in (MoEFeedForward, MoEFeedForwardNoHostSync, MoEFeedForwardSortedDispatch):
+        torch.manual_seed(123)
+        layer = layer_cls(
+            hidden=8,
+            ffn=16,
+            num_experts=2,
+            top_k=2,
+            capacity_factor=0.25,
+            device=torch.device("cpu"),
+            dtype=torch.float32,
+        )
+
+        out = layer(x)
+
+        assert out.shape == x.shape
+        assert torch.isfinite(out).all()

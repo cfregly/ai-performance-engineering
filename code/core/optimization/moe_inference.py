@@ -193,7 +193,7 @@ class MoEFeedForward(nn.Module):
             expert_counts = torch.bincount(top_indices.reshape(-1), minlength=self.num_experts)
             overloaded = expert_counts > capacity
             drop_mask = overloaded[top_indices]
-            top_scores = top_scores * (~drop_mask).float()
+            top_scores.masked_fill_(drop_mask, 0.0)
             overflow_mask = drop_mask.any(dim=-1)
         combined = torch.zeros_like(flat)
 
@@ -258,8 +258,8 @@ class MoEFeedForwardNoHostSync(MoEFeedForward):
             expert_counts = torch.bincount(top_indices.reshape(-1), minlength=self.num_experts)
             overloaded = expert_counts > capacity
             drop_mask = overloaded[top_indices]
-            # Avoid host sync from `if drop_mask.any()`; applying a no-op mask is fine.
-            top_scores = top_scores * (~drop_mask).float()
+            # Avoid materializing a float mask; zeroing a false drop mask is a no-op.
+            top_scores.masked_fill_(drop_mask, 0.0)
             overflow_mask = drop_mask.any(dim=-1)
 
         combined = torch.zeros_like(flat)
@@ -340,7 +340,7 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
             expert_counts = torch.bincount(top_indices.reshape(-1), minlength=self.num_experts)
             overloaded = expert_counts > capacity
             drop_mask = overloaded[top_indices]
-            top_scores = top_scores * (~drop_mask).float()
+            top_scores.masked_fill_(drop_mask, 0.0)
             overflow_mask = drop_mask.any(dim=-1)
 
         combined = torch.zeros_like(flat)
