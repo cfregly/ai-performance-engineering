@@ -361,6 +361,22 @@ def test_ch19_fp4_helpers_cache_lookup_values_per_device() -> None:
         assert "fp4_vals = _fp4_values_for(device)" in dequantize_section
 
 
+def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:
+    source = (REPO_ROOT / "labs" / "flashattention4" / "flashattention4_common.py").read_text(
+        encoding="utf-8"
+    )
+    timing_section = source.split("def measure_flashattention4_latency", maxsplit=1)[1].split(
+        "def count_nonmasked_attention_elements", maxsplit=1
+    )[0]
+
+    assert "import statistics" in source
+    assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "for _ in range(iterations):\n        start = torch.cuda.Event" not in timing_section
+    assert "sorted_times = sorted(times_ms)" in timing_section
+    assert "torch.tensor(times_ms" not in timing_section
+    assert "std_ms=statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0" in timing_section
+
+
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()

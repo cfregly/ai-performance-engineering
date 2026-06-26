@@ -9,12 +9,13 @@ FlexAttention to a compiled, TMA-oriented kernel path.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import inspect
 import json
 import math
-from pathlib import Path
 import re
+import statistics
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 import torch
@@ -568,21 +569,28 @@ def measure_flashattention4_latency(
     torch.cuda.synchronize()
 
     times_ms: list[float] = []
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
     for _ in range(iterations):
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
         start.record()
         _ = fn()
         end.record()
         torch.cuda.synchronize()
         times_ms.append(float(start.elapsed_time(end)))
 
+    sorted_times = sorted(times_ms)
+    mid = len(times_ms) // 2
+    if len(times_ms) % 2 == 1:
+        median_ms = sorted_times[mid]
+    else:
+        median_ms = (sorted_times[mid - 1] + sorted_times[mid]) / 2.0
+
     return FlashAttention4Timing(
         mean_ms=sum(times_ms) / len(times_ms),
-        median_ms=sorted(times_ms)[len(times_ms) // 2] if len(times_ms) % 2 == 1 else sum(sorted(times_ms)[len(times_ms) // 2 - 1 : len(times_ms) // 2 + 1]) / 2.0,
+        median_ms=median_ms,
         min_ms=min(times_ms),
         max_ms=max(times_ms),
-        std_ms=0.0 if len(times_ms) < 2 else torch.tensor(times_ms, dtype=torch.float64).std(unbiased=True).item(),
+        std_ms=statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0,
     )
 
 
