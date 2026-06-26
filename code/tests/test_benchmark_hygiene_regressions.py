@@ -1603,6 +1603,24 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
     assert "output=self._output.detach().float().clone()" in capture_section
 
 
+def test_ch19_nvfp4_training_defers_verification_forward_outside_hot_loop() -> None:
+    for filename in ("baseline_nvfp4_training.py", "optimized_nvfp4_training.py"):
+        source = (REPO_ROOT / "ch19" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def get_input_signature",
+            maxsplit=1,
+        )[0]
+
+        assert ".float().clone()" not in benchmark_section
+        assert "self.output = None" in benchmark_section
+        assert "self.model(self._verify_input)" in capture_section
+        assert ".float().clone()" in capture_section
+
+
 def test_ch13_regional_compile_moves_verification_materialization_out_of_hot_loop() -> None:
     targets = {
         "baseline_regional_compile.py": "self.output = self.compiled_model(x).detach()",

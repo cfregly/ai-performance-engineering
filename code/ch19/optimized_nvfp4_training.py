@@ -7,7 +7,6 @@ which provides memory savings and potential speedups through reduced memory band
 from __future__ import annotations
 
 from functools import partial
-from pathlib import Path
 from typing import Optional, List
 
 import torch
@@ -186,7 +185,9 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with nvtx_range("nvfp4_training", enable=enable_nvtx):
             for idx in range(self.micro_batches):
                 self._train_step(idx)
-        # Capture output AFTER benchmark for verification
+        self.output = None
+
+    def capture_verification_payload(self) -> None:
         if self._verify_input is None or self.model is None:
             raise RuntimeError("Verification input/model missing")
         with torch.no_grad():
@@ -199,10 +200,6 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "fp8": False,
             "tf32": torch.backends.cuda.matmul.allow_tf32,
         }
-        self._payload_precision_flags = precision_flags
-
-    def capture_verification_payload(self) -> None:
-        precision_flags = self._payload_precision_flags
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
             output=self.output,
@@ -269,4 +266,3 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedNVFP4TrainingBenchmark()
-

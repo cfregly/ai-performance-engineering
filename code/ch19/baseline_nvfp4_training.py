@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Dict, List, Optional
 
 import torch
@@ -118,13 +117,13 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with nvtx_range("nvfp4_training_baseline", enable=enable_nvtx):
             for idx in range(self.micro_batches):
                 self._train_step(idx)
-        # Capture output AFTER benchmark for verification
+        self.output = None
+
+    def capture_verification_payload(self) -> None:
         if self._verify_input is None or self.model is None:
             raise RuntimeError("Verification input/model missing")
         with torch.no_grad():
             self.output = self.model(self._verify_input).float().clone()
-
-    def capture_verification_payload(self) -> None:
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
             output=self.output,
@@ -194,4 +193,3 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineNVFP4TrainingBenchmark()
-
