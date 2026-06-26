@@ -68,6 +68,27 @@ def test_kv_cache_resize():
             assert (actual_v == original_v).all(), f"Layer {layer_idx}, token {token_idx}: value doesn't match original"
 
 
+def test_kv_cache_reuses_batch_index_buffer_for_padded_inserts():
+    kv_cache = KVCache(
+        batch_size=3,
+        num_heads=1,
+        seq_len=4,
+        head_dim=2,
+        num_layers=1,
+    )
+    k = torch.zeros((3, 1, 1, 2), dtype=torch.float32)
+    v = torch.zeros_like(k)
+    token_mask = torch.tensor([[True], [False], [True]])
+
+    kv_cache.insert_kv(0, k, v, token_mask=token_mask)
+    batch_idx_ptr = kv_cache._batch_idx.data_ptr()
+
+    kv_cache.insert_kv(0, k, v, token_mask=token_mask)
+
+    assert kv_cache._batch_idx.data_ptr() == batch_idx_ptr
+    torch.testing.assert_close(kv_cache._batch_idx, torch.tensor([0, 1, 2]))
+
+
 def test_sample_batch_tokens_batches_uniform_sampling(monkeypatch):
     calls = []
 

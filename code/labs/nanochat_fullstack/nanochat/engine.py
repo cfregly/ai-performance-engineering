@@ -99,6 +99,7 @@ class KVCache:
         self.pos = 0 # current position in time in the cache
         self.row_pos = None # optional per-row positions when using padded variable-length inputs
         self.cache_gen = 0  # incremented when storage grows
+        self._batch_idx = None
 
     def _round_seq_len(self, seq_len):
         """Round sequence length to block/page boundaries to align with TMA paging."""
@@ -211,6 +212,13 @@ class KVCache:
         )
         return k, v
 
+    def _batch_index_buffer(self, batch_size, device):
+        batch_idx = self._batch_idx
+        if batch_idx is None or batch_idx.device != device or batch_idx.numel() < batch_size:
+            batch_idx = torch.arange(batch_size, device=device)
+            self._batch_idx = batch_idx
+        return batch_idx[:batch_size]
+
     def insert_kv(self, layer_idx, k, v, token_mask=None):
         # Lazy initialize the cache here because we need to know the dtype/device
         if self.kv_cache is None:
@@ -231,7 +239,7 @@ class KVCache:
             base_row_pos = self.row_pos
             max_needed = int((base_row_pos + token_mask.sum(dim=1)).max().item())
             self._maybe_grow_cache(max_needed, k.dtype, k.device)
-            batch_idx = torch.arange(B, device=k.device)
+            batch_idx = self._batch_index_buffer(B, k.device)
             for t in range(T_add):
                 active = token_mask[:, t]
                 if not torch.any(active):
