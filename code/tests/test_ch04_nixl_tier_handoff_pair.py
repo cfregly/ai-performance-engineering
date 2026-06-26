@@ -33,6 +33,10 @@ def test_ch04_nixl_tier_handoff_optimized_reuses_pack_buffer() -> None:
     assert "self.packed_stage = torch.empty_like(self.gpu_stage)" in source
     assert "packed = self.src.index_select(0, self.selected_idx)" not in benchmark_section
     assert "torch.index_select(self.src, 0, self.selected_idx, out=self.packed_stage)" in benchmark_section
+    assert "self.selected_idx.cpu().tolist()" not in source
+    assert ".cpu().tolist()" not in benchmark_section
+    assert "selected_cpu = self.selected_cpu" in benchmark_section
+    assert "self.selected_cpu = [int(idx) for idx in selected_cpu.tolist()] if not self.optimized else None" in source
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for ch04 nixl tier handoff benchmark")

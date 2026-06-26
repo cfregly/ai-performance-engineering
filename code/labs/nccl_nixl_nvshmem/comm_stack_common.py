@@ -176,11 +176,15 @@ def require_stack(probe: dict[str, Any], stack: str) -> None:
 
 
 def _selected_indices(workload: TierHandoffWorkload, device: torch.device) -> torch.Tensor:
+    return _selected_indices_cpu(workload).to(device=device)
+
+
+def _selected_indices_cpu(workload: TierHandoffWorkload) -> torch.Tensor:
     stride = 17
     while math.gcd(stride, workload.total_blocks) != 1:
         stride += 2
     indices = (torch.arange(workload.selected_blocks, dtype=torch.long) * stride + 7) % workload.total_blocks
-    return indices.to(device=device)
+    return indices
 
 
 class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -199,6 +203,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.gpu_stage: Optional[torch.Tensor] = None
         self.packed_stage: Optional[torch.Tensor] = None
         self.selected_idx: Optional[torch.Tensor] = None
+        self.selected_cpu: Optional[list[int]] = None
         self.copy_stream: Optional[torch.cuda.Stream] = None
         self.copy_ready: Optional[torch.cuda.Event] = None
         self.output: Optional[torch.Tensor] = None
@@ -243,7 +248,9 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.float32,
         )
         self.packed_stage = torch.empty_like(self.gpu_stage) if self.optimized else None
-        self.selected_idx = _selected_indices(self.workload, self.device)
+        selected_cpu = _selected_indices_cpu(self.workload)
+        self.selected_idx = selected_cpu.to(device=self.device)
+        self.selected_cpu = [int(idx) for idx in selected_cpu.tolist()] if not self.optimized else None
         self.copy_stream = torch.cuda.Stream(device=self.device) if self.optimized else None
         self.copy_ready = torch.cuda.Event() if self.optimized else None
         self.output = None
@@ -261,9 +268,11 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         self.dst.zero_()
-        selected_cpu = self.selected_idx.cpu().tolist()
 
         if not self.optimized:
+            if self.selected_cpu is None:
+                raise RuntimeError("Baseline path requires setup() to cache selected CPU indices")
+            selected_cpu = self.selected_cpu
             for _ in range(self.workload.inner_iterations):
                 for slot, block_idx in enumerate(selected_cpu):
                     self.host_stage[slot].copy_(self.src[block_idx], non_blocking=False)
@@ -324,6 +333,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.gpu_stage = None
         self.packed_stage = None
         self.selected_idx = None
+        self.selected_cpu = None
         self.copy_stream = None
         self.copy_ready = None
         self.output = None
