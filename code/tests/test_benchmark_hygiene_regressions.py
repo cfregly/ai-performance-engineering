@@ -161,6 +161,8 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "for g in grads[1:]" in naive_reduce
     assert "buf.zero_()" not in naive_reduce
     assert "self._grad_ready_events = [" in setup_section
+    assert "torch.empty_like(self.models[0].weight, device=self.root_device)" in setup_section
+    assert "torch.zeros_like(self.models[0].weight, device=self.root_device)" not in setup_section
     assert "[torch.cuda.Event() for _ in self.models]" in setup_section
     assert "torch.cuda.Event()" not in reduce_section
     assert "g.to(self.root_device" not in reduce_section

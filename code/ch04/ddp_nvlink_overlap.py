@@ -77,7 +77,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
                 micro_inputs.append(torch.randn(self.batch_size, self.hidden, device=model.weight.device))
             self._inputs.append(micro_inputs)
         self._reduce_buffers = [
-            torch.zeros_like(self.models[0].weight, device=self.root_device)
+            torch.empty_like(self.models[0].weight, device=self.root_device)
             for _ in range(self.microbatches)
         ]
         self._root_grad_staging = [
