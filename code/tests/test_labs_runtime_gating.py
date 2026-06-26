@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import sys
 from contextlib import nullcontext
 
@@ -190,6 +191,28 @@ def test_optimized_paged_kv_offload_falls_back_instead_of_skipping(monkeypatch: 
 
 def test_nvfp4_group_gemm_custom_cuda_module_keeps_sys_import_available() -> None:
     assert custom_cuda_submission.sys is sys
+
+
+def test_nvfp4_group_gemm_scale_packer_reuses_scratch_tensor() -> None:
+    source = inspect.getsource(custom_cuda_submission._pack_scale_tiles_for_tcgen05)
+    assert "src = torch.zeros((4, 32, 4, 4)" not in source
+    assert "src = torch.empty((4, 32, 4, 4)" in source
+    assert "src.zero_()" in source
+
+    raw = torch.arange(4 * 32 * 4 * 4, dtype=torch.int64)
+    sfa = raw.remainder(251).to(torch.uint8).view(1, 4, 32, 4, 4)
+    sfb = raw.add(3).remainder(251).to(torch.uint8).view(1, 4, 32, 4, 4)
+
+    sfa_tiles, sfb_tiles = custom_cuda_submission._pack_scale_tiles_for_tcgen05(
+        sfa,
+        sfb,
+        m=128,
+        n=128,
+        k_scales=16,
+    )
+
+    torch.testing.assert_close(sfa_tiles[0, 0], sfa[0, :4].contiguous().reshape(128, 16))
+    torch.testing.assert_close(sfb_tiles[0, 0], sfb[0, :4].contiguous().reshape(128, 16))
 
 
 def test_trtllm_capture_verification_payload_uses_small_cpu_slice() -> None:

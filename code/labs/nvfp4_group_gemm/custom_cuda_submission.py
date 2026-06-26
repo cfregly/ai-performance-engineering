@@ -370,11 +370,11 @@ def _pack_scale_tiles_for_tcgen05(
     n_tiles = int(sfb_inv_u8.size(0))
     k_tiles = (k_scales + 15) // 16
 
-    sfa_tiles = torch.zeros((m_tiles, k_tiles, 128, 16), dtype=torch.uint8, device=device)
+    sfa_tiles = torch.empty((m_tiles, k_tiles, 128, 16), dtype=torch.uint8, device=device)
     if sfb_k_major:
-        sfb_tiles = torch.zeros((k_tiles, n_tiles, 128, 16), dtype=torch.uint8, device=device)
+        sfb_tiles = torch.empty((k_tiles, n_tiles, 128, 16), dtype=torch.uint8, device=device)
     else:
-        sfb_tiles = torch.zeros((n_tiles, k_tiles, 128, 16), dtype=torch.uint8, device=device)
+        sfb_tiles = torch.empty((n_tiles, k_tiles, 128, 16), dtype=torch.uint8, device=device)
 
     if sfa_inv_u8.device != sfb_inv_u8.device:
         raise ValueError("Expected SFA/SFB scales to be on the same device")
@@ -401,6 +401,7 @@ def _pack_scale_tiles_for_tcgen05(
         16, device=device, dtype=torch.int32
     ).view(1, -1)
     scale_valid = (scale_idx < int(k_scales)).view(k_tiles, 4, 4).to(torch.uint8)  # 1 if scale exists else 0
+    src = torch.empty((4, 32, 4, 4), dtype=torch.uint8, device=device)
 
     for mt in range(m_tiles):
         valid_m = max(0, min(128, m - mt * 128))
@@ -408,7 +409,7 @@ def _pack_scale_tiles_for_tcgen05(
         for kt in range(k_tiles):
             kk_base = kt * 4
             seg_avail = max(0, min(4, kk_blocks - kk_base))
-            src = torch.zeros((4, 32, 4, 4), dtype=torch.uint8, device=device)
+            src.zero_()
             if seg_avail:
                 src[:seg_avail].copy_(sfa_inv_u8[mt, kk_base : kk_base + seg_avail])
 
@@ -426,7 +427,7 @@ def _pack_scale_tiles_for_tcgen05(
         for kt in range(k_tiles):
             kk_base = kt * 4
             seg_avail = max(0, min(4, kk_blocks - kk_base))
-            src = torch.zeros((4, 32, 4, 4), dtype=torch.uint8, device=device)
+            src.zero_()
             if seg_avail:
                 src[:seg_avail].copy_(sfb_inv_u8[nt, kk_base : kk_base + seg_avail])
 
@@ -489,7 +490,7 @@ def prepare_custom_cuda(data_list: Sequence[input_t]) -> Optional[Sequence[tuple
         # Extra B padding is not required for our current cta_group::2 bring-up modes.
         extra_b_rows = 0
 
-        for (a, b, c), (sfa_cpu, sfb_cpu), (sfa_reordered, sfb_reordered) in zip(
+        for (a, b, c), (sfa_cpu, _sfb_cpu), (sfa_reordered, sfb_reordered) in zip(
             abc_tensors, sfasfb_tensors, sfasfb_reordered_tensors
         ):
             if a.dim() != 3 or b.dim() != 3 or c.dim() != 3:
