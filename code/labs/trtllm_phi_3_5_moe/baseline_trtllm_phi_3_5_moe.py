@@ -71,7 +71,7 @@ class BaselineTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             prompt_len=self.prompt_len,
             batch_size=self.batch_size,
         )
-        self.prompt_lengths = [int(length) for length in attention_mask.sum(dim=1).tolist()]
+        self.prompt_lengths = [input_ids.size(1)] * self.batch_size
         self.input_ids = input_ids.to(self.device)
         self.attention_mask = attention_mask.to(self.device)
 

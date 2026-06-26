@@ -260,8 +260,13 @@ def test_trtllm_prompt_builder_expands_single_encoded_prompt() -> None:
 
 
 def test_optimized_trtllm_reuses_static_batch_inputs() -> None:
+    baseline_setup_source = inspect.getsource(BaselineTrtLlmPhi35MoeBenchmark.setup)
     setup_source = inspect.getsource(OptimizedTrtLlmPhi35MoeBenchmark.setup)
     benchmark_source = inspect.getsource(OptimizedTrtLlmPhi35MoeBenchmark.benchmark_fn)
+
+    for source in (baseline_setup_source, setup_source):
+        assert "self.prompt_lengths = [input_ids.size(1)] * self.batch_size" in source
+        assert "attention_mask.sum" not in source
 
     assert "self._batch_inputs = [" in setup_source
     assert "self.input_ids[i, :valid_len].contiguous()" in setup_source
