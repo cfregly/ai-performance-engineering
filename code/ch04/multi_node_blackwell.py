@@ -31,7 +31,7 @@ from torch.distributed.tensor.parallel import (
 )
 from torch.distributed.device_mesh import init_device_mesh
 import torch.nn.functional as F
-from typing import Tuple, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 import time
 # ============================================================================
 # Environment Setup for Blackwell Multi-Node
@@ -275,6 +275,11 @@ class MultiNodeTransformer(nn.Module):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.pos_embedding = nn.Embedding(max_seq_len, d_model)
+        self.register_buffer(
+            "_position_ids",
+            torch.arange(max_seq_len, dtype=torch.long).unsqueeze(0),
+            persistent=False,
+        )
         self.layers = nn.ModuleList([
             MultiNodeTransformerBlock(d_model, num_heads, d_ff, dropout)
     for _ in range(num_layers)
@@ -285,11 +290,15 @@ class MultiNodeTransformer(nn.Module):
         self.lm_head.weight = self.embedding.weight
     
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
-        B, T = input_ids.shape
+        _, T = input_ids.shape
+        if T > self._position_ids.size(1):
+            raise ValueError(
+                f"Sequence length {T} exceeds max_seq_len {self._position_ids.size(1)}"
+            )
         
         # Embeddings
         x = self.embedding(input_ids)
-        pos = torch.arange(T, device=input_ids.device).unsqueeze(0)
+        pos = self._position_ids[:, :T]
         x = x + self.pos_embedding(pos)
         
         # Transformer blocks
@@ -358,7 +367,7 @@ def apply_tensor_parallelism(
     Optimized for intra-node parallelism via NVLink-C2C.
     """
     # Parallelize attention projections
-    for i, layer in enumerate(model.layers):
+    for layer in model.layers:
         # Column-wise parallel for Q, K, V projections
         parallelize_module(
             layer,

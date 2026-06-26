@@ -1612,6 +1612,20 @@ def test_ch13_training_models_reuse_position_id_buffers() -> None:
         assert "pos_ids = self._position_ids[:, :seq_len].expand(batch_size, -1)" in forward_section
 
 
+def test_ch04_multi_node_transformer_reuses_position_id_buffer() -> None:
+    source = (REPO_ROOT / "ch04" / "multi_node_blackwell.py").read_text(
+        encoding="utf-8"
+    )
+    forward_section = source.split("class MultiNodeTransformer", maxsplit=1)[1].split(
+        "def create_multigpu_device_mesh",
+        maxsplit=1,
+    )[0]
+
+    assert 'self.register_buffer(\n            "_position_ids",' in source
+    assert "torch.arange(T, device=input_ids.device)" not in forward_section
+    assert "pos = self._position_ids[:, :T]" in forward_section
+
+
 def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
     source = (REPO_ROOT / "ch13" / "baseline_sequence_parallel_multigpu.py").read_text(
         encoding="utf-8"
