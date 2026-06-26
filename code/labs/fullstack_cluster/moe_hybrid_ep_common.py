@@ -436,7 +436,8 @@ class DeepSeekHybridEPModule(nn.Module):
         send_tensor = torch.tensor(list(send_counts), device=self.cuda_device, dtype=torch.int64)
         gathered = [torch.empty_like(send_tensor) for _ in range(group_size)]
         dist.all_gather(gathered, send_tensor, group=group)
-        return [int(g[group_rank].item()) for g in gathered]
+        gathered_counts = torch.stack(gathered, dim=0)[:, group_rank]
+        return [int(count) for count in gathered_counts.detach().cpu().tolist()]
 
     def _split_list(self, tensor: torch.Tensor, counts: Sequence[int]) -> List[torch.Tensor]:
         parts: List[torch.Tensor] = []
