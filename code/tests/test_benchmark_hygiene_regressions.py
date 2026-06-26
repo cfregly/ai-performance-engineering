@@ -1197,6 +1197,39 @@ def test_flash_blockwise_attention_reuses_workspace_for_cached_kv() -> None:
     assert actual_v.data_ptr() == layer._workspace_v.data_ptr()
 
 
+def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
+    source = (REPO_ROOT / "ch16" / "radix_attention_example.py").read_text(encoding="utf-8")
+    forward_section = source.split("def forward(self, token: int", maxsplit=1)[1].split(
+        "def generate_next", maxsplit=1
+    )[0]
+
+    assert "torch.tensor([token]" not in forward_section
+    assert "torch.cat([state.kv_cache.keys, k]" not in forward_section
+    assert "state.kv_cache.append(k, v)" in forward_section
+
+    from ch16.radix_attention_example import ModelState, SimpleTransformerModel
+
+    model = SimpleTransformerModel(
+        vocab_size=32,
+        hidden_dim=16,
+        num_heads=4,
+        device=torch.device("cpu"),
+    )
+    model._cache_block_tokens = 4
+    state = ModelState(hidden_dim=model.hidden_dim, num_heads=model.num_heads, device=model.device)
+
+    first_state = model.forward(1, state)
+    second_state = model.forward(2, first_state)
+
+    first_cache = first_state.kv_cache
+    second_cache = second_state.kv_cache
+    assert first_cache.seq_len == 1
+    assert second_cache.seq_len == 2
+    assert first_cache.keys.data_ptr() == second_cache.keys.data_ptr()
+    assert first_cache.key_view.shape[0] == 1
+    assert second_cache.key_view.shape[0] == 2
+
+
 def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     source = (REPO_ROOT / "ch15" / "medusa_eagle_speculative_benchmarks.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def _run_family_speculative_decode", maxsplit=1)[1].split(

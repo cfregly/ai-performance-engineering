@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
 
-import torch.profiler as profiler
-from torch.profiler import profile, record_function, ProfilerActivity, schedule
 import torch.cuda.nvtx as nvtx
 from core.profiling.nvtx_helper import standardize_nvtx_label
 import torch
-import os
-import math
-from core.utils.architecture_runtime import (
-    get_arch_config,
-    get_architecture,
-    get_architecture_info,
-)
+from core.utils.architecture_runtime import get_arch_config
 
 _ARCH_CFG = get_arch_config()
 """
@@ -24,13 +16,10 @@ This example demonstrates SGLang's RadixAttention approach using a compressed tr
 Based on Chapter 16 content and SGLang's prefix caching design.
 """
 
-import torch
 import torch.nn.functional as F
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
-from collections import OrderedDict
 from contextlib import nullcontext
-import numpy as np
 
 
 def _attention_core(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
@@ -44,10 +33,23 @@ def _attention_core(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.
 @dataclass
 class KVCache:
     """Represents a KV cache tensor pair for a specific prefix."""
-    keys: torch.Tensor      # [seq_len, num_heads, head_dim]
-    values: torch.Tensor    # [seq_len, num_heads, head_dim]
+    keys: torch.Tensor      # [capacity, num_heads, head_dim]
+    values: torch.Tensor    # [capacity, num_heads, head_dim]
     seq_len: int
     ref_count: int = 1
+    capacity: int = 0
+
+    def __post_init__(self):
+        if self.capacity == 0:
+            self.capacity = self.keys.size(0)
+
+    @property
+    def key_view(self) -> torch.Tensor:
+        return self.keys[:self.seq_len]
+
+    @property
+    def value_view(self) -> torch.Tensor:
+        return self.values[:self.seq_len]
     
     def clone_ref(self):
         """Shallow clone with reference counting."""
@@ -56,8 +58,37 @@ class KVCache:
             keys=self.keys,
             values=self.values,
             seq_len=self.seq_len,
-            ref_count=self.ref_count
+            ref_count=self.ref_count,
+            capacity=self.capacity,
         )
+
+    def append(self, k: torch.Tensor, v: torch.Tensor) -> "KVCache":
+        """Append one or more KV rows without rebuilding the full prefix when capacity allows."""
+        append_len = k.size(0)
+        new_seq_len = self.seq_len + append_len
+        if new_seq_len <= self.capacity:
+            self.keys[self.seq_len:new_seq_len].copy_(k)
+            self.values[self.seq_len:new_seq_len].copy_(v)
+            return KVCache(
+                keys=self.keys,
+                values=self.values,
+                seq_len=new_seq_len,
+                capacity=self.capacity,
+            )
+
+        new_capacity = max(new_seq_len, max(1, self.capacity) * 2)
+        new_keys = torch.empty(
+            new_capacity,
+            *self.keys.shape[1:],
+            dtype=self.keys.dtype,
+            device=self.keys.device,
+        )
+        new_values = torch.empty_like(new_keys)
+        new_keys[:self.seq_len].copy_(self.key_view)
+        new_values[:self.seq_len].copy_(self.value_view)
+        new_keys[self.seq_len:new_seq_len].copy_(k)
+        new_values[self.seq_len:new_seq_len].copy_(v)
+        return KVCache(keys=new_keys, values=new_values, seq_len=new_seq_len, capacity=new_capacity)
     
     def release(self):
         """Decrease reference count."""
@@ -317,12 +348,20 @@ class ModelState:
 class SimpleTransformerModel:
     """Simplified transformer model for demonstration."""
     
-    def __init__(self, vocab_size: int = 2048, hidden_dim: int = 256, num_heads: int = 4):
+    def __init__(
+        self,
+        vocab_size: int = 2048,
+        hidden_dim: int = 256,
+        num_heads: int = 4,
+        device: Optional[torch.device] = None,
+    ):
         self.vocab_size = vocab_size
         self.hidden_dim = hidden_dim
         self.num_heads = num_heads
         self.head_dim = hidden_dim // num_heads
-        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        self.device = device or (torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
+        self._cache_block_tokens = 128
+        self._token_buffer = torch.empty(1, dtype=torch.long, device=self.device)
         
         # Initialize lightweight modules on the active device
         self.embedding = torch.nn.Embedding(vocab_size, hidden_dim, device=self.device)
@@ -342,13 +381,27 @@ class SimpleTransformerModel:
         torch.nn.init.zeros_(self.ln.bias)
         
         self._attention_kernel = _attention_core
+
+    def _new_cache(self, k: torch.Tensor, v: torch.Tensor) -> KVCache:
+        capacity = max(self._cache_block_tokens, k.size(0))
+        keys = torch.empty(
+            capacity,
+            self.num_heads,
+            self.head_dim,
+            dtype=k.dtype,
+            device=k.device,
+        )
+        values = torch.empty_like(keys)
+        keys[:k.size(0)].copy_(k)
+        values[:v.size(0)].copy_(v)
+        return KVCache(keys=keys, values=values, seq_len=k.size(0), capacity=capacity)
     
     def forward(self, token: int, state: ModelState) -> ModelState:
         """Forward pass for a single token, updating KV cache."""
         # Get token embedding
         with torch.no_grad():
-            token_tensor = torch.tensor([token], dtype=torch.long, device=self.device)
-            x = self.embedding(token_tensor)  # [1, hidden_dim]
+            self._token_buffer[0] = token
+            x = self.embedding(self._token_buffer)  # [1, hidden_dim]
             x = self.ln(x)
             
             # Compute Q, K, V on device
@@ -359,28 +412,18 @@ class SimpleTransformerModel:
         # Update KV cache
         if state.kv_cache is None:
             # First token - initialize cache
-            new_cache = KVCache(
-                keys=k,
-                values=v,
-                seq_len=1
-            )
+            new_cache = self._new_cache(k, v)
         else:
             # Append to existing cache
-            new_keys = torch.cat([state.kv_cache.keys, k], dim=0)
-            new_values = torch.cat([state.kv_cache.values, v], dim=0)
-            new_cache = KVCache(
-                keys=new_keys,
-                values=new_values,
-                seq_len=state.kv_cache.seq_len + 1
-            )
+            new_cache = state.kv_cache.append(k, v)
             
             # Release old cache reference
             if state.kv_cache:
                 state.kv_cache.release()
         
         # Run the fused attention core (prefill)
-        keys_for_attn = new_cache.keys.permute(1, 0, 2).unsqueeze(0)  # [1, H, S, D]
-        values_for_attn = new_cache.values.permute(1, 0, 2).unsqueeze(0)
+        keys_for_attn = new_cache.key_view.permute(1, 0, 2).unsqueeze(0)  # [1, H, S, D]
+        values_for_attn = new_cache.value_view.permute(1, 0, 2).unsqueeze(0)
         query_for_attn = q.unsqueeze(2)  # [1, H, 1, D]
         with nvtx.range(standardize_nvtx_label("compute_math:radix_attention_prefill")) if torch.cuda.is_available() else nullcontext():
             context = self._attention_kernel(query_for_attn, keys_for_attn, values_for_attn)
@@ -403,9 +446,9 @@ class SimpleTransformerModel:
         
         seq_len = state.kv_cache.seq_len
         with torch.no_grad():
-            keys = state.kv_cache.keys.permute(1, 0, 2).unsqueeze(0)
-            values = state.kv_cache.values.permute(1, 0, 2).unsqueeze(0)
-            query = state.kv_cache.keys[-1:].permute(1, 0, 2).unsqueeze(0)
+            keys = state.kv_cache.key_view.permute(1, 0, 2).unsqueeze(0)
+            values = state.kv_cache.value_view.permute(1, 0, 2).unsqueeze(0)
+            query = state.kv_cache.key_view[-1:].permute(1, 0, 2).unsqueeze(0)
             with nvtx.range(standardize_nvtx_label("compute_math:radix_attention_decode")) if torch.cuda.is_available() else nullcontext():
                 context = self._attention_kernel(query, keys, values)
             attn_out = context.reshape(1, self.hidden_dim)
