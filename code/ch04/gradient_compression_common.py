@@ -6,7 +6,6 @@ from typing import List, Optional
 
 import torch
 
-from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 
@@ -197,7 +196,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             float_buf.div_(self._int8_scales[idx])
             float_buf.round_()
             float_buf.clamp_(-limit, limit)
-            self._int8_buffers[idx].copy_(float_buf.to(torch.int8))
+            self._int8_buffers[idx].copy_(float_buf)
 
     def _build_bucket_slices(self) -> List[slice]:
         if not self.inputs:
@@ -297,7 +296,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 float_buf[sl].div_(scale)
                 float_buf[sl].round_()
                 float_buf[sl].clamp_(-limit, limit)
-                int8_buf[sl].copy_(float_buf[sl].to(torch.int8))
+                int8_buf[sl].copy_(float_buf[sl])
         if self.multi_gpu:
             if len(self._bucket_slices) > 1:
                 for sl in self._bucket_slices:

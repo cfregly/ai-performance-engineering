@@ -156,6 +156,23 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "root_local.copy_(root_buf, non_blocking=True)" in benchmark_section
 
 
+def test_ch04_gradient_compression_int8_reuses_cast_buffers() -> None:
+    source = (REPO_ROOT / "ch04" / "gradient_compression_common.py").read_text(
+        encoding="utf-8"
+    )
+    prepare_section = source.split("def _prepare_int8_buffers", maxsplit=1)[1].split(
+        "def _build_bucket_slices", maxsplit=1
+    )[0]
+    naive_section = source.split("def _int8_all_reduce_naive", maxsplit=1)[1].split(
+        "def _store_scale", maxsplit=1
+    )[0]
+
+    assert "float_buf.to(torch.int8)" not in prepare_section
+    assert "float_buf[sl].to(torch.int8)" not in naive_section
+    assert "self._int8_buffers[idx].copy_(float_buf)" in prepare_section
+    assert "int8_buf[sl].copy_(float_buf[sl])" in naive_section
+
+
 def test_ch07_and_ch08_sources_do_not_ship_artificial_baseline_penalties() -> None:
     hbm_copy_source = (REPO_ROOT / "ch07" / "baseline_hbm_copy.cu").read_text(encoding="utf-8")
     threshold_source = (REPO_ROOT / "ch08" / "threshold_common.cuh").read_text(encoding="utf-8")
