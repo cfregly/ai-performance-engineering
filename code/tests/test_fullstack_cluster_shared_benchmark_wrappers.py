@@ -231,9 +231,16 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
         "def summarize_and_write_report",
         maxsplit=1,
     )[0]
+    router_section = source.split("class LoadBalancedRouter", maxsplit=1)[1].split(
+        "class ExpertMLP",
+        maxsplit=1,
+    )[0]
 
     assert "def _event_pair" in source
     assert "def _phase_events" in source
+    assert 'self.register_buffer(\n            "_gini_index",' in router_section
+    assert "def _gini_index_for" in router_section
+    assert "torch.arange(1, n + 1" not in router_section
     assert "torch.cuda.Event(enable_timing=True)" not in forward_section
     assert "torch.cuda.Event(enable_timing=True)" not in run_step_section
     assert "route_counts_global = route_counts" in forward_section

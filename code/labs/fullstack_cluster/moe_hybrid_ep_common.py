@@ -243,6 +243,18 @@ class LoadBalancedRouter(nn.Module):
         self.num_experts = num_experts
         self.top_k = top_k
         self.gate = nn.Linear(hidden_size, num_experts, bias=False)
+        self.register_buffer(
+            "_gini_index",
+            torch.arange(1, num_experts + 1, dtype=torch.float32),
+            persistent=False,
+        )
+
+    def _gini_index_for(self, usage: torch.Tensor) -> torch.Tensor:
+        index = self._gini_index
+        if index.device != usage.device or index.dtype != usage.dtype:
+            self._gini_index = index.to(device=usage.device, dtype=usage.dtype)
+            index = self._gini_index
+        return index
 
     def forward(self, x: torch.Tensor, *, expert_bias: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
         logits = self.gate(x)
@@ -255,7 +267,7 @@ class LoadBalancedRouter(nn.Module):
         balance_loss = torch.var(expert_usage) * float(self.num_experts)
         sorted_usage = torch.sort(expert_usage)[0]
         n = len(sorted_usage)
-        index = torch.arange(1, n + 1, device=sorted_usage.device, dtype=sorted_usage.dtype)
+        index = self._gini_index_for(sorted_usage)
         gini = (2 * (index * sorted_usage).sum()) / (n * sorted_usage.sum().clamp_min(1e-9)) - (n + 1) / n
         return top_weights, top_indices, {
             "balance_loss": balance_loss,

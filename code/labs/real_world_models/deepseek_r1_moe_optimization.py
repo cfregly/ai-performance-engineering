@@ -38,6 +38,18 @@ class LoadBalancedRouter(nn.Module):
         self.top_k = top_k
         
         self.gate = nn.Linear(hidden_size, num_experts, bias=False)
+        self.register_buffer(
+            "_gini_index",
+            torch.arange(1, num_experts + 1, dtype=torch.float32),
+            persistent=False,
+        )
+
+    def _gini_index_for(self, usage: torch.Tensor) -> torch.Tensor:
+        index = self._gini_index
+        if index.device != usage.device or index.dtype != usage.dtype:
+            self._gini_index = index.to(device=usage.device, dtype=usage.dtype)
+            index = self._gini_index
+        return index
     
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, Dict]:
         """
@@ -71,7 +83,7 @@ class LoadBalancedRouter(nn.Module):
         # Compute Gini coefficient for routing fairness
         sorted_usage = torch.sort(expert_usage)[0]
         n = len(sorted_usage)
-        index = torch.arange(1, n + 1, device=sorted_usage.device)
+        index = self._gini_index_for(sorted_usage)
         gini = (2 * (index * sorted_usage).sum()) / (n * sorted_usage.sum()) - (n + 1) / n
         
         aux_loss_dict = {
