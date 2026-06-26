@@ -305,6 +305,18 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
     This reduces Python overhead and avoids per-expert mask+any() patterns.
     """
 
+    def _token_ids_for(self, tokens: int, device: torch.device) -> torch.Tensor:
+        cache_key = (int(tokens), int(self.top_k), device.type, device.index)
+        cached = getattr(self, "_token_ids_cache", None)
+        if cached is None or getattr(self, "_token_ids_cache_key", None) != cache_key:
+            token_ids = torch.arange(tokens * self.top_k, device=device, dtype=torch.long)
+            if self.top_k > 1:
+                token_ids.div_(self.top_k, rounding_mode="floor")
+            self._token_ids_cache = token_ids
+            self._token_ids_cache_key = cache_key
+            return token_ids
+        return cached
+
     def forward(self, x: torch.Tensor, *, collect_router_stats: bool = False):  # type: ignore[override]
         batch, seq, hidden = x.shape
         flat = x.reshape(batch * seq, hidden)
@@ -333,7 +345,7 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
 
         combined = torch.zeros_like(flat)
         tokens = flat.shape[0]
-        token_ids = torch.arange(tokens, device=flat.device, dtype=torch.long).repeat_interleave(self.top_k)
+        token_ids = self._token_ids_for(tokens, flat.device)
         expert_ids = top_indices.reshape(-1).to(dtype=torch.long)
         weights = top_scores.reshape(-1).unsqueeze(-1)
 
