@@ -43,6 +43,7 @@ class ContinuousBatchingBase(BaseBenchmark):
         self.device_ids: List[int] = []
         self.models: List[nn.Module] = []
         self.samples: List[torch.Tensor] = []
+        self.state_buffers: List[torch.Tensor] = []
         self.lengths: List[List[int]] = []
         self.lengths_tensor: List[torch.Tensor] = []
         self.group_indices: List[List[torch.Tensor]] = []
@@ -97,6 +98,7 @@ class ContinuousBatchingBase(BaseBenchmark):
 
         self.models = []
         self.samples = []
+        self.state_buffers = []
         self.lengths = []
         self.lengths_tensor = []
         self.group_indices = []
@@ -121,6 +123,7 @@ class ContinuousBatchingBase(BaseBenchmark):
                 dtype=self.dtype,
             )
             self.samples.append(samples)
+            self.state_buffers.append(torch.empty_like(samples))
 
             rng = random.Random(123 + device_id)
             lengths = [rng.randint(1, self.max_decode_steps) for _ in range(self.num_samples_per_device)]
@@ -166,11 +169,12 @@ class ContinuousBatchingBase(BaseBenchmark):
                 for idx, device_id in enumerate(self.device_ids):
                     model = self.models[idx]
                     samples = self.samples[idx]
+                    state = self.state_buffers[idx]
                     lengths_tensor = self.lengths_tensor[idx]
                     schedule = self.schedules[idx]
                     groups = self.group_indices[idx]
                     with torch.cuda.device(device_id):
-                        state = samples.clone()
+                        state.copy_(samples)
                         if self.dynamic:
                             for active_idx in schedule:
                                 batch_state = state.index_select(0, active_idx)
@@ -213,6 +217,7 @@ class ContinuousBatchingBase(BaseBenchmark):
     def teardown(self) -> None:
         self.models = []
         self.samples = []
+        self.state_buffers = []
         self.lengths = []
         self.lengths_tensor = []
         self.group_indices = []

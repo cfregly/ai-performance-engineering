@@ -1192,6 +1192,26 @@ def test_hf_decoder_cache_defers_verification_copy_outside_hot_loop() -> None:
     assert "self.output = self._verification_token" in capture_section
 
 
+def test_continuous_batching_reuses_state_buffers() -> None:
+    source = (REPO_ROOT / "core" / "utils" / "continuous_batching.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self.state_buffers: List[torch.Tensor] = []" in source
+    assert "self.state_buffers.append(torch.empty_like(samples))" in setup_section
+    assert "state = samples.clone()" not in benchmark_section
+    assert "state = self.state_buffers[idx]" in benchmark_section
+    assert "state.copy_(samples)" in benchmark_section
+
+
 def test_ch06_roofline_ilp_defers_verification_tensors_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch06" / "roofline_analysis_ilp.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
