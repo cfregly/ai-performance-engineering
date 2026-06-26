@@ -42,6 +42,8 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._query_steps: Optional[torch.Tensor] = None
         self._key_steps: Optional[torch.Tensor] = None
         self._value_steps: Optional[torch.Tensor] = None
+        self._k_gather_buffer: Optional[torch.Tensor] = None
+        self._v_gather_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -57,6 +59,8 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._query_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._key_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
+        self._k_gather_buffer = torch.empty(self.batch, self.seq_len, self.hidden, device=self.device)
+        self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)
         self._verify_q = self._query_steps[0, :1].detach().clone()
         self._synchronize()
 
@@ -68,39 +72,42 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
             return k.to(peer, non_blocking=True), v.to(peer, non_blocking=True), "peer", peer
         return k.cpu(), v.cpu(), "host", None
 
+    def _gather_kv_into_buffers(
+        self,
+        cache_k: list[torch.Tensor],
+        cache_v: list[torch.Tensor],
+        tiers: list[str],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if self._k_gather_buffer is None or self._v_gather_buffer is None:
+            raise RuntimeError("KV gather buffers not initialized")
+        for idx, (tk, tv, tier) in enumerate(zip(cache_k, cache_v, tiers)):
+            non_blocking = tier != "local"
+            self._k_gather_buffer[:, idx : idx + 1, :].copy_(tk, non_blocking=non_blocking)
+            self._v_gather_buffer[:, idx : idx + 1, :].copy_(tv, non_blocking=non_blocking)
+        gathered_len = len(cache_k)
+        return (
+            self._k_gather_buffer[:, :gathered_len, :],
+            self._v_gather_buffer[:, :gathered_len, :],
+        )
+
     def benchmark_fn(self) -> None:
         assert self.model is not None
         assert self._query_steps is not None and self._key_steps is not None and self._value_steps is not None
+        assert self._k_gather_buffer is not None and self._v_gather_buffer is not None
         with self._nvtx_range("optimized_kv_cache_nvlink_pool_multigpu"):
             cache_k: list[torch.Tensor] = []
             cache_v: list[torch.Tensor] = []
             tiers: list[str] = []
-            peer_targets: list[Optional[torch.device]] = []
             for step in range(self.seq_len):
                 q = self._query_steps[step]
                 k = self._key_steps[step]
                 v = self._value_steps[step]
-                placed_k, placed_v, tier, peer = self._place_kv(k, v, step)
+                placed_k, placed_v, tier, _peer = self._place_kv(k, v, step)
                 cache_k.append(placed_k)
                 cache_v.append(placed_v)
                 tiers.append(tier)
-                peer_targets.append(peer)
 
-                gathered_k = []
-                gathered_v = []
-                for tk, tv, t, peer_dev in zip(cache_k, cache_v, tiers, peer_targets):
-                    if t == "local":
-                        gathered_k.append(tk)
-                        gathered_v.append(tv)
-                    elif t == "peer" and peer_dev is not None:
-                        gathered_k.append(tk.to(self.device, non_blocking=True))
-                        gathered_v.append(tv.to(self.device, non_blocking=True))
-                    else:
-                        gathered_k.append(tk.to(self.device, non_blocking=True))
-                        gathered_v.append(tv.to(self.device, non_blocking=True))
-
-                k_all = torch.cat(gathered_k, dim=1)
-                v_all = torch.cat(gathered_v, dim=1)
+                k_all, v_all = self._gather_kv_into_buffers(cache_k, cache_v, tiers)
                 out, _ = self.model(q, k_all, v_all)
                 self.output = out
 
@@ -127,6 +134,8 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._query_steps = None
         self._key_steps = None
         self._value_steps = None
+        self._k_gather_buffer = None
+        self._v_gather_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -154,5 +163,4 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedKVCacheNvlinkPoolBenchmark()
-
 

@@ -888,6 +888,51 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "torch.cat([out.detach().cpu() for out in self._pending_outputs], dim=0)" in capture_section
 
 
+def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
+    for filename in (
+        "optimized_kv_cache_nvlink_pool.py",
+        "optimized_kv_cache_nvlink_pool_multigpu.py",
+    ):
+        source = (REPO_ROOT / "ch15" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _place_kv", maxsplit=1
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+
+        assert "self._k_gather_buffer = torch.empty(" in setup_section
+        assert "self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)" in setup_section
+        assert "torch.cat(" not in benchmark_section
+        assert ".to(self.device" not in benchmark_section
+        assert "self._gather_kv_into_buffers(cache_k, cache_v, tiers)" in benchmark_section
+
+    from ch15.optimized_kv_cache_nvlink_pool import (
+        OptimizedKVCacheNvlinkPoolBenchmark as SinglePool,
+    )
+    from ch15.optimized_kv_cache_nvlink_pool_multigpu import (
+        OptimizedKVCacheNvlinkPoolBenchmark as MultiPool,
+    )
+
+    for benchmark_cls in (SinglePool, MultiPool):
+        bench = benchmark_cls()
+        bench._k_gather_buffer = torch.empty(2, 3, 4)
+        bench._v_gather_buffer = torch.empty(2, 3, 4)
+        cache_k = [torch.full((2, 1, 4), float(idx)) for idx in range(3)]
+        cache_v = [torch.full((2, 1, 4), float(idx + 10)) for idx in range(3)]
+
+        gathered_k, gathered_v = bench._gather_kv_into_buffers(
+            cache_k,
+            cache_v,
+            ["local", "peer", "host"],
+        )
+
+        assert gathered_k.data_ptr() == bench._k_gather_buffer.data_ptr()
+        assert gathered_v.data_ptr() == bench._v_gather_buffer.data_ptr()
+        torch.testing.assert_close(gathered_k, torch.cat(cache_k, dim=1))
+        torch.testing.assert_close(gathered_v, torch.cat(cache_v, dim=1))
+
+
 def test_ch02_grace_coherent_memory_defers_verification_slice_clone() -> None:
     for filename in (
         "baseline_grace_coherent_memory.py",
