@@ -378,6 +378,20 @@ def test_dtype_byte_sizing_avoids_empty_tensor_metadata_allocations() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_ch04_nvshmem_pipeline_defers_loss_materialization() -> None:
+    source = (REPO_ROOT / "ch04" / "nvshmem_pipeline_parallel_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    schedule_section = source.split("def run_1f1b_schedule", maxsplit=1)[1].split(
+        "def close",
+        maxsplit=1,
+    )[0]
+
+    assert "losses.append(loss.item())" not in schedule_section
+    assert "loss_tensors.append(loss.detach())" in schedule_section
+    assert "torch.stack(loss_tensors).detach().cpu().tolist()" in schedule_section
+
+
 def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
     source = (REPO_ROOT / "ch09" / "fusion_pytorch.py").read_text(encoding="utf-8")
 

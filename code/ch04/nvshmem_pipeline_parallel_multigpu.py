@@ -88,8 +88,7 @@ import argparse
 import datetime
 import time
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -472,7 +471,7 @@ class NVSHMEMPipelineEngine:
         Returns:
             List of losses (only for last stage)
         """
-        losses = []
+        loss_tensors = []
         
         # Warmup: Forward passes
         num_warmup = min(self.num_stages - self.stage_id - 1, self.num_microbatches)
@@ -481,7 +480,7 @@ class NVSHMEMPipelineEngine:
             output = self.forward_microbatch(mb_id, input_data)
             if output is not None:
                 loss = output.sum()
-                losses.append(loss.item())
+                loss_tensors.append(loss.detach())
         
         # Steady state: 1F1B
         num_steady = self.num_microbatches - num_warmup
@@ -492,7 +491,7 @@ class NVSHMEMPipelineEngine:
             output = self.forward_microbatch(mb_id, input_data)
             if output is not None:
                 loss = output.sum()
-                losses.append(loss.item())
+                loss_tensors.append(loss.detach())
             
             # Backward
             self.backward_microbatch(i, loss if output is not None else None)
@@ -502,7 +501,9 @@ class NVSHMEMPipelineEngine:
             mb_id = num_steady + i
             self.backward_microbatch(mb_id, None)
         
-        return losses
+        if not loss_tensors:
+            return []
+        return torch.stack(loss_tensors).detach().cpu().tolist()
 
     def close(self) -> None:
         """Release pipeline buffers to avoid teardown hangs."""
