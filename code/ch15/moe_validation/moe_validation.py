@@ -193,10 +193,11 @@ class MoeValidationSweep:
             elapsed_s = max(time.perf_counter() - start, 1e-6)
 
         summary = moe_logger.summarize()
+        loss_values = torch.stack((token_loss.detach(), *(loss.detach() for loss in decode_losses))).cpu().tolist()
         avg_decode_loss = (
-            sum(loss.item() for loss in decode_losses) / max(len(decode_losses), 1) if decode_losses else 0.0
+            sum(loss_values[1:]) / max(len(decode_losses), 1) if decode_losses else 0.0
         )
-        avg_loss = float(token_loss.item() + avg_decode_loss)
+        avg_loss = float(loss_values[0] + avg_decode_loss)
         record = {
             "top_k": float(top_k),
             "capacity_factor": float(capacity_factor),

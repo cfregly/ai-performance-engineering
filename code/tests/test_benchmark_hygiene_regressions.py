@@ -1615,6 +1615,20 @@ def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:
     assert "perplexity = math.exp(avg_loss)" in source
 
 
+def test_ch15_moe_validation_batches_report_loss_reads() -> None:
+    source = (REPO_ROOT / "ch15" / "moe_validation" / "moe_validation.py").read_text(
+        encoding="utf-8"
+    )
+    report_section = source.split("summary = moe_logger.summarize()", maxsplit=1)[1].split(
+        "record = {",
+        maxsplit=1,
+    )[0]
+
+    assert "loss_values = torch.stack((token_loss.detach(), *(loss.detach() for loss in decode_losses))).cpu().tolist()" in report_section
+    assert "sum(loss.item() for loss in decode_losses)" not in report_section
+    assert "token_loss.item()" not in report_section
+
+
 def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch17" / "baseline_dynamic_routing.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
