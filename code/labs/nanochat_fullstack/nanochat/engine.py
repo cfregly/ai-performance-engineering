@@ -244,12 +244,12 @@ class KVCache:
             batch_idx = self._batch_index_buffer(B, k.device)
             for t in range(T_add):
                 active = token_mask[:, t]
-                if not torch.any(active):
-                    continue
                 rows = batch_idx[active]
-                positions = base_row_pos[active] + t
-                self.kv_cache[layer_idx, 0, rows, :, positions] = k[active, :, t, :]
-                self.kv_cache[layer_idx, 1, rows, :, positions] = v[active, :, t, :]
+                if rows.numel() == 0:
+                    continue
+                positions = base_row_pos[rows] + t
+                self.kv_cache[layer_idx, 0, rows, :, positions] = k[rows, :, t, :]
+                self.kv_cache[layer_idx, 1, rows, :, positions] = v[rows, :, t, :]
             if layer_idx == self.kv_cache.size(0) - 1:
                 self.row_pos = next_row_pos
                 self.pos = int(self.row_pos.max().item())

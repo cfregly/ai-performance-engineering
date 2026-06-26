@@ -305,6 +305,10 @@ def test_kv_cache_reuses_token_mask_row_sums():
     assert "token_increments = token_mask.sum(dim=1)" in insert_section
     assert "next_row_pos = base_row_pos + token_increments" in insert_section
     assert insert_section.count("token_mask.sum(dim=1)") == 1
+    assert "batch_idx = self._batch_index_buffer(B, k.device)" in insert_section
+    assert "rows = batch_idx[active]" in insert_section
+    assert "if rows.numel() == 0:" in insert_section
+    assert "torch.any(active)" not in insert_section
 
 
 def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
