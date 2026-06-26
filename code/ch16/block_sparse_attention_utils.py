@@ -28,9 +28,8 @@ def build_dense_attention_mask(
     device: torch.device,
     dtype: torch.dtype,
 ) -> torch.Tensor:
-    neg_inf = torch.tensor(float("-inf"), device=device, dtype=dtype)
-    zero = torch.tensor(0.0, device=device, dtype=dtype)
-    values = torch.where(block_mask.to(device), zero, neg_inf)
+    values = torch.full(block_mask.shape, float("-inf"), device=device, dtype=dtype)
+    values.masked_fill_(block_mask.to(device=device, dtype=torch.bool), 0.0)
     return values.repeat_interleave(block_size, dim=0).repeat_interleave(block_size, dim=1)
 
 
