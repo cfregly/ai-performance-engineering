@@ -1,8 +1,20 @@
 from __future__ import annotations
 
+import inspect
+
 import torch
 
-from core.optimization.moe_inference import MoEFeedForwardSortedDispatch
+from core.optimization.moe_inference import MoEFeedForwardSortedDispatch, allocate_kv_cache
+
+
+def test_allocate_kv_cache_avoids_zero_fill() -> None:
+    source = inspect.getsource(allocate_kv_cache)
+    assert "torch.empty(" in source
+    assert "torch.zeros(" not in source
+
+    cache = allocate_kv_cache(2, 3, 4, torch.float32, torch.device("cpu"))
+    assert cache.shape == (2, 3, 4)
+    assert cache.dtype == torch.float32
 
 
 def test_sorted_dispatch_reuses_flat_token_id_cache_on_cpu() -> None:

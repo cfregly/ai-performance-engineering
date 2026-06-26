@@ -55,7 +55,7 @@ def allocate_kv_cache(
     device: torch.device,
 ) -> torch.Tensor:
     """Allocate KV cache-sized tensor."""
-    return torch.zeros(batch, total_tokens, hidden_size, dtype=dtype, device=device)
+    return torch.empty(batch, total_tokens, hidden_size, dtype=dtype, device=device)
 
 
 def env_override_int(name: str, default: int) -> int:
