@@ -820,6 +820,23 @@ def test_nanochat_kv_cache_growth_avoids_cat_with_uninitialized_tail() -> None:
     assert "grown_cache[:, :, :, :, :old_seq_len, :].copy_(self.kv_cache)" in grow_section
 
 
+def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
+    source = (
+        REPO_ROOT / "ch15" / "baseline_disaggregated_inference_multigpu.py"
+    ).read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def _prepare_verification_payload", maxsplit=1
+    )[0]
+
+    assert "out.detach().cpu()" not in benchmark_section
+    assert "torch.cat([out.detach().cpu()" not in benchmark_section
+    assert "self._pending_outputs = outputs" in benchmark_section
+    assert "torch.cat([out.detach().cpu() for out in self._pending_outputs], dim=0)" in capture_section
+
+
 def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_stack() -> None:
     source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_multigpu_common.py").read_text(
         encoding="utf-8"
