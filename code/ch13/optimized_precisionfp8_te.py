@@ -28,8 +28,9 @@ def _load_transformer_engine() -> tuple[Any, Any, Any]:
         return TELinear, fp8_autocast, te_recipe
     ensure_te_runtime_initialized()
     try:
-        from transformer_engine.pytorch import Linear as te_linear, fp8_autocast as te_fp8_autocast
         from transformer_engine.common import recipe as te_recipe_module
+        from transformer_engine.pytorch import Linear as te_linear
+        from transformer_engine.pytorch import fp8_autocast as te_fp8_autocast
     except ImportError as exc:  # pragma: no cover
         TE_IMPORT_ERROR = exc
         raise RuntimeError(
@@ -182,14 +183,14 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             self.graph.replay()
             if self.output_buffer is None:
                 raise RuntimeError("Output buffer not initialized")
-            self.output = self.output_buffer.detach().clone()
+            self.output = self.output_buffer.detach()
         if self._verify_input is None or self.output is None:
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output,
+            output=self.output.detach().clone(),
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={

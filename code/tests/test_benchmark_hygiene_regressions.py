@@ -706,6 +706,29 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "output=self.output.detach().float().clone()" in moe_capture
 
 
+def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:
+    targets = {
+        "fp8_perchannel_bench.py": "self.output = output.detach()",
+        "fp8_static_demo.py": "self.output = output.detach()",
+        "optimized_precisionfp8_te.py": "self.output = self.output_buffer.detach()",
+    }
+
+    for name, output_assignment in targets.items():
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert ".detach().clone()" not in benchmark_section
+        assert "float(output" not in benchmark_section
+        assert "float(self.output" not in benchmark_section
+        assert output_assignment in benchmark_section
+        assert "output=self.output.detach().clone()" in capture_section
+
+
 def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_loop() -> None:
     precision_targets = {
         "baseline_precisionmixed.py": "output=self.output.detach().clone()",

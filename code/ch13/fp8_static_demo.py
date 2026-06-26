@@ -32,13 +32,14 @@ REQUIREMENTS:
 """
 
 from __future__ import annotations
+
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
-from contextlib import contextmanager
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
@@ -556,15 +557,14 @@ class FP8StaticDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: Static FP8 inference."""
         with torch.no_grad():
             output = self.model(self.x)
-            self._last = float(output.sum())
-            self.output = output.detach().clone()
+            self.output = output.detach()
         if self._verify_input is None or self.output is None:
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output,
+            output=self.output.detach().clone(),
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -610,5 +610,4 @@ class FP8StaticDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return FP8StaticDemoBenchmark()
-
 

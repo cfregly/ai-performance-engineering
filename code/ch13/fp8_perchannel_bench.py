@@ -7,10 +7,10 @@ for each output channel, preserving more accuracy than per-tensor scaling.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 import torch
 import torch.nn as nn
-from typing import Optional
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
@@ -152,8 +152,7 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             # Track error for accuracy comparison
             error = (output - ref_output).abs().mean() / ref_output.abs().mean()
             self._error_sum = error.detach()
-            self._last = float(output.detach().sum())
-            self.output = output.detach().clone()
+            self.output = output.detach()
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
         dtype = self._verify_input.dtype
@@ -211,4 +210,3 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return OptimizedFP8PerChannelBenchmark()
-
