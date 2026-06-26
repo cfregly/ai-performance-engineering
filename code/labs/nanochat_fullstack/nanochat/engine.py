@@ -315,6 +315,9 @@ class Engine:
         self._compile_error = None
         self._graph_cache_gen = None  # cache generation tied to current capture
         self._attention_positions = None
+        self._token_column_host = None
+        self._active_mask_host = None
+        self._active_mask_device = None
         self._pd_runner = PersistentDecodeRunner() if self.use_persistent_decode_kernel else None
         self._persistent_decode_kernel = (
             resolve_persistent_decode_kernel(
@@ -535,6 +538,48 @@ class Engine:
         positions = self._attention_position_buffer(max_len, lengths.device)
         return positions.unsqueeze(0) < lengths.unsqueeze(1)
 
+    def _host_long_buffer(self, count):
+        if self._token_column_host is None or self._token_column_host.numel() < count:
+            self._token_column_host = torch.empty(count, dtype=torch.long, device="cpu")
+        return self._token_column_host[:count]
+
+    def _host_bool_buffer(self, count):
+        if self._active_mask_host is None or self._active_mask_host.numel() < count:
+            self._active_mask_host = torch.empty(count, dtype=torch.bool, device="cpu")
+        return self._active_mask_host[:count]
+
+    def _fill_ids_buffer_from_tokens(self, ids_buf, token_column):
+        count = len(token_column)
+        target = ids_buf[:count, 0]
+        if target.device.type == "cpu":
+            for idx, token in enumerate(token_column):
+                target[idx] = int(token)
+        else:
+            host = self._host_long_buffer(count)
+            for idx, token in enumerate(token_column):
+                host[idx] = int(token)
+            target.copy_(host, non_blocking=True)
+        return ids_buf[:count]
+
+    def _active_mask_for_rows(self, row_states, generated_counts, row_max_tokens, device):
+        count = len(row_states)
+        if (
+            self._active_mask_device is None
+            or self._active_mask_device.device != device
+            or self._active_mask_device.numel() < count
+        ):
+            self._active_mask_device = torch.empty(count, dtype=torch.bool, device=device)
+        active_mask = self._active_mask_device[:count]
+        if active_mask.device.type == "cpu":
+            for idx, state in enumerate(row_states):
+                active_mask[idx] = (not state.completed) and generated_counts[idx] < row_max_tokens[idx]
+        else:
+            host = self._host_bool_buffer(count)
+            for idx, state in enumerate(row_states):
+                host[idx] = (not state.completed) and generated_counts[idx] < row_max_tokens[idx]
+            active_mask.copy_(host, non_blocking=True)
+        return active_mask
+
     def _sample_batch_tokens(self, logits, rng, temperatures, top_ks, active_mask, pad_id):
         sampled_tokens = [pad_id] * logits.size(0)
         active_indices = active_mask.nonzero(as_tuple=False).squeeze(-1)
@@ -672,8 +717,7 @@ class Engine:
             if sampled_ids is not None and not has_forced_tokens:
                 ids = sampled_ids
             elif self.reuse_ids_buffer:
-                ids_buf[:, 0] = torch.tensor(token_column, dtype=torch.long, device=device)
-                ids = ids_buf
+                ids = self._fill_ids_buffer_from_tokens(ids_buf, token_column)
             else:
                 ids = torch.tensor(token_column, dtype=torch.long, device=device).unsqueeze(1)
 
@@ -753,11 +797,15 @@ class Engine:
                 first_iteration = False
             else:
                 if self.reuse_ids_buffer:
-                    ids_buf[:, 0] = torch.tensor(token_column, dtype=torch.long, device=device)
-                    step_ids = ids_buf
+                    step_ids = self._fill_ids_buffer_from_tokens(ids_buf, token_column)
                 else:
                     step_ids = torch.tensor(token_column, dtype=torch.long, device=device).unsqueeze(1)
-                active_mask = torch.tensor([not state.completed for state in row_states], dtype=torch.bool, device=device)
+                active_mask = self._active_mask_for_rows(
+                    row_states,
+                    generated_counts,
+                    row_max_tokens,
+                    device,
+                )
                 step_token_mask = active_mask.unsqueeze(1)
                 next_lengths = lengths_by_batch + step_token_mask[:, 0].to(lengths_by_batch.dtype)
                 attn_mask = self._build_attention_mask(next_lengths)

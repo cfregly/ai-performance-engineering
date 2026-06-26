@@ -245,6 +245,48 @@ def test_build_attention_mask_reuses_position_buffer():
     torch.testing.assert_close(grown, torch.ones((1, 6), dtype=torch.bool))
 
 
+def test_decode_step_helpers_reuse_token_and_active_mask_buffers():
+    engine = Engine(_TinyForwardModel(), _TinyTokenizer())
+    ids_buf = torch.empty((3, 1), dtype=torch.long)
+
+    step_ids = engine._fill_ids_buffer_from_tokens(ids_buf, [4, 5, 6])
+    host_ptr = engine._token_column_host
+
+    torch.testing.assert_close(step_ids, torch.tensor([[4], [5], [6]]))
+
+    next_step_ids = engine._fill_ids_buffer_from_tokens(ids_buf, [7, 8, 9])
+
+    assert engine._token_column_host is host_ptr
+    assert next_step_ids.data_ptr() == ids_buf.data_ptr()
+    torch.testing.assert_close(next_step_ids, torch.tensor([[7], [8], [9]]))
+
+    row_states = [
+        SimpleNamespace(completed=False),
+        SimpleNamespace(completed=True),
+        SimpleNamespace(completed=False),
+    ]
+    active_mask = engine._active_mask_for_rows(
+        row_states,
+        generated_counts=[0, 0, 2],
+        row_max_tokens=[2, 2, 2],
+        device=torch.device("cpu"),
+    )
+    mask_ptr = engine._active_mask_device.data_ptr()
+
+    torch.testing.assert_close(active_mask, torch.tensor([True, False, False]))
+
+    row_states[1].completed = False
+    refreshed = engine._active_mask_for_rows(
+        row_states,
+        generated_counts=[1, 1, 1],
+        row_max_tokens=[2, 2, 2],
+        device=torch.device("cpu"),
+    )
+
+    assert engine._active_mask_device.data_ptr() == mask_ptr
+    torch.testing.assert_close(refreshed, torch.tensor([True, True, True]))
+
+
 def test_attention_reuses_cu_seqlens_buffers():
     config = GPTConfig(
         sequence_len=8,
