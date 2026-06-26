@@ -38,3 +38,29 @@ def test_dep2_vectorized_flattens_replicas_without_stack() -> None:
     )
 
     torch.testing.assert_close(workload.forward_vectorized(), expected_tensor)
+
+
+def test_dep2_naive_moe_seeds_output_from_first_route() -> None:
+    source = inspect.getsource(Dep2Workload._moe_naive)
+    assert "out = torch.empty_like(tokens)" in source
+    assert "torch.zeros_like(tokens)" not in source
+    assert "for slot in range(self.cfg.top_k):" in source
+    assert "if slot == 0:" in source
+    assert "out[token_ids] = weighted" in source
+    assert "out[token_ids] += weighted" in source
+
+    torch.manual_seed(1)
+    cfg = Dep2Config(
+        dp_replicas=1,
+        batch_size=2,
+        seq_len=3,
+        hidden_size=8,
+        intermediate_size=16,
+        num_experts=4,
+        top_k=2,
+        dtype=torch.float32,
+    )
+    workload = Dep2Workload(cfg, torch.device("cpu"))
+    tokens = workload.x.reshape(-1, cfg.hidden_size)
+
+    torch.testing.assert_close(workload._moe_naive(tokens), workload._moe_vectorized(tokens))

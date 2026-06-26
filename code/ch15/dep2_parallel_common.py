@@ -50,17 +50,23 @@ class Dep2Workload:
 
     def _moe_naive(self, tokens: torch.Tensor) -> torch.Tensor:
         idx, weights = _topk_gating(tokens, self.gate_weight, self.cfg.top_k)
-        out = torch.zeros_like(tokens)
-        for expert in range(self.cfg.num_experts):
-            mask = idx == expert
-            if not torch.any(mask):
-                continue
-            token_ids, slot_ids = mask.nonzero(as_tuple=True)
-            x_e = tokens[token_ids]
-            h = x_e @ self.w1[expert]
-            h = torch.relu(h)
-            y = h @ self.w2[expert]
-            out[token_ids] += y * weights[token_ids, slot_ids].unsqueeze(-1)
+        out = torch.empty_like(tokens)
+        for slot in range(self.cfg.top_k):
+            expert_ids = idx[:, slot]
+            for expert in range(self.cfg.num_experts):
+                mask = expert_ids == expert
+                if not torch.any(mask):
+                    continue
+                token_ids = mask.nonzero(as_tuple=True)[0]
+                x_e = tokens[token_ids]
+                h = x_e @ self.w1[expert]
+                h = torch.relu(h)
+                y = h @ self.w2[expert]
+                weighted = y * weights[token_ids, slot].unsqueeze(-1)
+                if slot == 0:
+                    out[token_ids] = weighted
+                else:
+                    out[token_ids] += weighted
         return out
 
     def _moe_vectorized(self, tokens: torch.Tensor) -> torch.Tensor:
