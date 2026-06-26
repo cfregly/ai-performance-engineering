@@ -2358,12 +2358,20 @@ def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
     assert "def _flat_topk_token_ids" in source
     assert "def _cached_topk_token_ids" in source
     assert 'token_ids.div_(top_k, rounding_mode="floor")' in source
+    assert "def _dispatch_slot_buffer" in source
     assert "x.repeat_interleave(top_k" not in vectorized_router
     assert "token_ids = _cached_topk_token_ids(self, batch_seq, top_k, x.device)" in vectorized_router
     assert "rep_x = x.index_select(0, token_ids)" in vectorized_router
+    assert "torch.zeros(" not in vectorized_router
+    assert "padded = _dispatch_slot_buffer(" in vectorized_router
+    assert "padded.zero_()" in vectorized_router
     assert "module._dispatch_token_ids = None" in install_section
+    assert "module._dispatch_padded = None" in install_section
 
-    from labs.moe_optimization_journey.optimized_moe_pad_quant import _flat_topk_token_ids
+    from labs.moe_optimization_journey.optimized_moe_pad_quant import (
+        _dispatch_slot_buffer,
+        _flat_topk_token_ids,
+    )
 
     torch.testing.assert_close(
         _flat_topk_token_ids(3, 1, torch.device("cpu")),
@@ -2373,6 +2381,30 @@ def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
         _flat_topk_token_ids(3, 2, torch.device("cpu")),
         torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.int64),
     )
+    holder = SimpleNamespace()
+    first = _dispatch_slot_buffer(
+        holder,
+        rows=4,
+        hidden=3,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    second = _dispatch_slot_buffer(
+        holder,
+        rows=4,
+        hidden=3,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    resized = _dispatch_slot_buffer(
+        holder,
+        rows=5,
+        hidden=3,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    assert first.data_ptr() == second.data_ptr()
+    assert resized.data_ptr() != first.data_ptr()
 
 
 def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:

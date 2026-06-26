@@ -45,6 +45,27 @@ def _cached_topk_token_ids(self: MoEExperts, batch_seq: int, top_k: int, device:
     return token_ids
 
 
+def _dispatch_slot_buffer(
+    self: MoEExperts,
+    *,
+    rows: int,
+    hidden: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    cached = getattr(self, "_dispatch_padded", None)
+    if (
+        isinstance(cached, torch.Tensor)
+        and cached.device == device
+        and cached.dtype == dtype
+        and cached.shape == (rows, hidden)
+    ):
+        return cached
+    padded = torch.empty(rows, hidden, device=device, dtype=dtype)
+    self._dispatch_padded = padded
+    return padded
+
+
 def _vectorized_forward_grouped(
     self: MoEExperts,
     x: torch.Tensor,
@@ -93,9 +114,14 @@ def _vectorized_forward_grouped(
     pos = one_hot.cumsum(0).gather(1, flat_ids.unsqueeze(1)).squeeze(1) - 1
     slots = flat_ids * cap + pos
 
-    padded = torch.zeros(
-        self.num_experts * cap, self.hidden_size, device=x.device, dtype=x.dtype
+    padded = _dispatch_slot_buffer(
+        self,
+        rows=self.num_experts * cap,
+        hidden=self.hidden_size,
+        device=x.device,
+        dtype=x.dtype,
     )
+    padded.zero_()
     padded.index_copy_(0, slots, rep_x)
     padded = padded.view(self.num_experts, cap, self.hidden_size)
 
@@ -143,6 +169,7 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if isinstance(module, MoEExperts):
                 module._dispatch_capacity = None
                 module._dispatch_token_ids = None
+                module._dispatch_padded = None
                 module.forward_grouped = types.MethodType(
                     _vectorized_forward_grouped, module
                 )
