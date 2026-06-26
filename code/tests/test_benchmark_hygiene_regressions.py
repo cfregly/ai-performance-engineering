@@ -2160,6 +2160,14 @@ def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
 
 def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> None:
     perchannel_source = (REPO_ROOT / "ch13" / "fp8_perchannel_demo.py").read_text(encoding="utf-8")
+    perchannel_stats = perchannel_source.split("def get_quantization_stats", maxsplit=1)[1].split(
+        "#============================================================================",
+        maxsplit=1,
+    )[0]
+    perchannel_accuracy = perchannel_source.split("def measure_accuracy", maxsplit=1)[1].split(
+        "def measure_throughput",
+        maxsplit=1,
+    )[0]
     perchannel_benchmark = perchannel_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -2171,6 +2179,12 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert ".detach().float().clone()" not in perchannel_benchmark
     assert "self.output = output" in perchannel_benchmark
     assert "output=self.output.detach().float().clone()" in perchannel_capture
+    assert "torch.stack(" in perchannel_stats
+    assert "self.input_amax_history.mean().item()" not in perchannel_stats
+    assert "self.amax_counter.item()" not in perchannel_stats
+    assert "pt_error_value, pc_error_value = torch.stack((pt_error, pc_error)).tolist()" in perchannel_accuracy
+    assert "pt_error.item()" not in perchannel_accuracy
+    assert "pc_error.item()" not in perchannel_accuracy
 
     moe_source = (
         REPO_ROOT / "labs" / "moe_optimization_journey" / "level6_native_fp8.py"

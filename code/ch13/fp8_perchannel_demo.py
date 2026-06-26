@@ -31,7 +31,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from typing import Optional, Tuple
 
 import torch
@@ -279,14 +278,22 @@ class FP8PerChannelLinear(nn.Module):
     
     def get_quantization_stats(self) -> dict:
         """Get statistics about the quantization."""
+        input_amax_mean, input_amax_std, weight_amax_mean, amax_counter = torch.stack(
+            (
+                self.input_amax_history.mean(),
+                self.input_amax_history.std(),
+                self.weight_amax_history.mean(),
+                self.amax_counter.to(dtype=torch.float32),
+            )
+        ).tolist()
         return {
             "scaling_mode": self.config.scaling_mode.value,
             "fp8_format": self.config.fp8_format,
             "fp8_max": self.fp8_max,
-            "input_amax_mean": self.input_amax_history.mean().item(),
-            "input_amax_std": self.input_amax_history.std().item(),
-            "weight_amax_mean": self.weight_amax_history.mean().item(),
-            "amax_counter": self.amax_counter.item(),
+            "input_amax_mean": input_amax_mean,
+            "input_amax_std": input_amax_std,
+            "weight_amax_mean": weight_amax_mean,
+            "amax_counter": amax_counter,
         }
 
 
@@ -376,9 +383,10 @@ class FP8PerChannelBenchmark:
             ref_norm = ref_output.abs().mean()
             pt_error = (pt_output - ref_output).abs().mean() / ref_norm
             pc_error = (pc_output - ref_output).abs().mean() / ref_norm
-            
-            results["per_tensor"].append(pt_error.item())
-            results["per_channel"].append(pc_error.item())
+
+            pt_error_value, pc_error_value = torch.stack((pt_error, pc_error)).tolist()
+            results["per_tensor"].append(pt_error_value)
+            results["per_channel"].append(pc_error_value)
         
         return {
             "per_tensor_error_pct": 100 * sum(results["per_tensor"]) / len(results["per_tensor"]),
@@ -542,4 +550,3 @@ class FP8PerChannelDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return FP8PerChannelDemoBenchmark()
-
