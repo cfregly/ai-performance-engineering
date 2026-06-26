@@ -7,7 +7,6 @@ Standard KV cache using BF16 precision without optimization.
 from typing import Any, Dict, Optional, Tuple
 
 import torch
-import torch.nn as nn
 
 from core.benchmark.cuda_event_timing import elapsed_ms
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -60,6 +59,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._pending_timing_pair: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._generated_k_steps: Optional[torch.Tensor] = None
         self._generated_v_steps: Optional[torch.Tensor] = None
+        self._seq_lengths_host: list[int] = [0] * batch_size
         self.register_workload_metadata(requests_per_iteration=1.0)
 
         hidden_size = num_heads * head_dim
@@ -88,6 +88,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
 
         # Current sequence lengths per batch
         self.seq_lengths = torch.zeros(self.batch_size, dtype=torch.long, device=self.device)
+        self._seq_lengths_host = [0] * self.batch_size
         self._generated_k_steps = torch.randn(
             self.num_decode_steps,
             self.batch_size,
@@ -147,7 +148,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         batch_idx: int
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Retrieve K/V from cache."""
-        seq_len = self.seq_lengths[batch_idx].item()
+        seq_len = self._seq_lengths_host[batch_idx]
         k = self.kv_cache[batch_idx, layer_idx, 0, :, :seq_len]
         v = self.kv_cache[batch_idx, layer_idx, 1, :, :seq_len]
         return k, v
@@ -159,6 +160,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         # Simulate decoding
         num_decode_steps = self.num_decode_steps
         self.seq_lengths.zero_()
+        self._seq_lengths_host = [0] * self.batch_size
 
         timing_pair = self._get_timing_pair()
         start_event, end_event = timing_pair
@@ -168,9 +170,10 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
             new_k = self._generated_k_steps[pos]
             new_v = self._generated_v_steps[pos]
             self.append_active_layers(new_k, new_v, pos=pos)
-            self.seq_lengths += 1
 
         end_event.record()
+        self.seq_lengths.fill_(num_decode_steps)
+        self._seq_lengths_host = [num_decode_steps] * self.batch_size
         self._pending_timing_pair = timing_pair
 
         # Capture a slice of KV cache for verification (layer 0, first token/head window)
@@ -231,6 +234,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._generated_k_steps = None
         self._generated_v_steps = None
         self.output = None
+        self._seq_lengths_host = [0] * self.batch_size
         self._timing_pair = None
         self._pending_timing_pair = None
         super().teardown()

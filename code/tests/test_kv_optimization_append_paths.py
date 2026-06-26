@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import pytest
 import torch
 
@@ -11,6 +13,18 @@ FP8_REQUIRED = pytest.mark.skipif(
     not torch.cuda.is_available() or not hasattr(torch, "float8_e4m3fn"),
     reason="CUDA with torch.float8_e4m3fn required for FP8 KV runtime checks",
 )
+
+
+def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
+    for benchmark_cls in (BaselineKVStandard, OptimizedKVFP8Compressed):
+        get_kv_source = inspect.getsource(benchmark_cls.get_kv)
+        benchmark_source = inspect.getsource(benchmark_cls.benchmark_fn)
+
+        assert "seq_len = self._seq_lengths_host[batch_idx]" in get_kv_source
+        assert ".item()" not in get_kv_source
+        assert "self.seq_lengths += 1" not in benchmark_source
+        assert "self.seq_lengths.fill_(num_decode_steps)" in benchmark_source
+        assert "self._seq_lengths_host = [num_decode_steps] * self.batch_size" in benchmark_source
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for KV append parity")
