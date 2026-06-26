@@ -20,6 +20,7 @@ Hardware: NVIDIA B200 (SM 10.0, 178 GB HBM3e)
 """
 
 import os
+import sys
 
 
 import torch
@@ -175,7 +176,7 @@ def training_step(model, input_ids, labels, optimizer):
     optimizer.step()
     optimizer.zero_grad(set_to_none=True)
     
-    return loss.item()
+    return loss.detach()
 
 
 def benchmark_training(model, input_ids, labels, optimizer, name, num_warmup=10, num_iters=100):

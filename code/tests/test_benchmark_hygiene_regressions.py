@@ -1436,6 +1436,19 @@ def test_ch14_flash_attention_sdpa_bench_defers_output_clone_and_host_sync() -> 
     assert "output=self.output.detach().clone()" in capture_section
 
 
+def test_ch14_training_large_model_defers_step_loss_sync() -> None:
+    source = (REPO_ROOT / "ch14" / "training_large_model_1_5x.py").read_text(
+        encoding="utf-8"
+    )
+    train_step_section = source.split("def training_step", maxsplit=1)[1].split(
+        "def benchmark_training",
+        maxsplit=1,
+    )[0]
+
+    assert "return loss.item()" not in train_step_section
+    assert "return loss.detach()" in train_step_section
+
+
 def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"
