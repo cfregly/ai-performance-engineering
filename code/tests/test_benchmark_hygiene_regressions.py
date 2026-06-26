@@ -311,6 +311,9 @@ def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     optimized_capture = optimized_source.split(
         "def capture_verification_payload", maxsplit=1
     )[1].split("def teardown", maxsplit=1)[0]
@@ -320,9 +323,19 @@ def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
     assert "output=self.output.detach().clone()" in baseline_capture
     assert "float(dequant.sum())" not in optimized_benchmark
     assert "self.output = dequant.clone()" not in optimized_benchmark
-    assert "self.quantized = quantized" in optimized_benchmark
-    assert "self.dequantized = dequant" in optimized_benchmark
-    assert "self.output = dequant.detach()" in optimized_benchmark
+    assert "self._abs_buffer = torch.empty_like(self.tensor)" in optimized_setup
+    assert "self.quantized = torch.empty_like(self.tensor, dtype=torch.int8)" in optimized_setup
+    assert "self.dequantized = torch.empty_like(self.tensor)" in optimized_setup
+    assert "self.tensor.abs()" not in optimized_benchmark
+    assert ".to(torch.int8)" not in optimized_benchmark
+    assert "quantized.float()" not in optimized_benchmark
+    assert "torch.abs(self.tensor, out=self._abs_buffer)" in optimized_benchmark
+    assert "torch.amax(self._abs_buffer, dim=1, keepdim=True, out=self._max_abs)" in optimized_benchmark
+    assert "torch.mul(self.tensor, self._scales, out=self._quant_float)" in optimized_benchmark
+    assert "self.quantized.copy_(self._quant_float)" in optimized_benchmark
+    assert "self._quantized_float.copy_(self.quantized)" in optimized_benchmark
+    assert "torch.div(self._quantized_float, self._scales, out=self.dequantized)" in optimized_benchmark
+    assert "self.output = self.dequantized.detach()" in optimized_benchmark
     assert "output=self.output.detach().clone()" in optimized_capture
 
 

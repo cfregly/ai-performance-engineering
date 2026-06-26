@@ -22,6 +22,11 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.tensor = None
         self.quantized = None
         self.dequantized = None
+        self._abs_buffer = None
+        self._max_abs = None
+        self._scales = None
+        self._quant_float = None
+        self._quantized_float = None
         self.stream = torch.cuda.Stream()
         self.num_chunks = 16
         self.chunk_len = 1 << 14
@@ -44,6 +49,13 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.tensor = torch.randn(self.num_chunks, self.chunk_len, device=self.device, dtype=torch.float32)
+        self._abs_buffer = torch.empty_like(self.tensor)
+        self._max_abs = torch.empty(self.num_chunks, 1, device=self.device, dtype=torch.float32)
+        self._scales = torch.empty_like(self._max_abs)
+        self._quant_float = torch.empty_like(self.tensor)
+        self.quantized = torch.empty_like(self.tensor, dtype=torch.int8)
+        self._quantized_float = torch.empty_like(self.tensor)
+        self.dequantized = torch.empty_like(self.tensor)
         torch.cuda.synchronize(self.device)
     
     def benchmark_fn(self) -> None:
@@ -57,14 +69,28 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
         with nvtx_range("optimized_nccl_quantization", enable=enable_nvtx):
             if self.tensor is None:
                 raise RuntimeError("Tensor not initialized")
+            if (
+                self._abs_buffer is None
+                or self._max_abs is None
+                or self._scales is None
+                or self._quant_float is None
+                or self.quantized is None
+                or self._quantized_float is None
+                or self.dequantized is None
+            ):
+                raise RuntimeError("Quantization buffers not initialized")
             with torch.cuda.stream(self.stream):
-                max_abs = torch.amax(self.tensor.abs(), dim=1, keepdim=True).clamp(min=1e-6)
-                scales = 127.0 / max_abs
-                quantized = torch.clamp(torch.round(self.tensor * scales), -127, 127).to(torch.int8)
-                dequant = quantized.float() / scales
-                self.quantized = quantized
-                self.dequantized = dequant
-                self.output = dequant.detach()
+                torch.abs(self.tensor, out=self._abs_buffer)
+                torch.amax(self._abs_buffer, dim=1, keepdim=True, out=self._max_abs)
+                self._max_abs.clamp_(min=1e-6)
+                torch.div(127.0, self._max_abs, out=self._scales)
+                torch.mul(self.tensor, self._scales, out=self._quant_float)
+                torch.round(self._quant_float, out=self._quant_float)
+                torch.clamp(self._quant_float, -127, 127, out=self._quant_float)
+                self.quantized.copy_(self._quant_float)
+                self._quantized_float.copy_(self.quantized)
+                torch.div(self._quantized_float, self._scales, out=self.dequantized)
+                self.output = self.dequantized.detach()
             torch.cuda.current_stream(device=self.device).wait_stream(self.stream)
         if self.output is None or self.tensor is None:
             raise RuntimeError("benchmark_fn() must produce output")
@@ -90,6 +116,11 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.tensor = None
         self.quantized = None
         self.dequantized = None
+        self._abs_buffer = None
+        self._max_abs = None
+        self._scales = None
+        self._quant_float = None
+        self._quantized_float = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
