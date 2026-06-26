@@ -42,6 +42,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._query_steps: Optional[torch.Tensor] = None
         self._key_steps: Optional[torch.Tensor] = None
         self._value_steps: Optional[torch.Tensor] = None
+        self._k_gather_buffer: Optional[torch.Tensor] = None
+        self._v_gather_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -54,6 +56,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._query_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._key_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
+        self._k_gather_buffer = torch.empty(self.batch, self.seq_len, self.hidden, device=self.device)
+        self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)
         self._verify_q = self._query_steps[0, :1].detach().clone()
         self._synchronize()
 
@@ -68,6 +72,7 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def benchmark_fn(self) -> None:
         assert self.model is not None
         assert self._query_steps is not None and self._key_steps is not None and self._value_steps is not None
+        assert self._k_gather_buffer is not None and self._v_gather_buffer is not None
         with self._nvtx_range("baseline_kv_cache_local_only"):
             cache_k: list[torch.Tensor] = []
             cache_v: list[torch.Tensor] = []
@@ -83,23 +88,23 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 tiers.append(tier)
                 peer_targets.append(peer)
 
-                gathered_k = []
-                gathered_v = []
+                gather_idx = 0
                 for tk, tv, t, peer_dev in zip(cache_k, cache_v, tiers, peer_targets):
                     if t == "local":
-                        gathered_k.append(tk)
-                        gathered_v.append(tv)
+                        self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tk)
+                        self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tv)
                     elif t == "peer" and peer_dev is not None:
                         host_k = tk.cpu()
                         host_v = tv.cpu()
-                        gathered_k.append(host_k.to(self.device, non_blocking=False))
-                        gathered_v.append(host_v.to(self.device, non_blocking=False))
+                        self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(host_k)
+                        self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(host_v)
                     else:
-                        gathered_k.append(tk.to(self.device, non_blocking=False))
-                        gathered_v.append(tv.to(self.device, non_blocking=False))
+                        self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tk)
+                        self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tv)
+                    gather_idx += 1
 
-                k_all = torch.cat(gathered_k, dim=1)
-                v_all = torch.cat(gathered_v, dim=1)
+                k_all = self._k_gather_buffer[:, :gather_idx, :]
+                v_all = self._v_gather_buffer[:, :gather_idx, :]
                 out, _ = self.model(q, k_all, v_all)
                 self.output = out
 
@@ -126,6 +131,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._query_steps = None
         self._key_steps = None
         self._value_steps = None
+        self._k_gather_buffer = None
+        self._v_gather_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -153,5 +160,4 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineKVCacheLocalOnlyBenchmark()
-
 

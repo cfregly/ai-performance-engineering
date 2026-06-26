@@ -1084,6 +1084,30 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "torch.cat([out.detach().cpu() for out in self._pending_outputs], dim=0)" in capture_section
 
 
+def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
+    for filename in (
+        "baseline_kv_cache_nvlink_pool.py",
+        "baseline_kv_cache_nvlink_pool_multigpu.py",
+    ):
+        source = (REPO_ROOT / "ch15" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+
+        assert "self._k_gather_buffer = torch.empty(" in setup_section
+        assert "self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)" in setup_section
+        assert "gathered_k" not in benchmark_section
+        assert "gathered_v" not in benchmark_section
+        assert "torch.cat(" not in benchmark_section
+        assert ".to(self.device" not in benchmark_section
+        assert "self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(" in benchmark_section
+        assert "k_all = self._k_gather_buffer[:, :gather_idx, :]" in benchmark_section
+        assert "v_all = self._v_gather_buffer[:, :gather_idx, :]" in benchmark_section
+
+
 def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
     for filename in (
         "optimized_kv_cache_nvlink_pool.py",

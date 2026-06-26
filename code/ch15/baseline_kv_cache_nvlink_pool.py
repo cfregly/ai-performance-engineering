@@ -38,6 +38,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._query_steps: Optional[torch.Tensor] = None
         self._key_steps: Optional[torch.Tensor] = None
         self._value_steps: Optional[torch.Tensor] = None
+        self._k_gather_buffer: Optional[torch.Tensor] = None
+        self._v_gather_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -48,12 +50,15 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._query_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._key_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
+        self._k_gather_buffer = torch.empty(self.batch, self.seq_len, self.hidden, device=self.device)
+        self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)
         self._verify_q = self._query_steps[0, :1].detach().clone()
         self._synchronize()
 
     def benchmark_fn(self) -> None:
         assert self.model is not None
         assert self._query_steps is not None and self._key_steps is not None and self._value_steps is not None
+        assert self._k_gather_buffer is not None and self._v_gather_buffer is not None
         with self._nvtx_range("baseline_kv_cache_local_only"):
             local_keys: list[torch.Tensor] = []
             local_values: list[torch.Tensor] = []
@@ -71,13 +76,18 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
                     host_keys.append(local_keys.pop(0).cpu())
                     host_values.append(local_values.pop(0).cpu())
 
-                gathered_k = [hk.to(self.device) for hk in host_keys]
-                gathered_v = [hv.to(self.device) for hv in host_values]
-                gathered_k.extend(local_keys)
-                gathered_v.extend(local_values)
+                gather_idx = 0
+                for hk, hv in zip(host_keys, host_values):
+                    self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(hk)
+                    self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(hv)
+                    gather_idx += 1
+                for lk, lv in zip(local_keys, local_values):
+                    self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(lk)
+                    self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(lv)
+                    gather_idx += 1
 
-                k_all = torch.cat(gathered_k, dim=1)
-                v_all = torch.cat(gathered_v, dim=1)
+                k_all = self._k_gather_buffer[:, :gather_idx, :]
+                v_all = self._v_gather_buffer[:, :gather_idx, :]
                 out, _ = self.model(q, k_all, v_all)
                 self.output = out
 
@@ -104,6 +114,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._query_steps = None
         self._key_steps = None
         self._value_steps = None
+        self._k_gather_buffer = None
+        self._v_gather_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -132,5 +144,4 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineKVCacheLocalOnlyBenchmark()
-
 
