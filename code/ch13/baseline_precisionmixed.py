@@ -94,14 +94,14 @@ class BaselinePrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 loss = self.criterion(outputs, self.targets)
                 loss.backward()
                 self.optimizer.step()
-            self.output = outputs.detach().clone()
+            self.output = outputs.detach()
         if self._verify_input is None or self.output is None:
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output,
+            output=self.output.detach().clone(),
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={

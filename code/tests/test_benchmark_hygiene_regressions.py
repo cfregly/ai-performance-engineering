@@ -706,6 +706,53 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "output=self.output.detach().float().clone()" in moe_capture
 
 
+def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_loop() -> None:
+    precision_targets = {
+        "baseline_precisionmixed.py": "output=self.output.detach().clone()",
+        "optimized_precisionmixed.py": "output=self.output.detach().float().clone()",
+    }
+    kv_targets = {
+        "baseline_kv_cache_naive.py": "self.output = token.detach()",
+        "optimized_kv_cache_naive.py": "self.output = hidden.detach()",
+        "optimized_kv_cache_naive_flash_blockwise.py": "self.output = hidden[:, -1:, :].detach()",
+        "optimized_kv_cache_naive_pool.py": "self.output = hidden.detach()",
+    }
+
+    for name, capture_materialization in precision_targets.items():
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert ".detach().clone()" not in benchmark_section
+        assert "self.output = outputs.detach()" in benchmark_section
+        assert capture_materialization in capture_section
+
+    for name, output_assignment in kv_targets.items():
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert ".detach().clone()" not in benchmark_section
+        assert output_assignment in benchmark_section
+        assert "output=self.output.float()" in capture_section
+
+    flash_source = (
+        REPO_ROOT / "ch13" / "optimized_kv_cache_naive_flash_blockwise.py"
+    ).read_text(encoding="utf-8")
+    assert "batch_size=self.batch_size" in flash_source
+    assert "for batch_idx in range(batch_size)" not in flash_source
+    assert "k_block = k.permute(2, 0, 1, 3).contiguous()" in flash_source
+    assert "kv_cache.append_block(request_id, layer_idx, k_block, v_block, cache_pos)" in flash_source
+
+
 def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     source = (REPO_ROOT / "ch15" / "medusa_eagle_speculative_benchmarks.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def _run_family_speculative_decode", maxsplit=1)[1].split(

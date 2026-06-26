@@ -15,9 +15,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ch13.kv_cache_workload import get_workload
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from ch13.kv_cache_workload import get_workload
 
 WORKLOAD = get_workload()
 
@@ -272,7 +272,7 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
                 self.kv_cache.free(request_id)
-            self.output = hidden.detach().clone()
+            self.output = hidden.detach()
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
 

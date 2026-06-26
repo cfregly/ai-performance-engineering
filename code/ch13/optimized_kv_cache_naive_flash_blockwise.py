@@ -20,10 +20,10 @@ except ImportError:  # pragma: no cover - older PyTorch fallback
     SDPBackend = None  # type: ignore[assignment]
     sdpa_kernel = None  # type: ignore[assignment]
 
-from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from ch13.kv_cache_workload import get_workload
 from ch13.optimized_kv_cache_naive import PagedKVCache
+from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 WORKLOAD = get_workload()
 
@@ -58,15 +58,14 @@ class FlashBlockwiseAttentionLayer(nn.Module):
         k = k.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         v = v.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
 
-        k_block = k.permute(0, 2, 1, 3).contiguous()
-        v_block = v.permute(0, 2, 1, 3).contiguous()
-        for batch_idx in range(batch_size):
-            kv_cache.append_block(request_id, layer_idx, k_block[batch_idx], v_block[batch_idx], cache_pos)
+        k_block = k.permute(2, 0, 1, 3).contiguous()
+        v_block = v.permute(2, 0, 1, 3).contiguous()
+        kv_cache.append_block(request_id, layer_idx, k_block, v_block, cache_pos)
 
         if cache_pos > 0:
             cached_k, cached_v = kv_cache.get(request_id, layer_idx, 0, cache_pos)
-            cached_k = cached_k.permute(1, 0, 2).unsqueeze(0).expand(batch_size, -1, -1, -1)
-            cached_v = cached_v.permute(1, 0, 2).unsqueeze(0).expand(batch_size, -1, -1, -1)
+            cached_k = cached_k.permute(1, 2, 0, 3)
+            cached_v = cached_v.permute(1, 2, 0, 3)
             k = torch.cat([cached_k, k], dim=2)
             v = torch.cat([cached_v, v], dim=2)
 
@@ -121,6 +120,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
 
         self.kv_cache = PagedKVCache(
             page_size=self.page_size,
+            batch_size=self.batch_size,
             num_layers=self.num_layers,
             num_heads=self.num_heads,
             head_dim=self.head_dim,
@@ -152,7 +152,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
                 self.kv_cache.free(request_id)
-            self.output = hidden[:, -1:, :].detach().clone()
+            self.output = hidden[:, -1:, :].detach()
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
 

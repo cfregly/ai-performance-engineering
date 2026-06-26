@@ -14,9 +14,9 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
+from ch13.kv_cache_workload import get_workload
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
-from ch13.kv_cache_workload import get_workload
 
 WORKLOAD = get_workload()
 
@@ -206,7 +206,7 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
 
                 self.kv_cache.free(request_id)
         # Capture output from the final forward for verification
-        self.output = hidden.detach().clone()
+        self.output = hidden.detach()
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
 
