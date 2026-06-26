@@ -26,7 +26,7 @@ Author: Blackwell Optimization Project
 import pytest
 import torch
 import torch.nn as nn
-import os
+import inspect
 
 from core.utils.compile_utils import enable_tf32
 
@@ -200,6 +200,46 @@ class TestNumericalCorrectness:
         # Tolerance is higher for FP8
         assert key_error < 0.1, f"Key error too high: {key_error}"
         assert value_error < 0.1, f"Value error too high: {value_error}"
+
+    def test_kv_cache_vectorized_equal_length_update_appends_unique_rows(self, monkeypatch):
+        """Equal-length unique batch rows use the vectorized KV update path."""
+        blackwell = pytest.importorskip("ch16.inference_optimizations_blackwell")
+        monkeypatch.setattr(blackwell, "FP8_AVAILABLE", False)
+
+        source = inspect.getsource(blackwell.DynamicQuantizedKVCache.update)
+        assert "unique_rows" in source
+        assert "self.seq_lens.index_select(0, batch_indices)" in source
+        assert "self.cache[layer_idx, 0, batch_indices, :, current_len:end_pos, :] = k_store" in source
+
+        cache = blackwell.DynamicQuantizedKVCache(
+            num_layers=1,
+            max_batch_size=2,
+            max_seq_len=4,
+            num_heads=2,
+            head_dim=3,
+            device="cpu",
+            dtype=torch.float32,
+        )
+        batch_indices = torch.tensor([0, 1], dtype=torch.long)
+        key1 = torch.arange(24, dtype=torch.float32).view(2, 2, 2, 3)
+        value1 = key1 + 100.0
+
+        out_k1, out_v1 = cache.update(0, key1, value1, batch_indices=batch_indices)
+
+        torch.testing.assert_close(cache.seq_lens, torch.tensor([2, 2], dtype=torch.long))
+        torch.testing.assert_close(out_k1, key1)
+        torch.testing.assert_close(out_v1, value1)
+
+        key2 = torch.full((2, 2, 1, 3), 7.0)
+        value2 = torch.full((2, 2, 1, 3), 9.0)
+
+        out_k2, out_v2 = cache.update(0, key2, value2, batch_indices=batch_indices)
+
+        torch.testing.assert_close(cache.seq_lens, torch.tensor([3, 3], dtype=torch.long))
+        torch.testing.assert_close(out_k2[:, :, :2, :], key1)
+        torch.testing.assert_close(out_v2[:, :, :2, :], value1)
+        torch.testing.assert_close(out_k2[:, :, 2:, :], key2)
+        torch.testing.assert_close(out_v2[:, :, 2:, :], value2)
 
 
 # ============================================================================
@@ -759,7 +799,7 @@ class TestStress:
         
         start_event.record()
         
-        for i in range(num_chunks):
+        for _ in range(num_chunks):
             k = torch.randn(batch_size, num_heads, chunk_size, head_dim, device=device)
             v = torch.randn(batch_size, num_heads, chunk_size, head_dim, device=device)
             
@@ -874,7 +914,7 @@ class TestEndToEnd:
         
         start.record()
         
-        for step in range(num_steps):
+        for _ in range(num_steps):
             x = torch.randn(batch_size, 512, device=device)
             y = compiled_model(x)
             loss = y.sum()

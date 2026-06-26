@@ -35,7 +35,6 @@ import torch.nn.functional as F
 from torch.nn.attention.flex_attention import (
     flex_attention,
     create_block_mask,
-    create_mask,
 )
 from typing import Optional, Tuple
 import time
@@ -154,7 +153,7 @@ class DynamicQuantizedKVCache:
             )
         else:
             if not torch.is_tensor(batch_indices):
-                batch_indices = torch.tensor(batch_indices, device=self.seq_lens.device)
+                batch_indices = torch.tensor(batch_indices, device=self.seq_lens.device, dtype=torch.long)
             else:
                 batch_indices = batch_indices.to(self.seq_lens.device, dtype=torch.long)
             if batch_indices.dim() == 0:
@@ -164,6 +163,43 @@ class DynamicQuantizedKVCache:
             f"Batch size mismatch: key batch={key.shape[0]}, "
             f"indices={batch_indices.numel()}"
         )
+
+        current_lens = self.seq_lens.index_select(0, batch_indices)
+        unique_rows = batch_indices.numel() == 1 or batch_indices.unique().numel() == batch_indices.numel()
+        same_length = bool((current_lens == current_lens[0]).all().item())
+        if unique_rows and same_length:
+            current_len = int(current_lens[0].item())
+            new_seq_len = key.shape[2]
+            end_pos = current_len + new_seq_len
+            if end_pos > self.max_seq_len:
+                raise ValueError(
+                    f"KV cache overflow: requested {end_pos}, "
+                    f"max={self.max_seq_len}"
+                )
+
+            if FP8_AVAILABLE and key.dtype != FP8_E4M3:
+                k_scale = key.abs().amax(dim=(1, 2, 3))
+                v_scale = value.abs().amax(dim=(1, 2, 3))
+                self.scales[layer_idx, 0].index_copy_(0, batch_indices, k_scale)
+                self.scales[layer_idx, 1].index_copy_(0, batch_indices, v_scale)
+                k_store = (key / k_scale.view(-1, 1, 1, 1)).to(FP8_E4M3)
+                v_store = (value / v_scale.view(-1, 1, 1, 1)).to(FP8_E4M3)
+            else:
+                k_store = key
+                v_store = value
+
+            self.cache[layer_idx, 0, batch_indices, :, current_len:end_pos, :] = k_store
+            self.cache[layer_idx, 1, batch_indices, :, current_len:end_pos, :] = v_store
+            self.seq_lens[batch_indices] = end_pos
+
+            cached_key = self.cache[layer_idx, 0, batch_indices, :, :end_pos, :]
+            cached_value = self.cache[layer_idx, 1, batch_indices, :, :end_pos, :]
+            if FP8_AVAILABLE:
+                k_scale = self.scales[layer_idx, 0, batch_indices].view(-1, 1, 1, 1)
+                v_scale = self.scales[layer_idx, 1, batch_indices].view(-1, 1, 1, 1)
+                cached_key = cached_key.to(torch.float32) * k_scale
+                cached_value = cached_value.to(torch.float32) * v_scale
+            return cached_key, cached_value
         
         updated_keys = []
         updated_vals = []
