@@ -86,7 +86,7 @@ def main() -> int:
     dtype = _parse_dtype(args.dtype)
     torch.cuda.set_device(args.device)
     device = torch.device(f"cuda:{args.device}")
-    element_size = torch.tensor([], dtype=dtype).element_size()
+    element_size = torch.finfo(dtype).bits // 8
     numel = (args.size_mb * 1024 * 1024) // element_size
     if numel <= 0:
         raise SystemExit(f"size_mb={args.size_mb} is too small for dtype={args.dtype}")

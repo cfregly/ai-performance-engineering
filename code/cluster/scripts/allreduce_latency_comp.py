@@ -17,8 +17,6 @@ import argparse
 import gc
 import json
 import os
-
-from core.common.device_utils import resolve_local_rank
 import socket
 import sys
 from pathlib import Path
@@ -26,6 +24,8 @@ from statistics import mean, median, stdev
 
 import torch
 import torch.distributed as dist
+
+from core.common.device_utils import resolve_local_rank
 
 if __package__ in {None, ""}:
     _repo_root = Path(__file__).resolve().parents[2]
@@ -218,7 +218,7 @@ def main() -> int:
 
     payload_bytes = int(args.payload_gib * (2**30))
     dtype = torch.float32
-    elem_bytes = torch.tensor([], dtype=dtype).element_size()
+    elem_bytes = torch.finfo(dtype).bits // 8
     large_elems = max(1, payload_bytes // elem_bytes)
     # Keep total payload for small case as close as possible to large case.
     effective_chunks = min(args.chunks, large_elems)
