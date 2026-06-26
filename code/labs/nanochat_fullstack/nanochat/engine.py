@@ -306,6 +306,7 @@ class Engine:
         self._persistent_decode_impl = getattr(self.model.config, "persistent_decode_impl", None)
         self._compile_error = None
         self._graph_cache_gen = None  # cache generation tied to current capture
+        self._attention_positions = None
         self._pd_runner = PersistentDecodeRunner() if self.use_persistent_decode_kernel else None
         self._persistent_decode_kernel = (
             resolve_persistent_decode_kernel(
@@ -512,11 +513,18 @@ class Engine:
                 self._reset_decode_graph()
         return self._decode_forward_step(ids, kv_cache, attention_mask, token_mask)
 
+    def _attention_position_buffer(self, max_len, device):
+        positions = self._attention_positions
+        if positions is None or positions.device != device or positions.numel() < max_len:
+            positions = torch.arange(max_len, device=device)
+            self._attention_positions = positions
+        return positions[:max_len]
+
     def _build_attention_mask(self, lengths, max_len=None):
         max_len = int(max_len if max_len is not None else lengths.max().item())
         if max_len <= 0:
             return torch.zeros((lengths.size(0), 0), dtype=torch.bool, device=lengths.device)
-        positions = torch.arange(max_len, device=lengths.device)
+        positions = self._attention_position_buffer(max_len, lengths.device)
         return positions.unsqueeze(0) < lengths.unsqueeze(1)
 
     def _sample_batch_tokens(self, logits, rng, temperatures, top_ks, active_mask, pad_id):

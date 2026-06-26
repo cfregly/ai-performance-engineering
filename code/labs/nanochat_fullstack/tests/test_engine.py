@@ -190,6 +190,40 @@ def test_generate_reuses_sampled_ids_without_forced_tokens(monkeypatch):
     assert seen_decode_ids[0] is first_ids
 
 
+def test_build_attention_mask_reuses_position_buffer():
+    engine = Engine(_TinyForwardModel(), _TinyTokenizer())
+    lengths = torch.tensor([2, 4], dtype=torch.long)
+
+    mask = engine._build_attention_mask(lengths, max_len=5)
+    positions_ptr = engine._attention_positions.data_ptr()
+
+    expected = torch.tensor(
+        [
+            [True, True, False, False, False],
+            [True, True, True, True, False],
+        ]
+    )
+    torch.testing.assert_close(mask, expected)
+
+    shorter = engine._build_attention_mask(torch.tensor([1, 3], dtype=torch.long), max_len=5)
+
+    assert engine._attention_positions.data_ptr() == positions_ptr
+    torch.testing.assert_close(
+        shorter,
+        torch.tensor(
+            [
+                [True, False, False, False, False],
+                [True, True, True, False, False],
+            ]
+        ),
+    )
+
+    grown = engine._build_attention_mask(torch.tensor([6], dtype=torch.long), max_len=6)
+
+    assert engine._attention_positions.numel() >= 6
+    torch.testing.assert_close(grown, torch.ones((1, 6), dtype=torch.bool))
+
+
 def test_apply_rotary_emb_inference_matches_reference():
     x = torch.randn(2, 3, 4, 8, dtype=torch.float32)
     cos = torch.randn(1, 3, 1, 4, dtype=torch.float32)
