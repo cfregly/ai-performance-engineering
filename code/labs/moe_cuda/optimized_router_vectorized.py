@@ -119,6 +119,13 @@ def _capacity_override() -> Optional[int]:
     return value
 
 
+def _flat_token_indices(batch: int, top_k: int, device: torch.device) -> torch.Tensor:
+    token_indices = torch.arange(batch * top_k, device=device, dtype=torch.int64)
+    if top_k > 1:
+        token_indices.div_(top_k, rounding_mode="floor")
+    return token_indices
+
+
 class VectorizedTopKMoE(nn.Module):
     """Top-k router with batched expert MLPs and scatter accumulation."""
 
@@ -159,7 +166,7 @@ class VectorizedTopKMoE(nn.Module):
         weighted = expert_out * flat_probs
 
         output = torch.zeros_like(tokens, dtype=tokens.dtype)
-        token_indices = torch.arange(tokens.shape[0], device=tokens.device).repeat_interleave(self.top_k)
+        token_indices = _flat_token_indices(tokens.shape[0], self.top_k, tokens.device)
         output.index_add_(0, token_indices, weighted)
         return output
 
@@ -205,11 +212,7 @@ class GroupedTopKMoE(VectorizedTopKMoE):
 
         device = torch.device(device)
         assignments = int(batch_size) * self.top_k
-        self._static_token_indices = torch.arange(
-            int(batch_size),
-            device=device,
-            dtype=torch.int64,
-        ).repeat_interleave(self.top_k)
+        self._static_token_indices = _flat_token_indices(int(batch_size), self.top_k, device)
         self._static_expert_range = torch.arange(
             self.num_experts,
             device=device,
@@ -231,7 +234,7 @@ class GroupedTopKMoE(VectorizedTopKMoE):
             and self._static_token_indices.numel() == expected
         ):
             return self._static_token_indices
-        return torch.arange(batch, device=tokens.device, dtype=torch.int64).repeat_interleave(self.top_k)
+        return _flat_token_indices(batch, self.top_k, tokens.device)
 
     def _expert_range_for(self, tokens: torch.Tensor) -> torch.Tensor:
         if (

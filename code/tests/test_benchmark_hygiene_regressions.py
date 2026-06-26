@@ -744,13 +744,29 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     )[0]
 
     assert "configure_static_dispatch_buffers" in source
+    assert "def _flat_token_indices" in source
+    assert "repeat_interleave(self.top_k)" not in source
+    assert 'token_indices.div_(top_k, rounding_mode="floor")' in source
     assert "model.configure_static_dispatch_buffers(self.batch_size, self.inputs.device)" in setup_section
     assert "token_indices = self._token_indices_for(tokens, batch)" in forward_section
     assert "expert_range = self._expert_range_for(tokens)" in forward_section
     assert "self._overflow_slots_for(slots, num_slots)" in forward_section
     assert ".item()) == num_slots" not in source
 
-    from labs.moe_cuda.optimized_router_vectorized import GroupedTopKMoE
+    from labs.moe_cuda.optimized_router_vectorized import GroupedTopKMoE, _flat_token_indices
+
+    torch.testing.assert_close(
+        _flat_token_indices(3, 1, torch.device("cpu")),
+        torch.tensor([0, 1, 2], dtype=torch.int64),
+    )
+    torch.testing.assert_close(
+        _flat_token_indices(3, 2, torch.device("cpu")),
+        torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.int64),
+    )
+    torch.testing.assert_close(
+        _flat_token_indices(2, 3, torch.device("cpu")),
+        torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.int64),
+    )
 
     model = GroupedTopKMoE(hidden_size=8, num_experts=4, top_k=2, expansion=1)
     model.capacity = 64
