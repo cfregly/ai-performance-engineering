@@ -202,24 +202,25 @@ def _primary_routes_cpu(workload: MoECudaPtxWorkload) -> torch.Tensor:
     )
 
 
-def _primary_route_ids_cpu(workload: MoECudaPtxWorkload) -> list[int]:
-    if workload.histogram == "balanced":
-        return [token_idx % workload.num_experts for token_idx in range(workload.num_tokens)]
-
-    route_ids: list[int] = []
-    for expert_idx, count in enumerate(_primary_route_counts_cpu(workload)):
-        route_ids.extend([expert_idx] * count)
-    return route_ids
-
-
 def _route_counts_cpu(workload: MoECudaPtxWorkload) -> tuple[int, ...]:
-    counts = [0] * workload.num_experts
-    for token_idx, primary_expert in enumerate(_primary_route_ids_cpu(workload)):
-        secondary_expert = (token_idx * 3 + 1) % workload.num_experts
-        if secondary_expert == primary_expert:
-            secondary_expert = (secondary_expert + 1) % workload.num_experts
-        counts[primary_expert] += 1
-        counts[secondary_expert] += 1
+    primary_counts = _primary_route_counts_cpu(workload)
+    counts = list(primary_counts)
+    if workload.histogram == "balanced":
+        for token_idx in range(workload.num_tokens):
+            primary_expert = token_idx % workload.num_experts
+            secondary_expert = (token_idx * 3 + 1) % workload.num_experts
+            if secondary_expert == primary_expert:
+                secondary_expert = (secondary_expert + 1) % workload.num_experts
+            counts[secondary_expert] += 1
+    else:
+        token_idx = 0
+        for primary_expert, primary_count in enumerate(primary_counts):
+            for _ in range(primary_count):
+                secondary_expert = (token_idx * 3 + 1) % workload.num_experts
+                if secondary_expert == primary_expert:
+                    secondary_expert = (secondary_expert + 1) % workload.num_experts
+                counts[secondary_expert] += 1
+                token_idx += 1
     return tuple(counts)
 
 
@@ -237,7 +238,10 @@ def _build_primary_routes(workload: MoECudaPtxWorkload, device: torch.device) ->
     )
 
 
-def build_routes(workload: MoECudaPtxWorkload, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+def _build_routes_with_counts(
+    workload: MoECudaPtxWorkload,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, tuple[int, ...]]:
     primary = _build_primary_routes(workload, device)
     secondary = (torch.arange(workload.num_tokens, device=device, dtype=torch.long) * 3 + 1) % workload.num_experts
     collision = secondary == primary
@@ -262,6 +266,11 @@ def build_routes(workload: MoECudaPtxWorkload, device: torch.device) -> tuple[to
             "Deterministic routing exceeded the configured capacity factor; "
             f"max_count={max_count}, capacity={workload.capacity_tokens_per_expert}"
         )
+    return expert_indices, expert_weights, route_counts_cpu
+
+
+def build_routes(workload: MoECudaPtxWorkload, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+    expert_indices, expert_weights, _ = _build_routes_with_counts(workload, device)
     return expert_indices, expert_weights
 
 
@@ -273,7 +282,7 @@ def build_state(workload: MoECudaPtxWorkload, device: torch.device) -> MoELabSta
     x += torch.linspace(0.0, 1e-3, steps=workload.hidden_dim, dtype=torch.float32).view(1, -1)
     x = x.to(device=device, dtype=workload.dtype).contiguous()
 
-    expert_indices, expert_weights = build_routes(workload, device)
+    expert_indices, expert_weights, route_counts_cpu = _build_routes_with_counts(workload, device)
 
     gate_proj = (
         torch.randn(
@@ -321,7 +330,7 @@ def build_state(workload: MoECudaPtxWorkload, device: torch.device) -> MoELabSta
         up_proj=up_proj.contiguous(),
         down_proj=down_proj.contiguous(),
         loss_grad=loss_grad.contiguous(),
-        route_counts_cpu=_route_counts_cpu(workload),
+        route_counts_cpu=route_counts_cpu,
     )
 
 

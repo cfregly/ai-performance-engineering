@@ -225,6 +225,7 @@ def test_moe_cuda_ptx_skewed_routes_use_cpu_counts_without_fragment_cat() -> Non
     assert "torch.linspace(" not in count_source
     assert ".sum().item()" not in count_source
     assert ".tolist()" not in count_source
+    assert "_primary_route_ids_cpu" not in count_source
 
     balanced = moe_common.MoECudaPtxWorkload(
         num_tokens=19,
@@ -286,3 +287,11 @@ def test_moe_cuda_ptx_layer_forward_reuses_prepacked_routes() -> None:
     assert "counts_cpu=route_counts_cpu" in setup_source
     assert "packed=self.packed" in forward_source
     assert "padded_tokens_buffer=self._padded_tokens_buffer" in forward_source
+
+
+def test_moe_cuda_ptx_build_state_reuses_route_count_tuple() -> None:
+    source = inspect.getsource(moe_common.build_state)
+
+    assert "_build_routes_with_counts(workload, device)" in source
+    assert "route_counts_cpu=route_counts_cpu" in source
+    assert "route_counts_cpu=_route_counts_cpu(workload)" not in source
