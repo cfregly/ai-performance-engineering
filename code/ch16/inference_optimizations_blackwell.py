@@ -118,6 +118,7 @@ class DynamicQuantizedKVCache:
         
         # Current sequence length per batch
         self.seq_lens = torch.zeros(max_batch_size, dtype=torch.long, device=device)
+        self._seq_lens_host = [0] * max_batch_size
         
         print(f"KV Cache initialized:")
         print(f"  Dtype: {self.cache_dtype}")
@@ -164,11 +165,12 @@ class DynamicQuantizedKVCache:
             f"indices={batch_indices.numel()}"
         )
 
-        current_lens = self.seq_lens.index_select(0, batch_indices)
-        unique_rows = batch_indices.numel() == 1 or batch_indices.unique().numel() == batch_indices.numel()
-        same_length = bool((current_lens == current_lens[0]).all().item())
+        batch_index_list = [int(idx) for idx in batch_indices.tolist()]
+        unique_rows = len(set(batch_index_list)) == len(batch_index_list)
+        current_lengths = [self._seq_lens_host[idx] for idx in batch_index_list]
+        same_length = all(length == current_lengths[0] for length in current_lengths)
         if unique_rows and same_length:
-            current_len = int(current_lens[0].item())
+            current_len = current_lengths[0]
             new_seq_len = key.shape[2]
             end_pos = current_len + new_seq_len
             if end_pos > self.max_seq_len:
@@ -191,6 +193,8 @@ class DynamicQuantizedKVCache:
             self.cache[layer_idx, 0, batch_indices, :, current_len:end_pos, :] = k_store
             self.cache[layer_idx, 1, batch_indices, :, current_len:end_pos, :] = v_store
             self.seq_lens[batch_indices] = end_pos
+            for cache_idx in batch_index_list:
+                self._seq_lens_host[cache_idx] = end_pos
 
             cached_key = self.cache[layer_idx, 0, batch_indices, :, :end_pos, :]
             cached_value = self.cache[layer_idx, 1, batch_indices, :, :end_pos, :]
@@ -204,9 +208,8 @@ class DynamicQuantizedKVCache:
         updated_keys = []
         updated_vals = []
         
-        for local_idx, cache_idx in enumerate(batch_indices.tolist()):
-            cache_idx_int = int(cache_idx)
-            current_len = int(self.seq_lens[cache_idx_int].item())
+        for local_idx, cache_idx_int in enumerate(batch_index_list):
+            current_len = self._seq_lens_host[cache_idx_int]
             k_slice = key[local_idx]
             v_slice = value[local_idx]
             new_seq_len = k_slice.shape[1]
@@ -232,6 +235,7 @@ class DynamicQuantizedKVCache:
             self.cache[layer_idx, 0, cache_idx_int, :, current_len:end_pos, :] = k_store
             self.cache[layer_idx, 1, cache_idx_int, :, current_len:end_pos, :] = v_store
             self.seq_lens[cache_idx_int] = end_pos
+            self._seq_lens_host[cache_idx_int] = end_pos
             
             cached_key = self.cache[layer_idx, 0, cache_idx_int, :, :end_pos, :]
             cached_value = self.cache[layer_idx, 1, cache_idx_int, :, :end_pos, :]
@@ -252,9 +256,11 @@ class DynamicQuantizedKVCache:
         if batch_idx is None:
             self.cache.zero_()
             self.seq_lens.zero_()
+            self._seq_lens_host = [0] * self.max_batch_size
         else:
             self.cache[:, :, batch_idx].zero_()
             self.seq_lens[batch_idx] = 0
+            self._seq_lens_host[batch_idx] = 0
 
     def get_memory_usage(self, batch_idx: Optional[int] = None) -> int:
         """Return memory footprint in bytes."""

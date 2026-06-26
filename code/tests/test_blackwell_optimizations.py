@@ -208,7 +208,8 @@ class TestNumericalCorrectness:
 
         source = inspect.getsource(blackwell.DynamicQuantizedKVCache.update)
         assert "unique_rows" in source
-        assert "self.seq_lens.index_select(0, batch_indices)" in source
+        assert "current_lengths = [self._seq_lens_host[idx] for idx in batch_index_list]" in source
+        assert "self.seq_lens[cache_idx_int].item()" not in source
         assert "self.cache[layer_idx, 0, batch_indices, :, current_len:end_pos, :] = k_store" in source
 
         cache = blackwell.DynamicQuantizedKVCache(
@@ -227,6 +228,7 @@ class TestNumericalCorrectness:
         out_k1, out_v1 = cache.update(0, key1, value1, batch_indices=batch_indices)
 
         torch.testing.assert_close(cache.seq_lens, torch.tensor([2, 2], dtype=torch.long))
+        assert cache._seq_lens_host == [2, 2]
         torch.testing.assert_close(out_k1, key1)
         torch.testing.assert_close(out_v1, value1)
 
@@ -236,10 +238,18 @@ class TestNumericalCorrectness:
         out_k2, out_v2 = cache.update(0, key2, value2, batch_indices=batch_indices)
 
         torch.testing.assert_close(cache.seq_lens, torch.tensor([3, 3], dtype=torch.long))
+        assert cache._seq_lens_host == [3, 3]
         torch.testing.assert_close(out_k2[:, :, :2, :], key1)
         torch.testing.assert_close(out_v2[:, :, :2, :], value1)
         torch.testing.assert_close(out_k2[:, :, 2:, :], key2)
         torch.testing.assert_close(out_v2[:, :, 2:, :], value2)
+
+        cache.clear(batch_idx=1)
+        torch.testing.assert_close(cache.seq_lens, torch.tensor([3, 0], dtype=torch.long))
+        assert cache._seq_lens_host == [3, 0]
+        cache.clear()
+        torch.testing.assert_close(cache.seq_lens, torch.tensor([0, 0], dtype=torch.long))
+        assert cache._seq_lens_host == [0, 0]
 
 
 # ============================================================================
