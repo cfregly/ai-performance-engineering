@@ -27,7 +27,7 @@ try:
 except Exception:  # pragma: no cover - defensive fallback when running standalone
     prefer_sdpa_backends = None  # type: ignore
 
-from nanochat.common import get_dist_info, print0
+from nanochat.common import get_dist_info
 from nanochat.muon import Muon, DistMuon
 from nanochat.adamw import DistAdamW
 from nanochat.kernels.clustered_attention import clustered_attention
@@ -85,6 +85,13 @@ def apply_rotary_emb(x, cos, sin):
     assert x.ndim == 4  # multihead attention
     d = x.shape[3] // 2
     x1, x2 = x[..., :d], x[..., d:] # split up last time into two halves
+    if not torch.is_grad_enabled() or not x.requires_grad:
+        out = torch.empty_like(x)
+        torch.mul(x1, cos, out=out[..., :d])
+        out[..., :d].addcmul_(x2, sin)
+        torch.mul(x2, cos, out=out[..., d:])
+        out[..., d:].addcmul_(x1, sin, value=-1)
+        return out
     y1 = x1 * cos + x2 * sin # rotate pairs of dims
     y2 = x1 * (-sin) + x2 * cos
     out = torch.cat([y1, y2], 3) # re-assemble

@@ -6,6 +6,7 @@ python -m pytest tests/test_engine.py -v
 
 import torch
 from nanochat.engine import Engine, KVCache
+from nanochat.gpt import apply_rotary_emb
 
 def test_kv_cache_resize():
     """
@@ -118,3 +119,28 @@ def test_sample_batch_tokens_preserves_mixed_sampling_fallback(monkeypatch):
 
     assert calls == [(1, 0.7, 4), (1, 0.9, 4)]
     assert tokens == [21, 22, 0]
+
+
+def test_apply_rotary_emb_inference_matches_reference():
+    x = torch.randn(2, 3, 4, 8, dtype=torch.float32)
+    cos = torch.randn(1, 3, 1, 4, dtype=torch.float32)
+    sin = torch.randn(1, 3, 1, 4, dtype=torch.float32)
+    x1, x2 = x[..., :4], x[..., 4:]
+    expected = torch.cat([x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos], 3).to(x.dtype)
+
+    with torch.inference_mode():
+        actual = apply_rotary_emb(x, cos, sin)
+
+    torch.testing.assert_close(actual, expected)
+
+
+def test_apply_rotary_emb_training_path_keeps_gradients():
+    x = torch.randn(2, 3, 4, 8, dtype=torch.float32, requires_grad=True)
+    cos = torch.randn(1, 3, 1, 4, dtype=torch.float32)
+    sin = torch.randn(1, 3, 1, 4, dtype=torch.float32)
+
+    out = apply_rotary_emb(x, cos, sin)
+    out.square().mean().backward()
+
+    assert x.grad is not None
+    assert torch.isfinite(x.grad).all()
