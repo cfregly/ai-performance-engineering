@@ -401,7 +401,8 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.output = None
         if self.optimized:
             self._extension = load_training_hotpath_extension()
-            self._extension.metric_reduction_fused(self.preds, self.targets)
+            self.output = torch.empty(self.workload.responders * 3, device=self.device, dtype=torch.float32)
+            self._extension.metric_reduction_fused_out(self.preds, self.targets, self.output)
         else:
             self._extension = None
         total = self.workload.batch_size * self.workload.max_num_tokens * self.workload.responders
@@ -419,7 +420,9 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
         if self.optimized:
             if self._extension is None:
                 raise RuntimeError("CUDA extension not loaded")
-            self.output = self._extension.metric_reduction_fused(self.preds, self.targets)
+            if self.output is None:
+                raise RuntimeError("Metric output buffer not initialized")
+            self.output = self._extension.metric_reduction_fused_out(self.preds, self.targets, self.output)
         else:
             self.output = scalar_metric_reduction(self.preds, self.targets)
 

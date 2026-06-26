@@ -128,6 +128,40 @@ def test_baseline_segment_abs_mean_reuses_abs_buffer_on_cpu() -> None:
     torch.testing.assert_close(result, torch.tensor([1.5, 4.0], dtype=torch.float32))
 
 
+def test_metric_reduction_fused_optimized_path_reuses_output_buffer_source() -> None:
+    common_source = (LAB_DIR / "training_hotpath_common.py").read_text(encoding="utf-8")
+    kernel_source = (LAB_DIR / "training_hotpath_kernels.cu").read_text(encoding="utf-8")
+
+    assert "metric_reduction_fused_out" in kernel_source
+    assert "torch::Tensor reusable_out" in kernel_source
+    assert "auto out = reuse_output ? reusable_out : torch::empty" in kernel_source
+    assert "self.output = torch.empty(self.workload.responders * 3" in common_source
+    assert "metric_reduction_fused_out(self.preds, self.targets, self.output)" in common_source
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for fused metric output reuse check")
+def test_metric_reduction_vectorized_optimized_reuses_output_buffer() -> None:
+    bench = MetricReductionVectorizedBenchmark(
+        optimized=True,
+        label="optimized_metric_reduction_vectorized_reuse_test",
+    )
+    bench.apply_target_overrides(["--batch-size", "2", "--max-num-tokens", "16", "--responders", "16"])
+    bench.setup()
+    try:
+        assert bench.output is not None
+        data_ptr = bench.output.data_ptr()
+
+        bench.benchmark_fn()
+        assert bench.output is not None
+        assert bench.output.data_ptr() == data_ptr
+
+        bench.benchmark_fn()
+        assert bench.output is not None
+        assert bench.output.data_ptr() == data_ptr
+    finally:
+        bench.teardown()
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for training-hotpath lab parity checks")
 def test_metric_reduction_vectorized_pair_matches_output_and_metrics() -> None:
     baseline = MetricReductionVectorizedBenchmark(

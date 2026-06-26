@@ -392,9 +392,24 @@ MetricReductionScratch& metric_reduction_scratch(const torch::Tensor& like, int6
   return scratch;
 }
 
+int device_sm_count(int device_index) {
+  static std::unordered_map<int, int> cache;
+  auto found = cache.find(device_index);
+  if (found != cache.end()) {
+    return found->second;
+  }
+  int count = 0;
+  CHECK_CUDA(cudaDeviceGetAttribute(&count, cudaDevAttrMultiProcessorCount, device_index));
+  cache.emplace(device_index, count);
+  return count;
+}
+
 }  // namespace
 
-torch::Tensor metric_reduction_fused(torch::Tensor preds, torch::Tensor targets) {
+torch::Tensor metric_reduction_fused_dispatch(
+    torch::Tensor preds,
+    torch::Tensor targets,
+    torch::Tensor reusable_out) {
   TORCH_CHECK(preds.is_cuda(), "preds must be a CUDA tensor");
   TORCH_CHECK(targets.is_cuda(), "targets must be a CUDA tensor");
   TORCH_CHECK(preds.dtype() == torch::kFloat32, "preds must be float32");
@@ -407,13 +422,20 @@ torch::Tensor metric_reduction_fused(torch::Tensor preds, torch::Tensor targets)
   int64_t responders = preds_contig.size(-1);
   TORCH_CHECK(responders > 0, "responders dimension must be positive");
   int64_t num_rows = preds_contig.numel() / responders;
+  const int64_t output_len = 3 * responders;
 
-  static const int sm_count = [device_index = preds_contig.get_device()] {
-    int count = 0;
-    CHECK_CUDA(cudaDeviceGetAttribute(&count, cudaDevAttrMultiProcessorCount, device_index));
-    return count;
-  }();
+  const bool reuse_output = reusable_out.defined();
+  if (reuse_output) {
+    TORCH_CHECK(reusable_out.is_cuda(), "out must be a CUDA tensor");
+    TORCH_CHECK(reusable_out.dtype() == torch::kFloat32, "out must be float32");
+    TORCH_CHECK(reusable_out.get_device() == preds_contig.get_device(), "out must be on the same device as preds");
+    TORCH_CHECK(reusable_out.is_contiguous(), "out must be contiguous");
+    TORCH_CHECK(
+        reusable_out.dim() == 1 && reusable_out.size(0) == output_len,
+        "out must have shape (3 * responders,)");
+  }
 
+  const int sm_count = device_sm_count(preds_contig.get_device());
   constexpr int threads = 256;
 
   // Kill switch: AISP_METRIC_REDUCTION_SINGLE_LAUNCH=0 restores the B50/B65
@@ -433,7 +455,7 @@ torch::Tensor metric_reduction_fused(torch::Tensor preds, torch::Tensor targets)
   if (vec_ok) {
     // Single-launch path: out needs no fill (the kernel's last block writes
     // every element), so this is exactly one kernel per call.
-    auto out = torch::empty({3 * responders}, preds.options());
+    auto out = reuse_output ? reusable_out : torch::empty({output_len}, preds.options());
     auto& scratch = metric_reduction_scratch(preds_contig, kMetricAccumReplicas * 3 * responders);
     float* accum = scratch.buf.data_ptr<float>();
     auto* ticket = reinterpret_cast<unsigned int*>(accum + scratch.capacity);
@@ -497,7 +519,7 @@ torch::Tensor metric_reduction_fused(torch::Tensor preds, torch::Tensor targets)
   // Legacy/fallback path (odd responders, misaligned inputs, or kill switch):
   // output layout matches torch.cat((pred_sq, target_sq, covar)): fp32
   // accumulation into a zero-initialized buffer (atomic partial folds).
-  auto out = torch::zeros({3 * responders}, preds.options());
+  auto out = reuse_output ? reusable_out.zero_() : torch::zeros({output_len}, preds.options());
   if (num_rows == 0) {
     return out;
   }
@@ -515,6 +537,14 @@ torch::Tensor metric_reduction_fused(torch::Tensor preds, torch::Tensor targets)
       responders);
   CHECK_CUDA(cudaGetLastError());
   return out;
+}
+
+torch::Tensor metric_reduction_fused(torch::Tensor preds, torch::Tensor targets) {
+  return metric_reduction_fused_dispatch(preds, targets, torch::Tensor());
+}
+
+torch::Tensor metric_reduction_fused_out(torch::Tensor preds, torch::Tensor targets, torch::Tensor out) {
+  return metric_reduction_fused_dispatch(preds, targets, out);
 }
 
 torch::Tensor pack_rows(torch::Tensor input, torch::Tensor row_indices) {
@@ -577,6 +607,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       "metric_reduction_fused",
       &metric_reduction_fused,
       "Fused single-pass pred_sq/target_sq/covar metric reduction");
+  m.def(
+      "metric_reduction_fused_out",
+      &metric_reduction_fused_out,
+      "Fused single-pass metric reduction into a reusable output tensor");
   m.def("pack_rows", &pack_rows, "Pack active rows into a dense tensor");
   m.def("scatter_rows", &scatter_rows, "Scatter packed rows back into padded layout");
 }
