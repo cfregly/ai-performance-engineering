@@ -48,6 +48,21 @@ except Exception:  # pragma: no cover - safe fallback
     te_constants = None  # type: ignore
     TE_AVAILABLE = False
 
+_CUDA_NVTX = None
+_CUDA_NVTX_INITIALIZED = False
+
+
+def _cuda_nvtx():
+    global _CUDA_NVTX, _CUDA_NVTX_INITIALIZED
+    if not _CUDA_NVTX_INITIALIZED:
+        try:
+            import torch.cuda.nvtx as nvtx  # type: ignore
+        except Exception:
+            nvtx = None  # type: ignore
+        _CUDA_NVTX = nvtx
+        _CUDA_NVTX_INITIALIZED = True
+    return _CUDA_NVTX
+
 
 def _te_version_at_least(major: int, minor: int = 0) -> bool:
     if not TE_AVAILABLE or not hasattr(te, "__version__"):
@@ -130,6 +145,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.gpu_payload: Optional[torch.Tensor] = None
         self._copy_done_events: list[torch.cuda.Event] = []
         self._timing_events: dict[str, torch.cuda.Event] = {}
+        self._nvtx = None
         self._payload_bytes = 0
 
         if self.cfg.prefetch_batches < 1:
@@ -251,6 +267,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 name: torch.cuda.Event(enable_timing=True)
                 for name in ("prefill_start", "prefill_end", "decode_start", "decode_end")
             }
+            self._nvtx = _cuda_nvtx()
         self._cache_te_weight_workspaces()
         # Default to eager helpers; swap in compiled variants below when enabled.
         self.prefill_fn = self._prefill
@@ -572,11 +589,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         copy_stream = self.copy_stream or prefill_stream
         timing_stream = prefill_stream
 
-        # NVTX ranges for profiling clarity
-        try:
-            import torch.cuda.nvtx as nvtx  # type: ignore
-        except Exception:
-            nvtx = None  # type: ignore
+        nvtx = self._nvtx
 
         iter_start.record(timing_stream)
         event0 = self._copy_prompt_to_device_idx(0, stream=copy_stream, record_event=True)
@@ -633,11 +646,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         decode_stream = self.graph_stream if self.decode_graph is not None else prefill_stream
         timing_stream = decode_stream
 
-        # NVTX ranges for profiling clarity
-        try:
-            import torch.cuda.nvtx as nvtx  # type: ignore
-        except Exception:
-            nvtx = None  # type: ignore
+        nvtx = self._nvtx
 
         prefill_start.record(prefill_stream)
         self._copy_prompts_to_device()

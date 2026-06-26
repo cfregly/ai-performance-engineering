@@ -85,6 +85,30 @@ def test_decode_state_buffers_are_overwritten_without_zero_fill() -> None:
     assert "self.current_tokens.copy_(self.gpu_prompt[:, -1])" in graph_section
 
 
+def test_decode_nvtx_import_is_cached_outside_iteration_hot_paths() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "# Model + buffer init",
+        maxsplit=1,
+    )[0]
+    prefetch_section = source.split("def _benchmark_prefetch_batches", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+
+    assert "self._nvtx = _cuda_nvtx()" in setup_section
+    assert "import torch.cuda.nvtx" not in prefetch_section
+    assert "import torch.cuda.nvtx" not in benchmark_section
+    assert "nvtx = self._nvtx" in prefetch_section
+    assert "nvtx = self._nvtx" in benchmark_section
+
+
 def test_decode_pinned_pair_uses_transfer_heavy_workload_with_only_pin_state_changed() -> None:
     baseline = get_baseline_decode_pinned()
     optimized = get_optimized_decode_pinned()
