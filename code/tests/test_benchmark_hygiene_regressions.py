@@ -909,8 +909,17 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
 
 def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events() -> None:
     source = (REPO_ROOT / "ch15" / "baseline_inference_monolithic.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
 
     assert "torch.cuda.Event" not in source
+    assert "torch.cat(" not in benchmark_section
+    assert "self._last_decoded_tokens = decoded_tokens" in benchmark_section
+    assert "self.output = torch.cat(self._last_decoded_tokens, dim=1)" in capture_section
     assert "self._last_elapsed_ms" in source
     assert "finalize_iteration_metrics" in source
     assert "self.model.decode(decode_state, num_tokens=1)" in source

@@ -10,14 +10,14 @@ from typing import Dict, List, Optional
 
 import torch
 
+from ch15.inference_monolithic_common import SimpleLLM
+from core.benchmark.verification_mixin import VerificationPayloadMixin  # noqa: E402
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
     WorkloadMetadata,
 )
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
-from ch15.inference_monolithic_common import SimpleLLM
-from core.benchmark.verification_mixin import VerificationPayloadMixin  # noqa: E402
 
 
 class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -41,6 +41,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self._verify_prompt: Optional[torch.Tensor] = None
         self._last_elapsed_ms: Optional[float] = None
         self._metrics_pending = False
+        self._last_decoded_tokens: List[torch.Tensor] = []
     
     def setup(self) -> None:
         """Setup: initialize model and data."""
@@ -50,6 +51,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self.prompt = (torch.arange(self.prefill_seq, device=self.device, dtype=torch.int64) % 10000).unsqueeze(0)
         self.kv_cache = None
         self.output = None
+        self._last_decoded_tokens = []
         self._verify_prompt = self.prompt.detach().clone()
 
     def benchmark_fn(self) -> Optional[dict]:
@@ -72,7 +74,8 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
                 if not decoded_tokens:
                     raise RuntimeError("Decode loop produced no tokens")
 
-                self.output = torch.cat(decoded_tokens, dim=1)
+                self._last_decoded_tokens = decoded_tokens
+                self.output = None
                 self._metrics_pending = True
                 return {}
 
@@ -100,8 +103,12 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
-        if self.model is None or self.prompt is None or self.output is None:
+        if self.model is None or self.prompt is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+        if self.output is None:
+            if not self._last_decoded_tokens:
+                raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+            self.output = torch.cat(self._last_decoded_tokens, dim=1)
         self._set_verification_payload(
             inputs={"prompt": self.prompt},
             output=self.output.float(),
@@ -119,6 +126,8 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self.model = None
         self.prompt = None
         self.kv_cache = None
+        self.output = None
+        self._last_decoded_tokens = []
         self._last_elapsed_ms = None
         self._metrics_pending = False
         if torch.cuda.is_available():
