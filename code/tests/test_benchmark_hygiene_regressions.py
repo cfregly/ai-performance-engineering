@@ -1504,6 +1504,9 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     moe_source = (
         REPO_ROOT / "labs" / "moe_optimization_journey" / "level6_native_fp8.py"
     ).read_text(encoding="utf-8")
+    moe_setup = moe_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     moe_benchmark = moe_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -1512,6 +1515,12 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     )[0]
 
     assert ".detach().float().clone()" not in moe_benchmark
+    assert "self._sorted_token_indices = expanded_token_indices.index_select(0, self.sorted_order)" in moe_setup
+    assert "self._sorted_weights = self.expert_weights.view(-1).index_select(0, self.sorted_order)" in moe_setup
+    assert "self._sorted_tokens = torch.empty(" in moe_setup
+    assert "x.repeat_interleave(self.TOP_K" not in moe_benchmark
+    assert "self.expert_weights.view(-1)[self.sorted_order]" not in moe_benchmark
+    assert "torch.index_select(x, 0, self._sorted_token_indices, out=self._sorted_tokens)" in moe_benchmark
     assert "self.output = output[:1, : min(8, output.shape[1])]" in moe_benchmark
     assert "self._payload_param_count = int(" in moe_source
     assert "output=self.output.detach().float().clone()" in moe_capture

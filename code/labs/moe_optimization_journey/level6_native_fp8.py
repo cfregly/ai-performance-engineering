@@ -14,11 +14,7 @@ Results:
 - FP8:  55-58% of peak → 1.4x speedup!
 """
 
-import time
-from typing import List
-
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -105,6 +101,15 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
         self.sorted_order = torch.argsort(flat_idx, stable=True)
         sorted_expert_ids = flat_idx[self.sorted_order]
         self.counts = torch.bincount(sorted_expert_ids, minlength=E).tolist()
+        expanded_token_indices = torch.arange(batch_seq, device=self.device).repeat_interleave(K)
+        self._sorted_token_indices = expanded_token_indices.index_select(0, self.sorted_order)
+        self._sorted_weights = self.expert_weights.view(-1).index_select(0, self.sorted_order)
+        self._sorted_tokens = torch.empty(
+            batch_seq * K,
+            H,
+            device=self.device,
+            dtype=self.x.dtype,
+        )
         self._output_buffer = torch.empty(
             batch_seq * K,
             H,
@@ -125,8 +130,9 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
         scale = self.scale
         output = self._output_buffer
 
-        sorted_tokens = x.repeat_interleave(self.TOP_K, dim=0)[self.sorted_order]
-        sorted_w = self.expert_weights.view(-1)[self.sorted_order]
+        torch.index_select(x, 0, self._sorted_token_indices, out=self._sorted_tokens)
+        sorted_tokens = self._sorted_tokens
+        sorted_w = self._sorted_weights
 
         offset = 0
         for e in range(E):
@@ -190,4 +196,3 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> NativeFP8MoE:
     return NativeFP8MoE()
-
