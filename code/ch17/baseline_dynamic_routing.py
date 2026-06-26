@@ -36,6 +36,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verification_payload = None
         self._iteration = 0
         self._queue_length_table: Optional[torch.Tensor] = None
+        self._queue_length_rows: Optional[list[list[int]]] = None
         self.register_workload_metadata(
             requests_per_iteration=float(batch_size),
             tokens_per_iteration=float(batch_size * 128),
@@ -94,6 +95,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             (num_iters, self.batch_size),
             dtype=torch.int32,
         )
+        self._queue_length_rows = self._queue_length_table.tolist()
         self._iteration = 0
 
     def _make_metrics(self, queue: int, now: float):
@@ -132,9 +134,12 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         offloaded_tensor: Optional[torch.Tensor] = None
         start = self._record_start()
         queue_lengths: Optional[torch.Tensor] = None
+        queue_lengths_host: Optional[list[int]] = None
         if self._queue_length_table is not None:
             table_idx = self._iteration % self._queue_length_table.shape[0]
             queue_lengths = self._queue_length_table[table_idx]
+            if self._queue_length_rows is not None:
+                queue_lengths_host = self._queue_length_rows[table_idx]
         self._iteration += 1
 
         if self.vectorized and self._prompt_lengths is not None:
@@ -189,7 +194,9 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 if queue_lengths is None:
                     queue_depth = random.randint(0, self.router.PREFILL_QUEUE_MAX + 5)
                 else:
-                    queue_depth = int(queue_lengths[idx % queue_lengths.numel()].item())
+                    if queue_lengths_host is None:
+                        raise RuntimeError("Queue length host inputs not initialized")
+                    queue_depth = queue_lengths_host[idx % self.batch_size]
                 if self.router.should_offload_prefill(len(req.prompt_tokens), req.prefix_cached_length, queue_depth):
                     offloaded += 1
 
@@ -254,6 +261,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._admit_mask = None
         self._served_offload_mask = None
         self._queue_length_table = None
+        self._queue_length_rows = None
         super().teardown()
 
 

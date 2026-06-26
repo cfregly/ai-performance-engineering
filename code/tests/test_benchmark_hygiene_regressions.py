@@ -1805,6 +1805,7 @@ def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
     assert "self._remaining_lengths = torch.empty_like(self._prompt_lengths)" in setup_section
     assert "self._long_prefill = torch.empty_like(self._priorities, dtype=torch.bool)" in setup_section
     assert "self._served_offload_mask = torch.empty_like(self._long_prefill)" in setup_section
+    assert "self._queue_length_rows = self._queue_length_table.tolist()" in setup_section
     assert "long_prefill = (" not in benchmark_section
     assert "capacity = self._queue_lengths" not in benchmark_section
     assert "offload_mask = long_prefill & capacity" not in benchmark_section
@@ -1817,6 +1818,8 @@ def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
     assert "torch.ne(self._priorities, 0, out=self._admit_mask)" in benchmark_section
     assert "self._admit_mask.fill_(True)" in benchmark_section
     assert "out=self._served_offload_mask" in benchmark_section
+    assert "queue_depth = queue_lengths_host[idx % self.batch_size]" in benchmark_section
+    assert "queue_lengths[idx % queue_lengths.numel()].item()" not in benchmark_section
     timed_section = benchmark_section.split("elapsed_ms = self._record_stop(start)", maxsplit=1)[0]
     vectorized_timed_section = timed_section.split(
         "        else:\n            # Python loop-based routing",
