@@ -158,15 +158,19 @@ def apply_workload_overrides(workload: MoECudaPtxWorkload, argv: list[str]) -> M
     return updated
 
 
-def _counts_from_weights(total: int, weights: torch.Tensor) -> torch.Tensor:
-    normalized = (weights / weights.sum()) * float(total)
-    base = torch.floor(normalized).to(torch.long)
-    remainder = int(total - int(base.sum().item()))
+def _counts_from_weights(total: int, weights: Sequence[float]) -> tuple[int, ...]:
+    weight_sum = sum(weights)
+    normalized = [weight / weight_sum * float(total) for weight in weights]
+    base = [math.floor(value) for value in normalized]
+    remainder = total - sum(base)
     if remainder > 0:
-        frac = (normalized - base.to(normalized.dtype))
-        order = torch.argsort(frac, descending=True, stable=True)
-        base[order[:remainder]] += 1
-    return base
+        fractional_order = sorted(
+            range(len(base)),
+            key=lambda expert_idx: (-(normalized[expert_idx] - base[expert_idx]), expert_idx),
+        )
+        for expert_idx in fractional_order[:remainder]:
+            base[expert_idx] += 1
+    return tuple(base)
 
 
 def _primary_route_counts_cpu(workload: MoECudaPtxWorkload) -> tuple[int, ...]:
@@ -177,14 +181,11 @@ def _primary_route_counts_cpu(workload: MoECudaPtxWorkload) -> tuple[int, ...]:
             for expert_idx in range(workload.num_experts)
         )
 
-    weights = torch.linspace(
-        workload.capacity_factor,
-        max(0.25, 2.0 - workload.capacity_factor),
-        steps=workload.num_experts,
-        dtype=torch.float32,
-    )
-    counts = _counts_from_weights(workload.num_tokens, weights)
-    return tuple(int(count) for count in counts.tolist())
+    first_weight = workload.capacity_factor
+    last_weight = max(0.25, 2.0 - workload.capacity_factor)
+    step = (last_weight - first_weight) / (workload.num_experts - 1)
+    weights = [first_weight + step * expert_idx for expert_idx in range(workload.num_experts)]
+    return _counts_from_weights(workload.num_tokens, weights)
 
 
 def _primary_routes_cpu(workload: MoECudaPtxWorkload) -> torch.Tensor:
@@ -201,14 +202,25 @@ def _primary_routes_cpu(workload: MoECudaPtxWorkload) -> torch.Tensor:
     )
 
 
+def _primary_route_ids_cpu(workload: MoECudaPtxWorkload) -> list[int]:
+    if workload.histogram == "balanced":
+        return [token_idx % workload.num_experts for token_idx in range(workload.num_tokens)]
+
+    route_ids: list[int] = []
+    for expert_idx, count in enumerate(_primary_route_counts_cpu(workload)):
+        route_ids.extend([expert_idx] * count)
+    return route_ids
+
+
 def _route_counts_cpu(workload: MoECudaPtxWorkload) -> tuple[int, ...]:
-    primary = _primary_routes_cpu(workload)
-    secondary = (torch.arange(workload.num_tokens, dtype=torch.long) * 3 + 1) % workload.num_experts
-    collision = secondary == primary
-    secondary[collision] = (secondary[collision] + 1) % workload.num_experts
-    expert_indices = torch.stack([primary, secondary], dim=1)
-    counts = torch.bincount(expert_indices.reshape(-1), minlength=workload.num_experts)
-    return tuple(int(count) for count in counts.tolist())
+    counts = [0] * workload.num_experts
+    for token_idx, primary_expert in enumerate(_primary_route_ids_cpu(workload)):
+        secondary_expert = (token_idx * 3 + 1) % workload.num_experts
+        if secondary_expert == primary_expert:
+            secondary_expert = (secondary_expert + 1) % workload.num_experts
+        counts[primary_expert] += 1
+        counts[secondary_expert] += 1
+    return tuple(counts)
 
 
 def _build_primary_routes(workload: MoECudaPtxWorkload, device: torch.device) -> torch.Tensor:

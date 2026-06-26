@@ -121,9 +121,35 @@ def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
 
 def test_moe_cuda_ptx_skewed_routes_use_cpu_counts_without_fragment_cat() -> None:
     source = inspect.getsource(moe_common._build_primary_routes)
+    count_source = "\n".join(
+        (
+            inspect.getsource(moe_common._counts_from_weights),
+            inspect.getsource(moe_common._primary_route_counts_cpu),
+            inspect.getsource(moe_common._route_counts_cpu),
+        )
+    )
     assert "int(count.item())" not in source
     assert "torch.cat(routes" not in source
     assert "torch.repeat_interleave(" in source
+    assert "torch.linspace(" not in count_source
+    assert ".sum().item()" not in count_source
+    assert ".tolist()" not in count_source
+
+    balanced = moe_common.MoECudaPtxWorkload(
+        num_tokens=19,
+        num_experts=4,
+        hidden_dim=32,
+        expert_ffn_dim=64,
+        capacity_factor=1.5,
+        histogram="balanced",
+    )
+    balanced_indices, _ = moe_common.build_routes(balanced, torch.device("cpu"))
+    balanced_counts_cpu = moe_common._route_counts_cpu(balanced)
+
+    torch.testing.assert_close(
+        torch.bincount(balanced_indices.reshape(-1), minlength=balanced.num_experts),
+        torch.tensor(balanced_counts_cpu, dtype=torch.long),
+    )
 
     workload = moe_common.MoECudaPtxWorkload(
         num_tokens=19,
