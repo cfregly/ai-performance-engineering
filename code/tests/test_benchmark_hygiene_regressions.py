@@ -1672,6 +1672,21 @@ def test_ch04_multi_node_transformer_reuses_position_id_buffer() -> None:
     assert "pos = self._position_ids[:, :T]" in forward_section
 
 
+def test_ch04_multi_node_training_defers_repeated_loss_syncs() -> None:
+    source = (REPO_ROOT / "ch04" / "multi_node_blackwell.py").read_text(
+        encoding="utf-8"
+    )
+    train_section = source.split("def train_multi_node", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+
+    assert "loss.item()" not in train_section
+    assert "epoch_loss_tensors = []" in train_section
+    assert "stats['losses'].append(loss_value)" in train_section
+    assert "float(torch.stack(epoch_loss_tensors).sum())" in train_section
+
+
 def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
     source = (REPO_ROOT / "ch13" / "baseline_sequence_parallel_multigpu.py").read_text(
         encoding="utf-8"

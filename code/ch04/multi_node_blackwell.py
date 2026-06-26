@@ -497,7 +497,7 @@ def train_multi_node(
     global_step = 0
     
     for epoch in range(num_epochs):
-        epoch_loss = 0.0
+        epoch_loss_tensors = []
         epoch_start = time.time()
         for step, batch in enumerate(train_data):
             step_start = time.time()
@@ -526,19 +526,26 @@ def train_multi_node(
             step_time = time.time() - step_start
             # Log statistics
             if rank == 0 and step % 10 == 0:
+                loss_value = float(loss.detach()) * gradient_accumulation_steps
                 tokens_per_step = input_ids.numel() * world_size
                 throughput = tokens_per_step / step_time
-                stats['losses'].append(loss.item() * gradient_accumulation_steps)
+                stats['losses'].append(loss_value)
                 stats['throughputs'].append(throughput)
                 stats['step_times'].append(step_time)
                 print(f"Epoch {epoch} | Step {step:4d} | "
-                      f"Loss: {loss.item()*gradient_accumulation_steps:.4f} | "
+                      f"Loss: {loss_value:.4f} | "
                       f"Throughput: {throughput/1e6:.2f}M tokens/s | "
                       f"Time: {step_time*1000:.1f}ms")
             
-            epoch_loss += loss.item()
+            if rank == 0:
+                epoch_loss_tensors.append(loss.detach())
             epoch_time = time.time() - epoch_start
         if rank == 0:
+            epoch_loss = (
+                float(torch.stack(epoch_loss_tensors).sum())
+                if epoch_loss_tensors
+                else 0.0
+            )
             avg_loss = epoch_loss / len(train_data)
             print(f"\nEpoch {epoch} complete:")
             print(f" Average loss: {avg_loss:.4f}")
