@@ -8,8 +8,6 @@ Implements BaseBenchmark for harness integration.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import torch
 
 
@@ -50,7 +48,7 @@ class BaselineArithmeticIntensityBenchmark(VerificationPayloadMixin, BaseBenchma
         # Allocate matrices for chunked matmul accumulation.
         self.A = torch.randn(self.M, self.K, device=self.device, dtype=torch.float32)
         self.B = torch.randn(self.K, self.N, device=self.device, dtype=torch.float32)
-        self.C = torch.zeros(self.M, self.N, device=self.device, dtype=torch.float32)
+        self.C = torch.empty(self.M, self.N, device=self.device, dtype=torch.float32)
 
         # Warm up chunked kernel launches.
         self._chunked_matmul()
@@ -129,4 +127,3 @@ class BaselineArithmeticIntensityBenchmark(VerificationPayloadMixin, BaseBenchma
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return BaselineArithmeticIntensityBenchmark()
-

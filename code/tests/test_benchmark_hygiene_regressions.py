@@ -657,6 +657,24 @@ def test_ch14_cublas_vs_cutlass_pair_skips_unused_setup_output_allocation() -> N
         assert assignment in benchmark_section
 
 
+def test_ch13_arithmetic_intensity_setup_avoids_redundant_zero_fill() -> None:
+    source = (REPO_ROOT / "ch13" / "baseline_arithmetic_intensity.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _chunked_matmul",
+        maxsplit=1,
+    )[0]
+    chunked_section = source.split("def _chunked_matmul", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+
+    assert "self.C = torch.empty(self.M, self.N, device=self.device, dtype=torch.float32)" in setup_section
+    assert "self.C = torch.zeros(" not in setup_section
+    assert "self.C.zero_()" in chunked_section
+
+
 def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
     dual_cta = (REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_cta.py").read_text(
         encoding="utf-8"
