@@ -181,7 +181,7 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
         self.host_out_chunks: List[torch.Tensor] | None = None
         self.device_chunks: List[torch.Tensor] | None = None
         # Stream benchmark - fixed dimensions for overlap measurement
-        element_size = float(torch.empty((), dtype=self.dtype).element_size())
+        element_size = float(torch.finfo(self.dtype).bits // 8)
         bytes_transferred = float(num_elements * element_size * 2)  # H2D + D2H
         self.register_workload_metadata(bytes_per_iteration=bytes_transferred)
 

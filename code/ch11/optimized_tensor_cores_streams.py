@@ -6,6 +6,7 @@ from typing import List, Optional
 
 import torch
 
+from ch11.stream_overlap_base import resolve_device
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.profiling.nvtx_helper import (
@@ -13,7 +14,6 @@ from core.profiling.nvtx_helper import (
     get_nvtx_enabled,
     nvtx_range,
 )
-from ch11.stream_overlap_base import resolve_device
 
 
 class OptimizedTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -38,7 +38,7 @@ class OptimizedTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchma
         self.device_A_slots: List[torch.Tensor] | None = None
         self.device_B_slots: List[torch.Tensor] | None = None
         self.device_C_slots: List[torch.Tensor] | None = None
-        element_size = float(torch.empty((), dtype=self.dtype).element_size())
+        element_size = float(torch.finfo(self.dtype).bits // 8)
         bytes_transferred = float(self.num_elements * element_size * 3)
         self.register_workload_metadata(bytes_per_iteration=bytes_transferred)
 
@@ -159,7 +159,7 @@ class OptimizedTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchma
         return None
 
     def get_custom_metrics(self) -> Optional[dict]:
-        element_size = float(torch.empty((), dtype=self.dtype).element_size())
+        element_size = float(torch.finfo(self.dtype).bits // 8)
         bytes_transferred = float(self.num_elements * element_size * 3)
         return {
             f"{self.label}.elements": float(self.num_elements),

@@ -5,13 +5,12 @@ from __future__ import annotations
 
 import argparse
 import os
-
-from core.common.device_utils import resolve_local_rank
 import time
 
 import torch
 import torch.distributed as dist
 
+from core.common.device_utils import resolve_local_rank
 
 
 def parse_args() -> argparse.Namespace:
@@ -113,7 +112,7 @@ def run_single_gpu(args: argparse.Namespace) -> None:
     for op in ops:
         for dtype_name in dtypes:
             dtype = getattr(torch, dtype_name)
-            bytes_per_elem = torch.empty((), dtype=dtype).element_size()
+            bytes_per_elem = torch.finfo(dtype).bits // 8
             for size_mb in sizes_mb:
                 total_bytes = size_mb * 1024 * 1024
                 numel = max(1, total_bytes // bytes_per_elem)

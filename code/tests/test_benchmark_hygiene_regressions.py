@@ -218,10 +218,15 @@ def test_ch04_gradient_fusion_uses_dtype_byte_constant() -> None:
 def test_dtype_byte_sizing_avoids_empty_tensor_metadata_allocations() -> None:
     files = [
         "ch04/gradient_fusion_multigpu.py",
+        "ch04/nccl_benchmark.py",
         "ch04/nvshmem_vs_nccl_benchmark.py",
+        "ch11/baseline_tensor_cores_streams.py",
+        "ch11/optimized_tensor_cores_streams.py",
+        "ch11/stream_overlap_base.py",
         "ch15/placement_sim.py",
         "ch16/symmetric_memory_inference.py",
         "ch16/gpt_quick_test.py",
+        "ch16/inference_serving_multigpu.py",
         "cluster/scripts/allreduce_latency_comp.py",
         "cluster/scripts/torch_gpu_stream_bench.py",
         "labs/blackwell_matmul/run_blackwell_matmul.py",
@@ -234,6 +239,8 @@ def test_dtype_byte_sizing_avoids_empty_tensor_metadata_allocations() -> None:
     for filename in files:
         source = (REPO_ROOT / filename).read_text(encoding="utf-8")
         assert "torch.tensor([], dtype=" not in source
+        assert "torch.empty((), dtype=" not in source
+        assert "torch.tensor(0, dtype=" not in source
 
     assert "FLOAT16_BYTES = torch.finfo(torch.float16).bits // 8" in (
         REPO_ROOT / "ch04" / "gradient_fusion_multigpu.py"

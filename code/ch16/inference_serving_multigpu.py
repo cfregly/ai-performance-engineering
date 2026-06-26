@@ -46,27 +46,27 @@ Error Recovery:
 Author: Blackwell Performance Engineering Team
 """
 
+import threading
+import time
+from collections import deque
+from dataclasses import dataclass, field
+from queue import PriorityQueue, Queue
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import numpy as np
+import torch
+import torch.distributed as dist
+import torch.nn as nn
+import torch.nn.functional as F
+
+from core.benchmark.gpu_requirements import require_min_gpus
+from core.harness.arch_config import prefer_flash_sdpa
 from core.optimization.symmetric_memory_patch import (
     SymmetricMemoryHandle,
     maybe_create_symmetric_memory_handle,
 )
 from core.utils.compile_utils import compile_callable, compile_model
-from core.benchmark.gpu_requirements import require_min_gpus
-from core.harness.arch_config import prefer_flash_sdpa
 
-
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
-from collections import deque
-import time
-import threading
-from queue import Queue, PriorityQueue
-import numpy as np
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.distributed as dist
 try:
     from torch.nn.attention.flex_attention import flex_attention
 except ImportError:
@@ -412,7 +412,7 @@ class ShardedKVCacheManager:
             "value": self._kv_gather_value_scratch,
         }
 
-        bytes_per_element = torch.tensor(0, dtype=dtype).element_size()
+        bytes_per_element = torch.finfo(dtype).bits // 8
         page_memory_mb = (
             2.0 * num_layers * page_size * self.heads_per_gpu * head_dim * bytes_per_element
         ) / (1024 * 1024)
