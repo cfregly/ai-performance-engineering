@@ -33,21 +33,18 @@ Usage:
     torchrun --nproc_per_node=<num_gpus> bandwidth_benchmark_suite_multigpu.py --output results.json
 """
 
-import os
-
-from core.common.device_utils import resolve_local_rank
-
-from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
-
-from core.benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
-
-
-import time
-import json
 import argparse
+import json
+import os
+import time
 from typing import Dict, List, Tuple
+
 import torch
 import torch.distributed as dist
+
+from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
+from core.benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
+from core.common.device_utils import resolve_local_rank
 
 
 def setup_distributed():
@@ -91,13 +88,13 @@ def benchmark_p2p_bandwidth(
     
     size = size_mb * 1024 * 1024 // 4  # Convert to float32 elements
     tensor = torch.randn(size, device=device, dtype=torch.float32)
+    recv_tensor = torch.empty_like(tensor) if rank == dst_rank else None
     
     # Warmup
     for _ in range(10):
         if rank == src_rank:
             dist.send(tensor, dst=dst_rank)
         elif rank == dst_rank:
-            recv_tensor = torch.empty_like(tensor)
             dist.recv(recv_tensor, src=src_rank)
     
     torch.cuda.synchronize()
@@ -120,7 +117,6 @@ def benchmark_p2p_bandwidth(
         return bandwidth_gbs
     elif rank == dst_rank:
         for _ in range(iterations):
-            recv_tensor = torch.empty_like(tensor)
             dist.recv(recv_tensor, src=src_rank)
         
         return 0.0  # Only src_rank returns valid bandwidth
@@ -148,6 +144,7 @@ def measure_p2p_matrix(
         print("Transfer size: 256 MB per direction\n")
     
     bandwidth_matrix = {}
+    bw_tensor = torch.empty(1, device=torch.cuda.current_device(), dtype=torch.float32)
     
     # Test all pairs (or first pair only in quick mode)
     for src in range(world_size):
@@ -159,14 +156,15 @@ def measure_p2p_matrix(
                 bw = benchmark_p2p_bandwidth(src, dst, size_mb=256, iterations=50)
             if rank == src:
                 bandwidth_matrix[(src, dst)] = bw
+                bw_tensor.fill_(bw)
             
             # Broadcast result to all ranks
-            bw_tensor = torch.tensor([bw], device='cuda')
             dist.broadcast(bw_tensor, src=src)
-            bandwidth_matrix[(src, dst)] = bw_tensor.item()
+            bw = float(bw_tensor[0].item())
+            bandwidth_matrix[(src, dst)] = bw
             
             if rank == 0:
-                print(f"  GPU {src} → GPU {dst}: {bw_tensor.item():6.2f} GB/s")
+                print(f"  GPU {src} → GPU {dst}: {bw:6.2f} GB/s")
         if quick:
             break
     
@@ -212,19 +210,23 @@ def benchmark_collective(
         (latency_ms, bandwidth_gbs)
     """
     device = torch.cuda.current_device()
-    tensor = torch.randn(size, device=device, dtype=torch.float32)
+    tensor = torch.zeros(size, device=device, dtype=torch.float32)
     
     # Warmup
-    for _ in range(10):
-        if op_type == "allreduce":
-            dist.all_reduce(tensor.clone())
-        elif op_type == "allgather":
-            output = [torch.empty_like(tensor) for _ in range(world_size)]
-            dist.all_gather(output, tensor)
-        elif op_type == "reducescatter":
-            output = torch.empty(size // world_size, device=device, dtype=torch.float32)
-            input_list = list(tensor.chunk(world_size))
-            dist.reduce_scatter(output, input_list)
+    if op_type == "allreduce":
+        for _ in range(10):
+            dist.all_reduce(tensor)
+    elif op_type == "allgather":
+        allgather_output = [torch.empty_like(tensor) for _ in range(world_size)]
+        for _ in range(10):
+            dist.all_gather(allgather_output, tensor)
+    elif op_type == "reducescatter":
+        reducescatter_output = torch.empty(size // world_size, device=device, dtype=torch.float32)
+        reducescatter_input = list(tensor.chunk(world_size))
+        for _ in range(10):
+            dist.reduce_scatter(reducescatter_output, reducescatter_input)
+    else:
+        raise ValueError(f"Unsupported collective op: {op_type}")
     
     torch.cuda.synchronize()
     dist.barrier()
@@ -234,16 +236,15 @@ def benchmark_collective(
     end = torch.cuda.Event(enable_timing=True)
     
     start.record()
-    for _ in range(iterations):
-        if op_type == "allreduce":
-            dist.all_reduce(tensor.clone())
-        elif op_type == "allgather":
-            output = [torch.empty_like(tensor) for _ in range(world_size)]
-            dist.all_gather(output, tensor)
-        elif op_type == "reducescatter":
-            output = torch.empty(size // world_size, device=device, dtype=torch.float32)
-            input_list = list(tensor.chunk(world_size))
-            dist.reduce_scatter(output, input_list)
+    if op_type == "allreduce":
+        for _ in range(iterations):
+            dist.all_reduce(tensor)
+    elif op_type == "allgather":
+        for _ in range(iterations):
+            dist.all_gather(allgather_output, tensor)
+    else:
+        for _ in range(iterations):
+            dist.reduce_scatter(reducescatter_output, reducescatter_input)
     end.record()
     end.synchronize()
     
@@ -348,11 +349,11 @@ def measure_latency_bandwidth_curve(rank: int, world_size: int) -> Dict[int, Tup
         if size_elements == 0:
             size_elements = 1
         
-        tensor = torch.randn(size_elements, device=device, dtype=torch.float32)
+        tensor = torch.zeros(size_elements, device=device, dtype=torch.float32)
         
         # Warmup
         for _ in range(5):
-            dist.all_reduce(tensor.clone())
+            dist.all_reduce(tensor)
         torch.cuda.synchronize()
         dist.barrier()
         
@@ -364,7 +365,7 @@ def measure_latency_bandwidth_curve(rank: int, world_size: int) -> Dict[int, Tup
         
         start.record()
         for _ in range(iterations):
-            dist.all_reduce(tensor.clone())
+            dist.all_reduce(tensor)
         end.record()
         end.synchronize()
         

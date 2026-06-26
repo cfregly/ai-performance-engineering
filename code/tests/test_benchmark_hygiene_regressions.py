@@ -176,6 +176,34 @@ def test_cluster_all_reduce_tool_reuses_bandwidth_scalar_buffer() -> None:
     assert "algbw[size] = (algbw_sum / TRIALS).item()" in run_section
 
 
+def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
+    source = (REPO_ROOT / "ch04" / "bandwidth_benchmark_suite_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    p2p_section = source.split("def benchmark_p2p_bandwidth", maxsplit=1)[1].split(
+        "def measure_p2p_matrix", maxsplit=1
+    )[0]
+    matrix_section = source.split("def measure_p2p_matrix", maxsplit=1)[1].split(
+        "def benchmark_collective", maxsplit=1
+    )[0]
+    collective_section = source.split("def benchmark_collective", maxsplit=1)[1].split(
+        "def measure_collectives", maxsplit=1
+    )[0]
+    curve_section = source.split("def measure_latency_bandwidth_curve", maxsplit=1)[1].split(
+        "def visualize_topology", maxsplit=1
+    )[0]
+
+    assert p2p_section.count("recv_tensor = torch.empty_like(tensor)") == 1
+    assert "torch.tensor([bw]" not in matrix_section
+    assert "bw_tensor = torch.empty(1, device=torch.cuda.current_device()" in matrix_section
+    assert "dist.all_reduce(tensor.clone())" not in collective_section
+    assert "dist.all_reduce(tensor.clone())" not in curve_section
+    assert "allgather_output = [torch.empty_like(tensor) for _ in range(world_size)]" in collective_section
+    assert "dist.all_gather(allgather_output, tensor)" in collective_section
+    assert "reducescatter_input = list(tensor.chunk(world_size))" in collective_section
+    assert "dist.reduce_scatter(reducescatter_output, reducescatter_input)" in collective_section
+
+
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()
