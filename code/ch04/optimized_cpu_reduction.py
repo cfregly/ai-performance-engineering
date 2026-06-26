@@ -84,8 +84,8 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             # In-place sum reduction (stays on GPU)
             if self._reduction_buffer is None or self._output_buffer is None:
                 raise RuntimeError("Reduction buffers not initialized")
-            self._reduction_buffer.zero_()
-            for shard in shards:
+            self._reduction_buffer.copy_(shards[0])
+            for shard in shards[1:]:
                 self._reduction_buffer.add_(shard)
             
             # Average
@@ -165,5 +165,4 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedGpuReductionBenchmark()
-
 

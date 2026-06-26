@@ -749,6 +749,18 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     assert "self._output_buffer.copy_(self._reduction_buffer)" in benchmark_section
 
 
+def test_ch04_optimized_gpu_reduction_seeds_from_first_shard() -> None:
+    source = (REPO_ROOT / "ch04" / "optimized_cpu_reduction.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._reduction_buffer.copy_(shards[0])" in benchmark_section
+    assert "for shard in shards[1:]" in benchmark_section
+    assert "self._reduction_buffer.zero_()" not in benchmark_section
+
+
 def test_moe_cuda_naive_backend_skips_redundant_mask_any_sync() -> None:
     source = (REPO_ROOT / "labs" / "moe_cuda" / "moe_backend_common.py").read_text(
         encoding="utf-8"
