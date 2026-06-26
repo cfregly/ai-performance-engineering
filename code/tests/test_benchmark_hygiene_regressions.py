@@ -155,6 +155,27 @@ def test_kv_locality_microbench_reuses_copy_stream_and_defers_output_tensor() ->
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_cluster_all_reduce_tool_reuses_bandwidth_scalar_buffer() -> None:
+    source = (REPO_ROOT / "cluster" / "tools" / "all_reduce_bench.py").read_text(
+        encoding="utf-8"
+    )
+    timed_section = source.split("def timed_allreduce", maxsplit=1)[1].split(
+        "def run", maxsplit=1
+    )[0]
+    run_section = source.split("def run", maxsplit=1)[1].split(
+        "def device_id_kwargs", maxsplit=1
+    )[0]
+
+    assert "torch.tensor([size / duration])" not in source
+    assert "torch.stack(" not in run_section
+    assert "algbw_gather" not in run_section
+    assert "def timed_allreduce(tensor, size, start_event, end_event, algbw_buffer)" in source
+    assert "algbw_buffer.fill_(size / duration)" in timed_section
+    assert "algbw_buffer = torch.empty(1, device=tensor.device, dtype=torch.float32)" in run_section
+    assert "algbw_sum.add_(algbw_buffer)" in run_section
+    assert "algbw[size] = (algbw_sum / TRIALS).item()" in run_section
+
+
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()

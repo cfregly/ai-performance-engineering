@@ -70,7 +70,6 @@ all_reduce_bench.py
 
 """
 
-from pathlib import Path
 import datetime
 import gc
 import json
@@ -80,6 +79,8 @@ import socket
 import sys
 import textwrap
 import time
+from pathlib import Path
+
 import torch
 import torch.distributed as dist
 
@@ -145,7 +146,7 @@ def plot(path, x, y, ranks):
     plt.savefig(path, bbox_inches="tight")
 
 
-def timed_allreduce(tensor, size, start_event, end_event):
+def timed_allreduce(tensor, size, start_event, end_event, algbw_buffer):
     dist.barrier()
     start_event.record()
     dist.all_reduce(tensor)
@@ -155,13 +156,11 @@ def timed_allreduce(tensor, size, start_event, end_event):
 
     n = dist.get_world_size()
     # note that this is following the same math as NVIDIA/nccl-tests
-    algbw = torch.tensor([size / duration]).cuda(local_rank)
+    algbw_buffer.fill_(size / duration)
 
     # calculate mean across all ranks
-    dist.reduce(algbw, dst=0, op=dist.ReduceOp.SUM)
-    algbw /= n
-
-    return algbw
+    dist.reduce(algbw_buffer, dst=0, op=dist.ReduceOp.SUM)
+    algbw_buffer /= n
 
 
 def run(local_rank):
@@ -266,26 +265,28 @@ def run(local_rank):
 
         # /4 is for 4 bytes in fp32
         tensor = torch.rand(size // 4, 1, dtype=torch.float32).cuda(local_rank)
+        algbw_buffer = torch.empty(1, device=tensor.device, dtype=torch.float32)
+        algbw_sum = torch.zeros(1, device=tensor.device, dtype=torch.float32)
 
         # do a few warm up iterations
         for i in range(WARMUPS):
-            timed_allreduce(tensor, size, start_event, end_event)
+            timed_allreduce(tensor, size, start_event, end_event, algbw_buffer)
 
         # real benchmark
-        algbw_gather = []
         for i in range(TRIALS):
             if is_global_rank_0:
                 print(f"{fmt_bytes(size):>6}: {i+1}", end="\r")
-            algbw_gather += timed_allreduce(tensor, size, start_event, end_event)
+            timed_allreduce(tensor, size, start_event, end_event, algbw_buffer)
+            if is_global_rank_0:
+                algbw_sum.add_(algbw_buffer)
         if is_global_rank_0:
             print()
+            algbw[size] = (algbw_sum / TRIALS).item()
 
-        algbw[size] = torch.mean(torch.stack(algbw_gather)).item()
-
-        # the 2*(n-1)/n busbw correction factor specific to all-reduce is explained here:
-        # https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md#allreduce
-        # busbw reflects how optimally the hardware is used
-        busbw[size] = algbw[size] * (2 * (ranks - 1) / ranks)
+            # the 2*(n-1)/n busbw correction factor specific to all-reduce is explained here:
+            # https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md#allreduce
+            # busbw reflects how optimally the hardware is used
+            busbw[size] = algbw[size] * (2 * (ranks - 1) / ranks)
 
     finish()
 
@@ -296,8 +297,9 @@ def device_id_kwargs(local_rank):
     this util returns a dict to be passed to `dist.init_process_group` to set `device_id` if it's safe to do so.
     """
 
-    from packaging import version
     import inspect
+
+    from packaging import version
 
     # 1. device_id arg was added in torch==2.3
     # 2. setting device_id leads to hanging in 2.6.0<torch<2.7.1 https://github.com/pytorch/pytorch/issues/153960
@@ -314,4 +316,3 @@ if __name__ == "__main__":
     torch.cuda.set_device(local_rank)
     dist.init_process_group("nccl", **device_id_kwargs(local_rank))
     run(local_rank)
-
