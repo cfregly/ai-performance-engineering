@@ -2310,6 +2310,7 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
         in stats_logger_section
     )
     assert "torch.stack(self._overflow_tensors).sum().detach().cpu().tolist()" in stats_logger_section
+    assert "if valid.any()" not in stats_logger_section
     assert "overflow_mask.sum().item()" not in stats_logger_section
     assert "self.entropy.append(float(entropy_val))" not in stats_logger_section
     assert "loss_values = torch.stack((token_loss.detach(), *(loss.detach() for loss in decode_losses))).cpu().tolist()" in report_section

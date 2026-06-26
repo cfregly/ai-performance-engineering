@@ -54,11 +54,10 @@ class MoEStatsLogger:
         if expert_indices is not None:
             flat = expert_indices.reshape(-1)
             valid = (flat >= 0) & (flat < self.num_experts)
-            if valid.any():
-                self.expert_counts += torch.bincount(
-                    flat[valid],
-                    minlength=self.num_experts,
-                ).cpu()
+            self.expert_counts += torch.bincount(
+                flat[valid],
+                minlength=self.num_experts,
+            ).cpu()
             self.total_tokens += int(expert_indices.shape[0])
 
         overflow_mask = stats.get("overflow_mask")
