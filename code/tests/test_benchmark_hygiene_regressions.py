@@ -724,6 +724,20 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "self._output = torch.cat(self._pending_outputs, dim=0)" in capture_section
 
 
+def test_ch15_inference_placement_defers_output_tensor_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "ch15" / "baseline_inference_placement.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+
+    assert "torch.tensor(" not in benchmark_section
+    assert "self._output_values = [" in benchmark_section
+    assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

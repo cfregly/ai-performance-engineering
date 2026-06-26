@@ -6,13 +6,13 @@ from typing import Dict, Optional
 
 import torch
 
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 from ch15.placement_sim import (  # noqa: E402
     PlacementConfig,
     PlacementSimulator,
     percentile,
 )
 from core.benchmark.verification_mixin import VerificationPayloadMixin  # noqa: E402
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
 
 
 class _PlacementBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -26,6 +26,7 @@ class _PlacementBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.simulator = PlacementSimulator()
         self._summary: Dict[str, float] = {}
         self.output = None  # Simulation metrics as tensor
+        self._output_values: list[float] = []
         self.register_workload_metadata(requests_per_iteration=float(self.sessions))
         self._verify_cfg = torch.tensor(
             [cfg.prefill_tp_size, cfg.decode_tp_size, cfg.decode_microbatch],
@@ -60,12 +61,16 @@ class _PlacementBenchmark(VerificationPayloadMixin, BaseBenchmark):
             f"{self.prefix}.remote_expert_ms": run.remote_expert_ms,
         }
         # Capture simulation metrics as tensor for verification
-        self.output = torch.tensor([
+        self._output_values = [
             ttft_p50, ttft_p95, decode_p50, decode_p95, tput_tokens_s,
             float(run.cross_node_kv_moves), float(run.cross_node_collectives),
-        ], dtype=torch.float32)
+        ]
+        self.output = None
 
     def capture_verification_payload(self) -> None:
+        if not self._output_values:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self.output = torch.tensor(self._output_values, dtype=torch.float32)
         self._set_verification_payload(
             inputs={"config": self._verify_cfg},
             output=self.output,
@@ -127,4 +132,3 @@ class BaselineInferencePlacementBenchmark(_PlacementBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineInferencePlacementBenchmark()
-
