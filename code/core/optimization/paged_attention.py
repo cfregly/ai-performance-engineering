@@ -35,10 +35,10 @@ class PagedKVCache:
             self.config.head_dim,
         )
         self.k_pages.append(
-            torch.zeros(page_shape, dtype=self.config.dtype, device=self.config.device)
+            torch.empty(page_shape, dtype=self.config.dtype, device=self.config.device)
         )
         self.v_pages.append(
-            torch.zeros(page_shape, dtype=self.config.dtype, device=self.config.device)
+            torch.empty(page_shape, dtype=self.config.dtype, device=self.config.device)
         )
 
     def write(self, pos: int, k: torch.Tensor, v: torch.Tensor) -> None:
@@ -72,10 +72,13 @@ class PagedKVCache:
 
         k_list = []
         v_list = []
-        for pos in range(length):
+        pos = 0
+        while pos < length:
             page_idx = self.page_map[pos] if pos < len(self.page_map) else len(self.k_pages) - 1
             offset = pos % self.config.page_size
-            k_list.append(self.k_pages[page_idx][:, offset : offset + 1, :, :])
-            v_list.append(self.v_pages[page_idx][:, offset : offset + 1, :, :])
+            take = min(self.config.page_size - offset, length - pos)
+            k_list.append(self.k_pages[page_idx][:, offset : offset + take, :, :])
+            v_list.append(self.v_pages[page_idx][:, offset : offset + take, :, :])
+            pos += take
 
         return torch.cat(k_list, dim=1), torch.cat(v_list, dim=1)
