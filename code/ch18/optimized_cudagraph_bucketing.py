@@ -14,7 +14,7 @@ Key Optimization (Ch18):
 from __future__ import annotations
 
 import argparse
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -109,7 +109,7 @@ class CUDAGraphBucketing:
         
         # Allocate static input buffer - match model dtype
         model_dtype = next(self.model.parameters()).dtype
-        self.static_inputs[key] = torch.zeros(
+        self.static_inputs[key] = torch.empty(
             batch_size, seq_len, self.hidden_dim,
             device=self.device, dtype=model_dtype
         )

@@ -1314,6 +1314,21 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
         assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_ch18_cudagraph_bucketing_static_inputs_avoid_zero_fill() -> None:
+    for relative in (
+        "ch18/optimized_cudagraph_bucketing.py",
+        "ch18/cudagraph_bucketing_simulator.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        capture_section = source.split("def _capture_graph", maxsplit=1)[1].split(
+            "def _find_bucket",
+            maxsplit=1,
+        )[0]
+
+        assert "self.static_inputs[key] = torch.empty(" in capture_section
+        assert "self.static_inputs[key] = torch.zeros(" not in capture_section
+
+
 def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None:
     source = (REPO_ROOT / "ch18" / "optimized_vllm_decode_graphs.py").read_text(encoding="utf-8")
     workspace_section = source.split("class BucketWorkspace", maxsplit=1)[1].split(
