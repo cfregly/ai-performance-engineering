@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import inspect
 from types import SimpleNamespace
+
+import torch
 
 import labs.moe_cuda_ptx.moe_cuda_ptx_common as moe_common
 
@@ -62,3 +65,36 @@ def test_run_layer_cuda_forward_skips_standalone_quantize_roundtrip(monkeypatch)
 
     assert result == "combined_outputs"
     assert calls == {"pack": 1, "grouped": 1, "combine": 1}
+
+
+def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
+    source = inspect.getsource(moe_common.pack_topk_routes)
+    assert "starts = torch.cat(" not in source
+    assert "starts = torch.empty_like(counts)" in source
+
+    x = torch.arange(20, dtype=torch.float32).view(5, 4)
+    expert_indices = torch.tensor(
+        [
+            [1, 0],
+            [2, 1],
+            [0, 2],
+            [1, 2],
+            [0, 1],
+        ],
+        dtype=torch.long,
+    )
+    expert_weights = torch.ones_like(expert_indices, dtype=torch.float32)
+
+    packed = moe_common.pack_topk_routes(
+        x,
+        expert_indices,
+        expert_weights,
+        num_experts=3,
+    )
+
+    expected_counts = torch.bincount(expert_indices.reshape(-1), minlength=3)
+    expected_starts = torch.tensor(
+        [0, int(expected_counts[0]), int(expected_counts[0] + expected_counts[1])],
+        dtype=torch.long,
+    )
+    torch.testing.assert_close(packed.starts.cpu(), expected_starts)

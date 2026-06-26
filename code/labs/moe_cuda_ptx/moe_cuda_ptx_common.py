@@ -290,13 +290,11 @@ def pack_topk_routes(
 
     counts = torch.bincount(sorted_expert_ids, minlength=num_experts)
     counts_cpu = tuple(int(count) for count in counts.detach().cpu().tolist())
-    starts = torch.cat(
-        [
-            torch.zeros(1, device=x.device, dtype=torch.long),
-            counts.cumsum(dim=0)[:-1],
-        ],
-        dim=0,
-    )
+    cumsum = counts.cumsum(dim=0)
+    starts = torch.empty_like(counts)
+    starts[0] = 0
+    if starts.numel() > 1:
+        starts[1:].copy_(cumsum[:-1])
     positions = torch.arange(sorted_expert_ids.numel(), device=x.device, dtype=torch.long) - starts.index_select(
         0, sorted_expert_ids
     )
