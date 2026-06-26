@@ -681,7 +681,19 @@ class DeepSeekHybridEPModule(nn.Module):
                 remote_node_mask = owner_nodes != self.topology.node_rank
 
             remote_outputs: Optional[torch.Tensor] = None
-            overlap_active = bool(remote_node_mask.any()) and self.topology.world_size > 1 and overlap_mode == "local_remote"
+            route_type_counts = torch.stack(
+                (
+                    same_rank_mask.sum(),
+                    same_node_mask.sum(),
+                    remote_node_mask.sum(),
+                )
+            ).detach().cpu().tolist()
+            same_rank_count_int, same_node_count_int, remote_count_int = (
+                int(count) for count in route_type_counts
+            )
+            overlap_active = (
+                remote_count_int > 0 and self.topology.world_size > 1 and overlap_mode == "local_remote"
+            )
             if overlap_active:
                 local_branch_start, local_branch_end = self._event_pair("local_branch")
                 remote_branch_start, remote_branch_end = self._event_pair("remote_branch")
@@ -712,7 +724,7 @@ class DeepSeekHybridEPModule(nn.Module):
 
             if overlap_active and local_branch_events is not None:
                 local_branch_events[0].record(torch.cuda.current_stream())
-            if bool(same_rank_mask.any()):
+            if same_rank_count_int > 0:
                 same_rank_start, same_rank_end = self._event_pair("same_rank")
                 same_rank_start.record(torch.cuda.current_stream())
                 local_outputs = self._apply_local_experts(
@@ -723,7 +735,7 @@ class DeepSeekHybridEPModule(nn.Module):
                 combined.index_add_(0, token_indices[same_rank_mask], local_outputs)
                 same_rank_end.record(torch.cuda.current_stream())
                 same_rank_events = (same_rank_start, same_rank_end)
-            if bool(same_node_mask.any()) and self.topology.local_group is not None:
+            if same_node_count_int > 0 and self.topology.local_group is not None:
                 local_group_ranks = owner_ranks[same_node_mask] % self.topology.local_world_size
                 same_node_outputs, same_node_events = self._roundtrip_routes(
                     tokens=expanded_tokens[same_node_mask],
@@ -744,7 +756,7 @@ class DeepSeekHybridEPModule(nn.Module):
             if overlap_active and local_branch_events is not None:
                 local_branch_events[1].record(torch.cuda.current_stream())
 
-            if remote_outputs is None and bool(remote_node_mask.any()) and self.topology.world_size > 1:
+            if remote_outputs is None and remote_count_int > 0 and self.topology.world_size > 1:
                 if remote_branch_events is not None:
                     remote_branch_events[0].record(torch.cuda.current_stream())
                 remote_outputs, remote_events = self._roundtrip_routes(
@@ -769,16 +781,9 @@ class DeepSeekHybridEPModule(nn.Module):
                 combined.index_add_(0, token_indices[remote_node_mask], remote_outputs)
             if overlap_active and overlap_window_events is not None:
                 overlap_window_events[1].record(torch.cuda.current_stream())
-            route_type_counts = torch.stack(
-                (
-                    same_rank_mask.sum(),
-                    same_node_mask.sum(),
-                    remote_node_mask.sum(),
-                )
-            ).detach().cpu().tolist()
-            same_rank_count, same_node_count, remote_count = (
-                float(int(count)) for count in route_type_counts
-            )
+            same_rank_count = float(same_rank_count_int)
+            same_node_count = float(same_node_count_int)
+            remote_count = float(remote_count_int)
         else:
             baseline_outputs, baseline_events = self._roundtrip_routes(
                 tokens=expanded_tokens,

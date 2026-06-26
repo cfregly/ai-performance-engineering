@@ -294,6 +294,10 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "combined = torch.zeros_like(hidden)" not in forward_section
     assert "route_counts_global = route_counts" in forward_section
     assert "route_type_counts = torch.stack(" in forward_section
+    assert "same_rank_count_int, same_node_count_int, remote_count_int" in forward_section
+    assert "bool(same_rank_mask.any())" not in forward_section
+    assert "bool(same_node_mask.any())" not in forward_section
+    assert "bool(remote_node_mask.any())" not in forward_section
     assert "same_rank_mask.sum().item()" not in forward_section
     assert "same_node_mask.sum().item()" not in forward_section
     assert "remote_node_mask.sum().item()" not in forward_section
