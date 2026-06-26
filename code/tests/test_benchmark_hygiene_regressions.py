@@ -651,6 +651,27 @@ def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
         assert ".abs().max().item() /" not in section
 
 
+def test_nvfp4_utils_reuse_nonzero_indices_for_mismatch_counts() -> None:
+    targets = (
+        REPO_ROOT / "labs" / "nvfp4_gemm" / "utils.py",
+        REPO_ROOT / "labs" / "nvfp4_dual_gemm" / "utils.py",
+    )
+
+    for path in targets:
+        source = path.read_text(encoding="utf-8")
+
+        assert source.count("mismatched_indices = torch.nonzero(mismatched, as_tuple=False)") == 2
+        assert source.count("num_mismatched = int(mismatched_indices.shape[0])") == 2
+        assert (
+            source.count(
+                "mismatch_index_rows = mismatched_indices[:max_print].detach().cpu().tolist()"
+            )
+            == 2
+        )
+        assert "mismatched.count_nonzero().item()" not in source
+        assert "index.tolist()" not in source
+
+
 def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     ch14_source = (REPO_ROOT / "ch14" / "baseline_sliding_window.py").read_text(
         encoding="utf-8"

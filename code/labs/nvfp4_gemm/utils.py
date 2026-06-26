@@ -74,17 +74,18 @@ def verbose_allclose(
         torch.logical_or(posinf_mismatched, neginf_mismatched),
     )
 
-    mismatched_indices = torch.nonzero(mismatched)
+    mismatched_indices = torch.nonzero(mismatched, as_tuple=False)
 
     # Count the number of mismatched elements
-    num_mismatched = mismatched.count_nonzero().item()
+    num_mismatched = int(mismatched_indices.shape[0])
 
     # Generate detailed information if there are mismatches
     if num_mismatched >= 1:
         mismatch_details = [f"Number of mismatched elements: {num_mismatched}"]
 
-        for index in mismatched_indices[:max_print]:
-            i = tuple(index.tolist())
+        mismatch_index_rows = mismatched_indices[:max_print].detach().cpu().tolist()
+        for index in mismatch_index_rows:
+            i = tuple(int(dim) for dim in index)
             mismatch_details.append(f"ERROR AT {i}: {received[i]} {expected[i]}")
         if num_mismatched > max_print:
             mismatch_details.append(
@@ -111,17 +112,18 @@ def verbose_allequal(
          Empty string if tensors are equal, otherwise detailed error information
     """
     mismatched = torch.not_equal(received, expected)
-    mismatched_indices = torch.nonzero(mismatched)
+    mismatched_indices = torch.nonzero(mismatched, as_tuple=False)
 
     # Count the number of mismatched elements
-    num_mismatched = mismatched.count_nonzero().item()
+    num_mismatched = int(mismatched_indices.shape[0])
 
     # Generate detailed information if there are mismatches
     if num_mismatched >= 1:
         mismatch_details = [f"Number of mismatched elements: {num_mismatched}"]
 
-        for index in mismatched_indices[:max_print]:
-            i = tuple(index.tolist())
+        mismatch_index_rows = mismatched_indices[:max_print].detach().cpu().tolist()
+        for index in mismatch_index_rows:
+            i = tuple(int(dim) for dim in index)
             mismatch_details.append(f"ERROR AT {i}: {received[i]} {expected[i]}")
         if num_mismatched > max_print:
             mismatch_details.append(
