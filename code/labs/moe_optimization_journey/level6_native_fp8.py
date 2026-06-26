@@ -14,14 +14,15 @@ Results:
 - FP8:  55-58% of peak → 1.4x speedup!
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import time
 from typing import List
 
-from core.harness.benchmark_harness import BaseBenchmark
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.harness.benchmark_harness import BaseBenchmark
 
 
 class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
@@ -110,6 +111,7 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.x.dtype,
         )
+        self._payload_param_count = int(self.w1_fp8.numel() + self.w2_fp8.numel() + self.w3_fp8.numel())
         
         print(f"FP8 weight memory: {(self.w1_fp8.numel() + self.w3_fp8.numel() + self.w2_fp8.numel()) / 1e9:.2f} GB")
         print(f"(vs BF16: {(w1.numel() + w3.numel() + w2.numel()) * 2 / 1e9:.2f} GB)")
@@ -161,17 +163,17 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
             output[offset:offset+count] = expert_out * weights_e
             offset += count
         
-        self.output = output[:1, : min(8, output.shape[1])].detach().float().clone()
+        self.output = output[:1, : min(8, output.shape[1])]
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
-        param_count = int(self.w1_fp8.numel() + self.w2_fp8.numel() + self.w3_fp8.numel())
-        self._payload_param_count = param_count
 
     def capture_verification_payload(self) -> None:
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must run before verification capture")
         param_count = self._payload_param_count
         self._set_verification_payload(
             inputs={"x": self.x.detach()},
-            output=self.output,
+            output=self.output.detach().float().clone(),
             batch_size=self.BATCH_SIZE,
             parameter_count=param_count,
             precision_flags={"bf16": True, "fp8": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -188,5 +190,4 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> NativeFP8MoE:
     return NativeFP8MoE()
-
 

@@ -29,13 +29,13 @@ REQUIREMENTS:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
-from typing import Tuple, Optional
-from dataclasses import dataclass
-from enum import Enum
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
@@ -492,14 +492,15 @@ class FP8PerChannelDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input not initialized")
         with torch.no_grad():
             output = self.demo_benchmark.per_channel_linear(self._verify_input)
-            self._last = float(output.detach().sum())
-            self.output = output.detach().float().clone()
+            self.output = output
 
     def capture_verification_payload(self) -> None:
         verify_input = self._payload_verify_input
+        if self.output is None or verify_input is None:
+            raise RuntimeError("benchmark_fn() must run before verification capture")
         self._set_verification_payload(
             inputs={"input": verify_input},
-            output=self.output,
+            output=self.output.detach().float().clone(),
             batch_size=self.batch_size,
             precision_flags={
                 "fp16": False,
@@ -541,5 +542,4 @@ class FP8PerChannelDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return FP8PerChannelDemoBenchmark()
-
 

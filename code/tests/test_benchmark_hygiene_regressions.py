@@ -571,6 +571,36 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
     assert "self.output = None" in optimized_benchmark
 
 
+def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> None:
+    perchannel_source = (REPO_ROOT / "ch13" / "fp8_perchannel_demo.py").read_text(encoding="utf-8")
+    perchannel_benchmark = perchannel_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    perchannel_capture = perchannel_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+
+    assert "float(output.detach().sum())" not in perchannel_benchmark
+    assert ".detach().float().clone()" not in perchannel_benchmark
+    assert "self.output = output" in perchannel_benchmark
+    assert "output=self.output.detach().float().clone()" in perchannel_capture
+
+    moe_source = (
+        REPO_ROOT / "labs" / "moe_optimization_journey" / "level6_native_fp8.py"
+    ).read_text(encoding="utf-8")
+    moe_benchmark = moe_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    moe_capture = moe_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_extra_metrics", maxsplit=1
+    )[0]
+
+    assert ".detach().float().clone()" not in moe_benchmark
+    assert "self.output = output[:1, : min(8, output.shape[1])]" in moe_benchmark
+    assert "self._payload_param_count = int(" in moe_source
+    assert "output=self.output.detach().float().clone()" in moe_capture
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
