@@ -855,6 +855,21 @@ def test_ch02_grace_coherent_memory_defers_verification_slice_clone() -> None:
         assert "self.output = self._impl.cpu_data[:1000].detach().clone()" in capture_section
 
 
+def test_ch15_guided_decoding_reuses_mask_and_slice_buffers() -> None:
+    source = (REPO_ROOT / "ch15" / "guided_decoding_common.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self.masked_logits_buffer = torch.empty_like(self.logits)" in source
+    assert "self.output_buffer = torch.empty(" in source
+    assert "masked = logits.masked_fill" not in benchmark_section
+    assert ".index_select(1, self.slice_ids)" not in benchmark_section
+    assert "masked_logits.masked_fill_(self.disallowed_mask_buffer, float(\"-inf\"))" in benchmark_section
+    assert "torch.index_select(masked_logits, 1, self.slice_ids, out=output)" in benchmark_section
+    assert "torch.index_select(masked_logits, 1, self.slice_ids_buffer, out=output)" in benchmark_section
+
+
 def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_stack() -> None:
     source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_multigpu_common.py").read_text(
         encoding="utf-8"

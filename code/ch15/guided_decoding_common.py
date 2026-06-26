@@ -8,7 +8,7 @@ from typing import Optional
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.benchmark.wrapper_utils import attach_benchmark_metadata
+from core.benchmark.wrapper_utils import attach_benchmark_metadata  # noqa: F401
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
@@ -59,7 +59,10 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.slice_ids: Optional[torch.Tensor] = None
         self.cpu_mask_buffer: Optional[torch.Tensor] = None
         self.gpu_mask_buffer: Optional[torch.Tensor] = None
+        self.disallowed_mask_buffer: Optional[torch.Tensor] = None
+        self.masked_logits_buffer: Optional[torch.Tensor] = None
         self.slice_ids_buffer: Optional[torch.Tensor] = None
+        self.output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
@@ -82,6 +85,7 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             mask = torch.zeros(self.vocab_size, dtype=torch.bool, device=self.device)
             mask[self.allowed_token_ids.to(self.device)] = True
             self.allowed_mask = mask
+            self.disallowed_mask_buffer = torch.logical_not(mask)
             self.slice_ids = self.allowed_token_ids[: self.output_slice].to(self.device)
             self.cpu_mask_buffer = None
             self.gpu_mask_buffer = None
@@ -91,34 +95,56 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.slice_ids = None
             self.cpu_mask_buffer = torch.empty(self.vocab_size, dtype=torch.bool, device="cpu")
             self.gpu_mask_buffer = torch.empty(self.vocab_size, dtype=torch.bool, device=self.device)
+            self.disallowed_mask_buffer = torch.empty(self.vocab_size, dtype=torch.bool, device=self.device)
             self.slice_ids_buffer = torch.empty(self.output_slice, dtype=torch.int64, device=self.device)
+        self.masked_logits_buffer = torch.empty_like(self.logits)
+        self.output_buffer = torch.empty(
+            self.batch_size,
+            self.output_slice,
+            dtype=self.logits.dtype,
+            device=self.device,
+        )
         self.output = None
 
     def benchmark_fn(self) -> None:
         if self.logits is None or self.allowed_token_ids is None:
             raise RuntimeError("Benchmark not initialized")
+        if self.masked_logits_buffer is None or self.output_buffer is None:
+            raise RuntimeError("Output buffers not initialized")
 
         logits = self.logits
         allowed = self.allowed_token_ids
+        masked_logits = self.masked_logits_buffer
+        output = self.output_buffer
 
         with self._nvtx_range(self.label):
             for _ in range(self.steps):
                 if self.reuse_gpu_mask:
-                    if self.allowed_mask is None or self.slice_ids is None:
+                    if self.disallowed_mask_buffer is None or self.slice_ids is None:
                         raise RuntimeError("GPU mask state not initialized")
-                    masked = logits.masked_fill(~self.allowed_mask, float("-inf"))
-                    self.output = masked.index_select(1, self.slice_ids)
+                    masked_logits.copy_(logits)
+                    masked_logits.masked_fill_(self.disallowed_mask_buffer, float("-inf"))
+                    torch.index_select(masked_logits, 1, self.slice_ids, out=output)
+                    self.output = output
                     continue
 
-                if self.cpu_mask_buffer is None or self.gpu_mask_buffer is None or self.slice_ids_buffer is None:
+                if (
+                    self.cpu_mask_buffer is None
+                    or self.gpu_mask_buffer is None
+                    or self.disallowed_mask_buffer is None
+                    or self.slice_ids_buffer is None
+                ):
                     raise RuntimeError("CPU/GPU mask buffers not initialized")
                 mask_cpu = self.cpu_mask_buffer
                 mask_cpu.zero_()
                 mask_cpu[allowed] = True
                 self.gpu_mask_buffer.copy_(mask_cpu, non_blocking=False)
+                torch.logical_not(self.gpu_mask_buffer, out=self.disallowed_mask_buffer)
                 self.slice_ids_buffer.copy_(allowed[: self.output_slice], non_blocking=False)
-                masked = logits.masked_fill(~self.gpu_mask_buffer, float("-inf"))
-                self.output = masked.index_select(1, self.slice_ids_buffer)
+                masked_logits.copy_(logits)
+                masked_logits.masked_fill_(self.disallowed_mask_buffer, float("-inf"))
+                torch.index_select(masked_logits, 1, self.slice_ids_buffer, out=output)
+                self.output = output
 
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
@@ -150,7 +176,10 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.slice_ids = None
         self.cpu_mask_buffer = None
         self.gpu_mask_buffer = None
+        self.disallowed_mask_buffer = None
+        self.masked_logits_buffer = None
         self.slice_ids_buffer = None
+        self.output_buffer = None
         self.output = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
