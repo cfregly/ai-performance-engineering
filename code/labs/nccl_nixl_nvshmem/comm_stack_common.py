@@ -235,7 +235,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.float32,
             generator=generator,
         )
-        self.dst = torch.zeros_like(self.src)
+        self.dst = torch.empty_like(self.src)
         self.host_stage = torch.empty(
             self.workload.selected_blocks,
             block_elems,
@@ -269,8 +269,6 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._output_buffer is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
-
-        self.dst.zero_()
 
         if not self.optimized:
             if self.selected_cpu is None:

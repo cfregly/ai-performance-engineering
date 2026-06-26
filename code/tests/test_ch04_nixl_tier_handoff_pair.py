@@ -32,6 +32,9 @@ def test_ch04_nixl_tier_handoff_optimized_reuses_pack_buffer() -> None:
 
     assert "self.packed_stage = torch.empty_like(self.gpu_stage)" in source
     assert "self._output_buffer = torch.empty_like(self.gpu_stage)" in source
+    assert "self.dst = torch.empty_like(self.src)" in source
+    assert "self.dst = torch.zeros_like(self.src)" not in source
+    assert "self.dst.zero_()" not in benchmark_section
     assert "packed = self.src.index_select(0, self.selected_idx)" not in benchmark_section
     assert "torch.index_select(self.src, 0, self.selected_idx, out=self.packed_stage)" in benchmark_section
     assert "self.output = self.dst.index_select(0, self.selected_idx)" not in benchmark_section
