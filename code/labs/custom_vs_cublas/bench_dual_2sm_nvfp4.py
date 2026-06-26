@@ -45,6 +45,42 @@ NVFP4_REAL_SOL_TFLOPS = 7500.0
 
 SF_VEC = 16
 E2M1_VALS = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0])
+_E2M1_VALS_BY_DEVICE: dict[torch.device, torch.Tensor] = {}
+_EXACT_CODE_POOL_CPU = torch.tensor([0, 1, 2, 3, 4, 9, 10, 11, 12], dtype=torch.uint8)
+_EXACT_CODE_POOL_BY_DEVICE: dict[torch.device, torch.Tensor] = {}
+_EXACT_SCALE_POOL_CPU = torch.tensor([0.5, 1.0, 2.0])
+_EXACT_SCALE_POOL_BY_DEVICE: dict[torch.device, torch.Tensor] = {}
+_FP8_GATE_VALUES_CPU = torch.tensor([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0])
+_FP8_GATE_VALUES_BY_DEVICE: dict[torch.device, torch.Tensor] = {}
+
+
+def _device_tensor(
+    base: torch.Tensor,
+    cache: dict[torch.device, torch.Tensor],
+    device: torch.device | str,
+) -> torch.Tensor:
+    dev = torch.device(device)
+    cached = cache.get(dev)
+    if cached is None:
+        cached = base.to(dev)
+        cache[dev] = cached
+    return cached
+
+
+def e2m1_values(device: torch.device | str) -> torch.Tensor:
+    return _device_tensor(E2M1_VALS, _E2M1_VALS_BY_DEVICE, device)
+
+
+def exact_code_pool(device: torch.device | str) -> torch.Tensor:
+    return _device_tensor(_EXACT_CODE_POOL_CPU, _EXACT_CODE_POOL_BY_DEVICE, device)
+
+
+def exact_scale_pool(device: torch.device | str) -> torch.Tensor:
+    return _device_tensor(_EXACT_SCALE_POOL_CPU, _EXACT_SCALE_POOL_BY_DEVICE, device)
+
+
+def fp8_gate_values(device: torch.device | str = "cuda") -> torch.Tensor:
+    return _device_tensor(_FP8_GATE_VALUES_CPU, _FP8_GATE_VALUES_BY_DEVICE, device)
 
 
 def ceil_div(a, b):
@@ -75,10 +111,9 @@ def pack_codes(codes: torch.Tensor) -> torch.Tensor:
 
 
 def decode_codes(codes: torch.Tensor) -> torch.Tensor:
-    vals = E2M1_VALS.to(codes.device)
+    vals = e2m1_values(codes.device)
     mag = vals[(codes & 7).long()]
-    sign = torch.where(codes >= 8, -1.0, 1.0).to(mag.dtype)
-    return mag * sign
+    return torch.where(codes >= 8, -mag, mag)
 
 
 def make_exact_data(size: int):
@@ -86,10 +121,10 @@ def make_exact_data(size: int):
     torch.manual_seed(42)
     dev = "cuda"
     # codes for {0, +-0.5, +-1, +-1.5, +-2} = {0,1,2,3,4, 9,10,11,12}
-    pool = torch.tensor([0, 1, 2, 3, 4, 9, 10, 11, 12], dtype=torch.uint8, device=dev)
+    pool = exact_code_pool(dev)
     a_codes = pool[torch.randint(0, 9, (size, size), device=dev)]
     b_codes = pool[torch.randint(0, 9, (size, size), device=dev)]
-    spool = torch.tensor([0.5, 1.0, 2.0], device=dev)
+    spool = exact_scale_pool(dev)
     sa = spool[torch.randint(0, 3, (size, size // SF_VEC), device=dev)]
     sb = spool[torch.randint(0, 3, (size, size // SF_VEC), device=dev)]
     return (pack_codes(a_codes), pack_codes(b_codes),
@@ -105,7 +140,7 @@ def quantize_nvfp4(x: torch.Tensor):
     scale8 = (amax / 6.0).clamp(min=1e-4).to(torch.float8_e4m3fn)
     s = scale8.float()
     q = (xg / s.unsqueeze(-1)).clamp(-6.0, 6.0)
-    cand = E2M1_VALS.to(x.device)
+    cand = e2m1_values(x.device)
     idx = (q.abs().unsqueeze(-1) - cand).abs().argmin(dim=-1).to(torch.uint8)
     neg = (q < 0) & (idx > 0)
     codes = (idx + neg.to(torch.uint8) * 8).view(rows, k)
@@ -187,7 +222,7 @@ def run_gates(size=4096):
     from labs.custom_vs_cublas.tcgen05_loader import (
         matmul_tcgen05_dual_2sm_fp8, matmul_tcgen05_dual_cta_2sm)
     torch.manual_seed(7)
-    vals = torch.tensor([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0], device="cuda")
+    vals = fp8_gate_values("cuda")
     a8 = vals[torch.randint(0, 9, (size, size), device="cuda")].to(torch.float8_e4m3fn)
     b8 = vals[torch.randint(0, 9, (size, size), device="cuda")].to(torch.float8_e4m3fn)
     saved = torch.backends.cuda.matmul.allow_tf32

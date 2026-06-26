@@ -653,6 +653,47 @@ def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
         assert ".abs().max().item() /" not in section
 
 
+def test_custom_vs_cublas_dual_benches_cache_device_constants() -> None:
+    dual_fp8 = (
+        REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_2sm_fp8.py"
+    ).read_text(encoding="utf-8")
+    dual_nvfp4 = (
+        REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_2sm_nvfp4.py"
+    ).read_text(encoding="utf-8")
+
+    dual_fp8_make = dual_fp8.split("def make_fp8_data", maxsplit=1)[1].split(
+        "def fp32_ref",
+        maxsplit=1,
+    )[0]
+    dual_nvfp4_decode = dual_nvfp4.split("def decode_codes", maxsplit=1)[1].split(
+        "def make_exact_data",
+        maxsplit=1,
+    )[0]
+    dual_nvfp4_exact = dual_nvfp4.split("def make_exact_data", maxsplit=1)[1].split(
+        "def quantize_nvfp4",
+        maxsplit=1,
+    )[0]
+    dual_nvfp4_quantize = dual_nvfp4.split("def quantize_nvfp4", maxsplit=1)[1].split(
+        "def make_randn_data",
+        maxsplit=1,
+    )[0]
+    dual_nvfp4_gates = dual_nvfp4.split("def run_gates", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+
+    assert "fp8_exact_values(" in dual_fp8_make
+    assert "torch.tensor(" not in dual_fp8_make
+    assert "e2m1_values(codes.device)" in dual_nvfp4_decode
+    assert "sign =" not in dual_nvfp4_decode
+    assert "return torch.where(codes >= 8, -mag, mag)" in dual_nvfp4_decode
+    assert "torch.tensor(" not in dual_nvfp4_exact
+    assert "e2m1_values(x.device)" in dual_nvfp4_quantize
+    assert "E2M1_VALS.to(" not in dual_nvfp4_decode + dual_nvfp4_quantize
+    assert "fp8_gate_values(" in dual_nvfp4_gates
+    assert "torch.tensor(" not in dual_nvfp4_gates
+
+
 def test_nvfp4_utils_reuse_nonzero_indices_for_mismatch_counts() -> None:
     targets = (
         REPO_ROOT / "labs" / "nvfp4_gemm" / "utils.py",

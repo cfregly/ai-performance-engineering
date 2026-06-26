@@ -45,11 +45,23 @@ import torch  # noqa: E402
 # denominator for the %SoL column until calibrate() overwrites it.
 FP8_REAL_SOL_TFLOPS = 3750.0
 
+_FP8_EXACT_VALUES_CPU = torch.tensor([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0])
+_FP8_EXACT_VALUES_BY_DEVICE: dict[torch.device, torch.Tensor] = {}
+
+
+def fp8_exact_values(device: torch.device | str = "cuda") -> torch.Tensor:
+    dev = torch.device(device)
+    vals = _FP8_EXACT_VALUES_BY_DEVICE.get(dev)
+    if vals is None:
+        vals = _FP8_EXACT_VALUES_CPU.to(dev)
+        _FP8_EXACT_VALUES_BY_DEVICE[dev] = vals
+    return vals
+
 
 def make_fp8_data(size: int, kind: str):
     torch.manual_seed(42)
     if kind == "exact":
-        vals = torch.tensor([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0], device="cuda")
+        vals = fp8_exact_values("cuda")
         a = vals[torch.randint(0, 9, (size, size), device="cuda")].to(torch.float8_e4m3fn)
         b = vals[torch.randint(0, 9, (size, size), device="cuda")].to(torch.float8_e4m3fn)
     else:
