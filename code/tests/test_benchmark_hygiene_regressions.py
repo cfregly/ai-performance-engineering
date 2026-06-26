@@ -1522,6 +1522,18 @@ def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
     assert "num_tokens.item()" not in logging_section
 
 
+def test_train_distributed_pipeline_defers_microbatch_loss_syncs() -> None:
+    source = (REPO_ROOT / "labs" / "train_distributed" / "pipeline.py").read_text(
+        encoding="utf-8"
+    )
+    schedule_section = source.split("class PipelineExperiment", maxsplit=1)[1]
+
+    assert "def _finish_pipeline_loss" in source
+    assert "loss_values.append(loss.detach())" in schedule_section
+    assert "_finish_pipeline_loss(loss_values, n_micro)" in schedule_section
+    assert "loss_total += loss.item()" not in schedule_section
+
+
 def test_nanochat_chat_eval_batches_count_reductions() -> None:
     source = (
         REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_eval.py"

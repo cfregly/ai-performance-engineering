@@ -14,6 +14,12 @@ ScheduleType = Literal["gpipe", "1f1b", "dualpipe", "dualpipev"]
 Tensor = torch.Tensor
 
 
+def _finish_pipeline_loss(loss_values: List[Tensor], n_micro: int) -> float:
+    if not loss_values or n_micro <= 0:
+        return 0.0
+    return float(torch.stack(loss_values).sum().detach().cpu().item() / n_micro)
+
+
 @dataclass
 class PipelineConfig:
     """Configuration for a toy pipeline demo."""
@@ -292,7 +298,7 @@ class PipelineExperiment:
         losses: Dict[int, Tensor] = {}
 
         telemetry = PipelineTelemetry(cfg.n_stages, schedule=cfg.schedule)
-        loss_total = 0.0
+        loss_values: List[Tensor] = []
 
         next_micro = 0
         forward_ticks = n_micro + cfg.n_stages - 1
@@ -322,7 +328,7 @@ class PipelineExperiment:
                     y = micro_tgts[mb_id].to(device, non_blocking=cfg.non_blocking)
                     loss = self.criterion(out, y) / n_micro
                     losses[mb_id] = loss
-                    loss_total += loss.item()
+                    loss_values.append(loss.detach())
 
             for stage_id in range(1, cfg.n_stages):
                 while pending[stage_id]:
@@ -367,7 +373,7 @@ class PipelineExperiment:
 
             telemetry.end_tick()
 
-        avg_loss = loss_total / n_micro if n_micro else 0.0
+        avg_loss = _finish_pipeline_loss(loss_values, n_micro)
         return avg_loss, telemetry
 
     def _run_onef1b(self, inputs: Tensor, targets: Tensor) -> Tuple[float, PipelineTelemetry]:
@@ -384,7 +390,7 @@ class PipelineExperiment:
         losses: Dict[int, Tensor] = {}
 
         telemetry = PipelineTelemetry(cfg.n_stages, schedule=cfg.schedule)
-        loss_total = 0.0
+        loss_values: List[Tensor] = []
 
         next_micro = 0
         completed = 0
@@ -420,7 +426,7 @@ class PipelineExperiment:
                         y = micro_tgts[mb_id].to(device, non_blocking=cfg.non_blocking)
                         loss = self.criterion(out, y) / n_micro
                         losses[mb_id] = loss
-                        loss_total += loss.item()
+                        loss_values.append(loss.detach())
                         pending_bwd[stage_id].append((mb_id, None))
 
                 if bwd_queues[stage_id]:
@@ -454,7 +460,7 @@ class PipelineExperiment:
 
             telemetry.end_tick()
 
-        avg_loss = loss_total / n_micro if n_micro else 0.0
+        avg_loss = _finish_pipeline_loss(loss_values, n_micro)
         return avg_loss, telemetry
 
     def _run_dualpipe(self, inputs: Tensor, targets: Tensor) -> Tuple[float, PipelineTelemetry]:
@@ -474,7 +480,7 @@ class PipelineExperiment:
         losses: Dict[int, Tensor] = {}
 
         telemetry = PipelineTelemetry(cfg.n_stages, schedule=cfg.schedule)
-        loss_total = 0.0
+        loss_values: List[Tensor] = []
         completed = 0
         next_micro = 0
 
@@ -510,7 +516,7 @@ class PipelineExperiment:
                         y = micro_tgts[mb_id].to(device, non_blocking=cfg.non_blocking)
                         loss = self.criterion(out, y) / n_micro
                         losses[mb_id] = loss
-                        loss_total += loss.item()
+                        loss_values.append(loss.detach())
                         bwd_queues[stage_id].append((mb_id, None))
 
                 # Backward lane
@@ -538,7 +544,7 @@ class PipelineExperiment:
 
             telemetry.end_tick()
 
-        avg_loss = loss_total / n_micro if n_micro else 0.0
+        avg_loss = _finish_pipeline_loss(loss_values, n_micro)
         return avg_loss, telemetry
 
     def _run_dualpipev(self, inputs: Tensor, targets: Tensor) -> Tuple[float, PipelineTelemetry]:
@@ -558,7 +564,7 @@ class PipelineExperiment:
         losses: Dict[int, Tensor] = {}
 
         telemetry = PipelineTelemetry(cfg.n_stages, schedule=cfg.schedule)
-        loss_total = 0.0
+        loss_values: List[Tensor] = []
         completed = 0
         next_micro = 0
 
@@ -587,7 +593,7 @@ class PipelineExperiment:
                         y = micro_tgts[mb_id].to(device, non_blocking=cfg.non_blocking)
                         loss = self.criterion(out, y) / n_micro
                         losses[mb_id] = loss
-                        loss_total += loss.item()
+                        loss_values.append(loss.detach())
                         bwd_queues[stage_id].append((mb_id, None))
 
             # Backward sweep (n-1 -> 0) with aggressive draining.
@@ -615,7 +621,7 @@ class PipelineExperiment:
 
             telemetry.end_tick()
 
-        avg_loss = loss_total / n_micro if n_micro else 0.0
+        avg_loss = _finish_pipeline_loss(loss_values, n_micro)
         return avg_loss, telemetry
 
 
