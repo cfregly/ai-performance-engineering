@@ -119,13 +119,15 @@ def triton_fused_moe(
     sorted_weights: torch.Tensor,
     expert_offsets: torch.Tensor,  # [E+1] cumulative offsets
     E: int, H: int, I: int,
+    max_tokens: int | None = None,
 ) -> torch.Tensor:
     """Launch Triton fused MoE kernel."""
     total_tokens = x.shape[0]
     output = torch.zeros_like(x)
     
     # Grid: (num_experts, max_tokens_per_expert / BLOCK_M)
-    max_tokens = (expert_offsets[1:] - expert_offsets[:-1]).max().item()
+    if max_tokens is None:
+        max_tokens = int((expert_offsets[1:] - expert_offsets[:-1]).max().item())
     BLOCK_M = 64
     BLOCK_K = 64
     BLOCK_N = 64
@@ -178,26 +180,27 @@ def benchmark_triton_moe():
     # Compute expert offsets
     counts = torch.bincount(sorted_expert_ids, minlength=E)
     expert_offsets = torch.cat([torch.zeros(1, device=device, dtype=torch.long), counts.cumsum(0)])
+    max_tokens = int(counts.max().item())
     
     # Test kernel
     try:
         output = triton_fused_moe(
             sorted_tokens, w_gate, w_up, w_down,
             sorted_order, sorted_weights, expert_offsets,
-            E, H, I
+            E, H, I, max_tokens=max_tokens
         )
         print(f"✅ Triton kernel executed! Output shape: {output.shape}")
         
         # Benchmark
         for _ in range(5):
             _ = triton_fused_moe(sorted_tokens, w_gate, w_up, w_down,
-                                sorted_order, sorted_weights, expert_offsets, E, H, I)
+                                sorted_order, sorted_weights, expert_offsets, E, H, I, max_tokens=max_tokens)
         torch.cuda.synchronize()
         
         start = time.perf_counter()
         for _ in range(10):
             _ = triton_fused_moe(sorted_tokens, w_gate, w_up, w_down,
-                                sorted_order, sorted_weights, expert_offsets, E, H, I)
+                                sorted_order, sorted_weights, expert_offsets, E, H, I, max_tokens=max_tokens)
         torch.cuda.synchronize()
         ms = (time.perf_counter() - start) * 1000 / 10
         
@@ -214,7 +217,6 @@ def benchmark_triton_moe():
 
 if __name__ == "__main__":
     benchmark_triton_moe()
-
 
 
 

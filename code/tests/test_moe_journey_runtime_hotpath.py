@@ -43,6 +43,25 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
     assert "expert_counts[expert_id].item()" not in grouped_section
 
 
+def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "labs"
+        / "moe_optimization_journey"
+        / "triton_fused_moe.py"
+    ).read_text(encoding="utf-8")
+    function_section = source.split("def triton_fused_moe", maxsplit=1)[1].split(
+        "def benchmark_triton_moe",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_triton_moe", maxsplit=1)[1]
+
+    assert "max_tokens: int | None = None" in function_section
+    assert "if max_tokens is None:" in function_section
+    assert "max_tokens = int(counts.max().item())" in benchmark_section
+    assert benchmark_section.count("max_tokens=max_tokens") == 3
+
+
 @CUDA_REQUIRED
 @pytest.mark.parametrize(
     ("benchmark_factory", "model_attr", "input_attr"),
