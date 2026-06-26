@@ -15,10 +15,11 @@ It uses scaled_dot_product_attention which leverages Flash Attention for:
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
@@ -119,15 +120,14 @@ class FlashAttentionSdpaBenchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: Flash Attention."""
         with torch.no_grad():
             output = self.model(self.x)
-            self._last = float(output.sum())
-            self.output = output.detach().clone()
+            self.output = output.detach()
         if self.output is None or self.x is None:
             raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
             inputs={"input": self.x},
-            output=self.output,
+            output=self.output.detach().clone(),
             batch_size=self.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={
