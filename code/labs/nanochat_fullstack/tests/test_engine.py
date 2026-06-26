@@ -5,6 +5,7 @@ python -m pytest tests/test_engine.py -v
 """
 
 import torch
+from types import SimpleNamespace
 from nanochat.engine import Engine, KVCache
 from nanochat.gpt import apply_rotary_emb
 
@@ -119,6 +120,74 @@ def test_sample_batch_tokens_preserves_mixed_sampling_fallback(monkeypatch):
 
     assert calls == [(1, 0.7, 4), (1, 0.9, 4)]
     assert tokens == [21, 22, 0]
+
+
+class _TinyTokenizer:
+    def get_bos_token_id(self):
+        return 0
+
+    def encode_special(self, token):
+        return {
+            "<|python_start|>": 100,
+            "<|python_end|>": 101,
+            "<|output_start|>": 102,
+            "<|output_end|>": 103,
+            "<|assistant_end|>": 104,
+        }[token]
+
+
+class _TinyForwardModel:
+    def __init__(self):
+        self.config = SimpleNamespace(
+            n_kv_head=1,
+            n_head=1,
+            n_embd=4,
+            n_layer=1,
+            sequence_len=8,
+            vocab_size=16,
+            enable_persistent_decode=False,
+            use_cuda_graphs=False,
+            use_persistent_decode_kernel=False,
+        )
+
+    def get_device(self):
+        return torch.device("cpu")
+
+    def forward(self, ids, kv_cache=None, attention_mask=None, token_mask=None):
+        if kv_cache is not None and kv_cache.kv_cache is None:
+            batch_size, seq_len = ids.shape
+            k = torch.zeros((batch_size, 1, seq_len, 4), dtype=torch.float32)
+            v = torch.zeros_like(k)
+            for layer_idx in range(self.config.n_layer):
+                kv_cache.insert_kv(layer_idx, k, v, token_mask=token_mask)
+        return torch.zeros((ids.size(0), ids.size(1), self.config.vocab_size), dtype=torch.float32)
+
+
+def test_generate_reuses_sampled_ids_without_forced_tokens(monkeypatch):
+    first_ids = torch.tensor([[5]], dtype=torch.long)
+    second_ids = torch.tensor([[6]], dtype=torch.long)
+    sampled_id_queue = [first_ids, second_ids]
+
+    def fake_sample_next_token(logits, rng, temperature=1.0, top_k=None):
+        return sampled_id_queue.pop(0)
+
+    monkeypatch.setitem(
+        Engine._sample_batch_tokens.__globals__, "sample_next_token", fake_sample_next_token
+    )
+    engine = Engine(_TinyForwardModel(), _TinyTokenizer())
+    seen_decode_ids = []
+
+    def fake_execute_decode(ids, kv_cache, attention_mask=None, token_mask=None):
+        seen_decode_ids.append(ids)
+        return torch.zeros((1, 1, engine.model.config.vocab_size), dtype=torch.float32)
+
+    engine._execute_decode = fake_execute_decode
+
+    stream = engine.generate([2, 3], num_samples=1, max_tokens=2, temperature=0.0)
+
+    assert next(stream) == ([5], [1])
+    assert next(stream) == ([6], [1])
+    assert seen_decode_ids[0] is first_ids
 
 
 def test_apply_rotary_emb_inference_matches_reference():

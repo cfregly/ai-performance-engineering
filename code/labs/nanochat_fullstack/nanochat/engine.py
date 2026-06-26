@@ -596,9 +596,15 @@ class Engine:
                 break
 
             # Get sampled tokens - either from prefill or from forward pass
+            sampled_ids = None
             if first_iteration:
                 # Use the tokens we already sampled from prefill
                 sampled_tokens = [sampled_tokens[0]] * num_samples  # Broadcast first token to all rows
+                if num_samples == 1:
+                    sampled_ids = next_ids
+                elif self.reuse_ids_buffer:
+                    ids_buf[:, 0].fill_(sampled_tokens[0])
+                    sampled_ids = ids_buf
                 # TODO: we should sample a token for each row instead of broadcasting
                 first_iteration = False
             else:
@@ -607,13 +613,16 @@ class Engine:
                 logits = logits[:, -1, :]  # (B, vocab_size) at last time step
                 next_ids = sample_next_token(logits, rng, temperature, top_k)  # (B, 1)
                 sampled_tokens = next_ids[:, 0].tolist()
+                sampled_ids = next_ids
 
             # Process each row: choose the next token, update state, optional tool use
             token_column = [] # contains the next token id along each row
             token_masks = [] # contains the mask (was it sampled (1) or forced (0)?) along each row
+            has_forced_tokens = False
             for i, state in enumerate(row_states):
                 # Select the next token in this row
                 is_forced = len(state.forced_tokens) > 0 # are there tokens waiting to be forced in deque?
+                has_forced_tokens |= is_forced
                 token_masks.append(0 if is_forced else 1) # mask is 0 if forced, 1 if sampled
                 next_token = state.forced_tokens.popleft() if is_forced else sampled_tokens[i]
                 token_column.append(next_token)
@@ -644,7 +653,9 @@ class Engine:
             yield token_column, token_masks
             num_generated += 1
             # Prepare ids for next iteration
-            if self.reuse_ids_buffer:
+            if sampled_ids is not None and not has_forced_tokens:
+                ids = sampled_ids
+            elif self.reuse_ids_buffer:
                 ids_buf[:, 0] = torch.tensor(token_column, dtype=torch.long, device=device)
                 ids = ids_buf
             else:
