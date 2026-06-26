@@ -1022,6 +1022,10 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
         "optimized_kv_transfer_graphs.py",
     ):
         source = (REPO_ROOT / "labs" / "moe_cuda" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _launch_compute" if name == "optimized_kv_transfer.py" else "def benchmark_fn",
+            maxsplit=1,
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
@@ -1031,6 +1035,10 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
         assert ".clone()" not in benchmark_section
         assert ".float()" not in benchmark_section
         assert "output=self.output.detach().float().clone()" in capture_section
+        if name == "optimized_kv_transfer.py":
+            assert "self.workspace = torch.empty_like(self.input_chunks)" in setup_section
+            assert "self.kv_dest = torch.empty_like(self.input_chunks)" in setup_section
+            assert "torch.zeros_like(self.input_chunks)" not in setup_section
 
 
 def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:

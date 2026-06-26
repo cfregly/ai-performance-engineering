@@ -59,8 +59,8 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=self.dtype,
             device=self.device,
         )
-        self.workspace = torch.zeros_like(self.input_chunks)
-        self.kv_dest = torch.zeros_like(self.input_chunks)
+        self.workspace = torch.empty_like(self.input_chunks)
+        self.kv_dest = torch.empty_like(self.input_chunks)
         self._payload_meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
         
         # Warmup the streams so the steady-state path doesn't include one-time setup overhead.
