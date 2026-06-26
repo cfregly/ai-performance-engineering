@@ -1458,6 +1458,18 @@ def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
     assert 'start_decode = self._piecewise_events["start_decode"]' in benchmark_section
 
 
+def test_optimized_flexdecode_graph_reuses_static_input_without_zero_fill() -> None:
+    source = (REPO_ROOT / "ch18" / "optimized_flexdecoding_graphs.py").read_text(encoding="utf-8")
+    setup_section = source.split("def _initialize_and_capture", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split("def teardown", maxsplit=1)[0]
+
+    assert "self.static_decode_in = torch.empty_like(self.decode_token)" in setup_section
+    assert "self.static_decode_in = torch.zeros_like(self.decode_token)" not in setup_section
+    assert "self.static_decode_in.copy_(self.decode_token)" in benchmark_section
+
+
 def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> None:
     source = (REPO_ROOT / "labs" / "persistent_decode" / "paged_kv_offload_common.py").read_text(encoding="utf-8")
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]

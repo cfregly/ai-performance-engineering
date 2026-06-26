@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import torch
 
@@ -43,7 +43,7 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
             raise RuntimeError("Model/tokens not initialized")
 
         self.base_position = self.prefill_tokens.size(1)
-        self.static_decode_in = torch.zeros_like(self.decode_token)
+        self.static_decode_in = torch.empty_like(self.decode_token)
         self.static_decode_out = torch.empty_like(self.decode_token)
         self.capture_stream = torch.cuda.Stream(device=self.device)
 
@@ -125,5 +125,4 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
 
 def get_benchmark():
     return OptimizedFlexDecodingGraphsBenchmark()
-
 
