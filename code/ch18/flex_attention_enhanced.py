@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 from torch.nn.attention.flex_attention import flex_attention, create_block_mask
 import time
-from typing import Optional, Tuple
+from typing import Tuple
 
 from core.utils.compile_utils import enable_tf32, compile_model
 
@@ -175,12 +175,14 @@ class DynamicSlidingWindowAttention(nn.Module):
 
         def _mask_fn(b, h, q_idx, kv_idx):
             # Different window per head
-            window_sizes = self.window_sizes_tensor.to(q_idx.device)
+            window_sizes = self.window_sizes_tensor
+            if window_sizes.device != q_idx.device:
+                window_sizes = window_sizes.to(q_idx.device)
             if isinstance(h, torch.Tensor):
                 idx = h.to(torch.long)
+                window_size = torch.take(window_sizes, idx)
             else:
-                idx = torch.tensor(h, device=q_idx.device, dtype=torch.long)
-            window_size = torch.take(window_sizes, idx)
+                window_size = window_sizes[int(h)]
             window = (q_idx - kv_idx).abs() <= window_size
             causal = q_idx >= kv_idx
             return causal & window

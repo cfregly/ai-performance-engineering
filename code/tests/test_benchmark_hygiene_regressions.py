@@ -1329,6 +1329,19 @@ def test_ch18_cudagraph_bucketing_static_inputs_avoid_zero_fill() -> None:
         assert "self.static_inputs[key] = torch.zeros(" not in capture_section
 
 
+def test_ch18_dynamic_flex_attention_mask_avoids_scalar_tensor_allocation() -> None:
+    source = (REPO_ROOT / "ch18" / "flex_attention_enhanced.py").read_text(encoding="utf-8")
+    dynamic_section = source.split("class DynamicSlidingWindowAttention", maxsplit=1)[1].split(
+        "def compile_module",
+        maxsplit=1,
+    )[0]
+
+    assert "window_sizes = self.window_sizes_tensor" in dynamic_section
+    assert "if window_sizes.device != q_idx.device:" in dynamic_section
+    assert "window_size = window_sizes[int(h)]" in dynamic_section
+    assert "torch.tensor(h" not in dynamic_section
+
+
 def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None:
     source = (REPO_ROOT / "ch18" / "optimized_vllm_decode_graphs.py").read_text(encoding="utf-8")
     workspace_section = source.split("class BucketWorkspace", maxsplit=1)[1].split(
