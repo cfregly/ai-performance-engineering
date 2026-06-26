@@ -691,6 +691,21 @@ def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() 
         assert "Timing events not initialized" in benchmark_section
 
 
+def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "ch04" / "optimized_bandwidth_benchmark_suite_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics", maxsplit=1
+    )[0]
+
+    assert "torch.cuda.Event(enable_timing=True)" in setup_section
+    assert "torch.cuda.Event(" not in benchmark_section
+    assert "self._pending_timing_pairs = self._timing_pairs[: len(self.streams)]" in benchmark_section
+    assert "Timing events not initialized" in benchmark_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
