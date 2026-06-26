@@ -138,18 +138,15 @@ def _assignment_counts_cpu(workload: BlackwellGroupedGemmWorkload) -> tuple[int,
             for expert_id in range(workload.num_experts)
         )
 
-    weights = torch.linspace(
-        1.85,
-        0.35,
-        steps=workload.num_experts,
-        dtype=torch.float32,
-    )
-    normalized = weights / weights.sum()
-    counts = torch.floor(normalized * workload.num_tokens).to(torch.long)
-    remainder = int(workload.num_tokens - int(counts.sum().item()))
+    step = (0.35 - 1.85) / (workload.num_experts - 1)
+    weights = [1.85 + step * expert_id for expert_id in range(workload.num_experts)]
+    weight_sum = sum(weights)
+    counts = [math.floor(weight / weight_sum * workload.num_tokens) for weight in weights]
+    remainder = workload.num_tokens - sum(counts)
     if remainder > 0:
-        counts[:remainder] += 1
-    return tuple(int(count) for count in counts.tolist())
+        for expert_id in range(remainder):
+            counts[expert_id] += 1
+    return tuple(counts)
 
 
 def _build_route_weights(

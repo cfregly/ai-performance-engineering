@@ -16,6 +16,7 @@ from labs.blackwell_gemm_optimizations.blackwell_grouped_gemm_autotune import (
 )
 from labs.blackwell_gemm_optimizations.blackwell_grouped_gemm_common import (
     BlackwellGroupedGemmWorkload,
+    _assignment_counts_cpu,
     build_state,
     run_variant,
 )
@@ -82,6 +83,30 @@ def test_blackwell_grouped_gemm_schedule_registry_is_complete() -> None:
         "two_cta",
         "tile_n256",
     }
+
+
+def test_blackwell_grouped_gemm_skewed_counts_avoid_tensor_roundtrip() -> None:
+    source = (LAB_DIR / "blackwell_grouped_gemm_common.py").read_text(encoding="utf-8")
+    counts_section = source.split("def _assignment_counts_cpu", maxsplit=1)[1].split(
+        "def _build_route_weights",
+        maxsplit=1,
+    )[0]
+
+    assert "torch.linspace(" not in counts_section
+    assert ".sum().item()" not in counts_section
+    assert ".tolist()" not in counts_section
+
+    workload = BlackwellGroupedGemmWorkload(
+        num_tokens=17,
+        num_experts=4,
+        hidden_dim=32,
+        expert_ffn_dim=64,
+        dtype=torch.float16,
+        histogram="skewed",
+    )
+
+    assert _assignment_counts_cpu(workload) == (8, 5, 3, 1)
+    assert sum(_assignment_counts_cpu(workload)) == workload.num_tokens
 
 
 @pytest.mark.parametrize("histogram", ["balanced", "skewed"])
