@@ -1153,6 +1153,48 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
     assert "for batch_idx in range(batch_size)" not in flash_source
     assert "k_block = k.permute(2, 0, 1, 3).contiguous()" in flash_source
     assert "kv_cache.append_block(request_id, layer_idx, k_block, v_block, cache_pos)" in flash_source
+    assert "torch.cat([cached_k, k]" not in flash_source
+    assert "torch.cat([cached_v, v]" not in flash_source
+    assert "layer.configure_kv_workspace(" in flash_source
+
+
+def test_flash_blockwise_attention_reuses_workspace_for_cached_kv() -> None:
+    from ch13.optimized_kv_cache_naive import PagedKVCache
+    from ch13.optimized_kv_cache_naive_flash_blockwise import FlashBlockwiseAttentionLayer
+
+    layer = FlashBlockwiseAttentionLayer(hidden_dim=6, num_heads=2, head_dim=3, dtype=torch.float32)
+    layer.configure_kv_workspace(
+        max_seq_len=4,
+        batch_size=1,
+        dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    kv_cache = PagedKVCache(
+        page_size=4,
+        batch_size=1,
+        num_layers=1,
+        num_heads=2,
+        head_dim=3,
+        dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    kv_cache.allocate("req", 4)
+    cached_k_block = torch.arange(12, dtype=torch.float32).view(2, 1, 2, 3)
+    cached_v_block = torch.arange(12, 24, dtype=torch.float32).view(2, 1, 2, 3)
+    kv_cache.append_block("req", 0, cached_k_block, cached_v_block, 0)
+    k = torch.arange(24, 30, dtype=torch.float32).view(1, 2, 1, 3)
+    v = torch.arange(30, 36, dtype=torch.float32).view(1, 2, 1, 3)
+
+    actual_k, actual_v = layer._cached_attention_inputs(k, v, kv_cache, "req", 0, cache_pos=2)
+
+    expected_k = torch.cat([cached_k_block.permute(1, 2, 0, 3), k], dim=2)
+    expected_v = torch.cat([cached_v_block.permute(1, 2, 0, 3), v], dim=2)
+    torch.testing.assert_close(actual_k, expected_k)
+    torch.testing.assert_close(actual_v, expected_v)
+    assert actual_k.is_contiguous()
+    assert actual_v.is_contiguous()
+    assert actual_k.data_ptr() == layer._workspace_k.data_ptr()
+    assert actual_v.data_ptr() == layer._workspace_v.data_ptr()
 
 
 def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:

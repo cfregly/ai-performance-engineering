@@ -41,6 +41,77 @@ class FlashBlockwiseAttentionLayer(nn.Module):
         self.head_dim = head_dim
         self.qkv = nn.Linear(hidden_dim, hidden_dim * 3, dtype=dtype)
         self.proj = nn.Linear(hidden_dim, hidden_dim, dtype=dtype)
+        self._workspace_k: torch.Tensor | None = None
+        self._workspace_v: torch.Tensor | None = None
+        self._workspace_batch_size = 0
+        self._workspace_seq_capacity = 0
+
+    def configure_kv_workspace(
+        self,
+        max_seq_len: int,
+        batch_size: int,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> None:
+        self._workspace_batch_size = batch_size
+        self._workspace_seq_capacity = max_seq_len
+        numel = batch_size * self.num_heads * max_seq_len * self.head_dim
+        self._workspace_k = torch.empty(numel, dtype=dtype, device=device)
+        self._workspace_v = torch.empty_like(self._workspace_k)
+
+    def _get_kv_workspace(
+        self,
+        batch_size: int,
+        total_len: int,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        workspace_missing = (
+            self._workspace_k is None
+            or self._workspace_v is None
+            or self._workspace_batch_size < batch_size
+            or self._workspace_seq_capacity < total_len
+            or self._workspace_k.dtype != dtype
+            or self._workspace_k.device != device
+        )
+        if workspace_missing:
+            self.configure_kv_workspace(
+                max(total_len, self._workspace_seq_capacity),
+                max(batch_size, self._workspace_batch_size),
+                dtype,
+                device,
+            )
+
+        shape = (batch_size, self.num_heads, total_len, self.head_dim)
+        stride = (
+            self.num_heads * total_len * self.head_dim,
+            total_len * self.head_dim,
+            self.head_dim,
+            1,
+        )
+        return (
+            self._workspace_k.as_strided(shape, stride),
+            self._workspace_v.as_strided(shape, stride),
+        )
+
+    def _cached_attention_inputs(
+        self,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        kv_cache: PagedKVCache,
+        request_id: str,
+        layer_idx: int,
+        cache_pos: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        cached_k, cached_v = kv_cache.get(request_id, layer_idx, 0, cache_pos)
+        prefix_len = cached_k.size(0)
+        total_len = prefix_len + k.size(2)
+        key_buf, value_buf = self._get_kv_workspace(k.size(0), total_len, k.dtype, k.device)
+        key_buf[:, :, :prefix_len, :].copy_(cached_k.permute(1, 2, 0, 3))
+        value_buf[:, :, :prefix_len, :].copy_(cached_v.permute(1, 2, 0, 3))
+        key_buf[:, :, prefix_len:total_len, :].copy_(k)
+        value_buf[:, :, prefix_len:total_len, :].copy_(v)
+        return key_buf, value_buf
 
     def forward(
         self,
@@ -63,11 +134,7 @@ class FlashBlockwiseAttentionLayer(nn.Module):
         kv_cache.append_block(request_id, layer_idx, k_block, v_block, cache_pos)
 
         if cache_pos > 0:
-            cached_k, cached_v = kv_cache.get(request_id, layer_idx, 0, cache_pos)
-            cached_k = cached_k.permute(1, 2, 0, 3)
-            cached_v = cached_v.permute(1, 2, 0, 3)
-            k = torch.cat([cached_k, k], dim=2)
-            v = torch.cat([cached_v, v], dim=2)
+            k, v = self._cached_attention_inputs(k, v, kv_cache, request_id, layer_idx, cache_pos)
 
         with _flash_sdp_context():
             attn_out = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, is_causal=False)
@@ -116,6 +183,13 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
                 for _ in range(self.num_layers)
             ]
         ).to(self.device).eval()
+        for layer in self.layers:
+            layer.configure_kv_workspace(
+                self.workload.max_seq_len,
+                self.batch_size,
+                self.workload.dtype,
+                self.device,
+            )
         self.parameter_count = sum(p.numel() for p in self.layers.parameters())
 
         self.kv_cache = PagedKVCache(
