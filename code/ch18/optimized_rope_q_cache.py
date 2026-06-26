@@ -8,7 +8,7 @@ import torch
 
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from ch18.rope_q_cache_common import RopeQCacheConfig, apply_rope, build_rope_tables
+from ch18.rope_q_cache_common import RopeQCacheConfig, apply_rope_inplace, build_rope_tables
 
 
 class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -22,6 +22,7 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cos: Optional[torch.Tensor] = None
         self.sin: Optional[torch.Tensor] = None
         self.cache: Optional[torch.Tensor] = None
+        self.rope_scratch: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.batch_size),
@@ -64,10 +65,24 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
+        self.rope_scratch = torch.empty(
+            self.cfg.batch_size,
+            self.cfg.heads,
+            self.cfg.head_dim // 2,
+            device=self.device,
+            dtype=self.cfg.dtype,
+        )
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        if self.inputs is None or self.q_weight is None or self.cos is None or self.sin is None or self.cache is None:
+        if (
+            self.inputs is None
+            or self.q_weight is None
+            or self.cos is None
+            or self.sin is None
+            or self.cache is None
+            or self.rope_scratch is None
+        ):
             raise RuntimeError("Benchmark not initialized")
         with torch.inference_mode():
             for step in range(self.cfg.steps):
@@ -76,7 +91,7 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 q = q.view(self.cfg.batch_size, self.cfg.heads, self.cfg.head_dim)
                 cos_t = self.cos[step].view(1, 1, self.cfg.head_dim)
                 sin_t = self.sin[step].view(1, 1, self.cfg.head_dim)
-                q = apply_rope(q, cos_t, sin_t)
+                q = apply_rope_inplace(q, cos_t, sin_t, self.rope_scratch)
                 self.cache[:, :, step, :] = q
             self.output = self.cache[:, :, self.cfg.steps - 1, :]
         if self.output is None:

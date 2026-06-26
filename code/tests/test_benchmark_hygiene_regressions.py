@@ -685,6 +685,32 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
         assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
+    from ch18.rope_q_cache_common import apply_rope, apply_rope_inplace
+
+    source = (REPO_ROOT / "ch18" / "optimized_rope_q_cache.py").read_text(encoding="utf-8")
+    setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self.rope_scratch = torch.empty(" in setup_section
+    assert "apply_rope_inplace(q, cos_t, sin_t, self.rope_scratch)" in benchmark_section
+    assert "apply_rope(q, cos_t, sin_t)" not in benchmark_section
+
+    q = torch.randn(2, 3, 8, dtype=torch.float32)
+    cos = torch.randn(1, 1, 8, dtype=torch.float32)
+    sin = torch.randn(1, 1, 8, dtype=torch.float32)
+    expected = apply_rope(q.clone(), cos, sin)
+    actual_input = q.clone()
+    scratch = torch.empty_like(actual_input[..., :4])
+
+    actual = apply_rope_inplace(actual_input, cos, sin, scratch)
+
+    assert actual is actual_input
+    torch.testing.assert_close(actual, expected)
+
+
 def test_dynamic_router_wrappers_defer_metric_tensors_outside_hot_loop() -> None:
     for relative in (
         "labs/dynamic_router/baseline_dynamic_router_vllm.py",

@@ -50,3 +50,22 @@ def rotate_half(x: torch.Tensor) -> torch.Tensor:
 
 def apply_rope(q: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
     return (q * cos) + (rotate_half(q) * sin)
+
+
+def apply_rope_inplace(
+    q: torch.Tensor,
+    cos: torch.Tensor,
+    sin: torch.Tensor,
+    scratch: torch.Tensor,
+) -> torch.Tensor:
+    half = q.shape[-1] // 2
+    q1 = q[..., :half]
+    q2 = q[..., half:]
+    cos1 = cos[..., :half]
+    cos2 = cos[..., half:]
+    sin1 = sin[..., :half]
+    sin2 = sin[..., half:]
+    scratch.copy_(q1)
+    q1.mul_(cos1).addcmul_(q2, sin1, value=-1)
+    q2.mul_(cos2).addcmul_(scratch, sin2)
+    return q
