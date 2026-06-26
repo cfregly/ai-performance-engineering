@@ -597,6 +597,20 @@ def test_ch14_triton_tma_batches_correctness_error_reads() -> None:
     assert ".max().item()" not in benchmark_section
 
 
+def test_ch14_triton_nvshmem_batches_result_reads() -> None:
+    source = (REPO_ROOT / "ch14" / "triton_nvshmem_example.py").read_text(encoding="utf-8")
+    example_section = source.split("results = triton_multi_gpu_operation(tensors)", maxsplit=1)[
+        1
+    ].split(
+        "print(\"\\n\" + \"=\" * 80)",
+        maxsplit=1,
+    )[0]
+
+    assert "result_values = torch.cat(" in example_section
+    assert "non_blocking=True" in example_section
+    assert "[r.item() for r in results]" not in example_section
+
+
 def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:
     source = (REPO_ROOT / "labs" / "custom_vs_cublas" / "run_lab.py").read_text(
         encoding="utf-8"
