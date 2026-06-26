@@ -85,6 +85,7 @@ class MoELabState:
     up_proj: torch.Tensor
     down_proj: torch.Tensor
     loss_grad: torch.Tensor
+    route_counts_cpu: tuple[int, ...] = ()
 
 
 @dataclass
@@ -168,27 +169,60 @@ def _counts_from_weights(total: int, weights: torch.Tensor) -> torch.Tensor:
     return base
 
 
-def _build_primary_routes(workload: MoECudaPtxWorkload, device: torch.device) -> torch.Tensor:
+def _primary_route_counts_cpu(workload: MoECudaPtxWorkload) -> tuple[int, ...]:
     if workload.histogram == "balanced":
-        return torch.arange(workload.num_tokens, device=device, dtype=torch.long) % workload.num_experts
+        base, remainder = divmod(workload.num_tokens, workload.num_experts)
+        return tuple(
+            base + int(expert_idx < remainder)
+            for expert_idx in range(workload.num_experts)
+        )
 
     weights = torch.linspace(
         workload.capacity_factor,
         max(0.25, 2.0 - workload.capacity_factor),
         steps=workload.num_experts,
-        device=device,
         dtype=torch.float32,
     )
     counts = _counts_from_weights(workload.num_tokens, weights)
-    routes = [
-        torch.full((int(count.item()),), expert, device=device, dtype=torch.long)
-        for expert, count in enumerate(counts)
-        if int(count.item()) > 0
-    ]
-    primary = torch.cat(routes, dim=0)
-    if primary.numel() != workload.num_tokens:
-        raise RuntimeError("Primary route generation produced the wrong token count")
-    return primary
+    return tuple(int(count) for count in counts.tolist())
+
+
+def _primary_routes_cpu(workload: MoECudaPtxWorkload) -> torch.Tensor:
+    if workload.histogram == "balanced":
+        return torch.arange(workload.num_tokens, dtype=torch.long) % workload.num_experts
+
+    counts_cpu = _primary_route_counts_cpu(workload)
+    expert_ids = torch.arange(workload.num_experts, dtype=torch.long)
+    repeats = torch.tensor(counts_cpu, dtype=torch.long)
+    return torch.repeat_interleave(
+        expert_ids,
+        repeats,
+        output_size=workload.num_tokens,
+    )
+
+
+def _route_counts_cpu(workload: MoECudaPtxWorkload) -> tuple[int, ...]:
+    primary = _primary_routes_cpu(workload)
+    secondary = (torch.arange(workload.num_tokens, dtype=torch.long) * 3 + 1) % workload.num_experts
+    collision = secondary == primary
+    secondary[collision] = (secondary[collision] + 1) % workload.num_experts
+    expert_indices = torch.stack([primary, secondary], dim=1)
+    counts = torch.bincount(expert_indices.reshape(-1), minlength=workload.num_experts)
+    return tuple(int(count) for count in counts.tolist())
+
+
+def _build_primary_routes(workload: MoECudaPtxWorkload, device: torch.device) -> torch.Tensor:
+    if workload.histogram == "balanced":
+        return torch.arange(workload.num_tokens, device=device, dtype=torch.long) % workload.num_experts
+
+    counts_cpu = _primary_route_counts_cpu(workload)
+    expert_ids = torch.arange(workload.num_experts, device=device, dtype=torch.long)
+    repeats = torch.tensor(counts_cpu, device=device, dtype=torch.long)
+    return torch.repeat_interleave(
+        expert_ids,
+        repeats,
+        output_size=workload.num_tokens,
+    )
 
 
 def build_routes(workload: MoECudaPtxWorkload, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
@@ -209,11 +243,12 @@ def build_routes(workload: MoECudaPtxWorkload, device: torch.device) -> tuple[to
     )
     expert_weights = torch.softmax(logits, dim=1).to(dtype=workload.dtype)
 
-    counts = torch.bincount(expert_indices.reshape(-1), minlength=workload.num_experts)
-    if int(counts.max().item()) > workload.capacity_tokens_per_expert:
+    route_counts_cpu = _route_counts_cpu(workload)
+    max_count = max(route_counts_cpu, default=0)
+    if max_count > workload.capacity_tokens_per_expert:
         raise RuntimeError(
             "Deterministic routing exceeded the configured capacity factor; "
-            f"max_count={int(counts.max().item())}, capacity={workload.capacity_tokens_per_expert}"
+            f"max_count={max_count}, capacity={workload.capacity_tokens_per_expert}"
         )
     return expert_indices, expert_weights
 
@@ -274,6 +309,7 @@ def build_state(workload: MoECudaPtxWorkload, device: torch.device) -> MoELabSta
         up_proj=up_proj.contiguous(),
         down_proj=down_proj.contiguous(),
         loss_grad=loss_grad.contiguous(),
+        route_counts_cpu=_route_counts_cpu(workload),
     )
 
 
@@ -283,6 +319,7 @@ def pack_topk_routes(
     expert_weights: torch.Tensor,
     *,
     num_experts: int,
+    counts_cpu: Optional[Sequence[int]] = None,
 ) -> PackedRoutes:
     top_k = expert_indices.shape[1]
     flat_experts = expert_indices.reshape(-1)
@@ -295,8 +332,12 @@ def pack_topk_routes(
     sorted_weights = flat_weights.index_select(0, sort_order)
     packed_tokens = x.index_select(0, sorted_token_ids).contiguous()
 
-    counts = torch.bincount(sorted_expert_ids, minlength=num_experts)
-    counts_cpu = tuple(int(count) for count in counts.detach().cpu().tolist())
+    if counts_cpu is None:
+        counts = torch.bincount(sorted_expert_ids, minlength=num_experts)
+        counts_cpu = tuple(int(count) for count in counts.detach().cpu().tolist())
+    else:
+        counts_cpu = tuple(int(count) for count in counts_cpu)
+        counts = torch.tensor(counts_cpu, device=x.device, dtype=torch.long)
     cumsum = counts.cumsum(dim=0)
     starts = torch.empty_like(counts)
     starts[0] = 0
@@ -434,11 +475,13 @@ def run_layer_cuda(
     combined_buffer: Optional[torch.Tensor] = None,
     padded_tokens_buffer: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
+    route_counts_cpu = getattr(state, "route_counts_cpu", None) or None
     packed = packed or pack_topk_routes(
         state.x,
         state.expert_indices,
         state.expert_weights,
         num_experts=workload.num_experts,
+        counts_cpu=route_counts_cpu,
     )
     # Keep the standalone quantization surface on `moe_quant` until the layer path
     # has a real low-precision kernel that benefits from quantized activations.
@@ -655,16 +698,20 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.workload.validate()
         self._force_target_mode()
         self.state = build_state(self.workload, self.device)
-        route_counts = torch.bincount(self.state.expert_indices.reshape(-1), minlength=self.workload.num_experts)
-        route_counts_cpu = tuple(int(count) for count in route_counts.detach().cpu().tolist())
+        route_counts_cpu = self.state.route_counts_cpu
         self._populate_metrics(route_counts_cpu)
 
-        if self.target != "moe_layer":
+        self.packed = None
+        prepack_routes = self.target != "moe_layer" or (
+            self.backend == "cuda" and self.workload.mode == "forward"
+        )
+        if prepack_routes:
             self.packed = pack_topk_routes(
                 self.state.x,
                 self.state.expert_indices,
                 self.state.expert_weights,
                 num_experts=self.workload.num_experts,
+                counts_cpu=route_counts_cpu,
             )
 
         self.outputs = None
@@ -749,7 +796,13 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if self.backend == "baseline":
                 _ = run_layer_baseline(self.state, self.workload, output_buffer=self._combined_buffer)
             elif self.backend == "cuda":
-                _ = run_layer_cuda(self.state, self.workload, combined_buffer=self._combined_buffer)
+                _ = run_layer_cuda(
+                    self.state,
+                    self.workload,
+                    packed=self.packed,
+                    combined_buffer=self._combined_buffer,
+                    padded_tokens_buffer=self._padded_tokens_buffer,
+                )
             else:
                 raise RuntimeError("SKIPPED: PTX layer backend scaffold exists, but kernels are not implemented yet.")
         self._synchronize()
@@ -849,7 +902,9 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.outputs = run_layer_cuda(
                 self.state,
                 self.workload,
+                packed=self.packed,
                 combined_buffer=self._combined_buffer,
+                padded_tokens_buffer=self._padded_tokens_buffer,
             )
         else:
             raise RuntimeError("SKIPPED: PTX layer backend scaffold exists, but kernels are not implemented yet.")
@@ -869,6 +924,7 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
             up_proj=up_proj,
             down_proj=down_proj,
             loss_grad=self.state.loss_grad,
+            route_counts_cpu=self.state.route_counts_cpu,
         )
         if self.backend == "baseline":
             output = run_layer_baseline(state, self.workload)

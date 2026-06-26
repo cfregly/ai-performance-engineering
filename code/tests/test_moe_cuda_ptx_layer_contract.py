@@ -72,6 +72,8 @@ def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
     module_source = inspect.getsource(moe_common)
     assert "starts = torch.cat(" not in source
     assert "starts = torch.empty_like(counts)" in source
+    assert "counts_cpu: Optional[Sequence[int]] = None" in source
+    assert "counts = torch.tensor(counts_cpu, device=x.device, dtype=torch.long)" in source
     assert "repeat_interleave(top_k)" not in source
     assert "def _flat_topk_token_ids" in module_source
     assert 'token_ids.div_(top_k, rounding_mode="floor")' in module_source
@@ -115,3 +117,55 @@ def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
         packed.token_indices.cpu(),
         torch.tensor([0, 2, 4, 0, 1, 3, 4, 1, 2, 3], dtype=torch.long),
     )
+
+
+def test_moe_cuda_ptx_skewed_routes_use_cpu_counts_without_fragment_cat() -> None:
+    source = inspect.getsource(moe_common._build_primary_routes)
+    assert "int(count.item())" not in source
+    assert "torch.cat(routes" not in source
+    assert "torch.repeat_interleave(" in source
+
+    workload = moe_common.MoECudaPtxWorkload(
+        num_tokens=19,
+        num_experts=4,
+        hidden_dim=32,
+        expert_ffn_dim=64,
+        capacity_factor=1.5,
+        histogram="skewed",
+    )
+    expert_indices, expert_weights = moe_common.build_routes(workload, torch.device("cpu"))
+    counts_cpu = moe_common._route_counts_cpu(workload)
+
+    torch.testing.assert_close(
+        torch.bincount(expert_indices.reshape(-1), minlength=workload.num_experts),
+        torch.tensor(counts_cpu, dtype=torch.long),
+    )
+
+    x = torch.arange(workload.num_tokens * 4, dtype=torch.float32).view(
+        workload.num_tokens,
+        4,
+    )
+    packed = moe_common.pack_topk_routes(
+        x,
+        expert_indices,
+        expert_weights,
+        num_experts=workload.num_experts,
+        counts_cpu=counts_cpu,
+    )
+
+    assert packed.counts_cpu == counts_cpu
+    torch.testing.assert_close(
+        packed.counts.cpu(),
+        torch.tensor(counts_cpu, dtype=torch.long),
+    )
+
+
+def test_moe_cuda_ptx_layer_forward_reuses_prepacked_routes() -> None:
+    setup_source = inspect.getsource(moe_common.MoECudaPtxBenchmark.setup)
+    forward_source = inspect.getsource(moe_common.MoECudaPtxBenchmark._benchmark_layer_forward)
+
+    assert 'self.target != "moe_layer" or (' in setup_source
+    assert 'self.backend == "cuda" and self.workload.mode == "forward"' in setup_source
+    assert "counts_cpu=route_counts_cpu" in setup_source
+    assert "packed=self.packed" in forward_source
+    assert "padded_tokens_buffer=self._padded_tokens_buffer" in forward_source
