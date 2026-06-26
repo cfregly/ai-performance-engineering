@@ -706,6 +706,24 @@ def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() 
     assert "Timing events not initialized" in benchmark_section
 
 
+def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "ch15" / "disaggregated_inference_single_common.py").read_text(encoding="utf-8")
+    output_helper = source.split("def _set_output_from_tokens", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    baseline_benchmark = source.split("class BaselineDisaggregatedInferenceSingleGPUBenchmark", maxsplit=1)[1].split(
+        "def _variant_metrics", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+
+    assert "torch.cat(" not in output_helper
+    assert "self._pending_outputs = outputs" in output_helper
+    assert "torch.cat(" not in baseline_benchmark
+    assert "self._output = torch.cat(self._pending_outputs, dim=0)" in capture_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

@@ -123,6 +123,7 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self.kv_caches: List[torch.Tensor] = []
         self.batched_kv_cache: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
+        self._pending_outputs: List[torch.Tensor] = []
         self._param_count = 0
 
     def setup(self) -> None:
@@ -168,11 +169,16 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         return tokens.squeeze(0)
 
     def _set_output_from_tokens(self, outputs: List[torch.Tensor]) -> None:
-        self._output = torch.cat(outputs, dim=0)
+        self._pending_outputs = outputs
+        self._output = None
 
     def capture_verification_payload(self) -> None:
-        if self._output is None or self.prompts is None:
+        if self.prompts is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if self._output is None:
+            if not self._pending_outputs:
+                raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+            self._output = torch.cat(self._pending_outputs, dim=0)
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
         meta_dtype = torch.float32
         self._set_verification_payload(
@@ -204,6 +210,7 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self.kv_caches = []
         self.batched_kv_cache = None
         self._output = None
+        self._pending_outputs = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
