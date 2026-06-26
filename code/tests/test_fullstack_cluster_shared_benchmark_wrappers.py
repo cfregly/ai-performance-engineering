@@ -278,6 +278,9 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "g[group_rank].item()" not in exchange_counts_section
     assert "torch.cuda.Event(enable_timing=True)" not in forward_section
     assert "torch.cuda.Event(enable_timing=True)" not in run_step_section
+    assert '"combined_outputs"' in forward_section
+    assert "combined.zero_()" in forward_section
+    assert "combined = torch.zeros_like(hidden)" not in forward_section
     assert "route_counts_global = route_counts" in forward_section
     assert "route_type_counts = torch.stack(" in forward_section
     assert "same_rank_mask.sum().item()" not in forward_section

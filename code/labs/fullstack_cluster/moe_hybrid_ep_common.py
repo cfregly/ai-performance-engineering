@@ -617,7 +617,14 @@ class DeepSeekHybridEPModule(nn.Module):
         remote_metrics = (0.0, 0.0, 0.0)
         overlap_pct = 0.0
 
-        combined = torch.zeros_like(hidden)
+        combined = self._buffer(
+            "combined_outputs",
+            tuple(hidden.shape),
+            hidden.dtype,
+            reuse=self.optimized,
+            device=hidden.device,
+        )
+        combined.zero_()
         same_rank_count = 0.0
         same_node_count = 0.0
         remote_count = 0.0
