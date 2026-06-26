@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import List
 
@@ -71,7 +72,7 @@ def main() -> None:
         state = torch.load(args.state_dict, map_location="cpu")
         model.load_state_dict(state, strict=False)
 
-    total_loss = 0.0
+    total_loss = torch.zeros((), device=device, dtype=torch.float32)
     total_tokens = 0
     with torch.no_grad():
         for start in range(0, len(tokens) - args.seq_len - 1, args.stride):
@@ -87,11 +88,11 @@ def main() -> None:
                 target_ids[:, :min_len].reshape(-1),
                 reduction="sum",
             )
-            total_loss += loss.item()
+            total_loss += loss.detach()
             total_tokens += min_len
 
-    avg_loss = total_loss / total_tokens
-    perplexity = float(torch.exp(torch.tensor(avg_loss)))
+    avg_loss = float(total_loss / total_tokens)
+    perplexity = math.exp(avg_loss)
     metrics = {
         "perplexity": perplexity,
         "avg_loss": avg_loss,

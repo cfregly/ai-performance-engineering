@@ -1480,6 +1480,19 @@ def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     assert "if has_padding" in cached_attention_section
 
 
+def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:
+    source = (REPO_ROOT / "ch16" / "perplexity_eval.py").read_text(encoding="utf-8")
+    loop_section = source.split("with torch.no_grad():", maxsplit=1)[1].split(
+        "avg_loss =",
+        maxsplit=1,
+    )[0]
+
+    assert "total_loss = torch.zeros((), device=device, dtype=torch.float32)" in source
+    assert "loss.item()" not in loop_section
+    assert "total_loss += loss.detach()" in loop_section
+    assert "perplexity = math.exp(avg_loss)" in source
+
+
 def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch17" / "baseline_dynamic_routing.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
