@@ -235,7 +235,8 @@ def build_prompt_tokens(tokenizer, *, prompt_len: int, batch_size: int) -> Tuple
     encoded = encoded[:prompt_len]
     if not encoded:
         raise ValueError("Prompt encoding produced no tokens")
-    input_ids = torch.tensor([encoded] * batch_size, dtype=torch.long)
+    encoded_ids = torch.tensor(encoded, dtype=torch.long)
+    input_ids = encoded_ids.unsqueeze(0).expand(batch_size, -1).contiguous()
     # Keep prompt lengths identical across baseline and TRT-LLM by avoiding right-padding.
     attention_mask = torch.ones_like(input_ids, dtype=torch.long)
     return input_ids, attention_mask

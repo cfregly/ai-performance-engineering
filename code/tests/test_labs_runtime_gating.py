@@ -228,6 +228,37 @@ def test_trtllm_capture_verification_payload_uses_small_cpu_slice() -> None:
     assert verify_output.device.type == "cpu"
 
 
+def test_trtllm_prompt_builder_expands_single_encoded_prompt() -> None:
+    class _Tokenizer:
+        pad_token_id = None
+        pad_token = None
+        eos_token = 0
+
+        def encode(self, _text: str, add_special_tokens: bool = True) -> list[int]:
+            return [11, 12, 13, 14]
+
+    source = inspect.getsource(trtllm_common.build_prompt_tokens)
+    input_ids, attention_mask = trtllm_common.build_prompt_tokens(
+        _Tokenizer(),
+        prompt_len=3,
+        batch_size=4,
+    )
+
+    expected = torch.tensor(
+        [
+            [11, 12, 13],
+            [11, 12, 13],
+            [11, 12, 13],
+            [11, 12, 13],
+        ],
+        dtype=torch.long,
+    )
+    assert torch.equal(input_ids, expected)
+    assert torch.equal(attention_mask, torch.ones_like(expected))
+    assert "encoded_ids.unsqueeze(0).expand(batch_size, -1).contiguous()" in source
+    assert "[encoded] * batch_size" not in source
+
+
 def test_optimized_trtllm_reuses_static_batch_inputs() -> None:
     setup_source = inspect.getsource(OptimizedTrtLlmPhi35MoeBenchmark.setup)
     benchmark_source = inspect.getsource(OptimizedTrtLlmPhi35MoeBenchmark.benchmark_fn)
