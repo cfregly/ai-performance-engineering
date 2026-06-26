@@ -22,8 +22,12 @@ def _efficient_sdpa_context():
     return nullcontext()
 
 
-def _flash3_clustered(q, k, v, causal: bool, num_sm_clusters: int | None):
+def _flash3_clustered(q, k, v, causal: bool, num_sm_clusters: int | None, enable_gqa: bool):
     # q,k,v: (B, H, T, D)
+    if enable_gqa and q.size(1) != k.size(1):
+        repeat_k = q.size(1) // k.size(1)
+        k = k.repeat_interleave(repeat_k, dim=1)
+        v = v.repeat_interleave(repeat_k, dim=1)
     B, Hq, Tq, D = q.shape
     _, Hk, Tk, _ = k.shape
     q_flat = q.transpose(1, 2).reshape(B * Tq, Hq, D)
@@ -73,16 +77,12 @@ def clustered_attention(
     """
     # Masks are not supported in FA3 varlen path; fall back to SDPA when provided.
     use_mask = attn_mask is not None
-    if enable_gqa and q.size(1) != k.size(1):
-        repeat_k = q.size(1) // k.size(1)
-        k = k.repeat_interleave(repeat_k, dim=1)
-        v = v.repeat_interleave(repeat_k, dim=1)
     if (
         not use_mask
         and q.is_cuda
         and q.dtype in (torch.float16, torch.bfloat16)
     ):
-        fa3_out = _flash3_clustered(q, k, v, causal=causal, num_sm_clusters=num_sm_clusters)
+        fa3_out = _flash3_clustered(q, k, v, causal=causal, num_sm_clusters=num_sm_clusters, enable_gqa=enable_gqa)
         if fa3_out is not None:
             return fa3_out
 
@@ -90,5 +90,5 @@ def clustered_attention(
     # attn_mask semantics: True=keep, False=mask
     with _efficient_sdpa_context():
         if use_mask:
-            return F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, is_causal=False)
-        return F.scaled_dot_product_attention(q, k, v, is_causal=causal)
+            return F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, is_causal=False, enable_gqa=enable_gqa)
+        return F.scaled_dot_product_attention(q, k, v, is_causal=causal, enable_gqa=enable_gqa)

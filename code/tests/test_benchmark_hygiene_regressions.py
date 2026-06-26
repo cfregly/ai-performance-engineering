@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import importlib
 import signal
 import subprocess
@@ -1111,6 +1112,41 @@ def test_nanochat_kv_cache_growth_avoids_cat_with_uninitialized_tail() -> None:
     assert "torch.cat([self.kv_cache, additional_cache]" not in grow_section
     assert "grown_cache = torch.empty(grown_shape, dtype=dtype, device=device)" in grow_section
     assert "grown_cache[:, :, :, :, :old_seq_len, :].copy_(self.kv_cache)" in grow_section
+
+
+def test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa(monkeypatch: pytest.MonkeyPatch) -> None:
+    from labs.nanochat_fullstack.nanochat.kernels import clustered_attention as clustered_attention_module
+
+    source = inspect.getsource(clustered_attention_module.clustered_attention)
+    assert "repeat_interleave" not in source
+    assert "enable_gqa=enable_gqa" in source
+
+    calls: dict[str, object] = {}
+
+    def _fake_sdpa(q, k, v, **kwargs):
+        calls["k_heads"] = k.size(1)
+        calls["v_heads"] = v.size(1)
+        calls["enable_gqa"] = kwargs.get("enable_gqa")
+        calls["is_causal"] = kwargs.get("is_causal")
+        return torch.zeros_like(q)
+
+    monkeypatch.setattr(clustered_attention_module.F, "scaled_dot_product_attention", _fake_sdpa)
+
+    q = torch.randn(1, 4, 3, 2)
+    k = torch.randn(1, 2, 3, 2)
+    v = torch.randn(1, 2, 3, 2)
+
+    output = clustered_attention_module.clustered_attention(
+        q,
+        k,
+        v,
+        attn_mask=None,
+        causal=True,
+        enable_gqa=True,
+    )
+
+    assert output.shape == q.shape
+    assert calls == {"k_heads": 2, "v_heads": 2, "enable_gqa": True, "is_causal": True}
 
 
 def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
