@@ -738,6 +738,26 @@ def test_ch15_inference_placement_defers_output_tensor_outside_hot_loop() -> Non
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "ch19" / "fp8_calibration_free_tool.py").read_text(encoding="utf-8")
+    run_section = source.split("def run(self) -> torch.Tensor", maxsplit=1)[1].split(
+        "def cleanup", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+
+    assert ".detach().clone()" not in run_section
+    assert ".item()" not in run_section
+    assert "self.output_slice = x[:1, :1, : min(16, x.shape[-1])]" in run_section
+    assert "torch.tensor(" not in benchmark_section
+    assert "self._output = output" in benchmark_section
+    assert "output=self._output.detach().float().clone()" in capture_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

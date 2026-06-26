@@ -7,10 +7,12 @@ Demonstrates FP8 inference without calibration phase using:
 - Automatic fallback to BF16 for problematic layers
 """
 
+from typing import Any, Dict, Optional, Tuple
+
 import torch
 import torch.nn as nn
-from typing import Dict, Any, Optional, Tuple
 
+from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
@@ -18,7 +20,6 @@ from core.harness.benchmark_harness import (
     BenchmarkMode,
     WorkloadMetadata,
 )
-from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -26,11 +27,12 @@ logger = get_logger(__name__)
 # Check for Transformer Engine
 try:
     import transformer_engine.pytorch as te
-    from transformer_engine.common.recipe import Format, DelayedScaling
+    from transformer_engine.common.recipe import DelayedScaling, Format
+
     TE_AVAILABLE = True
-except ImportError:
+except Exception as exc:
     TE_AVAILABLE = False
-    logger.warning("Transformer Engine not available, using fallback")
+    logger.warning(f"Transformer Engine not available, using fallback: {exc}")
 
 
 class CalibrationFreeFP8Linear(nn.Module):
@@ -163,6 +165,7 @@ class OptimizedFP8CalibrationFree:
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.output_slice: Optional[torch.Tensor] = None
+        self._last_output: Optional[torch.Tensor] = None
         self.output_mean: Optional[float] = None
         
         if self.use_te:
@@ -207,7 +210,7 @@ class OptimizedFP8CalibrationFree:
         
         logger.info(f"Setup complete: {self.num_layers} FP8 layers")
     
-    def run(self) -> float:
+    def run(self) -> torch.Tensor:
         """Execute FP8 forward pass without calibration."""
         torch.cuda.synchronize()
         
@@ -228,12 +231,12 @@ class OptimizedFP8CalibrationFree:
         # Check output validity
         if torch.isnan(x).any():
             logger.error("NaN detected in output!")
-            return torch.tensor(float("inf"), device=self.device)
+            self._last_output = None
+            self.output_slice = torch.full((), float("inf"), device=self.device)
+            return self.output_slice
         
-        self.output_slice = (
-            x[:1, :1, : min(16, x.shape[-1])].to(torch.float32).detach().clone()
-        )
-        self.output_mean = x.abs().mean().item()
+        self._last_output = x
+        self.output_slice = x[:1, :1, : min(16, x.shape[-1])]
         return self.output_slice
     
     def cleanup(self):
@@ -276,7 +279,9 @@ def run_benchmark(
         name="optimized_fp8_calibration_free"
     )
     
-    output_mean = benchmark.run()
+    benchmark.run()
+    if benchmark._last_output is not None:
+        benchmark.output_mean = float(benchmark._last_output.abs().mean().item())
     benchmark.cleanup()
     
     return {
@@ -284,7 +289,7 @@ def run_benchmark(
         "output_mean": (
             benchmark.output_mean
             if benchmark.output_mean is not None
-            else (output_mean.abs().mean().item() if isinstance(output_mean, torch.Tensor) else float(output_mean))
+            else 0.0
         ),
         "use_te": benchmark.use_te,
         "num_layers": num_layers,
@@ -309,14 +314,14 @@ class _FP8CalibrationFreeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         output = self._impl.run()
-        self._output = output if isinstance(output, torch.Tensor) else torch.tensor(output)
+        self._output = output
         if self._impl.input is None or self._output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
             inputs={"input": self._impl.input},
-            output=self._output,
+            output=self._output.detach().float().clone(),
             batch_size=self._impl.batch_size,
             parameter_count=sum(p.numel() for p in self._impl.layers.parameters()) if hasattr(self._impl, "layers") else 0,
             output_tolerance=(0.1, 1.0),
@@ -331,5 +336,3 @@ class _FP8CalibrationFreeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return _FP8CalibrationFreeBenchmark()
-
-
