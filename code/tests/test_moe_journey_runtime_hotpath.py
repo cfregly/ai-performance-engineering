@@ -78,6 +78,8 @@ def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
 
     assert "max_tokens: int | None = None" in function_section
     assert "if max_tokens is None:" in function_section
+    assert "sorted_ids" not in function_section
+    assert "Sorted_ids_ptr" not in source
     assert "max_tokens = int(counts.max().item())" in benchmark_section
     assert benchmark_section.count("max_tokens=max_tokens") == 3
 

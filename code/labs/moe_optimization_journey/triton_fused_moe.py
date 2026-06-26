@@ -19,7 +19,7 @@ def fused_moe_expert_kernel(
     # Pointers
     X_ptr, Out_ptr,
     W_gate_ptr, W_up_ptr, W_down_ptr,
-    Sorted_ids_ptr, Sorted_weights_ptr,
+    Sorted_weights_ptr,
     Expert_offsets_ptr,
     # Dimensions
     H: tl.constexpr, I: tl.constexpr,
@@ -115,7 +115,6 @@ def triton_fused_moe(
     w_gate: torch.Tensor,     # [E, H, I]
     w_up: torch.Tensor,       # [E, H, I]
     w_down: torch.Tensor,     # [E, I, H]
-    sorted_ids: torch.Tensor,
     sorted_weights: torch.Tensor,
     expert_offsets: torch.Tensor,  # [E+1] cumulative offsets
     E: int, H: int, I: int,
@@ -137,7 +136,7 @@ def triton_fused_moe(
     fused_moe_expert_kernel[grid](
         x, output,
         w_gate, w_up, w_down,
-        sorted_ids, sorted_weights,
+        sorted_weights,
         expert_offsets,
         H, I,
         x.stride(0), x.stride(1),
@@ -186,7 +185,7 @@ def benchmark_triton_moe():
     try:
         output = triton_fused_moe(
             sorted_tokens, w_gate, w_up, w_down,
-            sorted_order, sorted_weights, expert_offsets,
+            sorted_weights, expert_offsets,
             E, H, I, max_tokens=max_tokens
         )
         print(f"✅ Triton kernel executed! Output shape: {output.shape}")
@@ -194,13 +193,13 @@ def benchmark_triton_moe():
         # Benchmark
         for _ in range(5):
             _ = triton_fused_moe(sorted_tokens, w_gate, w_up, w_down,
-                                sorted_order, sorted_weights, expert_offsets, E, H, I, max_tokens=max_tokens)
+                                sorted_weights, expert_offsets, E, H, I, max_tokens=max_tokens)
         torch.cuda.synchronize()
         
         start = time.perf_counter()
         for _ in range(10):
             _ = triton_fused_moe(sorted_tokens, w_gate, w_up, w_down,
-                                sorted_order, sorted_weights, expert_offsets, E, H, I, max_tokens=max_tokens)
+                                sorted_weights, expert_offsets, E, H, I, max_tokens=max_tokens)
         torch.cuda.synchronize()
         ms = (time.perf_counter() - start) * 1000 / 10
         
@@ -217,6 +216,5 @@ def benchmark_triton_moe():
 
 if __name__ == "__main__":
     benchmark_triton_moe()
-
 
 
