@@ -314,7 +314,7 @@ class DeepSeekHybridEPModule(nn.Module):
         self.router = LoadBalancedRouter(hidden_size, num_experts, top_k)
         self.experts = nn.ModuleList([ExpertMLP(hidden_size, self.ffn_size) for _ in range(local_experts)])
         self._cached_bias: Optional[torch.Tensor] = None
-        self._buffer_cache: Dict[Tuple[str, Tuple[int, ...], torch.dtype], torch.Tensor] = {}
+        self._buffer_cache: Dict[Tuple[str, torch.device, Tuple[int, ...], torch.dtype], torch.Tensor] = {}
         self._token_index_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
         self._event_pair_cache: Dict[str, Tuple[torch.cuda.Event, torch.cuda.Event]] = {}
         self._phase_event_cache: Dict[str, PhaseEvents] = {}
@@ -347,13 +347,22 @@ class DeepSeekHybridEPModule(nn.Module):
         self._cached_bias = bias
         return bias
 
-    def _buffer(self, name: str, shape: Tuple[int, ...], dtype: torch.dtype, *, reuse: bool) -> torch.Tensor:
+    def _buffer(
+        self,
+        name: str,
+        shape: Tuple[int, ...],
+        dtype: torch.dtype,
+        *,
+        reuse: bool,
+        device: Optional[torch.device] = None,
+    ) -> torch.Tensor:
+        target_device = device if device is not None else self.cuda_device
         if not reuse:
-            return torch.empty(shape, device=self.cuda_device, dtype=dtype)
-        key = (name, shape, dtype)
+            return torch.empty(shape, device=target_device, dtype=dtype)
+        key = (name, target_device, shape, dtype)
         cached = self._buffer_cache.get(key)
         if cached is None:
-            cached = torch.empty(shape, device=self.cuda_device, dtype=dtype)
+            cached = torch.empty(shape, device=target_device, dtype=dtype)
             self._buffer_cache[key] = cached
         return cached
 
@@ -413,11 +422,24 @@ class DeepSeekHybridEPModule(nn.Module):
     def _apply_local_experts(self, tokens: torch.Tensor, expert_ids: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
         if tokens.numel() == 0:
             return tokens
-        outputs = torch.zeros_like(tokens)
+        outputs = self._buffer(
+            "local_outputs",
+            tuple(tokens.shape),
+            tokens.dtype,
+            reuse=self.optimized,
+            device=tokens.device,
+        )
+        outputs.zero_()
         sort_idx = torch.argsort(expert_ids)
         sorted_tokens = tokens.index_select(0, sort_idx)
         sorted_weights = weights.index_select(0, sort_idx)
-        sorted_outputs = torch.empty_like(sorted_tokens)
+        sorted_outputs = self._buffer(
+            "local_sorted_outputs",
+            tuple(sorted_tokens.shape),
+            sorted_tokens.dtype,
+            reuse=self.optimized,
+            device=sorted_tokens.device,
+        )
         expert_count_list = torch.bincount(expert_ids, minlength=self.local_experts).detach().cpu().tolist()
         offset = 0
         for local_id, expert in enumerate(self.experts):
@@ -459,7 +481,7 @@ class DeepSeekHybridEPModule(nn.Module):
 
     def _all_to_all_list(self, tensor: torch.Tensor, send_counts: Sequence[int], recv_counts: Sequence[int], *, group: Optional[dist.ProcessGroup]) -> torch.Tensor:
         if len(send_counts) == 1:
-            return tensor.clone()
+            return tensor
         recv_shape = (sum(int(x) for x in recv_counts), *tensor.shape[1:])
         recv = tensor.new_empty(recv_shape)
         recv_parts = self._split_list(recv, recv_counts)
@@ -478,9 +500,9 @@ class DeepSeekHybridEPModule(nn.Module):
         reuse: bool,
     ) -> torch.Tensor:
         if len(send_counts) == 1:
-            return tensor.clone()
+            return tensor
         recv_shape = (sum(int(x) for x in recv_counts), *tensor.shape[1:])
-        output = self._buffer(label, recv_shape, tensor.dtype, reuse=reuse)
+        output = self._buffer(label, recv_shape, tensor.dtype, reuse=reuse, device=tensor.device)
         return dist_nn.all_to_all_single(
             output,
             tensor,
