@@ -50,10 +50,9 @@ class MoEBackendWorkload:
         out = self._naive_out
         out.zero_()
         for expert in range(self.cfg.num_experts):
-            mask = idx == expert
-            if not torch.any(mask):
+            token_ids, slot_ids = (idx == expert).nonzero(as_tuple=True)
+            if token_ids.numel() == 0:
                 continue
-            token_ids, slot_ids = mask.nonzero(as_tuple=True)
             x_e = x[token_ids]
             h = x_e @ self.w1[expert]
             h = torch.relu(h)

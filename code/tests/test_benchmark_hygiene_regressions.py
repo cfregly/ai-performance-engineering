@@ -749,6 +749,21 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     assert "self._output_buffer.copy_(self._reduction_buffer)" in benchmark_section
 
 
+def test_moe_cuda_naive_backend_skips_redundant_mask_any_sync() -> None:
+    source = (REPO_ROOT / "labs" / "moe_cuda" / "moe_backend_common.py").read_text(
+        encoding="utf-8"
+    )
+    naive_section = source.split("def forward_naive", maxsplit=1)[1].split(
+        "def forward_vectorized",
+        maxsplit=1,
+    )[0]
+
+    assert "token_ids, slot_ids = (idx == expert).nonzero(as_tuple=True)" in naive_section
+    assert "if token_ids.numel() == 0:" in naive_section
+    assert "torch.any(mask)" not in naive_section
+    assert "mask.nonzero" not in naive_section
+
+
 def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
     dual_cta = (REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_cta.py").read_text(
         encoding="utf-8"
