@@ -1385,6 +1385,20 @@ def test_ch14_flash_attention_sdpa_bench_defers_output_clone_and_host_sync() -> 
     assert "output=self.output.detach().clone()" in capture_section
 
 
+def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    cached_attention_section = source.split("if kv_cache is None:", maxsplit=1)[
+        1
+    ].split("# Reshape and project", maxsplit=1)[0]
+
+    assert "valid_mask.all().item()" not in cached_attention_section
+    assert "has_padding = False" in cached_attention_section
+    assert "if write_pos + delta_len < required_seq_len:" in cached_attention_section
+    assert "if has_padding" in cached_attention_section
+
+
 def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch17" / "baseline_dynamic_routing.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

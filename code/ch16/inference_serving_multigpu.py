@@ -46,14 +46,14 @@ Error Recovery:
 Author: Blackwell Performance Engineering Team
 """
 
+import os
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from queue import PriorityQueue, Queue
+from queue import PriorityQueue
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -827,6 +827,7 @@ class TensorParallelAttention(nn.Module):
                 max_total_len = max(max_total_len, total_len)
 
             required_seq_len = max_total_len if max_total_len > 0 else 1
+            has_padding = False
             self._ensure_workspaces(batch_size, required_seq_len, key_local.dtype, key_local.device)
             attn_k = self._attn_k_workspace[:batch_size, :, :required_seq_len, :]
             attn_v = self._attn_v_workspace[:batch_size, :, :required_seq_len, :]
@@ -850,10 +851,14 @@ class TensorParallelAttention(nn.Module):
                     attn_k[idx, :, write_pos:end_pos, :].copy_(key_local[idx, :, :delta_len, :])
                     attn_v[idx, :, write_pos:end_pos, :].copy_(value_local[idx, :, :delta_len, :])
                     valid_mask[idx, write_pos:end_pos] = True
+                if write_pos + delta_len < required_seq_len:
+                    has_padding = True
 
-            attn_bias = None
-            if not bool(valid_mask.all().item()):
-                attn_bias = valid_mask.view(batch_size, 1, 1, required_seq_len)
+            attn_bias = (
+                valid_mask.view(batch_size, 1, 1, required_seq_len)
+                if has_padding
+                else None
+            )
 
             if self._force_sdpa or not _flex_attention_supported(
                 q,
@@ -1368,7 +1373,7 @@ class InferenceServerMultiGPU:
         token_counts = [0] * batch_size
 
         # Materialise prompts/tokens into the reusable GPU workspace
-        for pack_idx, (orig_idx, state) in enumerate(eligible):
+        for pack_idx, (_orig_idx, state) in enumerate(eligible):
             if len(state.generated_tokens) == 0:
                 token_source = state.request.prompt_tokens
             else:
@@ -1466,7 +1471,7 @@ class InferenceServerMultiGPU:
 
         generated = next_tokens_device.cpu().tolist()
 
-        for (pack_idx, (orig_idx, state)), token in zip(enumerate(eligible), generated):
+        for (_pack_idx, (_orig_idx, state)), token in zip(enumerate(eligible), generated):
             remaining = self.max_seq_len - state.current_position
             if remaining <= 0:
                 state.is_complete = True
@@ -1482,7 +1487,7 @@ class InferenceServerMultiGPU:
         head_slice = self._head_slice(attn_keys.shape[2])
 
         def _flush_to_cache():
-            for pack_idx, (orig_idx, state) in enumerate(eligible):
+            for pack_idx, (_orig_idx, state) in enumerate(eligible):
                 num_tokens = token_counts[pack_idx]
                 if num_tokens == 0:
                     continue
