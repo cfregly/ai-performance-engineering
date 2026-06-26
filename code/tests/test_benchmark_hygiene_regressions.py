@@ -1132,6 +1132,57 @@ def test_ch20_bf16_mlp_preconverts_activation_dtype_outside_hot_loop() -> None:
     assert "self.output = self.model(self._x_model_dtype)" in benchmark_section
 
 
+def test_ch20_integrated_kv_cache_releases_slabs_without_zero_fill() -> None:
+    source = (REPO_ROOT / "ch20" / "optimized_integrated_kv_cache.py").read_text(encoding="utf-8")
+    acquire_section = source.split("def _acquire_buffer", maxsplit=1)[1].split(
+        "def _release_buffer", maxsplit=1
+    )[0]
+    release_section = source.split("def _release_buffer", maxsplit=1)[1].split(
+        "def allocate", maxsplit=1
+    )[0]
+
+    assert "torch.empty(length" in acquire_section
+    assert "torch.empty_like(k_buf)" in acquire_section
+    assert "torch.zeros(" not in acquire_section
+    assert ".zero_()" not in release_section
+    assert "self._empty" in source
+
+    from ch20.optimized_integrated_kv_cache import PagedKVCache
+
+    cache = PagedKVCache(
+        page_size=4,
+        num_layers=1,
+        num_heads=1,
+        head_dim=2,
+        dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    missing_k, missing_v = cache.get("missing", 0, 0, 4)
+    assert missing_k.shape == (0, 1, 2)
+    assert missing_v.shape == (0, 1, 2)
+
+    old_k = torch.tensor([[[1.0, 2.0]], [[3.0, 4.0]]])
+    old_v = old_k + 10.0
+    cache.append_block("old", 0, old_k, old_v, 0)
+    old_buffer = cache.allocations["old"][0]["buffer"]
+    old_ptr = old_buffer[0].data_ptr()
+    cache.free("old")
+
+    cache.allocate("new", 2)
+    new_buffer = cache.allocations["new"][0]["buffer"]
+    assert new_buffer[0].data_ptr() == old_ptr
+    empty_k, empty_v = cache.get("new", 0, 0, 4)
+    assert empty_k.shape == (0, 1, 2)
+    assert empty_v.shape == (0, 1, 2)
+
+    new_k = torch.tensor([[[7.0, 8.0]]])
+    new_v = new_k + 20.0
+    cache.append_block("new", 0, new_k, new_v, 0)
+    actual_k, actual_v = cache.get("new", 0, 0, 4)
+    torch.testing.assert_close(actual_k, new_k)
+    torch.testing.assert_close(actual_v, new_v)
+
+
 def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> None:
     baseline_source = (REPO_ROOT / "ch20" / "baseline_pipeline_sequential.py").read_text(encoding="utf-8")
     optimized_source = (REPO_ROOT / "ch20" / "optimized_pipeline_sequential.py").read_text(encoding="utf-8")

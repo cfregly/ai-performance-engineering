@@ -15,7 +15,6 @@ from functools import partial
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 try:
     from torch.nn.attention import SDPBackend, sdpa_kernel
 except ImportError:  # pragma: no cover - older PyTorch fallback
@@ -51,19 +50,19 @@ class PagedKVCache:
         self.device = device
         self.buffer_pool: dict[int, list[tuple[torch.Tensor, torch.Tensor]]] = defaultdict(list)
         self.allocations: dict[str, list[dict[str, object]]] = {}
+        self._empty = torch.empty(0, self.num_heads, self.head_dim, dtype=self.dtype, device=self.device)
     
     def _acquire_buffer(self, pages: int) -> tuple[torch.Tensor, torch.Tensor]:
         if self.buffer_pool[pages]:
             return self.buffer_pool[pages].pop()
         length = pages * self.page_size
-        k_buf = torch.zeros(length, self.num_heads, self.head_dim, dtype=self.dtype, device=self.device)
-        v_buf = torch.zeros_like(k_buf)
+        k_buf = torch.empty(length, self.num_heads, self.head_dim, dtype=self.dtype, device=self.device)
+        v_buf = torch.empty_like(k_buf)
         return k_buf, v_buf
     
     def _release_buffer(self, pages: int, buffer: tuple[torch.Tensor, torch.Tensor]) -> None:
-        k_buf, v_buf = buffer
-        k_buf.zero_()
-        v_buf.zero_()
+        # Valid ranges are tracked per allocation, so releasing does not need to
+        # clear the whole slab before it re-enters the pool.
         self.buffer_pool[pages].append(buffer)
     
     def allocate(self, request_id: str, estimated_len: int) -> None:
@@ -126,13 +125,11 @@ class PagedKVCache:
     
     def get(self, request_id: str, layer_idx: int, start: int, end: int) -> tuple[torch.Tensor, torch.Tensor]:
         if request_id not in self.allocations:
-            empty = torch.zeros(0, self.num_heads, self.head_dim, dtype=self.dtype, device=self.device)
-            return empty, empty
+            return self._empty, self._empty
         entry = self.allocations[request_id][layer_idx]
         valid_end = min(end, int(entry["length"]))
         if start >= valid_end:
-            empty = torch.zeros(0, self.num_heads, self.head_dim, dtype=self.dtype, device=self.device)
-            return empty, empty
+            return self._empty, self._empty
         buffer_k, buffer_v = entry["buffer"]  # type: ignore[assignment]
         return buffer_k[start:valid_end], buffer_v[start:valid_end]
     
