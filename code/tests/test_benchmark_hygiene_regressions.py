@@ -1137,6 +1137,34 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
+    source = (REPO_ROOT / "ch17" / "baseline_dynamic_routing.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _make_metrics",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._remaining_lengths = torch.empty_like(self._prompt_lengths)" in setup_section
+    assert "self._long_prefill = torch.empty_like(self._priorities, dtype=torch.bool)" in setup_section
+    assert "self._served_offload_mask = torch.empty_like(self._long_prefill)" in setup_section
+    assert "long_prefill = (" not in benchmark_section
+    assert "capacity = self._queue_lengths" not in benchmark_section
+    assert "offload_mask = long_prefill & capacity" not in benchmark_section
+    assert "admit_mask = torch.ones_like" not in benchmark_section
+    assert "(~admit_mask)" not in benchmark_section
+    assert "torch.sub(" in benchmark_section and "out=self._remaining_lengths" in benchmark_section
+    assert "out=self._long_prefill" in benchmark_section
+    assert "out=self._capacity_mask" in benchmark_section
+    assert "out=self._offload_mask" in benchmark_section
+    assert "torch.ne(self._priorities, 0, out=self._admit_mask)" in benchmark_section
+    assert "self._admit_mask.fill_(True)" in benchmark_section
+    assert "out=self._served_offload_mask" in benchmark_section
+
+
 def test_ch06_roofline_ilp_defers_verification_tensors_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch06" / "roofline_analysis_ilp.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

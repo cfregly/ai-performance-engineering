@@ -47,6 +47,12 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._cached_lengths: Optional[torch.Tensor] = None
         self._queue_lengths: Optional[torch.Tensor] = None
         self._priorities: Optional[torch.Tensor] = None
+        self._remaining_lengths: Optional[torch.Tensor] = None
+        self._long_prefill: Optional[torch.Tensor] = None
+        self._capacity_mask: Optional[torch.Tensor] = None
+        self._offload_mask: Optional[torch.Tensor] = None
+        self._admit_mask: Optional[torch.Tensor] = None
+        self._served_offload_mask: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         random.seed(42)
@@ -73,6 +79,12 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 [0 if r.priority is Priority.LOW else (2 if r.priority is Priority.HIGH else 1) 
                  for r in self._cached_requests], dtype=torch.int32
             )
+            self._remaining_lengths = torch.empty_like(self._prompt_lengths)
+            self._long_prefill = torch.empty_like(self._priorities, dtype=torch.bool)
+            self._capacity_mask = torch.empty_like(self._long_prefill)
+            self._offload_mask = torch.empty_like(self._long_prefill)
+            self._admit_mask = torch.empty_like(self._long_prefill)
+            self._served_offload_mask = torch.empty_like(self._long_prefill)
         cfg = self.get_config()
         num_iters = (cfg.warmup or 0) + (cfg.iterations or 0) + 5
         high = self.router.PREFILL_QUEUE_MAX + 6  # match baseline randint upper bound
@@ -130,25 +142,42 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 or self._queue_lengths is None
                 or self._cached_lengths is None
                 or self._priorities is None
+                or self._remaining_lengths is None
+                or self._long_prefill is None
+                or self._capacity_mask is None
+                or self._offload_mask is None
+                or self._admit_mask is None
+                or self._served_offload_mask is None
             ):
                 raise RuntimeError("Vectorized routing buffers not initialized")
             self._queue_lengths.copy_(queue_lengths)
 
-            # Vectorized boolean operations (single pass over data)
-            long_prefill = (self._prompt_lengths - self._cached_lengths) > self.router.PREFILL_LENGTH_THRESHOLD
-            capacity = self._queue_lengths < self.router.PREFILL_QUEUE_MAX
-            offload_mask = long_prefill & capacity
+            # Vectorized boolean operations reuse buffers to avoid hot-path allocation.
+            torch.sub(self._prompt_lengths, self._cached_lengths, out=self._remaining_lengths)
+            torch.gt(
+                self._remaining_lengths,
+                self.router.PREFILL_LENGTH_THRESHOLD,
+                out=self._long_prefill,
+            )
+            torch.lt(
+                self._queue_lengths,
+                self.router.PREFILL_QUEUE_MAX,
+                out=self._capacity_mask,
+            )
+            torch.logical_and(self._long_prefill, self._capacity_mask, out=self._offload_mask)
 
             est_ttft = (
                 self.router.get_current_prefill_queue_length() * self.router.avg_prefill_time_per_req
                 + self.router.get_current_decode_queue_length() * self.router.avg_decode_time_per_req
             )
-            admit_mask = torch.ones_like(self._priorities, dtype=torch.bool)
             if est_ttft > self.router.TTFT_SLO_MAX:
-                admit_mask = self._priorities != 0  # reject low-priority requests under high load
+                torch.ne(self._priorities, 0, out=self._admit_mask)
+            else:
+                self._admit_mask.fill_(True)
 
-            rejects = int((~admit_mask).sum().item())
-            offloaded = int(torch.logical_and(admit_mask, offload_mask).sum().item())
+            rejects = self.batch_size - int(self._admit_mask.sum().item())
+            torch.logical_and(self._admit_mask, self._offload_mask, out=self._served_offload_mask)
+            offloaded = int(self._served_offload_mask.sum().item())
         else:
             # Python loop-based routing (sequential, one-at-a-time)
             for idx, req in enumerate(requests):
@@ -207,6 +236,21 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def validate_result(self) -> Optional[str]:
         return None
 
+    def teardown(self) -> None:
+        self._cached_requests = []
+        self._prompt_lengths = None
+        self._cached_lengths = None
+        self._queue_lengths = None
+        self._priorities = None
+        self._remaining_lengths = None
+        self._long_prefill = None
+        self._capacity_mask = None
+        self._offload_mask = None
+        self._admit_mask = None
+        self._served_offload_mask = None
+        self._queue_length_table = None
+        super().teardown()
+
 
 class BaselineDynamicRoutingBenchmark(_DynamicRoutingBenchmark):
     """Python loop-based routing decisions."""
@@ -217,4 +261,3 @@ class BaselineDynamicRoutingBenchmark(_DynamicRoutingBenchmark):
 
 def get_benchmark():
     return BaselineDynamicRoutingBenchmark()
-
