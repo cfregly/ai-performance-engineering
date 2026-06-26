@@ -799,6 +799,9 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "torch.cuda.Event(enable_timing=True)" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
     assert "torch.stack(" not in benchmark_section
+    assert "kv_buffer = torch.empty(" in benchmark_section
+    assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)" in benchmark_section
+    assert "torch.cat((accumulated_kv, chunk_kv), dim=1)" not in benchmark_section
     assert "request_start, prefill_end, decode_end = request_events[event_idx]" in benchmark_section
     assert "self._last_outputs = outputs" in benchmark_section
     assert "self.output = torch.stack(self._last_outputs, dim=0)" in capture_section

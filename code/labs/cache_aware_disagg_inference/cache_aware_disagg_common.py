@@ -338,6 +338,18 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     owners=owners,
                     metrics=metrics,
                 )
+                kv_buffer = torch.empty(
+                    (
+                        self.cfg.batch_size,
+                        prompt.size(1),
+                        self.cfg.hidden_size,
+                    ),
+                    device=self.device,
+                    dtype=self.cfg.dtype,
+                )
+                current_kv_len = accumulated_kv.size(1)
+                if current_kv_len:
+                    kv_buffer[:, :current_kv_len].copy_(accumulated_kv)
                 if plan.is_warm and owners.get(plan.request_idx) == current_worker:
                     metrics["warm_requests_served_local"] += 1.0
 
@@ -355,7 +367,10 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         metrics=metrics,
                     )
                     chunk_kv, seed = self.prefill_model.prefill(chunk)
-                    accumulated_kv = torch.cat((accumulated_kv, chunk_kv), dim=1)
+                    next_kv_len = current_kv_len + chunk_kv.size(1)
+                    kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)
+                    current_kv_len = next_kv_len
+                    accumulated_kv = kv_buffer[:, :current_kv_len]
                     worker_caches[current_worker][plan.request_idx] = accumulated_kv
                     owners[plan.request_idx] = current_worker
 
