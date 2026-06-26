@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -18,7 +17,6 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
 from ch19 import arch_config  # noqa: E402
 from ch19.mxfp8_moe_common import (  # noqa: E402
-    MX_BLOCK_SIZE,
     balanced_assignments,
     bucket_by_expert,
     require_blackwell,
@@ -39,6 +37,13 @@ except Exception as exc:  # pragma: no cover
     GroupedLinear = te_autocast = quantized_model_init = te_recipe = None  # type: ignore
 
 _log = logger.get_logger(__name__)
+
+
+def _flat_topk_token_ids(num_tokens: int, top_k: int, device: torch.device) -> torch.Tensor:
+    token_ids = torch.arange(num_tokens * top_k, device=device, dtype=torch.int64)
+    if top_k > 1:
+        token_ids.div_(top_k, rounding_mode="floor")
+    return token_ids
 
 
 class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -104,20 +109,19 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
         reordered_inputs: List[torch.Tensor] = []
         reordered_indices: List[torch.Tensor] = []
         reordered_splits: List[int] = []
-        reordered_experts: List[int] = []
         reordered_token_ids: List[torch.Tensor] = []
         reordered_weights: List[torch.Tensor] = []
+        order_tensor = torch.tensor(order, device=bucketed.device, dtype=torch.int64)
         for idx in order:
             start, end = offsets[idx]
             reordered_inputs.append(bucketed.narrow(0, start, m_splits[idx]))
             reordered_indices.append(bucket_indices.narrow(0, start, m_splits[idx]))
             reordered_splits.append(m_splits[idx])
-            reordered_experts.append(expert_order[idx].item())
             reordered_token_ids.append(bucket_token_ids.narrow(0, start, m_splits[idx]))
             reordered_weights.append(gating_weights.narrow(0, start, m_splits[idx]))
         new_bucketed = torch.cat(reordered_inputs, dim=0)
         new_indices = torch.cat(reordered_indices, dim=0)
-        new_order = torch.tensor(reordered_experts, device=bucketed.device, dtype=torch.int64)
+        new_order = expert_order.index_select(0, order_tensor)
         new_token_ids = torch.cat(reordered_token_ids, dim=0)
         new_weights = torch.cat(reordered_weights, dim=0)
         return new_bucketed, reordered_splits, new_indices, new_order, new_token_ids, new_weights
@@ -146,18 +150,15 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
             num_tokens=self.num_tokens, num_experts=self.num_experts, device=self.device
         )
         top_k = max(1, int(self.top_k))
+        token_ids = _flat_topk_token_ids(self.num_tokens, top_k, self.device)
         if top_k == 1:
             assignments = base_assign
             expanded_inputs = self.inputs
-            token_ids = torch.arange(self.num_tokens, device=self.device, dtype=torch.int64)
             gating_weights = torch.ones(self.num_tokens, device=self.device, dtype=torch.float16)
         else:
             expert_matrix = [(base_assign + offset) % self.num_experts for offset in range(top_k)]
             assignments = torch.stack(expert_matrix, dim=-1).reshape(-1)
-            expanded_inputs = self.inputs.repeat_interleave(top_k, dim=0)
-            token_ids = torch.arange(self.num_tokens, device=self.device, dtype=torch.int64).repeat_interleave(
-                top_k
-            )
+            expanded_inputs = self.inputs.index_select(0, token_ids)
             gating_weights = torch.full(
                 (self.num_tokens * top_k,),
                 1.0 / float(top_k),
@@ -348,4 +349,3 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedMXFP8MoEBenchmark()
-
