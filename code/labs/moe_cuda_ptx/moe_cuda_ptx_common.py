@@ -114,6 +114,13 @@ class QuantizedBundle:
     transpose: Optional[QuantizedMatrix] = None
 
 
+def _flat_topk_token_ids(num_tokens: int, top_k: int, device: torch.device) -> torch.Tensor:
+    token_ids = torch.arange(num_tokens * top_k, device=device, dtype=torch.long)
+    if top_k > 1:
+        token_ids.div_(top_k, rounding_mode="floor")
+    return token_ids
+
+
 def _workload_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--num-tokens", type=int, default=None)
@@ -280,7 +287,7 @@ def pack_topk_routes(
     top_k = expert_indices.shape[1]
     flat_experts = expert_indices.reshape(-1)
     flat_weights = expert_weights.reshape(-1)
-    flat_token_ids = torch.arange(x.shape[0], device=x.device, dtype=torch.long).repeat_interleave(top_k)
+    flat_token_ids = _flat_topk_token_ids(x.shape[0], top_k, x.device)
     sort_order = torch.argsort(flat_experts, stable=True)
 
     sorted_token_ids = flat_token_ids.index_select(0, sort_order)

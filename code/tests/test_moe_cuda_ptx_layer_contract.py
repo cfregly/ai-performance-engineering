@@ -69,8 +69,21 @@ def test_run_layer_cuda_forward_skips_standalone_quantize_roundtrip(monkeypatch)
 
 def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
     source = inspect.getsource(moe_common.pack_topk_routes)
+    module_source = inspect.getsource(moe_common)
     assert "starts = torch.cat(" not in source
     assert "starts = torch.empty_like(counts)" in source
+    assert "repeat_interleave(top_k)" not in source
+    assert "def _flat_topk_token_ids" in module_source
+    assert 'token_ids.div_(top_k, rounding_mode="floor")' in module_source
+
+    torch.testing.assert_close(
+        moe_common._flat_topk_token_ids(3, 1, torch.device("cpu")),
+        torch.tensor([0, 1, 2], dtype=torch.long),
+    )
+    torch.testing.assert_close(
+        moe_common._flat_topk_token_ids(3, 2, torch.device("cpu")),
+        torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.long),
+    )
 
     x = torch.arange(20, dtype=torch.float32).view(5, 4)
     expert_indices = torch.tensor(
@@ -98,3 +111,7 @@ def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
         dtype=torch.long,
     )
     torch.testing.assert_close(packed.starts.cpu(), expected_starts)
+    torch.testing.assert_close(
+        packed.token_indices.cpu(),
+        torch.tensor([0, 2, 4, 0, 1, 3, 4, 1, 2, 3], dtype=torch.long),
+    )
