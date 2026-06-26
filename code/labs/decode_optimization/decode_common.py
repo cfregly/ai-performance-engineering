@@ -414,7 +414,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.gpu_payloads.append(torch.empty_like(host_payload, device=self.device))
             self.host_payload = self.host_payloads[0]
             self.gpu_payload = self.gpu_payloads[0]
-        self.state_buffer = torch.zeros(
+        self.state_buffer = torch.empty(
             (bsz, self.cfg.hidden_size), device=self.device, dtype=self.dtype
         )
         self.current_tokens = torch.empty((bsz,), device=self.device, dtype=torch.long)
@@ -454,9 +454,6 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.current_tokens.copy_(next_token)
         torch.cuda.synchronize()
         self.decode_graph = torch.cuda.CUDAGraph()
-        # Reset state before capture for determinism
-        self.state_buffer.zero_()
-        self.current_tokens.zero_()
         if not self.cfg.graph_full_iteration:
             with torch.cuda.stream(self.graph_stream):
                 _prime_decode_state()
@@ -649,11 +646,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         # Single FP8 context for entire forward pass to avoid workspace churn
         with self._get_fp8_context():
-            # Prefill (or reset when full graph already contains it)
-            if self.decode_graph is not None and self.graph_includes_prefill:
-                self.state_buffer.zero_()
-                self.current_tokens.zero_()
-            else:
+            # Prefill unless the captured graph already contains the full iteration.
+            if self.decode_graph is None or not self.graph_includes_prefill:
                 prefill_state = self.prefill_fn(self.gpu_prompt)
                 self.state_buffer.copy_(prefill_state)
                 self.current_tokens.copy_(self.gpu_prompt[:, -1])

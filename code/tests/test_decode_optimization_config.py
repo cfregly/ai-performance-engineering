@@ -61,6 +61,30 @@ def test_decode_graph_capture_avoids_unused_full_vocab_output_copy() -> None:
     assert "if self.cfg.graph_full_iteration:\n                    self.current_tokens.copy_(next_token)" not in graph_section
 
 
+def test_decode_state_buffers_are_overwritten_without_zero_fill() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    init_section = source.split("def _init_buffers", maxsplit=1)[1].split(
+        "def _maybe_compile", maxsplit=1
+    )[0]
+    graph_section = source.split("def _capture_decode_graph", maxsplit=1)[1].split(
+        "def _prefill", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics", maxsplit=1
+    )[0]
+
+    assert "self.state_buffer = torch.empty(" in init_section
+    assert "self.state_buffer = torch.zeros(" not in init_section
+    assert "self.state_buffer.zero_()" not in graph_section
+    assert "self.current_tokens.zero_()" not in graph_section
+    assert "self.state_buffer.zero_()" not in benchmark_section
+    assert "self.current_tokens.zero_()" not in benchmark_section
+    assert "self.state_buffer.copy_(prefill_state)" in graph_section
+    assert "self.current_tokens.copy_(self.gpu_prompt[:, -1])" in graph_section
+
+
 def test_decode_pinned_pair_uses_transfer_heavy_workload_with_only_pin_state_changed() -> None:
     baseline = get_baseline_decode_pinned()
     optimized = get_optimized_decode_pinned()
