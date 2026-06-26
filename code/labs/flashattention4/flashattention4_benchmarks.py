@@ -47,6 +47,7 @@ class FlashAttention4BenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._selected_provider: Optional[str] = None
         self._prev_matmul_allow_tf32: Optional[bool] = None
         self._prev_cudnn_allow_tf32: Optional[bool] = None
+        self._sparsity_ratio = 1.0
         tokens = self.config.batch * self.config.seq_len
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.config.batch),
@@ -66,6 +67,8 @@ class FlashAttention4BenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         torch.backends.cuda.matmul.allow_tf32 = False
         torch.backends.cudnn.allow_tf32 = False
         self.inputs = build_reference_inputs(self.config, device=self.device, include_block_mask=True)
+        if self.inputs.dense_mask is not None:
+            self._sparsity_ratio = float(self.inputs.dense_mask.float().mean())
         self._prepare_benchmark()
         runtime_config = self.get_config()
         claim_type = resolve_flashattention4_claim_type(
@@ -113,9 +116,6 @@ class FlashAttention4BenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             .cpu()
             .clone()
         )
-        sparsity_ratio = 1.0
-        if self.inputs.dense_mask is not None:
-            sparsity_ratio = float(self.inputs.dense_mask.float().mean().item())
         self._set_verification_payload(
             inputs={
                 "q": self.inputs.q.detach(),
@@ -131,13 +131,14 @@ class FlashAttention4BenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
                 "tf32": False,
             },
             output_tolerance=(5e-2, 5e-1),
-            signature_overrides={"sparsity_ratio": sparsity_ratio},
+            signature_overrides={"sparsity_ratio": self._sparsity_ratio},
         )
 
     def teardown(self) -> None:
         self.inputs = None
         self.output = None
         self._selected_provider = None
+        self._sparsity_ratio = 1.0
         if self._prev_matmul_allow_tf32 is not None:
             torch.backends.cuda.matmul.allow_tf32 = self._prev_matmul_allow_tf32
         if self._prev_cudnn_allow_tf32 is not None:

@@ -712,6 +712,9 @@ def test_flexattention_metrics_use_attention_formula_and_hot_paths_skip_clone() 
     assert "self.output = output_tensor.detach().float().clone()" not in flex_baseline_source
     assert "self.output = output_tensor.detach().float().clone()" not in flex_optimized_source
     assert "self.output = result.detach().float().clone()" not in flash4_source
+    assert "self._sparsity_ratio = float(self.inputs.dense_mask.float().mean())" in flash4_source
+    assert "self.inputs.dense_mask.float().mean().item()" not in flash4_source
+    assert 'signature_overrides={"sparsity_ratio": self._sparsity_ratio}' in flash4_source
 
 
 def test_ch10_flash_attention_requires_real_flashattention_on_sm100() -> None:
