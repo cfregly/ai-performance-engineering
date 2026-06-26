@@ -629,6 +629,17 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "output=self.output.detach().float().clone()" in moe_capture
 
 
+def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
+    source = (REPO_ROOT / "ch15" / "medusa_eagle_speculative_benchmarks.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def _run_family_speculative_decode", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "time.perf_counter" not in benchmark_section
+    assert "draft_time_ms=None" in benchmark_section
+    assert "verify_time_ms=None" in benchmark_section
+
+
 def test_ch13_regional_compile_moves_fp32_verification_conversion_out_of_hot_loop() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

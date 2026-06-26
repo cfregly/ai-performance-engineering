@@ -3,15 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import time
 from typing import Dict, Optional
 
 import torch
-
-from core.benchmark.metrics import compute_speculative_decoding_metrics
-from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.benchmark.wrapper_utils import attach_benchmark_metadata
-from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 from ch15.speculative_decoding_common import (
     SpecDecodingWorkload,
@@ -20,6 +14,10 @@ from ch15.speculative_decoding_common import (
     resolve_speculative_decode_dtype,
     scale_tail_dims_,
 )
+from core.benchmark.metrics import compute_speculative_decoding_metrics
+from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.benchmark.wrapper_utils import attach_benchmark_metadata
+from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
 @dataclass(frozen=True)
@@ -210,8 +208,6 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         draft_tokens = 0
         accepted_draft = 0
         rounds = 0
-        draft_time_ms = 0.0
-        verify_time_ms = 0.0
 
         with self._nvtx_range(self.label):
             with torch.no_grad():
@@ -221,7 +217,6 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     remaining = wl.total_tokens - pos
                     k = wl.speculative_k if remaining >= wl.speculative_k else remaining
 
-                    draft_start = time.perf_counter()
                     draft_seed = self._draft_seed_tokens(out[:, pos : pos + 1], k, rounds)
                     logits_d = self.draft_model(draft_seed)
                     draft_block = logits_d.argmax(dim=-1)
@@ -230,7 +225,6 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         if self._should_perturb(rounds, j):
                             next_d = self._perturb_token(next_d, j)
                         self._draft_ids[:, j] = next_d
-                    draft_time_ms += (time.perf_counter() - draft_start) * 1000.0
 
                     draft_tokens += int(k)
 
@@ -238,10 +232,8 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     if k > 1:
                         self._verify_prev[:, 1:k] = self._draft_ids[:, : k - 1]
 
-                    verify_start = time.perf_counter()
                     logits_t = self.target_model(self._verify_prev[:, :k])
                     target_next = logits_t.argmax(dim=-1)
-                    verify_time_ms += (time.perf_counter() - verify_start) * 1000.0
 
                     matches = target_next.eq(self._draft_ids[:, :k])
                     mismatch = (~matches[0]).nonzero(as_tuple=False)
@@ -262,8 +254,8 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         metrics = compute_speculative_decoding_metrics(
             draft_tokens=draft_tokens,
             accepted_tokens=accepted_draft,
-            draft_time_ms=draft_time_ms,
-            verify_time_ms=verify_time_ms,
+            draft_time_ms=None,
+            verify_time_ms=None,
             num_rounds=rounds,
         )
         metrics.update(
