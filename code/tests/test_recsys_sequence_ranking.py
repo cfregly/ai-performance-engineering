@@ -60,9 +60,12 @@ def test_apply_cli_overrides_clamps_history_length() -> None:
 
 def test_build_inputs_is_deterministic() -> None:
     workload = _small_workload()
+    source = inspect.getsource(build_inputs)
     inputs_a = build_inputs(workload, torch.device("cpu"))
     inputs_b = build_inputs(workload, torch.device("cpu"))
 
+    assert "input_stats = torch.stack(" in source
+    assert ".mean().item()" not in source
     assert torch.equal(inputs_a.sequence_ids, inputs_b.sequence_ids)
     assert torch.equal(inputs_a.sequence_mask, inputs_b.sequence_mask)
     assert torch.equal(inputs_a.sequence_lengths, inputs_b.sequence_lengths)

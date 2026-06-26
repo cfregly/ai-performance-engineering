@@ -223,10 +223,14 @@ def build_inputs(workload: SequenceRankingWorkload, device: torch.device) -> Ran
     time_index = torch.arange(workload.seq_len, dtype=torch.int64).view(1, workload.seq_len)
     sequence_mask = time_index < lengths.view(-1, 1)
     hot_threshold = max(workload.item_vocab_size // 100, 1)
-    avg_sequence_length = float(lengths.to(torch.float32).mean().item())
-    hot_candidate_share_pct = float(
-        (candidate_ids < hot_threshold).to(torch.float32).mean().item() * 100.0
-    )
+    input_stats = torch.stack(
+        (
+            lengths.to(torch.float32).mean(),
+            (candidate_ids < hot_threshold).to(torch.float32).mean() * 100.0,
+        )
+    ).tolist()
+    avg_sequence_length = float(input_stats[0])
+    hot_candidate_share_pct = float(input_stats[1])
 
     return RankingInputs(
         sequence_ids=sequence_ids.to(device=device, dtype=torch.int64),
