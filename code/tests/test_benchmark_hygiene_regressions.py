@@ -1497,6 +1497,25 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
     assert "self.output = None" in optimized_benchmark
 
 
+def test_ch13_training_models_reuse_position_id_buffers() -> None:
+    sources = [
+        REPO_ROOT / "ch13" / "training_speed_common.py",
+        REPO_ROOT / "ch13" / "baseline_training_standard.py",
+        REPO_ROOT / "ch13" / "optimized_training_standard.py",
+    ]
+
+    for path in sources:
+        source = path.read_text(encoding="utf-8")
+        forward_section = source.split("def forward", maxsplit=1)[1].split(
+            "return",
+            maxsplit=1,
+        )[0]
+
+        assert 'self.register_buffer(\n            "_position_ids",' in source
+        assert "torch.arange(seq_len, device=input_ids.device)" not in forward_section
+        assert "pos_ids = self._position_ids[:, :seq_len].expand(batch_size, -1)" in forward_section
+
+
 def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
     source = (REPO_ROOT / "ch13" / "baseline_sequence_parallel_multigpu.py").read_text(
         encoding="utf-8"

@@ -25,6 +25,11 @@ class TrainingSpeedModel(nn.Module):
         super().__init__()
         self.embedding = nn.Embedding(cfg.vocab_size, cfg.hidden_dim)
         self.pos_embedding = nn.Embedding(cfg.seq_len, cfg.hidden_dim)
+        self.register_buffer(
+            "_position_ids",
+            torch.arange(cfg.seq_len, dtype=torch.long).unsqueeze(0),
+            persistent=False,
+        )
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=cfg.hidden_dim,
             nhead=cfg.num_heads,
@@ -40,7 +45,7 @@ class TrainingSpeedModel(nn.Module):
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len = input_ids.shape
-        pos_ids = torch.arange(seq_len, device=input_ids.device).unsqueeze(0).expand(batch_size, -1)
+        pos_ids = self._position_ids[:, :seq_len].expand(batch_size, -1)
         x = self.embedding(input_ids) + self.pos_embedding(pos_ids)
         x = self.transformer(x)
         x = self.ln_f(x)

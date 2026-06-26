@@ -46,6 +46,11 @@ class CheckpointedTransformerModel(nn.Module):
         # Embedding
         self.embedding = nn.Embedding(vocab_size, hidden_dim)
         self.pos_embedding = nn.Embedding(seq_len, hidden_dim)
+        self.register_buffer(
+            "_position_ids",
+            torch.arange(seq_len, dtype=torch.long).unsqueeze(0),
+            persistent=False,
+        )
         
         # Individual transformer layers (for checkpointing on a fixed interval)
         self.layers = nn.ModuleList([
@@ -69,7 +74,7 @@ class CheckpointedTransformerModel(nn.Module):
         batch_size, seq_len = input_ids.shape
         
         # Embeddings (not checkpointed - small memory footprint)
-        pos_ids = torch.arange(seq_len, device=input_ids.device).unsqueeze(0).expand(batch_size, -1)
+        pos_ids = self._position_ids[:, :seq_len].expand(batch_size, -1)
         x = self.embedding(input_ids) + self.pos_embedding(pos_ids)
         
         # Apply transformer layers with checkpointing on a fixed interval.

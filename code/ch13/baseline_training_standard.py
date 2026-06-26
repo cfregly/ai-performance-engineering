@@ -36,6 +36,11 @@ class TransformerModel(nn.Module):
         # Embedding
         self.embedding = nn.Embedding(vocab_size, hidden_dim)
         self.pos_embedding = nn.Embedding(seq_len, hidden_dim)
+        self.register_buffer(
+            "_position_ids",
+            torch.arange(seq_len, dtype=torch.long).unsqueeze(0),
+            persistent=False,
+        )
         
         # Transformer layers - standard PyTorch implementation
         encoder_layer = nn.TransformerEncoderLayer(
@@ -57,7 +62,7 @@ class TransformerModel(nn.Module):
         batch_size, seq_len = input_ids.shape
         
         # Embeddings
-        pos_ids = torch.arange(seq_len, device=input_ids.device).unsqueeze(0).expand(batch_size, -1)
+        pos_ids = self._position_ids[:, :seq_len].expand(batch_size, -1)
         x = self.embedding(input_ids) + self.pos_embedding(pos_ids)
         
         # Transformer (stores ALL attention matrices in memory for backward)
