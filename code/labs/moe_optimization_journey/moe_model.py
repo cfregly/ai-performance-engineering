@@ -19,7 +19,7 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple, Callable, Dict
+from typing import Optional, Tuple, Dict
 from dataclasses import dataclass
 
 from ch19.mxfp8_moe_common import (
@@ -342,10 +342,18 @@ class MoEExperts(nn.Module):
         batch_seq, top_k = expert_indices.shape
         repeated_tokens = x.repeat_interleave(top_k, dim=0)
         flat_expert_ids = expert_indices.view(-1)
-        sorted_tokens, counts, bucket_indices, expert_order, _ = bucket_grouped_tokens(
+        (
+            sorted_tokens,
+            counts,
+            bucket_indices,
+            _expert_order,
+            _bucket_token_ids,
+            expert_order_host,
+        ) = bucket_grouped_tokens(
             repeated_tokens,
             flat_expert_ids,
             self.num_experts,
+            return_expert_order_list=True,
         )
         sorted_weights = expert_weights.view(-1).index_select(0, bucket_indices)
 
@@ -354,7 +362,7 @@ class MoEExperts(nn.Module):
                            device=x.device, dtype=x.dtype)
 
         offset = 0
-        for expert_id, count in zip(expert_order.tolist(), counts):
+        for expert_id, count in zip(expert_order_host, counts):
             tokens_e = sorted_tokens[offset:offset+count]
             weights_e = sorted_weights[offset:offset+count].unsqueeze(-1)
             

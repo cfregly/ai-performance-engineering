@@ -156,5 +156,8 @@ def test_grouped_moe_path_uses_shared_bucket_helpers() -> None:
     )[0]
 
     assert "bucket_grouped_tokens(" in grouped_section
+    assert "return_expert_order_list=True" in grouped_section
+    assert "for expert_id, count in zip(expert_order_host, counts)" in grouped_section
+    assert "expert_order.tolist()" not in grouped_section
     assert "restore_grouped_tokens(" in grouped_section
     assert "torch.argsort" not in grouped_section

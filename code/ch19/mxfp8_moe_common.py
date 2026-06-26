@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 
 from core.benchmark.blackwell_requirements import ensure_blackwell_tma_supported
 
 MX_BLOCK_SIZE = 32  # Microscaling block granularity for MXFP8/NVFP4 paths.
+BucketByExpertResult = Tuple[torch.Tensor, List[int], torch.Tensor, torch.Tensor, torch.Tensor]
+BucketByExpertWithHostOrder = Tuple[
+    torch.Tensor,
+    List[int],
+    torch.Tensor,
+    torch.Tensor,
+    torch.Tensor,
+    List[int],
+]
 
 
 def require_blackwell(example_name: str) -> None:
@@ -29,7 +38,8 @@ def bucket_by_expert(
     assignments: torch.Tensor,
     num_experts: int,
     token_ids: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, List[int], torch.Tensor, torch.Tensor, torch.Tensor]:
+    return_expert_order_list: bool = False,
+) -> Union[BucketByExpertResult, BucketByExpertWithHostOrder]:
     """Reorder tokens by expert so grouped kernels can consume contiguous ranges.
 
     Returns:
@@ -38,6 +48,8 @@ def bucket_by_expert(
         bucket_indices: Indices that map bucketed rows back to the original order.
         expert_order: Tensor of expert ids aligned with m_splits.
         bucket_token_ids: Original token ids for each row in bucketed.
+        expert_order_list: Optional host-side expert ids aligned with m_splits
+            when return_expert_order_list is True.
     """
     if token_ids is None:
         token_ids = torch.arange(tokens.shape[0], device=tokens.device, dtype=torch.int64)
@@ -60,6 +72,8 @@ def bucket_by_expert(
     gather_index = torch.cat(bucket_indices, dim=0)
     expert_order_tensor = torch.tensor(expert_order, device=tokens.device, dtype=torch.int64)
     bucket_token_ids_tensor = torch.cat(bucket_token_ids, dim=0)
+    if return_expert_order_list:
+        return bucketed, m_splits, gather_index, expert_order_tensor, bucket_token_ids_tensor, expert_order
     return bucketed, m_splits, gather_index, expert_order_tensor, bucket_token_ids_tensor
 
 
