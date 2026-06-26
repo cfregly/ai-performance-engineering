@@ -308,8 +308,9 @@ def _softmax_topk_backward(
     grad_probs: torch.Tensor,
     workload: TopKKernelWorkload,
 ) -> torch.Tensor:
+    grad_probs_float = grad_probs.float()
     grad_topk_values = probs * (
-        grad_probs.float() - (grad_probs.float() * probs).sum(dim=-1, keepdim=True)
+        grad_probs_float - (grad_probs_float * probs).sum(dim=-1, keepdim=True)
     )
     grad_block_scores = torch.zeros(
         workload.batch_size,

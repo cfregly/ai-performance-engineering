@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -7,6 +9,19 @@ import labs.top_k_kernel.top_k_kernel_common as topk_common
 from labs.top_k_kernel.top_k_kernel_common import TopKKernelBenchmark
 
 CUDA_REQUIRED = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_softmax_topk_backward_reuses_grad_probs_cast() -> None:
+    source = (REPO_ROOT / "labs" / "top_k_kernel" / "top_k_kernel_common.py").read_text(
+        encoding="utf-8"
+    )
+    backward_section = source.split("def _softmax_topk_backward", maxsplit=1)[1].split(
+        "def _reshape_group_rows", maxsplit=1
+    )[0]
+
+    assert "grad_probs_float = grad_probs.float()" in backward_section
+    assert backward_section.count("grad_probs.float()") == 1
 
 
 @CUDA_REQUIRED
