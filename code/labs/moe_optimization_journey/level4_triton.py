@@ -150,7 +150,7 @@ class GroupedMoEExperts(nn.Module):
         expert_offsets_cpu = [int(offset) for offset in expert_offsets.detach().cpu().tolist()]
         
         # Process each expert's tokens (grouped by expert for coalescing)
-        output = torch.zeros_like(sorted_x)
+        output = torch.empty_like(sorted_x)
         
         for expert_id, (start, count) in enumerate(zip(expert_offsets_cpu, expert_counts_cpu)):
             if count == 0:

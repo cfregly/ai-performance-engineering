@@ -43,6 +43,26 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
     assert "expert_counts[expert_id].item()" not in grouped_section
 
 
+def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "labs"
+        / "moe_optimization_journey"
+        / "level4_triton.py"
+    ).read_text(encoding="utf-8")
+    grouped_section = source.split("class GroupedMoEExperts", maxsplit=1)[1].split(
+        "class TritonMoELayer",
+        maxsplit=1,
+    )[0]
+    expert_loop_section = grouped_section.split("# Process each expert's tokens", maxsplit=1)[1].split(
+        "# Apply weights",
+        maxsplit=1,
+    )[0]
+
+    assert "output = torch.empty_like(sorted_x)" in expert_loop_section
+    assert "torch.zeros_like(sorted_x)" not in expert_loop_section
+
+
 def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
     source = (
         Path(__file__).resolve().parents[1]
