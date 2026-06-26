@@ -450,16 +450,15 @@ def combine_weighted_outputs(
 ) -> torch.Tensor:
     combined = output_buffer
     if combined is None or tuple(combined.shape) != (num_tokens, sorted_outputs.shape[1]):
-        combined = torch.zeros(num_tokens, sorted_outputs.shape[1], device=sorted_outputs.device, dtype=sorted_outputs.dtype)
-    else:
-        combined.zero_()
+        combined = torch.empty(num_tokens, sorted_outputs.shape[1], device=sorted_outputs.device, dtype=sorted_outputs.dtype)
     weighted_outputs = sorted_outputs
     weights = packed.packed_weights.unsqueeze(-1)
     if consume_sorted_outputs:
         weighted_outputs.mul_(weights)
     else:
         weighted_outputs = sorted_outputs * weights
-    combined.index_add_(0, packed.token_indices, weighted_outputs)
+    combine_index = packed.token_indices.unsqueeze(-1).expand_as(weighted_outputs)
+    combined.scatter_reduce_(0, combine_index, weighted_outputs, reduce="sum", include_self=False)
     return combined
 
 

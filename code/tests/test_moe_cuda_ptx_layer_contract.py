@@ -81,6 +81,11 @@ def test_combine_weighted_outputs_can_consume_sorted_outputs() -> None:
     source = inspect.getsource(moe_common.combine_weighted_outputs)
     assert "consume_sorted_outputs: bool = False" in source
     assert "weighted_outputs.mul_(weights)" in source
+    assert "combined = torch.empty(" in source
+    assert "combined.zero_()" not in source
+    assert "combined = torch.zeros(" not in source
+    assert "combined.index_add_(" not in source
+    assert 'combined.scatter_reduce_(0, combine_index, weighted_outputs, reduce="sum", include_self=False)' in source
     assert "sorted_outputs * packed.packed_weights.unsqueeze(-1)" not in source
 
     sorted_outputs = torch.tensor([[2.0, 4.0], [3.0, 6.0], [5.0, 10.0]])
@@ -99,6 +104,16 @@ def test_combine_weighted_outputs_can_consume_sorted_outputs() -> None:
 
     torch.testing.assert_close(sorted_outputs, original * packed.packed_weights.unsqueeze(-1))
     torch.testing.assert_close(combined, torch.tensor([[2.75, 5.5], [2.5, 5.0]]))
+
+    output_buffer = torch.full((2, 2), float("nan"))
+    combined_reused = moe_common.combine_weighted_outputs(
+        original,
+        packed,
+        num_tokens=2,
+        output_buffer=output_buffer,
+    )
+    assert combined_reused.data_ptr() == output_buffer.data_ptr()
+    torch.testing.assert_close(combined_reused, torch.tensor([[2.75, 5.5], [2.5, 5.0]]))
 
 
 def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
