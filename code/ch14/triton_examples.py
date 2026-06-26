@@ -8,6 +8,8 @@ Blackwell B200 Optimizations Applied:
 - Deeper pipelines (num_stages=4-5) for better overlap
 - Direct broadcast for offset tensors to reduce register pressure
 """
+import sys
+
 import torch
 import triton
 import triton.language as tl
@@ -366,8 +368,8 @@ def benchmark_fp8_vs_fp16() -> None:
             
             print(f"  FP8:  {fp8_time:.2f} ms/iter, {fp8_tflops:.1f} TFLOPS ({speedup:.2f}x speedup)")
             
-            max_diff = (C_fp16 - C_fp8).abs().max().item()
-            mean_diff = (C_fp16 - C_fp8).abs().mean().item()
+            diff = (C_fp16 - C_fp8).abs()
+            max_diff, mean_diff = torch.stack((diff.max(), diff.mean())).tolist()
             print(f"  Numerical error: max={max_diff:.6f}, mean={mean_diff:.6f}")
         else:
             print(f"  FP8:  Not available (requires PyTorch 2.10+)")

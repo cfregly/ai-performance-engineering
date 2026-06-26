@@ -570,6 +570,18 @@ def test_ch14_triton_persistent_demo_batches_correctness_error_reads() -> None:
     assert ".abs().max().item()" not in verify_section
 
 
+def test_ch14_triton_examples_batches_fp8_error_reads() -> None:
+    source = (REPO_ROOT / "ch14" / "triton_examples.py").read_text(encoding="utf-8")
+    fp8_section = source.split("def benchmark_fp8_vs_fp16", maxsplit=1)[1].split(
+        "@triton.jit",
+        maxsplit=1,
+    )[0]
+
+    assert "max_diff, mean_diff = torch.stack((diff.max(), diff.mean())).tolist()" in fp8_section
+    assert ".abs().max().item()" not in fp8_section
+    assert ".abs().mean().item()" not in fp8_section
+
+
 def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     ch14_source = (REPO_ROOT / "ch14" / "baseline_sliding_window.py").read_text(
         encoding="utf-8"
