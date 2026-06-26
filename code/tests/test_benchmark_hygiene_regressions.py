@@ -837,6 +837,24 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "torch.cat([out.detach().cpu() for out in self._pending_outputs], dim=0)" in capture_section
 
 
+def test_ch02_grace_coherent_memory_defers_verification_slice_clone() -> None:
+    for filename in (
+        "baseline_grace_coherent_memory.py",
+        "optimized_grace_coherent_memory.py",
+    ):
+        source = (REPO_ROOT / "ch02" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert "cpu_data[:1000].detach().cpu().clone()" not in benchmark_section
+        assert "self.output = None" in benchmark_section
+        assert "self.output = self._impl.cpu_data[:1000].detach().clone()" in capture_section
+
+
 def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_stack() -> None:
     source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_multigpu_common.py").read_text(
         encoding="utf-8"

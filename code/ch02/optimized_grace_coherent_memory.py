@@ -285,12 +285,13 @@ class OptimizedGraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
         self.elapsed_s = elapsed
         multiplier = 1 if self._impl.strategy == "zero_copy" else 2
         self.bandwidth_gb_s = (self._impl.size_mb / 1024) * multiplier / elapsed
-        # Compare the post-transfer host-visible tensor instead of a device
-        # buffer slice so every strategy reports the same semantic result.
-        verify_output = self._impl.cpu_data[:1000].detach().cpu().clone()
-        self.output = verify_output
+        self.output = None
 
     def capture_verification_payload(self) -> None:
+        # Compare the post-transfer host-visible tensor instead of a device
+        # buffer slice so every strategy reports the same semantic result.
+        if self.output is None:
+            self.output = self._impl.cpu_data[:1000].detach().clone()
         self._set_verification_payload(
             inputs={
                 "cpu_data": self._impl.cpu_data,

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Baseline: coherent-memory transfer path without placement optimizations."""
 
-from pathlib import Path
 from typing import Any, Dict, Optional
 import time
 
@@ -138,13 +137,13 @@ class GraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         elapsed = self._impl.run_step()
         self.elapsed_s = elapsed
         self.bandwidth_gb_s = (self._impl.size_mb / 1024) * 2 / elapsed
-
-        # Use the post-transfer host-visible view so verification compares the
-        # same observable result across pageable and staged-copy strategies.
-        verify_output = self._impl.cpu_data[:1000].detach().cpu().clone()
-        self.output = verify_output
+        self.output = None
 
     def capture_verification_payload(self) -> None:
+        # Use the post-transfer host-visible view so verification compares the
+        # same observable result across pageable and staged-copy strategies.
+        if self.output is None:
+            self.output = self._impl.cpu_data[:1000].detach().clone()
         self._set_verification_payload(
             inputs={
                 "cpu_data": self._impl.cpu_data,
