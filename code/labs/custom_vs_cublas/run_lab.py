@@ -99,7 +99,7 @@ def stage1_naive_smem(A, B_T):
     
     M, K = A.shape
     N = B_T.shape[0]
-    C = torch.zeros(M, N, device='cuda', dtype=torch.float32)
+    C = torch.empty(M, N, device='cuda', dtype=torch.float32)
     
     _kernels_lib.launch_gemm_naive_smem(
         ctypes.c_void_p(A.data_ptr()),

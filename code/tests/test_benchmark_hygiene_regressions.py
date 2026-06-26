@@ -624,6 +624,8 @@ def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:
     assert "(ref_fp32 - result_fp32).abs().max()" in verify_section
     assert "ref_fp32.abs().max()" in verify_section
     assert ".abs().max().item()" not in verify_section
+    assert "C = torch.empty(M, N, device='cuda', dtype=torch.float32)" in source
+    assert "C = torch.zeros(M, N, device='cuda', dtype=torch.float32)" not in source
 
 
 def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
