@@ -259,8 +259,8 @@ def demo_multi_model(size_mb: int = 256) -> None:
 
     active = model_a if rank % 2 == 0 else model_b
     weights = pool.route_to(active)
-    checksum = float(weights[:1024].float().sum().item())
-    dist.all_reduce(torch.tensor(checksum, device=device))
+    checksum = weights[:1024].float().sum()
+    dist.all_reduce(checksum)
 
     if rank == 0:
         print(f"[multi] routed to {active}, pool_size={len(pool.snapshots)}")

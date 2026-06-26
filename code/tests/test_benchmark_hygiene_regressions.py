@@ -378,6 +378,21 @@ def test_dtype_byte_sizing_avoids_empty_tensor_metadata_allocations() -> None:
     ).read_text(encoding="utf-8")
 
 
+def test_ch16_symmetric_memory_checksum_reduces_on_device() -> None:
+    source = (REPO_ROOT / "ch16" / "symmetric_memory_inference.py").read_text(
+        encoding="utf-8"
+    )
+    multi_model_section = source.split("def demo_multi_model", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+
+    assert "checksum = weights[:1024].float().sum()" in multi_model_section
+    assert "dist.all_reduce(checksum)" in multi_model_section
+    assert ".sum().item()" not in multi_model_section
+    assert "torch.tensor(checksum" not in multi_model_section
+
+
 def test_ch04_nvshmem_pipeline_defers_loss_materialization() -> None:
     source = (REPO_ROOT / "ch04" / "nvshmem_pipeline_parallel_multigpu.py").read_text(
         encoding="utf-8"
