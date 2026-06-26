@@ -61,7 +61,6 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for idx, tensor in enumerate(self.data):
                 self.local_sums[idx].copy_(tensor.sum().view(1))
             torch.cuda.nccl.all_reduce(self.local_sums, outputs=self.reduced_sums)
-            torch.cuda.synchronize()
             self.output = self.reduced_sums[0]
 
     def capture_verification_payload(self) -> None:

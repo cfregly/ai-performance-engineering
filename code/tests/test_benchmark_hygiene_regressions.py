@@ -930,6 +930,7 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     assert "self.output = torch.tensor(" in baseline_capture
     assert "[self._cpu_total]," in baseline_capture
     assert "self.output = self.reduced_sums[0].detach().clone()" not in optimized_benchmark
+    assert "torch.cuda.synchronize()" not in optimized_benchmark
     assert "self.output = self.reduced_sums[0]" in optimized_benchmark
 
 
