@@ -100,8 +100,8 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
         if self._remote_idx.numel() > 0:
             remote_tokens = int(self._remote_idx.numel())
             payload_dim = int(self.hidden_size) * int(self.remote_round_trips)
-            self._remote_buf_a = torch.zeros((remote_tokens, payload_dim), device=self.device, dtype=self.dtype)
-            self._remote_buf_b = torch.zeros((remote_tokens, payload_dim), device=self.device, dtype=self.dtype)
+            self._remote_buf_a = torch.empty((remote_tokens, payload_dim), device=self.device, dtype=self.dtype)
+            self._remote_buf_b = torch.empty((remote_tokens, payload_dim), device=self.device, dtype=self.dtype)
 
         self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
         self._verify_meta = torch.tensor(
@@ -183,5 +183,4 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineMoERouterUniformBenchmark()
-
 

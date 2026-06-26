@@ -2173,6 +2173,26 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
+    for relative in (
+        "ch17/baseline_moe_router_uniform.py",
+        "ch17/optimized_moe_router_uniform_topology.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+
+        assert "self._remote_buf_a = torch.empty(" in setup_section
+        assert "self._remote_buf_b = torch.empty(" in setup_section
+        assert "self._remote_buf_a = torch.zeros(" not in setup_section
+        assert "self._remote_buf_b = torch.zeros(" not in setup_section
+        assert "torch.index_select(flat, 0, self._remote_idx, out=self._remote_buf_a[:, : self.hidden_size])" in benchmark_section
+        assert "self._remote_buf_b.copy_(self._remote_buf_a)" in benchmark_section
+        assert "self._remote_buf_a.copy_(self._remote_buf_b)" in benchmark_section
+
+
 def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
     source = (REPO_ROOT / "ch17" / "baseline_dynamic_routing.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
