@@ -320,6 +320,9 @@ class DeepSeekHybridEPModule(nn.Module):
         self._phase_event_cache: Dict[str, PhaseEvents] = {}
         self._route_count_reduce_buffer: Optional[torch.Tensor] = None
         self._route_count_reduce_host_buffer: Optional[torch.Tensor] = None
+        self._exchange_count_send_buffer: Optional[torch.Tensor] = None
+        self._exchange_count_recv_buffer: Optional[torch.Tensor] = None
+        self._exchange_count_host_buffer: Optional[torch.Tensor] = None
         self._comm_stream = torch.cuda.Stream() if optimized else None
 
     @property
@@ -461,11 +464,32 @@ class DeepSeekHybridEPModule(nn.Module):
     ) -> List[int]:
         if group_size == 1:
             return [int(send_counts[0] if send_counts else 0)]
-        send_tensor = torch.tensor(list(send_counts), device=self.cuda_device, dtype=torch.int64)
-        gathered = [torch.empty_like(send_tensor) for _ in range(group_size)]
-        dist.all_gather(gathered, send_tensor, group=group)
-        gathered_counts = torch.stack(gathered, dim=0)[:, group_rank]
-        return [int(count) for count in gathered_counts.detach().cpu().tolist()]
+        device = self.cuda_device
+        if (
+            self._exchange_count_send_buffer is None
+            or self._exchange_count_send_buffer.device != device
+            or self._exchange_count_send_buffer.numel() < group_size
+        ):
+            self._exchange_count_send_buffer = torch.empty(group_size, device=device, dtype=torch.int64)
+            self._exchange_count_recv_buffer = torch.empty(group_size * group_size, device=device, dtype=torch.int64)
+            self._exchange_count_host_buffer = torch.empty(group_size, dtype=torch.int64)
+        assert self._exchange_count_recv_buffer is not None
+        assert self._exchange_count_host_buffer is not None
+        send_tensor = self._exchange_count_send_buffer[:group_size]
+        recv_tensor = self._exchange_count_recv_buffer[: group_size * group_size]
+        host_buffer = self._exchange_count_host_buffer[:group_size]
+        for idx, count in enumerate(send_counts):
+            host_buffer[idx] = int(count)
+        send_tensor.copy_(host_buffer, non_blocking=False)
+        if hasattr(dist, "all_gather_into_tensor"):
+            dist.all_gather_into_tensor(recv_tensor, send_tensor, group=group)
+            gathered_counts = recv_tensor.view(group_size, group_size)[:, group_rank]
+        else:  # pragma: no cover - compatibility with older PyTorch builds
+            gathered = [recv_tensor.narrow(0, rank * group_size, group_size) for rank in range(group_size)]
+            dist.all_gather(gathered, send_tensor, group=group)
+            gathered_counts = recv_tensor.view(group_size, group_size)[:, group_rank]
+        host_buffer.copy_(gathered_counts, non_blocking=False)
+        return [int(host_buffer[idx]) for idx in range(group_size)]
 
     def _split_list(self, tensor: torch.Tensor, counts: Sequence[int]) -> List[torch.Tensor]:
         parts: List[torch.Tensor] = []

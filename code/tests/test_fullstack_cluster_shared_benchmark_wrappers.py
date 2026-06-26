@@ -274,7 +274,12 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "return tensor.clone()" not in all_to_all_single_section
     assert "return tensor" in all_to_all_list_section
     assert "return tensor" in all_to_all_single_section
-    assert "gathered_counts = torch.stack(gathered, dim=0)[:, group_rank]" in exchange_counts_section
+    assert "self._exchange_count_send_buffer = torch.empty(" in source
+    assert "self._exchange_count_recv_buffer = torch.empty(" in source
+    assert "dist.all_gather_into_tensor(recv_tensor, send_tensor, group=group)" in exchange_counts_section
+    assert "gathered_counts = recv_tensor.view(group_size, group_size)[:, group_rank]" in exchange_counts_section
+    assert "torch.stack(gathered" not in exchange_counts_section
+    assert "send_tensor = torch.tensor(" not in exchange_counts_section
     assert "g[group_rank].item()" not in exchange_counts_section
     assert "torch.cuda.Event(enable_timing=True)" not in forward_section
     assert "torch.cuda.Event(enable_timing=True)" not in run_step_section
