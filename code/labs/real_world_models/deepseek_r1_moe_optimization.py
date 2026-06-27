@@ -137,7 +137,9 @@ class MoELayer(nn.Module):
         key = (num_tokens, str(device))
         token_ids = self._route_token_cache.get(key)
         if token_ids is None or token_ids.device != device:
-            token_ids = torch.arange(num_tokens, device=device, dtype=torch.int64).repeat_interleave(self.top_k)
+            token_ids = torch.arange(num_tokens * self.top_k, device=device, dtype=torch.int64)
+            if self.top_k != 1:
+                token_ids.div_(self.top_k, rounding_mode="floor")
             self._route_token_cache[key] = token_ids
         return token_ids
     

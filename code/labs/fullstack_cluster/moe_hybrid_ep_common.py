@@ -418,7 +418,9 @@ class DeepSeekHybridEPModule(nn.Module):
         key = (num_tokens, device)
         cached = self._token_index_cache.get(key)
         if cached is None:
-            cached = torch.arange(num_tokens, device=device, dtype=torch.int64).repeat_interleave(self.top_k)
+            cached = torch.arange(num_tokens * self.top_k, device=device, dtype=torch.int64)
+            if self.top_k != 1:
+                cached.div_(self.top_k, rounding_mode="floor")
             self._token_index_cache[key] = cached
         return cached
 

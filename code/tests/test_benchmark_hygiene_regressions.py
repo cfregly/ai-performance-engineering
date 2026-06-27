@@ -2352,6 +2352,9 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "def _gini_index_for" in router_forward
     assert "torch.arange(1, n + 1" not in router_forward
     assert "def _route_token_ids" in moe_forward
+    assert "repeat_interleave(self.top_k)" not in moe_forward
+    assert "torch.arange(num_tokens * self.top_k, device=device, dtype=torch.int64)" in moe_forward
+    assert 'token_ids.div_(self.top_k, rounding_mode="floor")' in moe_forward
     assert "torch.argsort(flat_experts)" in moe_forward
     assert "torch.bincount(flat_experts, minlength=self.num_experts).detach().cpu().tolist()" in moe_forward
     assert ".nonzero(" not in moe_forward
@@ -3065,6 +3068,9 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "self.sorted_order" not in moe_setup
     assert "self.expert_indices" not in moe_setup
     assert "self.expert_weights" not in moe_setup
+    assert "torch.arange(batch_seq, device=self.device).repeat_interleave(K)" not in moe_setup
+    assert "torch.arange(batch_seq * K, device=self.device, dtype=torch.int64)" in moe_setup
+    assert 'expanded_token_indices.div_(K, rounding_mode="floor")' in moe_setup
     assert "self._sorted_token_indices = expanded_token_indices.index_select(0, sorted_order)" in moe_setup
     assert "self._sorted_weights = expert_weights.view(-1).index_select(0, sorted_order)" in moe_setup
     assert "self._sorted_tokens = torch.empty(" in moe_setup

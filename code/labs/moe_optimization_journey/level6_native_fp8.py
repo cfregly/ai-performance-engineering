@@ -102,7 +102,9 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
         flat_idx = expert_indices.view(-1)
         sorted_order = torch.argsort(flat_idx, stable=True)
         self.counts = torch.bincount(expert_indices_cpu.view(-1), minlength=E).tolist()
-        expanded_token_indices = torch.arange(batch_seq, device=self.device).repeat_interleave(K)
+        expanded_token_indices = torch.arange(batch_seq * K, device=self.device, dtype=torch.int64)
+        if K != 1:
+            expanded_token_indices.div_(K, rounding_mode="floor")
         self._sorted_token_indices = expanded_token_indices.index_select(0, sorted_order)
         self._sorted_weights = expert_weights.view(-1).index_select(0, sorted_order)
         self._sorted_tokens = torch.empty(

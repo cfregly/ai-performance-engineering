@@ -251,6 +251,10 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
         "def _split_list",
         maxsplit=1,
     )[0]
+    token_indices_section = source.split("def _token_indices", maxsplit=1)[1].split(
+        "def _apply_local_experts",
+        maxsplit=1,
+    )[0]
     route_tokens_section = source.split("def _route_tokens", maxsplit=1)[1].split(
         "def forward_loss",
         maxsplit=1,
@@ -264,6 +268,9 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert 'self.register_buffer(\n            "_gini_index",' in router_section
     assert "def _gini_index_for" in router_section
     assert "torch.arange(1, n + 1" not in router_section
+    assert "repeat_interleave(self.top_k)" not in token_indices_section
+    assert "torch.arange(num_tokens * self.top_k, device=device, dtype=torch.int64)" in token_indices_section
+    assert 'cached.div_(self.top_k, rounding_mode="floor")' in token_indices_section
     assert "expanded_tokens = hidden.index_select(0, token_indices)" in route_tokens_section
     assert "hidden.repeat_interleave(self.top_k" not in route_tokens_section
     assert "sort_idx = torch.argsort(expert_ids)" in apply_local_section
