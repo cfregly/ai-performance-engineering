@@ -21,7 +21,8 @@ def ensure_flash_sdp_available() -> None:
     try:
         q = torch.randn(1, 1, 4, 64, device="cuda", dtype=torch.float16)
         with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):
-            _ = F.scaled_dot_product_attention(q, q, q, is_causal=False)
+            with torch.inference_mode():
+                _ = F.scaled_dot_product_attention(q, q, q, is_causal=False)
         torch.cuda.synchronize()
     except Exception as exc:  # pragma: no cover - only hit on unsupported stacks
         raise RuntimeError(f"SKIPPED: Flash SDP kernel failed to run: {exc}") from exc
@@ -82,8 +83,9 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs = torch.randn(self.batch, self.seq_len, self.hidden, device=self.device, dtype=torch.float16)
         self._verify_input = self.inputs.detach().clone()
         # Warmup
-        for _ in range(3):
-            _ = self.model(self.inputs)
+        with torch.inference_mode():
+            for _ in range(3):
+                _ = self.model(self.inputs)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -92,7 +94,8 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
         with nvtx_range("flash_sdp_optimized", enable=enable_nvtx):
-            self.output = self.model(self.inputs)
+            with torch.inference_mode():
+                self.output = self.model(self.inputs)
         if self._verify_input is None:
             raise RuntimeError("Verification input missing")
 
@@ -149,4 +152,3 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedFlashSDPBenchmark()
-

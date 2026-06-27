@@ -21,7 +21,8 @@ def ensure_flash_sdp_available() -> None:
     try:
         q = torch.randn(1, 1, 4, 64, device="cuda", dtype=torch.float16)
         with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):
-            _ = F.scaled_dot_product_attention(q, q, q, is_causal=False)
+            with torch.inference_mode():
+                _ = F.scaled_dot_product_attention(q, q, q, is_causal=False)
         torch.cuda.synchronize()
     except Exception as exc:  # pragma: no cover - only hit on unsupported stacks
         raise RuntimeError(f"SKIPPED: Flash SDP kernel failed to run: {exc}") from exc
@@ -96,7 +97,8 @@ class BaselineFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
         with nvtx_range("naive_attention_baseline", enable=enable_nvtx):
-            self.output = self.model(self.inputs)
+            with torch.inference_mode():
+                self.output = self.model(self.inputs)
         if self._verify_input is None:
             raise RuntimeError("Verification input missing")
 
@@ -153,4 +155,3 @@ class BaselineFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineFlashSDPBenchmark()
-

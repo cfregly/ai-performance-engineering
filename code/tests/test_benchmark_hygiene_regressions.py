@@ -1063,6 +1063,20 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "torch.ones(self.max_seq_len" not in ch16_setup
     assert "self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch16_setup
 
+    for filename in ("baseline_flash_sdp.py", "optimized_flash_sdp.py"):
+        flash_source = (REPO_ROOT / "ch16" / filename).read_text(encoding="utf-8")
+        flash_benchmark = flash_source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "with torch.inference_mode():" in flash_benchmark
+        assert "self.output = self.model(self.inputs)" in flash_benchmark
+
+    optimized_flash_setup = (REPO_ROOT / "ch16" / "optimized_flash_sdp.py").read_text(
+        encoding="utf-8"
+    ).split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
+    assert "with torch.inference_mode():" in optimized_flash_setup
+
     ch20_source = (REPO_ROOT / "ch20" / "ai_kernel_generator.py").read_text(
         encoding="utf-8"
     )
