@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import torch
 
 from core.discovery import discover_benchmarks
 from core.harness.benchmark_harness import BaseBenchmark
+from labs.training_hotpath.compare import _measure
 from labs.training_hotpath.training_hotpath_common import (
     MetricReductionCudaBenchmark,
     MetricReductionVectorizedBenchmark,
@@ -57,6 +59,19 @@ def test_training_hotpath_discovery_finds_all_three_pairs() -> None:
         "metric_reduction_cuda",
         "padding_aware_transformer",
     }
+
+
+def test_training_hotpath_compare_measure_cuda_path_uses_single_event_bracket() -> None:
+    source = inspect.getsource(_measure)
+    cuda_section = source.split("if torch.cuda.is_available():", maxsplit=1)[1].split(
+        "timings = []",
+        maxsplit=1,
+    )[0]
+
+    assert cuda_section.count("torch.cuda.synchronize()") == 2
+    assert cuda_section.count("start.record()") == 1
+    assert cuda_section.count("end.record()") == 1
+    assert "timings.append(start.elapsed_time(end))" not in cuda_section
 
 
 @pytest.mark.parametrize(
