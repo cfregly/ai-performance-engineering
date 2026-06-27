@@ -19,9 +19,9 @@ def build_training_mlp(hidden_dim: int) -> torch.nn.Sequential:
     """Return the small MLP used by the Chapter 1 goodput benchmarks."""
     return torch.nn.Sequential(
         torch.nn.Linear(hidden_dim, hidden_dim),
-        torch.nn.ReLU(),
+        torch.nn.ReLU(inplace=True),
         torch.nn.Linear(hidden_dim, hidden_dim),
-        torch.nn.ReLU(),
+        torch.nn.ReLU(inplace=True),
         torch.nn.Linear(hidden_dim, 10),
     )
 

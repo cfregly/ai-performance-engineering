@@ -84,6 +84,13 @@ def test_ch01_precision_benchmarks_disable_tf32_during_setup() -> None:
         assert torch.backends.cudnn.allow_tf32 == initial_cudnn
 
 
+def test_ch01_training_mlp_uses_inplace_relu_modules() -> None:
+    source = (REPO_ROOT / "ch01" / "performance_common.py").read_text(encoding="utf-8")
+
+    assert "torch.nn.ReLU(inplace=True)" in source
+    assert "torch.nn.ReLU()" not in source
+
+
 def test_ch01_fp16_benchmark_precomputes_microbatch_groups() -> None:
     source = (REPO_ROOT / "ch01" / "optimized_performance_fp16.py").read_text(
         encoding="utf-8"
