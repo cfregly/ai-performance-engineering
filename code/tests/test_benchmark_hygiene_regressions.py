@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import inspect
 import importlib
 import re
@@ -6096,6 +6097,37 @@ def test_optimized_benchmarks_hoist_nvtx_helpers() -> None:
 
         assert "from core.profiling.nvtx_helper import" in pre_benchmark
         assert "from core.profiling.nvtx_helper import" not in benchmark_section
+
+
+def test_benchmark_functions_do_not_import_nvtx_helpers_in_hot_path() -> None:
+    paths = list(REPO_ROOT.glob("ch*/*.py")) + list((REPO_ROOT / "labs").rglob("*.py"))
+    ignored_parts = {
+        "vendor",
+        "third_party",
+        "top_submission_candidates",
+        "modal697_candidates",
+        "candidate_submission",
+    }
+    violations: list[str] = []
+
+    for path in paths:
+        if any(part in ignored_parts for part in path.parts):
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef) or node.name != "benchmark_fn":
+                continue
+            for child in ast.walk(node):
+                if (
+                    isinstance(child, ast.ImportFrom)
+                    and child.module == "core.profiling.nvtx_helper"
+                ):
+                    violations.append(f"{path.relative_to(REPO_ROOT)}:{child.lineno}")
+
+    assert violations == []
 
 
 def test_ch08_to_ch12_kernel_wrappers_use_inference_mode() -> None:

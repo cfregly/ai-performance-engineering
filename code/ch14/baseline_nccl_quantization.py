@@ -12,6 +12,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -46,8 +47,6 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
     def benchmark_fn(self) -> None:
         """Benchmark: CPU quantization + host/device transfers."""
-        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
-
         config = self.get_config()
 
         enable_nvtx = get_nvtx_enabled(config) if config else False

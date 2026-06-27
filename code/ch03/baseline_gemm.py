@@ -13,6 +13,7 @@ import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -69,8 +70,6 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         The intent is to expose host/runtime launch overhead around a fixed
         GEMM, not to demonstrate a Chapter 3-specific math-kernel trick.
         """
-        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
-
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
 

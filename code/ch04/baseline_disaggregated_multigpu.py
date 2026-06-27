@@ -20,6 +20,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
     WorkloadMetadata,
 )
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 class BaselineDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -89,8 +90,6 @@ class BaselineDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: Monolithic inference."""
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
-
         config = self.get_config()
 
         enable_nvtx = get_nvtx_enabled(config) if config else False

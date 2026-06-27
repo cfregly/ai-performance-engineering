@@ -21,6 +21,7 @@ from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
 )
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 resolve_device = partial(require_cuda_device, "CUDA required for ch20")
 
@@ -153,8 +154,6 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
     def benchmark_fn(self) -> None:
         """Function to benchmark - baseline integrated KV cache."""
         # Use conditional NVTX ranges - only enabled when profiling
-
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
 

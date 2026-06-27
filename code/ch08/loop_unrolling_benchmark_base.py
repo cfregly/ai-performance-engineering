@@ -12,6 +12,7 @@ import torch
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.common.device_utils import require_cuda_device
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 from core.utils.extension_loader_template import load_cuda_extension
 
 _KERNEL_SOURCE = Path(__file__).with_name("loop_unrolling_kernels.cu")
@@ -80,8 +81,6 @@ class LoopUnrollingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
-
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
 

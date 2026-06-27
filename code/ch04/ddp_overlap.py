@@ -27,6 +27,7 @@ from core.harness.benchmark_harness import (
 )
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 # Ensure consistent TF32 state before any operations (new API only)
@@ -111,8 +112,6 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark a step that overlaps gradient synchronization with backward."""
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
-
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
 

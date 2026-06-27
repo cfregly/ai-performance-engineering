@@ -15,6 +15,7 @@ from core.harness.benchmark_harness import (
     BenchmarkConfig,
     WorkloadMetadata,
 )
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 resolve_device = partial(require_cuda_device, "CUDA required for ch20")
 
@@ -98,8 +99,6 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def benchmark_fn(self) -> None:
         """Benchmark the GPU-native sequential microbatch pipeline."""
-        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
-
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
         assert self.inputs is not None and self.stages is not None and self.microbatches is not None
