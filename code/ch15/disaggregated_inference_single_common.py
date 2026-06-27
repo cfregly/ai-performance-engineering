@@ -126,6 +126,8 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._kv_host_staging: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
+        self._next_token_buffer: Optional[torch.Tensor] = None
+        self._next_token_values: Optional[torch.Tensor] = None
         self._param_count = 0
 
     def setup(self) -> None:
@@ -175,6 +177,24 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
             )
             tokens = torch.argmax(decode_logits[:, -1, :], dim=-1, keepdim=True)
         return tokens.squeeze(0)
+
+    def _next_token_from_logits(self, logits_last: torch.Tensor) -> torch.Tensor:
+        batch_size = logits_last.size(0)
+        if (
+            self._next_token_buffer is None
+            or self._next_token_buffer.device != logits_last.device
+            or tuple(self._next_token_buffer.shape) != (batch_size, 1)
+        ):
+            self._next_token_buffer = torch.empty((batch_size, 1), dtype=torch.long, device=logits_last.device)
+        if (
+            self._next_token_values is None
+            or self._next_token_values.device != logits_last.device
+            or self._next_token_values.dtype != logits_last.dtype
+            or tuple(self._next_token_values.shape) != (batch_size, 1)
+        ):
+            self._next_token_values = torch.empty_like(logits_last[:, :1])
+        torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))
+        return self._next_token_buffer
 
     def _set_output_from_tokens(self, outputs: List[torch.Tensor]) -> None:
         self._pending_outputs = outputs
@@ -317,7 +337,7 @@ class OptimizedDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceS
         flat_prompts = _flatten_prompt_batches(self.prompts)
         with torch.no_grad():
             hidden, logits = self.prefill_model.prefill(flat_prompts)
-            seed_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+            seed_tokens = self._next_token_from_logits(logits[:, -1, :])
             self.batched_kv_cache[:, : self.cfg.context_window] = hidden
             tokens = seed_tokens
             for step in range(self.cfg.decode_tokens):
@@ -326,7 +346,7 @@ class OptimizedDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceS
                     kv_cache=self.batched_kv_cache,
                     position=self.cfg.context_window + step,
                 )
-                tokens = torch.argmax(decode_logits[:, -1, :], dim=-1, keepdim=True)
+                tokens = self._next_token_from_logits(decode_logits[:, -1, :])
 
         self._output = _format_batched_decode_output(
             tokens,

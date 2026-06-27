@@ -2447,6 +2447,23 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "torch.argmax(" not in benchmark_section
 
 
+def test_ch15_single_disaggregated_optimized_reuses_next_token_buffer() -> None:
+    source = (REPO_ROOT / "ch15" / "disaggregated_inference_single_common.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_section = source.split(
+        "class OptimizedDisaggregatedInferenceSingleGPUBenchmark",
+        maxsplit=1,
+    )[1]
+
+    assert "self._next_token_buffer: Optional[torch.Tensor] = None" in source
+    assert "def _next_token_from_logits" in source
+    assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in source
+    assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in optimized_section
+    assert "tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in optimized_section
+    assert "torch.argmax(" not in optimized_section
+
+
 def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
     for filename in (
         "baseline_kv_cache_nvlink_pool.py",
