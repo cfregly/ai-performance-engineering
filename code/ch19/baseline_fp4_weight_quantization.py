@@ -54,6 +54,13 @@ def _fp4_signed_values_for(device: torch.device) -> torch.Tensor:
     return cached
 
 
+def _unpack_fp4_codes(packed_data: torch.Tensor) -> torch.Tensor:
+    unpacked = torch.empty(packed_data.numel() * 2, device=packed_data.device, dtype=torch.uint8)
+    torch.bitwise_right_shift(packed_data, 4, out=unpacked[0::2])
+    torch.bitwise_and(packed_data, 0x0F, out=unpacked[1::2])
+    return unpacked.long()
+
+
 def quantize_fp4_baseline(
     tensor: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -112,9 +119,7 @@ def dequantize_fp4_baseline(
     signed_fp4_vals = _fp4_signed_values_for(device)
     
     # Unpack bytes
-    high = (packed_data >> 4) & 0x0F
-    low = packed_data & 0x0F
-    unpacked = torch.stack([high, low], dim=1).flatten().long()
+    unpacked = _unpack_fp4_codes(packed_data)
     
     # Decode FP4 directly from the packed sign+magnitude code.
     values = signed_fp4_vals[unpacked]

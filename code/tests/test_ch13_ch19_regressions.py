@@ -161,9 +161,16 @@ def test_fp4_dequantization_decodes_signed_lookup_without_where() -> None:
         assert "torch.where(signs.bool()" not in source
         assert "signs = (unpacked >> 3)" not in source
         assert "signed_fp4_vals = _fp4_signed_values_for(device)" in source
+        assert "torch.stack([high, low]" not in source
+        assert "unpacked = _unpack_fp4_codes(packed_data)" in source
 
     packed = torch.tensor([(0 << 4) | 9, (2 << 4) | 15], dtype=torch.uint8)
     expected = torch.tensor([0.0, -0.5, 1.0, -6.0], dtype=torch.float32)
+    unpacked_expected = torch.tensor([0, 9, 2, 15], dtype=torch.long)
+
+    torch.testing.assert_close(baseline_fp4._unpack_fp4_codes(packed), unpacked_expected)
+    torch.testing.assert_close(optimized_fp4._unpack_fp4_codes(packed), unpacked_expected)
+    torch.testing.assert_close(native_fp4._unpack_fp4_codes(packed), unpacked_expected)
 
     baseline = baseline_fp4.dequantize_fp4_baseline(
         packed,
