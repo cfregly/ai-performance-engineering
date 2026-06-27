@@ -1997,11 +1997,18 @@ def test_nanochat_prefix_causal_mask_avoids_zero_fill_and_tril_allocations() -> 
     source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "gpt.py").read_text(
         encoding="utf-8"
     )
+    causal_section = source.split("def _causal_mask_for", maxsplit=1)[1].split(
+        "def _prefix_causal_mask_for",
+        maxsplit=1,
+    )[0]
     prefix_section = source.split("def _prefix_causal_mask_for", maxsplit=1)[1].split(
         "def _flash3_attention",
         maxsplit=1,
     )[0]
 
+    assert "torch.ones((t_q, t_k)" not in causal_section
+    assert "torch.tril(" not in causal_section
+    assert "self._causal_mask_cache = k_pos <= q_pos" in causal_section
     assert "mask = torch.zeros((t_q, t_k)" not in prefix_section
     assert "torch.tril(" not in prefix_section
     assert "q_pos = torch.arange(t_q, device=device).unsqueeze(1)" in prefix_section

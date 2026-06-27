@@ -192,9 +192,9 @@ class CausalSelfAttention(nn.Module):
     def _causal_mask_for(self, t_q, t_k, device):
         spec = (t_q, t_k, device)
         if self._causal_mask_cache is None or getattr(self, "_causal_mask_spec", None) != spec:
-            self._causal_mask_cache = torch.tril(
-                torch.ones((t_q, t_k), dtype=torch.bool, device=device)
-            )
+            q_pos = torch.arange(t_q, device=device).unsqueeze(1)
+            k_pos = torch.arange(t_k, device=device).unsqueeze(0)
+            self._causal_mask_cache = k_pos <= q_pos
             self._causal_mask_spec = spec
         return self._causal_mask_cache
 
