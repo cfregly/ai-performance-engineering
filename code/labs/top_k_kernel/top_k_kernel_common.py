@@ -200,8 +200,9 @@ def build_inputs(workload: TopKKernelWorkload, device: torch.device) -> TopKKern
     # near-ties across numerically different backends.
     q[..., 0] += 1.0
     block_bias = (
-        torch.arange(workload.num_blocks, dtype=torch.float32)
-        .repeat_interleave(workload.positions_per_block)
+        torch.arange(workload.compressed_k_len, dtype=torch.int64)
+        .div_(workload.positions_per_block, rounding_mode="floor")
+        .to(torch.float32)
         .mul_(5e-3)
         .to(dtype=workload.dtype)
     )

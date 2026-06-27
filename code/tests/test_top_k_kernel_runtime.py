@@ -26,6 +26,20 @@ def test_softmax_topk_backward_reuses_grad_probs_cast() -> None:
     assert "torch.tensor(1.0" not in source
 
 
+def test_top_k_input_block_bias_uses_position_arithmetic() -> None:
+    source = (REPO_ROOT / "labs" / "top_k_kernel" / "top_k_kernel_common.py").read_text(
+        encoding="utf-8"
+    )
+    build_inputs_section = source.split("def build_inputs", maxsplit=1)[1].split(
+        "def _group_q",
+        maxsplit=1,
+    )[0]
+
+    assert ".repeat_interleave(workload.positions_per_block)" not in build_inputs_section
+    assert "torch.arange(workload.compressed_k_len, dtype=torch.int64)" in build_inputs_section
+    assert '.div_(workload.positions_per_block, rounding_mode="floor")' in build_inputs_section
+
+
 @CUDA_REQUIRED
 def test_forward_benchmark_uses_inference_mode_without_output_clones(
     monkeypatch: pytest.MonkeyPatch,
