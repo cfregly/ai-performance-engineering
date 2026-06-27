@@ -30,6 +30,7 @@ class HighConfidenceDecoder(nn.Module):
         self.embed = nn.Embedding(vocab_size, hidden_dim, device=device, dtype=dtype)
         self.proj_in = nn.Linear(hidden_dim, hidden_dim * 2, device=device, dtype=dtype)
         self.proj_out = nn.Linear(hidden_dim * 2, vocab_size, device=device, dtype=dtype)
+        self.register_buffer("_target_boost", torch.tensor(16.0, device=device), persistent=False)
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
         x = self.embed(input_ids)
@@ -37,9 +38,9 @@ class HighConfidenceDecoder(nn.Module):
         x = F.gelu(self.proj_in(x))
         logits = self.proj_out(x).to(torch.float32)
         next_id = (input_ids[:, -1] + 1) % self.vocab_size
-        bias = torch.full_like(logits, -4.0)
-        bias.scatter_(1, next_id.unsqueeze(-1), 12.0)
-        return logits + bias
+        logits.add_(-4.0)
+        logits.scatter_add_(1, next_id.unsqueeze(-1), self._target_boost.expand(next_id.size(0), 1))
+        return logits
 
 
 def build_prompt(cfg: DynamicPrecisionBenchmarkConfig, device: torch.device) -> torch.Tensor:
