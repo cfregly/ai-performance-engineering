@@ -4099,6 +4099,7 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
     assert "torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))" in benchmark_section
@@ -4154,6 +4155,7 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
 
     assert "self._next_token_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._next_token_ids = torch.empty((1,), device=self.device, dtype=torch.long)" in setup_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert "torch.max(logits[:, 0, :], dim=-1, out=(self._next_token_values, self._next_token_ids))" in benchmark_section
     assert ".argmax(" not in benchmark_section
 

@@ -70,7 +70,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         out = self._output_ids
         out[:, 0] = self.input_ids[:, 0]
 
-        with torch.no_grad():
+        with torch.inference_mode():
             for t in range(wl.total_tokens):
                 logits = self.target_model(out[:, t : t + 1])
                 torch.max(logits[:, 0, :], dim=-1, out=(self._next_token_values, self._next_token_ids))

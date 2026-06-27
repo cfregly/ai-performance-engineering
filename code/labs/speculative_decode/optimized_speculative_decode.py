@@ -122,7 +122,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         accepted_draft = 0
         rounds = 0
 
-        with torch.no_grad():
+        with torch.inference_mode():
             pos = 0
             while pos < wl.total_tokens:
                 rounds += 1
