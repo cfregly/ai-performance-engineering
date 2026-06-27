@@ -8,6 +8,26 @@ import torch
 import labs.moe_cuda_ptx.moe_cuda_ptx_common as moe_common
 
 
+def test_mxfp8_pow2_scales_masks_zero_blocks_in_place() -> None:
+    source = inspect.getsource(moe_common._pow2_scales)
+
+    assert "torch.where(" not in source
+    assert "torch.full_like(scales" not in source
+    assert "scales.masked_fill_(amax <= 0, _MXFP8_E8M0_MIN)" in source
+
+    blocks = torch.tensor(
+        [
+            [0.0, 0.0, 0.0, 0.0],
+            [1.0, -2.0, 0.5, 0.0],
+        ],
+        dtype=torch.float32,
+    )
+    scales = moe_common._pow2_scales(blocks)
+
+    assert scales[0].item() == moe_common._MXFP8_E8M0_MIN
+    assert scales[1].item() >= moe_common._MXFP8_E8M0_MIN
+
+
 def test_run_layer_cuda_forward_skips_standalone_quantize_roundtrip(monkeypatch) -> None:
     workload = moe_common.MoECudaPtxWorkload(mode="forward")
     sentinel_packed = SimpleNamespace(packed_tokens="packed_tokens")

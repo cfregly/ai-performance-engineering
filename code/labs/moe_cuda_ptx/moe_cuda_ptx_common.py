@@ -539,7 +539,7 @@ def _pow2_scales(blocks: torch.Tensor) -> torch.Tensor:
     amax = blocks.abs().amax(dim=-1)
     unclamped = (amax / _MXFP8_E4M3_MAX).clamp_min(_MXFP8_E8M0_MIN)
     scales = torch.pow(2.0, torch.ceil(torch.log2(unclamped)))
-    scales = torch.where(amax > 0, scales, torch.full_like(scales, _MXFP8_E8M0_MIN))
+    scales.masked_fill_(amax <= 0, _MXFP8_E8M0_MIN)
     return scales
 
 
