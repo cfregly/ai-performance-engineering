@@ -3710,10 +3710,25 @@ def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
     forward_section = source.split("def forward(self, token: int", maxsplit=1)[1].split(
         "def generate_next", maxsplit=1
     )[0]
+    generate_next_section = source.split("def generate_next", maxsplit=1)[1].split(
+        "def generate_with_radix",
+        maxsplit=1,
+    )[0]
 
     assert "torch.tensor([token]" not in forward_section
     assert "torch.cat([state.kv_cache.keys, k]" not in forward_section
     assert "state.kv_cache.append(k, v)" in forward_section
+    assert "self._sampling_noise = None" in source
+    assert "def _sampling_like_buffer" in source
+    assert "torch.randn(logits.shape, dtype=logits.dtype, device=logits.device, out=noise)" in generate_next_section
+    assert "torch.topk(logits, k, dim=-1, out=(top_k_logits, top_k_indices))" in generate_next_section
+    assert "torch.softmax(top_k_logits, dim=-1, out=probs)" in generate_next_section
+    assert "torch.multinomial(probs, num_samples=1, out=selected_idx)" in generate_next_section
+    assert "torch.gather(top_k_indices, 1, selected_idx, out=next_token_device)" in generate_next_section
+    assert "next_token = int(next_token_host[0])" in generate_next_section
+    assert "torch.randn_like(logits)" not in generate_next_section
+    assert "selected_idx = torch.multinomial" not in generate_next_section
+    assert ".item()" not in generate_next_section
 
     from ch16.radix_attention_example import ModelState, SimpleTransformerModel
 
@@ -3736,6 +3751,19 @@ def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
     assert first_cache.keys.data_ptr() == second_cache.keys.data_ptr()
     assert first_cache.key_view.shape[0] == 1
     assert second_cache.key_view.shape[0] == 2
+
+    token, generated_state = model.generate_next(second_state)
+    noise_ptr = model._sampling_noise.data_ptr()
+    topk_ptr = model._sampling_topk_logits.data_ptr()
+    probs_ptr = model._sampling_probs.data_ptr()
+    assert isinstance(token, int)
+    assert generated_state.context is not None
+
+    token, generated_state = model.generate_next(generated_state)
+    assert isinstance(token, int)
+    assert model._sampling_noise.data_ptr() == noise_ptr
+    assert model._sampling_topk_logits.data_ptr() == topk_ptr
+    assert model._sampling_probs.data_ptr() == probs_ptr
 
 
 def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:

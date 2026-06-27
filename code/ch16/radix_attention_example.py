@@ -16,7 +16,6 @@ This example demonstrates SGLang's RadixAttention approach using a compressed tr
 Based on Chapter 16 content and SGLang's prefix caching design.
 """
 
-import torch.nn.functional as F
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from contextlib import nullcontext
@@ -362,6 +361,13 @@ class SimpleTransformerModel:
         self.device = device or (torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
         self._cache_block_tokens = 128
         self._token_buffer = torch.empty(1, dtype=torch.long, device=self.device)
+        self._sampling_noise = None
+        self._sampling_topk_logits = None
+        self._sampling_topk_indices = None
+        self._sampling_probs = None
+        self._sampling_choice = None
+        self._sampling_next_token = None
+        self._sampling_next_token_host = None
         
         # Initialize lightweight modules on the active device
         self.embedding = torch.nn.Embedding(vocab_size, hidden_dim, device=self.device)
@@ -381,6 +387,30 @@ class SimpleTransformerModel:
         torch.nn.init.zeros_(self.ln.bias)
         
         self._attention_kernel = _attention_core
+
+    def _sampling_like_buffer(self, name: str, tensor: torch.Tensor) -> torch.Tensor:
+        buffer = getattr(self, name)
+        if (
+            buffer is None
+            or buffer.device != tensor.device
+            or buffer.dtype != tensor.dtype
+            or tuple(buffer.shape) != tuple(tensor.shape)
+        ):
+            buffer = torch.empty_like(tensor)
+            setattr(self, name, buffer)
+        return buffer
+
+    def _sampling_long_buffer(self, name: str, shape: Tuple[int, ...]) -> torch.Tensor:
+        buffer = getattr(self, name)
+        if buffer is None or buffer.device != self.device or tuple(buffer.shape) != tuple(shape):
+            buffer = torch.empty(shape, dtype=torch.long, device=self.device)
+            setattr(self, name, buffer)
+        return buffer
+
+    def _sampling_host_buffer(self) -> torch.Tensor:
+        if self._sampling_next_token_host is None:
+            self._sampling_next_token_host = torch.empty(1, dtype=torch.long, device="cpu")
+        return self._sampling_next_token_host
 
     def _new_cache(self, k: torch.Tensor, v: torch.Tensor) -> KVCache:
         capacity = max(self._cache_block_tokens, k.size(0))
@@ -459,20 +489,31 @@ class SimpleTransformerModel:
             logits = self.lm_head(output)
         
         # Add more randomness to prevent repetitive tokens
-        logits = logits + torch.randn_like(logits) * 0.5
+        noise = self._sampling_like_buffer("_sampling_noise", logits)
+        torch.randn(logits.shape, dtype=logits.dtype, device=logits.device, out=noise)
+        logits.add_(noise, alpha=0.5)
         
         # Use temperature scaling for more diverse sampling
         temperature = 1.0
-        logits = logits / temperature
+        if temperature != 1.0:
+            logits.div_(temperature)
         
         # Add top-k sampling for more diversity
-        k = 10
-        top_k_logits, top_k_indices = torch.topk(logits, k, dim=-1)
+        k = min(10, logits.size(-1))
+        top_k_logits = self._sampling_like_buffer("_sampling_topk_logits", logits[:, :k])
+        top_k_indices = self._sampling_long_buffer("_sampling_topk_indices", (logits.size(0), k))
+        torch.topk(logits, k, dim=-1, out=(top_k_logits, top_k_indices))
         
         # Sample from top-k
-        probs = F.softmax(top_k_logits, dim=-1)
-        selected_idx = torch.multinomial(probs, num_samples=1)
-        next_token = top_k_indices[0, selected_idx[0]].item()
+        probs = self._sampling_like_buffer("_sampling_probs", top_k_logits)
+        selected_idx = self._sampling_long_buffer("_sampling_choice", (logits.size(0), 1))
+        next_token_device = self._sampling_long_buffer("_sampling_next_token", (logits.size(0), 1))
+        torch.softmax(top_k_logits, dim=-1, out=probs)
+        torch.multinomial(probs, num_samples=1, out=selected_idx)
+        torch.gather(top_k_indices, 1, selected_idx, out=next_token_device)
+        next_token_host = self._sampling_host_buffer()
+        next_token_host.copy_(next_token_device.view(-1)[:1])
+        next_token = int(next_token_host[0])
         
         # Check for end of generation (simplified)
         state.finished = (next_token == 0) or (seq_len >= 50)  # EOS or max length
