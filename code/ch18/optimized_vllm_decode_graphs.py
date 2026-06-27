@@ -143,6 +143,7 @@ class OptimizedDecodeDriver:
         self.workspaces: Dict[int, BucketWorkspace] = {}
         self.captured_shapes: set[Tuple[int, int]] = set()
         self._vllm_kernel = self._resolve_vllm_kernel()
+        self._seq_lens_profiles: Dict[Tuple[int, int], torch.Tensor] = {}
 
     def _resolve_vllm_kernel(self):
         if getattr(self.decode_kernel, "backend", None) != "vllm":
@@ -159,6 +160,20 @@ class OptimizedDecodeDriver:
             self.workspaces[bucket] = BucketWorkspace(batch=bucket, hidden=self.hidden)
         return self.workspaces[bucket]
 
+    def seq_lens_profile(self, batch_size: int, bucket: int) -> torch.Tensor:
+        if self._vllm_kernel is None:
+            raise RuntimeError("vLLM seq_lens profile requested without a vLLM kernel")
+        key = (batch_size, bucket)
+        profile = self._seq_lens_profiles.get(key)
+        if profile is None:
+            seq_lens = self._vllm_kernel.seq_lens
+            profile = torch.empty(bucket, device=seq_lens.device, dtype=seq_lens.dtype)
+            profile[:batch_size].fill_(self._vllm_kernel.block_size)
+            if bucket > batch_size:
+                profile[batch_size:bucket].zero_()
+            self._seq_lens_profiles[key] = profile
+        return profile
+
     def run(self) -> DecodeMetrics:
         metrics = DecodeMetrics()
         for batch_size in self.trace:
@@ -174,9 +189,7 @@ class OptimizedDecodeDriver:
                 # This keeps bucketed shapes stable (good for CUDA graphs / workspace reuse)
                 # without paying full attention cost on dummy rows.
                 seq_lens = self._vllm_kernel.seq_lens
-                seq_lens[:batch_size].fill_(self._vllm_kernel.block_size)
-                if bucket > batch_size:
-                    seq_lens[batch_size:bucket].zero_()
+                seq_lens[:bucket].copy_(self.seq_lens_profile(batch_size, bucket))
             # Keep the compute path aligned with the baseline (no masking); the
             # benchmark's outputs are metrics, not decoded logits.
             logits = self.decode_kernel(ws.tokens, ws.kv, None)

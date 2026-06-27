@@ -2017,7 +2017,14 @@ def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None
     assert "mask:" not in workspace_section
     assert "torch.ones(self.batch, dtype=torch.bool" not in workspace_section
     assert "self.mask.numel()" not in workspace_section
-    assert "seq_lens[batch_size:bucket].zero_()" in source
+    assert "self._seq_lens_profiles: Dict[Tuple[int, int], torch.Tensor] = {}" in source
+    assert "def seq_lens_profile(self, batch_size: int, bucket: int) -> torch.Tensor:" in source
+    assert "seq_lens[:bucket].copy_(self.seq_lens_profile(batch_size, bucket))" in source
+    run_section = source.split("def run(self) -> DecodeMetrics:", maxsplit=1)[1].split(
+        "def parse_args", maxsplit=1
+    )[0]
+    assert "seq_lens[:batch_size].fill_" not in run_section
+    assert "seq_lens[batch_size:bucket].zero_()" not in run_section
 
 
 def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
