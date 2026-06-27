@@ -15,7 +15,7 @@ import gc
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import torch
 
@@ -327,6 +327,7 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._metrics: Dict[str, Any] = {}
         self.output: Optional[torch.Tensor] = None
         self._last_token_ids: Optional[torch.Tensor] = None
+        self._token_id_buffer: Optional[torch.Tensor] = None
         self._verification_payload = None
         self.register_workload_metadata(requests_per_iteration=8.0)
 
@@ -335,6 +336,16 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._metrics = {}
         self.output = None
         self._last_token_ids = None
+        self._token_id_buffer = None
+
+    def _materialize_token_ids(self, token_ids: Sequence[int]) -> torch.Tensor:
+        num_ids = len(token_ids)
+        if self._token_id_buffer is None or self._token_id_buffer.numel() < num_ids:
+            self._token_id_buffer = torch.empty(num_ids, dtype=torch.int32)
+        token_view = self._token_id_buffer.narrow(0, 0, num_ids)
+        for index, token_id in enumerate(token_ids):
+            token_view[index] = int(token_id)
+        return token_view
 
     def benchmark_fn(self) -> None:
         """Entry point used by the harness warmup/iteration loops."""
@@ -342,7 +353,7 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
         token_ids = self._metrics.get("token_ids")
         if token_ids is None:
             raise RuntimeError("Runner did not return token_ids for verification")
-        self._last_token_ids = torch.as_tensor(token_ids, dtype=torch.int32)
+        self._last_token_ids = self._materialize_token_ids(token_ids)
         self.output = self._last_token_ids
 
     def capture_verification_payload(self) -> None:

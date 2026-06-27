@@ -1841,6 +1841,53 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "if not matches.all()" not in decode_section
 
 
+def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
+    for module_name in (
+        "ch18.baseline_vllm_v1_integration",
+        "ch18.optimized_vllm_v1_integration",
+    ):
+        module = importlib.import_module(module_name)
+        source = (REPO_ROOT / module_name.replace(".", "/")).with_suffix(".py").read_text(
+            encoding="utf-8"
+        )
+        token_batches = iter(([11, 12, 13], [21, 22, 23], [31, 32, 33, 34]))
+        benchmark = module.get_benchmark()
+        benchmark.runner = SimpleNamespace(
+            batch_size=8,
+            max_tokens=128,
+            run=lambda: {"token_ids": next(token_batches)},
+        )
+        benchmark._metrics = {}
+        benchmark.output = None
+        benchmark._last_token_ids = None
+        benchmark._token_id_buffer = None
+
+        benchmark.benchmark_fn()
+        first_ptr = benchmark._token_id_buffer.data_ptr()
+        torch.testing.assert_close(
+            benchmark.output,
+            torch.tensor([11, 12, 13], dtype=torch.int32),
+        )
+
+        benchmark.benchmark_fn()
+        assert benchmark._token_id_buffer.data_ptr() == first_ptr
+        torch.testing.assert_close(
+            benchmark.output,
+            torch.tensor([21, 22, 23], dtype=torch.int32),
+        )
+
+        benchmark.benchmark_fn()
+        assert benchmark._token_id_buffer.numel() >= 4
+        torch.testing.assert_close(
+            benchmark.output,
+            torch.tensor([31, 32, 33, 34], dtype=torch.int32),
+        )
+
+        assert "self._token_id_buffer: Optional[torch.Tensor] = None" in source
+        assert "def _materialize_token_ids" in source
+        assert "torch.as_tensor(token_ids" not in source
+
+
 def test_ch18_paged_vllm_cache_reset_is_metadata_only() -> None:
     source = (REPO_ROOT / "ch18" / "run_vllm_decoder.py").read_text(encoding="utf-8")
     cache_section = source.split("class PagedKVCache", maxsplit=1)[1].split(
