@@ -56,7 +56,7 @@ class OptimizedBatchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.model is None or self.input is None:
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("batch_optimized"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Single large forward pass (one kernel launch, better GPU utilization)
                 self.output = self.model(self.input)
         if self.output is None or self.input is None:

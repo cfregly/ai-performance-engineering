@@ -16,7 +16,6 @@ from __future__ import annotations
 from typing import Optional
 
 import torch
-import torch.nn as nn
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
@@ -82,7 +81,7 @@ class BaselineAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         - Multiple kernel launches
         """
         with self._nvtx_range("baseline_attention_naive"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Naive: Explicit matrix multiplications
                 # Q @ K^T -> (batch, heads, seq, seq) attention matrix
                 attn_scores = torch.matmul(self.query, self.key.transpose(-2, -1))

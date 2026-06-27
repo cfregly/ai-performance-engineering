@@ -95,7 +95,7 @@ class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Naive attention: 3 separate kernels, 2 HBM round-trips."""
         with self._nvtx_range("baseline_sdpa_attention"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Kernel 1: Q @ K^T -> attn_scores (written to HBM)
                 # Shape: [B, H, S, D] @ [B, H, D, S] -> [B, H, S, S]
                 attn_scores = torch.matmul(
@@ -180,4 +180,3 @@ class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineSDPAAttentionBenchmark()
-

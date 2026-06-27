@@ -102,7 +102,7 @@ class OptimizedSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Fused SDPA: Single kernel, minimal HBM traffic."""
         with self._nvtx_range("optimized_sdpa_attention"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Force FlashAttention to avoid slow math fallback paths.
                 with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
                     # This single call fuses Q@K^T, scale, softmax, attn@V
@@ -182,4 +182,3 @@ class OptimizedSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedSDPAAttentionBenchmark()
-

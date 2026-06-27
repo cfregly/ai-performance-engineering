@@ -252,7 +252,7 @@ class OptimizedFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             try:
                 module = __import__(module_name, fromlist=["flash_attn_func"])
                 flash_attn_func = getattr(module, "flash_attn_func")
-                with torch.no_grad():
+                with torch.inference_mode():
                     _ = self.model.forward_external_flash(
                         self.input[:1],
                         flash_attn_func,
@@ -325,7 +325,7 @@ class OptimizedFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._resolve_attention_runner()
         
         # Warmup the selected tiled attention engine.
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(3):
                 _ = self._run_attention(self.input)
         
@@ -334,7 +334,7 @@ class OptimizedFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: Tiled attention computation."""
         with self._nvtx_range("optimized_tiled_attention"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self._run_attention(self.input)
         
         if self.output is None or self.input is None:
@@ -406,7 +406,7 @@ class OptimizedFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return "Input not initialized"
         
         # Verify tiled attention produces valid output
-        with torch.no_grad():
+        with torch.inference_mode():
             output = self._run_attention(self.input[:1])
             if torch.isnan(output).any():
                 return "NaN values in attention output"

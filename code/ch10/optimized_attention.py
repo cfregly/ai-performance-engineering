@@ -18,7 +18,6 @@ from __future__ import annotations
 from typing import Optional
 
 import torch
-import torch.nn as nn
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
@@ -80,7 +79,7 @@ class OptimizedAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         5. Optimized for modern GPU memory hierarchy
         """
         with self._nvtx_range("optimized_attention_flash"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # scaled_dot_product_attention automatically selects:
                 # - Flash Attention V2 when available
                 # - Memory-efficient attention as fallback

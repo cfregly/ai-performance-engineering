@@ -73,7 +73,7 @@ class BaselineBatchBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Benchmark not configured")
         output = self._output_buffer
         with self._nvtx_range("batch_baseline"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Process each micro-batch separately (many small kernel launches)
                 for idx in range(self.micro_batches):
                     start = idx * self.micro_batch_size

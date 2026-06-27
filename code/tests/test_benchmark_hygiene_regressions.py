@@ -1089,6 +1089,52 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "self.output = self.model(self.inputs)" in cudnn_sdpa_benchmark
     assert "out.detach()" not in cudnn_sdpa_benchmark
 
+    for relative_path in (
+        "ch09/baseline_sdpa_attention.py",
+        "ch09/optimized_sdpa_attention.py",
+        "ch10/baseline_attention.py",
+        "ch10/optimized_attention.py",
+        "ch10/baseline_batch.py",
+        "ch10/optimized_batch.py",
+        "ch10/baseline_flash_attention.py",
+        "ch10/optimized_flash_attention.py",
+    ):
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "with torch.no_grad():" not in benchmark_section
+
+    for relative_path in (
+        "ch10/baseline_flash_attention.py",
+        "ch10/optimized_flash_attention.py",
+    ):
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        assert "with torch.inference_mode():" in setup_section
+        assert "with torch.no_grad():" not in setup_section
+
+    optimized_ch10_flash = (REPO_ROOT / "ch10" / "optimized_flash_attention.py").read_text(
+        encoding="utf-8"
+    )
+    external_probe = optimized_ch10_flash.split("def _resolve_external_flash", maxsplit=1)[1].split(
+        "def _resolve_attention_runner",
+        maxsplit=1,
+    )[0]
+    validate_section = optimized_ch10_flash.split("def validate_result", maxsplit=1)[1].split(
+        "def get_benchmark",
+        maxsplit=1,
+    )[0]
+    assert "with torch.inference_mode():" in external_probe
+    assert "with torch.inference_mode():" in validate_section
+    assert "with torch.no_grad():" not in external_probe
+    assert "with torch.no_grad():" not in validate_section
+
     for filename in ("baseline_flashinfer_attention.py", "optimized_flashinfer_attention.py"):
         source = (REPO_ROOT / "labs" / "flashinfer_attention" / filename).read_text(
             encoding="utf-8"

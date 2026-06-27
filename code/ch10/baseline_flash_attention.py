@@ -78,7 +78,7 @@ class BaselineFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)
         
         # Warmup
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(3):
                 self._manual_attention(self.input, is_causal=self.use_causal)
     
@@ -115,7 +115,7 @@ class BaselineFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: Standard attention without FlashAttention."""
         with self._nvtx_range("baseline_flash_attention"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self._manual_attention(self.input, is_causal=self.use_causal)
         if self.output is None or self.input is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
