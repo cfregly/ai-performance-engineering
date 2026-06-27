@@ -291,7 +291,7 @@ class GroupedTopKMoE(VectorizedTopKMoE):
             return self._static_output_buffer
         return torch.empty_like(tokens, dtype=tokens.dtype)
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def calibrate_capacity(self, tokens: torch.Tensor) -> int:
         """Pick the static per-expert slot capacity from observed routing.
 
@@ -493,7 +493,7 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         model.capacity_guard = self._capacity_rightsize_enabled or capacity_override is not None
         self._capacity = model.calibrate_capacity(self.inputs)
         model.configure_static_dispatch_buffers(self.batch_size, self.inputs.device)
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(3):
                 model(self.inputs)
         torch.cuda.synchronize(self.device)
@@ -519,7 +519,6 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._dynamo_unique_graphs = None
         self._kernels_per_replay = None
         forward_fn = self.model
-        capture_no_grad = False
         if self._compile_enabled:
             from torch._dynamo.utils import counters as dynamo_counters
 
@@ -554,7 +553,7 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
             # Compile + autotune happen here (setup, untimed). Warmup and the
             # capture below MUST share grad mode, otherwise capture triggers a
             # Dynamo recompile whose autotuning would be captured into the graph.
-            with torch.no_grad():
+            with torch.inference_mode():
                 for _ in range(3):
                     compiled(self.inputs)
             torch.cuda.synchronize(self.device)
@@ -574,7 +573,6 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     "refusing to run the un-compiled path as the optimized arm"
                 )
             forward_fn = compiled
-            capture_no_grad = True
 
         # Capture the forward pass into a CUDA graph to hide Python dispatch overhead.
         self.graph = None
@@ -584,10 +582,7 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.graph = torch.cuda.CUDAGraph()
             with torch.cuda.graph(self.graph):
                 assert forward_fn is not None and self.inputs is not None
-                if capture_no_grad:
-                    with torch.no_grad():
-                        self.static_output = forward_fn(self.inputs)
-                else:
+                with torch.inference_mode():
                     self.static_output = forward_fn(self.inputs)
             torch.cuda.synchronize(self.device)
         except Exception:

@@ -1658,6 +1658,10 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "self._overflow_slots_for(slots, num_slots)" in forward_section
     assert "self._dense_input_for(flat_tokens, num_slots)" in forward_section
     assert "self._output_buffer_for(tokens, batch)" in forward_section
+    assert "@torch.inference_mode()" in source
+    assert "with torch.inference_mode():" in setup_section
+    assert "with torch.no_grad():" not in setup_section
+    assert "capture_no_grad" not in source
     assert "torch.zeros_like(tokens" not in source
     assert "output.zero_()" not in forward_section
     assert "output.index_add_(0, token_indices, weighted)" not in source
@@ -1723,6 +1727,8 @@ def test_moe_cuda_topk_router_configures_static_dispatch_once() -> None:
     assert "model.calibrate_capacity(self.inputs)" in setup_section
     assert "model.configure_static_dispatch_buffers(self.batch_size, self.inputs.device)" in setup_section
     assert "model.assume_static_no_overflow = True" in setup_section
+    assert "with torch.inference_mode():" in setup_section
+    assert "with torch.no_grad():" not in setup_section
     assert "calibrate_capacity" not in benchmark_section
     assert "configure_static_dispatch_buffers" not in benchmark_section
 

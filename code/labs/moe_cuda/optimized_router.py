@@ -154,7 +154,7 @@ class OptimizedRouterTopKBenchmark(VerificationPayloadMixin, BaseBenchmark):
         model.assume_static_no_overflow = True
         
         # Warmup
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(5):
                 _ = self.model(self.inputs)
         torch.cuda.synchronize(self.device)
