@@ -451,12 +451,20 @@ def context_sum_vectorized(
 
 
 def candidate_scores_torch(
-    user_vec: torch.Tensor, inputs: RankingInputs, state: RankingModelState
+    user_vec: torch.Tensor,
+    inputs: RankingInputs,
+    state: RankingModelState,
+    out: torch.Tensor | None = None,
 ) -> torch.Tensor:
     candidate_emb = F.embedding(inputs.candidate_ids, state.item_embeddings)
-    return torch.bmm(
-        candidate_emb.to(torch.float32), user_vec.to(torch.float32).unsqueeze(2)
-    ).squeeze(2)
+    candidate_emb_f32 = candidate_emb.to(torch.float32)
+    user_vec_f32 = user_vec.to(torch.float32).unsqueeze(2)
+    if out is None or (
+        torch.is_grad_enabled() and (candidate_emb_f32.requires_grad or user_vec_f32.requires_grad)
+    ):
+        return torch.bmm(candidate_emb_f32, user_vec_f32).squeeze(2)
+    torch.bmm(candidate_emb_f32, user_vec_f32, out=out.unsqueeze(2))
+    return out
 
 
 if TRITON_AVAILABLE:
@@ -587,7 +595,7 @@ def optimized_forward(
         if workspace is None:
             raise RuntimeError("Triton scoring requires a RankingWorkspace")
         return candidate_scores_triton(user_vec, inputs, state, workspace.score_output)
-    return candidate_scores_torch(user_vec, inputs, state)
+    return candidate_scores_torch(user_vec, inputs, state, workspace.score_output if workspace is not None else None)
 
 
 def ranking_metrics(
@@ -629,7 +637,7 @@ def warm_optimized_path(
                 raise RuntimeError("Triton scoring requires a RankingWorkspace")
             _ = candidate_scores_triton(user_vec, inputs, state, workspace.score_output)
         else:
-            _ = candidate_scores_torch(user_vec, inputs, state)
+            _ = candidate_scores_torch(user_vec, inputs, state, workspace.score_output if workspace is not None else None)
     if torch.cuda.is_available():
         torch.cuda.synchronize()
 

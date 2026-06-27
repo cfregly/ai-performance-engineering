@@ -17,6 +17,7 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     build_inputs,
     build_model_state,
     build_workspace,
+    candidate_scores_torch,
     context_sum_baseline,
     context_sum_vectorized,
     optimized_forward,
@@ -149,6 +150,26 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     assert workspace_context.data_ptr() == workspace.context_accum.data_ptr()
     torch.testing.assert_close(workspace_sequence, fallback_sequence, rtol=1e-6, atol=1e-6)
     torch.testing.assert_close(workspace_context, fallback_context, rtol=1e-6, atol=1e-6)
+
+
+def test_torch_candidate_scoring_reuses_workspace_output_on_cpu() -> None:
+    workload = _small_workload()
+    inputs = build_inputs(workload, torch.device("cpu"))
+    state = build_model_state(workload, torch.device("cpu"))
+    workspace = build_workspace(workload, torch.device("cpu"))
+    user_vec = torch.randn(
+        workload.batch_size,
+        workload.embedding_dim,
+        dtype=workload.dtype,
+    )
+    source = inspect.getsource(candidate_scores_torch)
+
+    fallback_scores = candidate_scores_torch(user_vec, inputs, state)
+    workspace_scores = candidate_scores_torch(user_vec, inputs, state, workspace.score_output)
+
+    assert "out=out.unsqueeze(2)" in source
+    assert workspace_scores.data_ptr() == workspace.score_output.data_ptr()
+    torch.testing.assert_close(workspace_scores, fallback_scores, rtol=1e-6, atol=1e-6)
 
 
 def test_resolve_score_backend_respects_availability() -> None:
