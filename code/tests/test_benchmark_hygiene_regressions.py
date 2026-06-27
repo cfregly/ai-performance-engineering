@@ -2194,12 +2194,30 @@ def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
     )
     generate_section = source.split("def generate(self, tokens, max_tokens", maxsplit=1)[1]
 
+    assert "self._generate_next_ids = None" in source
+    assert "self._generate_choice_ids = None" in source
+    assert "self._generate_probs = None" in source
+    assert "def _generate_long_buffer" in source
+    assert "def _generate_like_buffer" in source
+    assert "def _generate_token_host_buffer" in source
     assert "ids = torch.empty((1, total_len), dtype=torch.long, device=device)" in generate_section
+    assert "next_ids = self._generate_long_buffer(\"_generate_next_ids\", (1, 1), device)" in generate_section
+    assert "choice = self._generate_long_buffer(\"_generate_choice_ids\", (1, 1), device)" in generate_section
     assert "logits = self.forward(ids[:, :cur_len])" in generate_section
-    assert "top_vals, top_idx = torch.topk(logits, min(top_k, logits.size(-1)), dim=-1)" in generate_section
-    assert "next_ids = top_idx.gather(1, choice)" in generate_section
+    assert "torch.topk(logits, k, dim=-1, out=(top_vals, top_idx))" in generate_section
+    assert "torch.softmax(top_vals, dim=-1, out=probs)" in generate_section
+    assert "torch.multinomial(probs, num_samples=1, generator=rng, out=choice)" in generate_section
+    assert "torch.gather(top_idx, 1, choice, out=next_ids)" in generate_section
+    assert "torch.multinomial(probs, num_samples=1, generator=rng, out=next_ids)" in generate_section
+    assert "torch.max(logits, dim=-1, keepdim=True, out=(max_values, next_ids))" in generate_section
     assert "ids[:, cur_len:cur_len + 1].copy_(next_ids)" in generate_section
+    assert "token_host.copy_(next_ids.view(-1)[:1])" in generate_section
+    assert "token = int(token_host[0])" in generate_section
     assert "ids = torch.cat((ids, next_ids), dim=1)" not in generate_section
+    assert "next_ids = torch.multinomial" not in generate_section
+    assert "choice = torch.multinomial" not in generate_section
+    assert "next_ids = torch.argmax" not in generate_section
+    assert "next_ids.item()" not in generate_section
     assert "logits[logits <" not in generate_section
 
 

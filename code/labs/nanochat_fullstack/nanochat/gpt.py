@@ -417,6 +417,14 @@ class GPT(nn.Module):
         self.register_buffer("cos", cos, persistent=False) # persistent=False means it's not saved to the checkpoint
         self.register_buffer("sin", sin, persistent=False)
         self.register_buffer("_position_offsets", torch.empty(0, dtype=torch.long), persistent=False)
+        self._generate_next_ids = None
+        self._generate_choice_ids = None
+        self._generate_max_values = None
+        self._generate_probs = None
+        self._generate_topk_values = None
+        self._generate_topk_indices = None
+        self._generate_topk_probs = None
+        self._generate_token_host = None
 
     def init_weights(self):
         self.apply(self._init_weights)
@@ -472,6 +480,30 @@ class GPT(nn.Module):
             self._position_offsets = torch.arange(length, device=device, dtype=torch.long)
             offsets = self._position_offsets
         return offsets[:length]
+
+    def _generate_long_buffer(self, name, shape, device):
+        buffer = getattr(self, name)
+        if buffer is None or buffer.device != device or tuple(buffer.shape) != tuple(shape):
+            buffer = torch.empty(shape, dtype=torch.long, device=device)
+            setattr(self, name, buffer)
+        return buffer
+
+    def _generate_like_buffer(self, name, tensor):
+        buffer = getattr(self, name)
+        if (
+            buffer is None
+            or buffer.device != tensor.device
+            or buffer.dtype != tensor.dtype
+            or tuple(buffer.shape) != tuple(tensor.shape)
+        ):
+            buffer = torch.empty_like(tensor)
+            setattr(self, name, buffer)
+        return buffer
+
+    def _generate_token_host_buffer(self):
+        if self._generate_token_host is None:
+            self._generate_token_host = torch.empty(1, dtype=torch.long)
+        return self._generate_token_host
 
     def estimate_flops(self):
         """ Return the estimated FLOPs per token for the model. Ref: https://arxiv.org/abs/2204.02311 """
@@ -586,24 +618,34 @@ class GPT(nn.Module):
         ids = torch.empty((1, total_len), dtype=torch.long, device=device)
         if prompt_len:
             ids[:, :prompt_len] = torch.tensor([tokens], dtype=torch.long, device=device)
+        next_ids = self._generate_long_buffer("_generate_next_ids", (1, 1), device)
+        choice = self._generate_long_buffer("_generate_choice_ids", (1, 1), device)
+        token_host = self._generate_token_host_buffer()
         cur_len = prompt_len
         for _ in range(max_tokens):
             logits = self.forward(ids[:, :cur_len]) # (B, T, vocab_size)
             logits = logits[:, -1, :] # (B, vocab_size)
             if temperature > 0:
                 if top_k is not None:
-                    top_vals, top_idx = torch.topk(logits, min(top_k, logits.size(-1)), dim=-1)
-                    top_vals = top_vals / temperature
-                    probs = F.softmax(top_vals, dim=-1)
-                    choice = torch.multinomial(probs, num_samples=1, generator=rng)
-                    next_ids = top_idx.gather(1, choice)
+                    k = min(top_k, logits.size(-1))
+                    top_vals = self._generate_like_buffer("_generate_topk_values", logits[:, :k])
+                    top_idx = self._generate_long_buffer("_generate_topk_indices", (1, k), device)
+                    torch.topk(logits, k, dim=-1, out=(top_vals, top_idx))
+                    top_vals.div_(temperature)
+                    probs = self._generate_like_buffer("_generate_topk_probs", top_vals)
+                    torch.softmax(top_vals, dim=-1, out=probs)
+                    torch.multinomial(probs, num_samples=1, generator=rng, out=choice)
+                    torch.gather(top_idx, 1, choice, out=next_ids)
                 else:
-                    logits = logits / temperature
-                    probs = F.softmax(logits, dim=-1)
-                    next_ids = torch.multinomial(probs, num_samples=1, generator=rng)
+                    logits.div_(temperature)
+                    probs = self._generate_like_buffer("_generate_probs", logits)
+                    torch.softmax(logits, dim=-1, out=probs)
+                    torch.multinomial(probs, num_samples=1, generator=rng, out=next_ids)
             else:
-                next_ids = torch.argmax(logits, dim=-1, keepdim=True)
+                max_values = self._generate_like_buffer("_generate_max_values", logits[:, :1])
+                torch.max(logits, dim=-1, keepdim=True, out=(max_values, next_ids))
             ids[:, cur_len:cur_len + 1].copy_(next_ids)
             cur_len += 1
-            token = next_ids.item()
+            token_host.copy_(next_ids.view(-1)[:1])
+            token = int(token_host[0])
             yield token

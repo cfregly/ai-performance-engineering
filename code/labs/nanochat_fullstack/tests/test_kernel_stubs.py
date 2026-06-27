@@ -103,6 +103,31 @@ def test_gpt_reuses_position_offsets_for_padded_kv_cache():
     torch.testing.assert_close(grown, torch.arange(8, dtype=torch.long))
 
 
+def test_gpt_generate_reuses_sampling_buffers(monkeypatch):
+    model = GPT(_cfg())
+    token_batches = iter(([5, 6], [7, 8]))
+
+    def fake_forward(ids, *args, **kwargs):
+        token = next(current_tokens)
+        logits = torch.zeros((1, ids.size(1), model.config.vocab_size), dtype=torch.float32)
+        logits[:, -1, token] = 1.0
+        return logits
+
+    current_tokens = iter(next(token_batches))
+    monkeypatch.setattr(model, "forward", fake_forward)
+
+    assert list(model.generate([1], max_tokens=2, temperature=0.0)) == [5, 6]
+    next_ids_ptr = model._generate_next_ids.data_ptr()
+    max_values_ptr = model._generate_max_values.data_ptr()
+    token_host = model._generate_token_host
+
+    current_tokens = iter(next(token_batches))
+    assert list(model.generate([2], max_tokens=2, temperature=0.0)) == [7, 8]
+    assert model._generate_next_ids.data_ptr() == next_ids_ptr
+    assert model._generate_max_values.data_ptr() == max_values_ptr
+    assert model._generate_token_host is token_host
+
+
 def test_persistent_decode_kernel_stub_raises():
     config = _cfg(use_persistent_decode_kernel=True, allow_kernel_stub_fallback=False)
     model = GPT(config)
