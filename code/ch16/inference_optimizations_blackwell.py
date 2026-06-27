@@ -36,8 +36,7 @@ from torch.nn.attention.flex_attention import (
     flex_attention,
     create_block_mask,
 )
-from typing import Optional, Tuple
-import time
+from typing import Callable, Optional, Tuple
 from core.utils.compile_utils import compile_callable, compile_model
 
 # Check for FP8 support
@@ -65,6 +64,18 @@ if _flex_attention_wrapper is not None:
     )
 else:
     _FLEX_ATTENTION_FN = None
+
+
+def _benchmark_cuda_latency_ms(fn: Callable[[], object], iterations: int) -> float:
+    """Measure average CUDA latency in milliseconds for a callable."""
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+    start.record()
+    for _ in range(iterations):
+        fn()
+    end.record()
+    torch.cuda.synchronize()
+    return start.elapsed_time(end) / iterations
 
 
 # ============================================================================
@@ -620,11 +631,7 @@ def compare_inference_methods():
     
     # 1. Baseline (no optimizations)
     print("\n1. Baseline (no cache, no FlexAttention)")
-    start = time.time()
-    for _ in range(10):
-        _ = layer(hidden_states)
-    torch.cuda.synchronize()
-    baseline_time = (time.time() - start) / 10 * 1000
+    baseline_time = _benchmark_cuda_latency_ms(lambda: layer(hidden_states), 10)
     print(f"   Time: {baseline_time:.2f} ms")
     
     # 2. With KV cache
@@ -637,11 +644,10 @@ def compare_inference_methods():
         head_dim=d_model // num_heads,
         device=device,
     )
-    start = time.time()
-    for _ in range(10):
-        _ = layer(hidden_states, kv_cache=kv_cache, layer_idx=0)
-    torch.cuda.synchronize()
-    cache_time = (time.time() - start) / 10 * 1000
+    cache_time = _benchmark_cuda_latency_ms(
+        lambda: layer(hidden_states, kv_cache=kv_cache, layer_idx=0),
+        10,
+    )
     print(f"   Time: {cache_time:.2f} ms")
     print(f"   Speedup: {baseline_time / cache_time:.2f}x")
     
@@ -653,11 +659,7 @@ def compare_inference_methods():
         _ = compiled_layer(hidden_states)
     torch.cuda.synchronize()
     
-    start = time.time()
-    for _ in range(10):
-        _ = compiled_layer(hidden_states)
-    torch.cuda.synchronize()
-    compiled_time = (time.time() - start) / 10 * 1000
+    compiled_time = _benchmark_cuda_latency_ms(lambda: compiled_layer(hidden_states), 10)
     print(f"   Time: {compiled_time:.2f} ms")
     print(f"   Speedup: {baseline_time / compiled_time:.2f}x")
     

@@ -3857,6 +3857,27 @@ def test_ch16_blackwell_tensor_parallel_reuses_gather_buffers() -> None:
     assert "final_output = torch.cat(gathered_outputs, dim=-1)" not in forward_section
 
 
+def test_ch16_blackwell_inference_demo_uses_cuda_event_timing() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_optimizations_blackwell.py").read_text(
+        encoding="utf-8"
+    )
+    helper_section = source.split("def _benchmark_cuda_latency_ms", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+    demo_section = source.split("def compare_inference_methods", maxsplit=1)[1].split(
+        "def benchmark_multigpu_tensor_parallel",
+        maxsplit=1,
+    )[0]
+
+    assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start.record()" in helper_section
+    assert "end.record()" in helper_section
+    assert "start.elapsed_time(end) / iterations" in helper_section
+    assert demo_section.count("_benchmark_cuda_latency_ms(") == 3
+    assert "time.time()" not in demo_section
+
+
 def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
     source = (REPO_ROOT / "ch16" / "moe_performance_benchmark.py").read_text(
         encoding="utf-8"
