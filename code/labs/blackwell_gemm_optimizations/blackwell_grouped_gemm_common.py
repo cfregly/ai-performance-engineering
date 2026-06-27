@@ -244,13 +244,14 @@ def build_state(
         sorted_token_ids,
     )
 
-    zero_row = torch.zeros(
-        1,
+    x_with_padding = torch.empty(
+        workload.num_tokens + 1,
         workload.hidden_dim,
         device=device,
         dtype=workload.dtype,
     )
-    x_with_padding = torch.cat([x, zero_row], dim=0).contiguous()
+    x_with_padding[: workload.num_tokens].copy_(x)
+    x_with_padding[workload.num_tokens].zero_()
     flat_padded_indices = padded_indices.reshape(-1).contiguous()
     gathered = torch.index_select(x_with_padding, 0, flat_padded_indices).view(
         workload.num_experts,

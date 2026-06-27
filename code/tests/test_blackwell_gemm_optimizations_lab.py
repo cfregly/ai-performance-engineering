@@ -109,6 +109,18 @@ def test_blackwell_grouped_gemm_skewed_counts_avoid_tensor_roundtrip() -> None:
     assert sum(_assignment_counts_cpu(workload)) == workload.num_tokens
 
 
+def test_blackwell_grouped_gemm_padding_row_is_preallocated() -> None:
+    source = (LAB_DIR / "blackwell_grouped_gemm_common.py").read_text(encoding="utf-8")
+    setup_section = source.split("def build_state", maxsplit=1)[1].split(
+        "def require_blackwell_grouped_gemm_support",
+        maxsplit=1,
+    )[0]
+
+    assert "torch.cat([x" not in setup_section
+    assert "zero_row" not in setup_section
+    assert "x_with_padding[workload.num_tokens].zero_()" in setup_section
+
+
 @pytest.mark.parametrize("histogram", ["balanced", "skewed"])
 def test_blackwell_grouped_gemm_build_state_packs_routes_on_cpu(
     histogram: str,
