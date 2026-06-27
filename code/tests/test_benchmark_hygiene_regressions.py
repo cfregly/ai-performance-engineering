@@ -937,8 +937,14 @@ def test_nvfp4_gemv_dequant_expands_scales_without_repeat_interleave() -> None:
     scales_1d = torch.arange(3, dtype=torch.float32)
 
     assert "repeat_interleave" not in source
+    assert "torch.stack" not in source
     assert "_expand_scale_blocks(sfa)" in source
     assert "_expand_scale_blocks(sfb)" in source
+    packed = torch.tensor([[0x21, 0x43]], dtype=torch.uint8)
+    torch.testing.assert_close(
+        submission._unpack_nvfp4_indices(packed),
+        torch.tensor([[1, 2, 3, 4]], dtype=torch.long),
+    )
     torch.testing.assert_close(
         submission._expand_scale_blocks(scales_2d, 4),
         scales_2d.repeat_interleave(4, dim=-1),

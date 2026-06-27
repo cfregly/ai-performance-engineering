@@ -54,14 +54,22 @@ def _expand_scale_blocks(scales: torch.Tensor, block_size: int = sf_vec_size) ->
     )
 
 
+def _unpack_nvfp4_indices(packed: torch.Tensor) -> torch.Tensor:
+    indices = torch.empty(
+        *packed.shape[:-1],
+        packed.shape[-1] * 2,
+        device=packed.device,
+        dtype=torch.long,
+    )
+    indices[..., 0::2] = packed & 0xF
+    indices[..., 1::2] = (packed >> 4) & 0xF
+    return indices
+
+
 def _nvfp4_dequant_gemv_one(a8, b8, sfa, sfb, lut):
-    lo = (a8 & 0xF).long()
-    hi = ((a8 >> 4) & 0xF).long()
-    a_idx = torch.stack([lo, hi], dim=-1).reshape(a8.shape[0], -1)
+    a_idx = _unpack_nvfp4_indices(a8)
     a_f = lut[a_idx] * _expand_scale_blocks(sfa)
-    blo = (b8 & 0xF).long()
-    bhi = ((b8 >> 4) & 0xF).long()
-    b_idx = torch.stack([blo, bhi], dim=-1).reshape(-1)
+    b_idx = _unpack_nvfp4_indices(b8.unsqueeze(0)).reshape(-1)
     b_f = lut[b_idx] * _expand_scale_blocks(sfb)
     return (a_f.float() @ b_f.float()).half()
 
