@@ -259,12 +259,23 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 if plan.warm_chunks <= 0:
                     self.shared_prefix_store[plan.request_idx] = self._empty_kv()
                     continue
-                prefix_parts: List[torch.Tensor] = []
+                warm_chunks = chunks[: plan.warm_chunks]
+                prefix_tokens = sum(int(chunk.size(1)) for chunk in warm_chunks)
+                prefix_buffer = torch.empty(
+                    self.cfg.batch_size,
+                    prefix_tokens,
+                    self.cfg.hidden_size,
+                    device=self.device,
+                    dtype=self.cfg.dtype,
+                )
                 seed: Optional[torch.Tensor] = None
-                for chunk in chunks[: plan.warm_chunks]:
+                offset = 0
+                for chunk in warm_chunks:
                     chunk_kv, seed = self.prefill_model.prefill(chunk)
-                    prefix_parts.append(chunk_kv)
-                self.shared_prefix_store[plan.request_idx] = torch.cat(prefix_parts, dim=1)
+                    next_offset = offset + int(chunk_kv.size(1))
+                    prefix_buffer[:, offset:next_offset].copy_(chunk_kv)
+                    offset = next_offset
+                self.shared_prefix_store[plan.request_idx] = prefix_buffer
                 if seed is not None:
                     self.shared_seed_store[plan.request_idx] = seed
 

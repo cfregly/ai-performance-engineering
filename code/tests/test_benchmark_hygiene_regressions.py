@@ -2746,6 +2746,10 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "with torch.inference_mode():" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.stack(" not in benchmark_section
+    assert "prefix_parts" not in setup_section
+    assert "prefix_buffer = torch.empty(" in setup_section
+    assert "prefix_buffer[:, offset:next_offset].copy_(chunk_kv)" in setup_section
+    assert "torch.cat(prefix_parts" not in setup_section
     assert "self._kv_buffers = {" in setup_section
     assert "kv_buffer = torch.empty(" in helper_section
     assert "kv_buffer = torch.empty(" not in benchmark_section
@@ -2805,6 +2809,10 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "target_device = cache.device" in helper_section
     assert "device=target_device" in helper_section
     assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv, non_blocking=True)" in helper_section
+    assert "prefix_parts" not in setup_section
+    assert "prefix_buffer = torch.empty(" in setup_section
+    assert "prefix_buffer[:, offset:next_offset].copy_(chunk_kv)" in setup_section
+    assert "torch.cat(\n                    prefix_parts," not in setup_section
     assert "torch.cat((base, recv_chunk), dim=1)" not in run_iteration_section
     assert "torch.cat((cache, chunk_kv), dim=1)" not in benchmark_section
     assert "chunk_kv = chunk_kv.to(" not in benchmark_section

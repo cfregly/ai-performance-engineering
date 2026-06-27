@@ -891,20 +891,28 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                     continue
                 prompt = self._prompts[plan.prefill_rank][plan.local_request_idx]
                 chunks = _split_prompt(prompt, self.cfg.chunk_size)
-                prefix_parts: List[torch.Tensor] = []
+                warm_chunks = chunks[: plan.warm_chunks]
+                prefix_tokens = sum(int(chunk.size(1)) for chunk in warm_chunks)
+                prefix_buffer = torch.empty(
+                    self.cfg.batch_size,
+                    prefix_tokens,
+                    self.cfg.hidden_size,
+                    device=prompt.device,
+                    dtype=self.cfg.dtype,
+                )
                 seed: Optional[torch.Tensor] = None
                 prefill_model = self._prefill_models[plan.prefill_rank]
-                for chunk in chunks[: plan.warm_chunks]:
+                offset = 0
+                for chunk in warm_chunks:
                     chunk_kv, seed = prefill_model.prefill(chunk)
-                    prefix_parts.append(chunk_kv)
+                    next_offset = offset + int(chunk_kv.size(1))
+                    prefix_buffer[:, offset:next_offset].copy_(chunk_kv)
+                    offset = next_offset
                 if seed is None:
                     raise RuntimeError(f"Warm request {plan.global_request_idx} did not produce a seed")
                 home_rank = _home_decode_rank(plan.global_request_idx, prefill_ranks, decode_ranks)
                 home_device = self._decode_device_for_rank(home_rank)
-                self._warm_cache_store[home_rank][plan.global_request_idx] = torch.cat(
-                    prefix_parts,
-                    dim=1,
-                ).to(home_device)
+                self._warm_cache_store[home_rank][plan.global_request_idx] = prefix_buffer.to(home_device)
                 self._prefill_seed_store[plan.global_request_idx] = seed
 
         self.parameter_count = total_params
