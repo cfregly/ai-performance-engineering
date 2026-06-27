@@ -11,7 +11,6 @@ Run via:
 from __future__ import annotations
 
 import argparse
-import time
 
 import torch
 
@@ -62,16 +61,20 @@ def main() -> None:
             _flash_attn_fwd(q, k, v)
         torch.cuda.synchronize()
 
-    start = time.perf_counter()
+    count = max(int(args.iters), 1)
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
     with torch.inference_mode():
-        for _ in range(args.iters):
+        start.record()
+        for _ in range(count):
             out = _flash_attn_fwd(q, k, v)
+        end.record()
         torch.cuda.synchronize()
-    elapsed_s = time.perf_counter() - start
+    elapsed_s = start.elapsed_time(end) / 1000.0
 
     output_tensor = out[0] if isinstance(out, (tuple, list)) else out
     tokens = float(args.batch * args.seq_len)
-    iters = float(args.iters)
+    iters = float(count)
     ms_per_iter = (elapsed_s * 1e3) / max(iters, 1.0)
     tok_per_s = (tokens * iters) / max(elapsed_s, 1e-12)
 

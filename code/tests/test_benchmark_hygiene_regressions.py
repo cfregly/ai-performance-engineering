@@ -1740,12 +1740,17 @@ def test_flexattention_metrics_use_attention_formula_and_hot_paths_skip_clone() 
     flash4_source = (REPO_ROOT / "labs" / "flashattention4" / "flashattention4_benchmarks.py").read_text(
         encoding="utf-8"
     )
+    cute_source = (REPO_ROOT / "labs" / "flexattention" / "flex_attention_cute.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "self.output = output_tensor.detach().float().clone()" not in flex_baseline_source
     assert "self.output = output_tensor.detach().float().clone()" not in flex_optimized_source
     assert "self.output = result.detach().float().clone()" not in flash4_source
     assert "self._sparsity_ratio = float(self.inputs.dense_mask.float().mean())" in flash4_source
     assert "self.inputs.dense_mask.float().mean().item()" not in flash4_source
+    assert cute_source.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "time.perf_counter()" not in cute_source
     assert 'signature_overrides={"sparsity_ratio": self._sparsity_ratio}' in flash4_source
 
 
@@ -2250,19 +2255,34 @@ def test_ch18_cudagraph_bucketing_static_inputs_avoid_zero_fill() -> None:
 
 def test_ch18_dynamic_flex_attention_mask_avoids_scalar_tensor_allocation() -> None:
     source = (REPO_ROOT / "ch18" / "flex_attention_enhanced.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_attention", maxsplit=1)[1].split(
+        "def detect_architecture",
+        maxsplit=1,
+    )[0]
     dynamic_section = source.split("class DynamicSlidingWindowAttention", maxsplit=1)[1].split(
         "def compile_module",
         maxsplit=1,
     )[0]
     large_source = (REPO_ROOT / "ch18" / "flex_attention_large_model.py").read_text(encoding="utf-8")
+    large_benchmark_section = large_source.split("def benchmark_model", maxsplit=1)[1].split(
+        "def test_configuration",
+        maxsplit=1,
+    )[0]
     large_flex_section = large_source.split("class FlexAttentionModel", maxsplit=1)[1].split(
         "def estimate_memory",
         maxsplit=1,
     )[0]
     native_source = (REPO_ROOT / "ch18" / "flex_attention_native.py").read_text(encoding="utf-8")
+    native_benchmark_section = native_source.split("def benchmark_attention", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
 
     assert source.count("create_block_mask(self.mask_fn, B, H, T, T, device=Q.device)") == 3
     assert native_source.count("device=Q.device") == 2
+    for timing_section in (benchmark_section, large_benchmark_section, native_benchmark_section):
+        assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
+        assert "time.perf_counter()" not in timing_section
     assert "window_sizes = self.window_sizes_tensor" in dynamic_section
     assert "if window_sizes.device != q_idx.device:" in dynamic_section
     assert "window_size = window_sizes[int(h)]" in dynamic_section

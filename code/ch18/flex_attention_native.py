@@ -25,7 +25,6 @@ except Exception:
 import torch
 import torch.nn as nn
 from torch.nn.attention.flex_attention import flex_attention, create_block_mask
-import time
 
 from core.utils.compile_utils import enable_tf32, compile_model
 
@@ -147,14 +146,17 @@ def benchmark_attention(model, Q, K, V, name, num_warmup=50, num_iters=200):
     torch.cuda.synchronize()
     
     # Benchmark
-    start = time.perf_counter()
+    count = max(num_iters, 1)
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
     with torch.inference_mode():
-        for _ in range(num_iters):
+        start.record()
+        for _ in range(count):
             _ = model(Q, K, V)
+        end.record()
     torch.cuda.synchronize()
-    elapsed = time.perf_counter() - start
     
-    avg_time_ms = (elapsed / num_iters) * 1000
+    avg_time_ms = start.elapsed_time(end) / count
     
     print(f"  Average time: {avg_time_ms:.2f} ms")
     
