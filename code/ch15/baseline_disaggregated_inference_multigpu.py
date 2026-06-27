@@ -65,6 +65,8 @@ class _LocalPair:
     prompts: torch.Tensor
     decode_kv_cache: torch.Tensor
     decode_outputs: List[torch.Tensor]
+    transfer_kv_chunks: List[torch.Tensor]
+    transfer_seed_chunks: List[torch.Tensor]
 
 
 def _build_moe_config(cfg: DisaggConfig) -> MoeInferenceConfig:
@@ -478,6 +480,8 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                     prompts=prompts,
                     decode_kv_cache=decode_kv_cache,
                     decode_outputs=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)],
+                    transfer_kv_chunks=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)],
+                    transfer_seed_chunks=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)],
                 )
             )
 
@@ -504,11 +508,25 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         with torch.inference_mode():
             for pair in self._pairs:
                 kv_chunks, seed_chunks = _run_prefill(self.cfg, pair.prefill_model, pair.prompts)
+                if (
+                    len(pair.transfer_kv_chunks) != len(kv_chunks)
+                    or len(pair.transfer_seed_chunks) != len(seed_chunks)
+                ):
+                    raise RuntimeError("Transfer chunk slots not initialized")
+                for req_idx in range(len(kv_chunks)):
+                    pair.transfer_kv_chunks[req_idx] = kv_chunks[req_idx].to(
+                        pair.decode_device,
+                        non_blocking=self.overlap,
+                    )
+                    pair.transfer_seed_chunks[req_idx] = seed_chunks[req_idx].to(
+                        pair.decode_device,
+                        non_blocking=self.overlap,
+                    )
                 decoded = _run_decode(
                     self.cfg,
                     pair.decode_model,
-                    [kv.to(pair.decode_device, non_blocking=self.overlap) for kv in kv_chunks],
-                    [seed.to(pair.decode_device, non_blocking=self.overlap) for seed in seed_chunks],
+                    pair.transfer_kv_chunks,
+                    pair.transfer_seed_chunks,
                     pair.decode_device,
                     kv_cache=pair.decode_kv_cache,
                     outputs=pair.decode_outputs,

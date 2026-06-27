@@ -54,6 +54,8 @@ class _LocalPair:
     prefill_model: "TinyPrefillDecode"
     decode_model: "TinyPrefillDecode"
     prompts: torch.Tensor
+    transfer_kv_chunks: List[torch.Tensor]
+    transfer_seed_chunks: List[torch.Tensor]
 
 
 class TinyPrefillDecode(nn.Module):
@@ -624,6 +626,8 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     prefill_model=prefill_model,
                     decode_model=decode_models[decode_device],
                     prompts=prompts,
+                    transfer_kv_chunks=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)],
+                    transfer_seed_chunks=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)],
                 )
             )
 
@@ -658,9 +662,20 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         output_idx += 1
                 else:
                     kv_chunks, seed_chunks = _run_prefill(self.cfg, pair.prefill_model, pair.prompts)
-                    kv_chunks = [kv.to(pair.decode_device) for kv in kv_chunks]
-                    seed_chunks = [seed.to(pair.decode_device) for seed in seed_chunks]
-                    decoded = _run_decode(self.cfg, pair.decode_model, kv_chunks, seed_chunks)
+                    if (
+                        len(pair.transfer_kv_chunks) != len(kv_chunks)
+                        or len(pair.transfer_seed_chunks) != len(seed_chunks)
+                    ):
+                        raise RuntimeError("Transfer chunk slots not initialized")
+                    for req_idx in range(len(kv_chunks)):
+                        pair.transfer_kv_chunks[req_idx] = kv_chunks[req_idx].to(pair.decode_device)
+                        pair.transfer_seed_chunks[req_idx] = seed_chunks[req_idx].to(pair.decode_device)
+                    decoded = _run_decode(
+                        self.cfg,
+                        pair.decode_model,
+                        pair.transfer_kv_chunks,
+                        pair.transfer_seed_chunks,
+                    )
                     for decoded_output in decoded:
                         outputs[output_idx] = decoded_output
                         output_idx += 1
