@@ -316,6 +316,40 @@ def test_decode_step_helpers_reuse_token_and_active_mask_buffers():
     torch.testing.assert_close(refreshed, torch.tensor([True, True, True]))
     assert refreshed_rows == [0, 1, 2]
 
+    tokens = engine._token_tensor_to_list(torch.tensor([10, 11], dtype=torch.long))
+    sample_device_ptr = engine._sample_token_device_buffer.data_ptr()
+    sample_host = engine._sample_token_host_buffer
+
+    assert tokens == [10, 11]
+    assert engine._token_tensor_to_list(torch.tensor([12, 13], dtype=torch.long)) == [12, 13]
+    assert engine._sample_token_device_buffer.data_ptr() == sample_device_ptr
+    assert engine._sample_token_host_buffer is sample_host
+
+
+def test_generate_sampling_materializes_tokens_through_reusable_buffer():
+    source = Path(__file__).resolve().parents[1] / "nanochat" / "engine.py"
+    text = source.read_text(encoding="utf-8")
+    sample_section = text.split("def _sample_batch_tokens", maxsplit=1)[1].split(
+        "@torch.inference_mode()",
+        maxsplit=1,
+    )[0]
+    generate_section = text.split("def generate(self, tokens", maxsplit=1)[1].split(
+        "def generate_batched",
+        maxsplit=1,
+    )[0]
+
+    assert "self._sample_token_device_buffer = None" in text
+    assert "self._sample_token_host_buffer = None" in text
+    assert "def _sample_token_buffers(self, count, device)" in text
+    assert "def _token_tensor_to_list(self, token_tensor)" in text
+    assert "self._token_tensor_to_list(next_ids[:, 0])" in sample_section
+    assert "sampled_device[sample_idx].copy_(next_id[0, 0])" in sample_section
+    assert "sampled_host.copy_(sampled_device)" in sample_section
+    assert "sampled_tokens[idx] = next_id[0, 0].item()" not in sample_section
+    assert "next_ids[:, 0].tolist()" not in sample_section
+    assert "sampled_tokens = self._token_tensor_to_list(next_ids[:, 0])" in generate_section
+    assert "next_ids[:, 0].tolist()" not in generate_section
+
 
 def test_kv_cache_reuses_token_mask_row_sums():
     source = Path(__file__).resolve().parents[1] / "nanochat" / "engine.py"

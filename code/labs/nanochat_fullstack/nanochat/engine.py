@@ -327,6 +327,8 @@ class Engine:
         self._token_column_host = None
         self._active_mask_host = None
         self._active_mask_device = None
+        self._sample_token_device_buffer = None
+        self._sample_token_host_buffer = None
         self._pd_runner = PersistentDecodeRunner() if self.use_persistent_decode_kernel else None
         self._persistent_decode_kernel = (
             resolve_persistent_decode_kernel(
@@ -600,6 +602,28 @@ class Engine:
             return active_mask, active_rows
         return active_mask
 
+    def _sample_token_buffers(self, count, device):
+        if (
+            self._sample_token_device_buffer is None
+            or self._sample_token_device_buffer.device != device
+            or self._sample_token_device_buffer.numel() < count
+        ):
+            self._sample_token_device_buffer = torch.empty(count, dtype=torch.long, device=device)
+            self._sample_token_host_buffer = torch.empty(
+                count,
+                dtype=torch.long,
+                device="cpu",
+                pin_memory=device.type == "cuda",
+            )
+        return self._sample_token_device_buffer[:count], self._sample_token_host_buffer[:count]
+
+    def _token_tensor_to_list(self, token_tensor):
+        flat_tokens = token_tensor.reshape(-1)
+        device_tokens, host_tokens = self._sample_token_buffers(flat_tokens.numel(), flat_tokens.device)
+        device_tokens.copy_(flat_tokens)
+        host_tokens.copy_(device_tokens)
+        return [int(token) for token in host_tokens.tolist()]
+
     def _sample_batch_tokens(
         self, logits, rng, temperatures, top_ks, active_mask, pad_id, active_rows=None,
     ):
@@ -628,15 +652,19 @@ class Engine:
                 temperature=first_temp,
                 top_k=first_top_k,
             )
-            for idx, token in zip(active_rows, next_ids[:, 0].tolist()):
+            for idx, token in zip(active_rows, self._token_tensor_to_list(next_ids[:, 0])):
                 sampled_tokens[idx] = token
             return sampled_tokens
 
-        for idx in active_rows:
+        sampled_device, sampled_host = self._sample_token_buffers(len(active_rows), logits.device)
+        for sample_idx, idx in enumerate(active_rows):
             temp = temperatures[idx]
             top_k = top_ks[idx]
             next_id = sample_next_token(logits[idx:idx+1], rng, temperature=temp, top_k=top_k)
-            sampled_tokens[idx] = next_id[0, 0].item()
+            sampled_device[sample_idx].copy_(next_id[0, 0])
+        sampled_host.copy_(sampled_device)
+        for idx, token in zip(active_rows, sampled_host.tolist()):
+            sampled_tokens[idx] = int(token)
         return sampled_tokens
 
     @torch.inference_mode()
@@ -663,7 +691,7 @@ class Engine:
         logits = self.model.forward(ids, kv_cache=kv_cache_prefill)
         logits = logits[:, -1, :]
         next_ids = sample_next_token(logits, rng, temperature, top_k)  # (B, 1)
-        sampled_tokens = next_ids[:, 0].tolist()
+        sampled_tokens = self._token_tensor_to_list(next_ids[:, 0])
 
         # 2) Replicate the KV cache for each sample/row
         kv_length_hint = (len(tokens) + max_tokens) if max_tokens is not None else self.model.config.sequence_len
@@ -704,7 +732,7 @@ class Engine:
                 logits = self._execute_decode(ids, kv_cache_decode)  # (B, T, vocab_size)
                 logits = logits[:, -1, :]  # (B, vocab_size) at last time step
                 next_ids = sample_next_token(logits, rng, temperature, top_k)  # (B, 1)
-                sampled_tokens = next_ids[:, 0].tolist()
+                sampled_tokens = self._token_tensor_to_list(next_ids[:, 0])
                 sampled_ids = next_ids
 
             # Process each row: choose the next token, update state, optional tool use
