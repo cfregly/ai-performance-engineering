@@ -88,12 +88,22 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     handoff_section = source.split("def _handoff_kv", maxsplit=1)[1].split(
         "def benchmark_fn", maxsplit=1
     )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
 
     assert "self._host_staging = {}" in setup_section
     assert "self._handoff_staging = {}" in setup_section
+    assert "self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]" in setup_section
     assert "self._handoff_staging[staging_key] = torch.empty(" in setup_section
     assert "prefill_out.cpu()" not in handoff_section
     assert "kv_cpu.to(decode_device)" not in handoff_section
     assert "host_buf.copy_(prefill_out, non_blocking=False)" in handoff_section
     assert "decode_buf.copy_(host_buf, non_blocking=False)" in handoff_section
     assert "decode_buf.copy_(prefill_out, non_blocking=True)" in handoff_section
+    assert "outputs = self._output_shards" in benchmark_section
+    assert "output_idx = 0" in benchmark_section
+    assert "outputs[output_idx] = token_state.squeeze(0).squeeze(0)" in benchmark_section
+    assert "output_idx += 1" in benchmark_section
+    assert "outputs: list[torch.Tensor] = []" not in benchmark_section
+    assert "outputs.append(" not in benchmark_section

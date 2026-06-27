@@ -145,7 +145,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefill_inputs = []
         self._host_staging = {}
         self._handoff_staging = {}
-        self._output_shards = None
+        self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]
         self._parameter_count = 0
 
         offset = 0
@@ -208,7 +208,11 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not self.prefill_models or not self.decode_models or not self.prefill_inputs:
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        outputs: list[torch.Tensor] = []
+        outputs = self._output_shards
+        if outputs is None or len(outputs) != self.batch_size:
+            outputs = [torch.empty(0) for _ in range(self.batch_size)]
+            self._output_shards = outputs
+        output_idx = 0
         with self._nvtx_range(self.label):
             with torch.no_grad():
                 for (_, decode_device), prefill_model, decode_model, batch in zip(
@@ -223,7 +227,8 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         token_state = kv_decode[:, -1:, :]
                         for _ in range(self.decode_length):
                             token_state = decode_model(token_state)
-                        outputs.append(token_state.squeeze(0).squeeze(0))
+                        outputs[output_idx] = token_state.squeeze(0).squeeze(0)
+                        output_idx += 1
 
         self._output_shards = outputs
 
