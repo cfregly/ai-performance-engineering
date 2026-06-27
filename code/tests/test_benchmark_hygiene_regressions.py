@@ -908,6 +908,21 @@ def test_custom_vs_cublas_dual_benches_cache_device_constants() -> None:
     assert "torch.tensor(" not in dual_nvfp4_gates
 
 
+def test_custom_vs_cublas_nvfp4_blocked_padding_zeroes_only_tails() -> None:
+    source = (
+        REPO_ROOT / "labs" / "custom_vs_cublas" / "bench_dual_2sm_nvfp4.py"
+    ).read_text(encoding="utf-8")
+    blocked_section = source.split("def to_blocked", maxsplit=1)[1].split(
+        "def pack_codes",
+        maxsplit=1,
+    )[0]
+
+    assert "padded = torch.zeros(rb * 128, cb * 4" not in blocked_section
+    assert "padded = torch.empty(rb * 128, cb * 4" in blocked_section
+    assert "padded[rows:, :].zero_()" in blocked_section
+    assert "padded[:rows, cols:].zero_()" in blocked_section
+
+
 def test_nvfp4_utils_reuse_nonzero_indices_for_mismatch_counts() -> None:
     targets = (
         REPO_ROOT / "labs" / "nvfp4_gemm" / "utils.py",

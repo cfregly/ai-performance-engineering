@@ -98,8 +98,12 @@ def to_blocked(x: torch.Tensor) -> torch.Tensor:
     rb, cb = ceil_div(rows, 128), ceil_div(cols, 4)
     padded = x
     if (rb * 128, cb * 4) != (rows, cols):
-        padded = torch.zeros(rb * 128, cb * 4, dtype=x.dtype, device=x.device)
+        padded = torch.empty(rb * 128, cb * 4, dtype=x.dtype, device=x.device)
         padded[:rows, :cols] = x
+        if rb * 128 > rows:
+            padded[rows:, :].zero_()
+        if cb * 4 > cols:
+            padded[:rows, cols:].zero_()
     blocks = padded.view(rb, 128, cb, 4).permute(0, 2, 1, 3)  # (rb, cb, 128, 4)
     rearranged = blocks.reshape(-1, 4, 32, 4).transpose(1, 2)
     return rearranged.reshape(-1).contiguous()
