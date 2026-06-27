@@ -1798,7 +1798,7 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
     optimized_source = (REPO_ROOT / "ch20" / "optimized_pipeline_sequential.py").read_text(encoding="utf-8")
     optimized_setup = optimized_source.split("def _run_pipelined_once", maxsplit=1)[0]
 
-    for source in (baseline_source, optimized_source):
+    for source in (baseline_source,):
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
@@ -1812,11 +1812,28 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
         assert "self._last_outputs = outputs" in benchmark_section
         assert "self.output = torch.cat([out.detach() for out in self._last_outputs], dim=0)" in capture_section
 
-    assert "self.stage_events = [" in optimized_setup
-    assert "torch.cuda.Event(enable_timing=False)" in optimized_setup
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+    optimized_run = optimized_source.split("def _run_pipelined_once", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+
+    assert "self.stage_events = [" in optimized_setup
+    assert "torch.cuda.Event(enable_timing=False)" in optimized_setup
+    assert "self._stage_outputs = [" in optimized_setup
+    assert "self._last_outputs = [" in optimized_setup
+    assert "stage_outputs: list[list[Optional[torch.Tensor]]] = [" not in optimized_run
+    assert "return [output for output in final_outputs if output is not None]" not in optimized_run
+    assert "with torch.inference_mode():" in optimized_benchmark
+    assert "with torch.no_grad():" not in optimized_benchmark
+    assert "torch.cat(" not in optimized_benchmark
+    assert "self._last_outputs = outputs" in optimized_benchmark
+    assert "torch.cat([out.detach() for out in self._last_outputs], dim=0)" not in optimized_capture
+    assert "self.output = torch.cat(self._last_outputs, dim=0).detach()" in optimized_capture
     assert "torch.cuda.Event(" not in optimized_benchmark
 
 
