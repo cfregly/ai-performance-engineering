@@ -210,7 +210,8 @@ def test_nvfp4_group_gemm_scale_packer_reuses_scratch_tensor() -> None:
     source = inspect.getsource(custom_cuda_submission._pack_scale_tiles_for_tcgen05)
     assert "src = torch.zeros((4, 32, 4, 4)" not in source
     assert "src = torch.empty((4, 32, 4, 4)" in source
-    assert "src.zero_()" in source
+    assert "src.zero_()" not in source
+    assert "src[seg_avail:].zero_()" in source
 
     raw = torch.arange(4 * 32 * 4 * 4, dtype=torch.int64)
     sfa = raw.remainder(251).to(torch.uint8).view(1, 4, 32, 4, 4)
@@ -226,6 +227,24 @@ def test_nvfp4_group_gemm_scale_packer_reuses_scratch_tensor() -> None:
 
     torch.testing.assert_close(sfa_tiles[0, 0], sfa[0, :4].contiguous().reshape(128, 16))
     torch.testing.assert_close(sfb_tiles[0, 0], sfb[0, :4].contiguous().reshape(128, 16))
+
+    partial_raw = torch.arange(3 * 32 * 4 * 4, dtype=torch.int64)
+    partial_sfa = partial_raw.remainder(251).to(torch.uint8).view(1, 3, 32, 4, 4)
+    partial_sfb = partial_raw.add(3).remainder(251).to(torch.uint8).view(1, 3, 32, 4, 4)
+    partial_sfa_tiles, partial_sfb_tiles = custom_cuda_submission._pack_scale_tiles_for_tcgen05(
+        partial_sfa,
+        partial_sfb,
+        m=128,
+        n=128,
+        k_scales=12,
+    )
+    expected_sfa = torch.zeros(4, 32, 4, 4, dtype=torch.uint8)
+    expected_sfb = torch.zeros_like(expected_sfa)
+    expected_sfa[:3].copy_(partial_sfa[0])
+    expected_sfb[:3].copy_(partial_sfb[0])
+
+    torch.testing.assert_close(partial_sfa_tiles[0, 0], expected_sfa.reshape(128, 16))
+    torch.testing.assert_close(partial_sfb_tiles[0, 0], expected_sfb.reshape(128, 16))
 
 
 def test_trtllm_capture_verification_payload_uses_small_cpu_slice() -> None:

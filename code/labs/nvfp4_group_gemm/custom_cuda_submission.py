@@ -409,9 +409,10 @@ def _pack_scale_tiles_for_tcgen05(
         for kt in range(k_tiles):
             kk_base = kt * 4
             seg_avail = max(0, min(4, kk_blocks - kk_base))
-            src.zero_()
             if seg_avail:
                 src[:seg_avail].copy_(sfa_inv_u8[mt, kk_base : kk_base + seg_avail])
+            if seg_avail < 4:
+                src[seg_avail:].zero_()
 
             # Zero out invalid rows/cols in the MN tile.
             src *= m_mask.view(1, 32, 4, 1)
@@ -427,9 +428,10 @@ def _pack_scale_tiles_for_tcgen05(
         for kt in range(k_tiles):
             kk_base = kt * 4
             seg_avail = max(0, min(4, kk_blocks - kk_base))
-            src.zero_()
             if seg_avail:
                 src[:seg_avail].copy_(sfb_inv_u8[nt, kk_base : kk_base + seg_avail])
+            if seg_avail < 4:
+                src[seg_avail:].zero_()
 
             src *= n_mask.view(1, 32, 4, 1)
             src *= scale_valid[kt].view(4, 1, 1, 4)
