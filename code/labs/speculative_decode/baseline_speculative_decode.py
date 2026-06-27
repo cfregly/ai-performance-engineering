@@ -24,6 +24,8 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.target_model: Optional[TokenMLP] = None
         self.input_ids: Optional[torch.Tensor] = None
         self._output_ids: Optional[torch.Tensor] = None
+        self._next_token_values: Optional[torch.Tensor] = None
+        self._next_token_ids: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
 
         tokens = float(self.workload.total_tokens)
@@ -49,11 +51,19 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
 
         self.input_ids = torch.randint(0, wl.vocab_size, (1, 1), device=self.device, dtype=torch.int64)
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
+        self._next_token_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
+        self._next_token_ids = torch.empty((1,), device=self.device, dtype=torch.long)
         self.output = None
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        if self.target_model is None or self.input_ids is None or self._output_ids is None:
+        if (
+            self.target_model is None
+            or self.input_ids is None
+            or self._output_ids is None
+            or self._next_token_values is None
+            or self._next_token_ids is None
+        ):
             raise RuntimeError("Benchmark not initialized")
 
         wl = self.workload
@@ -63,7 +73,8 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         with torch.no_grad():
             for t in range(wl.total_tokens):
                 logits = self.target_model(out[:, t : t + 1])
-                out[:, t + 1] = logits[:, 0, :].argmax(dim=-1)
+                torch.max(logits[:, 0, :], dim=-1, out=(self._next_token_values, self._next_token_ids))
+                out[:, t + 1].copy_(self._next_token_ids)
 
         self.output = out
 
@@ -86,6 +97,8 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.target_model = None
         self.input_ids = None
         self._output_ids = None
+        self._next_token_values = None
+        self._next_token_ids = None
         self.output = None
         torch.cuda.empty_cache()
 
@@ -105,4 +118,3 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineSpeculativeDecodeBenchmark()
-
