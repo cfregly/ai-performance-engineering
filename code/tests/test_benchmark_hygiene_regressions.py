@@ -1993,6 +1993,22 @@ def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
     assert "logits[logits <" not in generate_section
 
 
+def test_nanochat_prefix_causal_mask_avoids_zero_fill_and_tril_allocations() -> None:
+    source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "gpt.py").read_text(
+        encoding="utf-8"
+    )
+    prefix_section = source.split("def _prefix_causal_mask_for", maxsplit=1)[1].split(
+        "def _flash3_attention",
+        maxsplit=1,
+    )[0]
+
+    assert "mask = torch.zeros((t_q, t_k)" not in prefix_section
+    assert "torch.tril(" not in prefix_section
+    assert "q_pos = torch.arange(t_q, device=device).unsqueeze(1)" in prefix_section
+    assert "k_pos = torch.arange(t_k, device=device).unsqueeze(0)" in prefix_section
+    assert "mask = k_pos <= (prefix_len + q_pos)" in prefix_section
+
+
 def test_nanochat_loss_eval_batches_reduced_totals() -> None:
     source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "loss_eval.py").read_text(
         encoding="utf-8"

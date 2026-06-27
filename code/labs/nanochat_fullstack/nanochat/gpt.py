@@ -202,12 +202,9 @@ class CausalSelfAttention(nn.Module):
         spec = (t_q, t_k, device)
         if self._prefix_causal_mask_cache is None or getattr(self, "_prefix_causal_mask_spec", None) != spec:
             prefix_len = t_k - t_q
-            mask = torch.zeros((t_q, t_k), dtype=torch.bool, device=device)
-            if prefix_len > 0:
-                mask[:, :prefix_len] = True
-            mask[:, prefix_len:] = torch.tril(
-                torch.ones((t_q, t_q), dtype=torch.bool, device=device)
-            )
+            q_pos = torch.arange(t_q, device=device).unsqueeze(1)
+            k_pos = torch.arange(t_k, device=device).unsqueeze(0)
+            mask = k_pos <= (prefix_len + q_pos)
             self._prefix_causal_mask_cache = mask
             self._prefix_causal_mask_spec = spec
         return self._prefix_causal_mask_cache
