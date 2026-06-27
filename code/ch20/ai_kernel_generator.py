@@ -2,8 +2,6 @@
 """Chapter 20 FlexAttention demo targeting NVIDIA Blackwell (SM10x)."""
 from __future__ import annotations
 
-from pathlib import Path
-
 import argparse
 import math
 import os
@@ -67,9 +65,7 @@ def _reference_attention(q, k, v, scale, causal):
     kv_pos = torch.arange(kv_len, device=q.device).view(1, 1, 1, kv_len)
     logits = logits + (q_pos - kv_pos) * 1.44269504
     if causal:
-        mask = torch.triu(
-            torch.ones(q_len, kv_len, device=q.device, dtype=torch.bool), diagonal=1
-        )
+        mask = kv_pos > q_pos
         logits = logits.masked_fill(mask, float("-inf"))
     probs = torch.softmax(logits, dim=-1).to(q.dtype)
     return torch.einsum("bhqk,bhkd->bhqd", probs, v)

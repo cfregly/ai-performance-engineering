@@ -1007,6 +1007,34 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "pos = torch.arange(seq_len)" in llama_attention
     assert "causal = pos.unsqueeze(0) > pos.unsqueeze(1)" in llama_attention
 
+    ch16_source = (REPO_ROOT / "ch16" / "baseline_dense_attention_flash.py").read_text(
+        encoding="utf-8"
+    )
+    ch16_setup = ch16_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    assert "torch.triu(" not in ch16_setup
+    assert "torch.ones(self.max_seq_len" not in ch16_setup
+    assert "self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch16_setup
+
+    ch20_source = (REPO_ROOT / "ch20" / "ai_kernel_generator.py").read_text(
+        encoding="utf-8"
+    )
+    ch20_reference = ch20_source.split("def _reference_attention", maxsplit=1)[1].split(
+        "def _compiled_flex_attention",
+        maxsplit=1,
+    )[0]
+    assert "torch.triu(" not in ch20_reference
+    assert "torch.ones(q_len, kv_len" not in ch20_reference
+    assert "mask = kv_pos > q_pos" in ch20_reference
+
+    ch14_demo_source = (REPO_ROOT / "ch14" / "sliding_window_demo.py").read_text(
+        encoding="utf-8"
+    )
+    assert "torch.triu(\n                torch.ones(seq_len, seq_len" not in ch14_demo_source
+    assert "causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch14_demo_source
+
 
 def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
     source = (REPO_ROOT / "ch19" / "token_precision_switching.py").read_text(

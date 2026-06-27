@@ -79,10 +79,8 @@ class BaselineDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchma
             device=self.device,
             dtype=self.dtype,
         )
-        self._causal_mask = torch.triu(
-            torch.ones(self.max_seq_len, self.max_seq_len, device=self.device, dtype=torch.bool),
-            diagonal=1,
-        )
+        pos = torch.arange(self.max_seq_len, device=self.device)
+        self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)
         self._verify_input = self.inputs.detach().clone()
         
         # Proper warmup

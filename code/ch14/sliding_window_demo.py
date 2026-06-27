@@ -31,7 +31,7 @@ REQUIREMENTS:
 from __future__ import annotations
 
 import math
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -322,10 +322,8 @@ def benchmark_sliding_window():
         
         # Benchmark full attention (may OOM for long sequences)
         try:
-            causal_mask = torch.triu(
-                torch.ones(seq_len, seq_len, device=device, dtype=torch.bool),
-                diagonal=1
-            )
+            pos = torch.arange(seq_len, device=device)
+            causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)
             
             # Warmup
             for _ in range(3):
