@@ -57,8 +57,8 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=self.dtype,
             device=self.device,
         )
-        self.workspace = torch.zeros_like(self.input_chunks)
-        self.kv_dest = torch.zeros_like(self.input_chunks)
+        self.workspace = torch.empty_like(self.input_chunks)
+        self.kv_dest = torch.empty_like(self.input_chunks)
         self._payload_meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
         self._synchronize()
 
