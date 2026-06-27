@@ -43,6 +43,9 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._value_steps: Optional[torch.Tensor] = None
         self._k_gather_buffer: Optional[torch.Tensor] = None
         self._v_gather_buffer: Optional[torch.Tensor] = None
+        self._cache_key_slots: list[torch.Tensor] = []
+        self._cache_value_slots: list[torch.Tensor] = []
+        self._tier_slots: list[str] = []
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -57,6 +60,15 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._k_gather_buffer = torch.empty(self.batch, self.seq_len, self.hidden, device=self.device)
         self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)
+        self._cache_key_slots = [
+            torch.empty(0, device=self.device)
+            for _ in range(self.seq_len)
+        ]
+        self._cache_value_slots = [
+            torch.empty(0, device=self.device)
+            for _ in range(self.seq_len)
+        ]
+        self._tier_slots = [""] * self.seq_len
         self._verify_q = self._query_steps[0, :1].detach().clone()
         self._synchronize()
 
@@ -73,14 +85,18 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         cache_k: list[torch.Tensor],
         cache_v: list[torch.Tensor],
         tiers: list[str],
+        cache_len: Optional[int] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if self._k_gather_buffer is None or self._v_gather_buffer is None:
             raise RuntimeError("KV gather buffers not initialized")
-        for idx, (tk, tv, tier) in enumerate(zip(cache_k, cache_v, tiers)):
+        gathered_len = len(cache_k) if cache_len is None else cache_len
+        for idx in range(gathered_len):
+            tk = cache_k[idx]
+            tv = cache_v[idx]
+            tier = tiers[idx]
             non_blocking = tier != "local"
             self._k_gather_buffer[:, idx : idx + 1, :].copy_(tk, non_blocking=non_blocking)
             self._v_gather_buffer[:, idx : idx + 1, :].copy_(tv, non_blocking=non_blocking)
-        gathered_len = len(cache_k)
         return (
             self._k_gather_buffer[:, :gathered_len, :],
             self._v_gather_buffer[:, :gathered_len, :],
@@ -91,19 +107,25 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         assert self._query_steps is not None and self._key_steps is not None and self._value_steps is not None
         assert self._k_gather_buffer is not None and self._v_gather_buffer is not None
         with self._nvtx_range("optimized_kv_cache_nvlink_pool"):
-            cache_k: list[torch.Tensor] = []
-            cache_v: list[torch.Tensor] = []
-            tiers: list[str] = []
+            if (
+                len(self._cache_key_slots) != self.seq_len
+                or len(self._cache_value_slots) != self.seq_len
+                or len(self._tier_slots) != self.seq_len
+            ):
+                raise RuntimeError("KV cache slots not initialized")
+            cache_k = self._cache_key_slots
+            cache_v = self._cache_value_slots
+            tiers = self._tier_slots
             for step in range(self.seq_len):
                 q = self._query_steps[step]
                 k = self._key_steps[step]
                 v = self._value_steps[step]
                 placed_k, placed_v, tier = self._place_kv(k, v, step)
-                cache_k.append(placed_k)
-                cache_v.append(placed_v)
-                tiers.append(tier)
+                cache_k[step] = placed_k
+                cache_v[step] = placed_v
+                tiers[step] = tier
 
-                k_all, v_all = self._gather_kv_into_buffers(cache_k, cache_v, tiers)
+                k_all, v_all = self._gather_kv_into_buffers(cache_k, cache_v, tiers, step + 1)
                 out, _ = self.model(q, k_all, v_all)
                 self.output = out
 
@@ -132,6 +154,9 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._value_steps = None
         self._k_gather_buffer = None
         self._v_gather_buffer = None
+        self._cache_key_slots = []
+        self._cache_value_slots = []
+        self._tier_slots = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -160,4 +185,3 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedKVCacheNvlinkPoolBenchmark()
-

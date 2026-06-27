@@ -2761,10 +2761,13 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
 
         assert "self._k_gather_buffer = torch.empty(" in setup_section
         assert "self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)" in setup_section
+        assert "_slots" in setup_section
         assert "gathered_k" not in benchmark_section
         assert "gathered_v" not in benchmark_section
         assert "torch.cat(" not in benchmark_section
         assert ".to(self.device" not in benchmark_section
+        assert ".append(" not in benchmark_section
+        assert ".pop(0)" not in benchmark_section
         assert "self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(" in benchmark_section
         assert "k_all = self._k_gather_buffer[:, :gather_idx, :]" in benchmark_section
         assert "v_all = self._v_gather_buffer[:, :gather_idx, :]" in benchmark_section
@@ -2785,9 +2788,13 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
 
         assert "self._k_gather_buffer = torch.empty(" in setup_section
         assert "self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)" in setup_section
+        assert "self._cache_key_slots = [" in setup_section
+        assert "self._cache_value_slots = [" in setup_section
+        assert "self._tier_slots = [\"\"] * self.seq_len" in setup_section
         assert "torch.cat(" not in benchmark_section
         assert ".to(self.device" not in benchmark_section
-        assert "self._gather_kv_into_buffers(cache_k, cache_v, tiers)" in benchmark_section
+        assert ".append(" not in benchmark_section
+        assert "self._gather_kv_into_buffers(cache_k, cache_v, tiers, step + 1)" in benchmark_section
 
     from ch15.optimized_kv_cache_nvlink_pool import (
         OptimizedKVCacheNvlinkPoolBenchmark as SinglePool,

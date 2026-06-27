@@ -40,6 +40,10 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._value_steps: Optional[torch.Tensor] = None
         self._k_gather_buffer: Optional[torch.Tensor] = None
         self._v_gather_buffer: Optional[torch.Tensor] = None
+        self._local_key_slots: list[torch.Tensor] = []
+        self._local_value_slots: list[torch.Tensor] = []
+        self._host_key_slots: list[torch.Tensor] = []
+        self._host_value_slots: list[torch.Tensor] = []
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -52,6 +56,23 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._k_gather_buffer = torch.empty(self.batch, self.seq_len, self.hidden, device=self.device)
         self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)
+        self._local_key_slots = [
+            torch.empty(0, device=self.device)
+            for _ in range(self.local_cache_limit)
+        ]
+        self._local_value_slots = [
+            torch.empty(0, device=self.device)
+            for _ in range(self.local_cache_limit)
+        ]
+        host_capacity = max(self.seq_len - self.local_cache_limit, 0)
+        self._host_key_slots = [
+            torch.empty(self.batch, 1, self.hidden, dtype=self._key_steps.dtype)
+            for _ in range(host_capacity)
+        ]
+        self._host_value_slots = [
+            torch.empty(self.batch, 1, self.hidden, dtype=self._value_steps.dtype)
+            for _ in range(host_capacity)
+        ]
         self._verify_q = self._query_steps[0, :1].detach().clone()
         self._synchronize()
 
@@ -60,28 +81,49 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         assert self._query_steps is not None and self._key_steps is not None and self._value_steps is not None
         assert self._k_gather_buffer is not None and self._v_gather_buffer is not None
         with self._nvtx_range("baseline_kv_cache_local_only"):
-            local_keys: list[torch.Tensor] = []
-            local_values: list[torch.Tensor] = []
-            host_keys: list[torch.Tensor] = []
-            host_values: list[torch.Tensor] = []
+            if (
+                len(self._local_key_slots) != self.local_cache_limit
+                or len(self._local_value_slots) != self.local_cache_limit
+                or len(self._host_key_slots) < max(self.seq_len - self.local_cache_limit, 0)
+                or len(self._host_value_slots) < max(self.seq_len - self.local_cache_limit, 0)
+            ):
+                raise RuntimeError("KV cache slots not initialized")
+            local_keys = self._local_key_slots
+            local_values = self._local_value_slots
+            host_keys = self._host_key_slots
+            host_values = self._host_value_slots
+            local_start = 0
+            local_count = 0
+            host_count = 0
             for step in range(self.seq_len):
                 q = self._query_steps[step]
                 k = self._key_steps[step]
                 v = self._value_steps[step]
-                local_keys.append(k)
-                local_values.append(v)
 
-                if len(local_keys) > self.local_cache_limit:
+                if local_count < self.local_cache_limit:
+                    local_slot = (local_start + local_count) % self.local_cache_limit
+                    local_count += 1
+                else:
                     # Spill oldest to host (slow, pageable)
-                    host_keys.append(local_keys.pop(0).cpu())
-                    host_values.append(local_values.pop(0).cpu())
+                    local_slot = local_start
+                    host_keys[host_count].copy_(local_keys[local_slot])
+                    host_values[host_count].copy_(local_values[local_slot])
+                    host_count += 1
+                    local_start = (local_start + 1) % self.local_cache_limit
+                local_keys[local_slot] = k
+                local_values[local_slot] = v
 
                 gather_idx = 0
-                for hk, hv in zip(host_keys, host_values):
+                for host_idx in range(host_count):
+                    hk = host_keys[host_idx]
+                    hv = host_values[host_idx]
                     self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(hk)
                     self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(hv)
                     gather_idx += 1
-                for lk, lv in zip(local_keys, local_values):
+                for local_offset in range(local_count):
+                    slot_idx = (local_start + local_offset) % self.local_cache_limit
+                    lk = local_keys[slot_idx]
+                    lv = local_values[slot_idx]
                     self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(lk)
                     self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(lv)
                     gather_idx += 1
@@ -116,6 +158,10 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._value_steps = None
         self._k_gather_buffer = None
         self._v_gather_buffer = None
+        self._local_key_slots = []
+        self._local_value_slots = []
+        self._host_key_slots = []
+        self._host_value_slots = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -144,4 +190,3 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineKVCacheLocalOnlyBenchmark()
-

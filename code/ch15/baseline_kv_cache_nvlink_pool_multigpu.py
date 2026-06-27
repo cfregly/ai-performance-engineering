@@ -44,6 +44,10 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._value_steps: Optional[torch.Tensor] = None
         self._k_gather_buffer: Optional[torch.Tensor] = None
         self._v_gather_buffer: Optional[torch.Tensor] = None
+        self._cache_key_slots: List[torch.Tensor] = []
+        self._cache_value_slots: List[torch.Tensor] = []
+        self._tier_slots: List[str] = []
+        self._peer_target_slots: List[Optional[torch.device]] = []
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -58,6 +62,16 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._k_gather_buffer = torch.empty(self.batch, self.seq_len, self.hidden, device=self.device)
         self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)
+        self._cache_key_slots = [
+            torch.empty(0, device=self.device)
+            for _ in range(self.seq_len)
+        ]
+        self._cache_value_slots = [
+            torch.empty(0, device=self.device)
+            for _ in range(self.seq_len)
+        ]
+        self._tier_slots = [""] * self.seq_len
+        self._peer_target_slots = [None] * self.seq_len
         self._verify_q = self._query_steps[0, :1].detach().clone()
         self._synchronize()
 
@@ -74,22 +88,33 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         assert self._query_steps is not None and self._key_steps is not None and self._value_steps is not None
         assert self._k_gather_buffer is not None and self._v_gather_buffer is not None
         with self._nvtx_range("baseline_kv_cache_local_only"):
-            cache_k: list[torch.Tensor] = []
-            cache_v: list[torch.Tensor] = []
-            tiers: list[str] = []
-            peer_targets: list[Optional[torch.device]] = []
+            if (
+                len(self._cache_key_slots) != self.seq_len
+                or len(self._cache_value_slots) != self.seq_len
+                or len(self._tier_slots) != self.seq_len
+                or len(self._peer_target_slots) != self.seq_len
+            ):
+                raise RuntimeError("KV cache slots not initialized")
+            cache_k = self._cache_key_slots
+            cache_v = self._cache_value_slots
+            tiers = self._tier_slots
+            peer_targets = self._peer_target_slots
             for step in range(self.seq_len):
                 q = self._query_steps[step]
                 k = self._key_steps[step]
                 v = self._value_steps[step]
                 placed_k, placed_v, tier, peer = self._place_kv(k, v, step)
-                cache_k.append(placed_k)
-                cache_v.append(placed_v)
-                tiers.append(tier)
-                peer_targets.append(peer)
+                cache_k[step] = placed_k
+                cache_v[step] = placed_v
+                tiers[step] = tier
+                peer_targets[step] = peer
 
                 gather_idx = 0
-                for tk, tv, t, peer_dev in zip(cache_k, cache_v, tiers, peer_targets):
+                for cache_idx in range(step + 1):
+                    tk = cache_k[cache_idx]
+                    tv = cache_v[cache_idx]
+                    t = tiers[cache_idx]
+                    peer_dev = peer_targets[cache_idx]
                     if t == "local":
                         self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tk)
                         self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tv)
@@ -133,6 +158,10 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._value_steps = None
         self._k_gather_buffer = None
         self._v_gather_buffer = None
+        self._cache_key_slots = []
+        self._cache_value_slots = []
+        self._tier_slots = []
+        self._peer_target_slots = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -160,4 +189,3 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineKVCacheLocalOnlyBenchmark()
-
