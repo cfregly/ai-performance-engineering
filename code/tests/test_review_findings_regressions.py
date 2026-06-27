@@ -192,8 +192,17 @@ def test_ch08_bridge_comparison_pairs_are_explicitly_marked_in_structured_metric
 
 def test_ch08_threshold_tma_bridge_workload_uses_larger_row_count() -> None:
     threshold_base_text = _read("ch08/threshold_benchmark_base.py")
+    validate_section = threshold_base_text.split("def _validate_correctness", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
     assert "rows: int = 1 << 26" in threshold_base_text
+    assert "torch.full_like(self.inputs" not in validate_section
+    assert "torch.zeros_like(self.inputs)" not in validate_section
+    assert "scale = torch.where(outer, THRESHOLD_OUTER_SCALE, THRESHOLD_INNER_SCALE)" in validate_section
+    assert "reference.copysign_(self.inputs)" in validate_section
+    assert "reference.masked_fill_(active.logical_not_(), 0.0)" in validate_section
 
 
 def test_ch08_tiling_optimized_wrapper_uses_strict_fast_path() -> None:

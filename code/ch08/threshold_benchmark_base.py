@@ -98,15 +98,10 @@ class ThresholdBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         active = abs_inputs > self.threshold
         outer = abs_inputs > (self.threshold * THRESHOLD_SECONDARY_SCALE)
 
-        inner_scale = torch.full_like(self.inputs, THRESHOLD_INNER_SCALE)
-        outer_scale = torch.full_like(self.inputs, THRESHOLD_OUTER_SCALE)
-        scale = torch.where(outer, outer_scale, inner_scale)
-        signed_scale = torch.where(self.inputs >= 0, scale, -scale)
-        reference = torch.where(
-            active,
-            magnitude * signed_scale,
-            torch.zeros_like(self.inputs),
-        )
+        scale = torch.where(outer, THRESHOLD_OUTER_SCALE, THRESHOLD_INNER_SCALE)
+        reference = magnitude * scale
+        reference.copysign_(self.inputs)
+        reference.masked_fill_(active.logical_not_(), 0.0)
         torch.cuda.synchronize()
         max_error = torch.max(torch.abs(reference - self.outputs)).item()
         if max_error > 5e-3:
