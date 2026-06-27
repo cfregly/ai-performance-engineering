@@ -426,18 +426,18 @@ class SimpleTransformerModel:
         values[:v.size(0)].copy_(v)
         return KVCache(keys=keys, values=values, seq_len=k.size(0), capacity=capacity)
     
+    @torch.inference_mode()
     def forward(self, token: int, state: ModelState) -> ModelState:
         """Forward pass for a single token, updating KV cache."""
         # Get token embedding
-        with torch.no_grad():
-            self._token_buffer[0] = token
-            x = self.embedding(self._token_buffer)  # [1, hidden_dim]
-            x = self.ln(x)
-            
-            # Compute Q, K, V on device
-            q = self.q_proj(x).view(1, self.num_heads, self.head_dim)
-            k = self.k_proj(x).view(1, self.num_heads, self.head_dim)
-            v = self.v_proj(x).view(1, self.num_heads, self.head_dim)
+        self._token_buffer[0] = token
+        x = self.embedding(self._token_buffer)  # [1, hidden_dim]
+        x = self.ln(x)
+
+        # Compute Q, K, V on device
+        q = self.q_proj(x).view(1, self.num_heads, self.head_dim)
+        k = self.k_proj(x).view(1, self.num_heads, self.head_dim)
+        v = self.v_proj(x).view(1, self.num_heads, self.head_dim)
         
         # Update KV cache
         if state.kv_cache is None:
@@ -469,24 +469,24 @@ class SimpleTransformerModel:
         )
         return new_state
     
+    @torch.inference_mode()
     def generate_next(self, state: ModelState) -> Tuple[int, ModelState]:
         """Generate next token autoregressively."""
         if state.kv_cache is None:
             raise ValueError("Cannot generate without KV cache")
-        
+
         seq_len = state.kv_cache.seq_len
-        with torch.no_grad():
-            keys = state.kv_cache.key_view.permute(1, 0, 2).unsqueeze(0)
-            values = state.kv_cache.value_view.permute(1, 0, 2).unsqueeze(0)
-            query = state.kv_cache.key_view[-1:].permute(1, 0, 2).unsqueeze(0)
-            with nvtx.range(standardize_nvtx_label("compute_math:radix_attention_decode")) if torch.cuda.is_available() else nullcontext():
-                context = self._attention_kernel(query, keys, values)
-            attn_out = context.reshape(1, self.hidden_dim)
-            state.context = attn_out
-            output = self.out_proj(attn_out)
-            
-            # Get logits and sample
-            logits = self.lm_head(output)
+        keys = state.kv_cache.key_view.permute(1, 0, 2).unsqueeze(0)
+        values = state.kv_cache.value_view.permute(1, 0, 2).unsqueeze(0)
+        query = state.kv_cache.key_view[-1:].permute(1, 0, 2).unsqueeze(0)
+        with nvtx.range(standardize_nvtx_label("compute_math:radix_attention_decode")) if torch.cuda.is_available() else nullcontext():
+            context = self._attention_kernel(query, keys, values)
+        attn_out = context.reshape(1, self.hidden_dim)
+        state.context = attn_out
+        output = self.out_proj(attn_out)
+
+        # Get logits and sample
+        logits = self.lm_head(output)
         
         # Add more randomness to prevent repetitive tokens
         noise = self._sampling_like_buffer("_sampling_noise", logits)

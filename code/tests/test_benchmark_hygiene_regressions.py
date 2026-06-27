@@ -4343,6 +4343,9 @@ def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
         maxsplit=1,
     )[0]
 
+    assert source.count("@torch.inference_mode()") >= 2
+    assert "with torch.no_grad():" not in forward_section
+    assert "with torch.no_grad():" not in generate_next_section
     assert "torch.tensor([token]" not in forward_section
     assert "torch.cat([state.kv_cache.keys, k]" not in forward_section
     assert "state.kv_cache.append(k, v)" in forward_section
