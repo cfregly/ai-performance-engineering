@@ -106,6 +106,31 @@ def test_decode_step_reuses_next_token_buffer() -> None:
     assert "torch.argmax(logits, dim=-1)" not in decode_step_section
 
 
+def test_decode_common_inference_paths_skip_autograd_bookkeeping() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    te_cache_section = source.split("def _cache_te_weight_workspaces", maxsplit=1)[1].split(
+        "def _init_buffers",
+        maxsplit=1,
+    )[0]
+    prefill_section = source.split("def _prefill", maxsplit=1)[1].split(
+        "def _decode_step",
+        maxsplit=1,
+    )[0]
+    decode_step_section = source.split("def _decode_step", maxsplit=1)[1].split(
+        "def _get_fp8_context",
+        maxsplit=1,
+    )[0]
+
+    assert "with torch.inference_mode(), te.fp8_autocast(enabled=True, fp8_recipe=self.fp8_recipe):" in te_cache_section
+    assert "with torch.inference_mode(), self.sdpa_ctx_factory():" in prefill_section
+    assert "with torch.inference_mode(), self.sdpa_ctx_factory():" in decode_step_section
+    assert "with torch.no_grad(), te.fp8_autocast" not in te_cache_section
+    assert "with torch.no_grad(), self.sdpa_ctx_factory()" not in prefill_section
+    assert "with torch.no_grad(), self.sdpa_ctx_factory()" not in decode_step_section
+
+
 def test_decode_nvtx_import_is_cached_outside_iteration_hot_paths() -> None:
     source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
         encoding="utf-8"

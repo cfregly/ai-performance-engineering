@@ -398,7 +398,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         dummy_seq = torch.randn(bsz, self.cfg.prompt_tokens, hs, dtype=self.dtype).to(self.device)
 
         passes = 4 if self._fp4_enabled else 2
-        with torch.no_grad(), te.fp8_autocast(enabled=True, fp8_recipe=self.fp8_recipe):
+        with torch.inference_mode(), te.fp8_autocast(enabled=True, fp8_recipe=self.fp8_recipe):
             for _ in range(passes):
                 # Warmup prefill MLP
                 _ = self.prefill_mlp(dummy_seq)
@@ -494,10 +494,10 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     # Core math - NOTE: fp8_autocast should be managed at benchmark_fn level
     # to avoid per-call overhead and memory leaks.
-    # All operations use torch.no_grad() since this is inference (no backward pass).
+    # All operations use inference mode since this is inference (no backward pass).
     def _prefill(self, tokens: torch.Tensor) -> torch.Tensor:
         """Prefill phase - fp8_autocast managed externally."""
-        with torch.no_grad(), self.sdpa_ctx_factory():
+        with torch.inference_mode(), self.sdpa_ctx_factory():
             embeds = self.embedding(tokens)
             hidden = self.prefill_mlp(embeds)
         return hidden[:, -1, :]
@@ -506,7 +506,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self, tokens: torch.Tensor, state: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Single decode step - fp8_autocast managed externally."""
-        with torch.no_grad(), self.sdpa_ctx_factory():
+        with torch.inference_mode(), self.sdpa_ctx_factory():
             token_hidden = self.embedding(tokens)
             combined = token_hidden + state
             hidden = self.decode_mlp(combined)
