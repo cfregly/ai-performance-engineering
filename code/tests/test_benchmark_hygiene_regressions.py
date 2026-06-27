@@ -3036,6 +3036,8 @@ def test_ch13_expert_parallel_batches_recv_split_materialization() -> None:
 
 
 def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
+    from ch13.baseline_sequence_parallel_multigpu import _replicate_sequence_shard
+
     source = (REPO_ROOT / "ch13" / "baseline_sequence_parallel_multigpu.py").read_text(
         encoding="utf-8"
     )
@@ -3049,9 +3051,20 @@ def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
     )[0]
 
     assert "self._full_sequence = torch.empty(" in setup_section
-    assert "torch.cat([out_partial] * self._world_size, dim=1, out=self._full_sequence)" in benchmark_section
+    assert "_replicate_sequence_shard(out_partial, self._world_size, self._full_sequence)" in benchmark_section
+    assert "torch.cat([out_partial] * self._world_size" not in benchmark_section
     assert "full_sequence = torch.cat([out_partial]" not in benchmark_section
     assert "full_sequence = self._norms[layer_idx](self._full_sequence)" in benchmark_section
+
+    out_partial = torch.arange(2 * 3 * 4, dtype=torch.float32).view(2, 3, 4)
+    full_sequence = torch.empty(2, 6, 4)
+    result = _replicate_sequence_shard(out_partial, 2, full_sequence)
+
+    assert result.data_ptr() == full_sequence.data_ptr()
+    torch.testing.assert_close(
+        result,
+        torch.cat([out_partial, out_partial], dim=1),
+    )
 
 
 def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> None:

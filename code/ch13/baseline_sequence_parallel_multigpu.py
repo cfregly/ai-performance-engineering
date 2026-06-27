@@ -23,6 +23,21 @@ from ch13.sequence_parallel_benchmark_common import (
 )
 
 
+def _replicate_sequence_shard(
+    out_partial: torch.Tensor,
+    world_size: int,
+    full_sequence: torch.Tensor,
+) -> torch.Tensor:
+    shard_len = out_partial.shape[1]
+    full_sequence.view(
+        out_partial.shape[0],
+        world_size,
+        shard_len,
+        out_partial.shape[2],
+    ).copy_(out_partial.unsqueeze(1))
+    return full_sequence
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Baseline TP-only benchmark with per-layer sequence all-gather.")
     parser.add_argument("--iters", type=int, default=5)
@@ -113,7 +128,7 @@ class BaselineSequenceParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBe
         for layer_idx in range(self._sp_config.num_layers):
             hidden_local = torch.nn.functional.gelu(self._up_proj[layer_idx](x), approximate="tanh")
             out_partial = self._down_proj[layer_idx](hidden_local)
-            torch.cat([out_partial] * self._world_size, dim=1, out=self._full_sequence)
+            _replicate_sequence_shard(out_partial, self._world_size, self._full_sequence)
             full_sequence = self._norms[layer_idx](self._full_sequence)
             x = full_sequence[:, : self._input.size(1)]
         self._output = x
