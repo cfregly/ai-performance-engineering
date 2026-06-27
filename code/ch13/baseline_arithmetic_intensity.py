@@ -60,8 +60,9 @@ class BaselineArithmeticIntensityBenchmark(VerificationPayloadMixin, BaseBenchma
     def _chunked_matmul(self) -> None:
         """Compute C = A @ B using small K-tiles."""
         assert self.A is not None and self.B is not None and self.C is not None
-        self.C.zero_()
-        for k in range(0, self.K, self.block_k):
+        first_end = min(self.block_k, self.K)
+        torch.mm(self.A[:, :first_end], self.B[:first_end, :], out=self.C)
+        for k in range(first_end, self.K, self.block_k):
             k_end = min(k + self.block_k, self.K)
             a_slice = self.A[:, k:k_end]
             b_slice = self.B[k:k_end, :]

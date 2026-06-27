@@ -743,7 +743,9 @@ def test_ch13_arithmetic_intensity_setup_avoids_redundant_zero_fill() -> None:
 
     assert "self.C = torch.empty(self.M, self.N, device=self.device, dtype=torch.float32)" in setup_section
     assert "self.C = torch.zeros(" not in setup_section
-    assert "self.C.zero_()" in chunked_section
+    assert "self.C.zero_()" not in chunked_section
+    assert "torch.mm(self.A[:, :first_end], self.B[:first_end, :], out=self.C)" in chunked_section
+    assert "for k in range(first_end, self.K, self.block_k):" in chunked_section
 
 
 def test_ch03_ch05_accumulator_buffers_skip_setup_zero_fill() -> None:
