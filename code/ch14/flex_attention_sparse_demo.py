@@ -209,7 +209,7 @@ class FlexAttentionBenchmark:
         for _ in range(num_iterations):
             last_output = self._compiled_flex(self.q, self.k, self.v, block_mask=block_mask)
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         
         if store_output and last_output is not None:
             self._last_output = last_output
@@ -262,7 +262,7 @@ class FlexAttentionBenchmark:
                 self.q, self.k, self.v, is_causal=False
             )
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         
         elapsed_ms = start.elapsed_time(end) / num_iterations
         

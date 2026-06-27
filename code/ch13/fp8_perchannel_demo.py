@@ -424,7 +424,7 @@ class FP8PerChannelBenchmark:
             for _ in range(num_iterations):
                 _ = layer(x)
             end.record()
-            torch.cuda.synchronize()
+            end.synchronize()
             
             elapsed_ms = start.elapsed_time(end) / num_iterations
             

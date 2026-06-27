@@ -46,7 +46,7 @@ def benchmark_quick(model, x, name, num_iters=20):
         for _ in range(count):
             _ = model(x)
         end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     elapsed_ms = start.elapsed_time(end)
     elapsed = elapsed_ms / 1000.0
     

@@ -130,8 +130,8 @@ def benchmark_matmul(fn, *args, name="", warmup=50, iters=500):
     for _ in range(iters):
         _ = fn(*args)
     end.record()
-    torch.cuda.synchronize()
-    
+    end.synchronize()
+
     return start.elapsed_time(end) / max(iters, 1)
 
 

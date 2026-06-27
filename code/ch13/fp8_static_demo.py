@@ -538,7 +538,7 @@ def benchmark_static_vs_dynamic():
     for _ in range(100):
         _ = baseline_model(x)
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     
     baseline_ms = start.elapsed_time(end) / 100
     
@@ -547,7 +547,7 @@ def benchmark_static_vs_dynamic():
     for _ in range(100):
         _ = static_model(x)
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     
     static_ms = start.elapsed_time(end) / 100
     

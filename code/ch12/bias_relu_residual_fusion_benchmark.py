@@ -35,7 +35,7 @@ def time_kernel(fn, iters: int, warmup: int = 5) -> float:
     for _ in range(iters):
         fn()
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     return start.elapsed_time(end) / iters
 
 

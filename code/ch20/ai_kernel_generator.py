@@ -137,7 +137,7 @@ def benchmark(*, batch, heads, seqlen, head_dim, dtype, repeat=10):
                 dtype=dtype,
             )
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         avg_ms = start.elapsed_time(end) / count
     else:
         start_time = time.time()

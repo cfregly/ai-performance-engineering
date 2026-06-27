@@ -232,7 +232,7 @@ def benchmark_model(model, x, name, num_warmup=50, num_iters=100):
         for _ in range(count):
             _ = model(x)
         end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     
     avg_time_ms = start.elapsed_time(end) / count
     

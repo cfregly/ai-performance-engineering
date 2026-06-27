@@ -203,7 +203,7 @@ def benchmark():
     for _ in range(10):
         _ = F.scaled_dot_product_attention(q, k, v, is_causal=True)
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     
     sdpa_ms = start.elapsed_time(end) / 10
     
@@ -229,7 +229,7 @@ def benchmark():
         for _ in range(10):
             _ = compiled_flex(q, k, v, block_mask=block_mask)
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         
         flex_ms = start.elapsed_time(end) / 10
         

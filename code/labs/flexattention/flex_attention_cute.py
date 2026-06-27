@@ -69,7 +69,7 @@ def main() -> None:
         for _ in range(count):
             out = _flash_attn_fwd(q, k, v)
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
     elapsed_s = start.elapsed_time(end) / 1000.0
 
     output_tensor = out[0] if isinstance(out, (tuple, list)) else out

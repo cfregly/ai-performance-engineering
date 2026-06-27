@@ -296,7 +296,7 @@ def measure_scenario(
         for batch in batches:
             run_decode_step(experts, batch, scenario=scenario)
         end_event.record()
-        torch.cuda.synchronize(device)
+        end_event.synchronize()
         elapsed_per_step_ms.append(start_event.elapsed_time(end_event) / len(batches))
 
     max_abs_diff = _compare_outputs(experts, batches, refs, scenario=scenario)

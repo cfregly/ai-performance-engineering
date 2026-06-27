@@ -391,7 +391,7 @@ def benchmark_kernels():
         for _ in range(20):
             _ = matmul_standard(a, b)
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         
         ms_standard = start.elapsed_time(end) / 20
         
@@ -400,7 +400,7 @@ def benchmark_kernels():
         for _ in range(20):
             _ = matmul_persistent(a, b, num_sms)
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         
         ms_persistent = start.elapsed_time(end) / 20
         
@@ -409,7 +409,7 @@ def benchmark_kernels():
         for _ in range(20):
             _ = matmul_persistent_atomic(a, b, num_sms)
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         
         ms_atomic = start.elapsed_time(end) / 20
         

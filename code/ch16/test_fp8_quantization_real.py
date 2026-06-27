@@ -157,7 +157,7 @@ def benchmark_model(
         for _ in range(count):
             _ = model(input_ids)
         end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     elapsed_ms = start.elapsed_time(end)
     
     # Metrics

@@ -243,7 +243,7 @@ def benchmark():
     for _ in range(100):
         _ = fp32_linear(x)
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     fp32_ms = start.elapsed_time(end) / 100
     
     # Static FP8
@@ -251,7 +251,7 @@ def benchmark():
     for _ in range(100):
         _ = static_linear(x)
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     static_ms = start.elapsed_time(end) / 100
     
     # Accuracy

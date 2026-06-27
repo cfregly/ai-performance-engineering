@@ -148,7 +148,7 @@ def benchmark_triton_matmul(
             BLOCK_K=32,
         )
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         times_ms.append(start.elapsed_time(end))
 
     if not times_ms:

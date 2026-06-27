@@ -74,7 +74,7 @@ def _benchmark_cuda_latency_ms(fn: Callable[[], object], iterations: int) -> flo
     for _ in range(iterations):
         fn()
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     return start.elapsed_time(end) / iterations
 
 

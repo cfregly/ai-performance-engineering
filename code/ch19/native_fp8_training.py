@@ -191,7 +191,7 @@ def benchmark_fp8_training() -> Dict[str, BenchmarkResult]:
                 amp_dtype=amp_dtype if not use_fp8 else None,
             )
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
 
         time_ms = start.elapsed_time(end) / 20.0
         memory_mb = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
@@ -225,7 +225,7 @@ def demonstrate_fp8_compile() -> None:
     for _ in range(20):
         compiled(sample)
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     print(f"FP8 + torch.compile throughput: {start.elapsed_time(end)/20.0:6.2f} ms/iter")
 
 

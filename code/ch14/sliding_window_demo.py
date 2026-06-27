@@ -311,7 +311,7 @@ def benchmark_sliding_window():
         for _ in range(10):
             _ = sliding_attn(x)
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         
         sliding_ms = start.elapsed_time(end) / 10
         sliding_mem = torch.cuda.max_memory_allocated() / 1e9
@@ -334,7 +334,7 @@ def benchmark_sliding_window():
             for _ in range(10):
                 _ = full_attn(x, x, x, attn_mask=causal_mask)
             end.record()
-            torch.cuda.synchronize()
+            end.synchronize()
             
             full_ms = start.elapsed_time(end) / 10
             full_mem = torch.cuda.max_memory_allocated() / 1e9

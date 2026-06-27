@@ -154,7 +154,7 @@ def benchmark_attention(model, Q, K, V, name, num_warmup=50, num_iters=200):
         for _ in range(count):
             _ = model(Q, K, V)
         end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     
     avg_time_ms = start.elapsed_time(end) / count
     

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import importlib
+import re
 import signal
 import subprocess
 import tempfile
@@ -1704,6 +1705,43 @@ def test_timed_loops_reuse_cuda_events() -> None:
             assert timing_section.count("end.record()") == 1
             assert timing_section.count("end.synchronize()") == 1
             assert "samples.append(start.elapsed_time(end))" not in timing_section
+
+
+def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:
+    event_sync_files = {
+        "ch12/bias_relu_residual_fusion_benchmark.py": "end.synchronize()",
+        "ch13/fp8_static_demo.py": "end.synchronize()",
+        "ch13/optimized_fp8_static.py": "end.synchronize()",
+        "ch13/fp8_perchannel_demo.py": "end.synchronize()",
+        "ch14/optimized_flex_attention_sparse.py": "end.synchronize()",
+        "ch14/triton_persistent_demo.py": "end.synchronize()",
+        "ch14/sliding_window_demo.py": "end.synchronize()",
+        "ch14/flex_attention_sparse_demo.py": "end.synchronize()",
+        "ch16/inference_optimizations_blackwell.py": "end.synchronize()",
+        "ch16/gpt_quick_test.py": "end.synchronize()",
+        "ch16/test_fp8_quantization_real.py": "end.synchronize()",
+        "ch16/moe_performance_benchmark.py": "end_event.synchronize()",
+        "ch18/flex_attention_native.py": "end.synchronize()",
+        "ch18/flex_attention_enhanced.py": "end.synchronize()",
+        "ch18/flex_attention_large_model.py": "end.synchronize()",
+        "ch19/fp8_compiled_matmul.py": "end.synchronize()",
+        "ch19/native_fp4_quantization.py": "end.synchronize()",
+        "ch19/native_fp6_quantization.py": "end.synchronize()",
+        "ch19/native_fp8_training.py": "end.synchronize()",
+        "ch20/ai_kernel_generator.py": "end.synchronize()",
+        "labs/flexattention/flex_attention_cute.py": "end.synchronize()",
+        "labs/cutlass_profiler_kernel_selector/run_triton_matmul.py": "end.synchronize()",
+        "labs/moe_decode_blackwell_matrix/runner.py": "end_event.synchronize()",
+        "labs/moe_optimization_journey/triton_fused_moe.py": "end.synchronize()",
+    }
+
+    global_wait_after_event = re.compile(
+        r"end(?:_event)?\.record\(\)\n\s*torch\.cuda\.synchronize\("
+    )
+    for filename, expected_sync in event_sync_files.items():
+        source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        assert expected_sync in source
+        assert global_wait_after_event.search(source) is None
 
 
 def test_occupancy_tuning_variants_match_their_filenames() -> None:

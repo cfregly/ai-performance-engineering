@@ -213,7 +213,7 @@ def benchmark_triton_moe():
             _ = triton_fused_moe(sorted_tokens, w_gate, w_up, w_down,
                                 sorted_weights, expert_offsets, E, H, I, max_tokens=max_tokens)
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         ms = start.elapsed_time(end) / 10
         
         flops = batch_seq * K * 3 * 2 * H * I
