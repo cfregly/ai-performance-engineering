@@ -1802,14 +1802,25 @@ def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None
 
 def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     source = (REPO_ROOT / "ch18" / "run_vllm_decoder.py").read_text(encoding="utf-8")
+    decoder_section = source.split("class SpeculativeDecoder", maxsplit=1)[1].split(
+        "class VLLMMoEInferenceBenchmark",
+        maxsplit=1,
+    )[0]
     decode_section = source.split("def decode(", maxsplit=1)[1].split(
         "def _maybe_adjust_chunk",
         maxsplit=1,
     )[0]
 
-    assert "match_count, all_matches = torch.stack(" in decode_section
+    assert "self._match_summary_workspace: Optional[torch.Tensor] = None" in decoder_section
+    assert "self._all_matches_workspace: Optional[torch.Tensor] = None" in decoder_section
+    assert "def _match_workspaces(self, device: torch.device)" in decoder_section
+    assert "torch.sum(matches, dim=None, out=match_summary[0])" in decode_section
+    assert "torch.all(matches, out=all_matches_tensor)" in decode_section
+    assert "match_summary[1].copy_(all_matches_tensor)" in decode_section
+    assert "match_count, all_matches = match_summary.tolist()" in decode_section
     assert "self.accepted_tokens += int(match_count)" in decode_section
     assert "if not all_matches:" in decode_section
+    assert "torch.stack(" not in decode_section
     assert "matches.sum().item()" not in decode_section
     assert "if not matches.all()" not in decode_section
 

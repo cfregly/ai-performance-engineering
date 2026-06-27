@@ -183,11 +183,23 @@ class SpeculativeDecoder:
         self._fallback_chunk = max(1, config.fallback_chunk_size) if config.fallback_chunk_size else None
         self.accepted_tokens = 0
         self.total_tokens = 0
+        self._match_summary_workspace: Optional[torch.Tensor] = None
+        self._all_matches_workspace: Optional[torch.Tensor] = None
 
     def reset(self) -> None:
         self.accepted_tokens = 0
         self.total_tokens = 0
         self.chunk_size = self._base_chunk
+
+    def _match_workspaces(self, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+        if (
+            self._match_summary_workspace is None
+            or self._match_summary_workspace.device != device
+        ):
+            self._match_summary_workspace = torch.empty(2, dtype=torch.long, device=device)
+            self._all_matches_workspace = torch.empty((), dtype=torch.bool, device=device)
+        assert self._all_matches_workspace is not None
+        return self._match_summary_workspace, self._all_matches_workspace
 
     def decode(
         self,
@@ -217,12 +229,11 @@ class SpeculativeDecoder:
 
                     target_next = torch.argmax(target_logits[:, -1, :], dim=-1, keepdim=True)
                     matches = candidate.eq(target_next)
-                    match_count, all_matches = torch.stack(
-                        (
-                            matches.sum(),
-                            matches.all().to(dtype=torch.long),
-                        )
-                    ).tolist()
+                    match_summary, all_matches_tensor = self._match_workspaces(matches.device)
+                    torch.sum(matches, dim=None, out=match_summary[0])
+                    torch.all(matches, out=all_matches_tensor)
+                    match_summary[1].copy_(all_matches_tensor)
+                    match_count, all_matches = match_summary.tolist()
                     self.accepted_tokens += int(match_count)
                     self.total_tokens += matches.numel()
                     tokens = torch.where(matches, candidate, target_next)
