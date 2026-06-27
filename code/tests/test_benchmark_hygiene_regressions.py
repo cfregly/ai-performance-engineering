@@ -1332,9 +1332,15 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         "def _compiled_flex_attention",
         maxsplit=1,
     )[0]
+    ch20_benchmark = ch20_source.split("def benchmark", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
     assert "torch.triu(" not in ch20_reference
     assert "torch.ones(q_len, kv_len" not in ch20_reference
     assert "mask = kv_pos > q_pos" in ch20_reference
+    assert ch20_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start.elapsed_time(end) / count" in ch20_benchmark
 
     ch14_demo_source = (REPO_ROOT / "ch14" / "sliding_window_demo.py").read_text(
         encoding="utf-8"

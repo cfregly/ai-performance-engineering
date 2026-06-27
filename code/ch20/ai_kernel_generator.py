@@ -122,20 +122,34 @@ def benchmark(*, batch, heads, seqlen, head_dim, dtype, repeat=10):
             head_dim=head_dim,
             dtype=dtype,
         )
+    count = max(repeat, 1)
     if _using_cuda():
         torch.cuda.synchronize()
-    start = time.time()
-    for _ in range(repeat):
-        run_once(
-            batch=batch,
-            heads=heads,
-            seqlen=seqlen,
-            head_dim=head_dim,
-            dtype=dtype,
-        )
-    if _using_cuda():
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+        for _ in range(count):
+            run_once(
+                batch=batch,
+                heads=heads,
+                seqlen=seqlen,
+                head_dim=head_dim,
+                dtype=dtype,
+            )
+        end.record()
         torch.cuda.synchronize()
-    avg_ms = (time.time() - start) * 1000.0 / repeat
+        avg_ms = start.elapsed_time(end) / count
+    else:
+        start_time = time.time()
+        for _ in range(count):
+            run_once(
+                batch=batch,
+                heads=heads,
+                seqlen=seqlen,
+                head_dim=head_dim,
+                dtype=dtype,
+            )
+        avg_ms = (time.time() - start_time) * 1000.0 / count
     print(
         "FlexAttention fused kernel: "
         f"{avg_ms:.1f} ms (device={_DEVICE}, B={batch}, H={heads}, Q={seqlen}, "
