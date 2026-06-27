@@ -317,6 +317,39 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
             return token_ids
         return cached
 
+    def _expert_metadata_lists(
+        self,
+        unique_experts: torch.Tensor,
+        counts: torch.Tensor,
+    ) -> Tuple[List[int], List[int]]:
+        count = unique_experts.numel()
+        metadata = getattr(self, "_expert_metadata_buffer", None)
+        if (
+            metadata is None
+            or metadata.device != unique_experts.device
+            or metadata.numel() < 2 * count
+        ):
+            metadata = torch.empty(2, count, dtype=torch.long, device=unique_experts.device)
+            host_metadata = torch.empty(
+                2,
+                count,
+                dtype=torch.long,
+                device="cpu",
+                pin_memory=unique_experts.device.type == "cuda",
+            )
+            self._expert_metadata_buffer = metadata
+            self._expert_metadata_host_buffer = host_metadata
+        else:
+            host_metadata = self._expert_metadata_host_buffer
+
+        metadata_slice = metadata[:, :count]
+        metadata_slice[0].copy_(unique_experts)
+        metadata_slice[1].copy_(counts)
+        host_slice = host_metadata[:, :count]
+        host_slice.copy_(metadata_slice)
+        expert_list, count_list = host_slice.tolist()
+        return [int(expert) for expert in expert_list], [int(count_value) for count_value in count_list]
+
     def forward(self, x: torch.Tensor, *, collect_router_stats: bool = False):  # type: ignore[override]
         batch, seq, hidden = x.shape
         flat = x.reshape(batch * seq, hidden)
@@ -355,8 +388,7 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
 
         unique_experts, counts = torch.unique_consecutive(sorted_expert_ids, return_counts=True)
         # Convert small metadata to CPU for efficient Python looping.
-        expert_list = unique_experts.tolist()
-        count_list = counts.tolist()
+        expert_list, count_list = self._expert_metadata_lists(unique_experts, counts)
 
         offset = 0
         for expert_id, count in zip(expert_list, count_list):

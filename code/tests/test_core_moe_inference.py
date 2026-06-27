@@ -32,6 +32,17 @@ def test_simple_moe_block_reuses_attention_norm_once() -> None:
 
 
 def test_sorted_dispatch_reuses_flat_token_id_cache_on_cpu() -> None:
+    source = inspect.getsource(MoEFeedForwardSortedDispatch)
+    forward_source = inspect.getsource(MoEFeedForwardSortedDispatch.forward)
+
+    assert "def _expert_metadata_lists(" in source
+    assert "metadata_slice[0].copy_(unique_experts)" in source
+    assert "metadata_slice[1].copy_(counts)" in source
+    assert "host_slice.copy_(metadata_slice)" in source
+    assert "expert_list, count_list = self._expert_metadata_lists(unique_experts, counts)" in forward_source
+    assert "unique_experts.tolist()" not in forward_source
+    assert "counts.tolist()" not in forward_source
+
     torch.manual_seed(123)
     layer = MoEFeedForwardSortedDispatch(
         hidden=8,
@@ -45,12 +56,14 @@ def test_sorted_dispatch_reuses_flat_token_id_cache_on_cpu() -> None:
 
     out1 = layer(x)
     cache1 = layer._token_ids_cache
+    metadata_ptr = layer._expert_metadata_buffer.data_ptr()
     assert cache1.tolist() == [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
 
     out2 = layer(x)
     cache2 = layer._token_ids_cache
 
     assert cache2.data_ptr() == cache1.data_ptr()
+    assert layer._expert_metadata_buffer.data_ptr() == metadata_ptr
     torch.testing.assert_close(out2, out1)
 
     _ = layer(torch.randn(1, 2, 8))
