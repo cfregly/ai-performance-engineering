@@ -77,7 +77,8 @@ class Llama31_8B_Optimization:
 
                 # For the naive baseline attention path, precompute a causal mask once
                 # to avoid measuring mask materialization overhead.
-                causal = torch.triu(torch.ones(seq_len, seq_len, dtype=torch.bool), diagonal=1)
+                pos = torch.arange(seq_len)
+                causal = pos.unsqueeze(0) > pos.unsqueeze(1)
                 self.register_buffer("_causal_mask", causal, persistent=False)
             
             def forward(self, x):

@@ -971,6 +971,28 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "mask = self._causal_mask_for(seq_len, x.device)" in ch10_forward
     assert "torch.ones(seq_len, seq_len" not in ch10_forward
 
+    ch13_source = (REPO_ROOT / "ch13" / "baseline_long_context_attention.py").read_text(
+        encoding="utf-8"
+    )
+    ch13_setup = ch13_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    assert "torch.triu(torch.ones(" not in ch13_setup
+    assert "pos = torch.arange(self.seq_len, device=self.device)" in ch13_setup
+    assert "mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch13_setup
+
+    llama_source = (
+        REPO_ROOT / "labs" / "real_world_models" / "llama_3_1_8b_optimization.py"
+    ).read_text(encoding="utf-8")
+    llama_attention = llama_source.split("class SimplifiedAttention", maxsplit=1)[1].split(
+        "def forward",
+        maxsplit=1,
+    )[0]
+    assert "torch.triu(torch.ones(" not in llama_attention
+    assert "pos = torch.arange(seq_len)" in llama_attention
+    assert "causal = pos.unsqueeze(0) > pos.unsqueeze(1)" in llama_attention
+
 
 def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
     source = (REPO_ROOT / "ch19" / "token_precision_switching.py").read_text(

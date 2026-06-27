@@ -49,7 +49,8 @@ class BaselineLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBenchm
         )
         self.k = torch.randn_like(self.q)
         self.v = torch.randn_like(self.q)
-        mask = torch.triu(torch.ones(self.seq_len, self.seq_len, device=self.device), diagonal=1).bool()
+        pos = torch.arange(self.seq_len, device=self.device)
+        mask = pos.unsqueeze(0) > pos.unsqueeze(1)
         self._mask = mask.view(1, 1, self.seq_len, self.seq_len)
         self._synchronize()
 
