@@ -25,7 +25,10 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         assert "self.seq_lengths += 1" not in benchmark_source
         assert "self.seq_lengths.zero_()" not in benchmark_source
         assert "self.seq_lengths.fill_(num_decode_steps)" in benchmark_source
-        assert "self._seq_lengths_host = [num_decode_steps] * self.batch_size" in benchmark_source
+        assert "self._set_host_seq_lengths(0)" in benchmark_source
+        assert "self._set_host_seq_lengths(num_decode_steps)" in benchmark_source
+        assert "self._seq_lengths_host = [0] * self.batch_size" not in benchmark_source
+        assert "self._seq_lengths_host = [num_decode_steps] * self.batch_size" not in benchmark_source
 
 
 def test_kv_standard_cache_allocation_avoids_zero_fill() -> None:

@@ -153,13 +153,19 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         v = self.kv_cache[batch_idx, layer_idx, 1, :, :seq_len]
         return k, v
 
+    def _set_host_seq_lengths(self, value: int) -> None:
+        if len(self._seq_lengths_host) != self.batch_size:
+            raise RuntimeError("Host sequence length slots not initialized")
+        for batch_idx in range(self.batch_size):
+            self._seq_lengths_host[batch_idx] = value
+
     def benchmark_fn(self) -> None:
         """Benchmark KV cache operations."""
         if self._generated_k_steps is None or self._generated_v_steps is None:
             raise RuntimeError("setup() must precompute decode-step inputs before benchmarking")
         # Simulate decoding
         num_decode_steps = self.num_decode_steps
-        self._seq_lengths_host = [0] * self.batch_size
+        self._set_host_seq_lengths(0)
 
         timing_pair = self._get_timing_pair()
         start_event, end_event = timing_pair
@@ -172,7 +178,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
 
         end_event.record()
         self.seq_lengths.fill_(num_decode_steps)
-        self._seq_lengths_host = [num_decode_steps] * self.batch_size
+        self._set_host_seq_lengths(num_decode_steps)
         self._pending_timing_pair = timing_pair
 
         # Capture a slice of KV cache for verification (layer 0, first token/head window)
