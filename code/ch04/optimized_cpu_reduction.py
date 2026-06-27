@@ -75,18 +75,17 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         with nvtx_range("optimized_gpu_reduction", enable=enable_nvtx):
             # Forward pass
-            with torch.no_grad():
+            with torch.inference_mode():
                 out = self.model(self.input)
             
-            # All-GPU reduction: chunk, reduce in-place, no CPU
-            shards = torch.chunk(out, chunks=self.num_shards, dim=0)
-            
-            # In-place sum reduction (stays on GPU)
+            # All-GPU reduction over a strided shard view, no CPU or Python shard loop.
             if self._reduction_buffer is None or self._output_buffer is None:
                 raise RuntimeError("Reduction buffers not initialized")
-            self._reduction_buffer.copy_(shards[0])
-            for shard in shards[1:]:
-                self._reduction_buffer.add_(shard)
+            if out.shape[0] % self.num_shards != 0:
+                raise RuntimeError("Batch size must be divisible by num_shards")
+            reduced_rows = out.shape[0] // self.num_shards
+            shard_view = out.reshape(self.num_shards, reduced_rows, out.shape[1])
+            torch.sum(shard_view, dim=0, out=self._reduction_buffer)
             
             # Average
             self._output_buffer.copy_(self._reduction_buffer)
@@ -165,4 +164,3 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedGpuReductionBenchmark()
-

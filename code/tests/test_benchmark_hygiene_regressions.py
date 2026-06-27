@@ -846,21 +846,25 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     assert "self._reduction_buffer = torch.empty_like(self._output_buffer)" in setup_section
     assert "self._output_buffer = torch.zeros(" not in setup_section
     assert "self._reduction_buffer = torch.zeros(" not in setup_section
-    assert "self._reduction_buffer.copy_(shards[0])" in benchmark_section
-    assert "for shard in shards[1:]" in benchmark_section
+    assert "with torch.inference_mode():" in benchmark_section
+    assert "torch.chunk(" not in benchmark_section
+    assert "for shard in" not in benchmark_section
+    assert "shard_view = out.reshape(self.num_shards, reduced_rows, out.shape[1])" in benchmark_section
+    assert "torch.sum(shard_view, dim=0, out=self._reduction_buffer)" in benchmark_section
     assert "self._reduction_buffer.zero_()" not in benchmark_section
     assert "self._output_buffer.copy_(self._reduction_buffer)" in benchmark_section
 
 
-def test_ch04_optimized_gpu_reduction_seeds_from_first_shard() -> None:
+def test_ch04_optimized_gpu_reduction_uses_single_gpu_sum_kernel() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_cpu_reduction.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
 
-    assert "self._reduction_buffer.copy_(shards[0])" in benchmark_section
-    assert "for shard in shards[1:]" in benchmark_section
+    assert "torch.chunk(" not in benchmark_section
+    assert "for shard in" not in benchmark_section
+    assert "torch.sum(shard_view, dim=0, out=self._reduction_buffer)" in benchmark_section
     assert "self._reduction_buffer.zero_()" not in benchmark_section
 
 
