@@ -554,17 +554,23 @@ def _quantize_matrix(matrix: torch.Tensor) -> QuantizedMatrix:
     return QuantizedMatrix(quantized=quantized, scales=scales, original_shape=tuple(matrix.shape))
 
 
+def _expand_mxfp8_scales(scales: torch.Tensor) -> torch.Tensor:
+    scales_fp32 = scales.to(torch.float32)
+    return scales_fp32.unsqueeze(-1).expand(*scales_fp32.shape, _MXFP8_BLOCK_SIZE).reshape(
+        scales_fp32.shape[0],
+        scales_fp32.shape[1] * _MXFP8_BLOCK_SIZE,
+    )
+
+
 def quantize_mxfp8_reference(matrix: torch.Tensor, *, include_transpose: bool) -> QuantizedBundle:
     forward = _quantize_matrix(matrix)
     # Reference path pays the reshape tax explicitly to reflect the cost of
     # materializing a tcgen05-style scale layout from a generic quantizer.
-    _ = forward.scales.to(torch.float32).repeat_interleave(_MXFP8_BLOCK_SIZE, dim=1).reshape(forward.quantized.shape)
+    _ = _expand_mxfp8_scales(forward.scales)
     transpose = None
     if include_transpose:
         transpose = _quantize_matrix(matrix.t().contiguous())
-        _ = transpose.scales.to(torch.float32).repeat_interleave(_MXFP8_BLOCK_SIZE, dim=1).reshape(
-            transpose.quantized.shape
-        )
+        _ = _expand_mxfp8_scales(transpose.scales)
     return QuantizedBundle(forward=forward, transpose=transpose)
 
 
@@ -575,7 +581,7 @@ def quantize_mxfp8_optimized(matrix: torch.Tensor, *, include_transpose: bool) -
 
 
 def dequantize_mxfp8(qmat: QuantizedMatrix, *, dtype: torch.dtype) -> torch.Tensor:
-    scales = qmat.scales.to(torch.float32).repeat_interleave(_MXFP8_BLOCK_SIZE, dim=1)
+    scales = _expand_mxfp8_scales(qmat.scales)
     values = qmat.quantized.to(torch.float32) * scales[:, : qmat.quantized.shape[1]]
     rows, cols = qmat.original_shape
     return values[:rows, :cols].to(dtype=dtype)

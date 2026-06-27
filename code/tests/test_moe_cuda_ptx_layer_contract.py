@@ -28,6 +28,21 @@ def test_mxfp8_pow2_scales_masks_zero_blocks_in_place() -> None:
     assert scales[1].item() >= moe_common._MXFP8_E8M0_MIN
 
 
+def test_mxfp8_scale_expansion_avoids_repeat_interleave() -> None:
+    quant_source = inspect.getsource(moe_common.quantize_mxfp8_reference)
+    dequant_source = inspect.getsource(moe_common.dequantize_mxfp8)
+    scales = torch.arange(6, dtype=torch.float32).view(2, 3)
+
+    assert "repeat_interleave" not in quant_source
+    assert "repeat_interleave" not in dequant_source
+    assert "_expand_mxfp8_scales(forward.scales)" in quant_source
+    assert "scales = _expand_mxfp8_scales(qmat.scales)" in dequant_source
+    torch.testing.assert_close(
+        moe_common._expand_mxfp8_scales(scales),
+        scales.repeat_interleave(moe_common._MXFP8_BLOCK_SIZE, dim=1),
+    )
+
+
 def test_run_layer_cuda_forward_skips_standalone_quantize_roundtrip(monkeypatch) -> None:
     workload = moe_common.MoECudaPtxWorkload(mode="forward")
     sentinel_packed = SimpleNamespace(packed_tokens="packed_tokens")
