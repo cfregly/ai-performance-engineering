@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import torch
 
@@ -66,6 +65,7 @@ class BaselineMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.m_splits: List[int] = []
         self.weights: Optional[torch.Tensor] = None
         self.matmul_ref: Optional[_NaiveMXFP8Matmul] = None
+        self._bucketed_out: Optional[torch.Tensor] = None
         self._restored_out: Optional[torch.Tensor] = None
         self._verification_payload = None
         self.register_workload_metadata(requests_per_iteration=1.0)
@@ -100,6 +100,7 @@ class BaselineMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._restored_out = torch.empty(
             (self.num_tokens, self.ffn_dim), device=self.device, dtype=torch.float16
         )
+        self._bucketed_out = torch.empty_like(self._restored_out)
         tokens_per_iteration = float(self.num_tokens)
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration)
 
@@ -110,16 +111,17 @@ class BaselineMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
             and self.expert_order is not None
             and self.weights is not None
             and self.matmul_ref is not None
+            and self._bucketed_out is not None
         )
-        outputs: List[torch.Tensor] = []
         offset = 0
         for expert_idx, m in zip(self.expert_order_list, self.m_splits):
             expert_slice = self.bucketed_inputs.narrow(0, offset, m)
-            outputs.append(self.matmul_ref(expert_slice, expert_idx))
+            self._bucketed_out.narrow(0, offset, m).copy_(
+                self.matmul_ref(expert_slice, expert_idx)
+            )
             offset += m
-        bucketed_out = torch.cat(outputs, dim=0)
         return restore_bucketed(
-            bucketed_out,
+            self._bucketed_out,
             self.bucket_indices,
             num_tokens=self.num_tokens,
             out=self._restored_out,
@@ -170,6 +172,7 @@ class BaselineMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.expert_order_list = []
         self.m_splits = []
         self.matmul_ref = None
+        self._bucketed_out = None
         self._restored_out = None
         torch.cuda.empty_cache()
 
@@ -195,4 +198,3 @@ class BaselineMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineMXFP8MoEBenchmark()
-

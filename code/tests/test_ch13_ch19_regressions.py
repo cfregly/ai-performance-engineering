@@ -5,6 +5,7 @@ import inspect
 import torch
 
 import ch19.baseline_fp4_weight_quantization as baseline_fp4
+import ch19.baseline_mxfp8_moe as baseline_mxfp8_moe
 import ch19.mxfp8_moe_common as mxfp8_moe_common
 import ch19.native_fp4_quantization as native_fp4
 import ch19.optimized_mxfp8_moe as optimized_mxfp8_moe
@@ -178,6 +179,22 @@ def test_optimized_mxfp8_moe_reuses_token_ids_and_keeps_reorder_on_device() -> N
     torch.testing.assert_close(new_order, torch.tensor([8, 7, 9], dtype=torch.int64))
     torch.testing.assert_close(new_token_ids, bucket_token_ids.index_select(0, expected_rows))
     torch.testing.assert_close(new_weights, gating_weights.index_select(0, expected_rows))
+
+
+def test_baseline_mxfp8_moe_reuses_bucketed_output_buffer() -> None:
+    source = inspect.getsource(baseline_mxfp8_moe.BaselineMXFP8MoEBenchmark)
+    setup_source = inspect.getsource(baseline_mxfp8_moe.BaselineMXFP8MoEBenchmark.setup)
+    run_source = inspect.getsource(baseline_mxfp8_moe.BaselineMXFP8MoEBenchmark._run_naive)
+    teardown_source = inspect.getsource(baseline_mxfp8_moe.BaselineMXFP8MoEBenchmark.teardown)
+
+    assert "self._bucketed_out: Optional[torch.Tensor] = None" in source
+    assert "self._bucketed_out = torch.empty_like(self._restored_out)" in setup_source
+    assert "self._bucketed_out.narrow(0, offset, m).copy_(" in run_source
+    assert "restore_bucketed(\n            self._bucketed_out," in run_source
+    assert "outputs: List[torch.Tensor]" not in run_source
+    assert "outputs.append(" not in run_source
+    assert "torch.cat(outputs" not in run_source
+    assert "self._bucketed_out = None" in teardown_source
 
 
 def test_native_fp6_quantization_avoids_tensor_bool_scale_branch() -> None:
