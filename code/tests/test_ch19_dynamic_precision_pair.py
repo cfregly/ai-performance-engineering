@@ -15,7 +15,7 @@ from ch19.dynamic_precision_benchmark_common import (
     decode_dynamic_precision,
     decode_fixed_precision,
 )
-from ch19.dynamic_precision_switching import decode_with_dynamic_precision
+from ch19.dynamic_precision_switching import decode_with_dynamic_precision, should_use_low_precision
 from ch19.optimized_dynamic_precision import OptimizedDynamicPrecisionBenchmark
 
 
@@ -59,6 +59,23 @@ def test_dynamic_precision_decode_matches_fixed_precision_on_cpu() -> None:
     assert torch.equal(baseline_tokens, optimized_tokens)
     assert stats is not None
     assert stats.total_tokens > 0
+
+
+def test_low_precision_policy_handles_confident_and_flat_logits() -> None:
+    confident_logits = torch.zeros(2, 32)
+    confident_logits[:, 7] = 12.0
+    flat_logits = torch.zeros(2, 32)
+
+    assert should_use_low_precision(
+        confident_logits,
+        entropy_threshold=0.5,
+        max_prob_threshold=0.8,
+    )
+    assert not should_use_low_precision(
+        flat_logits,
+        entropy_threshold=0.5,
+        max_prob_threshold=0.8,
+    )
 
 
 def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:

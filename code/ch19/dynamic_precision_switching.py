@@ -434,10 +434,12 @@ def should_use_low_precision(
     Returns:
         True if low precision is safe to use
     """
-    probs = torch.softmax(logits, dim=-1)
+    log_probs = torch.log_softmax(logits, dim=-1)
+    probs = log_probs.exp()
+    entropy_values = -(probs * log_probs).sum(dim=-1)
     entropy, max_prob = torch.stack(
         (
-            compute_entropy(logits).mean(),
+            entropy_values.mean(),
             probs.max(dim=-1).values.mean(),
         )
     ).tolist()

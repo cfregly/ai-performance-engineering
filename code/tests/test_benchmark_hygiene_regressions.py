@@ -1314,7 +1314,11 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "policy_metrics = torch.stack(" in host_policy_section
     assert "compute_entropy(host_logits).mean().item()" not in host_policy_section
     assert "values.mean().item()" not in host_policy_section
+    assert "log_probs = torch.log_softmax(logits, dim=-1)" in decision_section
+    assert "probs = log_probs.exp()" in decision_section
+    assert "entropy_values = -(probs * log_probs).sum(dim=-1)" in decision_section
     assert "entropy, max_prob = torch.stack(" in decision_section
+    assert "compute_entropy(logits).mean()" not in decision_section
     assert "compute_entropy(logits).mean().item()" not in decision_section
     assert "probs.max(dim=-1).values.mean().item()" not in decision_section
     assert "high_entropy, low_entropy = torch.stack(" in demo_entropy_section
