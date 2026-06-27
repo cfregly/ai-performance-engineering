@@ -53,3 +53,26 @@ def test_ddp_compression_int8_hook_masks_zero_scale_in_place() -> None:
     assert "torch.where(" not in hook_section
     assert "torch.ones_like(scale)" not in hook_section
     assert "scale.masked_fill_(scale == 0, 1.0)" in hook_section
+
+
+def test_zero2_gradient_sharder_reuses_reduce_buffers() -> None:
+    source = (LAB_DIR / "baseline_zero2.py").read_text(encoding="utf-8")
+    init_section = source.split("def __init__", maxsplit=1)[1].split(
+        "def _shard_parameters",
+        maxsplit=1,
+    )[0]
+    step_section = source.split("def step", maxsplit=1)[1].split(
+        "def zero_grad",
+        maxsplit=1,
+    )[0]
+
+    assert "self.local_index_set = set(self.local_indices)" in init_section
+    assert "self._reduce_inputs: dict[int, torch.Tensor] = {}" in init_section
+    assert "self._shard_grads: dict[int, torch.Tensor] = {}" in init_section
+    assert "in_tensor.view(world_size, -1).copy_(flattened.unsqueeze(0))" in step_section
+    assert "if idx in self.local_index_set:" in step_section
+    assert "shard_grad.div_(world_size)" in step_section
+    assert "param.grad = shard_grad.view_as(grad.data)" in step_section
+    assert "(shard_grad / world_size)" not in step_section
+    assert "torch.cat([flattened" not in step_section
+    assert "shard_grad = torch.empty_like(flattened)\n            dist.reduce_scatter_tensor" not in step_section

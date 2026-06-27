@@ -31,6 +31,9 @@ class GradientSharder:
         self.optimizer = optimizer
         self.params = [p for group in optimizer.param_groups for p in group["params"]]
         self._shard_parameters()
+        self.local_index_set = set(self.local_indices)
+        self._reduce_inputs: dict[int, torch.Tensor] = {}
+        self._shard_grads: dict[int, torch.Tensor] = {}
         self.communication_time = 0.0
         self.step_time = 0.0
 
@@ -51,6 +54,7 @@ class GradientSharder:
     def step(self, closure=None):
         step_start = time.perf_counter()
         comm_start = step_start
+        world_size = get("ws")
 
         for idx, param in enumerate(self.params):
             grad = param.grad
@@ -58,12 +62,36 @@ class GradientSharder:
                 continue
 
             flattened = grad.data.contiguous().view(-1)
-            in_tensor = torch.cat([flattened for _ in range(get("ws"))], dim=0)
-            shard_grad = torch.empty_like(flattened)
+            in_tensor = self._reduce_inputs.get(idx)
+            required_numel = flattened.numel() * world_size
+            if (
+                in_tensor is None
+                or in_tensor.numel() != required_numel
+                or in_tensor.device != flattened.device
+                or in_tensor.dtype != flattened.dtype
+            ):
+                in_tensor = torch.empty(
+                    required_numel,
+                    device=flattened.device,
+                    dtype=flattened.dtype,
+                )
+                self._reduce_inputs[idx] = in_tensor
+            in_tensor.view(world_size, -1).copy_(flattened.unsqueeze(0))
+
+            shard_grad = self._shard_grads.get(idx)
+            if (
+                shard_grad is None
+                or shard_grad.numel() != flattened.numel()
+                or shard_grad.device != flattened.device
+                or shard_grad.dtype != flattened.dtype
+            ):
+                shard_grad = torch.empty_like(flattened)
+                self._shard_grads[idx] = shard_grad
             dist.reduce_scatter_tensor(shard_grad, in_tensor, op=dist.ReduceOp.SUM)
 
-            if idx in self.local_indices:
-                param.grad = (shard_grad / get("ws")).view_as(grad.data)
+            if idx in self.local_index_set:
+                shard_grad.div_(world_size)
+                param.grad = shard_grad.view_as(grad.data)
             else:
                 param.grad = None
 
@@ -72,8 +100,8 @@ class GradientSharder:
 
         self.optimizer.step(closure)
 
-        shard_size = len(self.params) // get("ws")
-        remainder = len(self.params) % get("ws")
+        shard_size = len(self.params) // world_size
+        remainder = len(self.params) % world_size
         for idx, param in enumerate(self.params):
             if idx < (shard_size + 1) * remainder:
                 owner = idx // (shard_size + 1)
