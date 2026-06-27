@@ -2644,6 +2644,9 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
         "_barrier()", maxsplit=1
     )[0]
     class_section = source.split("class _PrefillDecodeMultiGPUBenchmark", maxsplit=1)[1]
+    setup_section = class_section.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     benchmark_section = class_section.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -2654,9 +2657,20 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "torch.cuda.Event(blocking=False)" in worker_section
     assert "ready = ready_events[group_idx]" in run_iteration_section
     assert "torch.cuda.Event(" not in run_iteration_section
+    assert "expected_outputs = len(self._pairs) * self.cfg.requests_per_rank" in setup_section
+    assert "self._pending_outputs = [torch.empty(0) for _ in range(expected_outputs)]" in setup_section
     assert "torch.stack(" not in benchmark_section
     assert ".detach().cpu()" not in benchmark_section
+    assert "outputs = self._pending_outputs" in benchmark_section
+    assert "output_idx = 0" in benchmark_section
+    assert "outputs[output_idx] = pair.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)" in benchmark_section
+    assert "for decoded_output in decoded:" in benchmark_section
+    assert "outputs[output_idx] = decoded_output" in benchmark_section
+    assert "output_idx += 1" in benchmark_section
     assert "self._pending_outputs = outputs" in benchmark_section
+    assert "outputs: List[torch.Tensor] = []" not in benchmark_section
+    assert "outputs.append(" not in benchmark_section
+    assert "outputs.extend(" not in benchmark_section
     assert "self._output = torch.stack(" in capture_section
     assert "[out.detach().cpu() for out in self._pending_outputs]" in capture_section
 

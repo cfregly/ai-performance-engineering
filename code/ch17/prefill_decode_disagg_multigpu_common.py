@@ -7,7 +7,6 @@ import os
 import time
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 import torch
@@ -630,9 +629,10 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self._param_count = total_params
         self._output = None
-        self._pending_outputs = []
         if not self._pairs:
             raise RuntimeError("Failed to initialize prompts for verification")
+        expected_outputs = len(self._pairs) * self.cfg.requests_per_rank
+        self._pending_outputs = [torch.empty(0) for _ in range(expected_outputs)]
         self._verify_prompt = self._pairs[0].prompts[0]
         for pair in self._pairs:
             torch.cuda.synchronize(pair.prefill_device)
@@ -642,7 +642,12 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not self._pairs:
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        outputs: List[torch.Tensor] = []
+        expected_outputs = len(self._pairs) * self.cfg.requests_per_rank
+        outputs = self._pending_outputs
+        if len(outputs) != expected_outputs:
+            outputs = [torch.empty(0) for _ in range(expected_outputs)]
+            self._pending_outputs = outputs
+        output_idx = 0
         with torch.no_grad():
             for pair in self._pairs:
                 if self.overlap:
@@ -650,15 +655,16 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         kv_cache, seed = pair.prefill_model.prefill(pair.prompts[req_idx])
                         kv_cache = kv_cache.to(pair.decode_device, non_blocking=True)
                         seed = seed.to(pair.decode_device, non_blocking=True)
-                        outputs.append(
-                            pair.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)
-                        )
+                        outputs[output_idx] = pair.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)
+                        output_idx += 1
                 else:
                     kv_chunks, seed_chunks = _run_prefill(self.cfg, pair.prefill_model, pair.prompts)
                     kv_chunks = [kv.to(pair.decode_device) for kv in kv_chunks]
                     seed_chunks = [seed.to(pair.decode_device) for seed in seed_chunks]
                     decoded = _run_decode(self.cfg, pair.decode_model, kv_chunks, seed_chunks)
-                    outputs.extend(decoded)
+                    for decoded_output in decoded:
+                        outputs[output_idx] = decoded_output
+                        output_idx += 1
 
         self._pending_outputs = outputs
         self._output = None
