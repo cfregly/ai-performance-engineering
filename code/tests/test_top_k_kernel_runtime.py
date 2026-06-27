@@ -6,7 +6,7 @@ import pytest
 import torch
 
 import labs.top_k_kernel.top_k_kernel_common as topk_common
-from labs.top_k_kernel.top_k_kernel_common import TopKKernelBenchmark
+from labs.top_k_kernel.top_k_kernel_common import TopKKernelBenchmark, TopKKernelWorkload
 
 CUDA_REQUIRED = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +38,28 @@ def test_top_k_input_block_bias_uses_position_arithmetic() -> None:
     assert ".repeat_interleave(workload.positions_per_block)" not in build_inputs_section
     assert "torch.arange(workload.compressed_k_len, dtype=torch.int64)" in build_inputs_section
     assert '.div_(workload.positions_per_block, rounding_mode="floor")' in build_inputs_section
+
+
+def test_top_k_repeats_k_heads_with_expand_reshape() -> None:
+    source = (REPO_ROOT / "labs" / "top_k_kernel" / "top_k_kernel_common.py").read_text(
+        encoding="utf-8"
+    )
+    repeat_section = source.split("def _repeat_k_over_query_heads", maxsplit=1)[1].split(
+        "def _build_block_k",
+        maxsplit=1,
+    )[0]
+
+    assert "repeat_interleave(" not in repeat_section
+    assert ".expand(batch_size, kv_heads, workload.gqa_size, k_len, head_dim)" in repeat_section
+    assert ".reshape(batch_size, kv_heads * workload.gqa_size, k_len, head_dim)" in repeat_section
+
+    workload = TopKKernelWorkload(heads=4, kv_heads=2, compressed_k_len=3, head_dim=1)
+    k = torch.arange(6, dtype=torch.float32).view(1, 2, 3, 1)
+
+    repeated = topk_common._repeat_k_over_query_heads(k, workload)
+
+    expected = torch.tensor([0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5], dtype=torch.float32).view(1, 4, 3, 1)
+    torch.testing.assert_close(repeated, expected)
 
 
 @CUDA_REQUIRED

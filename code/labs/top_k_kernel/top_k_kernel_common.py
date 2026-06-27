@@ -231,7 +231,13 @@ def _group_q(q: torch.Tensor, workload: TopKKernelWorkload) -> torch.Tensor:
 
 
 def _repeat_k_over_query_heads(k: torch.Tensor, workload: TopKKernelWorkload) -> torch.Tensor:
-    return k.repeat_interleave(workload.gqa_size, dim=1).contiguous()
+    batch_size, kv_heads, k_len, head_dim = k.shape
+    return (
+        k.view(batch_size, kv_heads, 1, k_len, head_dim)
+        .expand(batch_size, kv_heads, workload.gqa_size, k_len, head_dim)
+        .reshape(batch_size, kv_heads * workload.gqa_size, k_len, head_dim)
+        .contiguous()
+    )
 
 
 def _build_block_k(k: torch.Tensor, workload: TopKKernelWorkload) -> torch.Tensor:
