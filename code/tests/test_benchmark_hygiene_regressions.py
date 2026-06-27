@@ -5180,6 +5180,9 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
     blackwell = (REPO_ROOT / "labs" / "blackwell_matmul" / "blackwell_benchmarks.py").read_text(
         encoding="utf-8"
     )
+    blackwell_tcgen05 = (
+        REPO_ROOT / "labs" / "blackwell_matmul" / "optimized_blackwell_matmul_tcgen05.py"
+    ).read_text(encoding="utf-8")
     baseline_double_buffer = (REPO_ROOT / "ch19" / "baseline_memory_double_buffering.py").read_text(
         encoding="utf-8"
     )
@@ -5194,6 +5197,10 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
 
     assert "torch.manual_seed(42)" in blackwell
     assert "torch.cuda.manual_seed_all(42)" in blackwell
+    assert "with torch.inference_mode():" in blackwell
+    assert "with torch.no_grad():" not in blackwell
+    assert "with torch.inference_mode():" in blackwell_tcgen05
+    assert "with torch.no_grad():" not in blackwell_tcgen05
     for source in (baseline_double_buffer, optimized_double_buffer):
         assert "torch.manual_seed(42)" in source
         assert "torch.cuda.manual_seed_all(42)" in source

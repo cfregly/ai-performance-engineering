@@ -107,7 +107,7 @@ class GraceBlackwellMatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._parameter_count = 0
 
         if self._reference_runner is not None:
-            with torch.no_grad():
+            with torch.inference_mode():
                 ref = self._reference_runner(self._lhs, self._rhs)
             self._reference = ref.detach().clone()
             torch.cuda.synchronize(device)
@@ -117,7 +117,8 @@ class GraceBlackwellMatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         assert self._lhs is not None and self._rhs is not None
         with self._nvtx_range(self._label):
-            self._output = self._runner(self._lhs, self._rhs)
+            with torch.inference_mode():
+                self._output = self._runner(self._lhs, self._rhs)
 
     def capture_verification_payload(self) -> None:
         if self._lhs is None or self._rhs is None or self._output is None:

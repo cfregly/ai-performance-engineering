@@ -41,7 +41,7 @@ class Tcgen05GraceBlackwellBenchmark(GraceBlackwellMatmulBenchmark):
         # environment cannot compile the inline extension, skip instead of
         # failing the whole benchmark suite.
         try:
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self._runner(self._lhs, self._rhs)
             torch.cuda.synchronize(self.device)
         except Exception as exc:
@@ -70,7 +70,7 @@ class Tcgen05Cta2GraceBlackwellBenchmark(GraceBlackwellMatmulBenchmark):
         super().setup()
         assert self._lhs is not None and self._rhs is not None
         try:
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self._runner(self._lhs, self._rhs)
             torch.cuda.synchronize(self.device)
         except Exception as exc:
@@ -79,5 +79,4 @@ class Tcgen05Cta2GraceBlackwellBenchmark(GraceBlackwellMatmulBenchmark):
 def get_benchmark() -> GraceBlackwellMatmulBenchmark:
     """Factory for discover_benchmarks()."""
     return Tcgen05GraceBlackwellBenchmark()
-
 
