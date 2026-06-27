@@ -18,7 +18,7 @@ class SimplePipeline(nn.Module):
         super().__init__()
         self.fc1 = nn.Linear(hidden_dim, hidden_dim * 2)
         self.fc2 = nn.Linear(hidden_dim * 2, hidden_dim)
-        self.relu = nn.ReLU()
+        self.relu = nn.ReLU(inplace=True)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.relu(self.fc1(x))
@@ -60,7 +60,7 @@ class BaselineEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark
     def benchmark_fn(self) -> None:
         assert self.model is not None and self.inputs is not None and self.outputs is not None
         with self._nvtx_range("baseline_end_to_end_bandwidth"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 for batch_idx, inp in enumerate(self.inputs):
                     out = self.model(inp)
                     self.outputs[batch_idx] = out

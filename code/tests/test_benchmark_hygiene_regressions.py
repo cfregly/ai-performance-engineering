@@ -1861,6 +1861,21 @@ def test_ch20_optimized_forward_paths_use_inference_mode() -> None:
         assert "with torch.no_grad():" not in benchmark_section
 
 
+def test_ch20_end_to_end_bandwidth_uses_inplace_activation() -> None:
+    for relative in (
+        "ch20/baseline_end_to_end_bandwidth.py",
+        "ch20/optimized_end_to_end_bandwidth.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+
+        assert "self.relu = nn.ReLU(inplace=True)" in source
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "with torch.no_grad():" not in benchmark_section
+
+
 def test_ch20_optimized_memory_standard_uses_scalar_addcmul_constants() -> None:
     source = (REPO_ROOT / "ch20" / "optimized_memory_standard.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
