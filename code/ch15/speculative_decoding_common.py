@@ -102,7 +102,7 @@ def scale_tail_dims_(target: TokenMLP, draft_hidden: int, tail_scale: float) -> 
     cutoff = int(draft_hidden)
     scale = float(tail_scale)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         target.embed.weight[:, cutoff:].mul_(scale)
 
         for module in target.mlp:
@@ -140,7 +140,7 @@ def build_draft_from_target(target: TokenMLP, draft_hidden: int) -> TokenMLP:
         raise RuntimeError("Target/draft layer mismatch (unexpected)")
 
     cutoff = int(draft_hidden)
-    with torch.no_grad():
+    with torch.inference_mode():
         draft.embed.weight.copy_(target.embed.weight[:, :cutoff])
         for t_layer, d_layer in zip(target_linears, draft_linears, strict=True):
             d_layer.weight.copy_(t_layer.weight[:cutoff, :cutoff])

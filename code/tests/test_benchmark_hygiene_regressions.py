@@ -4961,6 +4961,15 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     assert ".argmax(" not in benchmark_section
 
 
+def test_ch15_speculative_decode_common_uses_inference_mode_for_setup_mutations() -> None:
+    source = (REPO_ROOT / "ch15" / "speculative_decoding_common.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert source.count("with torch.inference_mode():") >= 2
+    assert "with torch.no_grad():" not in source
+
+
 def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     baseline_source = (REPO_ROOT / "ch19" / "baseline_memory_double_buffering.py").read_text(encoding="utf-8")
     source = (REPO_ROOT / "ch19" / "optimized_memory_double_buffering.py").read_text(encoding="utf-8")
