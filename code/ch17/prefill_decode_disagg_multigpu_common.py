@@ -190,10 +190,10 @@ def _run_decode(
     kv_chunks: List[torch.Tensor],
     seed_chunks: List[torch.Tensor],
 ) -> List[torch.Tensor]:
-    outputs: List[torch.Tensor] = []
+    outputs = [torch.empty(0) for _ in range(len(kv_chunks))]
     with torch.inference_mode():
-        for kv_cache, seed in zip(kv_chunks, seed_chunks):
-            outputs.append(model.decode(seed, kv_cache, cfg.decode_tokens))
+        for output_idx, (kv_cache, seed) in enumerate(zip(kv_chunks, seed_chunks)):
+            outputs[output_idx] = model.decode(seed, kv_cache, cfg.decode_tokens)
     return outputs
 
 
