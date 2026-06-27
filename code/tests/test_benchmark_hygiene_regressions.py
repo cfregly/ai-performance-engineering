@@ -2005,6 +2005,9 @@ def test_nanochat_loss_eval_batches_reduced_totals() -> None:
     assert "dist.all_reduce(total_bytes" not in source
     assert "total_nats = total_nats.item()" not in source
     assert "total_bytes = total_bytes.item()" not in source
+    assert "y_safe = y.clamp_min(0)" in source
+    assert "num_bytes2d = token_bytes[y_safe] * valid.to(dtype=token_bytes.dtype)" in source
+    assert "torch.zeros_like(y)" not in source
 
 
 def test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa(monkeypatch: pytest.MonkeyPatch) -> None:
