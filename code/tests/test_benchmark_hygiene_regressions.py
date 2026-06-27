@@ -3102,10 +3102,22 @@ def test_hf_decoder_cache_defers_verification_copy_outside_hot_loop() -> None:
     )[0]
 
     assert "self._verification_token = torch.empty(" in setup_section
+    assert "self._prefill_token_buffer = torch.empty(" in setup_section
+    assert "self._decode_next_token_buffer = torch.empty(" in setup_section
+    assert "self._generated_tokens_buffer = torch.empty(" in setup_section
+    assert "self._done_mask_buffer = torch.empty(" in setup_section
     assert "self._prompt_pos = torch.arange(" in setup_section
+    assert "def _next_token_from_logits" in source
+    assert "torch.max(logits_last, dim=-1, out=(values, self._decode_next_token_buffer))" in source
+    assert "def _update_done_mask" in source
     assert "verification_token = next_token.detach().to(torch.int32).clone()" not in benchmark_section
     assert "prompt_pos = torch.arange(" not in benchmark_section
-    assert "verification_token = next_token.detach()" in benchmark_section
+    assert "self._prefill_token_buffer.copy_(next_token)" in benchmark_section
+    assert "verification_token = self._prefill_token_buffer.detach()" in benchmark_section
+    assert "torch.argmax(" not in benchmark_section
+    assert "torch.where(" not in source
+    assert "torch.stack(generated" not in source
+    assert "generated.append" not in source
     assert "cache_position=self._prompt_pos" in benchmark_section
     assert "self._verification_token.copy_(self.output)" in capture_section
     assert "self.output = self._verification_token" in capture_section

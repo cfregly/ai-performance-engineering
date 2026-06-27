@@ -170,6 +170,12 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prompt_ids: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._verification_token: Optional[torch.Tensor] = None
+        self._prefill_token_buffer: Optional[torch.Tensor] = None
+        self._decode_next_token_buffer: Optional[torch.Tensor] = None
+        self._decode_max_value_buffer: Optional[torch.Tensor] = None
+        self._generated_tokens_buffer: Optional[torch.Tensor] = None
+        self._done_mask_buffer: Optional[torch.Tensor] = None
+        self._eos_compare_buffer: Optional[torch.Tensor] = None
         self._prompt_pos: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self._static_cache: Optional[StaticCache] = None
@@ -281,6 +287,23 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.int32,
             device=self.device,
         )
+        self._prefill_token_buffer = torch.empty(
+            self.cfg.batch_size,
+            dtype=torch.long,
+            device=self.device,
+        )
+        self._decode_next_token_buffer = torch.empty(
+            self.cfg.batch_size,
+            dtype=torch.long,
+            device=self.device,
+        )
+        self._generated_tokens_buffer = torch.empty(
+            (self.cfg.batch_size, self.cfg.decode_tokens),
+            dtype=torch.long,
+            device=self.device,
+        )
+        self._done_mask_buffer = torch.empty(self.cfg.batch_size, dtype=torch.bool, device=self.device)
+        self._eos_compare_buffer = torch.empty(self.cfg.batch_size, dtype=torch.bool, device=self.device)
         self._prompt_pos = torch.arange(self.cfg.prompt_tokens, device=self.device, dtype=torch.long)
         if self.cfg.cache_mode == "static":
             self._setup_static_cache()
@@ -299,6 +322,38 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._prefill_start_event = torch.cuda.Event(enable_timing=True)
         self._prefill_end_event = torch.cuda.Event(enable_timing=True)
         self._decode_end_event = torch.cuda.Event(enable_timing=True)
+
+    def _next_token_from_logits(self, logits_last: torch.Tensor) -> torch.Tensor:
+        if self._decode_next_token_buffer is None:
+            raise RuntimeError("Next-token buffer is not initialized")
+        values = self._decode_max_value_buffer
+        if (
+            values is None
+            or values.device != logits_last.device
+            or values.dtype != logits_last.dtype
+            or values.numel() != logits_last.size(0)
+        ):
+            values = torch.empty_like(logits_last[:, 0])
+            self._decode_max_value_buffer = values
+        torch.max(logits_last, dim=-1, out=(values, self._decode_next_token_buffer))
+        return self._decode_next_token_buffer
+
+    def _initialize_done_mask(self, next_token: torch.Tensor) -> torch.Tensor:
+        if self._done_mask_buffer is None:
+            raise RuntimeError("Done-mask buffer is not initialized")
+        torch.eq(next_token, self.cfg.eos_token_id, out=self._done_mask_buffer)
+        return self._done_mask_buffer
+
+    def _update_done_mask(self, done_mask: torch.Tensor, next_token: torch.Tensor) -> None:
+        if self._eos_compare_buffer is None:
+            raise RuntimeError("EOS compare buffer is not initialized")
+        torch.eq(next_token, self.cfg.eos_token_id, out=self._eos_compare_buffer)
+        done_mask.logical_or_(self._eos_compare_buffer)
+
+    def _decode_output_buffer(self) -> torch.Tensor:
+        if self._generated_tokens_buffer is None:
+            raise RuntimeError("Generated-token buffer is not initialized")
+        return self._generated_tokens_buffer
 
     def _maybe_poll_done(self, done_mask: torch.Tensor, step: int) -> bool:
         should_poll = (step + 1) % self.cfg.eos_poll_interval == 0 or (step + 1) == self.cfg.decode_tokens
@@ -361,9 +416,12 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _decode_dynamic(self, next_token: torch.Tensor, past_key_values: object) -> torch.Tensor:
         if self.model is None:
             raise RuntimeError("Model not initialized")
-        done_mask = next_token.eq(self.cfg.eos_token_id)
-        generated: list[torch.Tensor] = []
-        eos_fill = self._eos_token.expand(self.cfg.batch_size)
+        if self._decode_next_token_buffer is None:
+            raise RuntimeError("Next-token buffer is not initialized")
+        next_token = self._decode_next_token_buffer.copy_(next_token)
+        done_mask = self._initialize_done_mask(next_token)
+        generated = self._decode_output_buffer()
+        filled = 0
 
         for step in range(self.cfg.decode_tokens):
             outputs = self.model(
@@ -374,39 +432,44 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             logits = outputs[0]
             past_key_values = outputs[1]
-            next_token = torch.argmax(logits[:, -1, :], dim=-1)
-            generated.append(next_token)
-            done_mask.logical_or_(next_token.eq(self.cfg.eos_token_id))
+            next_token = self._next_token_from_logits(logits[:, -1, :])
+            generated[:, step].copy_(next_token)
+            filled = step + 1
+            self._update_done_mask(done_mask, next_token)
             all_done = self._maybe_poll_done(done_mask, step)
             if self.cfg.stop_on_all_done and all_done:
                 break
-            next_token = torch.where(done_mask, eos_fill, next_token)
+            next_token.masked_fill_(done_mask, self.cfg.eos_token_id)
 
-        while len(generated) < self.cfg.decode_tokens:
-            generated.append(eos_fill)
-        return torch.stack(generated, dim=1)
+        if filled < self.cfg.decode_tokens:
+            generated[:, filled:].fill_(self.cfg.eos_token_id)
+        return generated
 
     def _decode_static(self, next_token: torch.Tensor) -> torch.Tensor:
         if self._decode_step_fn is None:
             raise RuntimeError("Static decode step function is not initialized")
-        done_mask = next_token.eq(self.cfg.eos_token_id)
-        generated: list[torch.Tensor] = []
-        eos_fill = self._eos_token.expand(self.cfg.batch_size)
+        if self._decode_next_token_buffer is None:
+            raise RuntimeError("Next-token buffer is not initialized")
+        next_token = self._decode_next_token_buffer.copy_(next_token)
+        done_mask = self._initialize_done_mask(next_token)
+        generated = self._decode_output_buffer()
+        filled = 0
 
         for step in range(self.cfg.decode_tokens):
             self._cache_pos_token.fill_(self.cfg.prompt_tokens + step)
             logits_last = self._decode_step_fn(next_token.unsqueeze(-1), self._cache_pos_token)
-            next_token = torch.argmax(logits_last, dim=-1)
-            generated.append(next_token)
-            done_mask.logical_or_(next_token.eq(self.cfg.eos_token_id))
+            next_token = self._next_token_from_logits(logits_last)
+            generated[:, step].copy_(next_token)
+            filled = step + 1
+            self._update_done_mask(done_mask, next_token)
             all_done = self._maybe_poll_done(done_mask, step)
             if self.cfg.stop_on_all_done and all_done:
                 break
-            next_token = torch.where(done_mask, eos_fill, next_token)
+            next_token.masked_fill_(done_mask, self.cfg.eos_token_id)
 
-        while len(generated) < self.cfg.decode_tokens:
-            generated.append(eos_fill)
-        return torch.stack(generated, dim=1)
+        if filled < self.cfg.decode_tokens:
+            generated[:, filled:].fill_(self.cfg.eos_token_id)
+        return generated
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.prompt_ids is None:
@@ -427,10 +490,13 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 )
                 prefill_logits = prefill[0]
                 past_key_values = prefill[1]
-                next_token = torch.argmax(prefill_logits[:, -1, :], dim=-1)
-                verification_token = next_token.detach()
+                next_token = self._next_token_from_logits(prefill_logits[:, -1, :])
+                if self._prefill_token_buffer is None:
+                    raise RuntimeError("Prefill-token buffer is not initialized")
+                self._prefill_token_buffer.copy_(next_token)
+                verification_token = self._prefill_token_buffer.detach()
                 self._prefill_end_event.record(current_stream)
-                _ = self._decode_dynamic(next_token, past_key_values)
+                _ = self._decode_dynamic(self._prefill_token_buffer, past_key_values)
             else:
                 if self._static_cache is None or self._prompt_pos is None:
                     raise RuntimeError("Static cache mode selected but static cache is not initialized")
@@ -441,10 +507,13 @@ class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     use_cache=True,
                     return_dict=False,
                 )[0]
-                next_token = torch.argmax(prefill_logits[:, -1, :], dim=-1)
-                verification_token = next_token.detach()
+                next_token = self._next_token_from_logits(prefill_logits[:, -1, :])
+                if self._prefill_token_buffer is None:
+                    raise RuntimeError("Prefill-token buffer is not initialized")
+                self._prefill_token_buffer.copy_(next_token)
+                verification_token = self._prefill_token_buffer.detach()
                 self._prefill_end_event.record(current_stream)
-                _ = self._decode_static(next_token)
+                _ = self._decode_static(self._prefill_token_buffer)
 
             if self.cfg.eos_sync_mode == "async_streamed" and self._pending_poll and self._poll_stream is not None:
                 current_stream.wait_stream(self._poll_stream)
