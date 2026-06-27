@@ -81,7 +81,7 @@ class MoEExperts(nn.Module):
         self.w2_stacked = nn.Parameter(torch.empty(num_experts, intermediate_size, hidden_size))
         self.w3_stacked = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
 
-        with torch.no_grad():
+        with torch.inference_mode():
             for idx, expert in enumerate(self.experts):
                 self.w1_stacked[idx].copy_(expert["w1"].weight.t())
                 self.w2_stacked[idx].copy_(expert["w2"].weight.t())

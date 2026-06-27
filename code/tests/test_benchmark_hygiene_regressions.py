@@ -5285,6 +5285,8 @@ def test_moe_cuda_graphs_journey_uses_real_graph_capture_and_correct_leveling() 
 
     assert "self._cuda_graph = torch.cuda.CUDAGraph()" in model_source
     assert "self._cuda_graph.replay()" in model_source
+    assert "with torch.inference_mode():" in model_source
+    assert "with torch.no_grad():" not in model_source
     assert "self.output = logits[:, :1, : min(8, logits.shape[-1])]" in benchmark_source
     assert ".float().clone()" not in benchmark_source.split("def capture_verification_payload", maxsplit=1)[0]
     assert "Level6CUDAGraphs" in cuda_graph_source
