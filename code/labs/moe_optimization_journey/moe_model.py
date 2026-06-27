@@ -104,6 +104,8 @@ class MoEExperts(nn.Module):
         self._cuda_graph_last_error: Optional[str] = None
         self._bmm_padded_tokens: Optional[torch.Tensor] = None
         self._bmm_padded_weights: Optional[torch.Tensor] = None
+        self._bmm_flat_token_ids_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}
+        self._bmm_position_ids_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
 
     @staticmethod
     def _is_torch_compiling() -> bool:
@@ -140,7 +142,7 @@ class MoEExperts(nn.Module):
         device: torch.device,
         dtype: torch.dtype,
     ) -> torch.Tensor:
-        cached = getattr(self, name)
+        cached = getattr(self, name, None)
         if (
             isinstance(cached, torch.Tensor)
             and cached.shape == shape
@@ -151,6 +153,22 @@ class MoEExperts(nn.Module):
         workspace = torch.empty(shape, device=device, dtype=dtype)
         setattr(self, name, workspace)
         return workspace
+
+    def _flat_topk_token_ids_for(self, num_tokens: int, top_k: int, device: torch.device) -> torch.Tensor:
+        key = (num_tokens, top_k, device)
+        cached = self._bmm_flat_token_ids_cache.get(key)
+        if cached is None:
+            cached = _flat_topk_token_ids(num_tokens, top_k, device)
+            self._bmm_flat_token_ids_cache[key] = cached
+        return cached
+
+    def _position_ids_for(self, length: int, device: torch.device) -> torch.Tensor:
+        key = (length, device)
+        cached = self._bmm_position_ids_cache.get(key)
+        if cached is None:
+            cached = torch.arange(length, device=device, dtype=torch.int64)
+            self._bmm_position_ids_cache[key] = cached
+        return cached
 
     def _reset_cuda_graph_cache(self) -> None:
         self._cuda_graph = None
@@ -374,7 +392,7 @@ class MoEExperts(nn.Module):
         # path. That keeps the lab aligned with the production-style grouped-routing
         # utilities it already documents, and avoids the current sort-heavy slowdown.
         batch_seq, top_k = expert_indices.shape
-        flat_token_ids = _flat_topk_token_ids(batch_seq, top_k, x.device)
+        flat_token_ids = self._flat_topk_token_ids_for(batch_seq, top_k, x.device)
         flat_expert_ids = expert_indices.view(-1)
         (
             sorted_tokens,
@@ -446,22 +464,78 @@ class MoEExperts(nn.Module):
         # Sort by expert
         flat_idx = expert_indices.view(-1)
         sorted_order = torch.argsort(flat_idx, stable=True)
-        flat_token_ids = _flat_topk_token_ids(batch_seq, top_k, device)
-        sorted_token_ids = flat_token_ids.index_select(0, sorted_order)
-        sorted_tokens = x.index_select(0, sorted_token_ids)
-        sorted_weights = expert_weights.view(-1).index_select(0, sorted_order)
-        sorted_expert_ids = flat_idx.index_select(0, sorted_order)
+        flat_token_ids = self._flat_topk_token_ids_for(batch_seq, top_k, device)
+        assignments = flat_idx.numel()
+        sorted_token_ids = self._bmm_workspace(
+            "_bmm_sorted_token_ids",
+            (assignments,),
+            device=device,
+            dtype=torch.int64,
+        )
+        torch.index_select(flat_token_ids, 0, sorted_order, out=sorted_token_ids)
+        sorted_tokens = self._bmm_workspace(
+            "_bmm_sorted_tokens",
+            (assignments, self.hidden_size),
+            device=device,
+            dtype=x.dtype,
+        )
+        torch.index_select(x, 0, sorted_token_ids, out=sorted_tokens)
+        sorted_weights = self._bmm_workspace(
+            "_bmm_sorted_weights",
+            (assignments,),
+            device=device,
+            dtype=expert_weights.dtype,
+        )
+        torch.index_select(expert_weights.view(-1), 0, sorted_order, out=sorted_weights)
+        sorted_expert_ids = self._bmm_workspace(
+            "_bmm_sorted_expert_ids",
+            (assignments,),
+            device=device,
+            dtype=torch.int64,
+        )
+        torch.index_select(flat_idx, 0, sorted_order, out=sorted_expert_ids)
         counts = torch.bincount(sorted_expert_ids, minlength=self.num_experts)
-        max_count = counts.max().item()
+        max_count = int(counts.max().item())
         
         # Vectorized scatter indices
-        cumsum = counts.cumsum(0)
-        starts = torch.empty_like(counts)
+        cumsum = self._bmm_workspace(
+            "_bmm_expert_cumsum",
+            (self.num_experts,),
+            device=device,
+            dtype=counts.dtype,
+        )
+        torch.cumsum(counts, dim=0, out=cumsum)
+        starts = self._bmm_workspace(
+            "_bmm_expert_starts",
+            (self.num_experts,),
+            device=device,
+            dtype=counts.dtype,
+        )
         starts[0] = 0
         starts[1:].copy_(cumsum[:-1])
-        expert_offsets = starts[sorted_expert_ids]
-        positions = torch.arange(len(sorted_expert_ids), device=device) - expert_offsets
-        padded_indices = sorted_expert_ids * max_count + positions
+        expert_offsets = self._bmm_workspace(
+            "_bmm_expert_offsets",
+            (assignments,),
+            device=device,
+            dtype=torch.int64,
+        )
+        torch.index_select(starts, 0, sorted_expert_ids, out=expert_offsets)
+        position_ids = self._position_ids_for(sorted_expert_ids.numel(), device)
+        positions = self._bmm_workspace(
+            "_bmm_positions",
+            (assignments,),
+            device=device,
+            dtype=torch.int64,
+        )
+        torch.sub(position_ids, expert_offsets, out=positions)
+        padded_indices = self._bmm_workspace(
+            "_bmm_padded_indices",
+            (assignments,),
+            device=device,
+            dtype=torch.int64,
+        )
+        torch.mul(sorted_expert_ids, max_count, out=padded_indices)
+        padded_indices.add_(positions)
         
         # Scatter tokens into padded tensor (vectorized!)
         padded_tokens = self._bmm_workspace(
@@ -495,11 +569,17 @@ class MoEExperts(nn.Module):
         
         # Gather back using same indices
         flat_out = out.view(-1, self.hidden_size)
-        valid_out = flat_out[padded_indices]
+        valid_out = flat_out.index_select(0, padded_indices)
         
         # Restore order
-        unsort = torch.argsort(sorted_order)
-        restored = valid_out[unsort].view(batch_seq, top_k, -1)
+        unsort = self._bmm_workspace(
+            "_bmm_unsort",
+            (assignments,),
+            device=device,
+            dtype=torch.int64,
+        )
+        unsort[sorted_order] = position_ids
+        restored = valid_out.index_select(0, unsort).view(batch_seq, top_k, -1)
         return restored.sum(dim=1)
 
     def _forward_bmm_fused_graphable(

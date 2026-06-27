@@ -66,11 +66,19 @@ def test_graphable_bmm_fused_path_matches_dynamic_bmm_path() -> None:
     dynamic = experts.forward_bmm_fused(x, expert_indices, expert_weights)
     token_workspace_ptr = experts._bmm_padded_tokens.data_ptr()
     weight_workspace_ptr = experts._bmm_padded_weights.data_ptr()
+    index_workspace_ptr = experts._bmm_padded_indices.data_ptr()
+    unsort_workspace_ptr = experts._bmm_unsort.data_ptr()
+    flat_token_ids_ptr = experts._bmm_flat_token_ids_cache[(4, 1, torch.device("cpu"))].data_ptr()
+    position_ids_ptr = experts._bmm_position_ids_cache[(4, torch.device("cpu"))].data_ptr()
     dynamic_again = experts.forward_bmm_fused(x, expert_indices, expert_weights)
     graphable = experts._forward_bmm_fused_graphable(x, expert_indices, expert_weights)
 
     assert experts._bmm_padded_tokens.data_ptr() == token_workspace_ptr
     assert experts._bmm_padded_weights.data_ptr() == weight_workspace_ptr
+    assert experts._bmm_padded_indices.data_ptr() == index_workspace_ptr
+    assert experts._bmm_unsort.data_ptr() == unsort_workspace_ptr
+    assert experts._bmm_flat_token_ids_cache[(4, 1, torch.device("cpu"))].data_ptr() == flat_token_ids_ptr
+    assert experts._bmm_position_ids_cache[(4, torch.device("cpu"))].data_ptr() == position_ids_ptr
     torch.testing.assert_close(dynamic_again, dynamic)
     torch.testing.assert_close(graphable, dynamic)
 
@@ -133,8 +141,26 @@ def test_level5_bmm_path_reuses_padding_workspaces() -> None:
     )[0]
 
     assert "def _bmm_workspace" in text
+    assert "cached = getattr(self, name, None)" in text
     assert "self._bmm_padded_tokens: Optional[torch.Tensor] = None" in text
     assert "self._bmm_padded_weights: Optional[torch.Tensor] = None" in text
+    assert "self._bmm_flat_token_ids_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}" in text
+    assert "self._bmm_position_ids_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}" in text
+    assert "def _flat_topk_token_ids_for(self, num_tokens: int, top_k: int, device: torch.device)" in text
+    assert "def _position_ids_for(self, length: int, device: torch.device)" in text
+    assert "flat_token_ids = self._flat_topk_token_ids_for(batch_seq, top_k, device)" in bmm_section
+    assert "torch.index_select(flat_token_ids, 0, sorted_order, out=sorted_token_ids)" in bmm_section
+    assert "torch.index_select(x, 0, sorted_token_ids, out=sorted_tokens)" in bmm_section
+    assert "torch.index_select(expert_weights.view(-1), 0, sorted_order, out=sorted_weights)" in bmm_section
+    assert "torch.index_select(flat_idx, 0, sorted_order, out=sorted_expert_ids)" in bmm_section
+    assert "torch.cumsum(counts, dim=0, out=cumsum)" in bmm_section
+    assert "torch.index_select(starts, 0, sorted_expert_ids, out=expert_offsets)" in bmm_section
+    assert "position_ids = self._position_ids_for(sorted_expert_ids.numel(), device)" in bmm_section
+    assert "torch.sub(position_ids, expert_offsets, out=positions)" in bmm_section
+    assert "torch.mul(sorted_expert_ids, max_count, out=padded_indices)" in bmm_section
+    assert "valid_out = flat_out.index_select(0, padded_indices)" in bmm_section
+    assert "unsort[sorted_order] = position_ids" in bmm_section
+    assert "restored = valid_out.index_select(0, unsort).view(batch_seq, top_k, -1)" in bmm_section
     assert 'padded_tokens = self._bmm_workspace(' in bmm_section
     assert '"_bmm_padded_tokens",' in bmm_section
     assert 'padded_weights = self._bmm_workspace(' in bmm_section
@@ -144,6 +170,8 @@ def test_level5_bmm_path_reuses_padding_workspaces() -> None:
     assert "padded_tokens.scatter_(" in bmm_section
     assert "padded_weights.scatter_(" in bmm_section
     assert "torch.zeros(self.num_experts * max_count" not in bmm_section
+    assert "torch.arange(len(sorted_expert_ids)" not in bmm_section
+    assert "torch.argsort(sorted_order)" not in bmm_section
 
 
 def test_naive_moe_path_seeds_output_from_first_route() -> None:
@@ -207,7 +235,7 @@ def test_grouped_moe_path_uses_shared_bucket_helpers() -> None:
 
     assert "bucket_grouped_tokens(" in grouped_section
     assert "def _flat_topk_token_ids" in text
-    assert "flat_token_ids = _flat_topk_token_ids(batch_seq, top_k, x.device)" in grouped_section
+    assert "flat_token_ids = self._flat_topk_token_ids_for(batch_seq, top_k, x.device)" in grouped_section
     assert "token_ids=flat_token_ids" in grouped_section
     assert "return_expert_order_list=True" in grouped_section
     assert "output = torch.empty(" in grouped_section

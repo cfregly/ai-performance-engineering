@@ -110,13 +110,23 @@ def test_moe_bmm_fusion_reuses_offset_buffer_without_cat() -> None:
         maxsplit=1,
     )[0]
 
-    assert "starts = torch.empty_like(counts)" in bmm_fusion_section
+    assert '"_bmm_expert_starts",' in bmm_fusion_section
     assert "starts[0] = 0" in bmm_fusion_section
     assert "starts[1:].copy_(cumsum[:-1])" in bmm_fusion_section
+    assert "torch.cumsum(counts, dim=0, out=cumsum)" in bmm_fusion_section
     assert "starts = torch.cat(" not in bmm_fusion_section
     assert "x.repeat_interleave(top_k" not in bmm_fusion_section
-    assert "sorted_token_ids = flat_token_ids.index_select(0, sorted_order)" in bmm_fusion_section
-    assert "sorted_tokens = x.index_select(0, sorted_token_ids)" in bmm_fusion_section
+    assert "flat_token_ids = self._flat_topk_token_ids_for(batch_seq, top_k, device)" in bmm_fusion_section
+    assert "torch.index_select(flat_token_ids, 0, sorted_order, out=sorted_token_ids)" in bmm_fusion_section
+    assert "torch.index_select(x, 0, sorted_token_ids, out=sorted_tokens)" in bmm_fusion_section
+    assert "torch.index_select(starts, 0, sorted_expert_ids, out=expert_offsets)" in bmm_fusion_section
+    assert "position_ids = self._position_ids_for(sorted_expert_ids.numel(), device)" in bmm_fusion_section
+    assert "torch.sub(position_ids, expert_offsets, out=positions)" in bmm_fusion_section
+    assert "torch.mul(sorted_expert_ids, max_count, out=padded_indices)" in bmm_fusion_section
+    assert "unsort[sorted_order] = position_ids" in bmm_fusion_section
+    assert "valid_out.index_select(0, unsort)" in bmm_fusion_section
+    assert "torch.arange(len(sorted_expert_ids)" not in bmm_fusion_section
+    assert "torch.argsort(sorted_order)" not in bmm_fusion_section
 
 
 def test_triton_fused_moe_uses_overwritten_output_and_inplace_offsets() -> None:
