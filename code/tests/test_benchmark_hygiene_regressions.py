@@ -304,6 +304,8 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     )[0]
 
     assert p2p_section.count("recv_tensor = torch.empty_like(tensor)") == 1
+    assert "tensor = torch.empty(size, device=device, dtype=torch.float32)" in p2p_section
+    assert "torch.randn(size, device=device, dtype=torch.float32)" not in p2p_section
     assert "torch.tensor([bw]" not in matrix_section
     assert "bw_tensor = torch.empty(1, device=torch.cuda.current_device()" in matrix_section
     assert "dist.all_reduce(tensor.clone())" not in collective_section

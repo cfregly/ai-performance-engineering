@@ -85,7 +85,7 @@ def benchmark_p2p_bandwidth(
     device = torch.cuda.current_device()
     
     size = size_mb * 1024 * 1024 // 4  # Convert to float32 elements
-    tensor = torch.randn(size, device=device, dtype=torch.float32)
+    tensor = torch.empty(size, device=device, dtype=torch.float32)
     recv_tensor = torch.empty_like(tensor) if rank == dst_rank else None
     
     # Warmup
