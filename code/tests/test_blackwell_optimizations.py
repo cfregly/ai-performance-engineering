@@ -296,9 +296,14 @@ class TestNumericalCorrectness:
         blackwell = pytest.importorskip("ch16.inference_optimizations_blackwell")
 
         source = inspect.getsource(blackwell.BlackwellInferencePipeline.generate)
+        pipeline_source = inspect.getsource(blackwell.BlackwellInferencePipeline)
         assert "output_ids = torch.empty(" in source
+        assert "self._next_token_buffer: Optional[torch.Tensor] = None" in pipeline_source
+        assert "def _next_token_from_logits" in pipeline_source
+        assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in pipeline_source
         assert "output_ids[:, :seq_len].copy_(input_ids)" in source
         assert "output_ids[:, seq_len : seq_len + 1].copy_(next_token)" in source
+        assert ".argmax(dim=-1, keepdim=True)" not in source
         assert "generated = [next_token]" not in source
         assert "generated.append(next_token)" not in source
         assert "torch.cat(generated" not in source

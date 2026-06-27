@@ -445,6 +445,8 @@ class BlackwellInferencePipeline:
             device=str(self.device),
         )
         
+        self._next_token_buffer: Optional[torch.Tensor] = None
+        self._next_token_values: Optional[torch.Tensor] = None
         # Compile model with torch.compile (PyTorch 2.10)
         if compile:
             print("Compiling model with torch.compile...")
@@ -463,6 +465,28 @@ class BlackwellInferencePipeline:
             print(" Model compiled")
         
         self.compiled = compile
+
+    def _next_token_from_logits(self, logits_last: torch.Tensor) -> torch.Tensor:
+        batch_size = logits_last.size(0)
+        if (
+            self._next_token_buffer is None
+            or self._next_token_buffer.device != logits_last.device
+            or tuple(self._next_token_buffer.shape) != (batch_size, 1)
+        ):
+            self._next_token_buffer = torch.empty(
+                (batch_size, 1),
+                dtype=torch.long,
+                device=logits_last.device,
+            )
+        if (
+            self._next_token_values is None
+            or self._next_token_values.device != logits_last.device
+            or self._next_token_values.dtype != logits_last.dtype
+            or tuple(self._next_token_values.shape) != (batch_size, 1)
+        ):
+            self._next_token_values = torch.empty_like(logits_last[:, :1])
+        torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))
+        return self._next_token_buffer
     
     @torch.inference_mode()
     def generate(
@@ -498,13 +522,13 @@ class BlackwellInferencePipeline:
         
         # Prefill phase (process all input tokens)
         logits = self.model(input_ids)
-        next_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)
+        next_token = self._next_token_from_logits(logits[:, -1, :])
         output_ids[:, seq_len : seq_len + 1].copy_(next_token)
         
         # Decode phase (autoregressive generation)
         for step in range(1, max_new_tokens):
             logits = self.model(next_token)
-            next_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)
+            next_token = self._next_token_from_logits(logits[:, -1, :])
             output_ids[:, seq_len + step : seq_len + step + 1].copy_(next_token)
         
         return output_ids
