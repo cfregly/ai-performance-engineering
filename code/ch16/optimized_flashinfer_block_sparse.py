@@ -74,7 +74,8 @@ class OptimizedFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBenc
         if self.q is None or self.k is None or self.v is None or self.wrapper is None:
             raise RuntimeError("Benchmark not initialized")
         with self._nvtx_range("optimized_flashinfer_block_sparse"):
-            self.output = self.wrapper.run(self.q, self.k, self.v)
+            with torch.inference_mode():
+                self.output = self.wrapper.run(self.q, self.k, self.v)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -120,5 +121,4 @@ class OptimizedFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBenc
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedFlashInferBlockSparseBenchmark()
-
 

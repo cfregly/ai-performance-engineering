@@ -3124,6 +3124,14 @@ def test_ch16_block_sparse_bsr_build_uses_vectorized_metadata() -> None:
     )[0]
     bsr_section = source.split("def build_bsr_from_block_mask", maxsplit=1)[1]
 
+    for filename in ("baseline_flashinfer_block_sparse.py", "optimized_flashinfer_block_sparse.py"):
+        benchmark_source = (REPO_ROOT / "ch16" / filename).read_text(encoding="utf-8")
+        benchmark_section = benchmark_source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "with torch.inference_mode():" in benchmark_section
+
     pattern = build_block_sparse_pattern(seq_len=16, block_size=4, window_blocks=1)
     expected_pattern = torch.tensor(
         [

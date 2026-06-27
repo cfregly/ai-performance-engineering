@@ -1,8 +1,6 @@
 """Baseline block-sparse attention using dense SDP with an explicit mask."""
 
 from __future__ import annotations
-
-import math
 from typing import Optional
 
 import torch
@@ -66,17 +64,18 @@ class BaselineFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBench
         if self.q is None or self.k is None or self.v is None or self.attn_mask is None:
             raise RuntimeError("Benchmark not initialized")
         with self._nvtx_range("baseline_flashinfer_block_sparse"):
-            q = self.q.transpose(0, 1).unsqueeze(0)
-            k = self.k.transpose(0, 1).unsqueeze(0)
-            v = self.v.transpose(0, 1).unsqueeze(0)
-            out = F.scaled_dot_product_attention(
-                q,
-                k,
-                v,
-                attn_mask=self.attn_mask,
-                is_causal=False,
-            )
-            self.output = out.squeeze(0).transpose(0, 1)
+            with torch.inference_mode():
+                q = self.q.transpose(0, 1).unsqueeze(0)
+                k = self.k.transpose(0, 1).unsqueeze(0)
+                v = self.v.transpose(0, 1).unsqueeze(0)
+                out = F.scaled_dot_product_attention(
+                    q,
+                    k,
+                    v,
+                    attn_mask=self.attn_mask,
+                    is_causal=False,
+                )
+                self.output = out.squeeze(0).transpose(0, 1)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -122,5 +121,4 @@ class BaselineFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBench
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineFlashInferBlockSparseBenchmark()
-
 
