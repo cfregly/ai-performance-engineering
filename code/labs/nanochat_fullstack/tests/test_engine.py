@@ -464,7 +464,8 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
 
 def test_kv_cache_reuses_token_mask_row_sums():
     source = Path(__file__).resolve().parents[1] / "nanochat" / "engine.py"
-    insert_section = source.read_text(encoding="utf-8").split(
+    text = source.read_text(encoding="utf-8")
+    insert_section = text.split(
         "def insert_kv", maxsplit=1,
     )[1].split(
         "# Return the full cached keys/values",
@@ -481,6 +482,10 @@ def test_kv_cache_reuses_token_mask_row_sums():
     assert "rows = batch_idx[active]" in insert_section
     assert "if rows.numel() == 0:" in insert_section
     assert "torch.any(active)" not in insert_section
+    assert "def get_pos(self):\n        return self.pos" in text
+    assert insert_section.count(".max().item()") == 1
+    assert "self.pos = int(self.row_pos.max().item())" not in insert_section
+    assert "t1_source =" not in insert_section
 
 
 def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():

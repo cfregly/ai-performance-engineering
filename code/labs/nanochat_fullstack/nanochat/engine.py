@@ -115,7 +115,7 @@ class KVCache:
         self.row_pos = None
 
     def get_pos(self):
-        return self.pos if self.row_pos is None else int(self.row_pos.max().item())
+        return self.pos
 
     def get_row_pos(self):
         return self.row_pos
@@ -259,9 +259,7 @@ class KVCache:
                     self.kv_cache[layer_idx, 1, rows, :, positions] = v[rows, :, t, :]
             if layer_idx == self.kv_cache.size(0) - 1:
                 self.row_pos = next_row_pos
-                self.pos = int(self.row_pos.max().item())
-            t1_source = self.row_pos if layer_idx == self.kv_cache.size(0) - 1 else next_row_pos
-            t1 = int(t1_source.max().item())
+            t1 = max_needed
         else:
             t0, t1 = self.pos, self.pos + T_add
             self._maybe_grow_cache(t1, k.dtype, k.device)
