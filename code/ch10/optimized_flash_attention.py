@@ -215,7 +215,7 @@ class OptimizedFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _try_sdpa_backend(self, candidate: list[SDPBackend]) -> bool:
         if self.model is None or self.input is None:
             raise RuntimeError("setup() must initialize model and input before selecting SDPA backends")
-        with torch.no_grad(), sdpa_backend_context(candidate):
+        with torch.inference_mode(), sdpa_backend_context(candidate):
             _ = self.model(self.input[:1], is_causal=self.use_causal)
         self._sdpa_backends = candidate
         self._selected_backend_name = candidate[0].name.lower()

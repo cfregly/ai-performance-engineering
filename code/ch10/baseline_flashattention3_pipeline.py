@@ -181,22 +181,22 @@ class BaselineFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
 
-        with torch.no_grad():
-            weight_scale = 0.02
-            q_weight = torch.randn(self.hidden_dim, self.hidden_dim, device=self.device, dtype=dtype) * weight_scale
-            k_weight = torch.randn(self.hidden_dim, self.hidden_dim, device=self.device, dtype=dtype) * weight_scale
-            v_weight = torch.randn(self.hidden_dim, self.hidden_dim, device=self.device, dtype=dtype) * weight_scale
-            out_weight = torch.randn(self.hidden_dim, self.hidden_dim, device=self.device, dtype=dtype) * weight_scale
+        weight_scale = 0.02
+        q_weight = torch.randn(self.hidden_dim, self.hidden_dim, device=self.device, dtype=dtype) * weight_scale
+        k_weight = torch.randn(self.hidden_dim, self.hidden_dim, device=self.device, dtype=dtype) * weight_scale
+        v_weight = torch.randn(self.hidden_dim, self.hidden_dim, device=self.device, dtype=dtype) * weight_scale
+        out_weight = torch.randn(self.hidden_dim, self.hidden_dim, device=self.device, dtype=dtype) * weight_scale
 
+        with torch.inference_mode():
             self.model.q_proj.weight.copy_(q_weight)
             self.model.k_proj.weight.copy_(k_weight)
             self.model.v_proj.weight.copy_(v_weight)
             self.model.out_proj.weight.copy_(out_weight)
 
-            self.input = torch.randn(
-                self.batch_size, self.seq_len, self.hidden_dim,
-                device=self.device, dtype=dtype
-            )
+        self.input = torch.randn(
+            self.batch_size, self.seq_len, self.hidden_dim,
+            device=self.device, dtype=dtype
+        )
 
         self._verify_input = self.input.detach().clone()
         

@@ -1283,6 +1283,10 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     optimized_ch10_flash = (REPO_ROOT / "ch10" / "optimized_flash_attention.py").read_text(
         encoding="utf-8"
     )
+    sdpa_probe = optimized_ch10_flash.split("def _try_sdpa_backend", maxsplit=1)[1].split(
+        "def _resolve_sdpa_backends",
+        maxsplit=1,
+    )[0]
     external_probe = optimized_ch10_flash.split("def _resolve_external_flash", maxsplit=1)[1].split(
         "def _resolve_attention_runner",
         maxsplit=1,
@@ -1291,10 +1295,24 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         "def get_benchmark",
         maxsplit=1,
     )[0]
+    assert "with torch.inference_mode(), sdpa_backend_context(candidate):" in sdpa_probe
+    assert "with torch.no_grad()" not in sdpa_probe
     assert "with torch.inference_mode():" in external_probe
     assert "with torch.inference_mode():" in validate_section
     assert "with torch.no_grad():" not in external_probe
     assert "with torch.no_grad():" not in validate_section
+
+    for relative_path in (
+        "ch10/baseline_flashattention3_pipeline.py",
+        "ch10/optimized_flashattention3_pipeline.py",
+    ):
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        assert "with torch.inference_mode():" in setup_section
+        assert "with torch.no_grad():" not in setup_section
 
     for filename in ("baseline_flashinfer_attention.py", "optimized_flashinfer_attention.py"):
         source = (REPO_ROOT / "labs" / "flashinfer_attention" / filename).read_text(
