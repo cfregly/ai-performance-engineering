@@ -63,7 +63,7 @@ class BaselineSequenceRankingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self.inputs is None or self.state is None or self.workspace is None:
             raise RuntimeError("Benchmark state is not initialized")
-        with torch.no_grad():
+        with torch.inference_mode():
             self.output = baseline_forward(self.inputs, self.state, self.workspace)
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
@@ -127,4 +127,3 @@ class BaselineSequenceRankingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineSequenceRankingBenchmark()
-

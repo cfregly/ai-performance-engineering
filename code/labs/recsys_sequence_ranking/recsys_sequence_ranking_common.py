@@ -626,7 +626,7 @@ def warm_optimized_path(
 ) -> None:
     """Pay one-time compile/autotune costs before the measured loop."""
 
-    with torch.no_grad():
+    with torch.inference_mode():
         seq_vec = sequence_mean_vectorized(inputs, state, workspace)
         context_vec = context_sum_vectorized(inputs, state, workspace)
         user_input = seq_vec.add_(context_vec)

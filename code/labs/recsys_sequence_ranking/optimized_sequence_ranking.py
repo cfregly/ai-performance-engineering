@@ -95,7 +95,7 @@ class OptimizedSequenceRankingBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def benchmark_fn(self) -> None:
         if self.inputs is None or self.state is None:
             raise RuntimeError("Benchmark state is not initialized")
-        with torch.no_grad():
+        with torch.inference_mode():
             self.output = optimized_forward(
                 self.inputs,
                 self.state,

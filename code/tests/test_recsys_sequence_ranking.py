@@ -25,6 +25,7 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     resolve_score_backend,
     sequence_mean_baseline,
     sequence_mean_vectorized,
+    warm_optimized_path,
 )
 
 
@@ -170,6 +171,19 @@ def test_torch_candidate_scoring_reuses_workspace_output_on_cpu() -> None:
     assert "out=out.unsqueeze(2)" in source
     assert workspace_scores.data_ptr() == workspace.score_output.data_ptr()
     torch.testing.assert_close(workspace_scores, fallback_scores, rtol=1e-6, atol=1e-6)
+
+
+def test_ranking_hot_paths_use_inference_mode() -> None:
+    baseline_source = inspect.getsource(BaselineSequenceRankingBenchmark.benchmark_fn)
+    optimized_source = inspect.getsource(OptimizedSequenceRankingBenchmark.benchmark_fn)
+    warmup_source = inspect.getsource(warm_optimized_path)
+
+    assert "with torch.inference_mode():" in baseline_source
+    assert "with torch.inference_mode():" in optimized_source
+    assert "with torch.inference_mode():" in warmup_source
+    assert "with torch.no_grad():" not in baseline_source
+    assert "with torch.no_grad():" not in optimized_source
+    assert "with torch.no_grad():" not in warmup_source
 
 
 def test_resolve_score_backend_respects_availability() -> None:
