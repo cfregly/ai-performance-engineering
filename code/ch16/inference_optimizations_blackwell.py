@@ -699,6 +699,8 @@ class TensorParallelMultiGPU:
         self.rank = rank
         self.local_rank = resolve_local_rank()
         self.device = torch.device(f"cuda:{self.local_rank}")
+        self._gathered_outputs = None
+        self._final_output = None
         
         # Move model to current GPU
         self.model = self.model.to(self.device)
@@ -748,9 +750,26 @@ class TensorParallelMultiGPU:
         # All-gather outputs across GPUs
         import torch.distributed as dist
         if dist.is_initialized():
-            gathered_outputs = [torch.empty_like(outputs) for _ in range(self.num_gpus)]
-            dist.all_gather(gathered_outputs, outputs)
-            final_output = torch.cat(gathered_outputs, dim=-1)
+            expected_shape = (*outputs.shape[:-1], outputs.shape[-1] * self.num_gpus)
+            needs_buffer = (
+                self._final_output is None
+                or self._final_output.shape != expected_shape
+                or self._final_output.device != outputs.device
+                or self._final_output.dtype != outputs.dtype
+            )
+            if needs_buffer:
+                self._gathered_outputs = [
+                    torch.empty_like(outputs)
+                    for _ in range(self.num_gpus)
+                ]
+                self._final_output = torch.empty(
+                    expected_shape,
+                    device=outputs.device,
+                    dtype=outputs.dtype,
+                )
+            dist.all_gather(self._gathered_outputs, outputs)
+            torch.cat(self._gathered_outputs, dim=-1, out=self._final_output)
+            final_output = self._final_output
         else:
             final_output = outputs
         

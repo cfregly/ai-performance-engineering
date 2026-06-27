@@ -2634,6 +2634,25 @@ def test_ch16_inference_serving_flushes_kv_views_without_stack() -> None:
     assert "key_layers = []" not in flush_section
 
 
+def test_ch16_blackwell_tensor_parallel_reuses_gather_buffers() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_optimizations_blackwell.py").read_text(
+        encoding="utf-8"
+    )
+    init_section = source.split("class TensorParallelMultiGPU", maxsplit=1)[1].split(
+        "def shard_kv_cache",
+        maxsplit=1,
+    )[0]
+    forward_section = source.split("def forward(self, input_ids, kv_cache=None):", maxsplit=1)[1].split(
+        "def benchmark_multigpu_tensor_parallel",
+        maxsplit=1,
+    )[0]
+
+    assert "self._gathered_outputs = None" in init_section
+    assert "self._final_output = None" in init_section
+    assert "torch.cat(self._gathered_outputs, dim=-1, out=self._final_output)" in forward_section
+    assert "final_output = torch.cat(gathered_outputs, dim=-1)" not in forward_section
+
+
 def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
     source = (REPO_ROOT / "ch16" / "moe_performance_benchmark.py").read_text(
         encoding="utf-8"
