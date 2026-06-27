@@ -47,7 +47,7 @@ from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_
 import time
 import torch
 import torch.distributed as dist
-from typing import Optional, List
+from typing import Optional
 import math
 
 
@@ -117,9 +117,6 @@ def ring_allreduce_symmetric(
     chunk_size = tensor.numel() // world_size
     chunks = torch.chunk(tensor, world_size)
     
-    # Allocate result
-    result = torch.zeros_like(tensor)
-    
     # Ring reduction
     for step in range(world_size - 1):
         send_chunk_idx = (rank - step) % world_size
@@ -144,7 +141,7 @@ def ring_allreduce_symmetric(
         chunks[recv_chunk_idx].add_(recv_tensor)
     
     # Reconstruct tensor
-    result = torch.cat([c for c in chunks], dim=0)
+    result = torch.cat(chunks, dim=0)
     
     # AllGather phase (simplified - just use NCCL)
     dist.all_gather_into_tensor(result, result)

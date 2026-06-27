@@ -26,8 +26,6 @@ Async-TP currently requires:
   * torch.compile mode that includes the model ("max-autotune" by default below).
 """
 
-import os
-
 from core.common.device_utils import resolve_local_rank
 
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
@@ -159,10 +157,8 @@ def main() -> None:
     compiled_model = torch.compile(model, mode=args.compile_mode)
 
     optimizer = torch.optim.AdamW(compiled_model.parameters(), lr=3e-4, fused=True)
-    loss_fn = torch.nn.MSELoss()
 
     x = torch.randn(args.batch_size, args.hidden_dim, device=device)
-    target = torch.zeros_like(x)
 
     torch.cuda.synchronize()
     dist.barrier()
@@ -172,7 +168,7 @@ def main() -> None:
         optimizer.zero_grad(set_to_none=True)
 
         out = compiled_model(x)
-        loss = loss_fn(out, target)
+        loss = out.square().mean()
         loss.backward()
         optimizer.step()
 

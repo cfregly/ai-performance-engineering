@@ -320,6 +320,29 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     assert "dist.reduce_scatter(reducescatter_output, reducescatter_input)" in collective_section
 
 
+def test_ch04_symmetric_ring_allreduce_skips_dead_result_zero_fill() -> None:
+    source = (REPO_ROOT / "ch04" / "symmetric_memory_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    ring_section = source.split("def ring_allreduce_symmetric", maxsplit=1)[1].split(
+        "def benchmark_traditional_allreduce", maxsplit=1
+    )[0]
+
+    assert "result = torch.zeros_like(tensor)" not in ring_section
+    assert "result = torch.cat(chunks, dim=0)" in ring_section
+
+
+def test_ch04_torchtitan_async_tp_zero_target_uses_square_mean_loss() -> None:
+    source = (REPO_ROOT / "ch04" / "torchtitan_async_tp_multigpu_demo.py").read_text(
+        encoding="utf-8"
+    )
+    main_section = source.split("def main", maxsplit=1)[1]
+
+    assert "loss_fn = torch.nn.MSELoss()" not in main_section
+    assert "target = torch.zeros_like(x)" not in main_section
+    assert "loss = out.square().mean()" in main_section
+
+
 def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
     files = [
         "baseline_tensor_parallel.py",
