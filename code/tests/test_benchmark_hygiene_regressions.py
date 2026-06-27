@@ -5394,6 +5394,20 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
     assert "with torch.no_grad():" not in scale_section
 
 
+def test_ch19_fp8_compiled_matmul_uses_cuda_event_timing() -> None:
+    source = (REPO_ROOT / "ch19" / "fp8_compiled_matmul.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_matmul", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+
+    assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start.record()" in benchmark_section
+    assert "end.record()" in benchmark_section
+    assert "start.elapsed_time(end) / max(iters, 1)" in benchmark_section
+    assert "time.perf_counter()" not in benchmark_section
+
+
 def test_ch19_nvfp4_training_defers_verification_forward_outside_hot_loop() -> None:
     for filename in ("baseline_nvfp4_training.py", "optimized_nvfp4_training.py"):
         source = (REPO_ROOT / "ch19" / filename).read_text(encoding="utf-8")
