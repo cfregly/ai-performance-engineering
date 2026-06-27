@@ -5222,6 +5222,23 @@ def test_ch13_inference_precision_benchmarks_use_inference_mode() -> None:
         assert "torch.no_grad()" not in benchmark_section
 
 
+def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
+    source = (REPO_ROOT / "ch13" / "optimized_fp8_perchannel.py").read_text(
+        encoding="utf-8"
+    )
+    forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[
+        1
+    ].split(
+        "class OptimizedFP8PerChannelBenchmark",
+        maxsplit=1,
+    )[0]
+
+    assert 'self.register_buffer("_scale_a_buffer", torch.empty(0), persistent=False)' in source
+    assert "scale_a = self._scale_a_buffer" in forward_section
+    assert "scale_a.copy_(input_scale)" in forward_section
+    assert ".expand(x_fp8.size(0), 1).contiguous()" not in forward_section
+
+
 def test_ch16_and_lab_forward_benchmarks_use_inference_mode() -> None:
     paths = (
         "ch16/awq_gptq_smoothquant_benchmarks.py",

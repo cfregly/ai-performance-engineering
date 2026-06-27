@@ -34,6 +34,7 @@ class FP8PerChannelLinear(nn.Module):
         self._weight_fp8 = None
         self._scale_b = None
         self._bias_bf16 = None
+        self.register_buffer("_scale_a_buffer", torch.empty(0), persistent=False)
         
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         if bias:
@@ -85,7 +86,19 @@ class FP8PerChannelLinear(nn.Module):
         input_amax = x_2d.abs().max()
         input_scale = torch.clamp(input_amax / self.fp8_max, min=1e-12).to(torch.float32)
         x_fp8 = (x_2d / input_scale).to(torch.float8_e4m3fn)
-        scale_a = input_scale.reshape(1, 1).expand(x_fp8.size(0), 1).contiguous()
+        scale_a_shape = (x_fp8.size(0), 1)
+        if (
+            self._scale_a_buffer.device != x_fp8.device
+            or self._scale_a_buffer.dtype != torch.float32
+            or tuple(self._scale_a_buffer.shape) != scale_a_shape
+        ):
+            self._scale_a_buffer = torch.empty(
+                scale_a_shape,
+                device=x_fp8.device,
+                dtype=torch.float32,
+            )
+        scale_a = self._scale_a_buffer
+        scale_a.copy_(input_scale)
 
         output_2d = torch._scaled_mm(
             x_fp8,
