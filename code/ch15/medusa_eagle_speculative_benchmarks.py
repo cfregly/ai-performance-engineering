@@ -196,7 +196,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         out[:, 0] = self.input_ids[:, 0]
 
         with self._nvtx_range(self.label):
-            with torch.no_grad():
+            with torch.inference_mode():
                 for t in range(wl.total_tokens):
                     logits = self.target_model(out[:, t : t + 1])
                     torch.max(logits[:, 0, :], dim=-1, out=(self._greedy_next_values, self._greedy_next_tokens))
@@ -258,7 +258,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         rounds = 0
 
         with self._nvtx_range(self.label):
-            with torch.no_grad():
+            with torch.inference_mode():
                 pos = 0
                 while pos < wl.total_tokens:
                     rounds += 1

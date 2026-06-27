@@ -4040,6 +4040,7 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._draft_block_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert "time.perf_counter" not in benchmark_section
     assert "draft_time_ms=None" in benchmark_section
     assert "verify_time_ms=None" in benchmark_section
