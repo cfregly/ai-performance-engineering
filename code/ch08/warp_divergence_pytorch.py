@@ -155,7 +155,8 @@ def compare_mask_strategies() -> None:
         return all_output
 
     def process_active_only():
-        processed = torch.sin(data[active_indices]) * torch.cos(data[active_indices])
+        active_data = data[active_indices]
+        processed = torch.sin(active_data) * torch.cos(active_data)
         active_output.zero_()
         active_output[active_indices] = processed
         return active_output

@@ -231,6 +231,9 @@ def test_ch08_mask_strategy_demo_reuses_output_workspaces() -> None:
     assert "all_output = torch.empty_like(data)" in mask_section
     assert "active_output = torch.empty_like(data)" in mask_section
     assert "torch.sin(data, out=all_output)" in mask_section
+    assert "active_data = data[active_indices]" in mask_section
+    assert "torch.sin(data[active_indices])" not in mask_section
+    assert "torch.cos(data[active_indices])" not in mask_section
     assert "all_output.masked_fill_(inactive, 0.0)" in mask_section
     assert "active_output.zero_()" in mask_section
 
