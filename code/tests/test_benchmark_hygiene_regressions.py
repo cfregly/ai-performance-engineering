@@ -2732,6 +2732,8 @@ def test_nanochat_loss_eval_batches_reduced_totals() -> None:
     assert "totals = torch.stack((total_nats.to(torch.float64), total_bytes.to(torch.float64)))" in source
     assert "dist.all_reduce(totals, op=dist.ReduceOp.SUM)" in source
     assert "total_nats, total_bytes = totals.detach().cpu().tolist()" in source
+    assert "@torch.inference_mode()\ndef evaluate_bpb" in source
+    assert "@torch.no_grad()" not in source
     assert "dist.all_reduce(total_nats" not in source
     assert "dist.all_reduce(total_bytes" not in source
     assert "total_nats = total_nats.item()" not in source
@@ -2829,6 +2831,8 @@ def test_nanochat_core_eval_batches_option_loss_reads() -> None:
     assert "mean_losses = torch.stack(" in option_section
     assert ").detach().cpu().tolist()" in option_section
     assert ".mean().item()" not in option_section
+    assert source.count("@torch.inference_mode()") >= 2
+    assert "@torch.no_grad()" not in source
 
 
 def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
@@ -3381,10 +3385,27 @@ def test_nanochat_chat_eval_batches_count_reductions() -> None:
     assert "dist.all_reduce(counts, op=dist.ReduceOp.SUM)" in source
     assert "num_passed, total = counts.detach().cpu().tolist()" in source
     assert source.count("num_passed, total = _reduce_counts(num_passed, total, device)") == 2
+    assert "with torch.inference_mode():" in source
+    assert "with torch.no_grad():" not in source
     assert "num_passed_tensor = torch.tensor" not in source
     assert "total_tensor = torch.tensor" not in source
     assert "num_passed_tensor.item()" not in source
     assert "total_tensor.item()" not in source
+
+
+def test_nanochat_chat_eval_batches_categorical_predictions() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_eval.py"
+    ).read_text(encoding="utf-8")
+    categorical_section = source.split("def run_categorical_eval", maxsplit=1)[1].split(
+        "# Aggregate results across all ranks",
+        maxsplit=1,
+    )[0]
+
+    assert "predicted_choice_indices = torch.empty(len(conversations), dtype=torch.long, device=device)" in categorical_section
+    assert "predicted_choice_indices[idx] = focus_logits.argmax(dim=-1)" in categorical_section
+    assert "predicted_choice_indices = predicted_choice_indices.detach().cpu().tolist()" in categorical_section
+    assert "argmax_letter_id = focus_logits.argmax(dim=-1).item()" not in categorical_section
 
 
 def test_nanochat_chat_rl_batches_eval_and_rollout_syncs() -> None:

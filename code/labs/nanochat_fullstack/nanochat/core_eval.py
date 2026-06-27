@@ -141,7 +141,7 @@ def batch_sequences_lm(tokenizer, prompts):
     return [tokens_with], [start_idx], [end_idx]
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def forward_model(model, input_ids):
     """
     Take BxT tensor of token ids, return BxT tensor of losses and argmax predictions.
@@ -164,7 +164,7 @@ def forward_model(model, input_ids):
     return losses, predictions
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def evaluate_example(idx, model, tokenizer, data, device, task_meta):
     """Evaluate a single example, return True if correct, False otherwise"""
     item = data[idx]

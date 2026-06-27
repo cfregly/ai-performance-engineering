@@ -117,13 +117,14 @@ def run_categorical_eval(task_object, tokenizer, model, batch_size, max_problems
         prompt_ids = torch.tensor(padded_prompt_ids, dtype=torch.long, device=device)
 
         # Get the logits for the whole batch of conversations in parallel (efficiency win here)
-        with torch.no_grad():
+        with torch.inference_mode():
             logits = model(prompt_ids) # (B, T, V)
 
         # Focus on the available answer on just the letters corresponding to choices
         # Note that this helps the evaluation a lot because it specifically narrows the focus to only the available letters
         # The much harder alternative would be to just generate from the Assistant and check if it responded with the correct
         # letter (e.g. A, B, C, D), but evaluations typically make the task easier in this way.
+        predicted_choice_indices = torch.empty(len(conversations), dtype=torch.long, device=device)
         for idx, conversation in enumerate(conversations):
             # get the token ids of all the available letters of this problem
             letters = conversation['letters']
@@ -138,8 +139,12 @@ def run_categorical_eval(task_object, tokenizer, model, batch_size, max_problems
             answer_pos = answer_time_positions[idx]
             focus_logits = logits[idx, answer_pos, letter_ids]
             # get the argmax letter (the predicted answer)
-            argmax_letter_id = focus_logits.argmax(dim=-1).item()
-            predicted_letter = letters[argmax_letter_id]
+            predicted_choice_indices[idx] = focus_logits.argmax(dim=-1)
+        predicted_choice_indices = predicted_choice_indices.detach().cpu().tolist()
+
+        for conversation, predicted_choice_idx in zip(conversations, predicted_choice_indices):
+            letters = conversation['letters']
+            predicted_letter = letters[int(predicted_choice_idx)]
             # evaluate the outcome
             outcome = task_object.evaluate(conversation, predicted_letter)
             num_passed += int(outcome)

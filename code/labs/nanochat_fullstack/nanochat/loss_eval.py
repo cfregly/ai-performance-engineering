@@ -5,7 +5,7 @@ import math
 import torch
 import torch.distributed as dist
 
-@torch.no_grad()
+@torch.inference_mode()
 def evaluate_bpb(model, batches, steps, token_bytes):
     """
     Instead of the naive 'mean loss', this function returns the bits per byte (bpb),
