@@ -263,7 +263,7 @@ def build_model_state(workload: SequenceRankingWorkload, device: torch.device) -
     tower = SequenceRankingTower(workload.embedding_dim, workload.hidden_dim).to(
         device=device, dtype=workload.dtype
     )
-    with torch.no_grad():
+    with torch.inference_mode():
         tower.in_proj.weight.copy_(
             _randn(
                 (workload.hidden_dim, workload.embedding_dim),

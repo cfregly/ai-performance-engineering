@@ -14,8 +14,6 @@ and NVLink-C2C, but will work on other CUDA systems with graceful degradation.
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any, Callable
 
 import torch
@@ -357,7 +355,7 @@ def consume_prefetched_kv(
 # Dynamic Cache Generation
 # ---------------------------------------------------------------------------
 
-@torch.no_grad()
+@torch.inference_mode()
 def generate_with_dynamic_quantized_cache(
     model: Any,  # AutoModelForCausalLM
     tokenizer: Any,  # AutoTokenizer

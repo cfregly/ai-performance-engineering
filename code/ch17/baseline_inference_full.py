@@ -90,7 +90,7 @@ class BaselineInferenceFullBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model.eval()
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
 
-        with torch.no_grad():
+        with torch.inference_mode():
             dtype = next(self.model.parameters()).dtype
             eye = torch.eye(self.hidden_dim, device=self.device, dtype=dtype)
             for layer in self.model.layers[self.identity_start_layer :]:

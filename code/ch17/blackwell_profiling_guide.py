@@ -9,7 +9,6 @@ systems with Nsight Systems, Nsight Compute, and the PyTorch profiler.
 from __future__ import annotations
 
 import csv
-import os
 import re
 import subprocess
 from pathlib import Path
@@ -319,7 +318,7 @@ def complete_profiling_workflow(
     print("=" * 80)
 
     def run_model() -> None:
-        with torch.no_grad():
+        with torch.inference_mode():
             model(input_tensor)
 
     print("\nStep 1: PyTorch Profiler")
@@ -476,7 +475,7 @@ if __name__ == "__main__":
     x = torch.randn(32, 1024, device=exec_device)
 
     def run_model() -> None:
-        with torch.no_grad():
+        with torch.inference_mode():
             model(x)
 
     profile_with_pytorch_profiler(run_model, output_dir="./example_profiling")

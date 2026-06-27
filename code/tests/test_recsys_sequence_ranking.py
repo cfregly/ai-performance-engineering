@@ -187,13 +187,16 @@ def test_ranking_hot_paths_use_inference_mode() -> None:
     baseline_source = inspect.getsource(BaselineSequenceRankingBenchmark.benchmark_fn)
     optimized_source = inspect.getsource(OptimizedSequenceRankingBenchmark.benchmark_fn)
     warmup_source = inspect.getsource(warm_optimized_path)
+    setup_source = inspect.getsource(build_model_state)
 
     assert "with torch.inference_mode():" in baseline_source
     assert "with torch.inference_mode():" in optimized_source
     assert "with torch.inference_mode():" in warmup_source
+    assert "with torch.inference_mode():" in setup_source
     assert "with torch.no_grad():" not in baseline_source
     assert "with torch.no_grad():" not in optimized_source
     assert "with torch.no_grad():" not in warmup_source
+    assert "with torch.no_grad():" not in setup_source
 
 
 def test_resolve_score_backend_respects_availability() -> None:

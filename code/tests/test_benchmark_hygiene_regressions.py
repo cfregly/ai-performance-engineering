@@ -2283,6 +2283,13 @@ def test_ch17_inference_wrappers_use_inference_mode() -> None:
         )[0]
         assert "with torch.inference_mode():" in benchmark_section
         assert "with torch.no_grad():" not in benchmark_section
+        if relative in {"ch17/baseline_inference_full.py", "ch17/optimized_inference_full.py"}:
+            setup_section = source.split("def setup", maxsplit=1)[1].split(
+                "def benchmark_fn",
+                maxsplit=1,
+            )[0]
+            assert "with torch.inference_mode():" in setup_section
+            assert "with torch.no_grad():" not in setup_section
 
 
 def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop() -> None:
@@ -4541,6 +4548,9 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     source = (
         REPO_ROOT / "labs" / "speculative_decode" / "optimized_speculative_decode.py"
     ).read_text(encoding="utf-8")
+    common_source = (
+        REPO_ROOT / "labs" / "speculative_decode" / "speculative_decode_common.py"
+    ).read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
         "def benchmark_fn",
         maxsplit=1,
@@ -4564,6 +4574,8 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)" in benchmark_section
     assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
     assert "accept_k = int(self._accept_count.item())" in benchmark_section
+    assert common_source.count("with torch.inference_mode():") >= 2
+    assert "with torch.no_grad():" not in common_source
 
 
 def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
