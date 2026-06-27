@@ -113,6 +113,7 @@ class DistMuon(torch.optim.Optimizer):
         # Group all parameters by their shape
         shapes = sorted({p.shape for p in params}) # sort to ensure consistent / deterministic ordering
         param_groups = []
+        world_size = dist.get_world_size()
         for shape in shapes:
             group_params = [p for p in params if p.shape == shape]
             device, dtype = group_params[0].device, group_params[0].dtype
@@ -120,7 +121,15 @@ class DistMuon(torch.optim.Optimizer):
             assert all(p.dtype == dtype for p in group_params)
             if rank == 0:
                 print(f"Muon: Grouping {len(group_params)} params of shape {shape}, device {device}, dtype {dtype}")
-            param_groups.append(dict(params=group_params, zero_buffer=torch.zeros_like(group_params[0])))
+            param_groups.append(dict(
+                params=group_params,
+                zero_buffer=torch.zeros_like(group_params[0]),
+                scatter_pad_buffer=torch.empty_like(group_params[0]),
+                gather_pad_buffers=[
+                    torch.empty_like(group_params[0])
+                    for _ in range(world_size - 1)
+                ],
+            ))
         super().__init__(param_groups, defaults)
 
     @torch.no_grad()
@@ -136,6 +145,7 @@ class DistMuon(torch.optim.Optimizer):
         for group in self.param_groups:
             params = group["params"]
             zero_buffer = group["zero_buffer"]
+            scatter_pad_buffer = group["scatter_pad_buffer"]
             # Go through params in groups of world_size.
             for base_i in range(0, len(params), world_size):
                 # The compute owner of each param is rank i % world_size
@@ -145,7 +155,7 @@ class DistMuon(torch.optim.Optimizer):
                 # pad rs_input with the zero buffer to complete the group
                 rs_input.extend([zero_buffer] * (world_size - len(rs_input)))
                 # the output buffer gets strided across the group based on the rank
-                rs_output = params[owner_idx].grad if owner_idx < len(params) else torch.empty_like(zero_buffer)
+                rs_output = params[owner_idx].grad if owner_idx < len(params) else scatter_pad_buffer
                 # reduce scatter the gradients within this group of world_size params
                 work = dist.reduce_scatter(rs_output, rs_input, op=dist.ReduceOp.AVG, async_op=True).get_future()
                 all_reduce_futures.append(work)
@@ -156,6 +166,7 @@ class DistMuon(torch.optim.Optimizer):
         for group in self.param_groups:
             params = group["params"]
             zero_buffer = group["zero_buffer"]
+            gather_pad_buffers = group["gather_pad_buffers"]
             # Go through params in groups of world_size.
             for base_i in range(0, len(params), world_size):
                 # The compute owner of each param is rank i % world_size
@@ -179,7 +190,9 @@ class DistMuon(torch.optim.Optimizer):
                 # Replicate updated parameters to all ranks
                 ag_input = params[owner_idx] if owner_idx < len(params) else zero_buffer
                 ag_output = params[base_i:base_i + world_size]
-                ag_output.extend([torch.empty_like(zero_buffer) for _ in range(world_size - len(ag_output))]) # pad
+                missing = world_size - len(ag_output)
+                if missing:
+                    ag_output.extend(gather_pad_buffers[:missing]) # pad
                 work = dist.all_gather(ag_output, ag_input, async_op=True).get_future()
                 all_gather_futures.append(work)
 

@@ -2163,6 +2163,24 @@ def test_nanochat_loss_eval_batches_reduced_totals() -> None:
     assert "torch.zeros_like(y)" not in source
 
 
+def test_nanochat_dist_muon_reuses_padding_buffers() -> None:
+    source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "muon.py").read_text(
+        encoding="utf-8"
+    )
+    dist_muon_source = source.split("class DistMuon", maxsplit=1)[1]
+    init_section = dist_muon_source.split("def __init__", maxsplit=1)[1].split(
+        "def step",
+        maxsplit=1,
+    )[0]
+    step_section = dist_muon_source.split("def step", maxsplit=1)[1]
+
+    assert "scatter_pad_buffer=torch.empty_like(group_params[0])" in init_section
+    assert "gather_pad_buffers=[" in init_section
+    assert "rs_output = params[owner_idx].grad if owner_idx < len(params) else scatter_pad_buffer" in step_section
+    assert "ag_output.extend(gather_pad_buffers[:missing])" in step_section
+    assert "torch.empty_like(zero_buffer)" not in step_section
+
+
 def test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa(monkeypatch: pytest.MonkeyPatch) -> None:
     from labs.nanochat_fullstack.nanochat.kernels import clustered_attention as clustered_attention_module
 
