@@ -46,6 +46,7 @@ class GPT4ArchitectureOptimization:
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.output: Optional[torch.Tensor] = None
+        self._timing_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         
         logger.info(f"GPT-4 Architecture Optimization")
         logger.info(f"  MoE: {use_moe}")
@@ -119,22 +120,33 @@ class GPT4ArchitectureOptimization:
             device=self.device,
             dtype=torch.bfloat16
         )
+        if self.device.type == "cuda":
+            self._timing_events = (
+                torch.cuda.Event(enable_timing=True),
+                torch.cuda.Event(enable_timing=True),
+            )
         
         logger.info("Simplified GPT-4 model initialized")
     
     def run(self) -> float:
         """Execute forward pass."""
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        start = time.perf_counter()
-        
-        x = self.input
-        for layer in self.layers:
-            x = layer(x)
-        
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        elapsed_ms = (time.perf_counter() - start) * 1000
+        if self.device.type == "cuda":
+            if self._timing_events is None:
+                raise RuntimeError("CUDA timing events are not initialized")
+            start_event, end_event = self._timing_events
+            start_event.record()
+            x = self.input
+            for layer in self.layers:
+                x = layer(x)
+            end_event.record()
+            end_event.synchronize()
+            elapsed_ms = start_event.elapsed_time(end_event)
+        else:
+            start = time.perf_counter()
+            x = self.input
+            for layer in self.layers:
+                x = layer(x)
+            elapsed_ms = (time.perf_counter() - start) * 1000
         self.output = x[:1, : min(4, x.shape[1]), : min(8, x.shape[2])]
         
         tokens_per_sec = (self.batch_size * self.seq_length) / (elapsed_ms / 1000)
@@ -147,6 +159,7 @@ class GPT4ArchitectureOptimization:
         """Clean up."""
         del self.layers, self.input
         self.output = None
+        self._timing_events = None
         torch.cuda.empty_cache()
 
 
@@ -256,4 +269,3 @@ def run_benchmark(
 
 def get_benchmark() -> BaseBenchmark:
     return GPT4ArchitectureOptimizationBenchmark()
-

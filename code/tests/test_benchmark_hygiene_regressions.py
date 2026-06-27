@@ -3552,6 +3552,37 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "output=self.output.detach().float().clone()" in capture_section
 
 
+def test_gpt4_architecture_runner_reuses_cuda_timing_events() -> None:
+    source = (
+        REPO_ROOT / "labs" / "real_world_models" / "gpt4_architecture_optimization.py"
+    ).read_text(encoding="utf-8")
+    class_section = source.split("class GPT4ArchitectureOptimization:", maxsplit=1)[1].split(
+        "class GPT4ArchitectureOptimizationBenchmark",
+        maxsplit=1,
+    )[0]
+    init_section = class_section.split("def __init__", maxsplit=1)[1].split(
+        "def _estimate_memory",
+        maxsplit=1,
+    )[0]
+    setup_section = class_section.split("def setup", maxsplit=1)[1].split(
+        "def run",
+        maxsplit=1,
+    )[0]
+    run_section = class_section.split("def run", maxsplit=1)[1].split(
+        "def cleanup",
+        maxsplit=1,
+    )[0]
+
+    assert "self._timing_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None" in init_section
+    assert setup_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start_event, end_event = self._timing_events" in run_section
+    assert "start_event.record()" in run_section
+    assert "end_event.record()" in run_section
+    assert "end_event.synchronize()" in run_section
+    assert "elapsed_ms = start_event.elapsed_time(end_event)" in run_section
+    assert "torch.cuda.synchronize()" not in run_section
+
+
 def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None:
     baseline_source = (REPO_ROOT / "ch14" / "baseline_attention_eager_sdpa.py").read_text(encoding="utf-8")
     optimized_source = (REPO_ROOT / "ch14" / "optimized_attention_eager_sdpa.py").read_text(encoding="utf-8")
