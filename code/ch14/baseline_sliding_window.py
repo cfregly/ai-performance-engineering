@@ -53,10 +53,8 @@ class NaiveAttentionModule(nn.Module):
     def _causal_mask_for(self, seq_len: int, device: torch.device) -> torch.Tensor:
         mask = self._causal_mask
         if mask.device != device or mask.size(0) < seq_len:
-            self._causal_mask = torch.triu(
-                torch.ones(seq_len, seq_len, device=device, dtype=torch.bool),
-                diagonal=1,
-            )
+            pos = torch.arange(seq_len, device=device)
+            self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)
             mask = self._causal_mask
         return mask[:seq_len, :seq_len]
     

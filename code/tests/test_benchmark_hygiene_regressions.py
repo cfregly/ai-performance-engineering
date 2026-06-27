@@ -958,6 +958,13 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "def _causal_mask_for" in ch14_source
     assert "causal_mask = self._causal_mask_for(S, x.device)" in ch14_forward
     assert "torch.ones(S, S" not in ch14_forward
+    ch14_mask_for = ch14_source.split("def _causal_mask_for", maxsplit=1)[1].split(
+        "def forward",
+        maxsplit=1,
+    )[0]
+    assert "torch.triu(" not in ch14_mask_for
+    assert "torch.ones(" not in ch14_mask_for
+    assert "self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch14_mask_for
 
     ch10_source = (REPO_ROOT / "ch10" / "baseline_flashattention3_pipeline.py").read_text(
         encoding="utf-8"
@@ -970,6 +977,13 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "def _causal_mask_for" in ch10_source
     assert "mask = self._causal_mask_for(seq_len, x.device)" in ch10_forward
     assert "torch.ones(seq_len, seq_len" not in ch10_forward
+    ch10_mask_for = ch10_source.split("def _causal_mask_for", maxsplit=1)[1].split(
+        "def forward",
+        maxsplit=1,
+    )[0]
+    assert "torch.triu(" not in ch10_mask_for
+    assert "torch.ones(" not in ch10_mask_for
+    assert "self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch10_mask_for
 
     ch13_source = (REPO_ROOT / "ch13" / "baseline_long_context_attention.py").read_text(
         encoding="utf-8"
