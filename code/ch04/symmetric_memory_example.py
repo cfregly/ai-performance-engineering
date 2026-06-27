@@ -141,15 +141,16 @@ def benchmark_traditional_p2p(tensor: torch.Tensor, peer_rank: int, iterations: 
     """Benchmark traditional peer-to-peer copy using torch.cuda.comm."""
     rank = dist.get_rank()
     device = torch.device("cuda", torch.cuda.current_device())
+    recv_tensor = torch.empty_like(tensor) if rank == peer_rank else None
     
     # Warmup
     for _ in range(10):
         if rank == 0:
-            tensor_copy = tensor.clone()
-            dist.send(tensor_copy, dst=peer_rank)
+            dist.send(tensor, dst=peer_rank)
         elif rank == peer_rank:
-            tensor_recv = torch.empty_like(tensor)
-            dist.recv(tensor_recv, src=0)
+            if recv_tensor is None:
+                raise RuntimeError("Receive buffer was not initialized")
+            dist.recv(recv_tensor, src=0)
     
     dist.barrier()
     
@@ -163,11 +164,11 @@ def benchmark_traditional_p2p(tensor: torch.Tensor, peer_rank: int, iterations: 
     with nvtx.range(standardize_nvtx_label("transfer_sync:traditional_p2p")):
         for _ in range(iterations):
             if rank == 0:
-                tensor_copy = tensor.clone()
-                dist.send(tensor_copy, dst=peer_rank)
+                dist.send(tensor, dst=peer_rank)
             elif rank == peer_rank:
-                tensor_recv = torch.empty_like(tensor)
-                dist.recv(tensor_recv, src=0)
+                if recv_tensor is None:
+                    raise RuntimeError("Receive buffer was not initialized")
+                dist.recv(recv_tensor, src=0)
     
     end.record()
     end.synchronize()
@@ -351,11 +352,11 @@ def benchmark_multigpu_symmetric_memory(
         
         dest_rank = (rank + 1) % world_size
         src_rank = (rank - 1) % world_size
+        recv_tensor = torch.empty_like(tensor)
         
         # Warmup
         for _ in range(10):
             dist.send(tensor, dst=dest_rank)
-            recv_tensor = torch.empty_like(tensor)
             dist.recv(recv_tensor, src=src_rank)
         
         torch.cuda.synchronize(device)
@@ -363,7 +364,6 @@ def benchmark_multigpu_symmetric_memory(
         
         for _ in range(iterations):
             dist.send(tensor, dst=dest_rank)
-            recv_tensor = torch.empty_like(tensor)
             dist.recv(recv_tensor, src=src_rank)
         
         end.record()

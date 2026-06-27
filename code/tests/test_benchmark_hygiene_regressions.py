@@ -407,6 +407,55 @@ def test_ch04_symmetric_ring_allreduce_skips_dead_result_zero_fill() -> None:
     assert "result = torch.cat(chunks, dim=0)" in ring_section
 
 
+def test_ch04_symmetric_memory_examples_reuse_recv_buffers() -> None:
+    example_source = (REPO_ROOT / "ch04" / "symmetric_memory_example.py").read_text(
+        encoding="utf-8"
+    )
+    multigpu_source = (REPO_ROOT / "ch04" / "symmetric_memory_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    traditional_p2p = example_source.split("def benchmark_traditional_p2p", maxsplit=1)[1].split(
+        "def benchmark_symmetric_memory", maxsplit=1
+    )[0]
+    example_multigpu = example_source.split("def benchmark_multigpu_symmetric_memory", maxsplit=1)[
+        1
+    ].split("def main", maxsplit=1)[0]
+    traditional_allreduce = multigpu_source.split(
+        "def benchmark_traditional_allreduce", maxsplit=1
+    )[1].split("def benchmark_symmetric_memory_access", maxsplit=1)[0]
+    symmetric_access = multigpu_source.split("def benchmark_symmetric_memory_access", maxsplit=1)[
+        1
+    ].split("def compare_performance", maxsplit=1)[0]
+    ring_demo = multigpu_source.split("def demonstrate_ring_pattern", maxsplit=1)[1].split(
+        "def demonstrate_butterfly_pattern", maxsplit=1
+    )[0]
+    butterfly_demo = multigpu_source.split("def demonstrate_butterfly_pattern", maxsplit=1)[1].split(
+        "def main", maxsplit=1
+    )[0]
+
+    timed_loop_alloc = re.compile(
+        r"for _ in range\((?:10|100|iterations)\):[\s\S]{0,320}"
+        r"(?:torch\.empty_like\(tensor\)|tensor\.clone\(\))"
+    )
+    for section in (
+        traditional_p2p,
+        example_multigpu,
+        traditional_allreduce,
+        symmetric_access,
+        ring_demo,
+        butterfly_demo,
+    ):
+        assert timed_loop_alloc.search(section) is None
+
+    assert "recv_tensor = torch.empty_like(tensor) if rank == peer_rank else None" in traditional_p2p
+    assert "dist.send(tensor, dst=peer_rank)" in traditional_p2p
+    assert "dist.all_reduce(tensor.clone())" not in traditional_allreduce
+    assert "recv_tensor = torch.empty_like(tensor) if rank > 0 else None" in symmetric_access
+    assert "recv_tensor = torch.empty_like(tensor)" in example_multigpu
+    assert "recv_tensor = torch.empty_like(tensor)" in ring_demo
+    assert "recv_tensor = torch.empty_like(tensor)" in butterfly_demo
+
+
 def test_ch04_torchtitan_async_tp_zero_target_uses_square_mean_loss() -> None:
     source = (REPO_ROOT / "ch04" / "torchtitan_async_tp_multigpu_demo.py").read_text(
         encoding="utf-8"
