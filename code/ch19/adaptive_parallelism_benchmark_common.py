@@ -32,33 +32,30 @@ def build_workload(
 ) -> Dict[str, torch.Tensor]:
     """Create a deterministic workload that covers every routing branch."""
     slots = torch.arange(cfg.num_requests, device=device, dtype=torch.int64) % 4
+    slot1 = slots == 1
+    slot2 = slots == 2
+    slot3 = slots == 3
 
     seq_len = torch.full((cfg.num_requests,), 512, device=device, dtype=torch.int64)
-    seq_len = torch.where(slots == 1, torch.full_like(seq_len, 8192), seq_len)
-    seq_len = torch.where(slots == 2, torch.full_like(seq_len, 2048), seq_len)
+    seq_len.masked_fill_(slot1, 8192)
+    seq_len.masked_fill_(slot2, 2048)
 
-    batch_size = torch.where(
-        slots == 3,
-        torch.full((cfg.num_requests,), 8, device=device, dtype=torch.int64),
-        torch.full((cfg.num_requests,), 4, device=device, dtype=torch.int64),
-    )
+    batch_size = torch.full((cfg.num_requests,), 4, device=device, dtype=torch.int64)
+    batch_size.masked_fill_(slot3, 8)
 
-    concurrent_reqs = torch.where(
-        slots == 3,
-        torch.full((cfg.num_requests,), 48, device=device, dtype=torch.int64),
-        torch.full((cfg.num_requests,), 8, device=device, dtype=torch.int64),
-    )
+    concurrent_reqs = torch.full((cfg.num_requests,), 8, device=device, dtype=torch.int64)
+    concurrent_reqs.masked_fill_(slot3, 48)
 
     prefill_tokens = seq_len.clone()
-    prefill_tokens = torch.where(slots == 3, torch.full_like(prefill_tokens, 128), prefill_tokens)
+    prefill_tokens.masked_fill_(slot3, 128)
 
     decode_tokens = torch.full((cfg.num_requests,), 512, device=device, dtype=torch.int64)
-    decode_tokens = torch.where(slots == 1, torch.full_like(decode_tokens, 1024), decode_tokens)
-    decode_tokens = torch.where(slots == 3, torch.full_like(decode_tokens, 128), decode_tokens)
+    decode_tokens.masked_fill_(slot1, 1024)
+    decode_tokens.masked_fill_(slot3, 128)
 
     gpu_mem_util = torch.full((cfg.num_requests,), 0.40, device=device, dtype=torch.float32)
-    gpu_mem_util = torch.where(slots == 2, torch.full_like(gpu_mem_util, 0.88), gpu_mem_util)
-    gpu_mem_util = torch.where(slots == 1, torch.full_like(gpu_mem_util, 0.50), gpu_mem_util)
+    gpu_mem_util.masked_fill_(slot2, 0.88)
+    gpu_mem_util.masked_fill_(slot1, 0.50)
 
     return {
         "seq_len": seq_len,

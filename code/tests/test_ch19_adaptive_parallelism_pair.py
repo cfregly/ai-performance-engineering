@@ -45,6 +45,17 @@ def test_adaptive_parallelism_baseline_and_vectorized_paths_match_on_cpu() -> No
     assert torch.equal(baseline, optimized)
 
 
+def test_adaptive_parallelism_workload_reuses_slot_masks_without_where_fallbacks() -> None:
+    source = inspect.getsource(build_workload)
+
+    assert "slot1 = slots == 1" in source
+    assert "slot2 = slots == 2" in source
+    assert "slot3 = slots == 3" in source
+    assert "torch.where(" not in source
+    assert "torch.full_like(" not in source
+    assert "masked_fill_" in source
+
+
 def test_adaptive_parallelism_baseline_materializes_feature_rows_once() -> None:
     source = inspect.getsource(classify_baseline)
 
