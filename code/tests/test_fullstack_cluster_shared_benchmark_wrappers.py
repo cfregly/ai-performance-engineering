@@ -305,8 +305,13 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "combined.zero_()" in forward_section
     assert "combined = torch.zeros_like(hidden)" not in forward_section
     assert "route_counts_global = route_counts" in forward_section
-    assert "route_type_counts = torch.stack(" in forward_section
+    assert "route_type_counts = self._route_type_count_list(" in forward_section
     assert "same_rank_count_int, same_node_count_int, remote_count_int" in forward_section
+    assert "def _route_type_count_list(" in source
+    assert "torch.sum(same_rank_mask, dim=None, out=count_buffer[0])" in source
+    assert "torch.sum(same_node_mask, dim=None, out=count_buffer[1])" in source
+    assert "torch.sum(remote_node_mask, dim=None, out=count_buffer[2])" in source
+    assert "host_buffer.copy_(count_buffer)" in source
     assert "bool(same_rank_mask.any())" not in forward_section
     assert "bool(same_node_mask.any())" not in forward_section
     assert "bool(remote_node_mask.any())" not in forward_section
@@ -314,11 +319,21 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "same_node_mask.sum().item()" not in forward_section
     assert "remote_node_mask.sum().item()" not in forward_section
     assert "self._reduce_route_counts(" in forward_section
-    assert "route_counts_cpu = route_counts_global.detach().cpu().tolist()" in forward_section
+    assert "route_counts_cpu = self._route_counts_list(route_counts_global)" in forward_section
     assert "tokens_per_expert=[int(x) for x in route_counts_cpu]" in forward_section
+    assert "def _route_counts_list(self, route_counts: torch.Tensor)" in source
+    assert "self._route_counts_host_buffer.copy_(route_counts)" in source
+    assert "def _aux_metric_values(self, aux: Dict[str, torch.Tensor])" in source
+    assert "metric_buffer[0].copy_(aux[\"balance_loss\"])" in source
+    assert "metric_buffer[1].copy_(aux[\"router_entropy\"])" in source
+    assert "metric_buffer[2].copy_(aux[\"gini_coefficient\"])" in source
+    assert "metric_buffer[3].copy_(aux[\"expert_usage_variance\"])" in source
+    assert ") = self._aux_metric_values(aux)" in forward_section
+    assert "route_type_counts = torch.stack(" not in forward_section
+    assert "route_counts_global.detach().cpu().tolist()" not in forward_section
+    assert ").detach().cpu().tolist()" not in forward_section
     assert "route_counts_global.sum().item()" not in forward_section
     assert "route_counts_global.tolist()" not in forward_section
-    assert ").detach().cpu().tolist()" in forward_section
     assert "aux[\"balance_loss\"].detach().item()" not in forward_section
     assert "same_rank_tensor = torch.tensor" not in forward_section
     assert "dist.all_reduce(device_buffer, op=dist.ReduceOp.SUM)" in reduce_section

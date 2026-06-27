@@ -324,6 +324,11 @@ class DeepSeekHybridEPModule(nn.Module):
         self._exchange_count_recv_buffer: Optional[torch.Tensor] = None
         self._exchange_count_host_buffer: Optional[torch.Tensor] = None
         self._local_expert_count_host_buffer: Optional[torch.Tensor] = None
+        self._route_type_count_buffer: Optional[torch.Tensor] = None
+        self._route_type_count_host_buffer: Optional[torch.Tensor] = None
+        self._route_counts_host_buffer: Optional[torch.Tensor] = None
+        self._aux_metric_buffer: Optional[torch.Tensor] = None
+        self._aux_metric_host_buffer: Optional[torch.Tensor] = None
         self._comm_stream = torch.cuda.Stream() if optimized else None
 
     @property
@@ -444,6 +449,70 @@ class DeepSeekHybridEPModule(nn.Module):
         host_counts = self._local_expert_count_host_buffer
         host_counts.copy_(counts)
         return [int(count) for count in host_counts.tolist()]
+
+    def _route_type_count_list(
+        self,
+        same_rank_mask: torch.Tensor,
+        same_node_mask: torch.Tensor,
+        remote_node_mask: torch.Tensor,
+    ) -> List[int]:
+        device = same_rank_mask.device
+        if self._route_type_count_buffer is None or self._route_type_count_buffer.device != device:
+            self._route_type_count_buffer = torch.empty(3, device=device, dtype=torch.long)
+            self._route_type_count_host_buffer = torch.empty(
+                3,
+                dtype=torch.long,
+                device="cpu",
+                pin_memory=device.type == "cuda",
+            )
+        assert self._route_type_count_host_buffer is not None
+        count_buffer = self._route_type_count_buffer
+        host_buffer = self._route_type_count_host_buffer
+        torch.sum(same_rank_mask, dim=None, out=count_buffer[0])
+        torch.sum(same_node_mask, dim=None, out=count_buffer[1])
+        torch.sum(remote_node_mask, dim=None, out=count_buffer[2])
+        host_buffer.copy_(count_buffer)
+        return [int(count) for count in host_buffer.tolist()]
+
+    def _route_counts_list(self, route_counts: torch.Tensor) -> List[int]:
+        needs_pinned = route_counts.device.type == "cuda"
+        if (
+            self._route_counts_host_buffer is None
+            or self._route_counts_host_buffer.numel() != route_counts.numel()
+            or (needs_pinned and not self._route_counts_host_buffer.is_pinned())
+        ):
+            self._route_counts_host_buffer = torch.empty(
+                route_counts.numel(),
+                dtype=route_counts.dtype,
+                device="cpu",
+                pin_memory=needs_pinned,
+            )
+        self._route_counts_host_buffer.copy_(route_counts)
+        return [int(count) for count in self._route_counts_host_buffer.tolist()]
+
+    def _aux_metric_values(self, aux: Dict[str, torch.Tensor]) -> List[float]:
+        first = aux["balance_loss"]
+        if (
+            self._aux_metric_buffer is None
+            or self._aux_metric_buffer.device != first.device
+            or self._aux_metric_buffer.dtype != first.dtype
+        ):
+            self._aux_metric_buffer = torch.empty(4, device=first.device, dtype=first.dtype)
+            self._aux_metric_host_buffer = torch.empty(
+                4,
+                dtype=first.dtype,
+                device="cpu",
+                pin_memory=first.device.type == "cuda",
+            )
+        assert self._aux_metric_host_buffer is not None
+        metric_buffer = self._aux_metric_buffer
+        host_buffer = self._aux_metric_host_buffer
+        metric_buffer[0].copy_(aux["balance_loss"])
+        metric_buffer[1].copy_(aux["router_entropy"])
+        metric_buffer[2].copy_(aux["gini_coefficient"])
+        metric_buffer[3].copy_(aux["expert_usage_variance"])
+        host_buffer.copy_(metric_buffer)
+        return [float(value) for value in host_buffer.tolist()]
 
     def _apply_local_experts(self, tokens: torch.Tensor, expert_ids: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
         if tokens.numel() == 0:
@@ -703,13 +772,11 @@ class DeepSeekHybridEPModule(nn.Module):
                 remote_node_mask = owner_nodes != self.topology.node_rank
 
             remote_outputs: Optional[torch.Tensor] = None
-            route_type_counts = torch.stack(
-                (
-                    same_rank_mask.sum(),
-                    same_node_mask.sum(),
-                    remote_node_mask.sum(),
-                )
-            ).detach().cpu().tolist()
+            route_type_counts = self._route_type_count_list(
+                same_rank_mask,
+                same_node_mask,
+                remote_node_mask,
+            )
             same_rank_count_int, same_node_count_int, remote_count_int = (
                 int(count) for count in route_type_counts
             )
@@ -862,21 +929,14 @@ class DeepSeekHybridEPModule(nn.Module):
                 remote_count,
                 device=hidden.device,
             )
-        route_counts_cpu = route_counts_global.detach().cpu().tolist()
+        route_counts_cpu = self._route_counts_list(route_counts_global)
         total_routes = max(float(sum(route_counts_cpu)), 1.0)
         (
             load_balance_loss,
             router_entropy,
             gini_coefficient,
             expert_usage_variance,
-        ) = torch.stack(
-            (
-                aux["balance_loss"],
-                aux["router_entropy"],
-                aux["gini_coefficient"],
-                aux["expert_usage_variance"],
-            )
-        ).detach().cpu().tolist()
+        ) = self._aux_metric_values(aux)
         metrics = compute_moe_metrics(
             num_experts=self.num_experts,
             active_experts=self.top_k,
