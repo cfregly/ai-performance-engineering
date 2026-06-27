@@ -790,7 +790,13 @@ class Engine:
         ids = torch.tensor([tokens], dtype=torch.long, device=device)
         logits = self.model.forward(ids, kv_cache=kv_cache_prefill)
         logits = logits[:, -1, :]
-        next_ids = sample_next_token(logits, rng, temperature, top_k)  # (B, 1)
+        next_ids = sample_next_token(
+            logits,
+            rng,
+            temperature,
+            top_k,
+            **self._sample_workspace(logits, top_k, temperature),
+        )  # (B, 1)
         sampled_tokens = self._token_tensor_to_list(next_ids[:, 0])
 
         # 2) Replicate the KV cache for each sample/row
@@ -831,7 +837,13 @@ class Engine:
                 # Forward the model and get the next token for each row
                 logits = self._execute_decode(ids, kv_cache_decode)  # (B, T, vocab_size)
                 logits = logits[:, -1, :]  # (B, vocab_size) at last time step
-                next_ids = sample_next_token(logits, rng, temperature, top_k)  # (B, 1)
+                next_ids = sample_next_token(
+                    logits,
+                    rng,
+                    temperature,
+                    top_k,
+                    **self._sample_workspace(logits, top_k, temperature),
+                )  # (B, 1)
                 sampled_tokens = self._token_tensor_to_list(next_ids[:, 0])
                 sampled_ids = next_ids
 

@@ -457,6 +457,7 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "sampled_host.copy_(sampled_device)" in sample_section
     assert "sampled_tokens[idx] = next_id[0, 0].item()" not in sample_section
     assert "next_ids[:, 0].tolist()" not in sample_section
+    assert generate_section.count("**self._sample_workspace(logits, top_k, temperature),") == 2
     assert "sampled_tokens = self._token_tensor_to_list(next_ids[:, 0])" in generate_section
     assert "next_ids[:, 0].tolist()" not in generate_section
 
