@@ -4,7 +4,6 @@
 Quick GPT-style model test - NO HEAVY COMPILATION
 Shows realistic torch.compile speedup on B200
 """
-import time
 
 from core.utils.compile_utils import enable_tf32
 from core.utils.warning_filters import suppress_benchmark_import_warnings
@@ -39,15 +38,20 @@ def benchmark_quick(model, x, name, num_iters=20):
     torch.cuda.synchronize()
     
     # Benchmark
-    start = time.perf_counter()
+    count = max(num_iters, 1)
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
     with torch.inference_mode():
-        for _ in range(num_iters):
+        start.record()
+        for _ in range(count):
             _ = model(x)
+        end.record()
     torch.cuda.synchronize()
-    elapsed = time.perf_counter() - start
+    elapsed_ms = start.elapsed_time(end)
+    elapsed = elapsed_ms / 1000.0
     
-    avg_ms = (elapsed / num_iters) * 1000
-    tokens_per_sec = (x.shape[0] * x.shape[1] * num_iters) / elapsed
+    avg_ms = elapsed_ms / count
+    tokens_per_sec = (x.shape[0] * x.shape[1] * count) / elapsed
     
     print(f"\n{name}:")
     print(f"  Time: {avg_ms:.2f} ms")

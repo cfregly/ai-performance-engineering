@@ -24,13 +24,13 @@ robust FP8 training/inference, but this script uses PyTorch native APIs.
 
 from core.harness.arch_config import prefer_flash_sdpa
 
-import os
-import torch
-import torch.nn as nn
-import time
 import json
+import os
 from dataclasses import dataclass, asdict
 from typing import Dict, Any
+
+import torch
+import torch.nn as nn
 
 
 @dataclass
@@ -149,17 +149,21 @@ def benchmark_model(
     
     # Benchmark
     print(f"  Running: {iters} iterations")
-    start = time.time()
+    count = max(iters, 1)
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
     with torch.inference_mode():
-        for _ in range(iters):
+        start.record()
+        for _ in range(count):
             _ = model(input_ids)
+        end.record()
     torch.cuda.synchronize()
-    elapsed = time.time() - start
+    elapsed_ms = start.elapsed_time(end)
     
     # Metrics
-    avg_time_ms = (elapsed / iters) * 1000
+    avg_time_ms = elapsed_ms / count
     tokens = input_ids.numel()
-    throughput = tokens / (elapsed / iters)
+    throughput = tokens / (avg_time_ms / 1000.0)
     memory_mb = get_model_memory_mb(model)
     params = sum(p.numel() for p in model.parameters())
     

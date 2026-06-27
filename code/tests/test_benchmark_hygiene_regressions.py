@@ -1367,8 +1367,12 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
 
     assert quick_benchmark.count("with torch.inference_mode():") == 2
     assert "with torch.no_grad():" not in quick_benchmark
+    assert quick_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "time.perf_counter()" not in quick_benchmark
     assert fp8_benchmark.count("with torch.inference_mode():") == 2
     assert "with torch.no_grad():" not in fp8_benchmark
+    assert fp8_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "time.time()" not in fp8_benchmark
     assert "with torch.inference_mode():" in te_convert
     assert "with torch.no_grad():" not in te_convert
     assert quantization_manager.count("with torch.inference_mode():") == 3
