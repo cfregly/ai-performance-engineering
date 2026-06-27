@@ -163,12 +163,20 @@ def benchmark_model(
     if input_ids.device.type == "cuda":
         torch.cuda.synchronize(input_ids.device)
 
-    start = time.time()
-    for _ in range(iters):
-        _ = model(input_ids)
     if input_ids.device.type == "cuda":
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
+        for _ in range(iters):
+            _ = model(input_ids)
+        end_event.record()
         torch.cuda.synchronize(input_ids.device)
-    elapsed = time.time() - start
+        elapsed = start_event.elapsed_time(end_event) / 1000.0
+    else:
+        start = time.time()
+        for _ in range(iters):
+            _ = model(input_ids)
+        elapsed = time.time() - start
 
     avg_ms = (elapsed / iters) * 1000.0
     tokens = input_ids.numel()

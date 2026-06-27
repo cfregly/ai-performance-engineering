@@ -3851,6 +3851,27 @@ def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
     assert "mask.any()" not in forward_section
 
 
+def test_ch16_moe_performance_benchmark_uses_cuda_event_timing() -> None:
+    source = (REPO_ROOT / "ch16" / "moe_performance_benchmark.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = source.split("def benchmark_model", maxsplit=1)[1].split(
+        "def parse_args",
+        maxsplit=1,
+    )[0]
+    cuda_section = benchmark_section.split('if input_ids.device.type == "cuda":', maxsplit=2)[
+        2
+    ].split("else:", maxsplit=1)[0]
+    cpu_section = benchmark_section.split("else:", maxsplit=1)[1]
+
+    assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start_event.record()" in cuda_section
+    assert "end_event.record()" in cuda_section
+    assert "elapsed = start_event.elapsed_time(end_event) / 1000.0" in cuda_section
+    assert "time.time()" not in cuda_section
+    assert "time.time()" in cpu_section
+
+
 def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:
     source = (REPO_ROOT / "ch16" / "perplexity_eval.py").read_text(encoding="utf-8")
     loop_section = source.split("with torch.inference_mode():", maxsplit=1)[1].split(

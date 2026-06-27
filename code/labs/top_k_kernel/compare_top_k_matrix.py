@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import time
 
 import torch
 
@@ -69,11 +68,14 @@ def _measure_case(backend: str, mode: str, case: dict[str, int]) -> float:
         for _ in range(warmup):
             bench.benchmark_fn()
         torch.cuda.synchronize()
-        start = time.perf_counter()
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
         for _ in range(iters):
             bench.benchmark_fn()
+        end.record()
         torch.cuda.synchronize()
-        return (time.perf_counter() - start) * 1000.0 / iters
+        return start.elapsed_time(end) / iters
     finally:
         bench.teardown()
 

@@ -62,6 +62,23 @@ def test_top_k_repeats_k_heads_with_expand_reshape() -> None:
     torch.testing.assert_close(repeated, expected)
 
 
+def test_compare_top_k_matrix_uses_cuda_event_timing() -> None:
+    source = (REPO_ROOT / "labs" / "top_k_kernel" / "compare_top_k_matrix.py").read_text(
+        encoding="utf-8"
+    )
+    measure_section = source.split("def _measure_case", maxsplit=1)[1].split(
+        "def _print_table",
+        maxsplit=1,
+    )[0]
+
+    assert measure_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start.record()" in measure_section
+    assert "end.record()" in measure_section
+    assert "return start.elapsed_time(end) / iters" in measure_section
+    assert "time.perf_counter()" not in measure_section
+    assert "time.time()" not in measure_section
+
+
 @CUDA_REQUIRED
 def test_forward_benchmark_uses_inference_mode_without_output_clones(
     monkeypatch: pytest.MonkeyPatch,
