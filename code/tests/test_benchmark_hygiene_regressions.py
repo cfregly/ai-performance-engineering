@@ -3074,6 +3074,9 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "kv_buffers = self._kv_buffer_pools" in benchmark_section
     assert "active_caches = {rank: {} for rank in self._decode_models}" not in benchmark_section
     assert "kv_buffers = {rank: {} for rank in self._decode_models}" not in benchmark_section
+    assert "set(active_caches)" not in benchmark_section
+    assert "set(kv_buffers)" not in benchmark_section
+    assert "for rank in self._decode_models:" in benchmark_section
     assert "for cache in active_caches.values():" in benchmark_section
     assert "cache.clear()" in benchmark_section
     assert "_extend_cache_buffer(" in run_iteration_section

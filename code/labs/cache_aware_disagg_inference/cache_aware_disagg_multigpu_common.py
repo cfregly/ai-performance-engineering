@@ -927,8 +927,11 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
         active_caches = self._active_caches
         kv_buffers = self._kv_buffer_pools
-        if set(active_caches) != set(self._decode_models) or set(kv_buffers) != set(self._decode_models):
+        if len(active_caches) != len(self._decode_models) or len(kv_buffers) != len(self._decode_models):
             raise RuntimeError("Cache control-plane slots not initialized")
+        for rank in self._decode_models:
+            if rank not in active_caches or rank not in kv_buffers:
+                raise RuntimeError("Cache control-plane slots not initialized")
         for cache in active_caches.values():
             cache.clear()
         outputs = self._output_parts
