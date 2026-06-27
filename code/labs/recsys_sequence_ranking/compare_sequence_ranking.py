@@ -28,14 +28,12 @@ def _measure(bench, *, warmup: int, iterations: int) -> float:
         torch.cuda.synchronize()
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        total_ms = 0.0
+        start.record()
         for _ in range(iterations):
-            start.record()
             bench.benchmark_fn()
-            end.record()
-            torch.cuda.synchronize()
-            total_ms += start.elapsed_time(end)
-        return float(total_ms / iterations)
+        end.record()
+        torch.cuda.synchronize()
+        return float(start.elapsed_time(end) / iterations)
 
     total_ms = 0.0
     for _ in range(iterations):

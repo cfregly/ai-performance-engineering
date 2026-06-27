@@ -237,3 +237,16 @@ def test_compare_measure_cpu_path_counts_warmup_and_timed_iterations(monkeypatch
 
     assert bench.calls == 8
     assert latency_ms >= 0.0
+
+
+def test_compare_measure_cuda_path_uses_single_event_bracket() -> None:
+    source = inspect.getsource(_measure)
+    cuda_section = source.split("if torch.cuda.is_available():", maxsplit=1)[1].split(
+        "total_ms = 0.0",
+        maxsplit=1,
+    )[0]
+
+    assert cuda_section.count("torch.cuda.synchronize()") == 2
+    assert cuda_section.count("start.record()") == 1
+    assert cuda_section.count("end.record()") == 1
+    assert "total_ms += start.elapsed_time(end)" not in cuda_section
