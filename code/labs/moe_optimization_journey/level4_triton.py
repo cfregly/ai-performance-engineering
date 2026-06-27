@@ -117,9 +117,30 @@ class GroupedMoEExperts(nn.Module):
         self.w1 = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
         self.w2 = nn.Parameter(torch.empty(num_experts, intermediate_size, hidden_size))
         self.w3 = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
+        self._expert_metadata_workspace: Optional[torch.Tensor] = None
+        self._expert_metadata_host: Optional[torch.Tensor] = None
         
         for w in [self.w1, self.w2, self.w3]:
             nn.init.kaiming_uniform_(w)
+
+    def _expert_metadata_buffers(self, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+        if (
+            self._expert_metadata_workspace is None
+            or self._expert_metadata_workspace.device != device
+        ):
+            self._expert_metadata_workspace = torch.empty(
+                (2, self.num_experts),
+                dtype=torch.long,
+                device=device,
+            )
+            self._expert_metadata_host = torch.empty(
+                (2, self.num_experts),
+                dtype=torch.long,
+                device="cpu",
+                pin_memory=device.type == "cuda",
+            )
+        assert self._expert_metadata_host is not None
+        return self._expert_metadata_workspace, self._expert_metadata_host
     
     def forward(
         self,
@@ -145,9 +166,13 @@ class GroupedMoEExperts(nn.Module):
         
         # Compute expert boundaries
         expert_counts = torch.bincount(sorted_expert_ids, minlength=self.num_experts)
-        expert_offsets = torch.cumsum(expert_counts, dim=0) - expert_counts
-        expert_counts_cpu = [int(count) for count in expert_counts.detach().cpu().tolist()]
-        expert_offsets_cpu = [int(offset) for offset in expert_offsets.detach().cpu().tolist()]
+        expert_metadata, expert_metadata_host = self._expert_metadata_buffers(expert_counts.device)
+        expert_offsets = expert_metadata[0]
+        torch.cumsum(expert_counts, dim=0, out=expert_offsets)
+        expert_offsets.sub_(expert_counts)
+        expert_metadata[1].copy_(expert_counts)
+        expert_metadata_host.copy_(expert_metadata)
+        expert_offsets_cpu, expert_counts_cpu = expert_metadata_host.tolist()
         
         # Process each expert's tokens (grouped by expert for coalescing)
         output = torch.empty_like(sorted_x)
