@@ -197,6 +197,16 @@ def test_baseline_mxfp8_moe_reuses_bucketed_output_buffer() -> None:
     assert "self._bucketed_out = None" in teardown_source
 
 
+def test_mxfp8_moe_benchmark_wrappers_use_inference_mode() -> None:
+    baseline_benchmark = inspect.getsource(baseline_mxfp8_moe.BaselineMXFP8MoEBenchmark.benchmark_fn)
+    optimized_benchmark = inspect.getsource(optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark.benchmark_fn)
+
+    assert 'with torch.inference_mode(), nvtx_range("mxfp8_moe_baseline"' in baseline_benchmark
+    assert 'with torch.inference_mode(), nvtx_range("mxfp8_moe_optimized"' in optimized_benchmark
+    assert "torch.no_grad()" not in baseline_benchmark
+    assert "torch.no_grad()" not in optimized_benchmark
+
+
 def test_native_fp6_quantization_avoids_tensor_bool_scale_branch() -> None:
     source = inspect.getsource(FP6Tensor._quantize_fp6)
 

@@ -129,7 +129,7 @@ class BaselineMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("mxfp8_moe_baseline", enable=enable_nvtx):
+        with torch.inference_mode(), nvtx_range("mxfp8_moe_baseline", enable=enable_nvtx):
             self.output = self._run_naive()
         if self.output is None or self.inputs is None or self.weights is None:
             raise RuntimeError("benchmark_fn() must produce output")

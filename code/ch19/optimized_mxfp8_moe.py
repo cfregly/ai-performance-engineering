@@ -263,7 +263,7 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("mxfp8_moe_optimized", enable=enable_nvtx):
+        with torch.inference_mode(), nvtx_range("mxfp8_moe_optimized", enable=enable_nvtx):
             if self.use_cuda_graphs and self._graph is not None and self._graph_out is not None:
                 self._graph.replay()
                 self.output = self._graph_out
