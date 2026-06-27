@@ -44,6 +44,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self._last_stage_durations_ms: List[float] = []
         self._bubble_fraction: float = 0.0
         self._stage_buffers: List[List[Optional[torch.Tensor]]] = []
+        self._stage_transfer_buffers: List[List[Optional[torch.Tensor]]] = []
         self._stage_devices: List[torch.device] = []
         self._final_output_slots: List[torch.Tensor] = []
         self._last_final_output_count: int = 0
@@ -104,6 +105,12 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                 [nn.Linear(self.hidden_size * 4, self.hidden_size * 2), nn.GELU()],
                 [nn.Linear(self.hidden_size * 2, self.hidden_size)],
             ]
+            stage_output_features = [
+                self.hidden_size * 4,
+                self.hidden_size * 4,
+                self.hidden_size * 2,
+                self.hidden_size,
+            ]
 
             self.pipeline_stages = []
             for stage_id, layer_stack in enumerate(layers_per_stage):
@@ -134,6 +141,28 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                 torch.empty(0, device=self._stage_devices[-1], dtype=torch.bfloat16)
                 for _ in range(self.micro_batches)
             ]
+            self._stage_transfer_buffers = []
+            for stage_idx, feature_count in enumerate(stage_output_features):
+                next_stage_idx = stage_idx + 1
+                if (
+                    next_stage_idx >= len(self.pipeline_stages)
+                    or self._stage_devices[next_stage_idx] == self._stage_devices[stage_idx]
+                ):
+                    self._stage_transfer_buffers.append(
+                        [None for _ in range(self.micro_batches)]
+                    )
+                    continue
+                next_device = self._stage_devices[next_stage_idx]
+                self._stage_transfer_buffers.append(
+                    [
+                        torch.empty(
+                            (micro_input.shape[0], feature_count),
+                            device=next_device,
+                            dtype=torch.bfloat16,
+                        )
+                        for micro_input in self.microbatch_inputs
+                    ]
+                )
         
         # Refresh workload metadata
         tokens = self.batch_size * self.hidden_size
@@ -169,6 +198,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         if (
             len(self._last_stage_durations_ms) != num_stages
             or len(self._stage_buffers) != num_stages + 1
+            or len(self._stage_transfer_buffers) != num_stages
             or len(self._stage_devices) != num_stages
             or len(self._final_output_slots) != self.micro_batches
         ):
@@ -176,6 +206,9 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         for stage_row in self._stage_buffers:
             if len(stage_row) != self.micro_batches:
                 raise RuntimeError("Pipeline reuse slots not initialized")
+        for transfer_row in self._stage_transfer_buffers:
+            if len(transfer_row) != self.micro_batches:
+                raise RuntimeError("Pipeline transfer slots not initialized")
         for stage_idx in range(num_stages):
             self._last_stage_durations_ms[stage_idx] = 0.0
         stage_buffers = self._stage_buffers
@@ -186,6 +219,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
             stage_buffers[0][micro_idx] = micro_input
 
         stage_devices = self._stage_devices
+        transfer_buffers = self._stage_transfer_buffers
 
         with self._nvtx_range("optimized_pipeline_parallelism"):
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
@@ -201,15 +235,21 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                             x = stage_buffers[stage_idx][chunk_idx]
                             if x is None:
                                 continue
+                            if x.device != stage_devices[stage_idx]:
+                                raise RuntimeError("Pipeline stage input is on the wrong device")
                             stage_start = self._record_start()
                             with self._nvtx_range(f"stage{stage_idx}_mb{chunk_idx}"):
-                                out = stage(x.to(stage_devices[stage_idx]))
+                                out = stage(x)
                             self._last_stage_durations_ms[stage_idx] += self._record_stop(stage_start)
                             next_stage_idx = stage_idx + 1
                             if next_stage_idx < len(stage_devices):
                                 next_device = stage_devices[next_stage_idx]
                                 if next_device != stage_devices[stage_idx]:
-                                    out = out.to(next_device)
+                                    transfer_buffer = transfer_buffers[stage_idx][chunk_idx]
+                                    if transfer_buffer is None:
+                                        raise RuntimeError("Pipeline transfer slot not initialized")
+                                    transfer_buffer.copy_(out, non_blocking=True)
+                                    out = transfer_buffer
                             stage_buffers[next_stage_idx][chunk_idx] = out
                             self.stage_events[stage_idx][chunk_idx].record(stream)
 
@@ -274,6 +314,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self.stage_streams = []
         self.stage_events = []
         self._stage_buffers = []
+        self._stage_transfer_buffers = []
         self._stage_devices = []
         self._final_output_slots = []
         self._last_final_output_count = 0
