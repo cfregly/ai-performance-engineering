@@ -886,6 +886,25 @@ def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
         assert "nn.ReLU()" not in source
 
 
+def test_ch04_eval_reduction_and_disagg_paths_use_inference_mode() -> None:
+    for relative in (
+        "ch04/baseline_nccl.py",
+        "ch04/baseline_cpu_reduction.py",
+        "ch04/baseline_disaggregated.py",
+        "ch04/optimized_disaggregated.py",
+        "ch04/baseline_disaggregated_multigpu.py",
+        "ch04/optimized_disaggregated_multigpu.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "with torch.no_grad():" not in benchmark_section
+
+
 def test_ch06_ch12_cuda_output_buffers_skip_setup_zero_fill() -> None:
     targets = (
         "ch06/baseline_launch_bounds.py",

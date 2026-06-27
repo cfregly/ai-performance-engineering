@@ -61,7 +61,7 @@ class BaselineNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: CPU-based reduction (inefficient)."""
         with self._nvtx_range("baseline_nccl"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 output = self.model(self.input)
                 
                 # Naively copy each shard to CPU to aggregate (slow!)

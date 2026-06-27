@@ -66,7 +66,7 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: CPU round-trip reduction (anti-pattern)."""
         with self._nvtx_range("baseline_cpu_reduction"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 output = self.model(self.input)
                 
                 # Naively copy each shard to CPU to aggregate (slow!)
@@ -156,4 +156,3 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return BaselineCpuReductionBenchmark()
-

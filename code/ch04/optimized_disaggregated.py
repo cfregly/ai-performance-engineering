@@ -95,7 +95,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.prefill_model is not None and self.decode_model is not None
         assert self.prefill_input is not None and self.decode_input is not None
         with self._nvtx_range("optimized_disaggregated"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Process prefill on dedicated prefill GPUs (parallel, compute-intensive)
                 prefill_output = self.prefill_model(self.prefill_input)
                 

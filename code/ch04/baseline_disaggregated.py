@@ -87,7 +87,7 @@ class BaselineDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 
         with nvtx_range("baseline_disaggregated", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Baseline: Monolithic inference
                 # Prefill and decode phases share same resources across GPUs
                 # This causes interference - prefill blocks decode and vice versa
