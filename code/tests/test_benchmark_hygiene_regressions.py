@@ -6062,6 +6062,25 @@ def test_ch12_kernel_launches_pair_keeps_hot_path_work_fixed() -> None:
     assert "with torch.inference_mode(), torch.cuda.graph(self.graph):" in optimized_source
 
 
+def test_ch12_ch20_optimized_benchmarks_hoist_nvtx_helpers() -> None:
+    for relative in (
+        "ch12/optimized_cuda_graphs.py",
+        "ch12/optimized_kernel_fusion.py",
+        "ch12/optimized_kernel_launches.py",
+        "ch12/optimized_work_queue.py",
+        "ch20/optimized_integrated_kv_cache.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        pre_benchmark = source.split("def benchmark_fn", maxsplit=1)[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range" in pre_benchmark
+        assert "from core.profiling.nvtx_helper import" not in benchmark_section
+
+
 def test_ch08_to_ch12_kernel_wrappers_use_inference_mode() -> None:
     paths = (
         "ch08/optimized_tcgen05_custom_vs_cublas.py",

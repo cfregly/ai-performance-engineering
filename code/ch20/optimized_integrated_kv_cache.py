@@ -29,6 +29,7 @@ from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
 )
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 def _flash_sdp_context():
     """Prefer the new sdpa_kernel API; fall back to no-op if unavailable."""
@@ -239,8 +240,6 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
     def benchmark_fn(self) -> None:
         """Function to benchmark - integrated KV cache pipeline."""
         # Use conditional NVTX ranges - only enabled when profiling
-
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
 
