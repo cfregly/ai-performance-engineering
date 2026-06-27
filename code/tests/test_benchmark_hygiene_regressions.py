@@ -3695,9 +3695,18 @@ def test_ch14_training_large_model_defers_step_loss_sync() -> None:
         "def benchmark_training",
         maxsplit=1,
     )[0]
+    benchmark_section = source.split("def benchmark_training", maxsplit=1)[1].split(
+        "def estimate_memory",
+        maxsplit=1,
+    )[0]
 
     assert "return loss.item()" not in train_step_section
     assert "return loss.detach()" in train_step_section
+    assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start.record()" in benchmark_section
+    assert "end.record()" in benchmark_section
+    assert "elapsed = start.elapsed_time(end) / 1000.0" in benchmark_section
+    assert "time.perf_counter()" not in benchmark_section
 
 
 def test_nanochat_base_train_defers_grad_norm_sync_until_logging() -> None:

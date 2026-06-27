@@ -26,7 +26,6 @@ import sys
 import torch
 from core.utils.compile_utils import enable_tf32
 import torch.nn as nn
-import time
 from dataclasses import dataclass
 
 
@@ -197,13 +196,16 @@ def benchmark_training(model, input_ids, labels, optimizer, name, num_warmup=10,
     
     # Benchmark
     print(f"  Running benchmark...", end='', flush=True)
-    start = time.perf_counter()
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+    start.record()
     for i in range(num_iters):
         if i % 20 == 0:
             print('.', end='', flush=True)
         _ = training_step(model, input_ids, labels, optimizer)
+    end.record()
     torch.cuda.synchronize()
-    elapsed = time.perf_counter() - start
+    elapsed = start.elapsed_time(end) / 1000.0
     print(" done")
     
     avg_time_ms = (elapsed / num_iters) * 1000
