@@ -233,6 +233,10 @@ def decode_with_dynamic_precision(
     )
     generated[:, :prompt_len].copy_(prompt)
     current_len = prompt_len
+    next_token = torch.empty((batch_size, 1), device=device, dtype=prompt.dtype)
+    next_token_values: Optional[torch.Tensor] = None
+    top2_values: Optional[torch.Tensor] = None
+    top2_indices: Optional[torch.Tensor] = None
     
     # Internal state
     default_mode = PrecisionMode.BF16 if prefer_bfloat16 else PrecisionMode.FP16
@@ -246,14 +250,26 @@ def decode_with_dynamic_precision(
     
     # A tiny helper to update on-device EMA without host sync
     def _update_confidence_ema(logits: torch.Tensor) -> torch.Tensor:
-        nonlocal ema_conf
+        nonlocal ema_conf, top2_values, top2_indices
         
         # logits: [B, vocab] or [B, T, vocab]. Use the last time-step if 3D.
         last = logits if logits.dim() == 2 else logits[:, -1, :]
         
         # Compute top-2 margin on-device
-        top2 = torch.topk(last, k=2, dim=topk_dim).values  # [B, 2]
-        margin = (top2[:, 0] - top2[:, 1]).mean()  # scalar tensor on device
+        top2_shape = list(last.shape)
+        top2_shape[topk_dim] = 2
+        top2_shape_tuple = tuple(top2_shape)
+        if (
+            top2_values is None
+            or top2_indices is None
+            or top2_values.device != last.device
+            or top2_values.dtype != last.dtype
+            or tuple(top2_values.shape) != top2_shape_tuple
+        ):
+            top2_values = torch.empty(top2_shape_tuple, dtype=last.dtype, device=last.device)
+            top2_indices = torch.empty(top2_shape_tuple, dtype=torch.long, device=last.device)
+        torch.topk(last, k=2, dim=topk_dim, out=(top2_values, top2_indices))
+        margin = (top2_values[:, 0] - top2_values[:, 1]).mean()  # scalar tensor on device
         
         ema_conf = (1 - alpha) * (ema_conf if ema_conf is not None else margin) + alpha * margin
         return ema_conf  # device scalar
@@ -278,7 +294,14 @@ def decode_with_dynamic_precision(
         
         # 2) Pick next token from the *last* position
         last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
-        next_token = torch.argmax(last_step_logits, dim=-1, keepdim=True)  # [B, 1]
+        if (
+            next_token_values is None
+            or next_token_values.device != last_step_logits.device
+            or next_token_values.dtype != last_step_logits.dtype
+            or tuple(next_token_values.shape) != (batch_size, 1)
+        ):
+            next_token_values = torch.empty_like(last_step_logits[:, :1])
+        torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))
         generated[:, current_len : current_len + 1].copy_(next_token)
         current_len += 1
         

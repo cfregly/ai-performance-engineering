@@ -15,6 +15,7 @@ from ch19.dynamic_precision_benchmark_common import (
     decode_dynamic_precision,
     decode_fixed_precision,
 )
+from ch19.dynamic_precision_switching import decode_with_dynamic_precision
 from ch19.optimized_dynamic_precision import OptimizedDynamicPrecisionBenchmark
 
 
@@ -58,6 +59,21 @@ def test_dynamic_precision_decode_matches_fixed_precision_on_cpu() -> None:
     assert torch.equal(baseline_tokens, optimized_tokens)
     assert stats is not None
     assert stats.total_tokens > 0
+
+
+def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:
+    fixed_source = inspect.getsource(decode_fixed_precision)
+    dynamic_source = inspect.getsource(decode_with_dynamic_precision)
+
+    assert "next_token = torch.empty((batch_size, 1)" in fixed_source
+    assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in fixed_source
+    assert "torch.argmax(last_step_logits" not in fixed_source
+    assert "next_token = torch.empty((batch_size, 1)" in dynamic_source
+    assert "top2_values = torch.empty(" in dynamic_source
+    assert "top2_indices = torch.empty(" in dynamic_source
+    assert "torch.topk(last, k=2, dim=topk_dim, out=(top2_values, top2_indices))" in dynamic_source
+    assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in dynamic_source
+    assert "next_token = torch.argmax(last_step_logits" not in dynamic_source
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for chapter 19 dynamic-precision benchmark pair")
