@@ -173,7 +173,7 @@ def run_decode_step(
     *,
     scenario: MatrixScenario,
 ) -> torch.Tensor:
-    with torch.no_grad():
+    with torch.inference_mode():
         if scenario.schedule_mode == "dynamic":
             return experts.forward_grouped(
                 batch.hidden_states, batch.expert_indices, batch.expert_weights
@@ -194,7 +194,7 @@ def _reference_outputs(
     batches: Sequence[DispatchBatch],
 ) -> list[torch.Tensor]:
     refs: list[torch.Tensor] = []
-    with torch.no_grad():
+    with torch.inference_mode():
         for batch in batches:
             refs.append(
                 experts.forward_grouped(
@@ -212,7 +212,7 @@ def _compare_outputs(
     scenario: MatrixScenario,
 ) -> float:
     diff_tensors: list[torch.Tensor] = []
-    with torch.no_grad():
+    with torch.inference_mode():
         for batch, ref in zip(batches, refs, strict=True):
             out = run_decode_step(experts, batch, scenario=scenario)
             diff_tensors.append(torch.abs(out.float() - ref.float()).amax())

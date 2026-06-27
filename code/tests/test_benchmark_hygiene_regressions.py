@@ -1479,6 +1479,9 @@ def test_timed_loops_reuse_cuda_events() -> None:
         source = (REPO_ROOT / filename).read_text(encoding="utf-8")
         assert "for _ in range(scenario.repeats):\n        start_event = torch.cuda.Event" not in source
         assert "for _ in range(iters):\n        start = torch.cuda.Event" not in source
+        if filename == "labs/moe_decode_blackwell_matrix/runner.py":
+            assert "with torch.inference_mode():" in source
+            assert "with torch.no_grad():" not in source
 
 
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
