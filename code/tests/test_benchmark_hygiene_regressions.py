@@ -375,6 +375,26 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     assert "dist.reduce_scatter(reducescatter_output, reducescatter_input)" in collective_section
 
 
+def test_ch04_nccl_benchmark_reuses_collective_buffers() -> None:
+    source = (REPO_ROOT / "ch04" / "nccl_benchmark.py").read_text(encoding="utf-8")
+    collective_section = source.split("def benchmark_collective", maxsplit=1)[1].split(
+        "def format_bandwidth", maxsplit=1
+    )[0]
+    setup_section = collective_section.split("def _run_collective", maxsplit=1)[0]
+    run_section = collective_section.split("def _run_collective", maxsplit=1)[1].split(
+        "for _ in range(warmup):", maxsplit=1
+    )[0]
+
+    assert "allgather_outputs = [torch.empty_like(tensor) for _ in range(world_size)]" in setup_section
+    assert "torch.empty(tensor.numel() // world_size, device=device, dtype=tensor.dtype)" in setup_section
+    assert "reducescatter_inputs = list(tensor.chunk(world_size))" in setup_section
+    assert "[torch.empty_like(tensor) for _ in range(world_size)]" not in run_section
+    assert "torch.empty(tensor.numel() // world_size" not in run_section
+    assert "list(tensor.chunk(world_size))" not in run_section
+    assert "dist.all_gather(allgather_outputs, tensor)" in run_section
+    assert "dist.reduce_scatter(reducescatter_output, reducescatter_inputs)" in run_section
+
+
 def test_ch04_symmetric_ring_allreduce_skips_dead_result_zero_fill() -> None:
     source = (REPO_ROOT / "ch04" / "symmetric_memory_multigpu.py").read_text(
         encoding="utf-8"
