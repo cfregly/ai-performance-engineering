@@ -472,16 +472,18 @@ if TRITON_AVAILABLE:
     @triton.jit
     def _candidate_dot_kernel(
         user_ptr,
-        candidate_ptr,
+        item_embedding_ptr,
+        candidate_ids_ptr,
         out_ptr,
         batch_size,
         num_candidates,
         embedding_dim,
         stride_user_b,
         stride_user_d,
-        stride_candidate_b,
-        stride_candidate_c,
-        stride_candidate_d,
+        stride_item_vocab,
+        stride_item_d,
+        stride_candidate_ids_b,
+        stride_candidate_ids_c,
         stride_out_b,
         stride_out_c,
         BLOCK_C: tl.constexpr,  # noqa: N803
@@ -492,6 +494,13 @@ if TRITON_AVAILABLE:
 
         offs_c = candidate_block_idx * BLOCK_C + tl.arange(0, BLOCK_C)
         acc = tl.zeros((BLOCK_C,), dtype=tl.float32)
+        candidate_ids = tl.load(
+            candidate_ids_ptr
+            + batch_idx * stride_candidate_ids_b
+            + offs_c * stride_candidate_ids_c,
+            mask=offs_c < num_candidates,
+            other=0,
+        )
 
         for d_start in range(0, embedding_dim, BLOCK_D):
             offs_d = d_start + tl.arange(0, BLOCK_D)
@@ -503,10 +512,9 @@ if TRITON_AVAILABLE:
                 other=0.0,
             )
             cand = tl.load(
-                candidate_ptr
-                + batch_idx * stride_candidate_b
-                + offs_c[:, None] * stride_candidate_c
-                + offs_d[None, :] * stride_candidate_d,
+                item_embedding_ptr
+                + candidate_ids[:, None] * stride_item_vocab
+                + offs_d[None, :] * stride_item_d,
                 mask=(offs_c[:, None] < num_candidates) & mask_d[None, :],
                 other=0.0,
             )
@@ -533,21 +541,22 @@ def candidate_scores_triton(
         raise RuntimeError("Triton candidate scoring requires CUDA tensors")
 
     ensure_triton_compat()
-    candidate_emb = F.embedding(inputs.candidate_ids, state.item_embeddings).contiguous()
     user_vec = user_vec.contiguous()
     grid = (inputs.candidate_ids.shape[0], triton.cdiv(inputs.candidate_ids.shape[1], 64))
     _candidate_dot_kernel[grid](
         user_vec,
-        candidate_emb,
+        state.item_embeddings,
+        inputs.candidate_ids,
         out,
         inputs.candidate_ids.shape[0],
         inputs.candidate_ids.shape[1],
         user_vec.shape[1],
         user_vec.stride(0),
         user_vec.stride(1),
-        candidate_emb.stride(0),
-        candidate_emb.stride(1),
-        candidate_emb.stride(2),
+        state.item_embeddings.stride(0),
+        state.item_embeddings.stride(1),
+        inputs.candidate_ids.stride(0),
+        inputs.candidate_ids.stride(1),
         out.stride(0),
         out.stride(1),
         BLOCK_C=64,

@@ -18,6 +18,7 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     build_model_state,
     build_workspace,
     candidate_scores_torch,
+    candidate_scores_triton,
     context_sum_baseline,
     context_sum_vectorized,
     optimized_forward,
@@ -171,6 +172,15 @@ def test_torch_candidate_scoring_reuses_workspace_output_on_cpu() -> None:
     assert "out=out.unsqueeze(2)" in source
     assert workspace_scores.data_ptr() == workspace.score_output.data_ptr()
     torch.testing.assert_close(workspace_scores, fallback_scores, rtol=1e-6, atol=1e-6)
+
+
+def test_triton_candidate_scoring_avoids_materialized_candidate_embeddings() -> None:
+    source = inspect.getsource(candidate_scores_triton)
+
+    assert "state.item_embeddings" in source
+    assert "inputs.candidate_ids" in source
+    assert "candidate_emb =" not in source
+    assert "F.embedding" not in source
 
 
 def test_ranking_hot_paths_use_inference_mode() -> None:
