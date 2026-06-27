@@ -310,9 +310,7 @@ def build_workspace(workload: SequenceRankingWorkload, device: torch.device) -> 
     """Allocate reusable scratch buffers in setup()."""
 
     context_table_index = torch.arange(workload.num_tables, device=device, dtype=torch.int64)
-    context_table_index = (
-        context_table_index.view(1, workload.num_tables).expand(workload.batch_size, -1).clone()
-    )
+    context_table_index = context_table_index.view(1, workload.num_tables)
     return RankingWorkspace(
         sequence_accum=torch.empty(
             workload.batch_size,

@@ -135,6 +135,7 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     inputs = build_inputs(workload, torch.device("cpu"))
     state = build_model_state(workload, torch.device("cpu"))
     workspace = build_workspace(workload, torch.device("cpu"))
+    build_workspace_source = inspect.getsource(build_workspace)
 
     fallback_sequence = sequence_mean_vectorized(inputs, state)
     workspace_sequence = sequence_mean_vectorized(inputs, state, workspace)
@@ -142,6 +143,8 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     workspace_context = context_sum_vectorized(inputs, state, workspace)
 
     assert workspace.sequence_metadata_key is not None
+    assert workspace.context_table_index.shape == (1, workload.num_tables)
+    assert ".expand(workload.batch_size, -1).clone()" not in build_workspace_source
     assert workspace_sequence.data_ptr() == workspace.sequence_accum.data_ptr()
     assert workspace_context.data_ptr() == workspace.context_accum.data_ptr()
     torch.testing.assert_close(workspace_sequence, fallback_sequence, rtol=1e-6, atol=1e-6)
