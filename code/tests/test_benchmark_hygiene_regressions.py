@@ -2161,6 +2161,10 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
 def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     source = (REPO_ROOT / "ch18" / "run_vllm_decoder.py").read_text(encoding="utf-8")
     benchmark_section = source.split("class VLLMMoEInferenceBenchmark", maxsplit=1)[1]
+    eager_section = benchmark_section.split("def _run_eager_path", maxsplit=1)[1].split(
+        "# --------------------------------------------------------------- benchmark_fn",
+        maxsplit=1,
+    )[0]
 
     assert "self._prefill_next_values: Optional[torch.Tensor] = None" in benchmark_section
     assert "self._prefill_next_tokens: Optional[torch.Tensor] = None" in benchmark_section
@@ -2171,6 +2175,9 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     )
     assert "self.spec_decoder.prepare_workspaces(cfg.batch_size, cfg.dtype_obj, self.device)" in benchmark_section
     assert "torch.argmax(logits[:, -1, :]" not in benchmark_section
+    assert 'with torch.inference_mode(), self._nvtx_range("prefill_dualpipe"):' in eager_section
+    assert 'with torch.inference_mode(), self._nvtx_range("speculative_decode"):' in eager_section
+    assert "torch.no_grad()" not in eager_section
 
 
 def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:

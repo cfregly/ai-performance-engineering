@@ -695,7 +695,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ttft_times: List[float] = []
         tpot_times: List[float] = []
 
-        with torch.no_grad(), self._nvtx_range("prefill_dualpipe"):
+        with torch.inference_mode(), self._nvtx_range("prefill_dualpipe"):
             prefill_start = self._record_start()
             hidden, logits = self.model.prefill(self.prompts, kv_cache=paged_cache.buffer, cache_start=0)
             torch.cuda.synchronize(self.device)
@@ -704,7 +704,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             paged_cache.mark_prefill(cfg.context_window)
 
         next_tokens = self._prefill_next_token_from_logits(logits)
-        with torch.no_grad(), self._nvtx_range("speculative_decode"):
+        with torch.inference_mode(), self._nvtx_range("speculative_decode"):
             chunk_used = spec.current_chunk_size()
             tokens, decode_times = spec.decode(
                 next_tokens,
