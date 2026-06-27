@@ -2181,6 +2181,22 @@ def test_nanochat_dist_muon_reuses_padding_buffers() -> None:
     assert "torch.empty_like(zero_buffer)" not in step_section
 
 
+def test_nanochat_dist_adamw_reuses_update_buffers() -> None:
+    source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "adamw.py").read_text(
+        encoding="utf-8"
+    )
+    step_section = source.split("def step", maxsplit=1)[1]
+
+    assert 'if "_grad_slice" not in state:' in step_section
+    assert 'grad_slice = state["_grad_slice"]' in step_section
+    assert 'if "step" not in state:' in step_section
+    assert "state['denom'] = torch.empty_like(p_slice)" in step_section
+    assert "torch.sqrt(exp_avg_sq, out=denom)" in step_section
+    assert "torch.div(exp_avg, denom, out=g_slice)" in step_section
+    assert "denom = exp_avg_sq.sqrt()" not in step_section
+    assert "update = exp_avg.div" not in step_section
+
+
 def test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa(monkeypatch: pytest.MonkeyPatch) -> None:
     from labs.nanochat_fullstack.nanochat.kernels import clustered_attention as clustered_attention_module
 

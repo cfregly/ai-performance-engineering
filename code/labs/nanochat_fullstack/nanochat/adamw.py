@@ -27,9 +27,13 @@ class DistAdamW(torch.optim.Optimizer):
         for group in self.param_groups:
             params: list[Tensor] = group["params"]
             for base_i in range(len(params)):
-                grad = params[base_i].grad
+                p = params[base_i]
+                grad = p.grad
                 rank_size = grad.shape[0] // world_size
-                grad_slice = torch.empty_like(grad[:rank_size])
+                state = self.state[p]
+                if "_grad_slice" not in state:
+                    state["_grad_slice"] = torch.empty_like(grad[:rank_size])
+                grad_slice = state["_grad_slice"]
                 reduce_scatter_futures.append(dist.reduce_scatter_tensor(grad_slice, grad, op=dist.ReduceOp.AVG, async_op=True).get_future())
                 grad_slices.append(grad_slice)
 
@@ -48,12 +52,14 @@ class DistAdamW(torch.optim.Optimizer):
                 state = self.state[p]
                 g_slice = grad_slices[idx]
                 # State init
-                if not state:
+                if "step" not in state:
                     state['step'] = torch.tensor(0, dtype=torch.int64, device=p.device)
                     state['exp_avg'] = torch.zeros_like(p_slice)
                     state['exp_avg_sq'] = torch.zeros_like(p_slice)
+                    state['denom'] = torch.empty_like(p_slice)
                 exp_avg = state['exp_avg']
                 exp_avg_sq = state['exp_avg_sq']
+                denom = state['denom']
                 state['step'] += 1
                 t = state['step']
                 # weight decay
@@ -67,10 +73,12 @@ class DistAdamW(torch.optim.Optimizer):
                 bias1 = 1 - beta1 ** t
                 bias2 = 1 - beta2 ** t
                 # compute step
-                denom = exp_avg_sq.sqrt().add_(eps)
+                torch.sqrt(exp_avg_sq, out=denom)
+                denom.add_(eps)
                 step_size = lr * (torch.sqrt(bias2) / bias1)
-                update = exp_avg.div(denom).mul_(step_size)
-                p_slice.add_(other=update, alpha=-1.0)
+                torch.div(exp_avg, denom, out=g_slice)
+                g_slice.mul_(step_size)
+                p_slice.add_(other=g_slice, alpha=-1.0)
                 idx += 1
                 all_reduce_futures.append(dist.all_gather_into_tensor(p, p_slice, async_op=True).get_future())
         torch.futures.collect_all(all_reduce_futures).wait()
