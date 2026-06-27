@@ -2958,7 +2958,10 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
 
     assert "float(stacked.sum())" not in baseline_benchmark
     assert "torch.stack(" not in baseline_benchmark
-    assert "self._last_outputs = outputs" in baseline_benchmark
+    assert "outputs = []" not in baseline_benchmark
+    assert "outputs.append(" not in baseline_benchmark
+    assert "self._last_outputs[output_idx] = torch.matmul(attn, vh)" in baseline_benchmark
+    assert "output_idx += 1" in baseline_benchmark
     assert "stacked = torch.stack(self._last_outputs, dim=1)" in baseline_capture
     assert "float(out.sum())" not in optimized_benchmark
 

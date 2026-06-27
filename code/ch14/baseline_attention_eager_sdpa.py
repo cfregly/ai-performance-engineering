@@ -53,6 +53,10 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         self.q = torch.randn(shape, device=self.device, dtype=self.dtype)
         self.k = torch.randn(shape, device=self.device, dtype=self.dtype)
         self.v = torch.randn(shape, device=self.device, dtype=self.dtype)
+        self._last_outputs = [
+            torch.empty(0, device=self.device, dtype=self.dtype)
+            for _ in range(self.num_heads * self.repeat_passes)
+        ]
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -72,8 +76,11 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         ):
             if self.q is None or self.k is None or self.v is None:
                 raise RuntimeError("Tensors not initialized")
+            expected_outputs = self.num_heads * self.repeat_passes
+            if self._last_outputs is None or len(self._last_outputs) != expected_outputs:
+                raise RuntimeError("Output slots not initialized")
             scale = 1.0 / math.sqrt(self.head_dim)
-            outputs = []
+            output_idx = 0
             for _ in range(self.repeat_passes):
                 for head in range(self.num_heads):
                     qh = self.q[:, head, :]
@@ -81,8 +88,8 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
                     vh = self.v[:, head, :]
                     scores = torch.matmul(qh, kh.transpose(0, 1)) * scale
                     attn = torch.softmax(scores, dim=-1)
-                    outputs.append(torch.matmul(attn, vh))
-            self._last_outputs = outputs
+                    self._last_outputs[output_idx] = torch.matmul(attn, vh)
+                    output_idx += 1
         if self._last_outputs is None or self.q is None or self.k is None or self.v is None:
             raise RuntimeError("Verification input/output not initialized")
 
