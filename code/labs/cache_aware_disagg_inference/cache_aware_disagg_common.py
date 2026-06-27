@@ -355,8 +355,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         kv_buffers = self._kv_buffers
         outputs = self._last_outputs
         if len(outputs) != len(self.request_plans):
-            outputs = [torch.empty(0) for _ in self.request_plans]
-            self._last_outputs = outputs
+            raise RuntimeError("Decode output slots not initialized")
         output_idx = 0
         metrics = {
             "cache_hits": 0.0,

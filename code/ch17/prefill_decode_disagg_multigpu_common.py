@@ -645,8 +645,7 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         expected_outputs = len(self._pairs) * self.cfg.requests_per_rank
         outputs = self._pending_outputs
         if len(outputs) != expected_outputs:
-            outputs = [torch.empty(0) for _ in range(expected_outputs)]
-            self._pending_outputs = outputs
+            raise RuntimeError("Decode output slots not initialized")
         output_idx = 0
         with torch.inference_mode():
             for pair in self._pairs:

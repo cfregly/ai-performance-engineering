@@ -210,8 +210,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         outputs = self._output_shards
         if outputs is None or len(outputs) != self.batch_size:
-            outputs = [torch.empty(0) for _ in range(self.batch_size)]
-            self._output_shards = outputs
+            raise RuntimeError("Decode output shards not initialized")
         output_idx = 0
         with self._nvtx_range(self.label):
             with torch.inference_mode():

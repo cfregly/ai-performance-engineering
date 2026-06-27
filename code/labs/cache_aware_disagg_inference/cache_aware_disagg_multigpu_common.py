@@ -914,8 +914,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         kv_buffers = {rank: {} for rank in self._decode_models}
         outputs = self._output_parts
         if len(outputs) != len(self._request_plans):
-            outputs = [torch.empty(0) for _ in self._request_plans]
-            self._output_parts = outputs
+            raise RuntimeError("Decode output slots not initialized")
         output_idx = 0
         ttft_history: List[float] = []
         tpot_history: List[float] = []

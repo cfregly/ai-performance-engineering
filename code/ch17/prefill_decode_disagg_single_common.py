@@ -150,8 +150,7 @@ class BaselinePrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
 
         outputs = self._pending_outputs
         if len(outputs) != self.cfg.requests_per_rank:
-            outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
-            self._pending_outputs = outputs
+            raise RuntimeError("Decode output slots not initialized")
         output_idx = 0
         with torch.inference_mode():
             for idx in range(self.cfg.requests_per_rank):

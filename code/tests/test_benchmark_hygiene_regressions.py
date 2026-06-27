@@ -5010,6 +5010,28 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     assert "self.output = self.model.decode(kv_cache, num_tokens=self.num_tokens)" not in optimized_source
 
 
+def test_decode_handoff_benchmarks_do_not_allocate_placeholder_outputs_in_hot_path() -> None:
+    paths = (
+        "ch15/baseline_inference_monolithic.py",
+        "ch15/disaggregated_inference_single_common.py",
+        "ch15/prefill_decode_disagg_common.py",
+        "ch15/baseline_disaggregated_inference_multigpu.py",
+        "ch17/prefill_decode_disagg_single_common.py",
+        "ch17/prefill_decode_disagg_multigpu_common.py",
+        "labs/cache_aware_disagg_inference/cache_aware_disagg_common.py",
+        "labs/cache_aware_disagg_inference/cache_aware_disagg_multigpu_common.py",
+    )
+
+    for path in paths:
+        source = (REPO_ROOT / path).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "torch.empty(0)" not in benchmark_section
+        assert "not initialized" in benchmark_section
+
+
 def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events() -> None:
     source = (REPO_ROOT / "ch15" / "baseline_inference_monolithic.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

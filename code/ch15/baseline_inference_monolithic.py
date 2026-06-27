@@ -65,7 +65,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
                 kv_cache = self.model.prefill(self.prompt)
                 decoded_tokens = self._last_decoded_tokens
                 if len(decoded_tokens) != self.num_tokens:
-                    decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]
+                    raise RuntimeError("Decode output slots not initialized")
                 decode_state = kv_cache
                 token_idx = 0
 
