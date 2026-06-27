@@ -13,25 +13,17 @@ speculative decoding algorithms and optimizations, see:
 - ch18/run_vllm_decoder.py (production vLLM integration)
 """
 
-import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Tuple, Optional
 
-import torch.profiler as profiler
-from torch.profiler import profile, record_function, ProfilerActivity, schedule
-import torch.cuda.nvtx as nvtx
 import torch
 import torch.nn as nn
-import torch.distributed as dist
-import torch.multiprocessing as mp
 import torch.nn.functional as F
 from torch.nn.attention import sdpa_kernel, SDPBackend
 from core.utils.compile_utils import compile_callable, maybe_nested_compile_region
 from core.utils.architecture_runtime import (
     get_arch_config,
-    get_architecture,
-    get_architecture_info,
 )
 from core.benchmark.gpu_requirements import require_min_gpus
 
@@ -42,12 +34,9 @@ Chapter 15: Disaggregated Inference Architectures
 
 Simulated disaggregated prefill-decode benchmarking on Blackwell clusters."""
 
-from torch.nn.parallel import DistributedDataParallel as DDP
 import time
 import numpy as np
 import json
-import threading
-import queue
 
 
 @maybe_nested_compile_region
@@ -224,6 +213,51 @@ class ScaledDotProductAttentionLayer(nn.Module):
         self.v_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         self.to(device=device, dtype=compute_dtype)
+        self._k_cat_buffer: Optional[torch.Tensor] = None
+        self._v_cat_buffer: Optional[torch.Tensor] = None
+
+    def _concat_kv_cache(
+        self,
+        past_k: torch.Tensor,
+        past_v: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        past_len = past_k.size(2)
+        total_len = past_len + k.size(2)
+        capacity = total_len
+        current_capacity = self._k_cat_buffer.size(2) if self._k_cat_buffer is not None else 0
+        if current_capacity > 0:
+            capacity = max(capacity, current_capacity)
+        needs_buffer = (
+            self._k_cat_buffer is None
+            or self._v_cat_buffer is None
+            or self._k_cat_buffer.size(0) != k.size(0)
+            or self._k_cat_buffer.size(1) != k.size(1)
+            or self._k_cat_buffer.size(2) < total_len
+            or self._k_cat_buffer.size(3) != k.size(3)
+            or self._k_cat_buffer.device != k.device
+            or self._k_cat_buffer.dtype != k.dtype
+        )
+        if needs_buffer:
+            capacity = max(total_len, max(1, current_capacity) * 2)
+            self._k_cat_buffer = torch.empty(
+                k.size(0),
+                k.size(1),
+                capacity,
+                k.size(3),
+                device=k.device,
+                dtype=k.dtype,
+            )
+            self._v_cat_buffer = torch.empty_like(self._k_cat_buffer)
+
+        k_out = self._k_cat_buffer[:, :, :total_len, :]
+        v_out = self._v_cat_buffer[:, :, :total_len, :]
+        k_out[:, :, :past_len, :].copy_(past_k)
+        v_out[:, :, :past_len, :].copy_(past_v)
+        k_out[:, :, past_len:total_len, :].copy_(k)
+        v_out[:, :, past_len:total_len, :].copy_(v)
+        return k_out, v_out
 
     @torch.inference_mode()
     def forward(
@@ -245,8 +279,7 @@ class ScaledDotProductAttentionLayer(nn.Module):
         if kv_state is not None and all(isinstance(t, torch.Tensor) for t in kv_state):
             past_k, past_v = kv_state
             if past_k is not None and past_v is not None:
-                k = torch.cat([past_k, k], dim=2)
-                v = torch.cat([past_v, v], dim=2)
+                k, v = self._concat_kv_cache(past_k, past_v, k, v)
 
         sdpa_ctx = get_sdpa_context()
         with sdpa_ctx:
@@ -433,7 +466,7 @@ class DisaggregatedInferenceSystem:
         response_tokens = []
         
         # Generate tokens autoregressively
-        for i in range(100):  # Generate up to 100 tokens
+        for _i in range(100):  # Generate up to 100 tokens
             token = self.decode_workers[0].generate_next_token()
             response_tokens.append(token)
             

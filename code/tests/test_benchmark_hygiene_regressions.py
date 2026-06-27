@@ -2270,6 +2270,39 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "torch.cat([out.detach().cpu() for out in self._pending_outputs], dim=0)" in capture_section
 
 
+def test_ch15_sdpa_attention_reuses_kv_concat_buffers() -> None:
+    from ch15.disaggregated_inference_multigpu import ScaledDotProductAttentionLayer
+
+    layer = ScaledDotProductAttentionLayer(
+        embed_dim=4,
+        num_heads=2,
+        device=torch.device("cpu"),
+        compute_dtype=torch.float32,
+    )
+    past_k = torch.arange(12, dtype=torch.float32).view(1, 2, 3, 2)
+    past_v = past_k + 100
+    k = torch.arange(4, dtype=torch.float32).view(1, 2, 1, 2)
+    v = k + 200
+    out_k, out_v = layer._concat_kv_cache(past_k, past_v, k, v)
+
+    torch.testing.assert_close(out_k, torch.cat([past_k, k], dim=2))
+    torch.testing.assert_close(out_v, torch.cat([past_v, v], dim=2))
+
+    source = (REPO_ROOT / "ch15" / "disaggregated_inference_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    attention_section = source.split("class ScaledDotProductAttentionLayer", maxsplit=1)[1].split(
+        "class PrefillKernel",
+        maxsplit=1,
+    )[0]
+
+    assert "self._k_cat_buffer: Optional[torch.Tensor] = None" in attention_section
+    assert "def _concat_kv_cache(" in attention_section
+    assert "k, v = self._concat_kv_cache(past_k, past_v, k, v)" in attention_section
+    assert "torch.cat([past_k, k]" not in attention_section
+    assert "torch.cat([past_v, v]" not in attention_section
+
+
 def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
     for filename in (
         "baseline_kv_cache_nvlink_pool.py",
