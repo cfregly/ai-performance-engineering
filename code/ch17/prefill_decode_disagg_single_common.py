@@ -40,6 +40,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self.kv_caches: List[torch.Tensor] = []
         self._kv_host_staging: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
+        self._pending_outputs: List[torch.Tensor] = []
         self._param_count = 0
 
     def setup(self) -> None:
@@ -64,6 +65,8 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self._param_count = sum(p.numel() for p in self.prefill_model.parameters()) + sum(
             p.numel() for p in self.decode_model.parameters()
         )
+        self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
+        self._output = None
         torch.cuda.synchronize(self.device)
 
     def _allocate_host_staging(self, shape: torch.Size, dtype: torch.dtype) -> torch.Tensor:
@@ -73,9 +76,12 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
             return torch.empty(shape, device="cpu", dtype=dtype)
 
     def _set_output(self, outputs: List[torch.Tensor]) -> None:
-        self._output = torch.stack(outputs, dim=0)
+        self._pending_outputs = outputs
+        self._output = None
 
     def capture_verification_payload(self) -> None:
+        if self._output is None and self._pending_outputs:
+            self._output = torch.stack(self._pending_outputs, dim=0)
         if self._output is None or self.prompts is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
@@ -108,6 +114,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self.kv_caches = []
         self._kv_host_staging = None
         self._output = None
+        self._pending_outputs = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -141,13 +148,18 @@ class BaselinePrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
         if self._kv_host_staging is None:
             raise RuntimeError("Baseline KV host staging buffer not initialized")
 
-        outputs: List[torch.Tensor] = []
+        outputs = self._pending_outputs
+        if len(outputs) != self.cfg.requests_per_rank:
+            outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
+            self._pending_outputs = outputs
+        output_idx = 0
         with torch.no_grad():
             for idx in range(self.cfg.requests_per_rank):
                 kv_cache, seed = self.prefill_model.prefill(self.prompts[idx])
                 self._kv_host_staging.copy_(kv_cache, non_blocking=False)
                 kv_cache.copy_(self._kv_host_staging, non_blocking=False)
-                outputs.append(self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens))
+                outputs[output_idx] = self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)
+                output_idx += 1
 
         self._set_output(outputs)
 
@@ -169,12 +181,9 @@ class OptimizedPrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
             kv_cache, seed = self.prefill_model.prefill(flat_prompts)
             decoded = self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)
 
-        self._set_output(
-            list(
-                decoded.view(
-                    self.cfg.requests_per_rank,
-                    self.cfg.batch_size,
-                    self.cfg.hidden_size,
-                ).unbind(0)
-            )
+        self._output = decoded.view(
+            self.cfg.requests_per_rank,
+            self.cfg.batch_size,
+            self.cfg.hidden_size,
         )
+        self._pending_outputs = []

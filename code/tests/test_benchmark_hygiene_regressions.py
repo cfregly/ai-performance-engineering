@@ -4147,15 +4147,33 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_single_common.py").read_text(
         encoding="utf-8"
     )
+    base_section = source.split("class _PrefillDecodeSingleGPUBase", maxsplit=1)[1].split(
+        "class BaselinePrefillDecodeSingleGPUBenchmark",
+        maxsplit=1,
+    )[0]
     baseline_benchmark = source.split("class BaselinePrefillDecodeSingleGPUBenchmark", maxsplit=1)[1].split(
         "class OptimizedPrefillDecodeSingleGPUBenchmark",
         maxsplit=1,
     )[0]
+    optimized_benchmark = source.split("class OptimizedPrefillDecodeSingleGPUBenchmark", maxsplit=1)[1]
 
+    assert "self._pending_outputs: List[torch.Tensor] = []" in base_section
+    assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in base_section
+    assert "self._output = torch.stack(self._pending_outputs, dim=0)" in base_section
     assert "kv_cache = kv_cpu.to(self.device)" not in baseline_benchmark
     assert "kv_cache.cpu()" not in baseline_benchmark
     assert "self._kv_host_staging.copy_(kv_cache, non_blocking=False)" in baseline_benchmark
     assert "kv_cache.copy_(self._kv_host_staging, non_blocking=False)" in baseline_benchmark
+    assert "outputs = self._pending_outputs" in baseline_benchmark
+    assert "output_idx = 0" in baseline_benchmark
+    assert "outputs[output_idx] = self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)" in baseline_benchmark
+    assert "output_idx += 1" in baseline_benchmark
+    assert "outputs: List[torch.Tensor] = []" not in baseline_benchmark
+    assert "outputs.append(" not in baseline_benchmark
+    assert "torch.stack(" not in baseline_benchmark
+    assert "self._output = decoded.view(" in optimized_benchmark
+    assert "self._pending_outputs = []" in optimized_benchmark
+    assert "list(" not in optimized_benchmark
 
 
 def test_ch15_inference_placement_defers_output_tensor_outside_hot_loop() -> None:
