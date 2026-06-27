@@ -30,7 +30,7 @@ class ToyMoe(nn.Module):
         )
         self.expert1 = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim * 2),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(hidden_dim * 2, hidden_dim),
         )
 
@@ -111,4 +111,3 @@ class BaselineMoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineMoeBenchmark()
-
