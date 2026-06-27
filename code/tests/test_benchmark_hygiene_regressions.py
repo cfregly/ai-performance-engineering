@@ -308,6 +308,10 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     assert "bw_tensor = torch.empty(1, device=torch.cuda.current_device()" in matrix_section
     assert "dist.all_reduce(tensor.clone())" not in collective_section
     assert "dist.all_reduce(tensor.clone())" not in curve_section
+    assert "tensor = torch.empty(size, device=device, dtype=torch.float32)" in collective_section
+    assert "tensor = torch.zeros(size, device=device, dtype=torch.float32)" not in collective_section
+    assert "tensor = torch.empty(size_elements, device=device, dtype=torch.float32)" in curve_section
+    assert "tensor = torch.zeros(size_elements, device=device, dtype=torch.float32)" not in curve_section
     assert "allgather_output = [torch.empty_like(tensor) for _ in range(world_size)]" in collective_section
     assert "dist.all_gather(allgather_output, tensor)" in collective_section
     assert "reducescatter_input = list(tensor.chunk(world_size))" in collective_section

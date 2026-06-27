@@ -35,9 +35,7 @@ Usage:
 
 import argparse
 import json
-import os
-import time
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 import torch
 import torch.distributed as dist
@@ -210,7 +208,7 @@ def benchmark_collective(
         (latency_ms, bandwidth_gbs)
     """
     device = torch.cuda.current_device()
-    tensor = torch.zeros(size, device=device, dtype=torch.float32)
+    tensor = torch.empty(size, device=device, dtype=torch.float32)
     
     # Warmup
     if op_type == "allreduce":
@@ -349,7 +347,7 @@ def measure_latency_bandwidth_curve(rank: int, world_size: int) -> Dict[int, Tup
         if size_elements == 0:
             size_elements = 1
         
-        tensor = torch.zeros(size_elements, device=device, dtype=torch.float32)
+        tensor = torch.empty(size_elements, device=device, dtype=torch.float32)
         
         # Warmup
         for _ in range(5):
