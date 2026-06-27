@@ -5239,6 +5239,41 @@ def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
     assert ".expand(x_fp8.size(0), 1).contiguous()" not in forward_section
 
 
+def test_ch13_fp8_perchannel_bench_caches_weight_quantization() -> None:
+    source = (REPO_ROOT / "ch13" / "fp8_perchannel_bench.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[
+        1
+    ].split(
+        "class OptimizedFP8PerChannelBenchmark",
+        maxsplit=1,
+    )[0]
+
+    assert 'self.register_buffer("_weight_q", torch.empty(0), persistent=False)' in source
+    assert "def prepare_fp8_weights" in source
+    assert "self.model.prepare_fp8_weights()" in setup_section
+    assert "weight_q = self._weight_q" in forward_section
+    assert "weight_scale = self._weight_scale" in forward_section
+    assert "output_q.mul_(input_scale)" in forward_section
+    assert "output_q.mul_(weight_scale)" in forward_section
+    assert "combined_scale = input_scale * weight_scale" not in forward_section
+
+    from ch13.fp8_perchannel_bench import FP8PerChannelLinear
+
+    torch.manual_seed(123)
+    layer = FP8PerChannelLinear(8, 6)
+    x = torch.randn(2, 3, 8)
+    expected = layer(x)
+    layer.prepare_fp8_weights()
+    actual = layer(x)
+    torch.testing.assert_close(actual, expected)
+
+
 def test_ch16_and_lab_forward_benchmarks_use_inference_mode() -> None:
     paths = (
         "ch16/awq_gptq_smoothquant_benchmarks.py",

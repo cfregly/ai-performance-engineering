@@ -38,6 +38,8 @@ class FP8PerChannelLinear(nn.Module):
             self.bias = nn.Parameter(torch.empty(out_features))
         else:
             self.register_parameter('bias', None)
+        self.register_buffer("_weight_q", torch.empty(0), persistent=False)
+        self.register_buffer("_weight_scale", torch.empty(0), persistent=False)
         
         self._reset_parameters()
     
@@ -45,6 +47,23 @@ class FP8PerChannelLinear(nn.Module):
         nn.init.kaiming_uniform_(self.weight, a=5**0.5)
         if self.bias is not None:
             nn.init.zeros_(self.bias)
+
+    def _quantize_weight(self) -> tuple[torch.Tensor, torch.Tensor]:
+        weight_amax = self.weight.abs().amax(dim=1)  # [out_features]
+        weight_scale = torch.clamp(weight_amax / self.fp8_max, min=1e-12)  # [out_features]
+        weight_q = torch.clamp(
+            self.weight / weight_scale.unsqueeze(1),
+            -self.fp8_max,
+            self.fp8_max,
+        ).round()
+        return weight_q, weight_scale
+
+    def prepare_fp8_weights(self) -> None:
+        """Precompute static per-channel weight quantization for inference."""
+        with torch.no_grad():
+            weight_q, weight_scale = self._quantize_weight()
+            self._weight_q = weight_q.contiguous()
+            self._weight_scale = weight_scale.contiguous()
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Per-channel FP8 quantized forward pass.
@@ -56,22 +75,25 @@ class FP8PerChannelLinear(nn.Module):
         input_amax = x.abs().max()
         input_scale = torch.clamp(input_amax / self.fp8_max, min=1e-12)
         x_q = torch.clamp(x / input_scale, -self.fp8_max, self.fp8_max).round()
-        
-        # Per-output-channel quantization of weights
-        # Each row gets its own scale factor
-        weight_amax = self.weight.abs().amax(dim=1)  # [out_features]
-        weight_scale = torch.clamp(weight_amax / self.fp8_max, min=1e-12)  # [out_features]
-        weight_q = torch.clamp(
-            self.weight / weight_scale.unsqueeze(1),
-            -self.fp8_max, self.fp8_max
-        ).round()
+
+        if (
+            tuple(self._weight_q.shape) == tuple(self.weight.shape)
+            and self._weight_q.device == self.weight.device
+            and self._weight_q.dtype == self.weight.dtype
+            and self._weight_scale.numel() == self.weight.size(0)
+        ):
+            weight_q = self._weight_q
+            weight_scale = self._weight_scale
+        else:
+            weight_q, weight_scale = self._quantize_weight()
         
         # Simulated FP8 GEMM
         output_q = torch.nn.functional.linear(x_q, weight_q, bias=None)
         
         # Dequantize with per-channel weight scales
-        combined_scale = input_scale * weight_scale  # [out_features]
-        output = (output_q * combined_scale).to(x.dtype)
+        output_q.mul_(input_scale)
+        output_q.mul_(weight_scale)
+        output = output_q.to(x.dtype)
         
         if self.bias is not None:
             output = output + self.bias
@@ -135,6 +157,7 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device, dtype=self.dtype
         )
         self._verify_input = self.x.detach().clone()
+        self.model.prepare_fp8_weights()
         
         # Warmup
         for _ in range(3):
