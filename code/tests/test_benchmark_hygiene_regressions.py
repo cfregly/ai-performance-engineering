@@ -3541,6 +3541,20 @@ def test_ch16_block_sparse_bsr_build_uses_vectorized_metadata() -> None:
     assert "block_mask.sum().item()" not in bsr_section
 
 
+def test_ch16_synthetic_moe_benchmark_hoists_inference_mode() -> None:
+    source = (REPO_ROOT / "ch16" / "synthetic_moe_inference_benchmark.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_function = source.split("def benchmark_inference", maxsplit=1)[1].split(
+        "def main", maxsplit=1
+    )[0]
+
+    assert benchmark_function.count("with torch.inference_mode():") == 2
+    assert "with torch.no_grad():" not in benchmark_function
+    assert "for _ in range(num_warmup):\n            if use_autocast:" in benchmark_function
+    assert "for _ in range(num_iters):\n            if use_autocast:" in benchmark_function
+
+
 def test_ch15_moe_validation_batches_report_loss_reads() -> None:
     source = (REPO_ROOT / "ch15" / "moe_validation" / "moe_validation.py").read_text(
         encoding="utf-8"

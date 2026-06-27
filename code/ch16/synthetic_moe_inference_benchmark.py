@@ -34,6 +34,7 @@ For REAL GPT-OSS models, see:
 from core.harness.arch_config import prefer_flash_sdpa
 
 import json
+import sys
 import time
 from dataclasses import dataclass, replace
 
@@ -219,7 +220,7 @@ def _convert_module_precision(module: nn.Module, dtype: torch.dtype) -> None:
     if isinstance(module, FP8Linear):
         module.convert_precision(dtype)
         return
-    for name, param in module.named_parameters(recurse=False):
+    for _name, param in module.named_parameters(recurse=False):
         if not torch.is_floating_point(param):
             continue
         param.data = param.data.to(dtype)
@@ -409,8 +410,8 @@ def benchmark_inference(model, input_ids, name, num_warmup=20, num_iters=100, *,
     # Warmup
     print(f"  Warming up ({num_warmup} iterations)...", end='', flush=True)
     use_autocast = autocast_dtype is not None and input_ids.device.type == "cuda"
-    for _ in range(num_warmup):
-        with torch.no_grad():
+    with torch.inference_mode():
+        for _ in range(num_warmup):
             if use_autocast:
                 with torch.autocast("cuda", dtype=autocast_dtype):
                     _ = model(input_ids)
@@ -423,8 +424,8 @@ def benchmark_inference(model, input_ids, name, num_warmup=20, num_iters=100, *,
     # Benchmark
     print(f"  Running benchmark ({num_iters} iterations)...", end='', flush=True)
     start = time.perf_counter()
-    for _ in range(num_iters):
-        with torch.no_grad():
+    with torch.inference_mode():
+        for _ in range(num_iters):
             if use_autocast:
                 with torch.autocast("cuda", dtype=autocast_dtype):
                     _ = model(input_ids)
