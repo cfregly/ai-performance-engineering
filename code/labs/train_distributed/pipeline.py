@@ -208,7 +208,7 @@ def _build_toy_model(input_dim: int, hidden_dim: int, depth: int) -> nn.Sequenti
     in_features = input_dim
     for _ in range(depth):
         layers.append(nn.Linear(in_features, hidden_dim))
-        layers.append(nn.ReLU())
+        layers.append(nn.ReLU(inplace=True))
         in_features = hidden_dim
     layers.append(nn.Linear(hidden_dim, input_dim))
     return nn.Sequential(*layers)

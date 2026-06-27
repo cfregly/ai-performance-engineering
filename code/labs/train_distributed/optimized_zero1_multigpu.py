@@ -50,7 +50,7 @@ def _maybe_fused_adamw(params, lr):
 def _build_model(hidden_size: int, device):
     layers = []
     for _ in range(6):
-        layers.extend([nn.Linear(hidden_size, hidden_size), nn.ReLU()])
+        layers.extend([nn.Linear(hidden_size, hidden_size), nn.ReLU(inplace=True)])
     layers.append(nn.Linear(hidden_size, hidden_size))
     return nn.Sequential(*layers).to(device)
 

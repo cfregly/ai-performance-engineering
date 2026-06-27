@@ -88,7 +88,7 @@ class OptimizerStateSharder:
 def _build_model(hidden_size: int, device):
     layers: Iterable[nn.Module] = []
     for _ in range(6):
-        layers.extend([nn.Linear(hidden_size, hidden_size), nn.ReLU()])
+        layers.extend([nn.Linear(hidden_size, hidden_size), nn.ReLU(inplace=True)])
     layers.append(nn.Linear(hidden_size, hidden_size))
     model = nn.Sequential(*layers).to(device)
     return model
