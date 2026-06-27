@@ -21,6 +21,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 def _flash_sdp_context():
@@ -87,8 +88,6 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
     def benchmark_fn(self) -> None:
         """Benchmark: fused SDPA attention operations."""
         # Use conditional NVTX ranges - only enabled when profiling
-
-        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
         config = self.get_config()
 

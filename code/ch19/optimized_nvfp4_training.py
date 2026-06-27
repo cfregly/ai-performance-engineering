@@ -17,6 +17,7 @@ from core.benchmark.verification import InputSignature, PrecisionFlags
 from core.common.device_utils import require_cuda_device
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 try:
     from transformer_engine.pytorch import Linear as TELinear
@@ -177,8 +178,6 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer.step()
 
     def benchmark_fn(self) -> None:
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
-
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
 

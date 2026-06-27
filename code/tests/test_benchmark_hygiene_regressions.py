@@ -6062,12 +6062,29 @@ def test_ch12_kernel_launches_pair_keeps_hot_path_work_fixed() -> None:
     assert "with torch.inference_mode(), torch.cuda.graph(self.graph):" in optimized_source
 
 
-def test_ch12_ch20_optimized_benchmarks_hoist_nvtx_helpers() -> None:
+def test_optimized_benchmarks_hoist_nvtx_helpers() -> None:
     for relative in (
+        "ch03/optimized_pinned_prefetch_mlp.py",
+        "ch04/optimized_cpu_reduction.py",
+        "ch04/optimized_nccl.py",
+        "ch04/optimized_reinit_comm.py",
+        "ch04/optimized_reinit_comm_multigpu.py",
         "ch12/optimized_cuda_graphs.py",
+        "ch12/optimized_graph_bandwidth.py",
         "ch12/optimized_kernel_fusion.py",
+        "ch12/optimized_kernel_fusion_llm_dedicated_stream_and_prefetch_for_blackwell.py",
+        "ch12/optimized_kernel_fusion_llm_persistent_buffer_and_stream_friendly_setup.py",
+        "ch12/optimized_kernel_fusion_llm_reuse_static_tensor_and_simplify_setup.py",
         "ch12/optimized_kernel_launches.py",
         "ch12/optimized_work_queue.py",
+        "ch14/optimized_attention_eager_sdpa.py",
+        "ch14/optimized_cublas_vs_cutlass.py",
+        "ch14/optimized_model_compile_reduced_precision.py",
+        "ch14/optimized_nccl_quantization.py",
+        "ch16/optimized_dense_attention_flash.py",
+        "ch16/optimized_regional_compilation.py",
+        "ch19/optimized_memory_double_buffering.py",
+        "ch19/optimized_nvfp4_training.py",
         "ch20/optimized_integrated_kv_cache.py",
     ):
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
@@ -6077,7 +6094,7 @@ def test_ch12_ch20_optimized_benchmarks_hoist_nvtx_helpers() -> None:
             maxsplit=1,
         )[0]
 
-        assert "from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range" in pre_benchmark
+        assert "from core.profiling.nvtx_helper import" in pre_benchmark
         assert "from core.profiling.nvtx_helper import" not in benchmark_section
 
 

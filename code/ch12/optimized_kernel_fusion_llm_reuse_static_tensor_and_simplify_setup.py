@@ -14,6 +14,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 # Import CUDA extension
 from ch12.cuda_extensions import load_kernel_fusion_extension
@@ -67,8 +68,6 @@ class OptimizedKernelFusionReuseStaticTensorBenchmark(VerificationPayloadMixin, 
     
     def benchmark_fn(self) -> None:
         """Benchmark: Fused kernel (single memory round trip)."""
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
-
         config = self.get_config()
 
         enable_nvtx = get_nvtx_enabled(config) if config else False

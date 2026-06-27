@@ -152,8 +152,6 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         self.capture_ms = float(capture_start.elapsed_time(capture_stop))
 
     def benchmark_fn(self) -> None:
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
-
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
 

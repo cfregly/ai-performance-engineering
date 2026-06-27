@@ -13,6 +13,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 from ch14.model_eager_common import (  # noqa: E402
     MODEL_EAGER_COMPILE_WARMUP_ITERS,
     MODEL_EAGER_WARMUP_ITERS,
@@ -88,8 +89,6 @@ class OptimizedModelCompileReducedPrecisionBenchmark(VerificationPayloadMixin, B
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
         # Use conditional NVTX ranges - only enabled when profiling
-
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
 

@@ -20,6 +20,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
     WorkloadMetadata,
 )
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -66,8 +67,6 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
-
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
         assert self.input is not None and self.model is not None

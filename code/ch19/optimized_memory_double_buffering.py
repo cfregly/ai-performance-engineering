@@ -18,6 +18,7 @@ from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
 )
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 resolve_device = partial(require_cuda_device, "CUDA required for ch19")
 
@@ -91,8 +92,6 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
     def benchmark_fn(self) -> None:
         """Benchmark: Double buffering with overlapping operations."""
         # Use conditional NVTX ranges - only enabled when profiling
-
-        from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
         config = self.get_config()
 

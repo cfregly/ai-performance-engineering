@@ -18,6 +18,7 @@ from core.harness.benchmark_harness import (  # noqa: E402
     WorkloadMetadata,
 )
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Initialize NCCL once and reuse - good pattern."""
@@ -67,7 +68,6 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: Reuse existing NCCL communicator."""
         if self.tensor is None or self.input_tensor is None:
             raise RuntimeError("Tensor not initialized")
-        from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
 
         config = self.get_config()
 
