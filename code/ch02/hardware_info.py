@@ -192,7 +192,7 @@ def benchmark_memory_bandwidth() -> None:
         for _ in range(iterations):
             dst.copy_(src)
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
 
         elapsed_ms = start.elapsed_time(end)
         bandwidth_gbps = (size_bytes * iterations / elapsed_ms) / 1e6

@@ -63,7 +63,7 @@ def measure_h2d_bandwidth(size_mb=1024, iterations=100):
         gpu_tensor.copy_(cpu_tensor, non_blocking=False)
     end.record()
     
-    torch.cuda.synchronize()
+    end.synchronize()
     elapsed_ms = start.elapsed_time(end)
     
     bandwidth_gbs = (size_mb * iterations) / (elapsed_ms / 1000.0)
@@ -92,7 +92,7 @@ def measure_d2h_bandwidth(size_mb=1024, iterations=100):
         cpu_tensor.copy_(gpu_tensor, non_blocking=False)
     end.record()
     
-    torch.cuda.synchronize()
+    end.synchronize()
     elapsed_ms = start.elapsed_time(end)
     
     bandwidth_gbs = (size_mb * iterations) / (elapsed_ms / 1000.0)
@@ -173,7 +173,7 @@ def measure_zero_copy_read_bandwidth(size_mb=1024, iterations=50):
         zero_copy_kernel()
     end.record()
     
-    torch.cuda.synchronize()
+    end.synchronize()
     elapsed_ms = start.elapsed_time(end)
     
     bandwidth_gbs = (size_mb * iterations) / (elapsed_ms / 1000.0)

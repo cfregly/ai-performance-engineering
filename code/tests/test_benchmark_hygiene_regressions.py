@@ -1778,6 +1778,8 @@ def test_timed_loops_reuse_cuda_events() -> None:
 
 def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:
     event_sync_files = {
+        "ch02/hardware_info.py": "end.synchronize()",
+        "ch02/nvlink_c2c_bandwidth_benchmark.py": "end.synchronize()",
         "ch12/bias_relu_residual_fusion_benchmark.py": "end.synchronize()",
         "ch13/fp8_static_demo.py": "end.synchronize()",
         "ch13/optimized_fp8_static.py": "end.synchronize()",
