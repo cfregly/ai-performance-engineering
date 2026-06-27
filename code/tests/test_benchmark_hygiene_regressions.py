@@ -1646,6 +1646,7 @@ def test_timed_loops_reuse_cuda_events() -> None:
     files = [
         "labs/moe_decode_blackwell_matrix/runner.py",
         "labs/cutlass_profiler_kernel_selector/run_triton_matmul.py",
+        "labs/memory_bandwidth_patterns/bandwidth_patterns_common.py",
     ]
 
     for filename in files:
@@ -1655,6 +1656,15 @@ def test_timed_loops_reuse_cuda_events() -> None:
         if filename == "labs/moe_decode_blackwell_matrix/runner.py":
             assert "with torch.inference_mode():" in source
             assert "with torch.no_grad():" not in source
+        if filename == "labs/memory_bandwidth_patterns/bandwidth_patterns_common.py":
+            timing_section = source.split("def measure_cuda_callable", maxsplit=1)[1].split(
+                "class BandwidthPatternsBenchmarkBase",
+                maxsplit=1,
+            )[0]
+            assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
+            assert timing_section.count("start.record()") == 1
+            assert timing_section.count("end.record()") == 1
+            assert "samples.append(start.elapsed_time(end))" not in timing_section
 
 
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
