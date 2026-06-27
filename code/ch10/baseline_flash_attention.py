@@ -74,12 +74,8 @@ class BaselineFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.float16,
         )
         if self.use_causal:
-            self._causal_mask = torch.ones(
-                self.seq_len,
-                self.seq_len,
-                device=self.device,
-                dtype=torch.bool,
-            ).triu(diagonal=1)
+            pos = torch.arange(self.seq_len, device=self.device)
+            self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)
         
         # Warmup
         with torch.no_grad():

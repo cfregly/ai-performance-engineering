@@ -33,3 +33,16 @@ def test_flash_attention_pair_shares_verification_tolerance() -> None:
     assert "output_tolerance=FLASH_ATTENTION_OUTPUT_TOLERANCE" in baseline
     assert "output_tolerance=FLASH_ATTENTION_OUTPUT_TOLERANCE" in optimized
     assert "output_tolerance=(0.2, 2.0)" not in baseline
+
+
+def test_baseline_flash_attention_builds_causal_mask_directly() -> None:
+    source = (REPO_ROOT / "ch10/baseline_flash_attention.py").read_text()
+    setup_source = source.split("def setup", maxsplit=1)[1].split(
+        "def _manual_attention",
+        maxsplit=1,
+    )[0]
+
+    assert "torch.ones(" not in setup_source
+    assert ".triu(" not in setup_source
+    assert "pos = torch.arange(self.seq_len, device=self.device)" in setup_source
+    assert "self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in setup_source
