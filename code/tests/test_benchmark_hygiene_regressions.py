@@ -386,6 +386,24 @@ def test_ch04_gradient_fusion_uses_dtype_byte_constant() -> None:
     assert "total_bytes = self.num_tensors * numel * FLOAT32_BYTES" in source
 
 
+def test_ch04_gradient_fusion_seeds_accumulator_without_hot_loop_clear() -> None:
+    source = (REPO_ROOT / "ch04" / "gradient_fusion_common.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self._accum_buffer = torch.empty((), device=self.device, dtype=torch.float32)" in setup_section
+    assert "self._accum_buffer = torch.zeros(" not in setup_section
+    assert "accum.zero_()" not in benchmark_section
+    assert "accum.copy_(self.fused_tensor.sum())" in benchmark_section
+    assert "accum.copy_(self.tensors[0].sum())" in benchmark_section
+
+
 def test_dtype_byte_sizing_avoids_empty_tensor_metadata_allocations() -> None:
     files = [
         "ch04/gradient_fusion_multigpu.py",

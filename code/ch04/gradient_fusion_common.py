@@ -11,6 +11,7 @@ from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 FLOAT32_BYTES = torch.finfo(torch.float32).bits // 8
+__all__ = ["GradientFusionBenchmark", "attach_benchmark_metadata"]
 
 
 class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -59,18 +60,21 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self.fused_tensor = torch.cat([t.view(-1) for t in self.tensors])
         self._verify_input = self.tensors[0]
-        self._accum_buffer = torch.zeros((), device=self.device, dtype=torch.float32)
+        self._accum_buffer = torch.empty((), device=self.device, dtype=torch.float32)
 
     def benchmark_fn(self) -> None:
         if not self.tensors or self.fused_tensor is None:
             raise RuntimeError("setup() must run before benchmark_fn()")
         accum = self._accum_buffer
-        accum.zero_()
         if self.fused:
-            for _ in range(self.reduction_repeats):
+            accum.copy_(self.fused_tensor.sum())
+            for _ in range(1, self.reduction_repeats):
                 accum.add_(self.fused_tensor.sum())
         else:
-            for _ in range(self.reduction_repeats):
+            accum.copy_(self.tensors[0].sum())
+            for tensor in self.tensors[1:]:
+                accum.add_(tensor.sum())
+            for _ in range(1, self.reduction_repeats):
                 for tensor in self.tensors:
                     accum.add_(tensor.sum())
         self.output = accum
