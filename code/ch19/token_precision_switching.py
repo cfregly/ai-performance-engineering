@@ -51,6 +51,19 @@ class TokenPrecisionController:
         self.threshold_low = 0.6
         self.switch_count = 0
         self.history: List[PrecisionLevel] = []
+        self._next_token_buffer = None
+        self._next_token_host_buffer = None
+
+    def _next_token_buffers(self, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+        if self._next_token_buffer is None or self._next_token_buffer.device != device:
+            self._next_token_buffer = torch.empty(1, dtype=torch.long, device=device)
+            self._next_token_host_buffer = torch.empty(
+                1,
+                dtype=torch.long,
+                device="cpu",
+                pin_memory=device.type == "cuda",
+            )
+        return self._next_token_buffer, self._next_token_host_buffer
 
     @staticmethod
     def _confidence(logits: torch.Tensor, temperature: float = 1.0) -> ConfidenceMetrics:
@@ -115,11 +128,13 @@ class TokenPrecisionController:
                     self.switch_count += 1
                 self.current_precision = next_precision
                 probs = F.softmax(logits / temperature, dim=-1)
-                next_token = torch.multinomial(probs, num_samples=1)
-                tokens[:, current_len : current_len + 1].copy_(next_token.unsqueeze(0))
+                next_token, next_token_host = self._next_token_buffers(probs.device)
+                torch.multinomial(probs, num_samples=1, out=next_token)
+                tokens[:, current_len : current_len + 1].copy_(next_token.view(1, 1))
                 current_len += 1
                 stats.append({"confidence": metrics.confidence_score, "precision": self.current_precision.value})
-                if next_token.item() == 0:
+                next_token_host.copy_(next_token)
+                if int(next_token_host[0]) == 0:
                     break
         return tokens[:, :current_len].contiguous(), stats
 

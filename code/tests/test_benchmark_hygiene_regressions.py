@@ -1163,6 +1163,22 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
         assert "torch.cat([tokens, next_token]" not in source
         assert "torch.cat([tokens, next_token.unsqueeze(0)]" not in source
 
+    token_precision_source = (REPO_ROOT / "ch19" / "token_precision_switching.py").read_text(
+        encoding="utf-8"
+    )
+    token_precision_generate = token_precision_source.split("def generate(", maxsplit=1)[1].split(
+        "#",
+        maxsplit=1,
+    )[0]
+    assert "self._next_token_buffer = None" in token_precision_source
+    assert "self._next_token_host_buffer = None" in token_precision_source
+    assert "def _next_token_buffers(self, device: torch.device)" in token_precision_source
+    assert "torch.multinomial(probs, num_samples=1, out=next_token)" in token_precision_generate
+    assert "tokens[:, current_len : current_len + 1].copy_(next_token.view(1, 1))" in token_precision_generate
+    assert "next_token_host.copy_(next_token)" in token_precision_generate
+    assert "next_token = torch.multinomial(probs, num_samples=1)" not in token_precision_generate
+    assert "next_token.item()" not in token_precision_generate
+
 
 def test_ch19_fp4_baseline_keeps_scale_on_device() -> None:
     source = (REPO_ROOT / "ch19" / "baseline_fp4_weight_quantization.py").read_text(
