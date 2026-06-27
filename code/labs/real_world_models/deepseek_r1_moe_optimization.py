@@ -299,11 +299,10 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         # Forward pass
         output, metrics = self.moe_layer(self.input)
         self.output = output[:1, : min(4, output.shape[1]), : min(8, output.shape[2])]
-        self._last_aux_metrics = {
-            key: value.detach()
-            for key, value in metrics.items()
-            if torch.is_tensor(value)
-        }
+        self._last_aux_metrics.clear()
+        for key, value in metrics.items():
+            if torch.is_tensor(value):
+                self._last_aux_metrics[key] = value.detach()
 
         if use_cuda_timing:
             end_event.record()
@@ -358,7 +357,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._timing_events = None
         self._pending_timing_events = None
-        self._last_aux_metrics = {}
+        self._last_aux_metrics.clear()
         self._last_elapsed_ms = None
         super().teardown()
 
