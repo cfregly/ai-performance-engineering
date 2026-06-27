@@ -57,7 +57,7 @@ class BaselineLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBenchm
     def benchmark_fn(self) -> None:
         if self.q is None or self.k is None or self.v is None or self._mask is None:
             raise RuntimeError("Benchmark not configured")
-        with torch.no_grad():
+        with torch.inference_mode():
             scores = torch.matmul(self.q, self.k.transpose(-2, -1)) / (self.head_dim ** 0.5)
             scores = scores.masked_fill(self._mask, float("-inf"))
             attn = torch.softmax(scores, dim=-1)

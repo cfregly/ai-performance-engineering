@@ -132,14 +132,14 @@ class OptimizedQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).to(self.device)
         self.compiled_model = torch.compile(self.int8_model, mode="max-autotune")
         for _ in range(2):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.compiled_model(self.data_fp32)
     
     def benchmark_fn(self) -> None:
         if self.compiled_model is None or self.data is None:
             raise RuntimeError("Model/data not initialized")
         with self._nvtx_range("optimized_quantization"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.compiled_model(self.data)
         if self.data is None or self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

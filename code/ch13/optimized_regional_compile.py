@@ -6,7 +6,6 @@ whole-graph baseline. This isolates regional compilation as the primary change.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Dict, List, Optional
 
 import torch
@@ -146,7 +145,7 @@ class OptimizedRegionalCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 dtype=torch.bfloat16,
             )
 
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(5):
                 for seq in self.sequence_schedule:
                     _ = self.model(self.inputs[seq])
@@ -168,7 +167,7 @@ class OptimizedRegionalCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
         seq_len = self._next_sequence_length()
         x = self.inputs[seq_len]
 
-        with torch.no_grad(), self._nvtx_range("optimized_regional_compile"):
+        with torch.inference_mode(), self._nvtx_range("optimized_regional_compile"):
             self.output = self.model(x).detach()
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

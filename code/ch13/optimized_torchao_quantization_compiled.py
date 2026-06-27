@@ -28,14 +28,14 @@ class OptimizedTorchAOQuantizationCompiledBenchmark(OptimizedTorchAOQuantization
             raise RuntimeError("Model/data not initialized")
         self.compiled_model = torch.compile(self.model, mode="max-autotune")
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.compiled_model(self.data)
 
     def benchmark_fn(self) -> None:
         if self.compiled_model is None or self.data is None:
             raise RuntimeError("Compiled model/data not initialized")
         with self._nvtx_range("optimized_torchao_quantization_compiled"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.compiled_model(self.data)
         if self._verify_input is None or self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

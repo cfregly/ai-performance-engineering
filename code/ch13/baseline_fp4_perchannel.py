@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -116,13 +115,13 @@ class BaselineFP4PerTensorBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_input = self.inputs.detach().clone()
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.inputs)
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.inputs is None:
             raise RuntimeError("Benchmark not initialized")
-        with torch.no_grad():
+        with torch.inference_mode():
             self.output = self.model(self.inputs)
         if self._verify_input is None or self.output is None:
             raise RuntimeError("Verification input/output not initialized")

@@ -316,12 +316,12 @@ class StaticFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Warmup
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.static_linear(self.x)
 
     def benchmark_fn(self) -> None:
         """Benchmark: Static FP8 forward pass."""
-        with torch.no_grad():
+        with torch.inference_mode():
             self.output = self.static_linear(self.x)
         if self._verify_input is None or self.output is None:
             raise RuntimeError("Verification input/output not initialized")

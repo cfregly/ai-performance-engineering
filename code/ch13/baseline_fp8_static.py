@@ -16,7 +16,6 @@ Paired with: optimized_fp8_static.py
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -71,7 +70,7 @@ class BaselineFP8StaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_input = self.x.detach().clone()
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.static_linear(self.x)
         self._synchronize()
 
@@ -79,7 +78,7 @@ class BaselineFP8StaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.static_linear is None or self.x is None:
             raise RuntimeError("Benchmark not configured")
 
-        with torch.no_grad():
+        with torch.inference_mode():
             # Dynamic scaling overhead (not applied to quantization for output parity).
             input_amax = self.x.abs().amax(dim=-1)
             weight_amax = self.static_linear.weight.abs().amax(dim=1)
@@ -132,5 +131,3 @@ class BaselineFP8StaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineFP8StaticBenchmark()
-
-

@@ -54,7 +54,7 @@ class OptimizedLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBench
     def benchmark_fn(self) -> None:
         if self.q is None or self.k is None or self.v is None:
             raise RuntimeError("Benchmark not configured")
-        with torch.no_grad():
+        with torch.inference_mode():
             if not hasattr(torch.nn.attention, "sdpa_kernel"):
                 raise RuntimeError("torch.nn.attention.sdpa_kernel is required for flash attention")
             if not torch.backends.cuda.flash_sdp_enabled():

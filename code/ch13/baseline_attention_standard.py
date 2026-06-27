@@ -6,7 +6,6 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
@@ -78,7 +77,7 @@ class BaselineAttentionStandardBenchmark(VerificationPayloadMixin, BaseBenchmark
         if self.q is None or self.k is None or self.v is None:
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_attention_standard"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 scores = torch.matmul(self.q, self.k.transpose(-2, -1)) / (self.head_dim ** 0.5)
                 attn = torch.softmax(scores, dim=-1)
                 self.output = torch.matmul(attn, self.v)

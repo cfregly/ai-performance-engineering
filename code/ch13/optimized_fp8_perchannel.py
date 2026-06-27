@@ -6,8 +6,6 @@ for each output channel, preserving more accuracy than per-tensor scaling.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import torch
 import torch.nn as nn
 from typing import Optional
@@ -165,13 +163,13 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Warmup
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.x)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
         """Benchmark: Per-channel FP8 forward pass."""
-        with torch.no_grad():
+        with torch.inference_mode():
             self.output = self.model(self.x)
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
@@ -237,4 +235,3 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return OptimizedFP8PerChannelBenchmark()
-

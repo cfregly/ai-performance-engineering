@@ -53,7 +53,7 @@ class OptimizedAttentionFlexBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.q is None or self.k is None or self.v is None:
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("attention_standard"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 if not hasattr(torch.nn.attention, "sdpa_kernel"):
                     raise RuntimeError("torch.nn.attention.sdpa_kernel is required for flash attention")
                 if not torch.backends.cuda.flash_sdp_enabled():

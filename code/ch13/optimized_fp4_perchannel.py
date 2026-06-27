@@ -158,14 +158,14 @@ class OptimizedFP4PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_input = self.inputs.detach().clone()
 
         for _ in range(3):
-            with torch.no_grad(), fp8_autocast_fn(enabled=True, fp8_recipe=self.fp4_recipe):
+            with torch.inference_mode(), fp8_autocast_fn(enabled=True, fp8_recipe=self.fp4_recipe):
                 _ = self.model(self.inputs)
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.inputs is None or self.fp4_recipe is None:
             raise RuntimeError("Benchmark not initialized")
         _, fp8_autocast_fn, _, _ = _load_transformer_engine()
-        with torch.no_grad(), fp8_autocast_fn(enabled=True, fp8_recipe=self.fp4_recipe):
+        with torch.inference_mode(), fp8_autocast_fn(enabled=True, fp8_recipe=self.fp4_recipe):
             self.output = self.model(self.inputs)
         if self._verify_input is None or self.output is None:
             raise RuntimeError("Verification input/output not initialized")

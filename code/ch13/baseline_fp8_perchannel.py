@@ -6,8 +6,6 @@ which is simpler but less accurate than per-channel scaling.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import torch
 import torch.nn as nn
 from typing import Optional
@@ -123,13 +121,13 @@ class BaselineFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Warmup
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.x)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
         """Benchmark: Per-tensor FP8 forward pass."""
-        with torch.no_grad():
+        with torch.inference_mode():
             self.output = self.model(self.x)
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
@@ -195,4 +193,3 @@ class BaselineFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return BaselineFP8PerChannelBenchmark()
-

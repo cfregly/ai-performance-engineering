@@ -7,7 +7,6 @@ whole-graph versus regional compilation rather than BF16 versus FP32.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Dict, List, Optional
 
 import torch
@@ -123,7 +122,7 @@ class BaselineFullGraphCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 dtype=torch.bfloat16,
             )
 
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(5):
                 for seq in self.sequence_schedule:
                     _ = self.compiled_model(self.inputs[seq])
@@ -145,7 +144,7 @@ class BaselineFullGraphCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
         seq_len = self._next_sequence_length()
         x = self.inputs[seq_len]
 
-        with torch.no_grad(), self._nvtx_range("baseline_full_graph_compile"):
+        with torch.inference_mode(), self._nvtx_range("baseline_full_graph_compile"):
             self.output = self.compiled_model(x).detach()
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

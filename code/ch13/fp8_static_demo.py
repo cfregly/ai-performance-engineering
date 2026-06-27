@@ -648,13 +648,13 @@ class FP8StaticDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Warmup
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.x)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
         """Benchmark: Static FP8 inference."""
-        with torch.no_grad():
+        with torch.inference_mode():
             output = self.model(self.x)
             self.output = output.detach()
         if self._verify_input is None or self.output is None:

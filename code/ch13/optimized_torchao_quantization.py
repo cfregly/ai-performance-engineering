@@ -82,14 +82,14 @@ class OptimizedTorchAOQuantizationBenchmark(VerificationPayloadMixin, BaseBenchm
         self._verify_input = self.data.detach().clone()
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.data)
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.data is None:
             raise RuntimeError("Model/data not initialized")
         with self._nvtx_range("optimized_torchao_quantization"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.model(self.data)
         if self._verify_input is None or self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

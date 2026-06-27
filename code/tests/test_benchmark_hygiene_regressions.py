@@ -4721,6 +4721,39 @@ def test_ch13_regional_compile_moves_verification_materialization_out_of_hot_loo
         assert "output=self._verify_output.float().clone()" in capture_section
 
 
+def test_ch13_inference_precision_benchmarks_use_inference_mode() -> None:
+    filenames = (
+        "baseline_attention_standard.py",
+        "optimized_attention_standard.py",
+        "baseline_long_context_attention.py",
+        "optimized_long_context_attention.py",
+        "baseline_quantization.py",
+        "optimized_quantization.py",
+        "baseline_torchao_quantization.py",
+        "optimized_torchao_quantization.py",
+        "optimized_torchao_quantization_compiled.py",
+        "baseline_fp4_perchannel.py",
+        "optimized_fp4_perchannel.py",
+        "baseline_fp8_perchannel.py",
+        "optimized_fp8_perchannel.py",
+        "fp8_perchannel_bench.py",
+        "baseline_fp8_static.py",
+        "optimized_fp8_static.py",
+        "fp8_static_demo.py",
+        "baseline_regional_compile.py",
+        "optimized_regional_compile.py",
+    )
+
+    for filename in filenames:
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+
+
 def test_ch13_memory_profiling_pair_keeps_compute_dtype_fixed_and_direct_output_capture() -> None:
     baseline_source = (REPO_ROOT / "ch13" / "baseline_memory_profiling.py").read_text(encoding="utf-8")
     optimized_source = (REPO_ROOT / "ch13" / "optimized_memory_profiling.py").read_text(encoding="utf-8")

@@ -60,7 +60,7 @@ class BaselineQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.model is None or self.data is None:
             raise RuntimeError("Model/data not initialized")
         with self._nvtx_range("baseline_quantization"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.model(self.data)
         if self.data is None or self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
