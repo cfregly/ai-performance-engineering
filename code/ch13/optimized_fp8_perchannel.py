@@ -56,7 +56,7 @@ class FP8PerChannelLinear(nn.Module):
             raise RuntimeError("torch._scaled_mm is required for fp8_perchannel optimized benchmark")
         if not hasattr(torch, "float8_e4m3fn"):
             raise RuntimeError("torch.float8_e4m3fn is required for fp8_perchannel optimized benchmark")
-        with torch.no_grad():
+        with torch.inference_mode():
             weight_amax = self.weight.abs().amax(dim=1)  # [out_features]
             weight_scale = torch.clamp(weight_amax / self.fp8_max, min=1e-12).to(torch.float32)  # [out_features]
             self._scale_b = weight_scale.unsqueeze(0).contiguous()  # [1, out_features]
@@ -160,7 +160,7 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).to(self.device, self.dtype).eval()
         
         # Copy weights
-        with torch.no_grad():
+        with torch.inference_mode():
             self.ref_model.weight.copy_(self.model.weight)
             if self.model.bias is not None:
                 self.ref_model.bias.copy_(self.model.bias)

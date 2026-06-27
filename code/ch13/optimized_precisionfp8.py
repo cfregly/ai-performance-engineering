@@ -143,7 +143,7 @@ class OptimizedFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.model is None or self._verify_input_fp16 is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        with torch.no_grad():
+        with torch.inference_mode():
             verify_out = self.model(self._verify_input_fp16)
             self.output = verify_out
         self._set_verification_payload(

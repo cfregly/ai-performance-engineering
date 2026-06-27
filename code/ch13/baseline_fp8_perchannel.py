@@ -107,7 +107,7 @@ class BaselineFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).to(self.device, self.dtype).eval()
         
         # Copy weights
-        with torch.no_grad():
+        with torch.inference_mode():
             self.ref_model.weight.copy_(self.model.weight)
             if self.model.bias is not None:
                 self.ref_model.bias.copy_(self.model.bias)

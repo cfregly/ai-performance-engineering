@@ -59,7 +59,7 @@ def _apply_per_channel_scaling(linear: nn.Module) -> torch.Tensor:
     if weight is None:
         raise RuntimeError("TE Linear weight missing for per-channel scaling")
     scale = weight.abs().amax(dim=1).clamp(min=1e-6).to(weight.dtype)
-    with torch.no_grad():
+    with torch.inference_mode():
         weight.div_(scale.unsqueeze(1))
         bias = getattr(linear, "bias", None)
         if bias is not None:
@@ -144,7 +144,7 @@ class OptimizedFP4PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.dtype,
         )
-        with torch.no_grad():
+        with torch.inference_mode():
             self.model.fc1.weight.copy_(w1)
             if self.model.fc1.bias is not None:
                 self.model.fc1.bias.copy_(b1)

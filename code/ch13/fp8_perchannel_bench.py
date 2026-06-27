@@ -60,7 +60,7 @@ class FP8PerChannelLinear(nn.Module):
 
     def prepare_fp8_weights(self) -> None:
         """Precompute static per-channel weight quantization for inference."""
-        with torch.no_grad():
+        with torch.inference_mode():
             weight_q, weight_scale = self._quantize_weight()
             self._weight_q = weight_q.contiguous()
             self._weight_scale = weight_scale.contiguous()
@@ -147,7 +147,7 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).to(self.device, self.dtype).eval()
         
         # Copy weights
-        with torch.no_grad():
+        with torch.inference_mode():
             self.ref_model.weight.copy_(self.model.weight)
             if self.model.bias is not None:
                 self.ref_model.bias.copy_(self.model.bias)

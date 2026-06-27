@@ -4238,6 +4238,8 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
         assert "verify_out = self.model(self._verify_input_fp16)" not in benchmark_section
         assert ".detach().float().clone()" not in benchmark_section
         assert "verify_out = self.model(self._verify_input_fp16)" in capture_section
+        assert "with torch.inference_mode():" in capture_section
+        assert "with torch.no_grad():" not in capture_section
         assert "output=self.output.detach().float().clone()" in capture_section
 
     for name, expected_assignment in forward_pair:
@@ -5445,6 +5447,22 @@ def test_ch13_inference_precision_benchmarks_use_inference_mode() -> None:
         assert "torch.inference_mode()" in benchmark_section
         assert "torch.no_grad()" not in benchmark_section
 
+    setup_files = (
+        "baseline_fp4_perchannel.py",
+        "optimized_fp4_perchannel.py",
+        "baseline_fp8_perchannel.py",
+        "optimized_fp8_perchannel.py",
+        "fp8_perchannel_bench.py",
+    )
+    for filename in setup_files:
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        assert "torch.inference_mode()" in setup_section
+        assert "torch.no_grad()" not in setup_section
+
 
 def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_fp8_perchannel.py").read_text(
@@ -5481,6 +5499,8 @@ def test_ch13_fp8_perchannel_bench_caches_weight_quantization() -> None:
     assert 'self.register_buffer("_weight_q", torch.empty(0), persistent=False)' in source
     assert "def prepare_fp8_weights" in source
     assert "self.model.prepare_fp8_weights()" in setup_section
+    assert "torch.inference_mode()" in setup_section
+    assert "torch.no_grad()" not in setup_section
     assert "weight_q = self._weight_q" in forward_section
     assert "weight_scale = self._weight_scale" in forward_section
     assert "output_q.mul_(input_scale)" in forward_section

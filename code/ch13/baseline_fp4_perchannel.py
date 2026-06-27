@@ -62,7 +62,7 @@ class NaiveFP4MLP(nn.Module):
 
 
 def _init_linear_weights(linear: nn.Module, weight: torch.Tensor, bias: torch.Tensor) -> None:
-    with torch.no_grad():
+    with torch.inference_mode():
         linear.weight.copy_(weight)
         if linear.bias is not None:
             linear.bias.copy_(bias)
