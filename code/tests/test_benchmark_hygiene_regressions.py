@@ -84,6 +84,29 @@ def test_ch01_precision_benchmarks_disable_tf32_during_setup() -> None:
         assert torch.backends.cudnn.allow_tf32 == initial_cudnn
 
 
+def test_ch01_fp16_benchmark_precomputes_microbatch_groups() -> None:
+    source = (REPO_ROOT / "ch01" / "optimized_performance_fp16.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self._microbatch_groups = []" in setup_section
+    assert "self._target_groups = []" in setup_section
+    assert "self._group_sizes = []" in setup_section
+    assert "data_group = tuple(self.microbatches[start : start + self.fusion])" in setup_section
+    assert "target_group = tuple(self.targets[start : start + self.fusion])" in setup_section
+    assert "self._group_sizes.append(len(data_group))" in setup_section
+    assert "for group_data, group_targets, group_size in zip(" in benchmark_section
+    assert "self.microbatches[start : start + self.fusion]" not in benchmark_section
+    assert "self.targets[start : start + self.fusion]" not in benchmark_section
+    assert "group_size = max(" not in benchmark_section
+
+
 def test_ch02_cublas_metrics_report_gemm_workload_not_transfer_placeholders() -> None:
     baseline_metrics = BaselineCublasBenchmark().get_custom_metrics()
     optimized_metrics = OptimizedCublasBenchmark().get_custom_metrics()
