@@ -764,6 +764,31 @@ def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:
     assert "C = torch.zeros(M, N, device='cuda', dtype=torch.float32)" not in source
 
 
+def test_custom_vs_cublas_timing_helpers_use_cuda_events() -> None:
+    runner_source = (REPO_ROOT / "labs" / "custom_vs_cublas" / "run_lab.py").read_text(
+        encoding="utf-8"
+    )
+    autotune_source = (
+        REPO_ROOT / "labs" / "custom_vs_cublas" / "autotune.py"
+    ).read_text(encoding="utf-8")
+    runner_section = runner_source.split("def benchmark_kernel", maxsplit=1)[1].split(
+        "def calculate_tflops",
+        maxsplit=1,
+    )[0]
+    autotune_section = autotune_source.split("def _benchmark_kernel", maxsplit=1)[
+        1
+    ].split("# Available kernels", maxsplit=1)[0]
+
+    assert runner_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "return elapsed_ms" in runner_section
+    assert "start.elapsed_time(end) / iters" in runner_section
+    assert "time.time()" not in runner_section
+    assert autotune_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "end_event.synchronize()" in autotune_section
+    assert "times.append(start_event.elapsed_time(end_event))" in autotune_section
+    assert "time.perf_counter()" not in autotune_section
+
+
 def test_ch14_tma_config_benchmark_avoids_zero_filling_output() -> None:
     source = (REPO_ROOT / "ch14" / "benchmark_tma_configs.py").read_text(encoding="utf-8")
 

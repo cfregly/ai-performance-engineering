@@ -18,7 +18,6 @@ The gap analysis shows what optimizations cuBLAS uses that we don't.
 
 import argparse
 import ctypes
-import time
 from pathlib import Path
 
 import torch
@@ -50,14 +49,17 @@ def benchmark_kernel(fn, *args, warmup=5, iters=20):
     for _ in range(warmup):
         fn(*args)
     torch.cuda.synchronize()
-    
+
     # Timed runs
-    start = time.time()
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+    start.record()
     for _ in range(iters):
         fn(*args)
+    end.record()
     torch.cuda.synchronize()
-    
-    elapsed_ms = (time.time() - start) / iters * 1000
+
+    elapsed_ms = start.elapsed_time(end) / iters
     return elapsed_ms
 
 

@@ -12,13 +12,13 @@ How it works:
 4. Adapts to different matrix sizes (small vs large may prefer different kernels)
 """
 
-import torch
-import time
 from functools import lru_cache
 from typing import Dict, Tuple, Callable
 import hashlib
 import json
 import os
+
+import torch
 
 # Import all kernel variants
 from tcgen05_loader import (
@@ -68,15 +68,18 @@ def _benchmark_kernel(fn: Callable, A: torch.Tensor, B: torch.Tensor,
     for _ in range(warmup):
         _ = fn(A, B)
     torch.cuda.synchronize()
-    
+
     # Timed runs
     times = []
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
     for _ in range(iters):
-        start = time.perf_counter()
+        start_event.record()
         _ = fn(A, B)
-        torch.cuda.synchronize()
-        times.append((time.perf_counter() - start) * 1000)
-    
+        end_event.record()
+        end_event.synchronize()
+        times.append(start_event.elapsed_time(end_event))
+
     # Return median
     times.sort()
     return times[len(times) // 2]
@@ -216,4 +219,3 @@ if __name__ == "__main__":
     
     print("\nFinal cache:")
     show_cache()
-
