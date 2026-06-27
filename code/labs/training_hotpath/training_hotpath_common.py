@@ -138,25 +138,20 @@ def build_metric_inputs(workload: MetricReductionWorkload, device: torch.device)
     return preds, targets
 
 
-def scalar_metric_reduction(preds: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+def scalar_metric_reduction(
+    preds: torch.Tensor,
+    targets: torch.Tensor,
+    out: torch.Tensor | None = None,
+) -> torch.Tensor:
     responders = preds.shape[-1]
-    pred_sq = []
-    target_sq = []
-    covar = []
+    result = out if out is not None else preds.new_empty(responders * 3)
     for index in range(responders):
         pred_col = preds[..., index]
         target_col = targets[..., index]
-        pred_sq.append((pred_col * pred_col).sum())
-        target_sq.append((target_col * target_col).sum())
-        covar.append((pred_col * target_col).sum())
-    return torch.cat(
-        (
-            torch.stack(pred_sq, dim=0),
-            torch.stack(target_sq, dim=0),
-            torch.stack(covar, dim=0),
-        ),
-        dim=0,
-    )
+        result[index] = (pred_col * pred_col).sum()
+        result[responders + index] = (target_col * target_col).sum()
+        result[2 * responders + index] = (pred_col * target_col).sum()
+    return result
 
 
 def vectorized_metric_reduction(preds: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
@@ -400,10 +395,9 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
         if not torch.cuda.is_available():
             raise RuntimeError("labs.training_hotpath metric-reduction benchmarks require CUDA")
         self.preds, self.targets = build_metric_inputs(self.workload, self.device)
-        self.output = None
+        self.output = torch.empty(self.workload.responders * 3, device=self.device, dtype=torch.float32)
         if self.optimized:
             self._extension = load_training_hotpath_extension()
-            self.output = torch.empty(self.workload.responders * 3, device=self.device, dtype=torch.float32)
             self._extension.metric_reduction_fused_out(self.preds, self.targets, self.output)
         else:
             self._extension = None
@@ -426,7 +420,9 @@ class MetricReductionVectorizedBenchmark(VerificationPayloadMixin, BaseBenchmark
                 raise RuntimeError("Metric output buffer not initialized")
             self.output = self._extension.metric_reduction_fused_out(self.preds, self.targets, self.output)
         else:
-            self.output = scalar_metric_reduction(self.preds, self.targets)
+            if self.output is None:
+                raise RuntimeError("Metric output buffer not initialized")
+            self.output = scalar_metric_reduction(self.preds, self.targets, self.output)
 
     def capture_verification_payload(self) -> None:
         if self.output is None or self.preds is None or self.targets is None:

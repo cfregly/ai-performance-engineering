@@ -20,6 +20,7 @@ from labs.training_hotpath.training_hotpath_common import (
     baseline_segment_abs_mean,
     build_padding_inputs,
     build_segment_metadata,
+    scalar_metric_reduction,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -138,6 +139,29 @@ def test_baseline_segment_abs_mean_reuses_abs_buffer_on_cpu() -> None:
     assert 'out.scatter_reduce_(0, segment_ids, values, reduce="sum", include_self=False)' in helper_source
 
 
+def test_scalar_metric_reduction_reuses_output_buffer_on_cpu() -> None:
+    preds = torch.tensor([[[1.0, 2.0], [3.0, 4.0]]], dtype=torch.float32)
+    targets = torch.tensor([[[5.0, 6.0], [7.0, 8.0]]], dtype=torch.float32)
+    out = torch.empty(6, dtype=torch.float32)
+
+    result = scalar_metric_reduction(preds, targets, out)
+
+    assert result.data_ptr() == out.data_ptr()
+    torch.testing.assert_close(
+        result,
+        torch.tensor([10.0, 20.0, 74.0, 100.0, 26.0, 44.0], dtype=torch.float32),
+    )
+
+    source = (LAB_DIR / "training_hotpath_common.py").read_text(encoding="utf-8")
+    helper_source = source.split("def scalar_metric_reduction", maxsplit=1)[1].split(
+        "def vectorized_metric_reduction",
+        maxsplit=1,
+    )[0]
+    assert "result = out if out is not None else preds.new_empty(responders * 3)" in helper_source
+    assert "torch.stack(" not in helper_source
+    assert "torch.cat(" not in helper_source
+
+
 def test_padding_inputs_return_mask_and_host_active_token_count() -> None:
     common_source = (LAB_DIR / "training_hotpath_common.py").read_text(encoding="utf-8")
 
@@ -180,6 +204,8 @@ def test_metric_reduction_fused_optimized_path_reuses_output_buffer_source() -> 
     assert "auto out = reuse_output ? reusable_out : torch::empty" in kernel_source
     assert "self.output = torch.empty(self.workload.responders * 3" in common_source
     assert "metric_reduction_fused_out(self.preds, self.targets, self.output)" in common_source
+    assert "scalar_metric_reduction(self.preds, self.targets, self.output)" in common_source
+    assert "scalar_metric_reduction(self.preds, self.targets)" not in common_source
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for fused metric output reuse check")
