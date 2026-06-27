@@ -26,7 +26,7 @@ def get_device(use_cuda: bool = True) -> torch.device:
 
 
 # Adapted from https://github.com/linkedin/Liger-Kernel/blob/main/test/utils.py
-@torch.no_grad()
+@torch.inference_mode()
 def verbose_allclose(
     received: torch.Tensor, expected: torch.Tensor, rtol=1e-05, atol=1e-08, max_print=5
 ) -> list[str]:
@@ -96,7 +96,7 @@ def verbose_allclose(
     return []
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def verbose_allequal(
     received: torch.Tensor, expected: torch.Tensor, max_print: int = 5
 ):

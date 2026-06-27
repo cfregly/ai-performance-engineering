@@ -191,7 +191,7 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 bias=False,
                 params_dtype=torch.bfloat16,
             ).to(self.device)
-            with torch.no_grad():
+            with torch.inference_mode():
                 for idx in range(len(self.m_splits)):
                     weight_param = getattr(self.layer, f"weight{idx}")
                     weight_param.copy_(ordered_weights[idx])

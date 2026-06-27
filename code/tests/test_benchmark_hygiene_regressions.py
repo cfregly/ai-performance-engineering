@@ -1044,6 +1044,8 @@ def test_nvfp4_utils_reuse_nonzero_indices_for_mismatch_counts() -> None:
         )
         assert "mismatched.count_nonzero().item()" not in source
         assert "index.tolist()" not in source
+        assert source.count("@torch.inference_mode()") == 2
+        assert "@torch.no_grad()" not in source
 
 
 def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
@@ -1401,10 +1403,25 @@ def test_ch19_fp4_helpers_cache_lookup_values_per_device() -> None:
         assert "signs = (unpacked >> 3)" not in dequantize_section
 
 
-def test_ch19_optimized_fp4_weight_quantization_uses_inference_mode() -> None:
+def test_ch19_fp4_weight_quantization_uses_inference_mode() -> None:
+    baseline_source = (
+        REPO_ROOT / "ch19" / "baseline_fp4_weight_quantization.py"
+    ).read_text(encoding="utf-8")
     source = (REPO_ROOT / "ch19" / "optimized_fp4_weight_quantization.py").read_text(
         encoding="utf-8"
     )
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    baseline_validate = baseline_source.split("def validate_result", maxsplit=1)[1].split(
+        "def get_benchmark",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload",
         maxsplit=1,
@@ -1414,6 +1431,12 @@ def test_ch19_optimized_fp4_weight_quantization_uses_inference_mode() -> None:
         maxsplit=1,
     )[0]
 
+    assert "with torch.inference_mode():" in baseline_setup
+    assert "with torch.no_grad():" not in baseline_setup
+    assert "with torch.inference_mode():" in baseline_benchmark
+    assert "with torch.no_grad():" not in baseline_benchmark
+    assert "with torch.inference_mode():" in baseline_validate
+    assert "with torch.no_grad():" not in baseline_validate
     assert "with torch.inference_mode():" in benchmark_section
     assert "with torch.no_grad():" not in benchmark_section
     assert "with torch.inference_mode():" in validate_section

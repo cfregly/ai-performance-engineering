@@ -307,7 +307,7 @@ class BaselineFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBench
         )
         
         # Warmup
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(5):
                 _ = self.model(self.input)
         
@@ -315,7 +315,7 @@ class BaselineFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBench
     def benchmark_fn(self) -> None:
         """Benchmark naive MLP."""
         with self._nvtx_range("baseline_naive_mlp"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 output = self.model(self.input)
                 self.output = output.detach()
         if self.output is None or self.input is None or self.model is None:
@@ -372,7 +372,7 @@ class BaselineFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBench
         if self.input is None:
             return "Input not initialized"
         
-        with torch.no_grad():
+        with torch.inference_mode():
             output = self.model(self.input[:1, :32])
             if torch.isnan(output).any():
                 return "NaN in output"

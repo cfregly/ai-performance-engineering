@@ -126,6 +126,8 @@ def test_optimized_mxfp8_moe_reuses_token_ids_and_keeps_reorder_on_device() -> N
     assert "def _flat_topk_token_ids" in module_source
     assert 'token_ids.div_(top_k, rounding_mode="floor")' in module_source
     assert "repeat_interleave(" not in setup_source
+    assert "with torch.inference_mode():" in setup_source
+    assert "with torch.no_grad():" not in setup_source
     assert "expanded_inputs = self.inputs.index_select(0, token_ids)" in setup_source
     assert "expert_order[idx].item()" not in supergroup_source
     assert "expert_order.index_select(0, order_tensor)" in supergroup_source
