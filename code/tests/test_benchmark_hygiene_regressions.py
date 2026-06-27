@@ -4601,7 +4601,14 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
 
     assert "torch.cuda.Event" not in source
     assert "torch.cat(" not in benchmark_section
+    assert "self._last_decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]" in source
+    assert "decoded_tokens = self._last_decoded_tokens" in benchmark_section
+    assert "token_idx = 0" in benchmark_section
+    assert "decoded_tokens[token_idx] = decode_state" in benchmark_section
+    assert "token_idx += 1" in benchmark_section
     assert "self._last_decoded_tokens = decoded_tokens" in benchmark_section
+    assert "decoded_tokens = []" not in benchmark_section
+    assert "decoded_tokens.append(" not in benchmark_section
     assert "self.output = torch.cat(self._last_decoded_tokens, dim=1)" in capture_section
     assert "self._last_elapsed_ms" in source
     assert "finalize_iteration_metrics" in source

@@ -51,7 +51,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self.prompt = (torch.arange(self.prefill_seq, device=self.device, dtype=torch.int64) % 10000).unsqueeze(0)
         self.kv_cache = None
         self.output = None
-        self._last_decoded_tokens = []
+        self._last_decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]
         self._verify_prompt = self.prompt.detach().clone()
 
     def benchmark_fn(self) -> Optional[dict]:
@@ -63,15 +63,19 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         with nvtx_range("inference_monolithic", enable=enable_nvtx):
             with torch.no_grad():
                 kv_cache = self.model.prefill(self.prompt)
-                decoded_tokens = []
+                decoded_tokens = self._last_decoded_tokens
+                if len(decoded_tokens) != self.num_tokens:
+                    decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]
                 decode_state = kv_cache
+                token_idx = 0
 
                 for _ in range(self.num_tokens):
                     decoded = self.model.decode(decode_state, num_tokens=1)
                     decode_state = decoded[:, -1:, :]
-                    decoded_tokens.append(decode_state)
+                    decoded_tokens[token_idx] = decode_state
+                    token_idx += 1
 
-                if not decoded_tokens:
+                if token_idx == 0:
                     raise RuntimeError("Decode loop produced no tokens")
 
                 self._last_decoded_tokens = decoded_tokens
