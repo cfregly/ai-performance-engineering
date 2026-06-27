@@ -207,10 +207,8 @@ class LayoutPagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
     def _build_block_table(self) -> torch.Tensor:
         num_blocks = self.seq_len // self.block_size
         block_ids = torch.arange(num_blocks, device=self.device, dtype=torch.int64)
-        return torch.stack(
-            [torch.roll(block_ids, shifts=batch_idx % num_blocks) for batch_idx in range(self.batch_size)],
-            dim=0,
-        ).contiguous()
+        batch_offsets = torch.arange(self.batch_size, device=self.device, dtype=torch.int64).unsqueeze(1)
+        return (block_ids.unsqueeze(0) - batch_offsets).remainder_(num_blocks)
 
     def _build_dense_mask_from_block_table(self) -> torch.Tensor:
         if self.block_table is None:

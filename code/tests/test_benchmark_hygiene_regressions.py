@@ -1338,7 +1338,9 @@ def test_ch18_paged_attention_uses_real_block_table_sparse_kernel() -> None:
     optimized_source = (REPO_ROOT / "ch18" / "optimized_paged_attn_layout.py").read_text(encoding="utf-8")
 
     assert "self.block_table" in common_source
-    assert "torch.roll(block_ids" in common_source
+    assert "torch.roll(block_ids" not in common_source
+    assert "batch_offsets = torch.arange(self.batch_size, device=self.device, dtype=torch.int64).unsqueeze(1)" in common_source
+    assert "return (block_ids.unsqueeze(0) - batch_offsets).remainder_(num_blocks)" in common_source
     assert "create_block_mask, flex_attention" in common_source
     assert "dense_mask[:, 0][allowed] = 0.0" in common_source
     assert "return create_block_mask(" in common_source
