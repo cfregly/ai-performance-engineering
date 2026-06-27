@@ -3924,6 +3924,7 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
         "def main",
         maxsplit=1,
     )[0]
+    main_section = source.split("def main", maxsplit=1)[1]
     run_once_section = source.split("def _run_once", maxsplit=1)[1].split(
         "def run",
         maxsplit=1,
@@ -3934,20 +3935,36 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
         "self._entropy_tensors.append(entropy_val.detach().to(dtype=torch.float32).reshape(()))"
         in stats_logger_section
     )
+    assert "if torch.is_tensor(entropy_val):" in stats_logger_section
+    assert "self.entropy.append(float(entropy_val))" in stats_logger_section
     assert "torch.stack(self._overflow_tensors).sum().detach().cpu().tolist()" in stats_logger_section
     assert "if valid.any()" not in stats_logger_section
     assert "overflow_mask.sum().item()" not in stats_logger_section
-    assert "self.entropy.append(float(entropy_val))" not in stats_logger_section
-    assert "loss_values = torch.stack((token_loss.detach(), *(loss.detach() for loss in decode_losses))).cpu().tolist()" in report_section
+    assert "loss_values = loss_readback.detach().cpu().tolist()" in report_section
+    assert "loss_values[1] / max(decode_loss_count, 1)" in report_section
+    assert "decode_losses" not in report_section
     assert "sum(loss.item() for loss in decode_losses)" not in report_section
     assert "token_loss.item()" not in report_section
     assert "self._next_token_values: Optional[torch.Tensor] = None" in sweep_section
     assert "self._next_token_buffer: Optional[torch.Tensor] = None" in sweep_section
+    assert "self._loss_readback: Optional[torch.Tensor] = None" in sweep_section
+    assert "self._loss_readback = torch.empty(2, device=self.device, dtype=torch.float32)" in sweep_section
     assert "def _next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor" in sweep_section
     assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in sweep_section
+    assert "with torch.inference_mode():" in run_once_section
+    assert "with torch.no_grad():" not in run_once_section
+    assert "loss_readback.zero_()" in run_once_section
+    assert "loss_readback[0].copy_(token_loss.detach())" in run_once_section
+    assert "loss_readback[1].add_(step_loss.detach())" in run_once_section
+    assert "decode_loss_count += 1" in run_once_section
+    assert "decode_losses" not in run_once_section
     assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in run_once_section
     assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in run_once_section
     assert "torch.argmax(" not in run_once_section
+    assert "config_payload = asdict(cfg)" in main_section
+    assert "if isinstance(value, torch.dtype):" in main_section
+    assert '"config": config_payload' in main_section
+    assert '"config": asdict(cfg)' not in main_section
 
 
 def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:

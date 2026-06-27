@@ -66,7 +66,10 @@ class MoEStatsLogger:
 
         entropy_val = stats.get("router_entropy")
         if entropy_val is not None:
-            self._entropy_tensors.append(entropy_val.detach().to(dtype=torch.float32).reshape(()))
+            if torch.is_tensor(entropy_val):
+                self._entropy_tensors.append(entropy_val.detach().to(dtype=torch.float32).reshape(()))
+            else:
+                self.entropy.append(float(entropy_val))
 
     def _materialize_pending_scalars(self) -> None:
         if self._overflow_tensors:
@@ -117,6 +120,7 @@ class MoeValidationSweep:
         self.model: Optional[SimpleMoEGPT] = None
         self._next_token_values: Optional[torch.Tensor] = None
         self._next_token_buffer: Optional[torch.Tensor] = None
+        self._loss_readback: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -135,6 +139,7 @@ class MoeValidationSweep:
             device=self.device,
             dtype=torch.long,
         )
+        self._loss_readback = torch.empty(2, device=self.device, dtype=torch.float32)
 
     def _next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor:
         logits_last = logits if logits.dim() == 2 else logits[:, -1, :]
@@ -197,8 +202,13 @@ class MoeValidationSweep:
             cfg.dtype_obj,
             self.device,
         )
+        if self._loss_readback is None or self._loss_readback.device != self.device:
+            self._loss_readback = torch.empty(2, device=self.device, dtype=torch.float32)
+        loss_readback = self._loss_readback
 
-        with torch.no_grad():
+        decode_loss_count = 0
+        with torch.inference_mode():
+            loss_readback.zero_()
             start = time.perf_counter()
             _, logits, router_stats = self.model.prefill(
                 prompts,
@@ -214,7 +224,7 @@ class MoeValidationSweep:
                 moe_logger.update(stats)
 
             seed_tokens = self._next_token_from_logits(logits[:, -1, :])
-            decode_losses: List[torch.Tensor] = []
+            loss_readback[0].copy_(token_loss.detach())
             for step in range(cfg.decode_tokens):
                 _, decode_logits, decode_stats = self.model.decode(
                     seed_tokens,
@@ -226,7 +236,8 @@ class MoeValidationSweep:
                     decode_logits.reshape(-1, cfg.vocab_size),
                     labels[:, cfg.context_window + step].reshape(-1),
                 )
-                decode_losses.append(step_loss)
+                loss_readback[1].add_(step_loss.detach())
+                decode_loss_count += 1
                 for stats in decode_stats:
                     moe_logger.update(stats)
                 seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])
@@ -236,9 +247,9 @@ class MoeValidationSweep:
             elapsed_s = max(time.perf_counter() - start, 1e-6)
 
         summary = moe_logger.summarize()
-        loss_values = torch.stack((token_loss.detach(), *(loss.detach() for loss in decode_losses))).cpu().tolist()
+        loss_values = loss_readback.detach().cpu().tolist()
         avg_decode_loss = (
-            sum(loss_values[1:]) / max(len(decode_losses), 1) if decode_losses else 0.0
+            loss_values[1] / max(decode_loss_count, 1) if decode_loss_count else 0.0
         )
         avg_loss = float(loss_values[0] + avg_decode_loss)
         record = {
@@ -343,9 +354,13 @@ def main() -> None:
     )
     records = sweep.run()
     summary = _summarize(records)
+    config_payload = asdict(cfg)
+    for key, value in config_payload.items():
+        if isinstance(value, torch.dtype):
+            config_payload[key] = str(value)
 
     payload = {
-        "config": asdict(cfg),
+        "config": config_payload,
         "device": str(device),
         "records": records,
         "summary": summary,
