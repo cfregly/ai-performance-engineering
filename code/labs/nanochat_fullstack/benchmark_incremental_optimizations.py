@@ -12,7 +12,7 @@ Usage:
 import argparse
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 import torch
 
 from labs.nanochat_fullstack.nanochat.engine import Engine
@@ -81,6 +81,20 @@ class IncrementalBenchmark:
         
         model.eval()
         return model
+
+    def _time_region_seconds(self, fn: Callable[[], None]) -> float:
+        if self.device.type == "cuda":
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
+            fn()
+            end.record()
+            end.synchronize()
+            return start.elapsed_time(end) / 1000.0
+
+        t0 = time.time()
+        fn()
+        return time.time() - t0
     
     def benchmark_inference(self, config_overrides: Dict[str, Any]) -> tuple:
         """Benchmark prefill + decode performance."""
@@ -121,40 +135,34 @@ class IncrementalBenchmark:
         
         # Benchmark prefill
         prefill_times = []
-        for _ in range(self.iterations):
-            kv_cache.reset()
-            if self.device.type == "cuda":
-                torch.cuda.synchronize()
-            t0 = time.time()
+
+        def _run_prefill() -> None:
             with torch.inference_mode():
                 _ = model(prompt, kv_cache=kv_cache)
-            if self.device.type == "cuda":
-                torch.cuda.synchronize()
-            t1 = time.time()
-            prefill_times.append(t1 - t0)
+
+        for _ in range(self.iterations):
+            kv_cache.reset()
+            prefill_times.append(self._time_region_seconds(_run_prefill))
         
         prefill_time = sum(prefill_times) / len(prefill_times)
         prefill_tok_s = (self.batch_size * self.prompt_len) / prefill_time
         
         # Benchmark decode
         decode_times = []
+
+        def _run_decode() -> None:
+            with torch.inference_mode():
+                for t in range(self.decode_len):
+                    step_ids = decode_tokens[:, t:t+1]
+                    _ = model(step_ids, kv_cache=kv_cache)
+
         for _ in range(self.iterations):
             kv_cache.reset()
             # Prefill first
             with torch.inference_mode():
                 _ = model(prompt, kv_cache=kv_cache)
-            
-            if self.device.type == "cuda":
-                torch.cuda.synchronize()
-            t0 = time.time()
-            with torch.inference_mode():
-                for t in range(self.decode_len):
-                    step_ids = decode_tokens[:, t:t+1]
-                    _ = model(step_ids, kv_cache=kv_cache)
-            if self.device.type == "cuda":
-                torch.cuda.synchronize()
-            t1 = time.time()
-            decode_times.append(t1 - t0)
+
+            decode_times.append(self._time_region_seconds(_run_decode))
         
         decode_time = sum(decode_times) / len(decode_times)
         decode_tok_s = (self.batch_size * self.decode_len) / decode_time
@@ -162,7 +170,8 @@ class IncrementalBenchmark:
         total_time = prefill_time + decode_time
         
         # Cleanup
-        del model, kv_cache
+        model = None
+        kv_cache = None
         if self.device.type == "cuda":
             torch.cuda.empty_cache()
         

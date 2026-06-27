@@ -2935,6 +2935,32 @@ def test_nanochat_kv_cache_growth_avoids_cat_with_uninitialized_tail() -> None:
     assert "grown_cache[:, :, :, :, :old_seq_len, :].copy_(self.kv_cache)" in grow_section
 
 
+def test_nanochat_incremental_benchmark_uses_cuda_event_timing() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "benchmark_incremental_optimizations.py"
+    ).read_text(encoding="utf-8")
+    helper_section = source.split("def _time_region_seconds", maxsplit=1)[1].split(
+        "def benchmark_inference",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_inference", maxsplit=1)[1].split(
+        "def run_incremental_benchmark",
+        maxsplit=1,
+    )[0]
+    timed_section = benchmark_section.split("# Benchmark prefill", maxsplit=1)[1].split(
+        "# Cleanup",
+        maxsplit=1,
+    )[0]
+
+    assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start.record()" in helper_section
+    assert "end.record()" in helper_section
+    assert "start.elapsed_time(end) / 1000.0" in helper_section
+    assert timed_section.count("self._time_region_seconds(") == 2
+    assert "torch.cuda.synchronize()" not in timed_section
+    assert "time.time()" not in timed_section
+
+
 def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
     source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "gpt.py").read_text(
         encoding="utf-8"
