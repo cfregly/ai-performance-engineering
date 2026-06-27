@@ -3560,6 +3560,24 @@ def test_ch16_synthetic_moe_benchmark_hoists_inference_mode() -> None:
     assert "for _ in range(num_iters):\n            if use_autocast:" in benchmark_function
 
 
+def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
+    source = (REPO_ROOT / "ch16" / "gpt_large_benchmark.py").read_text(encoding="utf-8")
+    benchmark_function = source.split("def benchmark_model", maxsplit=1)[1].split(
+        "def validate_multi_gpu_equivalence",
+        maxsplit=1,
+    )[0]
+    validation_function = source.split("def validate_multi_gpu_equivalence", maxsplit=1)[1].split(
+        "def format_result",
+        maxsplit=1,
+    )[0]
+
+    assert "@torch.inference_mode()" in source
+    assert "@torch.no_grad()" not in source
+    assert "with torch.inference_mode():" in validation_function
+    assert "torch.no_grad()" not in benchmark_function
+    assert "torch.no_grad()" not in validation_function
+
+
 def test_ch15_moe_validation_batches_report_loss_reads() -> None:
     source = (REPO_ROOT / "ch15" / "moe_validation" / "moe_validation.py").read_text(
         encoding="utf-8"

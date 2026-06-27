@@ -397,7 +397,7 @@ def count_parameters(config: GPTConfig) -> float:
     return total
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def benchmark_model(
     model: nn.Module,
     inputs: torch.Tensor,
@@ -645,7 +645,7 @@ def validate_multi_gpu_equivalence(
 
     base_model.eval()
     multi_model.eval()
-    with torch.no_grad():
+    with torch.inference_mode():
         ref = base_model(inputs)
         out = multi_model(inputs)
     diff = torch.max(torch.abs(ref.to(devices[0]) - out.to(devices[0]))).item()
