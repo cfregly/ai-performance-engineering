@@ -119,6 +119,12 @@ class DynamicQuantizedKVCache:
         # Current sequence length per batch
         self.seq_lens = torch.zeros(max_batch_size, dtype=torch.long, device=device)
         self._batch_index_cache = torch.arange(max_batch_size, dtype=torch.long, device=device)
+        self._batch_index_host = torch.empty(
+            max_batch_size,
+            dtype=torch.long,
+            device="cpu",
+            pin_memory=torch.device(device).type == "cuda",
+        )
         self._seq_lens_host = [0] * max_batch_size
         
         print(f"KV Cache initialized:")
@@ -169,9 +175,10 @@ class DynamicQuantizedKVCache:
             if batch_indices.device.type == "cpu":
                 batch_index_list = [int(idx) for idx in batch_indices.tolist()]
             else:
-                batch_index_list = [
-                    int(idx) for idx in batch_indices.detach().cpu().tolist()
-                ]
+                batch_count = batch_indices.numel()
+                batch_index_host = self._batch_index_host[:batch_count]
+                batch_index_host.copy_(batch_indices)
+                batch_index_list = [int(idx) for idx in batch_index_host.tolist()]
             batch_indices = batch_indices.to(self.seq_lens.device, dtype=torch.long)
         
         assert key.shape[0] == batch_indices.numel(), (

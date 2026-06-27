@@ -218,7 +218,12 @@ class TestNumericalCorrectness:
         assert "batch_indices = self._batch_index_cache.narrow(0, cache_idx, 1)" in source
         assert "if isinstance(batch_indices, int)" in source
         assert 'batch_indices.device.type == "cpu"' in source
-        assert "batch_indices.detach().cpu().tolist()" in source
+        assert "self._batch_index_host = torch.empty(" in init_source
+        assert 'pin_memory=torch.device(device).type == "cuda"' in init_source
+        assert "batch_index_host = self._batch_index_host[:batch_count]" in source
+        assert "batch_index_host.copy_(batch_indices)" in source
+        assert "batch_index_list = [int(idx) for idx in batch_index_host.tolist()]" in source
+        assert "batch_indices.detach().cpu().tolist()" not in source
         assert "current_lengths = [self._seq_lens_host[idx] for idx in batch_index_list]" in source
         assert "self.seq_lens[cache_idx_int].item()" not in source
         assert "batch_index_list = [int(idx) for idx in batch_indices.tolist()]" in source
