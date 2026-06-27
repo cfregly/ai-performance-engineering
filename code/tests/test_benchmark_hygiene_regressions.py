@@ -344,6 +344,15 @@ def test_ch04_torchtitan_async_tp_zero_target_uses_square_mean_loss() -> None:
 
 
 def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
+    from ch04.baseline_tensor_parallel import _replicate_tensor_parallel_shard
+
+    local_out = torch.arange(12, dtype=torch.float32).view(2, 2, 3)
+    full_out = torch.empty(2, 2, 6)
+    result = _replicate_tensor_parallel_shard(local_out, 2, full_out)
+
+    assert result is full_out
+    torch.testing.assert_close(full_out, torch.cat([local_out, local_out], dim=-1))
+
     files = [
         "baseline_tensor_parallel.py",
         "optimized_tensor_parallel_async.py",
@@ -366,8 +375,10 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
 
         assert "self._full_out: Optional[torch.Tensor] = None" in source
         assert "self._full_out = torch.empty(" in source
-        assert "torch.cat([local_out] * self._world_size, dim=-1, out=self._full_out)" in benchmark_section
+        assert "def _replicate_tensor_parallel_shard(" in source
+        assert "_replicate_tensor_parallel_shard(local_out, self._world_size, self._full_out)" in benchmark_section
         assert "proj_out = self._proj_layers[layer_idx](self._full_out)" in benchmark_section
+        assert "torch.cat([local_out] * self._world_size, dim=-1, out=self._full_out)" not in benchmark_section
         assert "full_out = torch.cat([local_out] * self._world_size" not in benchmark_section
         assert "self._full_out = None" in source
         assert "full_out = torch.cat(gather_list, dim=-1)" not in worker_section

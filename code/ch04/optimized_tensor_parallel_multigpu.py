@@ -91,6 +91,18 @@ def _build_layers(hidden: int, hidden_per_rank: int, num_layers: int, device: to
     return shard, proj, aux
 
 
+def _replicate_tensor_parallel_shard(
+    local_out: torch.Tensor,
+    world_size: int,
+    full_out: torch.Tensor,
+) -> torch.Tensor:
+    hidden_per_rank = local_out.shape[-1]
+    full_out.view(*local_out.shape[:-1], world_size, hidden_per_rank).copy_(
+        local_out.unsqueeze(-2)
+    )
+    return full_out
+
+
 def _run_worker(
     iters: int,
     warmup: int,
@@ -236,7 +248,7 @@ class OptimizedTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             aux_out = x
             for _ in range(_AUX_PASSES):
                 aux_out = self._aux_layers[layer_idx](aux_out)
-            torch.cat([local_out] * self._world_size, dim=-1, out=self._full_out)
+            _replicate_tensor_parallel_shard(local_out, self._world_size, self._full_out)
             proj_out = self._proj_layers[layer_idx](self._full_out)
             x = proj_out + aux_out
         self._output = x
