@@ -1155,12 +1155,17 @@ def test_ch19_fp4_helpers_cache_lookup_values_per_device() -> None:
         )[0]
 
         assert "_FP4_VALUES_CACHE: dict[torch.device, torch.Tensor] = {}" in source
+        assert "_FP4_SIGNED_VALUES_CACHE: dict[torch.device, torch.Tensor] = {}" in source
         assert "cached = _FP4_VALUES_CACHE.get(device)" in helpers_section
         assert "FP4_VALUES.to(device=device)" in helpers_section
+        assert "cached = _FP4_SIGNED_VALUES_CACHE.get(device)" in helpers_section
+        assert "FP4_SIGNED_VALUES.to(device=device)" in helpers_section
         assert "FP4_VALUES.to(device)" not in quantize_section
         assert "FP4_VALUES.to(device)" not in dequantize_section
         assert "fp4_vals = _fp4_values_for(device)" in quantize_section
-        assert "fp4_vals = _fp4_values_for(device)" in dequantize_section
+        assert "signed_fp4_vals = _fp4_signed_values_for(device)" in dequantize_section
+        assert "torch.where(signs.bool()" not in dequantize_section
+        assert "signs = (unpacked >> 3)" not in dequantize_section
 
 
 def test_ch19_native_fp4_caches_lookup_values_per_device() -> None:
@@ -1181,12 +1186,17 @@ def test_ch19_native_fp4_caches_lookup_values_per_device() -> None:
     )[0]
 
     assert "_FP4_VALUES_CACHE: dict[torch.device, torch.Tensor] = {}" in source
+    assert "_FP4_SIGNED_VALUES_CACHE: dict[torch.device, torch.Tensor] = {}" in source
     assert "cached = _FP4_VALUES_CACHE.get(device)" in helpers_section
     assert "FP4_VALUES.to(device=device)" in helpers_section
+    assert "cached = _FP4_SIGNED_VALUES_CACHE.get(device)" in helpers_section
+    assert "FP4_SIGNED_VALUES.to(device=device)" in helpers_section
     assert "FP4_VALUES.to(device)" not in quantize_section
     assert "FP4_VALUES.to(device)" not in dequantize_section
     assert "fp4_vals = _fp4_values_for(device)" in quantize_section
-    assert "fp4_vals = _fp4_values_for(device)" in dequantize_section
+    assert "signed_fp4_vals = _fp4_signed_values_for(device)" in dequantize_section
+    assert "torch.where(signs.bool()" not in dequantize_section
+    assert "signs = (unpacked >> 3)" not in dequantize_section
 
 
 def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:

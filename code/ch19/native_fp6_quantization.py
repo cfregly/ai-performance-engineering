@@ -78,8 +78,9 @@ class FP6Tensor:
         # For simplicity, using per-tensor scale here
         abs_max = data.abs().max()
         
-        # FP6 can represent up to 16, scale accordingly
-        scale = torch.where(abs_max > 0, abs_max / 16.0, torch.ones_like(abs_max))
+        # FP6 can represent up to 16, scale accordingly.
+        scale = abs_max / 16.0
+        scale.masked_fill_(abs_max == 0, 1.0)
         
         # Scale data to FP6 range
         scaled_data = data / scale

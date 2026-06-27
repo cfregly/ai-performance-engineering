@@ -25,7 +25,6 @@ Requirements:
 from __future__ import annotations
 
 import math
-from pathlib import Path
 from typing import Optional, Tuple
 
 import torch
@@ -41,8 +40,10 @@ from core.harness.benchmark_harness import (
 
 # FP4 E2M1 representable values
 FP4_VALUES = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0])
+FP4_SIGNED_VALUES = torch.cat((FP4_VALUES, -FP4_VALUES))
 FP4_MAX = 6.0
 _FP4_VALUES_CACHE: dict[torch.device, torch.Tensor] = {}
+_FP4_SIGNED_VALUES_CACHE: dict[torch.device, torch.Tensor] = {}
 
 
 def _fp4_values_for(device: torch.device) -> torch.Tensor:
@@ -52,6 +53,16 @@ def _fp4_values_for(device: torch.device) -> torch.Tensor:
     if cached is None:
         cached = FP4_VALUES.to(device=device)
         _FP4_VALUES_CACHE[device] = cached
+    return cached
+
+
+def _fp4_signed_values_for(device: torch.device) -> torch.Tensor:
+    if device.type == "cpu":
+        return FP4_SIGNED_VALUES
+    cached = _FP4_SIGNED_VALUES_CACHE.get(device)
+    if cached is None:
+        cached = FP4_SIGNED_VALUES.to(device=device)
+        _FP4_SIGNED_VALUES_CACHE[device] = cached
     return cached
 
 
@@ -133,20 +144,15 @@ def dequantize_fp4_optimized(
 ) -> torch.Tensor:
     """Optimized FP4 dequantization with per-block scaling."""
     device = packed_data.device
-    fp4_vals = _fp4_values_for(device)
+    signed_fp4_vals = _fp4_signed_values_for(device)
     
     # Unpack bytes to pairs of 4-bit codes
     high = (packed_data >> 4) & 0x0F
     low = packed_data & 0x0F
-    unpacked = torch.stack([high, low], dim=1).flatten()
+    unpacked = torch.stack([high, low], dim=1).flatten().long()
     
-    # Decode FP4
-    signs = (unpacked >> 3) & 0x01
-    indices = (unpacked & 0x07).long()
-    
-    # Get magnitude values
-    values = fp4_vals[indices]
-    values = torch.where(signs.bool(), -values, values)
+    # Decode FP4 directly from the packed sign+magnitude code.
+    values = signed_fp4_vals[unpacked]
     
     # Reshape to blocks and apply per-block scales
     n_blocks = len(scales)

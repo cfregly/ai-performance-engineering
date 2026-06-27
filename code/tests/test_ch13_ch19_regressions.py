@@ -4,8 +4,11 @@ import inspect
 
 import torch
 
+import ch19.baseline_fp4_weight_quantization as baseline_fp4
 import ch19.mxfp8_moe_common as mxfp8_moe_common
+import ch19.native_fp4_quantization as native_fp4
 import ch19.optimized_mxfp8_moe as optimized_mxfp8_moe
+import ch19.optimized_fp4_weight_quantization as optimized_fp4
 from ch13.optimized_autograd_standard import OptimizedAutogradCompiledBenchmark
 from ch19.mxfp8_moe_common import bucket_by_expert, restore_bucketed_reduce
 from ch19.native_fp6_quantization import FP6Tensor
@@ -122,10 +125,52 @@ def test_native_fp6_quantization_avoids_tensor_bool_scale_branch() -> None:
     source = inspect.getsource(FP6Tensor._quantize_fp6)
 
     assert "if abs_max > 0" not in source
-    assert "torch.where(abs_max > 0, abs_max / 16.0, torch.ones_like(abs_max))" in source
+    assert "torch.where(" not in source
+    assert "torch.ones_like(abs_max)" not in source
+    assert "scale.masked_fill_(abs_max == 0, 1.0)" in source
 
     data = torch.zeros(8, dtype=torch.float16)
     fp6 = FP6Tensor(data)
 
     assert fp6.scales.device == data.device
     torch.testing.assert_close(fp6.scales, torch.ones_like(fp6.scales))
+
+
+def test_fp4_dequantization_decodes_signed_lookup_without_where() -> None:
+    for module, function_name in (
+        (baseline_fp4, "dequantize_fp4_baseline"),
+        (optimized_fp4, "dequantize_fp4_optimized"),
+        (native_fp4, "dequantize_from_fp4_packed"),
+    ):
+        source = inspect.getsource(getattr(module, function_name))
+        assert "torch.where(signs.bool()" not in source
+        assert "signs = (unpacked >> 3)" not in source
+        assert "signed_fp4_vals = _fp4_signed_values_for(device)" in source
+
+    packed = torch.tensor([(0 << 4) | 9, (2 << 4) | 15], dtype=torch.uint8)
+    expected = torch.tensor([0.0, -0.5, 1.0, -6.0], dtype=torch.float32)
+
+    baseline = baseline_fp4.dequantize_fp4_baseline(
+        packed,
+        torch.ones(1, dtype=torch.float32),
+        torch.Size([4]),
+        dtype=torch.float32,
+    )
+    optimized = optimized_fp4.dequantize_fp4_optimized(
+        packed,
+        torch.ones(1, dtype=torch.float32),
+        torch.Size([4]),
+        block_size=4,
+        dtype=torch.float32,
+    )
+    native = native_fp4.dequantize_from_fp4_packed(
+        packed,
+        torch.ones(1, dtype=torch.float32),
+        torch.Size([4]),
+        block_size=4,
+        dtype=torch.float32,
+    )
+
+    torch.testing.assert_close(baseline, expected)
+    torch.testing.assert_close(optimized, expected)
+    torch.testing.assert_close(native, expected)
