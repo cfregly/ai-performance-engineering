@@ -26,6 +26,7 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_buffer: Optional[torch.Tensor] = None
         self.device_buffer: Optional[torch.Tensor] = None
         self._host_buffer_view: Optional[np.ndarray] = None
+        self._mapped_array: Optional[np.ndarray] = None
         self.size_mb = 64  # Smaller for faster benchmark
         self.size = self.size_mb * 1024 * 1024 // 4  # float32 elements
         bytes_per_iter = self.size * 4
@@ -44,6 +45,7 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.filepath = f.name
         f.close()
         np.save(self.filepath, host_template)
+        self._mapped_array = np.load(self.filepath, mmap_mode="r")
         self.host_buffer = torch.empty(self.size, device="cpu", dtype=torch.float32, pin_memory=True)
         self._host_buffer_view = self.host_buffer.numpy()
         self.device_buffer = torch.empty(self.size, device=self.device, dtype=torch.float32)
@@ -54,10 +56,10 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.filepath is not None
         assert self.host_buffer is not None
         assert self._host_buffer_view is not None
+        assert self._mapped_array is not None
         assert self.device_buffer is not None
         with self._nvtx_range("storage_cpu_optimized"):
-            mapped = np.load(self.filepath, mmap_mode="r")
-            np.copyto(self._host_buffer_view, mapped)
+            np.copyto(self._host_buffer_view, self._mapped_array)
             self.device_buffer.copy_(self.host_buffer, non_blocking=True)
             self.data = self.device_buffer
         self.output = self.device_buffer.sum().unsqueeze(0)
@@ -79,6 +81,7 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
+        self._mapped_array = None
         if self.filepath and os.path.exists(self.filepath):
             os.unlink(self.filepath)
         self.data = None

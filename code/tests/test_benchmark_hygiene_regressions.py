@@ -246,6 +246,24 @@ def test_ch04_gradient_compression_int8_reuses_cast_buffers() -> None:
     assert "int8_buf[sl].copy_(float_buf[sl])" in naive_section
 
 
+def test_ch05_optimized_storage_cpu_opens_mmap_outside_hot_loop() -> None:
+    source = (REPO_ROOT / "ch05" / "optimized_storage_cpu.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
+
+    assert 'self._mapped_array = np.load(self.filepath, mmap_mode="r")' in setup_section
+    assert 'np.load(self.filepath, mmap_mode="r")' not in benchmark_section
+    assert "np.copyto(self._host_buffer_view, self._mapped_array)" in benchmark_section
+    assert "self._mapped_array = None" in teardown_section
+
+
 def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     source = (REPO_ROOT / "ch19" / "baseline_dynamic_quantized_cache.py").read_text(
         encoding="utf-8"
