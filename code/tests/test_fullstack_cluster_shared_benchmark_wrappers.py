@@ -247,6 +247,10 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
         "def _roundtrip_routes",
         maxsplit=1,
     )[0]
+    roundtrip_section = source.split("def _roundtrip_routes", maxsplit=1)[1].split(
+        "def _route_tokens",
+        maxsplit=1,
+    )[0]
     exchange_counts_section = source.split("def _exchange_counts", maxsplit=1)[1].split(
         "def _split_list",
         maxsplit=1,
@@ -299,6 +303,14 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "torch.stack(gathered" not in exchange_counts_section
     assert "send_tensor = torch.tensor(" not in exchange_counts_section
     assert "g[group_rank].item()" not in exchange_counts_section
+    assert "self._destination_count_host_buffer: Optional[torch.Tensor] = None" in source
+    assert "def _destination_count_list(self, dest_ranks: torch.Tensor, group_size: int)" in source
+    assert "send_counts = self._destination_count_list(dest_ranks, group_size)" in roundtrip_section
+    assert "torch.bincount(dest_ranks, minlength=group_size).tolist()" not in roundtrip_section
+    assert '"route_meta"' in roundtrip_section
+    assert "meta[:, 0].copy_(sorted_token_indices)" in roundtrip_section
+    assert "meta[:, 1].copy_(sorted_local_ids)" in roundtrip_section
+    assert "meta = torch.stack(" not in roundtrip_section
     assert "torch.cuda.Event(enable_timing=True)" not in forward_section
     assert "torch.cuda.Event(enable_timing=True)" not in run_step_section
     assert '"combined_outputs"' in forward_section

@@ -323,6 +323,7 @@ class DeepSeekHybridEPModule(nn.Module):
         self._exchange_count_send_buffer: Optional[torch.Tensor] = None
         self._exchange_count_recv_buffer: Optional[torch.Tensor] = None
         self._exchange_count_host_buffer: Optional[torch.Tensor] = None
+        self._destination_count_host_buffer: Optional[torch.Tensor] = None
         self._local_expert_count_host_buffer: Optional[torch.Tensor] = None
         self._route_type_count_buffer: Optional[torch.Tensor] = None
         self._route_type_count_host_buffer: Optional[torch.Tensor] = None
@@ -582,6 +583,24 @@ class DeepSeekHybridEPModule(nn.Module):
         host_buffer.copy_(gathered_counts, non_blocking=False)
         return [int(host_buffer[idx]) for idx in range(group_size)]
 
+    def _destination_count_list(self, dest_ranks: torch.Tensor, group_size: int) -> List[int]:
+        counts = torch.bincount(dest_ranks, minlength=group_size)
+        needs_pinned = counts.device.type == "cuda"
+        if (
+            self._destination_count_host_buffer is None
+            or self._destination_count_host_buffer.numel() < group_size
+            or (needs_pinned and not self._destination_count_host_buffer.is_pinned())
+        ):
+            self._destination_count_host_buffer = torch.empty(
+                group_size,
+                dtype=counts.dtype,
+                device="cpu",
+                pin_memory=needs_pinned,
+            )
+        host_buffer = self._destination_count_host_buffer[:group_size]
+        host_buffer.copy_(counts[:group_size])
+        return [int(host_buffer[idx]) for idx in range(group_size)]
+
     def _split_list(self, tensor: torch.Tensor, counts: Sequence[int]) -> List[torch.Tensor]:
         parts: List[torch.Tensor] = []
         offset = 0
@@ -650,13 +669,21 @@ class DeepSeekHybridEPModule(nn.Module):
         sorted_weights = weights.index_select(0, sort_idx)
         sorted_token_indices = token_indices.index_select(0, sort_idx)
         sorted_local_ids = local_expert_ids.index_select(0, sort_idx)
-        send_counts = torch.bincount(dest_ranks, minlength=group_size).tolist()
+        send_counts = self._destination_count_list(dest_ranks, group_size)
         recv_counts = self._exchange_counts(send_counts, group=group, group_size=group_size, group_rank=group_rank)
 
         events = self._phase_events(event_label)
         events.start.record(torch.cuda.current_stream())
 
-        meta = torch.stack((sorted_token_indices, sorted_local_ids), dim=1)
+        meta = self._buffer(
+            "route_meta",
+            (sort_idx.numel(), 2),
+            sorted_token_indices.dtype,
+            reuse=reuse,
+            device=sorted_token_indices.device,
+        )
+        meta[:, 0].copy_(sorted_token_indices)
+        meta[:, 1].copy_(sorted_local_ids)
         if use_single:
             recv_tokens = self._all_to_all_single(sorted_tokens, send_counts, recv_counts, group=group, label="recv_tokens", reuse=reuse)
             recv_weights = self._all_to_all_single(sorted_weights, send_counts, recv_counts, group=group, label="recv_weights", reuse=reuse)
