@@ -8,7 +8,7 @@ import torch
 from pathlib import Path
 from types import SimpleNamespace
 from nanochat.engine import Engine, KVCache
-from nanochat.gpt import CausalSelfAttention, GPTConfig, apply_rotary_emb
+from nanochat.gpt import CausalSelfAttention, GPTConfig, _expand_gqa_kv_heads, apply_rotary_emb
 
 def test_kv_cache_resize():
     """
@@ -376,6 +376,25 @@ def test_attention_reuses_cu_seqlens_buffers():
     cu_q_grown = attn._cu_seqlens_buffer(2, 5, torch.device("cpu"), "_cu_q_cache")
 
     torch.testing.assert_close(cu_q_grown, torch.tensor([0, 5, 10], dtype=torch.int32))
+
+
+def test_flash3_gqa_expansion_avoids_repeat_interleave_hot_path():
+    x = torch.arange(1 * 2 * 3 * 4, dtype=torch.float32).view(1, 2, 3, 4)
+
+    expanded = _expand_gqa_kv_heads(x, 2)
+
+    torch.testing.assert_close(expanded, x.repeat_interleave(2, dim=1))
+
+    source = Path(__file__).resolve().parents[1] / "nanochat" / "gpt.py"
+    gpt_source = source.read_text(encoding="utf-8")
+    flash3_section = gpt_source.split("def _flash3_attention", maxsplit=1)[1].split(
+        "def forward(self, x, cos_sin",
+        maxsplit=1,
+    )[0]
+
+    assert "repeat_interleave" not in flash3_section
+    assert "inspect.signature" not in flash3_section
+    assert "self._flash3_accepts_clusters" in flash3_section
 
 
 def test_attention_reuses_causal_mask_buffers():

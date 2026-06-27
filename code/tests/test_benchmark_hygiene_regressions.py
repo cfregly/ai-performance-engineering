@@ -2128,7 +2128,11 @@ def test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa(monkeypatch:
     from labs.nanochat_fullstack.nanochat.kernels import clustered_attention as clustered_attention_module
 
     source = inspect.getsource(clustered_attention_module.clustered_attention)
+    flash3_source = inspect.getsource(clustered_attention_module._flash3_clustered)
     assert "repeat_interleave" not in source
+    assert "repeat_interleave" not in flash3_source
+    assert "inspect.signature" not in flash3_source
+    assert "_flash3_accepts_clusters" in flash3_source
     assert "enable_gqa=enable_gqa" in source
 
     calls: dict[str, object] = {}
@@ -2145,6 +2149,9 @@ def test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa(monkeypatch:
     q = torch.randn(1, 4, 3, 2)
     k = torch.randn(1, 2, 3, 2)
     v = torch.randn(1, 2, 3, 2)
+    expanded = clustered_attention_module._expand_gqa_heads(k, 2)
+
+    torch.testing.assert_close(expanded, k.repeat_interleave(2, dim=1))
 
     output = clustered_attention_module.clustered_attention(
         q,

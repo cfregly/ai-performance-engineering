@@ -14,6 +14,8 @@ except ImportError:
     _EFFICIENT_BACKENDS = []
     _NEW_SDPA_API = False
 
+_FLASH3_ACCEPTS_CLUSTERS: bool | None = None
+
 
 def _efficient_sdpa_context():
     """Return context manager for memory-efficient + math attention backends."""
@@ -22,12 +24,36 @@ def _efficient_sdpa_context():
     return nullcontext()
 
 
+def _expand_gqa_heads(x: torch.Tensor, repeat: int) -> torch.Tensor:
+    if repeat <= 1:
+        return x
+    batch, heads, seq_len, head_dim = x.shape
+    return x[:, :, None, :, :].expand(batch, heads, repeat, seq_len, head_dim).reshape(
+        batch,
+        heads * repeat,
+        seq_len,
+        head_dim,
+    )
+
+
+def _flash3_accepts_clusters(flash3_fn) -> bool:
+    global _FLASH3_ACCEPTS_CLUSTERS
+    if _FLASH3_ACCEPTS_CLUSTERS is None:
+        try:
+            import inspect
+
+            _FLASH3_ACCEPTS_CLUSTERS = "num_sm_clusters" in inspect.signature(flash3_fn).parameters
+        except Exception:
+            _FLASH3_ACCEPTS_CLUSTERS = False
+    return _FLASH3_ACCEPTS_CLUSTERS
+
+
 def _flash3_clustered(q, k, v, causal: bool, num_sm_clusters: int | None, enable_gqa: bool):
     # q,k,v: (B, H, T, D)
     if enable_gqa and q.size(1) != k.size(1):
         repeat_k = q.size(1) // k.size(1)
-        k = k.repeat_interleave(repeat_k, dim=1)
-        v = v.repeat_interleave(repeat_k, dim=1)
+        k = _expand_gqa_heads(k, repeat_k)
+        v = _expand_gqa_heads(v, repeat_k)
     B, Hq, Tq, D = q.shape
     _, Hk, Tk, _ = k.shape
     q_flat = q.transpose(1, 2).reshape(B * Tq, Hq, D)
@@ -38,13 +64,12 @@ def _flash3_clustered(q, k, v, causal: bool, num_sm_clusters: int | None, enable
 
     try:
         from flash_attn.flash_attn_interface import flash_attn_varlen_func  # type: ignore
-        import inspect
 
         kwargs = dict(
             dropout_p=0.0,
             causal=causal,
         )
-        if num_sm_clusters is not None and "num_sm_clusters" in inspect.signature(flash_attn_varlen_func).parameters:
+        if num_sm_clusters is not None and _flash3_accepts_clusters(flash_attn_varlen_func):
             kwargs["num_sm_clusters"] = num_sm_clusters
         out = flash_attn_varlen_func(  # type: ignore[misc]
             q_flat,

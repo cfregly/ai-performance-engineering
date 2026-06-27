@@ -98,6 +98,19 @@ def apply_rotary_emb(x, cos, sin):
     out = out.to(x.dtype) # ensure input/output dtypes match
     return out
 
+
+def _expand_gqa_kv_heads(x, repeat):
+    if repeat <= 1:
+        return x
+    batch, heads, seq_len, head_dim = x.shape
+    return x[:, :, None, :, :].expand(batch, heads, repeat, seq_len, head_dim).reshape(
+        batch,
+        heads * repeat,
+        seq_len,
+        head_dim,
+    )
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, config, layer_idx):
         super().__init__()
@@ -142,6 +155,7 @@ class CausalSelfAttention(nn.Module):
                 self.use_flash3 = False
         self.flash3_fn = None
         self.flash3_error = None
+        self._flash3_accepts_clusters = False
         self._cu_q_cache = None
         self._cu_k_cache = None
         self._causal_mask_cache = None
@@ -158,7 +172,15 @@ class CausalSelfAttention(nn.Module):
         except Exception as exc:
             self.flash3_error = str(exc)
             self.flash3_fn = None
+            self._flash3_accepts_clusters = False
             self.use_flash3 = False
+            return
+        try:
+            import inspect
+
+            self._flash3_accepts_clusters = "num_sm_clusters" in inspect.signature(flash_attn_varlen_func).parameters
+        except Exception:
+            self._flash3_accepts_clusters = False
 
     def _flash3_supported(self, q, attn_mask):
         if not self.use_flash3 or self.flash3_fn is None:
@@ -221,8 +243,8 @@ class CausalSelfAttention(nn.Module):
         # Expand GQA heads if FA3 build doesn't expose num_heads_k
         if enable_gqa and self.n_head != self.n_kv_head:
             repeat_k = self.n_head // self.n_kv_head
-            k = k.repeat_interleave(repeat_k, dim=1)
-            v = v.repeat_interleave(repeat_k, dim=1)
+            k = _expand_gqa_kv_heads(k, repeat_k)
+            v = _expand_gqa_kv_heads(v, repeat_k)
         B, Hq, _, D = q.size()
         _, Hk, _, _ = k.size()
         q_flat = q.transpose(1, 2).reshape(B * Tq, Hq, D)
@@ -240,12 +262,8 @@ class CausalSelfAttention(nn.Module):
         if use_clustering:
             # Try to pass cluster size hint if FlashAttention-3 supports it
             # This enables __cluster_dims__ in CUDA kernels for better L1 sharing
-            try:
-                import inspect
-                if 'num_sm_clusters' in inspect.signature(self.flash3_fn).parameters:
-                    fa3_kwargs['num_sm_clusters'] = self._auto_cluster_size(Tk)
-            except Exception:
-                pass  # Clustering not supported in this FA3 build, continue without it
+            if self._flash3_accepts_clusters:
+                fa3_kwargs['num_sm_clusters'] = self._auto_cluster_size(Tk)
         
         out = self.flash3_fn(  # type: ignore[misc]
             q_flat,
