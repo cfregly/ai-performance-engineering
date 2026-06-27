@@ -7,11 +7,12 @@ Includes proper warmup, TF32 settings, and Inductor configuration.
 from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 
 import os
+import sys
+import time
 
 import torch
 import torch.nn as nn
 import triton.testing
-import time
 from contextlib import nullcontext
 from core.utils.compile_utils import compile_model, enable_tf32
 from core.harness.arch_config import prefer_sdpa_backends
@@ -109,7 +110,7 @@ def benchmark_with_proper_warmup(model, x, name):
     sdpa_ctx_factory = prefer_sdpa_backends
 
     def run_model():
-        with torch.no_grad():
+        with torch.inference_mode():
             with sdpa_ctx_factory():
                 return model(x)
     
@@ -170,7 +171,7 @@ def main():
     print("=" * 80)
     warmup_iters = 10
     print(f"Running {warmup_iters} warmup iteration(s) for torch.compile...")
-    with torch.no_grad():
+    with torch.inference_mode():
         for i in range(warmup_iters):
             _ = model_compiled(x)
             if (i + 1) % 5 == 0:

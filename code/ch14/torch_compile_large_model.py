@@ -14,6 +14,7 @@ Hardware: NVIDIA B200 (178 GB memory available)
 """
 
 import os
+import sys
 
 
 import torch
@@ -163,7 +164,7 @@ def benchmark_with_proper_warmup(model, x, name):
     
     # Use Triton benchmarking - automatically handles warmup and synchronization
     def run_model():
-        with torch.no_grad():
+        with torch.inference_mode():
             return model(x)
     
     warmup = 5

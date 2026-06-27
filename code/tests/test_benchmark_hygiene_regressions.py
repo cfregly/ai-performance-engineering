@@ -3505,6 +3505,19 @@ def test_ch14_forward_benchmarks_use_inference_mode() -> None:
         assert "torch.no_grad()" not in capture_section
 
 
+def test_ch14_compile_tools_use_inference_mode() -> None:
+    paths = (
+        "torch_compile_large_model.py",
+        "torch_compiler_examples.py",
+        "inspect_compiled_code.py",
+    )
+
+    for filename in paths:
+        source = (REPO_ROOT / "ch14" / filename).read_text(encoding="utf-8")
+        assert "torch.inference_mode()" in source
+        assert "torch.no_grad()" not in source
+
+
 def test_ch14_flash_attention_sdpa_bench_defers_output_clone_and_host_sync() -> None:
     source = (REPO_ROOT / "ch14" / "flash_attention_sdpa_bench.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

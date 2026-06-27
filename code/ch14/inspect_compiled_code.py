@@ -110,7 +110,7 @@ def inspect_compiled_code():
     
     # Run once to trigger compilation
     print("Running compiled model (triggers code generation)...")
-    with torch.no_grad():
+    with torch.inference_mode():
         output = compiled_model(x)
     
     print("Compilation complete!")
