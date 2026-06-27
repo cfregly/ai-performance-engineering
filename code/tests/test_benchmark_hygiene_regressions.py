@@ -1369,6 +1369,25 @@ def test_ch19_fp4_helpers_cache_lookup_values_per_device() -> None:
         assert "signs = (unpacked >> 3)" not in dequantize_section
 
 
+def test_ch19_optimized_fp4_weight_quantization_uses_inference_mode() -> None:
+    source = (REPO_ROOT / "ch19" / "optimized_fp4_weight_quantization.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    validate_section = source.split("def validate_result", maxsplit=1)[1].split(
+        "def get_benchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "with torch.inference_mode():" in benchmark_section
+    assert "with torch.no_grad():" not in benchmark_section
+    assert "with torch.inference_mode():" in validate_section
+    assert "with torch.no_grad():" not in validate_section
+
+
 def test_ch19_native_fp4_caches_lookup_values_per_device() -> None:
     source = (REPO_ROOT / "ch19" / "native_fp4_quantization.py").read_text(
         encoding="utf-8"

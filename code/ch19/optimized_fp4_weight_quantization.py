@@ -416,7 +416,7 @@ class OptimizedFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBenc
         
         # Warm up the steady-state quantized execution path. In FP8 mode this
         # materializes the bridge once and then reuses it for timed iterations.
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(10):
                 _ = self.model(self.input)
         
@@ -424,7 +424,7 @@ class OptimizedFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBenc
     def benchmark_fn(self) -> None:
         """Benchmark optimized inference."""
         with self._nvtx_range("optimized_mlp"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 output = self.model(self.input)
                 self.output = output.detach()
         if self.output is None or self.input is None or self.model is None:
@@ -504,7 +504,7 @@ class OptimizedFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBenc
         if self.input is None:
             return "Input not initialized"
         
-        with torch.no_grad():
+        with torch.inference_mode():
             output = self.model(self.input[:1, :32])
             if torch.isnan(output).any():
                 return "NaN in output"
