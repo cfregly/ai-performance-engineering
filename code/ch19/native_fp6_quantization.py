@@ -406,7 +406,7 @@ def benchmark_fp6_vs_fp16():
     print(f"  Throughput: {batch_size * seq_len / time_fp6 / 1e6:.2f} M tokens/sec")
     
     # Numerical accuracy
-    with torch.no_grad():
+    with torch.inference_mode():
         error = (output_fp16 - output_fp6).abs().mean()
         rel_error = error / output_fp16.abs().mean()
     

@@ -1300,6 +1300,8 @@ def test_ch19_native_fp4_batches_accuracy_metric_reads() -> None:
     )[0]
 
     assert "mean_err, fp16_abs_mean = torch.stack(" in accuracy_section
+    assert "with torch.inference_mode():" in accuracy_section
+    assert "with torch.no_grad():" not in accuracy_section
     assert "error.mean().item()" not in accuracy_section
     assert "out_fp16.abs().mean().item()" not in accuracy_section
 
@@ -4599,12 +4601,18 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
 
 
 def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
+    baseline_source = (REPO_ROOT / "ch19" / "baseline_memory_double_buffering.py").read_text(encoding="utf-8")
     source = (REPO_ROOT / "ch19" / "optimized_memory_double_buffering.py").read_text(encoding="utf-8")
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
 
+    assert "with torch.inference_mode():" in baseline_benchmark
+    assert "with torch.no_grad():" not in baseline_benchmark
     assert "self.copy_events = [torch.cuda.Event(blocking=False) for _ in range(2)]" in setup_section
     assert "self.buffers = [self.buffer_a, self.buffer_b]" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section

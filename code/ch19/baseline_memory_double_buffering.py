@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional, List
 
 import torch
@@ -81,7 +80,7 @@ class MemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             and self.host_batches
         )
         with nvtx_range("baseline_memory_double_buffering", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 for host_batch in self.host_batches:
                     self.buffer.copy_(host_batch, non_blocking=False)
                     with torch.cuda.stream(self.stream):
@@ -144,4 +143,3 @@ class MemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return MemoryDoubleBufferingBenchmark()
-

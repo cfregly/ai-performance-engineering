@@ -533,7 +533,7 @@ def benchmark_fp4():
     
     # Accuracy
     print(f"\nAccuracy (vs FP16):")
-    with torch.no_grad():
+    with torch.inference_mode():
         for name, data in [('Cached', out_cached)]:
             error = (out_fp16 - data).abs()
             mean_err, fp16_abs_mean = torch.stack(
