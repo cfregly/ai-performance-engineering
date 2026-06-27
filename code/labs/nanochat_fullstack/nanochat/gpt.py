@@ -566,9 +566,9 @@ class GPT(nn.Module):
         if kv_cache is not None and kv_cache.get_row_pos() is not None and self.config.use_padded_attention:
             row_pos = kv_cache.get_row_pos()
             assert row_pos.numel() == B, f"kv_cache row_pos mismatch: {row_pos.numel()} != {B}"
-            positions = row_pos[:, None] + self._position_offsets_for(T, idx.device)
-            max_pos = int(positions.max().item()) + 1
+            max_pos = kv_cache.get_pos() + T
             assert max_pos <= self.cos.size(1), f"Sequence length grew beyond the rotary embeddings cache: {max_pos} > {self.cos.size(1)}"
+            positions = row_pos[:, None] + self._position_offsets_for(T, idx.device)
             cos_sin = self.cos[:, positions, :, :].squeeze(0), self.sin[:, positions, :, :].squeeze(0)
         else:
             T0 = 0 if kv_cache is None else kv_cache.get_pos()

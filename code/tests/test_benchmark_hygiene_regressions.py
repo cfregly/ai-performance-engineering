@@ -3211,6 +3211,22 @@ def test_nanochat_prefix_causal_mask_avoids_zero_fill_and_tril_allocations() -> 
     assert "mask = k_pos <= (prefix_len + q_pos)" in prefix_section
 
 
+def test_nanochat_padded_kv_rotary_bounds_avoid_device_scalar_read() -> None:
+    source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "gpt.py").read_text(
+        encoding="utf-8"
+    )
+    forward_prefix = source.split(
+        "def forward(self, idx, targets=None, kv_cache=None",
+        maxsplit=1,
+    )[1].split(
+        "# Forward the trunk of the Transformer",
+        maxsplit=1,
+    )[0]
+
+    assert "max_pos = kv_cache.get_pos() + T" in forward_prefix
+    assert "positions.max().item()" not in forward_prefix
+
+
 def test_nanochat_loss_eval_batches_reduced_totals() -> None:
     source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "loss_eval.py").read_text(
         encoding="utf-8"
