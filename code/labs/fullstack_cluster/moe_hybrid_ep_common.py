@@ -1274,19 +1274,25 @@ class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._single_gpu_args: Optional[argparse.Namespace] = None
         self._single_gpu_topology: Optional[TopologyInfo] = None
         self._single_gpu_trainer: Optional[HybridEPTrainer] = None
-        self._latest_metrics: Optional[Dict[str, float]] = None
+        self._latest_metrics: Dict[str, float] = {}
+        self._has_latest_metrics = False
 
     def benchmark_fn(self) -> None:
         if self._single_gpu_trainer is None:
             self._verify_output.zero_()
+            self._has_latest_metrics = False
             return
         artifacts = self._single_gpu_trainer.run_step()
-        self._latest_metrics = dict(artifacts.metrics)
-        self._latest_metrics["moe_hybrid_ep.workload_size"] = float(self.workload_size)
+        latest_metrics = self._latest_metrics
+        latest_metrics.clear()
+        latest_metrics.update(artifacts.metrics)
+        latest_metrics["moe_hybrid_ep.workload_size"] = float(self.workload_size)
+        self._has_latest_metrics = True
         self._verify_output.fill_(artifacts.loss)
 
     def setup(self) -> None:
-        self._latest_metrics = None
+        self._latest_metrics.clear()
+        self._has_latest_metrics = False
         self._verify_output.zero_()
         self._metrics_sidecar_path.unlink(missing_ok=True)
         if not self._use_local_single_gpu_runner():
@@ -1305,7 +1311,8 @@ class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._single_gpu_args = None
         self._single_gpu_topology = None
         self._single_gpu_trainer = None
-        self._latest_metrics = None
+        self._latest_metrics.clear()
+        self._has_latest_metrics = False
         self._metrics_sidecar_path.unlink(missing_ok=True)
         if topology is not None:
             shutdown_topology(topology)
@@ -1338,7 +1345,7 @@ class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
-        if self._latest_metrics is not None:
+        if self._has_latest_metrics:
             return dict(self._latest_metrics)
         if not self._metrics_sidecar_path.exists():
             return {

@@ -357,6 +357,27 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "for key, value in metrics.items()" not in reduce_section
 
 
+def test_moe_hybrid_ep_wrapper_reuses_latest_metrics_dict() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "labs/fullstack_cluster/moe_hybrid_ep_common.py"
+    ).read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def setup", maxsplit=1
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+
+    assert "self._latest_metrics: Dict[str, float] = {}" in source
+    assert "self._has_latest_metrics = False" in source
+    assert "latest_metrics = self._latest_metrics" in benchmark_section
+    assert "latest_metrics.clear()" in benchmark_section
+    assert "latest_metrics.update(artifacts.metrics)" in benchmark_section
+    assert "dict(artifacts.metrics)" not in benchmark_section
+    assert "self._latest_metrics.clear()" in setup_section
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for benchmark wrappers")
 def test_single_gpu_moe_hybrid_ep_uses_inprocess_step_runner() -> None:
     from labs.fullstack_cluster.baseline_moe_hybrid_ep import get_benchmark
