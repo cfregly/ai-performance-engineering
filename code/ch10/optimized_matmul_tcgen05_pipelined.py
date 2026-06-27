@@ -22,7 +22,6 @@ from typing import Optional
 
 import torch
 
-from ch10.matmul_extension_tcgen05 import load_matmul_tcgen05_module
 from core.common.device_utils import require_cuda_device
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
@@ -72,7 +71,7 @@ class OptimizedMatmulTCGen05PipelinedBenchmark(VerificationPayloadMixin, BaseBen
         assert self.A is not None and self.B is not None
         assert self._module is not None
         with self._nvtx_range("optimized_matmul_tcgen05_pipelined"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self._module.matmul_tcgen05_no_wait(self.A, self.B)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

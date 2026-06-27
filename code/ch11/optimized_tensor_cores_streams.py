@@ -94,7 +94,7 @@ class OptimizedTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchma
             assert self.device_B_slots is not None
             assert self.device_C_slots is not None
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 for idx in range(self.num_segments):
                     slot = idx % self.num_streams
                     stream = self.streams[slot]

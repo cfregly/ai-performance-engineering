@@ -201,7 +201,7 @@ class BaselineFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_input = self.input.detach().clone()
         
         # Warmup
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(3):
                 _ = self.model(self.input, is_causal=self.use_causal)
         
@@ -209,7 +209,7 @@ class BaselineFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark baseline attention."""
         with self._nvtx_range("baseline_fa3_attention"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.model(self.input, is_causal=self.use_causal).detach()
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
@@ -268,7 +268,7 @@ class BaselineFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.input is None:
             return "Input not initialized"
         
-        with torch.no_grad():
+        with torch.inference_mode():
             output = self.model(self.input[:1, :128], is_causal=False)
             if torch.isnan(output).any():
                 return "NaN in attention output"

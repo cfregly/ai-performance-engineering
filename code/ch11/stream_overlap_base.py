@@ -68,16 +68,17 @@ class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
             assert self.host_in_chunks is not None
             assert self.host_out_chunks is not None
             assert self.device_chunks is not None
-            for h_in, h_out, d_buf in zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks):
-                with torch.cuda.stream(self.stream):
-                    d_buf.copy_(h_in, non_blocking=True)
-                    d_buf.mul_(2.0)
-                    d_buf.add_(1.0)
-                    d_buf.mul_(1.1)
-                    d_buf.add_(0.5)
-                    h_out.copy_(d_buf, non_blocking=True)
-                # Naive path blocks on each segment, preventing overlap.
-                self.stream.synchronize()
+            with torch.inference_mode():
+                for h_in, h_out, d_buf in zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks):
+                    with torch.cuda.stream(self.stream):
+                        d_buf.copy_(h_in, non_blocking=True)
+                        d_buf.mul_(2.0)
+                        d_buf.add_(1.0)
+                        d_buf.mul_(1.1)
+                        d_buf.add_(0.5)
+                        h_out.copy_(d_buf, non_blocking=True)
+                    # Naive path blocks on each segment, preventing overlap.
+                    self.stream.synchronize()
         if (
             self.host_input is None
             or self.host_output is None
@@ -218,7 +219,7 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
             assert self.host_in_chunks is not None
             assert self.host_out_chunks is not None
             assert self.device_chunks is not None
-            with torch.no_grad():
+            with torch.inference_mode():
                 for idx, (h_in, h_out, d_buf) in enumerate(
                     zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks)
                 ):

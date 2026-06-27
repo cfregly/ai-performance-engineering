@@ -36,7 +36,7 @@ class OptimizedTcgen05CustomVsCublasBenchmark(Tcgen05CustomVsCublasBase):
         if self.extension is None or self.matrix_a is None or self.matrix_b_t is None:
             raise RuntimeError("Inputs or extension not initialized")
         with self._nvtx_range(self.nvtx_label):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.extension.matmul_tiling_tcgen05_pretransposed(
                     self.matrix_a, self.matrix_b_t
                 )

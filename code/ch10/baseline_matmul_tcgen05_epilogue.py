@@ -64,7 +64,7 @@ class BaselineMatmulTCGen05EpilogueBenchmark(VerificationPayloadMixin, BaseBench
             raise RuntimeError(self._skip_reason)
         assert self.A is not None and self.B is not None and self.bias is not None and self.module is not None
         with self._nvtx_range("baseline_matmul_tcgen05_bias_silu"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Use the same tcgen05 GEMM kernel as optimized; keep bias+SiLU separate.
                 C = self.module.matmul_tcgen05(self.A, self.B).float()
                 # Step 2: Add bias (separate kernel launch)

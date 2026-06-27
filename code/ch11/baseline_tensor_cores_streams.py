@@ -90,7 +90,7 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
             assert self.device_B_slot is not None
             assert self.device_C_slot is not None
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 for idx in range(self.num_segments):
                     with torch.cuda.stream(self.stream):
                         self.device_A_slot.copy_(self.host_A[idx], non_blocking=True)

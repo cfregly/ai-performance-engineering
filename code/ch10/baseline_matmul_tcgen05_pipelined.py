@@ -62,7 +62,7 @@ class BaselineMatmulTCGen05PipelinedBenchmark(VerificationPayloadMixin, BaseBenc
             raise RuntimeError(self._skip_reason)
         assert self.A is not None and self.B is not None and self.module is not None
         with self._nvtx_range("baseline_matmul_tcgen05_single_stage"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.module.matmul_tcgen05(self.A, self.B)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

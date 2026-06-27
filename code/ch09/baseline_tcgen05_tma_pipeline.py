@@ -33,11 +33,10 @@ class BaselineTcgen05TmaPipelineBenchmark(Tcgen05MatmulBenchmarkBase):
         if self.extension is None or self.matrix_a is None or self.matrix_b is None:
             raise RuntimeError("Inputs or extension not initialized")
         with self._nvtx_range(self.nvtx_label):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.extension.matmul_tcgen05_basic(self.matrix_a, self.matrix_b)
 
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineTcgen05TmaPipelineBenchmark()
-
 

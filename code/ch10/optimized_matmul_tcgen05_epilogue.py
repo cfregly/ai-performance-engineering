@@ -59,7 +59,7 @@ class OptimizedMatmulTCGen05EpilogueBenchmark(VerificationPayloadMixin, BaseBenc
             and self.module is not None
         )
         with self._nvtx_range("optimized_matmul_tcgen05_bias_silu"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.module.matmul_tcgen05_bias_silu(self.A, self.B, self.bias)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

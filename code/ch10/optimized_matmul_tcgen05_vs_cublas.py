@@ -60,7 +60,7 @@ class OptimizedMatmulTCGen05Benchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError(self._skip_reason)
         assert self.A is not None and self.B is not None
         with self._nvtx_range("optimized_matmul_tcgen05_vs_cublas_cublas"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Match baseline math: baseline kernel treats B as (N, K) and computes A @ B^T
                 self.output = torch.matmul(self.A, self.B.transpose(0, 1))
         if self.output is None:

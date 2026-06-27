@@ -71,7 +71,7 @@ class BaselineKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 
         with nvtx_range("kernel_launches", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = many_small_ops_regular(self.x, self.iterations)
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")

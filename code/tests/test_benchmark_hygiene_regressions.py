@@ -4793,6 +4793,44 @@ def test_ch12_kernel_launches_pair_keeps_hot_path_work_fixed() -> None:
     assert "self.x_input =" in optimized_source
     assert "self.x_capture" not in optimized_source
     assert "self.graph_output = self.work_a" in optimized_source
+    assert "with torch.inference_mode(), torch.cuda.graph(self.graph):" in optimized_source
+
+
+def test_ch08_to_ch12_kernel_wrappers_use_inference_mode() -> None:
+    paths = (
+        "ch08/optimized_tcgen05_custom_vs_cublas.py",
+        "ch09/baseline_tcgen05_tma_pipeline.py",
+        "ch09/optimized_tcgen05_tma_pipeline.py",
+        "ch10/baseline_flashattention3_pipeline.py",
+        "ch10/optimized_flashattention3_pipeline.py",
+        "ch10/baseline_matmul_tcgen05_epilogue.py",
+        "ch10/optimized_matmul_tcgen05_epilogue.py",
+        "ch10/baseline_matmul_tcgen05_pipelined.py",
+        "ch10/optimized_matmul_tcgen05_pipelined.py",
+        "ch10/baseline_matmul_tcgen05_vs_cublas.py",
+        "ch10/optimized_matmul_tcgen05_vs_cublas.py",
+        "ch10/baseline_tcgen05_warp_specialization.py",
+        "ch10/optimized_tcgen05_warp_specialization.py",
+        "ch10/baseline_tcgen05_warp_specialization_cutlass.py",
+        "ch10/optimized_tcgen05_warp_specialization_cutlass.py",
+        "ch10/baseline_tcgen05_warpgroup_specialization.py",
+        "ch10/optimized_tcgen05_warpgroup_specialization.py",
+        "ch10/warpgroup_specialization_demo.py",
+        "ch11/baseline_tensor_cores_streams.py",
+        "ch11/optimized_tensor_cores_streams.py",
+        "ch11/stream_overlap_base.py",
+        "ch12/baseline_kernel_launches.py",
+        "ch12/optimized_kernel_launches.py",
+    )
+
+    for path in paths:
+        source = (REPO_ROOT / path).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
 
 
 def test_ch12_bias_relu_residual_batches_verification_metric_reads() -> None:

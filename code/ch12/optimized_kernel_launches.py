@@ -48,7 +48,7 @@ class OptimizedKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 x_warmup = torch.relu(x_warmup)
         
         self.graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(self.graph):
+        with torch.inference_mode(), torch.cuda.graph(self.graph):
             if self.work_a is None or self.x_input is None:
                 raise RuntimeError("CUDA graph buffers missing")
             torch.add(self.x_input, 1.0, out=self.work_a)
@@ -71,7 +71,7 @@ class OptimizedKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 
         with nvtx_range("kernel_launches", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.graph.replay()
                 self.output = self.graph_output
         if self._verify_input is None or self.graph_output is None:
