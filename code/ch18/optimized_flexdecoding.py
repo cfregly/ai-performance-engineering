@@ -38,6 +38,7 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
             decode_tokens=512,
             compile_enabled=True,
         )
+        self._flash_attention_backends = [SDPBackend.FLASH_ATTENTION]
 
     def setup(self) -> None:
         super().setup()
@@ -86,7 +87,7 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
                 prefill_end.record()
 
             with self._nvtx_range("flex_decode"):
-                with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):
+                with sdpa_kernel(self._flash_attention_backends):
                     for pos in range(self.decode_tokens):
                         start_evt, end_evt = self._decode_events[pos]
                         start_evt.record()

@@ -2317,6 +2317,18 @@ def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
         assert "with torch.no_grad():" not in benchmark_section
 
 
+def test_ch18_optimized_flexdecoding_reuses_sdpa_backend_list() -> None:
+    source = (REPO_ROOT / "ch18" / "optimized_flexdecoding.py").read_text(encoding="utf-8")
+    init_section = source.split("def __init__", maxsplit=1)[1].split("def setup", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def get_custom_metrics", maxsplit=1
+    )[0]
+
+    assert "self._flash_attention_backends = [SDPBackend.FLASH_ATTENTION]" in init_section
+    assert "with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):" not in benchmark_section
+    assert "with sdpa_kernel(self._flash_attention_backends):" in benchmark_section
+
+
 def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> None:
     source = (REPO_ROOT / "labs" / "persistent_decode" / "paged_kv_offload_common.py").read_text(encoding="utf-8")
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
