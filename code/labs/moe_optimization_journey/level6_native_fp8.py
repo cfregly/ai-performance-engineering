@@ -119,6 +119,19 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.x.dtype,
         )
+        max_expert_tokens = max(self.counts)
+        self._tokens_fp8_buffer = torch.empty(
+            max_expert_tokens,
+            H,
+            device=self.device,
+            dtype=torch.float8_e4m3fn,
+        )
+        self._hidden_fp8_buffer = torch.empty(
+            max_expert_tokens,
+            I,
+            device=self.device,
+            dtype=torch.float8_e4m3fn,
+        )
         self._payload_param_count = int(self.w1_fp8.numel() + self.w2_fp8.numel() + self.w3_fp8.numel())
         
         print(f"FP8 weight memory: {(self.w1_fp8.numel() + self.w3_fp8.numel() + self.w2_fp8.numel()) / 1e9:.2f} GB")
@@ -132,6 +145,8 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
         H = self.HIDDEN_SIZE
         scale = self.scale
         output = self._output_buffer
+        tokens_fp8 = self._tokens_fp8_buffer
+        hidden_fp8 = self._hidden_fp8_buffer
 
         torch.index_select(x, 0, self._sorted_token_indices, out=self._sorted_tokens)
         sorted_tokens = self._sorted_tokens
@@ -143,33 +158,38 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
             if count == 0:
                 continue
                 
-            tokens_e = sorted_tokens[offset:offset+count]
-            tokens_fp8 = tokens_e.to(torch.float8_e4m3fn)
-            weights_e = sorted_w[offset:offset+count].unsqueeze(-1)
+            token_slice = slice(offset, offset + count)
+            tokens_e = sorted_tokens[token_slice]
+            tokens_fp8_slice = tokens_fp8[:count]
+            tokens_fp8_slice.copy_(tokens_e)
+            weights_e = sorted_w[token_slice].unsqueeze(-1)
             
             # Native FP8 matmul via _scaled_mm
             gate = torch._scaled_mm(
-                tokens_fp8, self.w1_fp8[e].T,
+                tokens_fp8_slice, self.w1_fp8[e].T,
                 scale_a=scale, scale_b=scale,
                 out_dtype=torch.bfloat16
             )
-            gate = F.silu(gate)
+            gate = F.silu(gate, inplace=True)
             
             up = torch._scaled_mm(
-                tokens_fp8, self.w3_fp8[e].T,
+                tokens_fp8_slice, self.w3_fp8[e].T,
                 scale_a=scale, scale_b=scale,
                 out_dtype=torch.bfloat16
             )
             
-            hidden_fp8 = (gate * up).to(torch.float8_e4m3fn)
+            gate.mul_(up)
+            hidden_fp8_slice = hidden_fp8[:count]
+            hidden_fp8_slice.copy_(gate)
             
             expert_out = torch._scaled_mm(
-                hidden_fp8, self.w2_fp8[e].T,
+                hidden_fp8_slice, self.w2_fp8[e].T,
                 scale_a=scale, scale_b=scale,
                 out_dtype=torch.bfloat16
             )
             
-            output[offset:offset+count] = expert_out * weights_e
+            expert_out.mul_(weights_e)
+            output[token_slice].copy_(expert_out)
             offset += count
         
         self.output = output[:1, : min(8, output.shape[1])]

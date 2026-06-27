@@ -4887,9 +4887,19 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "self._sorted_token_indices = expanded_token_indices.index_select(0, sorted_order)" in moe_setup
     assert "self._sorted_weights = expert_weights.view(-1).index_select(0, sorted_order)" in moe_setup
     assert "self._sorted_tokens = torch.empty(" in moe_setup
+    assert "self._tokens_fp8_buffer = torch.empty(" in moe_setup
+    assert "self._hidden_fp8_buffer = torch.empty(" in moe_setup
     assert "x.repeat_interleave(self.TOP_K" not in moe_benchmark
     assert "self.expert_weights.view(-1)[self.sorted_order]" not in moe_benchmark
     assert "torch.index_select(x, 0, self._sorted_token_indices, out=self._sorted_tokens)" in moe_benchmark
+    assert ".to(torch.float8_e4m3fn)" not in moe_benchmark
+    assert "tokens_fp8_slice.copy_(tokens_e)" in moe_benchmark
+    assert "F.silu(gate, inplace=True)" in moe_benchmark
+    assert "gate.mul_(up)" in moe_benchmark
+    assert "hidden_fp8_slice.copy_(gate)" in moe_benchmark
+    assert "expert_out.mul_(weights_e)" in moe_benchmark
+    assert "output[token_slice].copy_(expert_out)" in moe_benchmark
+    assert "expert_out * weights_e" not in moe_benchmark
     assert "self.output = output[:1, : min(8, output.shape[1])]" in moe_benchmark
     assert "self._payload_param_count = int(" in moe_source
     assert "output=self.output.detach().float().clone()" in moe_capture
