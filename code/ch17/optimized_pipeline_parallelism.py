@@ -43,6 +43,10 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self.microbatch_inputs: Optional[List[torch.Tensor]] = None
         self._last_stage_durations_ms: List[float] = []
         self._bubble_fraction: float = 0.0
+        self._stage_buffers: List[List[Optional[torch.Tensor]]] = []
+        self._stage_devices: List[torch.device] = []
+        self._final_output_slots: List[torch.Tensor] = []
+        self._last_final_output_count: int = 0
         self._single_gpu_mode: bool = False
         self._compiled_model: Optional[nn.Module] = None
         self._input_data: Optional[torch.Tensor] = None
@@ -91,6 +95,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
             self._compiled_model = torch.compile(model, mode="reduce-overhead")
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 _ = self._compiled_model(self._input_data)
+            self._last_stage_durations_ms = [0.0]
         else:
             # Multi-GPU: use pipeline parallelism
             layers_per_stage = [
@@ -105,6 +110,9 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                 gpu_id = stage_id % self.num_gpus
                 stage = nn.Sequential(*layer_stack).to(torch.device(f"cuda:{gpu_id}"), dtype=torch.bfloat16).eval()
                 self.pipeline_stages.append(stage)
+            self.parameter_count = sum(
+                p.numel() for stage in self.pipeline_stages for p in stage.parameters()
+            )
 
             self._input_data = torch.randn(
                 self.batch_size, self.hidden_size, device=torch.device("cuda:0"), dtype=torch.bfloat16
@@ -115,6 +123,16 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
             self.stage_events = [
                 [torch.cuda.Event(enable_timing=False) for _ in range(self.micro_batches)]
                 for _ in self.pipeline_stages
+            ]
+            self._stage_buffers = [
+                [None for _ in range(self.micro_batches)]
+                for _ in range(len(self.pipeline_stages) + 1)
+            ]
+            self._stage_devices = [next(stage.parameters()).device for stage in self.pipeline_stages]
+            self._last_stage_durations_ms = [0.0 for _ in self.pipeline_stages]
+            self._final_output_slots = [
+                torch.empty(0, device=self._stage_devices[-1], dtype=torch.bfloat16)
+                for _ in range(self.micro_batches)
             ]
         
         # Refresh workload metadata
@@ -135,7 +153,9 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                 with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                     self.output = self._compiled_model(self._input_data)
             self._bubble_fraction = 0.0  # No pipeline bubble
-            self._last_stage_durations_ms = [0.0]
+            if len(self._last_stage_durations_ms) != 1:
+                raise RuntimeError("Single-GPU timing slots not initialized")
+            self._last_stage_durations_ms[0] = 0.0
             return
         
         # Multi-GPU pipeline path
@@ -144,14 +164,28 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
 
         self.output = None
         self._last_final_outputs = None
+        self._last_final_output_count = 0
         num_stages = len(self.pipeline_stages)
-        self._last_stage_durations_ms = [0.0 for _ in range(num_stages)]
-        stage_buffers: List[List[Optional[torch.Tensor]]] = [
-            [None for _ in range(self.micro_batches)] for _ in range(num_stages + 1)
-        ]
-        stage_buffers[0] = list(self.microbatch_inputs)
+        if (
+            len(self._last_stage_durations_ms) != num_stages
+            or len(self._stage_buffers) != num_stages + 1
+            or len(self._stage_devices) != num_stages
+            or len(self._final_output_slots) != self.micro_batches
+        ):
+            raise RuntimeError("Pipeline reuse slots not initialized")
+        for stage_row in self._stage_buffers:
+            if len(stage_row) != self.micro_batches:
+                raise RuntimeError("Pipeline reuse slots not initialized")
+        for stage_idx in range(num_stages):
+            self._last_stage_durations_ms[stage_idx] = 0.0
+        stage_buffers = self._stage_buffers
+        for stage_row in stage_buffers:
+            for micro_idx in range(self.micro_batches):
+                stage_row[micro_idx] = None
+        for micro_idx, micro_input in enumerate(self.microbatch_inputs):
+            stage_buffers[0][micro_idx] = micro_input
 
-        stage_devices = [next(stage.parameters()).device for stage in self.pipeline_stages]
+        stage_devices = self._stage_devices
 
         with self._nvtx_range("optimized_pipeline_parallelism"):
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
@@ -182,22 +216,25 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         # Bubble fraction approximates fill/drain overhead: (S-1)/M
         self._bubble_fraction = (num_stages - 1) / float(self.micro_batches)
         # Store final output from last stage
-        final_outputs = [o for o in stage_buffers[num_stages] if o is not None]
-        if final_outputs:
+        final_outputs = self._final_output_slots
+        final_count = 0
+        for out in stage_buffers[num_stages]:
+            if out is not None:
+                final_outputs[final_count] = out
+                final_count += 1
+        if final_count:
             with torch.cuda.device(stage_devices[-1]):
                 torch.cuda.current_stream(stage_devices[-1]).wait_stream(self.stage_streams[-1])
             self._last_final_outputs = final_outputs
+            self._last_final_output_count = final_count
         if self._last_final_outputs is None:
             raise RuntimeError("benchmark_fn() must produce output")
-        self.parameter_count = self.parameter_count or sum(
-            p.numel() for stage in self.pipeline_stages for p in stage.parameters()
-        )
 
     def capture_verification_payload(self) -> None:
         if self.output is None:
-            if self._last_final_outputs is None:
+            if self._last_final_outputs is None or self._last_final_output_count <= 0:
                 raise RuntimeError("benchmark_fn() must be called before capture_verification_payload()")
-            self.output = torch.cat(self._last_final_outputs, dim=0)
+            self.output = torch.cat(self._last_final_outputs[: self._last_final_output_count], dim=0)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must be called before capture_verification_payload()")
         dtype = self.output.dtype
@@ -236,6 +273,10 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self.microbatch_inputs = None
         self.stage_streams = []
         self.stage_events = []
+        self._stage_buffers = []
+        self._stage_devices = []
+        self._final_output_slots = []
+        self._last_final_output_count = 0
         self._compiled_model = None
         self._input_data = None
         self._last_final_outputs = None
