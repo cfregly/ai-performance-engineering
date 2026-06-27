@@ -169,6 +169,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_event_triplets: List[tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_metrics: Dict[str, float] = {}
         self._kv_buffers: Dict[int, torch.Tensor] = {}
+        self._worker_caches: List[Dict[int, torch.Tensor]] = []
+        self._owners: Dict[int, int] = {}
 
     def _build_request_plans(self) -> List[RequestPlan]:
         warm_requests = int(round(self.cfg.requests_per_iteration * self.cfg.warm_request_ratio))
@@ -247,6 +249,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             for plan in self.request_plans
         }
+        self._worker_caches = [{} for _ in range(self.cfg.logical_decode_workers)]
+        self._owners = {}
         with torch.inference_mode():
             assert self.prompts is not None
             for plan in self.request_plans:
@@ -350,8 +354,13 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.prefill_model is None or self.decode_model is None or self.prompts is None:
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        worker_caches = [{} for _ in range(self.cfg.logical_decode_workers)]
-        owners: Dict[int, int] = {}
+        worker_caches = self._worker_caches
+        if len(worker_caches) != self.cfg.logical_decode_workers:
+            raise RuntimeError("Worker cache slots not initialized")
+        for cache in worker_caches:
+            cache.clear()
+        owners = self._owners
+        owners.clear()
         kv_buffers = self._kv_buffers
         outputs = self._last_outputs
         if len(outputs) != len(self.request_plans):
@@ -520,6 +529,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_event_triplets = []
         self._pending_metrics = {}
         self._kv_buffers = {}
+        self._worker_caches = []
+        self._owners = {}
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

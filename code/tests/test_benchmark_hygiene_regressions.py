@@ -2464,6 +2464,14 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "kv_buffer = torch.empty(" in helper_section
     assert "kv_buffer = torch.empty(" not in benchmark_section
     assert "kv_buffers = self._kv_buffers" in benchmark_section
+    assert "self._worker_caches = [{} for _ in range(self.cfg.logical_decode_workers)]" in setup_section
+    assert "self._owners = {}" in setup_section
+    assert "worker_caches = self._worker_caches" in benchmark_section
+    assert "owners = self._owners" in benchmark_section
+    assert "worker_caches = [{} for _ in range(self.cfg.logical_decode_workers)]" not in benchmark_section
+    assert "owners: Dict[int, int] = {}" not in benchmark_section
+    assert "for cache in worker_caches:" in benchmark_section
+    assert "cache.clear()" in benchmark_section
     assert "_extend_cache_buffer(" in benchmark_section
     assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)" in helper_section
     assert "torch.cat((accumulated_kv, chunk_kv), dim=1)" not in benchmark_section
@@ -2518,6 +2526,14 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._decode_seed_buffers[rank] = torch.empty(" in source
     assert "seed_buffer.copy_(seed, non_blocking=True)" in benchmark_section
     assert "seed_buffer," in benchmark_section
+    assert "self._active_caches = {rank: {} for rank in self._decode_models}" in setup_section
+    assert "self._kv_buffer_pools = {rank: {} for rank in self._decode_models}" in setup_section
+    assert "active_caches = self._active_caches" in benchmark_section
+    assert "kv_buffers = self._kv_buffer_pools" in benchmark_section
+    assert "active_caches = {rank: {} for rank in self._decode_models}" not in benchmark_section
+    assert "kv_buffers = {rank: {} for rank in self._decode_models}" not in benchmark_section
+    assert "for cache in active_caches.values():" in benchmark_section
+    assert "cache.clear()" in benchmark_section
     assert "_extend_cache_buffer(" in run_iteration_section
     assert "_extend_cache_buffer(" in benchmark_section
     assert "self._output_parts = [torch.empty(0) for _ in self._request_plans]" in setup_section

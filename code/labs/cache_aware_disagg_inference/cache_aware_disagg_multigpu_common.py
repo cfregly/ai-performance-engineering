@@ -714,6 +714,8 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._prefill_seed_store: Dict[int, torch.Tensor] = {}
         self._empty_kv_by_device: Dict[str, torch.Tensor] = {}
         self._decode_seed_buffers: Dict[int, torch.Tensor] = {}
+        self._active_caches: Dict[int, Dict[int, torch.Tensor]] = {}
+        self._kv_buffer_pools: Dict[int, Dict[int, torch.Tensor]] = {}
         self._verify_output = torch.zeros(1, dtype=torch.float32)
         self._register_workload_metadata(
             world_size=_world_size_hint(),
@@ -830,6 +832,8 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._custom_metrics = {}
         self._empty_kv_by_device = {}
         self._decode_seed_buffers = {}
+        self._active_caches = {}
+        self._kv_buffer_pools = {}
         total_params = 0
 
         for rank in range(prefill_ranks, world_size):
@@ -878,6 +882,9 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             self._prompts[rank] = prompts
             total_params += sum(p.numel() for p in model.parameters())
 
+        self._active_caches = {rank: {} for rank in self._decode_models}
+        self._kv_buffer_pools = {rank: {} for rank in self._decode_models}
+
         with torch.inference_mode():
             for plan in self._request_plans:
                 if plan.warm_chunks <= 0:
@@ -910,8 +917,12 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         assert self._resolved_prefill_ranks is not None
         assert self._resolved_decode_ranks is not None
 
-        active_caches = {rank: {} for rank in self._decode_models}
-        kv_buffers = {rank: {} for rank in self._decode_models}
+        active_caches = self._active_caches
+        kv_buffers = self._kv_buffer_pools
+        if set(active_caches) != set(self._decode_models) or set(kv_buffers) != set(self._decode_models):
+            raise RuntimeError("Cache control-plane slots not initialized")
+        for cache in active_caches.values():
+            cache.clear()
         outputs = self._output_parts
         if len(outputs) != len(self._request_plans):
             raise RuntimeError("Decode output slots not initialized")
@@ -1096,6 +1107,8 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._outputs_ready = False
         self._empty_kv_by_device = {}
         self._decode_seed_buffers = {}
+        self._active_caches = {}
+        self._kv_buffer_pools = {}
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
