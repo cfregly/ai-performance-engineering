@@ -3949,10 +3949,11 @@ def test_ch16_synthetic_moe_benchmark_hoists_inference_mode() -> None:
         "def main", maxsplit=1
     )[0]
 
-    assert benchmark_function.count("with torch.inference_mode():") == 2
+    assert benchmark_function.count("with torch.inference_mode():") == 3
     assert "with torch.no_grad():" not in benchmark_function
     assert "for _ in range(num_warmup):\n            if use_autocast:" in benchmark_function
-    assert "for _ in range(num_iters):\n            if use_autocast:" in benchmark_function
+    assert "for _ in range(count):\n                if use_autocast:" in benchmark_function
+    assert benchmark_function.count("torch.cuda.Event(enable_timing=True)") == 2
 
 
 def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:

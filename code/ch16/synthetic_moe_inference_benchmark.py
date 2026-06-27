@@ -423,21 +423,31 @@ def benchmark_inference(model, input_ids, name, num_warmup=20, num_iters=100, *,
     
     # Benchmark
     print(f"  Running benchmark ({num_iters} iterations)...", end='', flush=True)
-    start = time.perf_counter()
-    with torch.inference_mode():
-        for _ in range(num_iters):
-            if use_autocast:
-                with torch.autocast("cuda", dtype=autocast_dtype):
+    count = max(num_iters, 1)
+    if input_ids.device.type == "cuda":
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        with torch.inference_mode():
+            start_event.record()
+            for _ in range(count):
+                if use_autocast:
+                    with torch.autocast("cuda", dtype=autocast_dtype):
+                        _ = model(input_ids)
+                else:
                     _ = model(input_ids)
-            else:
-                _ = model(input_ids)
-    if torch.cuda.is_available():
+            end_event.record()
         torch.cuda.synchronize()
-    elapsed = time.perf_counter() - start
+        elapsed = start_event.elapsed_time(end_event) / 1000.0
+    else:
+        start = time.perf_counter()
+        with torch.inference_mode():
+            for _ in range(count):
+                _ = model(input_ids)
+        elapsed = time.perf_counter() - start
     print(" done")
     
-    avg_time_ms = (elapsed / num_iters) * 1000
-    tokens_per_sec = (input_ids.numel() * num_iters) / elapsed
+    avg_time_ms = (elapsed / count) * 1000
+    tokens_per_sec = (input_ids.numel() * count) / elapsed
     
     print(f"  Average time: {avg_time_ms:.2f} ms")
     print(f"  Throughput: {tokens_per_sec:.1f} tokens/sec")
