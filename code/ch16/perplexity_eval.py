@@ -76,7 +76,7 @@ def main() -> None:
     token_ids_i32 = token_ids_i64.to(torch.int32)
     total_loss = torch.zeros((), device=device, dtype=torch.float32)
     total_tokens = 0
-    with torch.no_grad():
+    with torch.inference_mode():
         for start in range(0, len(tokens) - args.seq_len - 1, args.stride):
             input_ids = token_ids_i32.narrow(0, start, args.seq_len).unsqueeze(0)
             target_ids = token_ids_i64.narrow(0, start + 1, args.seq_len).unsqueeze(0)

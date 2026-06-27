@@ -176,7 +176,7 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._a = torch.randn((self._size_m, self._size_k), dtype=self._dtype, device=device)
         self._b = torch.randn((self._size_k, self._size_n), dtype=self._dtype, device=device)
         self._scratch = torch.empty((self._size_m, self._size_n), dtype=self._dtype, device=device)
-        with torch.no_grad():
+        with torch.inference_mode():
             self._reference = torch.matmul(self._a, self._b)
 
         def _run_once() -> torch.Tensor:

@@ -71,17 +71,20 @@ class MoEBackendWorkload:
         return (y * weights.unsqueeze(-1)).sum(dim=1)
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def select_best_backend(
     candidates: Dict[str, Callable[[torch.Tensor], torch.Tensor]],
     x: torch.Tensor,
 ) -> Tuple[str, Callable[[torch.Tensor], torch.Tensor]]:
     timings: Dict[str, float] = {}
+    sync_device = x.device if x.device.type == "cuda" else None
     for name, fn in candidates.items():
-        torch.cuda.synchronize()
+        if sync_device is not None:
+            torch.cuda.synchronize(sync_device)
         start = time.perf_counter()
         _ = fn(x)
-        torch.cuda.synchronize()
+        if sync_device is not None:
+            torch.cuda.synchronize(sync_device)
         timings[name] = time.perf_counter() - start
     best = min(timings, key=timings.get)
     return best, candidates[best]

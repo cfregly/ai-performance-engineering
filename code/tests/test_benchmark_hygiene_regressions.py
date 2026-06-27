@@ -904,6 +904,10 @@ def test_moe_cuda_naive_backend_skips_redundant_mask_any_sync() -> None:
     assert "if token_ids.numel() == 0:" in naive_section
     assert "torch.any(mask)" not in naive_section
     assert "mask.nonzero" not in naive_section
+    assert "@torch.inference_mode()\ndef select_best_backend" in source
+    assert "@torch.no_grad()\ndef select_best_backend" not in source
+    assert 'sync_device = x.device if x.device.type == "cuda" else None' in source
+    assert "torch.cuda.synchronize()" not in source
 
 
 def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
@@ -1490,6 +1494,9 @@ def test_timed_loops_reuse_cuda_events() -> None:
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()
+    schedule_source = (
+        REPO_ROOT / "labs" / "occupancy_tuning" / "triton_matmul_schedules.py"
+    ).read_text(encoding="utf-8")
 
     assert wide_n.schedule.name == "bm64_bn256_bk32"
     assert wide_n.schedule.block_m == 64
@@ -1501,6 +1508,8 @@ def test_occupancy_tuning_variants_match_their_filenames() -> None:
     assert latency.schedule.block_n == 64
     assert latency.schedule.block_k == 32
     assert latency.schedule.num_warps == 2
+    assert "with torch.inference_mode():\n            self._reference = torch.matmul(self._a, self._b)" in schedule_source
+    assert "with torch.no_grad():\n            self._reference = torch.matmul(self._a, self._b)" not in schedule_source
 
 
 def test_real_world_model_entrypoints_return_harness_benchmarks() -> None:
@@ -3456,7 +3465,7 @@ def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
 
 def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:
     source = (REPO_ROOT / "ch16" / "perplexity_eval.py").read_text(encoding="utf-8")
-    loop_section = source.split("with torch.no_grad():", maxsplit=1)[1].split(
+    loop_section = source.split("with torch.inference_mode():", maxsplit=1)[1].split(
         "avg_loss =",
         maxsplit=1,
     )[0]
@@ -3470,6 +3479,7 @@ def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:
     assert "torch.tensor(target" not in loop_section
     assert "loss.item()" not in loop_section
     assert "total_loss += loss.detach()" in loop_section
+    assert "with torch.no_grad():" not in source
     assert "perplexity = math.exp(avg_loss)" in source
 
 
