@@ -25,6 +25,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.models: List[nn.Linear] = []
         self._inputs: List[List[torch.Tensor]] = []
+        self._grad_slots: List[torch.Tensor] = []
         self._allreduce_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.microbatches = 2
@@ -44,6 +45,10 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         for rank in range(num):
             device = f"cuda:{rank}"
             self.models.append(nn.Linear(self.hidden, self.hidden).to(device))
+        self._grad_slots = [
+            torch.empty(0, device=model.weight.device)
+            for model in self.models
+        ]
         self._inputs = []
         for _micro in range(self.microbatches):
             micro_inputs: List[torch.Tensor] = []
@@ -71,14 +76,19 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         assert self.models
         with self._nvtx_range("baseline_ddp_multigpu_nvlink_naive"):
+            if len(self._grad_slots) != len(self.models):
+                raise RuntimeError("Gradient slots not initialized")
+            grads = self._grad_slots
             for micro in range(self.microbatches):
-                grads = []
                 for model_idx, model in enumerate(self.models):
                     x = self._inputs[micro][model_idx]
                     y = model(x)
                     loss = y.pow(2).mean()
                     loss.backward()
-                    grads.append(model.weight.grad)
+                    grad = model.weight.grad
+                    if grad is None:
+                        raise RuntimeError("Gradient missing after backward")
+                    grads[model_idx] = grad
                 # Blocking gradient sync
                 self._simulate_allreduce(grads)
                 for model in self.models:
@@ -111,6 +121,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.models.clear()
         self._inputs = []
+        self._grad_slots = []
         self._allreduce_buffer = None
         self.output = None
         torch.cuda.empty_cache()

@@ -127,21 +127,24 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
         if not self.models or not self.optimizers:
             raise RuntimeError("setup() must be called before benchmark_fn()")
 
-        outputs: List[torch.Tensor] = []
+        first_output: Optional[torch.Tensor] = None
 
         with self._nvtx_range("optimized_dataparallel_multigpu"):
-            for stream, device_id, model, batch, target in zip(
-                self.streams,
-                self.device_ids,
-                self.models,
-                self.inputs,
-                self.targets,
+            for model_idx, (stream, device_id, model, batch, target) in enumerate(
+                zip(
+                    self.streams,
+                    self.device_ids,
+                    self.models,
+                    self.inputs,
+                    self.targets,
+                )
             ):
                 with torch.cuda.device(device_id), torch.cuda.stream(stream):
                     output = model(batch)
                     loss = nn.functional.mse_loss(output, target)
                     loss.backward()
-                    outputs.append(output)
+                    if model_idx == 0:
+                        first_output = output
 
             for stream, device_id in zip(self.streams, self.device_ids):
                 with torch.cuda.device(device_id):
@@ -149,18 +152,18 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
 
             # Reduce gradients onto GPU0 and update master parameters.
             for param_idx, param_group in enumerate(zip(*(model.parameters() for model in self.models))):
-                grads = [param.grad for param in param_group]
-                if grads[0] is None:
+                master_grad = param_group[0].grad
+                if master_grad is None:
                     continue
-                reduced = grads[0].detach()
-                for replica_idx, grad in enumerate(grads[1:]):
+                reduced = master_grad.detach()
+                for replica_idx, replica_param in enumerate(param_group[1:]):
+                    grad = replica_param.grad
                     if grad is None:
                         continue
                     staging = self._grad_staging[replica_idx][param_idx]
                     staging.copy_(grad, non_blocking=True)
                     reduced.add_(staging)
                 param_group[0].grad = reduced
-
 
             self.optimizers[0].step()
             for opt in self.optimizers:
@@ -172,7 +175,9 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
                 for replica_param in param_group[1:]:
                     replica_param.data.copy_(master_param, non_blocking=True)
 
-        self.output = outputs[0].detach()
+        if first_output is None:
+            raise RuntimeError("No model output captured")
+        self.output = first_output.detach()
 
     def capture_verification_payload(self) -> None:
         if (

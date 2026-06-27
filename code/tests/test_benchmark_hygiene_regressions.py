@@ -112,6 +112,11 @@ def test_ch04_optimized_dataparallel_reuses_gradient_staging_buffers() -> None:
     assert "grad.to(master_device" not in benchmark_section
     assert "staging.copy_(grad, non_blocking=True)" in benchmark_section
     assert "reduced.add_(staging)" in benchmark_section
+    assert "outputs: List[torch.Tensor] = []" not in benchmark_section
+    assert "outputs.append(" not in benchmark_section
+    assert "first_output: Optional[torch.Tensor] = None" in benchmark_section
+    assert "grads = [param.grad for param in param_group]" not in benchmark_section
+    assert "master_grad = param_group[0].grad" in benchmark_section
 
 
 def test_ch04_optimizer_central_nvlink_uses_direct_copy_staging() -> None:
@@ -142,6 +147,9 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     naive_reduce = naive_source.split("def _simulate_allreduce", maxsplit=1)[1].split(
         "def benchmark_fn", maxsplit=1
     )[0]
+    naive_benchmark = naive_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
     setup_section = source.split("def setup", maxsplit=1)[1].split(
         "def _async_reduce_to_root", maxsplit=1
     )[0]
@@ -155,8 +163,16 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._root_grad_staging: List[List[torch.Tensor]] = []" in source
     assert "self._grad_ready_events: List[List[torch.cuda.Event]] = []" in source
     assert "self._update_buffers: List[torch.Tensor] = []" in source
+    assert "self._grad_slots: List[torch.Tensor] = []" in naive_source
+    assert "self._grad_slots: List[torch.Tensor] = []" in source
+    assert "self._ordered_grad_slots: List[torch.Tensor] = []" in source
+    assert "self._ordered_bucket_indices: List[int] = []" in source
+    assert "self._reduction_results: List[torch.Tensor] = []" in source
     assert "self._allreduce_buffer = torch.empty_like(" in naive_setup
+    assert "self._grad_slots = [" in naive_setup
     assert "self._allreduce_buffer = torch.zeros_like(" not in naive_setup
+    assert "grads = []" not in naive_benchmark
+    assert "grads.append(" not in naive_benchmark
     assert "buf.copy_(grads[0].to(root))" in naive_reduce
     assert "for g in grads[1:]" in naive_reduce
     assert "buf.zero_()" not in naive_reduce
@@ -164,10 +180,18 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "torch.empty_like(self.models[0].weight, device=self.root_device)" in setup_section
     assert "torch.zeros_like(self.models[0].weight, device=self.root_device)" not in setup_section
     assert "[torch.cuda.Event() for _ in self.models]" in setup_section
+    assert "self._ordered_grad_slots = [" in setup_section
+    assert "self._ordered_bucket_indices = [bucket_idx for _, bucket_idx in bucket_order]" in setup_section
+    assert "self._reduction_results = [" in setup_section
     assert "torch.cuda.Event()" not in reduce_section
     assert "g.to(self.root_device" not in reduce_section
     assert "root_buf.copy_(first)" in reduce_section
     assert "for idx, g in enumerate(grads[1:], start=1)" in reduce_section
+    assert "grads = []" not in benchmark_section
+    assert "reduction_results: List[torch.Tensor] = []" not in benchmark_section
+    assert "sorted(zip(grads, _bucket_order())" not in benchmark_section
+    assert "ordered_grads = [g for g, _ in ordered]" not in benchmark_section
+    assert "reduction_results[micro] = self._async_reduce_to_root(ordered_grads, micro)" in benchmark_section
     assert "root_buf.zero_()" not in reduce_section
     assert "root_buf.to(model.weight.device" not in benchmark_section
     assert "staging.copy_(g, non_blocking=True)" in reduce_section

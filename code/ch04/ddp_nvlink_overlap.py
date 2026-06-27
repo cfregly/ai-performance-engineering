@@ -53,6 +53,10 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._root_grad_staging: List[List[torch.Tensor]] = []
         self._grad_ready_events: List[List[torch.cuda.Event]] = []
         self._update_buffers: List[torch.Tensor] = []
+        self._grad_slots: List[torch.Tensor] = []
+        self._ordered_grad_slots: List[torch.Tensor] = []
+        self._ordered_bucket_indices: List[int] = []
+        self._reduction_results: List[torch.Tensor] = []
         tokens = self.batch_size * self.hidden * self.microbatches
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size * self.microbatches),
@@ -70,6 +74,16 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         for rank in range(num):
             device = f"cuda:{rank}"
             self.models.append(nn.Linear(self.hidden, self.hidden).to(device))
+        self._grad_slots = [
+            torch.empty(0, device=model.weight.device)
+            for model in self.models
+        ]
+        self._ordered_grad_slots = [
+            torch.empty(0, device=model.weight.device)
+            for model in self.models
+        ]
+        bucket_order = sorted(_bucket_order(), key=lambda kv: kv[0])
+        self._ordered_bucket_indices = [bucket_idx for _, bucket_idx in bucket_order]
         self._inputs = []
         for _micro in range(self.microbatches):
             micro_inputs: List[torch.Tensor] = []
@@ -78,6 +92,10 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
             self._inputs.append(micro_inputs)
         self._reduce_buffers = [
             torch.empty_like(self.models[0].weight, device=self.root_device)
+            for _ in range(self.microbatches)
+        ]
+        self._reduction_results = [
+            torch.empty(0, device=self.root_device)
             for _ in range(self.microbatches)
         ]
         self._root_grad_staging = [
@@ -129,22 +147,33 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
     def benchmark_fn(self) -> None:
         assert self.models
         with self._nvtx_range("optimized_ddp_multigpu_nvlink_overlap"):
-            reduction_results: List[torch.Tensor] = []
+            if (
+                len(self._grad_slots) != len(self.models)
+                or len(self._ordered_grad_slots) != len(self.models)
+                or len(self._ordered_bucket_indices) != len(self.models)
+                or len(self._reduction_results) != self.microbatches
+            ):
+                raise RuntimeError("Gradient reduction slots not initialized")
+            grads = self._grad_slots
+            ordered_grads = self._ordered_grad_slots
+            reduction_results = self._reduction_results
             # Process microbatches; overlap reduction of previous with compute of next
             for micro in range(self.microbatches):
-                grads = []
                 for model_idx, model in enumerate(self.models):
                     x = self._inputs[micro][model_idx]
                     y = model(x)
                     loss = y.pow(2).mean()
                     loss.backward()
-                    grads.append(model.weight.grad)
+                    grad = model.weight.grad
+                    if grad is None:
+                        raise RuntimeError("Gradient missing after backward")
+                    grads[model_idx] = grad
 
                 # Reorder buckets (simple proxy: ascending device id)
-                ordered = sorted(zip(grads, _bucket_order()), key=lambda kv: kv[1][0])
-                ordered_grads = [g for g, _ in ordered]
+                for ordered_idx, source_idx in enumerate(self._ordered_bucket_indices):
+                    ordered_grads[ordered_idx] = grads[source_idx]
 
-                reduction_results.append(self._async_reduce_to_root(ordered_grads, micro))
+                reduction_results[micro] = self._async_reduce_to_root(ordered_grads, micro)
 
             # Finalize reductions and apply updates
             torch.cuda.current_stream(self.root_device).wait_stream(self.comm_stream)
@@ -188,6 +217,10 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._root_grad_staging = []
         self._grad_ready_events = []
         self._update_buffers = []
+        self._grad_slots = []
+        self._ordered_grad_slots = []
+        self._ordered_bucket_indices = []
+        self._reduction_results = []
         self.output = None
         torch.cuda.empty_cache()
 
