@@ -71,7 +71,7 @@ class BaselineTrainingSpeedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.model is None or self.input_ids is None:
             raise RuntimeError("capture_verification_payload() requires model and inputs")
-        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=self.autocast_dtype):
+        with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=self.autocast_dtype):
             verify_logits = self.model(self.input_ids)
             self.output = verify_logits[:1, :1, :8].detach().float().clone()
         self._set_verification_payload(

@@ -217,11 +217,11 @@ class QuantizationManager:
         for name, module in quantized_model.named_modules():
             if isinstance(module, nn.Linear):
                 # Simulate weight quantization
-                with torch.no_grad():
+                with torch.inference_mode():
                     # Quantize weights to 4-bit
                     weights = module.weight.data
                     quantized_weights = self._quantize_weights(weights, bits=4)
-                    module.weight.data = quantized_weights
+                    module.weight.copy_(quantized_weights)
                     
         print(f"GPTQ quantization completed. Model size reduced by ~4x")
         return quantized_model
@@ -236,12 +236,12 @@ class QuantizationManager:
         # Apply channel-specific scaling
         for name, module in quantized_model.named_modules():
             if isinstance(module, nn.Linear):
-                with torch.no_grad():
+                with torch.inference_mode():
                     weights = module.weight.data
                     # Apply channel-specific scaling for salient channels
                     scaled_weights = self._apply_channel_scaling(weights)
                     quantized_weights = self._quantize_weights(scaled_weights, bits=4)
-                    module.weight.data = quantized_weights
+                    module.weight.copy_(quantized_weights)
                     
         print(f"AWQ quantization completed. Model size reduced by ~4x")
         return quantized_model
@@ -256,12 +256,12 @@ class QuantizationManager:
         # Apply row/column scaling to shift quantization error
         for name, module in quantized_model.named_modules():
             if isinstance(module, nn.Linear):
-                with torch.no_grad():
+                with torch.inference_mode():
                     weights = module.weight.data
                     # Apply SmoothQuant scaling
                     scaled_weights = self._apply_smoothquant_scaling(weights)
                     quantized_weights = self._quantize_weights(scaled_weights, bits=8)
-                    module.weight.data = quantized_weights
+                    module.weight.copy_(quantized_weights)
                     
         print(f"SmoothQuant quantization completed. Model size reduced by ~2x")
         return quantized_model

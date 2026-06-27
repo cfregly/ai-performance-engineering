@@ -210,7 +210,7 @@ def benchmark():
     static_linear = StaticFP8Linear(dim, dim, device=device)
     
     # Copy weights
-    with torch.no_grad():
+    with torch.inference_mode():
         static_linear.weight.copy_(fp32_linear.weight)
         static_linear.bias.copy_(fp32_linear.bias)
     
@@ -255,7 +255,7 @@ def benchmark():
     static_ms = start.elapsed_time(end) / 100
     
     # Accuracy
-    with torch.no_grad():
+    with torch.inference_mode():
         fp32_out = fp32_linear(x)
         static_out = static_linear(x)
     error = (static_out - fp32_out).abs().mean() / fp32_out.abs().mean() * 100

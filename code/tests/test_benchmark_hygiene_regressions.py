@@ -1347,6 +1347,7 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     quick_source = (REPO_ROOT / "ch16" / "gpt_quick_test.py").read_text(encoding="utf-8")
     fp8_test_source = (REPO_ROOT / "ch16" / "test_fp8_quantization_real.py").read_text(encoding="utf-8")
     te_source = (REPO_ROOT / "ch16" / "fp8_transformer_engine.py").read_text(encoding="utf-8")
+    profiling_source = (REPO_ROOT / "ch16" / "inference_profiling.py").read_text(encoding="utf-8")
     quick_benchmark = quick_source.split("def benchmark_quick", maxsplit=1)[1].split(
         "def main",
         maxsplit=1,
@@ -1359,6 +1360,10 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
         "def transformer_engine_warning",
         maxsplit=1,
     )[0]
+    quantization_manager = profiling_source.split("class QuantizationManager", maxsplit=1)[1].split(
+        "class InferenceProfiler",
+        maxsplit=1,
+    )[0]
 
     assert quick_benchmark.count("with torch.inference_mode():") == 2
     assert "with torch.no_grad():" not in quick_benchmark
@@ -1366,6 +1371,10 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert "with torch.no_grad():" not in fp8_benchmark
     assert "with torch.inference_mode():" in te_convert
     assert "with torch.no_grad():" not in te_convert
+    assert quantization_manager.count("with torch.inference_mode():") == 3
+    assert "with torch.no_grad():" not in quantization_manager
+    assert "module.weight.copy_(quantized_weights)" in quantization_manager
+    assert "module.weight.data = quantized_weights" not in quantization_manager
 
 
 def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
@@ -1853,7 +1862,8 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "self._overflow_slots_for(slots, num_slots)" in forward_section
     assert "self._dense_input_for(flat_tokens, num_slots)" in forward_section
     assert "self._output_buffer_for(tokens, batch)" in forward_section
-    assert "@torch.inference_mode()" in source
+    assert "@torch.no_grad()\n    def configure_static_dispatch_buffers" in source
+    assert "@torch.inference_mode()\n    def configure_static_dispatch_buffers" not in source
     assert "with torch.inference_mode():" in setup_section
     assert "with torch.no_grad():" not in setup_section
     assert "capture_no_grad" not in source
@@ -5350,6 +5360,10 @@ def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:
 
 def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch19" / "fp8_calibration_free_tool.py").read_text(encoding="utf-8")
+    scale_section = source.split("def _compute_scale", maxsplit=1)[1].split(
+        "def _quantize_fp8",
+        maxsplit=1,
+    )[0]
     run_section = source.split("def run(self) -> torch.Tensor", maxsplit=1)[1].split(
         "def cleanup", maxsplit=1
     )[0]
@@ -5366,6 +5380,8 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
     assert "torch.tensor(" not in benchmark_section
     assert "self._output = output" in benchmark_section
     assert "output=self._output.detach().float().clone()" in capture_section
+    assert "with torch.inference_mode():" in scale_section
+    assert "with torch.no_grad():" not in scale_section
 
 
 def test_ch19_nvfp4_training_defers_verification_forward_outside_hot_loop() -> None:
@@ -5382,6 +5398,8 @@ def test_ch19_nvfp4_training_defers_verification_forward_outside_hot_loop() -> N
 
         assert ".float().clone()" not in benchmark_section
         assert "self.output = None" in benchmark_section
+        assert "with torch.inference_mode():" in capture_section
+        assert "with torch.no_grad():" not in capture_section
         assert "self.model(self._verify_input)" in capture_section
         assert ".float().clone()" in capture_section
 
@@ -5462,6 +5480,23 @@ def test_ch13_inference_precision_benchmarks_use_inference_mode() -> None:
         )[0]
         assert "torch.inference_mode()" in setup_section
         assert "torch.no_grad()" not in setup_section
+
+
+def test_ch13_static_and_training_helpers_use_inference_mode() -> None:
+    filenames = (
+        "baseline_training_standard.py",
+        "optimized_training_standard.py",
+        "baseline_training_speed.py",
+        "context_parallelism.py",
+        "fp8_static_demo.py",
+        "optimized_fp8_static.py",
+        "fp8_perchannel_demo.py",
+    )
+
+    for filename in filenames:
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        assert "torch.inference_mode()" in source
+        assert "torch.no_grad()" not in source
 
 
 def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:

@@ -269,7 +269,7 @@ class FP8PerChannelLinear(nn.Module):
         # Update amax history for delayed scaling
         if self.training:
             idx = self.amax_counter % self.config.amax_history_len
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.input_amax_history[idx] = x.abs().amax(dim=list(range(x.ndim - 1)))
                 self.weight_amax_history[idx] = self.weight.abs().max()
                 self.amax_counter += 1
@@ -336,7 +336,7 @@ class FP8PerChannelBenchmark:
         )
         
         # Copy weights for fair comparison
-        with torch.no_grad():
+        with torch.inference_mode():
             self.per_tensor_linear.weight.copy_(self.fp32_linear.weight)
             self.per_channel_linear.weight.copy_(self.fp32_linear.weight)
             if self.fp32_linear.bias is not None:
@@ -357,7 +357,7 @@ class FP8PerChannelBenchmark:
         
         # Create weights with varying magnitudes per output channel
         # This stresses per-tensor scaling (one scale for all) vs per-channel (one per row)
-        with torch.no_grad():
+        with torch.inference_mode():
             # Scale each output channel differently: some large, some small
             output_scales = torch.logspace(-1, 1, self.out_features, device=self.device)
             output_scales = output_scales[torch.randperm(self.out_features)]
@@ -373,7 +373,7 @@ class FP8PerChannelBenchmark:
                 device=self.device, dtype=self.dtype
             )
             
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Reference: FP32 with scaled weights
                 ref_output = torch.nn.functional.linear(x, scaled_weight, self.fp32_linear.bias)
                 pt_output = self.per_tensor_linear(x)

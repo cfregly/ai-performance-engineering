@@ -343,7 +343,7 @@ class StaticFP8Model(nn.Module):
                         dtype=dtype,
                     )
                     # Copy weights
-                    with torch.no_grad():
+                    with torch.inference_mode():
                         fp8_linear.weight.copy_(child.weight)
                         if child.bias is not None:
                             fp8_linear.bias.copy_(child.bias)
@@ -385,7 +385,7 @@ class StaticFP8Model(nn.Module):
         """
         self.model.eval()
         
-        with torch.no_grad(), self.calibration_mode():
+        with torch.inference_mode(), self.calibration_mode():
             for i, batch in enumerate(dataloader):
                 if i >= num_batches:
                     break
@@ -496,7 +496,7 @@ def benchmark_static_vs_dynamic():
         static_model.model.named_parameters()
     ):
         if 'weight' in name1 or 'bias' in name1:
-            with torch.no_grad():
+            with torch.inference_mode():
                 p2.copy_(p1)
     
     # Create calibration data
@@ -552,7 +552,7 @@ def benchmark_static_vs_dynamic():
     static_ms = start.elapsed_time(end) / 100
     
     # Check accuracy
-    with torch.no_grad():
+    with torch.inference_mode():
         baseline_out = baseline_model(x)
         static_out = static_model(x)
     

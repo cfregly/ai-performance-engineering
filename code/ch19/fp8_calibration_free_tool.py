@@ -63,7 +63,7 @@ class CalibrationFreeFP8Linear(nn.Module):
         FP8 E4M3 range: ~[-448, 448]
         Target: scale such that max(abs(x)) * scale ≈ 448
         """
-        with torch.no_grad():
+        with torch.inference_mode():
             # Compute absmax
             absmax = x.abs().max()
             

@@ -182,7 +182,7 @@ class BaselineTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.model is None or self.input_ids is None:
             raise RuntimeError("capture_verification_payload() requires model and inputs")
-        with torch.no_grad():
+        with torch.inference_mode():
             verify_logits = self.model(self.input_ids)
             self.output = verify_logits[:1, :1, :8].detach().float().clone()
         self._set_verification_payload(
@@ -234,7 +234,7 @@ class BaselineTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return "Input tensor not initialized"
         
         try:
-            with torch.no_grad():
+            with torch.inference_mode():
                 test_output = self.model(self.input_ids[:1])
                 if not torch.isfinite(test_output).all():
                     return "Output contains non-finite values"

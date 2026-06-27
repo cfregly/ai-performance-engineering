@@ -225,7 +225,7 @@ def main() -> None:
     x = torch.randn(args.batch_size, seq_shard, args.hidden_size, device=ctx.device, dtype=dtype)
     torch.cuda.synchronize(ctx.device)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         for _ in range(args.warmup):
             y = x
             for layer in layers:
