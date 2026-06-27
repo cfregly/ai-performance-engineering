@@ -173,7 +173,7 @@ def _run_prefill(
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
     kv_chunks: List[torch.Tensor] = []
     seed_chunks: List[torch.Tensor] = []
-    with torch.no_grad():
+    with torch.inference_mode():
         for req_idx in range(cfg.requests_per_rank):
             request_prompt = prompts[req_idx]
             kv_cache, seed = model.prefill(request_prompt)
@@ -189,7 +189,7 @@ def _run_decode(
     seed_chunks: List[torch.Tensor],
 ) -> List[torch.Tensor]:
     outputs: List[torch.Tensor] = []
-    with torch.no_grad():
+    with torch.inference_mode():
         for kv_cache, seed in zip(kv_chunks, seed_chunks):
             outputs.append(model.decode(seed, kv_cache, cfg.decode_tokens))
     return outputs
@@ -364,7 +364,7 @@ def _run_torchrun_worker(
             if use_overlap:
                 handles: List[dist.Work] = []
                 inflight: List[torch.Tensor] = []
-                with torch.no_grad():
+                with torch.inference_mode():
                     for group_idx, (start, group_len) in enumerate(group_slices):
                         group_prompts = prompts[start:start + group_len].reshape(
                             group_len * cfg.batch_size,
@@ -394,7 +394,7 @@ def _run_torchrun_worker(
                         )
                 _wait_handles(handles)
             elif use_batched:
-                with torch.no_grad():
+                with torch.inference_mode():
                     batch_prompts = prompts.reshape(
                         cfg.requests_per_rank * cfg.batch_size,
                         cfg.context_window,
@@ -648,7 +648,7 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
             outputs = [torch.empty(0) for _ in range(expected_outputs)]
             self._pending_outputs = outputs
         output_idx = 0
-        with torch.no_grad():
+        with torch.inference_mode():
             for pair in self._pairs:
                 if self.overlap:
                     for req_idx in range(self.cfg.requests_per_rank):

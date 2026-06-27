@@ -153,7 +153,7 @@ class BaselinePrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
             outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
             self._pending_outputs = outputs
         output_idx = 0
-        with torch.no_grad():
+        with torch.inference_mode():
             for idx in range(self.cfg.requests_per_rank):
                 kv_cache, seed = self.prefill_model.prefill(self.prompts[idx])
                 self._kv_host_staging.copy_(kv_cache, non_blocking=False)
@@ -172,7 +172,7 @@ class OptimizedPrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         flat_batch = self.cfg.requests_per_rank * self.cfg.batch_size
-        with torch.no_grad():
+        with torch.inference_mode():
             flat_prompts = self.prompts.reshape(
                 flat_batch,
                 self.cfg.context_window,

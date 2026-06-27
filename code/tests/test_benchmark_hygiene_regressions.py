@@ -2750,8 +2750,10 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "torch.cuda.Event(blocking=False)" in worker_section
     assert "ready = ready_events[group_idx]" in run_iteration_section
     assert "torch.cuda.Event(" not in run_iteration_section
+    assert "with torch.inference_mode():" in run_iteration_section
     assert "expected_outputs = len(self._pairs) * self.cfg.requests_per_rank" in setup_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(expected_outputs)]" in setup_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert "torch.stack(" not in benchmark_section
     assert ".detach().cpu()" not in benchmark_section
     assert "outputs = self._pending_outputs" in benchmark_section
@@ -4294,6 +4296,7 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "kv_cache.copy_(self._kv_host_staging, non_blocking=False)" in baseline_benchmark
     assert "outputs = self._pending_outputs" in baseline_benchmark
     assert "output_idx = 0" in baseline_benchmark
+    assert "with torch.inference_mode():" in baseline_benchmark
     assert "outputs[output_idx] = self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)" in baseline_benchmark
     assert "output_idx += 1" in baseline_benchmark
     assert "outputs: List[torch.Tensor] = []" not in baseline_benchmark
@@ -4301,6 +4304,7 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "torch.stack(" not in baseline_benchmark
     assert "self._output = decoded.view(" in optimized_benchmark
     assert "self._pending_outputs = []" in optimized_benchmark
+    assert "with torch.inference_mode():" in optimized_benchmark
     assert "list(" not in optimized_benchmark
 
 
