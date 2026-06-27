@@ -4377,9 +4377,14 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     )[0]
 
     assert "self.copy_events = [torch.cuda.Event(blocking=False) for _ in range(2)]" in setup_section
+    assert "self.buffers = [self.buffer_a, self.buffer_b]" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
+    assert "buffers = [self.buffer_a, self.buffer_b]" not in benchmark_section
+    assert "buffers = self.buffers" in benchmark_section
+    assert "with torch.inference_mode():" in benchmark_section
+    assert "with torch.no_grad():" not in benchmark_section
     assert "copy_events = self.copy_events" in benchmark_section
-    assert "Copy events not initialized" in benchmark_section
+    assert "Double buffers or copy events not initialized" in benchmark_section
 
 
 def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() -> None:

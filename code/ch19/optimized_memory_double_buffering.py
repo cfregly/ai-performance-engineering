@@ -7,7 +7,6 @@ Implements BaseBenchmark for harness integration.
 from __future__ import annotations
 
 from functools import partial
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -33,6 +32,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
 
         self.buffer_a = None
         self.buffer_b = None
+        self.buffers: list[torch.Tensor] = []
         self.copy_stream = None
         self.compute_stream = None
         self.copy_events: list[torch.cuda.Event] = []
@@ -71,6 +71,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
             device=self.device, dtype=model_dtype
         )
         self.buffer_b = torch.empty_like(self.buffer_a)
+        self.buffers = [self.buffer_a, self.buffer_b]
         self.host_batches = [
             torch.randn(
                 self.batch_size,
@@ -99,11 +100,11 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
 
         assert self.copy_stream is not None and self.compute_stream is not None
         with nvtx_range("optimized_memory_double_buffering", enable=enable_nvtx):
-            with torch.no_grad():
-                buffers = [self.buffer_a, self.buffer_b]
+            with torch.inference_mode():
+                buffers = self.buffers
                 copy_events = self.copy_events
-                if len(copy_events) < len(buffers):
-                    raise RuntimeError("Copy events not initialized")
+                if len(buffers) != 2 or len(copy_events) < len(buffers):
+                    raise RuntimeError("Double buffers or copy events not initialized")
 
                 # Preload first buffer on the copy stream and signal completion.
                 with torch.cuda.stream(self.copy_stream):
@@ -152,6 +153,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         del self.model, self.buffer_a, self.buffer_b
         self.copy_stream = None
         self.compute_stream = None
+        self.buffers = []
         self.copy_events = []
         self.host_batches = []
         if torch.cuda.is_available():
