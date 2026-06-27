@@ -135,7 +135,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _calibrate_fp8(self, recipe) -> None:
         if self.model is None or self.cache is None or recipe is None:
             return
-        with torch.no_grad(), te_autocast(enabled=True, recipe=recipe, calibrating=True):
+        with torch.inference_mode(), te_autocast(enabled=True, recipe=recipe, calibrating=True):
             offset = 0
             for prefill in self.prefill_inputs:
                 _ = self.model(prefill, self.cache, offset)
@@ -147,7 +147,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _warmup_runtime(self, recipe) -> None:
         if self.model is None or self.cache is None or recipe is None:
             return
-        with torch.no_grad(), te_autocast(enabled=True, recipe=recipe):
+        with torch.inference_mode(), te_autocast(enabled=True, recipe=recipe):
             offset = 0
             for prefill in self.prefill_inputs:
                 _ = self.model(prefill, self.cache, offset)
@@ -161,7 +161,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.model is None or self.cache is None or self.runtime_recipe is None:
             raise RuntimeError("Benchmark not initialized")
         offset = 0
-        with torch.no_grad(), te_autocast(enabled=True, recipe=self.runtime_recipe):
+        with torch.inference_mode(), te_autocast(enabled=True, recipe=self.runtime_recipe):
             for prefill in self.prefill_inputs:
                 _ = self.model(prefill, self.cache, offset)
                 offset += prefill.shape[1]

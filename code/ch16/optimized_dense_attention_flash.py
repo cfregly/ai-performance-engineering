@@ -85,7 +85,7 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         
         # Proper warmup
         for _ in range(5):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self._forward_flash()
         self.register_workload_metadata(
             tokens_per_iteration=float(self.batch_size * self.max_seq_len),
@@ -122,7 +122,7 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         enable_nvtx = get_nvtx_enabled(config) if config else False
 
         with nvtx_range("optimized_dense_attention_flash", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self._forward_flash()
         if self._verify_input is None:
             raise RuntimeError("Verification input missing")

@@ -90,7 +90,7 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
         
         # Proper warmup
         for _ in range(5):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self._forward_flash()
     
     def _forward_flash(self):
@@ -118,7 +118,7 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
         with nvtx_range("optimized_dense_attention_flash_blackwell_variant", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self._forward_flash()
         if self._verify_input is None:
             raise RuntimeError("Verification input missing")

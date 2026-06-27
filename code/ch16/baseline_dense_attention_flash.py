@@ -85,7 +85,7 @@ class BaselineDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchma
         
         # Proper warmup
         for _ in range(5):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self._forward_naive()
         torch.cuda.synchronize(self.device)
 
@@ -122,7 +122,7 @@ class BaselineDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchma
         enable_nvtx = get_nvtx_enabled(config) if config else False
 
         with nvtx_range("baseline_dense_attention_flash", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self._forward_naive()
         if self._verify_input is None:
             raise RuntimeError("Verification input missing")
