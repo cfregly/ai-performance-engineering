@@ -1866,6 +1866,7 @@ def test_ch20_baseline_inference_paths_use_inference_mode() -> None:
         "ch20/baseline_autotuning.py",
         "ch20/baseline_bf16_mlp.py",
         "ch20/baseline_moe.py",
+        "ch20/baseline_pipeline_sequential.py",
     ):
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

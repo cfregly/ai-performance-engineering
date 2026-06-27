@@ -105,7 +105,7 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         assert self.inputs is not None and self.stages is not None and self.microbatches is not None
 
         with nvtx_range("baseline_pipeline_sequential", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 for _ in range(self.repeats):
                     outputs = self._run_pipeline_once(self.microbatches)
                 self._last_outputs = outputs
