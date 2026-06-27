@@ -45,6 +45,10 @@ def test_ch04_nixl_tier_handoff_optimized_reuses_pack_buffer() -> None:
     assert ".cpu().tolist()" not in benchmark_section
     assert "selected_cpu = self.selected_cpu" in benchmark_section
     assert "self.selected_cpu = [int(idx) for idx in selected_cpu.tolist()] if not self.optimized else None" in source
+    assert "self.baseline_copy_ready: Optional[torch.cuda.Event] = None" in source
+    assert "self.baseline_copy_ready = torch.cuda.Event() if not self.optimized else None" in source
+    assert "copy_ready.synchronize()" in benchmark_section
+    assert "torch.cuda.synchronize(self.device)" not in benchmark_section
 
 
 def test_nccl_nixl_runner_measure_cuda_path_uses_single_event_bracket() -> None:

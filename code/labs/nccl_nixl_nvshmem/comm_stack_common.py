@@ -207,6 +207,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_buffer: Optional[torch.Tensor] = None
         self.copy_stream: Optional[torch.cuda.Stream] = None
         self.copy_ready: Optional[torch.cuda.Event] = None
+        self.baseline_copy_ready: Optional[torch.cuda.Event] = None
         self.output: Optional[torch.Tensor] = None
         self._metrics: dict[str, float] = {}
         self._refresh_workload_metadata()
@@ -255,6 +256,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.selected_cpu = [int(idx) for idx in selected_cpu.tolist()] if not self.optimized else None
         self.copy_stream = torch.cuda.Stream(device=self.device) if self.optimized else None
         self.copy_ready = torch.cuda.Event() if self.optimized else None
+        self.baseline_copy_ready = torch.cuda.Event() if not self.optimized else None
         self.output = None
         self._metrics = {}
         torch.cuda.synchronize(self.device)
@@ -271,15 +273,19 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         if not self.optimized:
-            if self.selected_cpu is None:
+            if self.selected_cpu is None or self.baseline_copy_ready is None:
                 raise RuntimeError("Baseline path requires setup() to cache selected CPU indices")
             selected_cpu = self.selected_cpu
+            copy_ready = self.baseline_copy_ready
+            current_stream = torch.cuda.current_stream(self.device)
             for _ in range(self.workload.inner_iterations):
                 for slot, block_idx in enumerate(selected_cpu):
-                    self.host_stage[slot].copy_(self.src[block_idx], non_blocking=False)
-                    torch.cuda.synchronize(self.device)
-                    self.dst[block_idx].copy_(self.host_stage[slot], non_blocking=False)
-                    torch.cuda.synchronize(self.device)
+                    self.host_stage[slot].copy_(self.src[block_idx], non_blocking=True)
+                    copy_ready.record(current_stream)
+                    copy_ready.synchronize()
+                    self.dst[block_idx].copy_(self.host_stage[slot], non_blocking=True)
+                    copy_ready.record(current_stream)
+                    copy_ready.synchronize()
             copy_calls = float(self.workload.selected_blocks * 2 * self.workload.inner_iterations)
             uses_copy_stream = 0.0
         else:
@@ -338,6 +344,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_buffer = None
         self.copy_stream = None
         self.copy_ready = None
+        self.baseline_copy_ready = None
         self.output = None
         self._metrics = {}
         torch.cuda.empty_cache()
