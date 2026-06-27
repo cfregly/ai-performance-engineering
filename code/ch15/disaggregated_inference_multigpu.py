@@ -600,6 +600,10 @@ class DecodeWorker:
         # Seed with a random token for the first decode step.
         seed_token = torch.randint(0, self.vocab_size, (1,), device=self.device)
         self._last_token_id = seed_token
+        self._sample_logits = torch.empty(self.vocab_size, dtype=torch.float32, device=self.device)
+        self._sample_probs = torch.empty_like(self._sample_logits)
+        self._sample_token = torch.empty(1, dtype=torch.long, device=self.device)
+        self._sample_token_host = torch.empty(1, dtype=torch.long, device="cpu", pin_memory=True)
         
     def _create_attention_layers(self) -> nn.ModuleList:
         """Create attention layers for decode."""
@@ -656,11 +660,13 @@ class DecodeWorker:
         logits, key_states, value_states = kernel(token_embed, self.kv_cache)
         self.kv_cache = tuple((k, v) for k, v in zip(key_states, value_states))
 
-        probs = torch.softmax(logits[0].float(), dim=-1)
-        next_token = torch.multinomial(probs, num_samples=1)
-        self._last_token_id = next_token.to(self.device)
+        self._sample_logits.copy_(logits[0])
+        torch.softmax(self._sample_logits, dim=-1, out=self._sample_probs)
+        torch.multinomial(self._sample_probs, num_samples=1, out=self._sample_token)
+        self._last_token_id.copy_(self._sample_token)
 
-        token_index = int(next_token.item()) % len(self.vocab)
+        self._sample_token_host.copy_(self._sample_token)
+        token_index = int(self._sample_token_host[0]) % len(self.vocab)
         return self.vocab[token_index]
 
 class MoERouter:

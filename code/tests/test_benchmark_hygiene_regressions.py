@@ -2401,6 +2401,32 @@ def test_ch15_sdpa_attention_reuses_kv_concat_buffers() -> None:
     assert "torch.cat([past_v, v]" not in attention_section
 
 
+def test_ch15_decode_worker_reuses_sampling_buffers() -> None:
+    source = (REPO_ROOT / "ch15" / "disaggregated_inference_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    decode_worker_section = source.split("class DecodeWorker", maxsplit=1)[1].split(
+        "class MoERouter",
+        maxsplit=1,
+    )[0]
+    generate_section = decode_worker_section.split("def generate_next_token", maxsplit=1)[1]
+
+    assert "self._sample_logits = torch.empty(" in decode_worker_section
+    assert "self._sample_probs = torch.empty_like(self._sample_logits)" in decode_worker_section
+    assert "self._sample_token = torch.empty(1, dtype=torch.long" in decode_worker_section
+    assert "self._sample_token_host = torch.empty(1, dtype=torch.long" in decode_worker_section
+    assert "self._sample_logits.copy_(logits[0])" in generate_section
+    assert "torch.softmax(self._sample_logits, dim=-1, out=self._sample_probs)" in generate_section
+    assert "torch.multinomial(self._sample_probs, num_samples=1, out=self._sample_token)" in generate_section
+    assert "self._last_token_id.copy_(self._sample_token)" in generate_section
+    assert "self._sample_token_host.copy_(self._sample_token)" in generate_section
+    assert "token_index = int(self._sample_token_host[0])" in generate_section
+    assert "logits[0].float()" not in generate_section
+    assert "next_token = torch.multinomial" not in generate_section
+    assert "next_token.to(self.device)" not in generate_section
+    assert "next_token.item()" not in generate_section
+
+
 def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
     for filename in (
         "baseline_kv_cache_nvlink_pool.py",
