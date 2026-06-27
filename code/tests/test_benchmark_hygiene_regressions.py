@@ -1667,6 +1667,7 @@ def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:
     assert "import statistics" in source
     assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "for _ in range(iterations):\n        start = torch.cuda.Event" not in timing_section
+    assert "end.synchronize()" in timing_section
     assert "sorted_times = sorted(times_ms)" in timing_section
     assert "torch.tensor(times_ms" not in timing_section
     assert "std_ms=statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0" in timing_section
@@ -1675,6 +1676,7 @@ def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:
         "for _ in range(iterations):\n        start = torch.cuda.Event"
         not in microbench_timing_section
     )
+    assert "end.synchronize()" in microbench_timing_section
 
 
 def test_timed_loops_reuse_cuda_events() -> None:

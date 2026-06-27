@@ -248,7 +248,7 @@ def _benchmark_cuda_callable(fn: Callable[[], torch.Tensor], *, warmup: int, ite
         start.record()
         _ = fn()
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         times_ms.append(float(start.elapsed_time(end)))
 
     return TimingStats(

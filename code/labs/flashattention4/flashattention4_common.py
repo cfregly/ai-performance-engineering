@@ -575,7 +575,7 @@ def measure_flashattention4_latency(
         start.record()
         _ = fn()
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         times_ms.append(float(start.elapsed_time(end)))
 
     sorted_times = sorted(times_ms)
