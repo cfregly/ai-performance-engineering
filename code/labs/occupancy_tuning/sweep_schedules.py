@@ -7,7 +7,6 @@ import argparse
 import csv
 import statistics
 import sys
-import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable, List, Sequence
@@ -130,12 +129,14 @@ def benchmark_schedule(
     torch.cuda.synchronize()
 
     times_ms: List[float] = []
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
     for _ in range(max(1, iterations)):
-        torch.cuda.synchronize()
-        start = time.perf_counter()
+        start_event.record()
         runner()
-        torch.cuda.synchronize()
-        times_ms.append((time.perf_counter() - start) * 1e3)
+        end_event.record()
+        end_event.synchronize()
+        times_ms.append(start_event.elapsed_time(end_event))
 
     mean_ms = statistics.mean(times_ms)
     median_ms = statistics.median(times_ms)
