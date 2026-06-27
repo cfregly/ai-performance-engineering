@@ -205,6 +205,19 @@ def test_ch08_threshold_tma_bridge_workload_uses_larger_row_count() -> None:
     assert "reference.masked_fill_(active.logical_not_(), 0.0)" in validate_section
 
 
+def test_ch08_threshold_demos_use_relu_without_zero_tensor() -> None:
+    for filename in ("threshold_op.py", "jit_threshold_op.py"):
+        source = _read(f"ch08/{filename}")
+        function_section = source.split("def threshold_op", maxsplit=1)[1].split(
+            "def main",
+            maxsplit=1,
+        )[0]
+
+        assert "torch.zeros_like(x)" not in function_section
+        assert "torch.maximum(x" not in function_section
+        assert "return torch.relu(x)" in function_section
+
+
 def test_ch08_tiling_optimized_wrapper_uses_strict_fast_path() -> None:
     optimized_tiling = _read("ch08/optimized_tiling.py")
 

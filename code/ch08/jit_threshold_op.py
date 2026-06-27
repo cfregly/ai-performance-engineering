@@ -17,8 +17,7 @@ import torch
 
 @torch.compile
 def threshold_op(x: torch.Tensor) -> torch.Tensor:
-    zero = torch.zeros_like(x)
-    return torch.maximum(x, zero)
+    return torch.relu(x)
 
 
 def main() -> None:

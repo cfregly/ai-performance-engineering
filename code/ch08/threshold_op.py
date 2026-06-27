@@ -7,8 +7,7 @@ import torch
 
 def threshold_op(x: torch.Tensor) -> torch.Tensor:
     """Compute max(x, 0) using vectorized tensor ops to avoid warp divergence."""
-    zero = torch.zeros_like(x)
-    return torch.maximum(x, zero)
+    return torch.relu(x)
 
 
 def main() -> None:
