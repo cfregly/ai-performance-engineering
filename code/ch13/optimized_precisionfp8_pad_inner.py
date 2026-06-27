@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -112,7 +111,7 @@ class OptimizedFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.model is None or self.inputs_fp16 is None or self._verify_input is None or self._verify_input_fp16 is None:
             raise RuntimeError("Verification input not initialized")
         with self._nvtx_range("optimized_precisionfp8_pad_inner"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 benchmark_out = self.model(self.inputs_fp16)
                 self.output = benchmark_out
         if self.output is None:

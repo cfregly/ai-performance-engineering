@@ -89,7 +89,7 @@ class BaselineWarpSpecializationTrainingBenchmark(VerificationPayloadMixin, Base
         if any(v is None for v in (self.x, self.scale0, self.bias0, self.scale1, self.bias1, self.scale2, self.bias2)):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_warp_specialization_training"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = _epilogue_chain(
                     self.x,
                     self.scale0,
@@ -148,5 +148,4 @@ class BaselineWarpSpecializationTrainingBenchmark(VerificationPayloadMixin, Base
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineWarpSpecializationTrainingBenchmark()
-
 

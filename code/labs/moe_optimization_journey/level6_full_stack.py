@@ -14,7 +14,6 @@ Expected speedup: 1.3-2x over Level 4 (for small batches where launch overhead d
 
 from __future__ import annotations
 
-import time
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -222,7 +221,7 @@ class Level6FullStack(VerificationPayloadMixin, BaseBenchmark):
         # Warmup to trigger compilation and internal graph capture
         print("\n  Warmup (compilation + graph capture)...")
         for i in range(5):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.compiled_model(self.static_input)
             if i == 0:
                 print("    First run (compile): done")
@@ -255,7 +254,7 @@ class Level6FullStack(VerificationPayloadMixin, BaseBenchmark):
         
         with self._nvtx_range("level6_cuda_graphs"):
             # torch.compile with reduce-overhead handles graph replay internally
-            with torch.no_grad():
+            with torch.inference_mode():
                 logits = self.compiled_model(self.static_input)
         self.output = logits[:, :1, : min(8, logits.shape[-1])].detach()
         

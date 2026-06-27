@@ -6,7 +6,7 @@ reducing intermediate memory traffic and kernel launches.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable
 
 import torch
 
@@ -42,7 +42,7 @@ class OptimizedWarpSpecializationTrainingBenchmark(BaselineWarpSpecializationTra
         if any(v is None for v in (self.x, self.scale0, self.bias0, self.scale1, self.bias1, self.scale2, self.bias2)):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("optimized_warp_specialization_training"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self._compiled_chain(
                     self.x,
                     self.scale0,
@@ -63,5 +63,3 @@ class OptimizedWarpSpecializationTrainingBenchmark(BaselineWarpSpecializationTra
 
 def get_benchmark() -> OptimizedWarpSpecializationTrainingBenchmark:
     return OptimizedWarpSpecializationTrainingBenchmark()
-
-

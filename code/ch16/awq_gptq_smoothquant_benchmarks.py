@@ -10,7 +10,6 @@ import torch.nn as nn
 
 from core.benchmark.metrics import compute_precision_metrics
 from core.benchmark.verification_mixin import VerificationPayloadMixin
-from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
@@ -205,7 +204,7 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.scheme == "baseline":
             self.optimized_model = self.reference_model
             for _ in range(2):
-                with torch.no_grad():
+                with torch.inference_mode():
                     _ = self.optimized_model(self.inputs)
             return
 
@@ -222,14 +221,14 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.optimized_model = quantized
 
         for _ in range(2):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.optimized_model(self.inputs)
 
     def benchmark_fn(self) -> None:
         if self.optimized_model is None or self.inputs is None:
             raise RuntimeError("Model/data not initialized")
         with self._nvtx_range(self.label):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.optimized_model(self.inputs)
 
     def capture_verification_payload(self) -> None:

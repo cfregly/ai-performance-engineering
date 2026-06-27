@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -81,7 +80,7 @@ class BaselinePrecisionFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchm
         if any(v is None for v in (self.model, self.inputs, self._verify_input)):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_precisionfp8_pad_inner"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 benchmark_out = self.model(self.inputs)
                 self.output = benchmark_out
         if self.output is None:

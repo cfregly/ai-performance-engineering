@@ -339,7 +339,7 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         
         print("\nWarmup (compilation happens here)...")
         for i in range(self.config.warmup_iterations + 2):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.input_ids)
             if i == 0:
                 print(f"    First run (compile): done")
@@ -364,7 +364,7 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         start_event.record()
         
         with self._nvtx_range("level4_triton"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 logits = self.model(self.input_ids)
         self.output = logits[:, :1, : min(8, logits.shape[-1])].detach()
         

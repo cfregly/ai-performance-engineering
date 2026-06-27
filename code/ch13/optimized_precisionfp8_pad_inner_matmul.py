@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -107,7 +106,7 @@ class OptimizedPrecisionFP8PadInnerMatmulBenchmark(VerificationPayloadMixin, Bas
         if self.a is None or self.b is None or self.scale_a is None or self.scale_b is None or self.mm_config is None:
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("optimized_precisionfp8_pad_inner_matmul"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 a_fp8 = hp_tensor_and_scale_to_float8(
                     self.a,
                     self.scale_a,
@@ -161,4 +160,3 @@ class OptimizedPrecisionFP8PadInnerMatmulBenchmark(VerificationPayloadMixin, Bas
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedPrecisionFP8PadInnerMatmulBenchmark()
-

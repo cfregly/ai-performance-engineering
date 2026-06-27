@@ -21,7 +21,6 @@ from core.harness.benchmark_harness import (
 )
 from core.utils.compile_utils import get_optimal_compile_mode
 from labs.moe_optimization_journey.moe_model import (
-    ConfigurableMoEModel,
     MoEOptimizations,
     create_model,
 )
@@ -173,7 +172,7 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Warmup
         print(f"\n  Warmup ({self.WARMUP + 2} iterations)...")
         for i in range(self.WARMUP + 2):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.compiled_model(self.input_ids)
             if i == 0 and self.opts.use_compile:
                 print("    First run (compile): done")
@@ -182,7 +181,7 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         with self._nvtx_range(f"level{self.LEVEL}"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 logits = self.compiled_model(self.input_ids)
         self.output = logits[:, :1, : min(8, logits.shape[-1])]
         if self.input_ids is None or self.output is None:

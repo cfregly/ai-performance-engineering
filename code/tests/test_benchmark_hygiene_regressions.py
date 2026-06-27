@@ -4740,12 +4740,40 @@ def test_ch13_inference_precision_benchmarks_use_inference_mode() -> None:
         "baseline_fp8_static.py",
         "optimized_fp8_static.py",
         "fp8_static_demo.py",
+        "baseline_precisionfp8_pad_inner.py",
+        "optimized_precisionfp8_pad_inner.py",
+        "baseline_precisionfp8_pad_inner_matmul.py",
+        "optimized_precisionfp8_pad_inner_matmul.py",
+        "fp8_perchannel_demo.py",
+        "baseline_warp_specialization_training.py",
+        "optimized_warp_specialization_training.py",
         "baseline_regional_compile.py",
         "optimized_regional_compile.py",
     )
 
     for filename in filenames:
         source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+
+
+def test_ch16_and_lab_forward_benchmarks_use_inference_mode() -> None:
+    paths = (
+        "ch16/awq_gptq_smoothquant_benchmarks.py",
+        "labs/moe_optimization_journey/baseline_moe_pad_quant.py",
+        "labs/moe_optimization_journey/optimized_moe_pad_quant.py",
+        "labs/moe_optimization_journey/level4_triton.py",
+        "labs/moe_optimization_journey/level6_full_stack.py",
+        "labs/moe_optimization_journey/moe_benchmark.py",
+        "labs/train_distributed/training_utils/torchrun_harness.py",
+    )
+
+    for path in paths:
+        source = (REPO_ROOT / path).read_text(encoding="utf-8")
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload",
             maxsplit=1,

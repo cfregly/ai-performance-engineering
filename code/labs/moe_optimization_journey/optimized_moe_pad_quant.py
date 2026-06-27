@@ -199,7 +199,7 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # it happens here, before compile tracing, so the compiled graph sees
         # a plain int constant).
         self._install_vectorized_router()
-        with torch.no_grad():
+        with torch.inference_mode():
             _ = self.model(self.inputs)
         # get_optimal_compile_mode keeps max-autotune on the pinned toolchain but
         # falls back to "default" on sm_103 + Triton >= 3.6 (where max-autotune
@@ -213,7 +213,7 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
             compile_mode = "reduce-overhead"
         self.compiled = torch.compile(self.model, mode=compile_mode)
         # Warm compile
-        with torch.no_grad():
+        with torch.inference_mode():
             _ = self.compiled(self.inputs)
         torch.cuda.synchronize(self.device)
 
@@ -223,7 +223,7 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
         with nvtx_range("moe_pad_quant_optimized", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.compiled(self.inputs)
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")

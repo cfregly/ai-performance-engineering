@@ -94,7 +94,7 @@ class TorchrunScriptBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self._model is None or self._input is None or self._meta is None:
             raise RuntimeError("setup() must run before benchmark_fn()")
-        with torch.no_grad():
+        with torch.inference_mode():
             output = self._model(self._input)
             meta_scale = self._meta.mean(dim=-1, keepdim=True)
             self._output = output + meta_scale

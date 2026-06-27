@@ -61,7 +61,7 @@ class BaselineMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
         with nvtx_range("moe_pad_quant_baseline", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.model(self.inputs)
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
