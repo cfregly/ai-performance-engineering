@@ -53,7 +53,7 @@ class OptimizedKVCacheNVFP4Benchmark(BaselineKVCacheBenchmark):
         recipe = self.runtime_recipe
         if recipe is None:
             raise RuntimeError("No NVFP4 recipe available for benchmark")
-        with te_autocast(enabled=True, recipe=recipe):
+        with torch.no_grad(), te_autocast(enabled=True, recipe=recipe):
             for prefill in self.prefill_inputs:
                 _ = self.model(prefill, self.cache, offset)
                 offset += prefill.shape[1]
