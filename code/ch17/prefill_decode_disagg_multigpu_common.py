@@ -173,14 +173,14 @@ def _run_prefill(
     model: TinyPrefillDecode,
     prompts: torch.Tensor,
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
-    kv_chunks: List[torch.Tensor] = []
-    seed_chunks: List[torch.Tensor] = []
+    kv_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
+    seed_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
     with torch.inference_mode():
         for req_idx in range(cfg.requests_per_rank):
             request_prompt = prompts[req_idx]
             kv_cache, seed = model.prefill(request_prompt)
-            kv_chunks.append(kv_cache)
-            seed_chunks.append(seed)
+            kv_chunks[req_idx] = kv_cache
+            seed_chunks[req_idx] = seed
     return kv_chunks, seed_chunks
 
 

@@ -3116,6 +3116,9 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_multigpu_common.py").read_text(
         encoding="utf-8"
     )
+    prefill_helper = source.split("def _run_prefill", maxsplit=1)[1].split(
+        "def _run_decode", maxsplit=1
+    )[0]
     decode_helper = source.split("def _run_decode", maxsplit=1)[1].split(
         "def _run_torchrun_worker", maxsplit=1
     )[0]
@@ -3136,6 +3139,11 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
         "def _prepare_verification_payload", maxsplit=1
     )[0]
 
+    assert "kv_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]" in prefill_helper
+    assert "seed_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]" in prefill_helper
+    assert "kv_chunks[req_idx] = kv_cache" in prefill_helper
+    assert "seed_chunks[req_idx] = seed" in prefill_helper
+    assert ".append(" not in prefill_helper
     assert "outputs = [torch.empty(0) for _ in range(len(kv_chunks))]" in decode_helper
     assert "for output_idx, (kv_cache, seed) in enumerate(zip(kv_chunks, seed_chunks)):" in decode_helper
     assert "outputs[output_idx] = model.decode(seed, kv_cache, cfg.decode_tokens)" in decode_helper
