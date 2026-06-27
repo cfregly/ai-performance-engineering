@@ -10,7 +10,7 @@ from torch import nn, optim
 
 def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = nn.Sequential(nn.Linear(1024, 2048), nn.ReLU(), nn.Linear(2048, 2048)).to(device)
+    model = nn.Sequential(nn.Linear(1024, 2048), nn.ReLU(inplace=True), nn.Linear(2048, 2048)).to(device)
     model = torch.compile(model, mode="reduce-overhead")
     opt = optim.AdamW(model.parameters(), lr=1e-3)
 

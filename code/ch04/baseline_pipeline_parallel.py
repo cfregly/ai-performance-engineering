@@ -107,7 +107,7 @@ def _build_stage_layers(hidden: int, layers_per_stage: int, stage_count: int, de
 
 def _run_stage(stage_layers: nn.ModuleList, x: torch.Tensor) -> torch.Tensor:
     for layer in stage_layers:
-        x = torch.relu(layer(x))
+        x = torch.relu_(layer(x))
     return x
 
 

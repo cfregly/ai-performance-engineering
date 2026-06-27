@@ -40,8 +40,8 @@ class MultiLayerNet(nn.Module):
         self.fc3 = nn.Linear(size, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
+        x = torch.relu_(self.fc1(x))
+        x = torch.relu_(self.fc2(x))
         return self.fc3(x)
 
 

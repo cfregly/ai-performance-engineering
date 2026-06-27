@@ -37,8 +37,8 @@ def demonstrate_memory_profiling():
             self.linear3 = nn.Linear(2048, 512)
             
         def forward(self, x):
-            x = torch.relu(self.linear1(x))
-            x = torch.relu(self.linear2(x))
+            x = torch.relu_(self.linear1(x))
+            x = torch.relu_(self.linear2(x))
             return self.linear3(x)
     
     model = SimpleModel().to(device)

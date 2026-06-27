@@ -76,7 +76,7 @@ def main() -> int:
 
     def stage_forward(x: torch.Tensor, *, is_last: bool) -> torch.Tensor:
         y = x @ w_stage.t()
-        return y if is_last else torch.relu(y)
+        return y if is_last else torch.relu_(y)
 
     # Warmup.
     with torch.inference_mode():
@@ -130,7 +130,7 @@ def main() -> int:
             w_ref = _weight_for_stage(stage_idx, hidden, device, dtype)
             ref = ref @ w_ref.t()
             if stage_idx < world_size - 1:
-                ref = torch.relu(ref)
+                ref = torch.relu_(ref)
         max_diff = float((out.float() - ref.float()).abs().max().item())
         print(
             f"pipeline_parallel_demo: world={world_size} -> {worst_ms:.3f} ms/iter, "

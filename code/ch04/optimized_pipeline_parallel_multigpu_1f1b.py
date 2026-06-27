@@ -133,13 +133,13 @@ def _run_worker(
     def _forward(micro_batch: torch.Tensor) -> torch.Tensor:
         x = micro_batch
         for layer in fwd_layers:
-            x = torch.relu(layer(x))
+            x = torch.relu_(layer(x))
         return x
 
     def _backward(grad_in: torch.Tensor) -> torch.Tensor:
         x = grad_in
         for layer in bwd_layers:
-            x = torch.relu(layer(x))
+            x = torch.relu_(layer(x))
         return x
 
     def _run_iteration() -> None:
@@ -309,10 +309,10 @@ class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark
         x = micro_batch
         for _ in range(self._world_size):
             for layer in self._fwd_layers:
-                x = torch.relu(layer(x))
+                x = torch.relu_(layer(x))
         for _ in range(self._world_size):
             for layer in self._bwd_layers:
-                x = torch.relu(layer(x))
+                x = torch.relu_(layer(x))
         self._output = x
 
     def capture_verification_payload(self) -> None:
@@ -388,4 +388,3 @@ class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedPipelineParallelBenchmark()
-

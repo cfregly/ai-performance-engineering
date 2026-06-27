@@ -474,7 +474,7 @@ def benchmark_static_vs_dynamic():
         
         def forward(self, x):
             for layer in self.layers:
-                x = torch.relu(layer(x))
+                x = torch.relu_(layer(x))
             return x
     
     dim = 4096
@@ -620,7 +620,7 @@ class FP8StaticDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
             
             def forward(self, x):
                 for layer in self.layers:
-                    x = torch.relu(layer(x))
+                    x = torch.relu_(layer(x))
                 return x
         
         # Convert to static FP8

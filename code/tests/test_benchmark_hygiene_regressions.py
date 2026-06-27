@@ -866,6 +866,26 @@ def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
         assert "torch.nn.ReLU()" not in source
 
 
+def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
+    for relative in (
+        "ch04/baseline_pipeline_parallel.py",
+        "ch04/baseline_pipeline_parallel_multigpu.py",
+        "ch04/optimized_pipeline_parallel_multigpu_1f1b.py",
+        "ch04/ddp_no_overlap.py",
+        "ch04/ddp_overlap.py",
+        "ch13/fp8_static_demo.py",
+        "ch13/memory_profiling.py",
+        "ch13/baseline_warp_specialization_training.py",
+        "ch14/train.py",
+        "ch15/pipeline_parallel_demo.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+
+        assert "torch.relu_(" in source or "nn.ReLU(inplace=True)" in source
+        assert "torch.relu(" not in source
+        assert "nn.ReLU()" not in source
+
+
 def test_ch06_ch12_cuda_output_buffers_skip_setup_zero_fill() -> None:
     targets = (
         "ch06/baseline_launch_bounds.py",

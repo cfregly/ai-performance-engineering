@@ -37,7 +37,7 @@ def _epilogue_chain(
     y = torch.sigmoid(y) * y
     y = y + bias2
     y = y * scale2
-    y = torch.relu(y)
+    y = torch.relu_(y)
     y = F.silu(y)
     y = y * 1.1 + 0.1
     y = F.gelu(y)
@@ -148,4 +148,3 @@ class BaselineWarpSpecializationTrainingBenchmark(VerificationPayloadMixin, Base
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineWarpSpecializationTrainingBenchmark()
-
