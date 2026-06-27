@@ -309,6 +309,23 @@ def test_moe_cuda_ptx_layer_forward_reuses_prepacked_routes() -> None:
     assert "padded_tokens_buffer=self._padded_tokens_buffer" in forward_source
 
 
+def test_moe_cuda_ptx_backward_reuses_prepared_autograd_leaves() -> None:
+    setup_source = inspect.getsource(moe_common.MoECudaPtxBenchmark.setup)
+    prepare_source = inspect.getsource(moe_common.MoECudaPtxBenchmark._prepare_backward_tensors)
+    grouped_bwd_source = inspect.getsource(moe_common.MoECudaPtxBenchmark._benchmark_grouped_gemm_bwd)
+    layer_bwd_source = inspect.getsource(moe_common.MoECudaPtxBenchmark._benchmark_layer_fwd_bwd)
+    grouped_run_source = inspect.getsource(moe_common.MoECudaPtxBenchmark._run_grouped_gemm_backward)
+
+    assert "self._prepare_backward_tensors()" in setup_source
+    assert "self._bwd_tokens = self.packed.packed_tokens.detach().clone().requires_grad_(True)" in prepare_source
+    assert "self._bwd_x = self.state.x.detach().clone().requires_grad_(True)" in prepare_source
+    assert "self._packed_loss_grad = self.state.loss_grad.index_select" in prepare_source
+    assert ".detach().clone().requires_grad_(True)" not in grouped_bwd_source
+    assert ".detach().clone().requires_grad_(True)" not in layer_bwd_source
+    assert "self._packed_loss_grad" in grouped_run_source
+    assert "self.state.loss_grad.index_select" not in grouped_run_source
+
+
 def test_moe_cuda_ptx_build_state_reuses_route_count_tuple() -> None:
     source = inspect.getsource(moe_common.build_state)
 

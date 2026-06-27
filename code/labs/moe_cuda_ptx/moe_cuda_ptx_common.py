@@ -651,6 +651,12 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.x_grad: Optional[torch.Tensor] = None
         self.gate_grad: Optional[torch.Tensor] = None
         self.down_grad: Optional[torch.Tensor] = None
+        self._bwd_x: Optional[torch.Tensor] = None
+        self._bwd_tokens: Optional[torch.Tensor] = None
+        self._bwd_gate_proj: Optional[torch.Tensor] = None
+        self._bwd_up_proj: Optional[torch.Tensor] = None
+        self._bwd_down_proj: Optional[torch.Tensor] = None
+        self._packed_loss_grad: Optional[torch.Tensor] = None
         self._combined_buffer: Optional[torch.Tensor] = None
         self._grouped_output_buffer: Optional[torch.Tensor] = None
         self._padded_tokens_buffer: Optional[torch.Tensor] = None
@@ -750,6 +756,12 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.x_grad = None
         self.gate_grad = None
         self.down_grad = None
+        self._bwd_x = None
+        self._bwd_tokens = None
+        self._bwd_gate_proj = None
+        self._bwd_up_proj = None
+        self._bwd_down_proj = None
+        self._packed_loss_grad = None
         self._combined_buffer = torch.empty_like(self.state.x)
         self._grouped_output_buffer = None
         self._padded_tokens_buffer = None
@@ -769,6 +781,11 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     device=self.device,
                     dtype=self.workload.dtype,
                 )
+
+        if self.target == "moe_grouped_gemm_bwd" or (
+            self.target == "moe_layer" and self.workload.mode == "fwd_bwd"
+        ):
+            self._prepare_backward_tensors()
 
         if self.backend == "ptx":
             ensure_moe_ptx_supported()
@@ -804,40 +821,116 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
             else:
                 raise RuntimeError("SKIPPED: PTX grouped GEMM backend scaffold exists, but kernels are not implemented yet.")
         elif self.target == "moe_grouped_gemm_bwd" and self.packed is not None and self.state is not None:
-            tokens = self.packed.packed_tokens.detach().clone().requires_grad_(True)
-            gate_proj = self.state.gate_proj.detach().clone().requires_grad_(True)
-            up_proj = self.state.up_proj.detach().clone().requires_grad_(True)
-            down_proj = self.state.down_proj.detach().clone().requires_grad_(True)
-            if self.backend == "baseline":
-                out = grouped_ffn_reference(tokens, self.packed.counts_cpu, gate_proj, up_proj, down_proj)
-            elif self.backend == "cuda":
-                out = grouped_ffn_cuda(
-                    tokens,
-                    self.packed,
-                    gate_proj,
-                    up_proj,
-                    down_proj,
-                    padded_tokens_buffer=self._padded_tokens_buffer,
-                )
-            else:
-                raise RuntimeError("SKIPPED: PTX grouped GEMM backend scaffold exists, but kernels are not implemented yet.")
-            grad_target = self.state.loss_grad.index_select(0, self.packed.token_indices)
-            (out * grad_target).sum().backward()
+            _ = self._run_grouped_gemm_backward()
         elif self.target == "moe_layer" and self.state is not None:
             if self.backend == "baseline":
-                _ = run_layer_baseline(self.state, self.workload, output_buffer=self._combined_buffer)
+                if self.workload.mode == "fwd_bwd":
+                    _ = self._run_layer_backward()
+                else:
+                    _ = run_layer_baseline(self.state, self.workload, output_buffer=self._combined_buffer)
             elif self.backend == "cuda":
-                _ = run_layer_cuda(
-                    self.state,
-                    self.workload,
-                    packed=self.packed,
-                    combined_buffer=self._combined_buffer,
-                    padded_tokens_buffer=self._padded_tokens_buffer,
-                )
+                if self.workload.mode == "fwd_bwd":
+                    _ = self._run_layer_backward()
+                else:
+                    _ = run_layer_cuda(
+                        self.state,
+                        self.workload,
+                        packed=self.packed,
+                        combined_buffer=self._combined_buffer,
+                        padded_tokens_buffer=self._padded_tokens_buffer,
+                    )
             else:
                 raise RuntimeError("SKIPPED: PTX layer backend scaffold exists, but kernels are not implemented yet.")
         self._synchronize()
         self._benchmark_impl = self._select_benchmark_impl()
+
+    def _prepare_backward_tensors(self) -> None:
+        if self.state is None:
+            raise RuntimeError("setup() must build state before preparing backward tensors")
+        self._bwd_gate_proj = self.state.gate_proj.detach().clone().requires_grad_(True)
+        self._bwd_up_proj = self.state.up_proj.detach().clone().requires_grad_(True)
+        self._bwd_down_proj = self.state.down_proj.detach().clone().requires_grad_(True)
+        if self.target == "moe_grouped_gemm_bwd":
+            if self.packed is None:
+                raise RuntimeError("Packed routes must be initialized before preparing grouped backward tensors")
+            self._bwd_tokens = self.packed.packed_tokens.detach().clone().requires_grad_(True)
+            self._packed_loss_grad = self.state.loss_grad.index_select(0, self.packed.token_indices).contiguous()
+        elif self.target == "moe_layer":
+            self._bwd_x = self.state.x.detach().clone().requires_grad_(True)
+
+    def _clear_backward_grads(self) -> None:
+        for tensor in (
+            self._bwd_x,
+            self._bwd_tokens,
+            self._bwd_gate_proj,
+            self._bwd_up_proj,
+            self._bwd_down_proj,
+        ):
+            if tensor is not None:
+                tensor.grad = None
+
+    def _run_grouped_gemm_backward(self) -> torch.Tensor:
+        if (
+            self.packed is None
+            or self.state is None
+            or self._bwd_tokens is None
+            or self._bwd_gate_proj is None
+            or self._bwd_up_proj is None
+            or self._bwd_down_proj is None
+            or self._packed_loss_grad is None
+        ):
+            raise RuntimeError("Grouped GEMM backward tensors are not initialized")
+        self._clear_backward_grads()
+        if self.backend == "baseline":
+            sorted_out = grouped_ffn_reference(
+                self._bwd_tokens,
+                self.packed.counts_cpu,
+                self._bwd_gate_proj,
+                self._bwd_up_proj,
+                self._bwd_down_proj,
+            )
+        elif self.backend == "cuda":
+            sorted_out = grouped_ffn_cuda(
+                self._bwd_tokens,
+                self.packed,
+                self._bwd_gate_proj,
+                self._bwd_up_proj,
+                self._bwd_down_proj,
+                padded_tokens_buffer=self._padded_tokens_buffer,
+            )
+        else:
+            raise RuntimeError("SKIPPED: PTX grouped GEMM backend scaffold exists, but kernels are not implemented yet.")
+        (sorted_out * self._packed_loss_grad).sum().backward()
+        return sorted_out
+
+    def _run_layer_backward(self) -> torch.Tensor:
+        if (
+            self.state is None
+            or self._bwd_x is None
+            or self._bwd_gate_proj is None
+            or self._bwd_up_proj is None
+            or self._bwd_down_proj is None
+        ):
+            raise RuntimeError("Layer backward tensors are not initialized")
+        self._clear_backward_grads()
+        state = MoELabState(
+            x=self._bwd_x,
+            expert_indices=self.state.expert_indices,
+            expert_weights=self.state.expert_weights,
+            gate_proj=self._bwd_gate_proj,
+            up_proj=self._bwd_up_proj,
+            down_proj=self._bwd_down_proj,
+            loss_grad=self.state.loss_grad,
+            route_counts_cpu=self.state.route_counts_cpu,
+        )
+        if self.backend == "baseline":
+            output = run_layer_baseline(state, self.workload)
+        elif self.backend == "cuda":
+            output = run_layer_cuda(state, self.workload)
+        else:
+            raise RuntimeError("SKIPPED: PTX layer backend scaffold exists, but kernels are not implemented yet.")
+        (output * self.state.loss_grad).sum().backward()
+        return output
 
     def _select_benchmark_impl(self) -> Callable[[], None]:
         if self.target == "moe_quant":
@@ -900,29 +993,20 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _benchmark_grouped_gemm_bwd(self) -> None:
         if self.packed is None or self.state is None:
             raise RuntimeError("Grouped backward benchmark state is not initialized")
-        tokens = self.packed.packed_tokens.detach().clone().requires_grad_(True)
-        gate_proj = self.state.gate_proj.detach().clone().requires_grad_(True)
-        up_proj = self.state.up_proj.detach().clone().requires_grad_(True)
-        down_proj = self.state.down_proj.detach().clone().requires_grad_(True)
-        if self.backend == "baseline":
-            sorted_out = grouped_ffn_reference(tokens, self.packed.counts_cpu, gate_proj, up_proj, down_proj)
-        elif self.backend == "cuda":
-            sorted_out = grouped_ffn_cuda(
-                tokens,
-                self.packed,
-                gate_proj,
-                up_proj,
-                down_proj,
-                padded_tokens_buffer=self._padded_tokens_buffer,
-            )
-        else:
-            raise RuntimeError("SKIPPED: PTX grouped GEMM backend scaffold exists, but kernels are not implemented yet.")
-        grad_target = self.state.loss_grad.index_select(0, self.packed.token_indices)
-        (sorted_out * grad_target).sum().backward()
+        sorted_out = self._run_grouped_gemm_backward()
         self.outputs = sorted_out.detach()
-        self.x_grad = tokens.grad.detach()
-        self.gate_grad = gate_proj.grad.detach()
-        self.down_grad = down_proj.grad.detach()
+        if (
+            self._bwd_tokens is None
+            or self._bwd_tokens.grad is None
+            or self._bwd_gate_proj is None
+            or self._bwd_gate_proj.grad is None
+            or self._bwd_down_proj is None
+            or self._bwd_down_proj.grad is None
+        ):
+            raise RuntimeError("Grouped GEMM backward did not produce expected gradients")
+        self.x_grad = self._bwd_tokens.grad.detach()
+        self.gate_grad = self._bwd_gate_proj.grad.detach()
+        self.down_grad = self._bwd_down_proj.grad.detach()
 
     def _benchmark_layer_forward(self) -> None:
         if self.state is None:
@@ -943,31 +1027,20 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _benchmark_layer_fwd_bwd(self) -> None:
         if self.state is None:
             raise RuntimeError("Layer benchmark state is not initialized")
-        x = self.state.x.detach().clone().requires_grad_(True)
-        gate_proj = self.state.gate_proj.detach().clone().requires_grad_(True)
-        up_proj = self.state.up_proj.detach().clone().requires_grad_(True)
-        down_proj = self.state.down_proj.detach().clone().requires_grad_(True)
-        state = MoELabState(
-            x=x,
-            expert_indices=self.state.expert_indices,
-            expert_weights=self.state.expert_weights,
-            gate_proj=gate_proj,
-            up_proj=up_proj,
-            down_proj=down_proj,
-            loss_grad=self.state.loss_grad,
-            route_counts_cpu=self.state.route_counts_cpu,
-        )
-        if self.backend == "baseline":
-            output = run_layer_baseline(state, self.workload)
-        elif self.backend == "cuda":
-            output = run_layer_cuda(state, self.workload)
-        else:
-            raise RuntimeError("SKIPPED: PTX layer backend scaffold exists, but kernels are not implemented yet.")
-        (output * self.state.loss_grad).sum().backward()
+        output = self._run_layer_backward()
         self.outputs = output.detach()
-        self.x_grad = x.grad.detach()
-        self.gate_grad = gate_proj.grad.detach()
-        self.down_grad = down_proj.grad.detach()
+        if (
+            self._bwd_x is None
+            or self._bwd_x.grad is None
+            or self._bwd_gate_proj is None
+            or self._bwd_gate_proj.grad is None
+            or self._bwd_down_proj is None
+            or self._bwd_down_proj.grad is None
+        ):
+            raise RuntimeError("Layer backward did not produce expected gradients")
+        self.x_grad = self._bwd_x.grad.detach()
+        self.gate_grad = self._bwd_gate_proj.grad.detach()
+        self.down_grad = self._bwd_down_proj.grad.detach()
 
     def benchmark_fn(self) -> None:
         if self._benchmark_impl is None:
@@ -1067,6 +1140,12 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.x_grad = None
         self.gate_grad = None
         self.down_grad = None
+        self._bwd_x = None
+        self._bwd_tokens = None
+        self._bwd_gate_proj = None
+        self._bwd_up_proj = None
+        self._bwd_down_proj = None
+        self._packed_loss_grad = None
         self._combined_buffer = None
         self._grouped_output_buffer = None
         self._padded_tokens_buffer = None
