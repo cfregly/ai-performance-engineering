@@ -2632,6 +2632,8 @@ def test_ch16_block_sparse_bsr_build_uses_vectorized_metadata() -> None:
     assert "for row in range(blocks)" not in pattern_section
     assert 'torch.full(block_mask.shape, float("-inf"), device=device, dtype=dtype)' in dense_mask_section
     assert "values.masked_fill_(block_mask.to(device=device, dtype=torch.bool), 0.0)" in dense_mask_section
+    assert "values[:, None, :, None].expand(blocks, block_size, blocks, block_size).reshape(" in dense_mask_section
+    assert "repeat_interleave(block_size" not in dense_mask_section
     assert "torch.tensor(float(\"-inf\")" not in dense_mask_section
     assert "torch.where(" not in dense_mask_section
     assert "torch.nonzero(mask, as_tuple=False)[:, 1]" in bsr_section

@@ -30,7 +30,11 @@ def build_dense_attention_mask(
 ) -> torch.Tensor:
     values = torch.full(block_mask.shape, float("-inf"), device=device, dtype=dtype)
     values.masked_fill_(block_mask.to(device=device, dtype=torch.bool), 0.0)
-    return values.repeat_interleave(block_size, dim=0).repeat_interleave(block_size, dim=1)
+    blocks = values.shape[0]
+    return values[:, None, :, None].expand(blocks, block_size, blocks, block_size).reshape(
+        blocks * block_size,
+        blocks * block_size,
+    )
 
 
 def build_bsr_from_block_mask(
