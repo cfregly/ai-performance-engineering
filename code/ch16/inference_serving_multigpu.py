@@ -1488,16 +1488,8 @@ class InferenceServerMultiGPU:
                 if num_tokens == 0:
                     continue
 
-                key_layers = []
-                value_layers = []
-                for layer_idx in range(self.num_layers):
-                    layer_keys = attn_keys[layer_idx, pack_idx, head_slice, :num_tokens, :]
-                    layer_values = attn_values[layer_idx, pack_idx, head_slice, :num_tokens, :]
-                    key_layers.append(layer_keys)
-                    value_layers.append(layer_values)
-
-                key_tensor = torch.stack(key_layers, dim=0).contiguous()
-                value_tensor = torch.stack(value_layers, dim=0).contiguous()
+                key_tensor = attn_keys[:, pack_idx, head_slice, :num_tokens, :]
+                value_tensor = attn_values[:, pack_idx, head_slice, :num_tokens, :]
                 self.kv_cache.append_tokens(
                     slot=state.kv_cache_slot,
                     key=key_tensor,

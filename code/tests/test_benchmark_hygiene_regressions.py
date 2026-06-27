@@ -2619,6 +2619,21 @@ def test_ch16_inference_serving_tracks_packed_max_tokens_on_host() -> None:
     assert ".max().item()" not in generate_batch_section
 
 
+def test_ch16_inference_serving_flushes_kv_views_without_stack() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    flush_section = source.split("def _flush_to_cache", maxsplit=1)[1].split(
+        "if self.device.type == \"cuda\":",
+        maxsplit=1,
+    )[0]
+
+    assert "key_tensor = attn_keys[:, pack_idx, head_slice, :num_tokens, :]" in flush_section
+    assert "value_tensor = attn_values[:, pack_idx, head_slice, :num_tokens, :]" in flush_section
+    assert "torch.stack(" not in flush_section
+    assert "key_layers = []" not in flush_section
+
+
 def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
     source = (REPO_ROOT / "ch16" / "moe_performance_benchmark.py").read_text(
         encoding="utf-8"
