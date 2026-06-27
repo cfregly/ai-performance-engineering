@@ -3616,6 +3616,17 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
     assert "for eid_int in [int(eid) for eid in torch.unique(recv_ids).detach().cpu().tolist()]" in distributed_section
 
 
+def test_ch15_parallel_demos_use_inference_mode() -> None:
+    for relative in (
+        "ch15/tensor_parallel_demo.py",
+        "ch15/pipeline_parallel_demo.py",
+        "ch15/expert_parallelism.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        assert "with torch.inference_mode():" in source
+        assert "with torch.no_grad():" not in source
+
+
 def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch17" / "baseline_dynamic_routing.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

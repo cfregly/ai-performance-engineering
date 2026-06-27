@@ -79,7 +79,7 @@ def main() -> int:
         return y if is_last else torch.relu(y)
 
     # Warmup.
-    with torch.no_grad():
+    with torch.inference_mode():
         for _ in range(int(args.warmup)):
             if rank == 0:
                 assert x0 is not None
@@ -99,7 +99,7 @@ def main() -> int:
 
     # Timed loop (measure wall-clock on rank 0, take max over ranks).
     t0 = time.perf_counter()
-    with torch.no_grad():
+    with torch.inference_mode():
         for _ in range(int(args.iters)):
             if rank == 0:
                 assert x0 is not None

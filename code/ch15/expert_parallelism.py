@@ -251,7 +251,7 @@ def main() -> None:
     tokens = torch.randn(args.batch, args.seq, args.hidden_dim, device=device, dtype=dtype)
     torch.cuda.synchronize(device)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         for _ in range(args.warmup):
             if args.mode == "distributed":
                 out = model.forward_distributed(tokens, ctx=ctx)  # type: ignore[arg-type]

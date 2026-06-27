@@ -68,7 +68,7 @@ def main() -> int:
         dist.all_reduce(partial, op=dist.ReduceOp.SUM)
         return partial
 
-    with torch.no_grad():
+    with torch.inference_mode():
         for _ in range(int(args.warmup)):
             _ = tp_forward()
         torch.cuda.synchronize(device)
