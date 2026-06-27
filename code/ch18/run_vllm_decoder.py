@@ -185,6 +185,12 @@ class SpeculativeDecoder:
         self.total_tokens = 0
         self._match_summary_workspace: Optional[torch.Tensor] = None
         self._all_matches_workspace: Optional[torch.Tensor] = None
+        self._draft_next_values: Optional[torch.Tensor] = None
+        self._draft_next_tokens: Optional[torch.Tensor] = None
+        self._target_next_values: Optional[torch.Tensor] = None
+        self._target_next_tokens: Optional[torch.Tensor] = None
+        self._matches_workspace: Optional[torch.Tensor] = None
+        self._selected_tokens: Optional[torch.Tensor] = None
 
     def reset(self) -> None:
         self.accepted_tokens = 0
@@ -200,6 +206,58 @@ class SpeculativeDecoder:
             self._all_matches_workspace = torch.empty((), dtype=torch.bool, device=device)
         assert self._all_matches_workspace is not None
         return self._match_summary_workspace, self._all_matches_workspace
+
+    @staticmethod
+    def _next_token_from_logits(
+        logits: torch.Tensor,
+        values: Optional[torch.Tensor],
+        token_ids: Optional[torch.Tensor],
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        last_logits = logits if logits.dim() == 2 else logits[:, -1, :]
+        shape = (last_logits.shape[0], 1)
+        if (
+            values is None
+            or token_ids is None
+            or values.device != last_logits.device
+            or token_ids.device != last_logits.device
+            or values.dtype != last_logits.dtype
+            or tuple(values.shape) != shape
+            or tuple(token_ids.shape) != shape
+        ):
+            values = torch.empty(shape, dtype=last_logits.dtype, device=last_logits.device)
+            token_ids = torch.empty(shape, dtype=torch.long, device=last_logits.device)
+        torch.max(last_logits, dim=-1, keepdim=True, out=(values, token_ids))
+        return values, token_ids
+
+    def _selection_workspace(self, reference: torch.Tensor) -> torch.Tensor:
+        if (
+            self._selected_tokens is None
+            or self._selected_tokens.device != reference.device
+            or self._selected_tokens.dtype != reference.dtype
+            or tuple(self._selected_tokens.shape) != tuple(reference.shape)
+        ):
+            self._selected_tokens = torch.empty_like(reference)
+        return self._selected_tokens
+
+    def _matches_buffer(self, reference: torch.Tensor) -> torch.Tensor:
+        if (
+            self._matches_workspace is None
+            or self._matches_workspace.device != reference.device
+            or tuple(self._matches_workspace.shape) != tuple(reference.shape)
+        ):
+            self._matches_workspace = torch.empty(reference.shape, dtype=torch.bool, device=reference.device)
+        return self._matches_workspace
+
+    def prepare_workspaces(self, batch_size: int, dtype: torch.dtype, device: torch.device) -> None:
+        shape = (batch_size, 1)
+        self._draft_next_values = torch.empty(shape, dtype=dtype, device=device)
+        self._draft_next_tokens = torch.empty(shape, dtype=torch.long, device=device)
+        self._target_next_values = torch.empty(shape, dtype=dtype, device=device)
+        self._target_next_tokens = torch.empty(shape, dtype=torch.long, device=device)
+        self._matches_workspace = torch.empty(shape, dtype=torch.bool, device=device)
+        self._selected_tokens = torch.empty(shape, dtype=torch.long, device=device)
+        self._match_summary_workspace = torch.empty(2, dtype=torch.long, device=device)
+        self._all_matches_workspace = torch.empty((), dtype=torch.bool, device=device)
 
     def decode(
         self,
@@ -218,7 +276,12 @@ class SpeculativeDecoder:
                 for _ in range(chunk):
                     start = time.perf_counter()
                     draft_hidden, draft_logits = self.draft_model.decode(tokens)
-                    candidate = torch.argmax(draft_logits[:, -1, :], dim=-1, keepdim=True)
+                    self._draft_next_values, candidate = self._next_token_from_logits(
+                        draft_logits,
+                        self._draft_next_values,
+                        self._draft_next_tokens,
+                    )
+                    self._draft_next_tokens = candidate
 
                     target_hidden, target_logits = self.target_model.decode(
                         tokens,
@@ -227,8 +290,14 @@ class SpeculativeDecoder:
                     )
                     paged_cache.write(base_position + emitted, target_hidden)
 
-                    target_next = torch.argmax(target_logits[:, -1, :], dim=-1, keepdim=True)
-                    matches = candidate.eq(target_next)
+                    self._target_next_values, target_next = self._next_token_from_logits(
+                        target_logits,
+                        self._target_next_values,
+                        self._target_next_tokens,
+                    )
+                    self._target_next_tokens = target_next
+                    matches = self._matches_buffer(candidate)
+                    torch.eq(candidate, target_next, out=matches)
                     match_summary, all_matches_tensor = self._match_workspaces(matches.device)
                     torch.sum(matches, dim=None, out=match_summary[0])
                     torch.all(matches, out=all_matches_tensor)
@@ -236,7 +305,8 @@ class SpeculativeDecoder:
                     match_count, all_matches = match_summary.tolist()
                     self.accepted_tokens += int(match_count)
                     self.total_tokens += matches.numel()
-                    tokens = torch.where(matches, candidate, target_next)
+                    tokens = self._selection_workspace(candidate)
+                    torch.where(matches, candidate, target_next, out=tokens)
 
                     torch.cuda.synchronize()
                     per_token_times.append((time.perf_counter() - start) * 1000.0)
@@ -293,6 +363,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._piecewise_decode_graph: Optional[torch.cuda.CUDAGraph] = None
         self._piecewise_prefill_done: Optional[torch.cuda.Event] = None
         self._piecewise_decode_done: Optional[torch.cuda.Event] = None
+        self._prefill_next_values: Optional[torch.Tensor] = None
         self._prefill_next_tokens: Optional[torch.Tensor] = None
         self._captured_full_spec_accept: Optional[float] = None
         self._captured_full_spec_chunk: Optional[float] = None
@@ -441,6 +512,26 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             self.router.update_worker_metrics("decode", f"decode-{idx}", metrics)
 
+    def _prefill_next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor:
+        last_logits = logits if logits.dim() == 2 else logits[:, -1, :]
+        shape = (last_logits.shape[0], 1)
+        if (
+            self._prefill_next_values is None
+            or self._prefill_next_values.device != last_logits.device
+            or self._prefill_next_values.dtype != last_logits.dtype
+            or tuple(self._prefill_next_values.shape) != shape
+        ):
+            self._prefill_next_values = torch.empty(shape, dtype=last_logits.dtype, device=last_logits.device)
+        if (
+            self._prefill_next_tokens is None
+            or self._prefill_next_tokens.device != last_logits.device
+            or self._prefill_next_tokens.dtype != torch.long
+            or tuple(self._prefill_next_tokens.shape) != shape
+        ):
+            self._prefill_next_tokens = torch.empty(shape, device=last_logits.device, dtype=torch.long)
+        torch.max(last_logits, dim=-1, keepdim=True, out=(self._prefill_next_values, self._prefill_next_tokens))
+        return self._prefill_next_tokens
+
     # ----------------------------------------------------------- graph preparation
     def _prepare_graphs(self) -> None:
         cfg = self.config
@@ -450,6 +541,14 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return
         if self.graph_mode == GraphMode.EAGER:
             return
+        if self.spec_decoder is not None:
+            self.spec_decoder.prepare_workspaces(cfg.batch_size, cfg.dtype_obj, self.device)
+        if self._prefill_next_values is None:
+            self._prefill_next_values = torch.empty(
+                (cfg.batch_size, 1),
+                device=self.device,
+                dtype=cfg.dtype_obj,
+            )
         if self._prefill_next_tokens is None:
             self._prefill_next_tokens = torch.empty(
                 (cfg.batch_size, 1),
@@ -476,8 +575,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.spec_decoder._fallback_chunk = None  # stabilize capture path
         with torch.cuda.graph(self._full_graph):
             hidden, logits = self.model.prefill(self.prompts, kv_cache=self.paged_cache.buffer, cache_start=0)  # type: ignore[arg-type]
-            next_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
-            self._prefill_next_tokens.copy_(next_tokens)
+            self._prefill_next_token_from_logits(logits)
             if self._full_prefill_done is not None:
                 self._full_prefill_done.record()
             _tokens, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
@@ -513,8 +611,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.spec_decoder.reset()
         with torch.cuda.graph(self._piecewise_prefill_graph):
             hidden, logits = self.model.prefill(self.prompts, kv_cache=self.paged_cache.buffer, cache_start=0)  # type: ignore[arg-type]
-            next_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
-            self._prefill_next_tokens.copy_(next_tokens)
+            self._prefill_next_token_from_logits(logits)
             if self._piecewise_prefill_done is not None:
                 self._piecewise_prefill_done.record()
 
@@ -606,7 +703,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             ttft_times.append(ttft_ms)
             paged_cache.mark_prefill(cfg.context_window)
 
-        next_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+        next_tokens = self._prefill_next_token_from_logits(logits)
         with torch.no_grad(), self._nvtx_range("speculative_decode"):
             chunk_used = spec.current_chunk_size()
             tokens, decode_times = spec.decode(

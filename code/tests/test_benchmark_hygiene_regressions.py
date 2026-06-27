@@ -1839,7 +1839,15 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
 
     assert "self._match_summary_workspace: Optional[torch.Tensor] = None" in decoder_section
     assert "self._all_matches_workspace: Optional[torch.Tensor] = None" in decoder_section
+    assert "self._draft_next_values: Optional[torch.Tensor] = None" in decoder_section
+    assert "self._target_next_values: Optional[torch.Tensor] = None" in decoder_section
+    assert "self._matches_workspace: Optional[torch.Tensor] = None" in decoder_section
+    assert "self._selected_tokens: Optional[torch.Tensor] = None" in decoder_section
     assert "def _match_workspaces(self, device: torch.device)" in decoder_section
+    assert "def prepare_workspaces(self, batch_size: int, dtype: torch.dtype, device: torch.device)" in decoder_section
+    assert "torch.max(last_logits, dim=-1, keepdim=True, out=(values, token_ids))" in decoder_section
+    assert "torch.eq(candidate, target_next, out=matches)" in decode_section
+    assert "torch.where(matches, candidate, target_next, out=tokens)" in decode_section
     assert "torch.sum(matches, dim=None, out=match_summary[0])" in decode_section
     assert "torch.all(matches, out=all_matches_tensor)" in decode_section
     assert "match_summary[1].copy_(all_matches_tensor)" in decode_section
@@ -1847,8 +1855,26 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "self.accepted_tokens += int(match_count)" in decode_section
     assert "if not all_matches:" in decode_section
     assert "torch.stack(" not in decode_section
+    assert "torch.argmax(draft_logits" not in decode_section
+    assert "torch.argmax(target_logits" not in decode_section
+    assert "tokens = torch.where(matches" not in decode_section
     assert "matches.sum().item()" not in decode_section
     assert "if not matches.all()" not in decode_section
+
+
+def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
+    source = (REPO_ROOT / "ch18" / "run_vllm_decoder.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("class VLLMMoEInferenceBenchmark", maxsplit=1)[1]
+
+    assert "self._prefill_next_values: Optional[torch.Tensor] = None" in benchmark_section
+    assert "self._prefill_next_tokens: Optional[torch.Tensor] = None" in benchmark_section
+    assert "def _prefill_next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor" in benchmark_section
+    assert (
+        "torch.max(last_logits, dim=-1, keepdim=True, out=(self._prefill_next_values, self._prefill_next_tokens))"
+        in benchmark_section
+    )
+    assert "self.spec_decoder.prepare_workspaces(cfg.batch_size, cfg.dtype_obj, self.device)" in benchmark_section
+    assert "torch.argmax(logits[:, -1, :]" not in benchmark_section
 
 
 def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
