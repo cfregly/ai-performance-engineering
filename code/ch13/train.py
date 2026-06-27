@@ -15,7 +15,7 @@ def main() -> None:
 
     model = nn.Sequential(
         nn.Linear(1024, 256),
-        nn.ReLU(),
+        nn.ReLU(inplace=True),
         nn.Linear(256, 1),
     )
     model = model.to(device)

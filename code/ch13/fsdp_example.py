@@ -40,7 +40,7 @@ class TransformerBlock(nn.Module):
         self.norm2 = nn.LayerNorm(dim)
         self.ff = nn.Sequential(
             nn.Linear(dim, ff_dim),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(ff_dim, dim),
         )
         

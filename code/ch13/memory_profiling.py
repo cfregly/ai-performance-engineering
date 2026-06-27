@@ -214,7 +214,7 @@ def demonstrate_pytorch_29_memory_features():
     
     model = nn.Sequential(
         nn.Linear(1024, 2048),
-        nn.ReLU(),
+        nn.ReLU(inplace=True),
         nn.Linear(2048, 1024)
     ).to(device)
     

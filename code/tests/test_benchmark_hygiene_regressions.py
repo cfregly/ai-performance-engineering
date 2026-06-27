@@ -4127,6 +4127,34 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
         assert "output=self.output.detach().float().clone()" in capture_section
 
 
+def test_ch13_mlp_benchmarks_use_inplace_relu_modules() -> None:
+    for name in (
+        "baseline_precisionfp8.py",
+        "optimized_precisionfp8.py",
+        "optimized_precisionfp8_rowwise.py",
+        "optimized_precisionfp8_rowwise_gw_hp.py",
+        "baseline_precisionfp8_pad_inner.py",
+        "optimized_precisionfp8_pad_inner.py",
+        "baseline_dataloader_default.py",
+        "optimized_dataloader_default.py",
+        "baseline_autograd_standard.py",
+        "optimized_autograd_standard.py",
+        "baseline_memory_profiling.py",
+        "optimized_memory_profiling.py",
+        "baseline_quantization.py",
+        "optimized_quantization.py",
+        "baseline_torchao_quantization.py",
+        "optimized_torchao_quantization.py",
+        "fsdp_example.py",
+        "train.py",
+        "memory_profiling.py",
+    ):
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+
+        assert "nn.ReLU(inplace=True)" in source
+        assert "nn.ReLU()" not in source
+
+
 def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot_loop() -> None:
     for name in (
         "baseline_training_standard.py",

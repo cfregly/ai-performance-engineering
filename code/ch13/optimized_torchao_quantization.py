@@ -65,7 +65,7 @@ class OptimizedTorchAOQuantizationBenchmark(VerificationPayloadMixin, BaseBenchm
 
         self.model = nn.Sequential(
             nn.Linear(self.in_features, self.hidden_features),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(self.hidden_features, self.out_features),
         ).to(self.device).to(torch.float32)
         self.model.eval()
