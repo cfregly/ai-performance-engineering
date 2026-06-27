@@ -115,6 +115,8 @@ class MoeValidationSweep:
         self.eval_seeds = eval_seeds
         self.device = device
         self.model: Optional[SimpleMoEGPT] = None
+        self._next_token_values: Optional[torch.Tensor] = None
+        self._next_token_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -123,6 +125,35 @@ class MoeValidationSweep:
             if hasattr(torch.cuda, "reset_peak_memory_stats"):
                 torch.cuda.reset_peak_memory_stats(self.device)
         self.model = SimpleMoEGPT(self.config, device=self.device).eval()
+        self._next_token_values = torch.empty(
+            (self.config.batch_size, 1),
+            device=self.device,
+            dtype=self.config.dtype_obj,
+        )
+        self._next_token_buffer = torch.empty(
+            (self.config.batch_size, 1),
+            device=self.device,
+            dtype=torch.long,
+        )
+
+    def _next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor:
+        logits_last = logits if logits.dim() == 2 else logits[:, -1, :]
+        shape = (logits_last.shape[0], 1)
+        if (
+            self._next_token_values is None
+            or self._next_token_values.device != logits_last.device
+            or self._next_token_values.dtype != logits_last.dtype
+            or tuple(self._next_token_values.shape) != shape
+        ):
+            self._next_token_values = torch.empty(shape, device=logits_last.device, dtype=logits_last.dtype)
+        if (
+            self._next_token_buffer is None
+            or self._next_token_buffer.device != logits_last.device
+            or tuple(self._next_token_buffer.shape) != shape
+        ):
+            self._next_token_buffer = torch.empty(shape, device=logits_last.device, dtype=torch.long)
+        torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))
+        return self._next_token_buffer
 
     def _make_batch(self, seed: int) -> Dict[str, torch.Tensor]:
         generator_device = "cuda" if self.device.type == "cuda" else "cpu"
@@ -182,7 +213,7 @@ class MoeValidationSweep:
             for stats in router_stats:
                 moe_logger.update(stats)
 
-            seed_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+            seed_tokens = self._next_token_from_logits(logits[:, -1, :])
             decode_losses: List[torch.Tensor] = []
             for step in range(cfg.decode_tokens):
                 _, decode_logits, decode_stats = self.model.decode(
@@ -198,7 +229,7 @@ class MoeValidationSweep:
                 decode_losses.append(step_loss)
                 for stats in decode_stats:
                     moe_logger.update(stats)
-                seed_tokens = torch.argmax(decode_logits[:, -1, :], dim=-1, keepdim=True)
+                seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])
 
             if self.device.type == "cuda":
                 torch.cuda.synchronize(self.device)

@@ -3055,6 +3055,14 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
         "record = {",
         maxsplit=1,
     )[0]
+    sweep_section = source.split("class MoeValidationSweep", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+    run_once_section = source.split("def _run_once", maxsplit=1)[1].split(
+        "def run",
+        maxsplit=1,
+    )[0]
 
     assert "self._overflow_tensors.append(overflow_mask.detach().sum())" in stats_logger_section
     assert (
@@ -3068,6 +3076,13 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
     assert "loss_values = torch.stack((token_loss.detach(), *(loss.detach() for loss in decode_losses))).cpu().tolist()" in report_section
     assert "sum(loss.item() for loss in decode_losses)" not in report_section
     assert "token_loss.item()" not in report_section
+    assert "self._next_token_values: Optional[torch.Tensor] = None" in sweep_section
+    assert "self._next_token_buffer: Optional[torch.Tensor] = None" in sweep_section
+    assert "def _next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor" in sweep_section
+    assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in sweep_section
+    assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in run_once_section
+    assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in run_once_section
+    assert "torch.argmax(" not in run_once_section
 
 
 def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
