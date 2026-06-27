@@ -2405,6 +2405,21 @@ def test_ch17_inference_wrappers_use_inference_mode() -> None:
             assert "with torch.no_grad():" not in setup_section
 
 
+def test_ch17_inference_models_use_inplace_relu_on_layer_outputs() -> None:
+    for relative in (
+        "ch17/baseline_inference_full.py",
+        "ch17/optimized_inference_full.py",
+        "ch17/baseline_routing_static.py",
+        "ch17/optimized_routing_static.py",
+        "ch17/prefill_decode_disagg_monolithic_common.py",
+        "ch17/prefill_decode_disagg_multigpu_common.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+
+        assert "torch.relu_(layer(x))" in source
+        assert "torch.relu(layer(x))" not in source
+
+
 def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop() -> None:
     baseline_source = (REPO_ROOT / "ch05" / "baseline_distributed_multigpu.py").read_text(encoding="utf-8")
     optimized_source = (REPO_ROOT / "ch05" / "optimized_distributed_multigpu.py").read_text(encoding="utf-8")

@@ -27,7 +27,7 @@ class FullDepthModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for layer in self.layers:
-            x = torch.relu(layer(x))
+            x = torch.relu_(layer(x))
         return self.head(x)
 
 

@@ -27,7 +27,7 @@ class FullDepthModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for layer in self.layers:
-            x = torch.relu(layer(x))
+            x = torch.relu_(layer(x))
         return self.head(x)
 
 
@@ -109,7 +109,7 @@ class OptimizedInferenceFullBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.inference_mode():
                 x = self.inputs
                 for layer in self.model.layers[: self.exit_layer]:
-                    x = torch.relu(layer(x))
+                    x = torch.relu_(layer(x))
                 self.output = self.model.head(x)
         if self.output is None or self.inputs is None:
             raise RuntimeError("benchmark_fn() must produce output")

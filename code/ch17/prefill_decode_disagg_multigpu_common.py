@@ -72,7 +72,7 @@ class TinyPrefillDecode(nn.Module):
     def prefill(self, prompts: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         x = prompts
         for layer in self.layers:
-            x = torch.relu(layer(x))
+            x = torch.relu_(layer(x))
         logits = self.proj(x)
         kv_cache = x.contiguous()
         seed = logits[:, -1, :].contiguous()
@@ -85,7 +85,7 @@ class TinyPrefillDecode(nn.Module):
             kv = kv_cache[:, step % context, :]
             x = x + kv
             for layer in self.layers:
-                x = torch.relu(layer(x))
+                x = torch.relu_(layer(x))
             x = self.proj(x)
         return x
 

@@ -24,7 +24,7 @@ class SimpleLLM(nn.Module):
             dtype=torch.bfloat16,
         )
         for layer in self.layers:
-            x = torch.relu(layer(x))
+            x = torch.relu_(layer(x))
         return x[:, -1:, :]
 
     def decode(self, kv_cache: torch.Tensor, num_tokens: int = 16) -> torch.Tensor:
@@ -35,12 +35,12 @@ class SimpleLLM(nn.Module):
         x = kv_cache
         if token_count == 1:
             for layer in self.layers:
-                x = torch.relu(layer(x))
+                x = torch.relu_(layer(x))
             return x
 
         output = kv_cache.new_empty(kv_cache.shape[0], token_count, kv_cache.shape[-1])
         for token_idx in range(token_count):
             for layer in self.layers:
-                x = torch.relu(layer(x))
+                x = torch.relu_(layer(x))
             output[:, token_idx : token_idx + 1, :].copy_(x)
         return output
