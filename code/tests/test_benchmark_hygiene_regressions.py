@@ -2337,6 +2337,39 @@ def test_ch18_flexattention_fallback_builds_sliding_window_mask_vectorized() -> 
     assert "mask = (kv_pos < q_pos - half_window) | (kv_pos > q_pos + half_window)" in fallback_section
 
 
+def test_ch18_flexattention_demos_use_cuda_event_timing() -> None:
+    flexdecoding = (REPO_ROOT / "ch18" / "flexdecoding.py").read_text(encoding="utf-8")
+    flexdecoding_benchmark = flexdecoding.split("def _benchmark", maxsplit=1)[1].split(
+        "def _score_mod_causal",
+        maxsplit=1,
+    )[0]
+    assert flexdecoding_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start.elapsed_time(end) / iters" in flexdecoding_benchmark
+
+    for filename in (
+        "flexattention_block_sparse.py",
+        "flexattention_document_attention.py",
+        "flexattention_sliding_window.py",
+    ):
+        source = (REPO_ROOT / "ch18" / filename).read_text(encoding="utf-8")
+        helper_section = source.split("def _time_region_ms", maxsplit=1)[1].split(
+            "# Check for FlexAttention" if filename != "flexattention_document_attention.py" else "try:",
+            maxsplit=1,
+        )[0]
+        run_section = source.split("def run(self) -> float:", maxsplit=1)[1].split(
+            "def cleanup",
+            maxsplit=1,
+        )[0]
+
+        assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
+        assert "start.record()" in helper_section
+        assert "end.record()" in helper_section
+        assert "start.elapsed_time(end)" in helper_section
+        assert "_time_region_ms(" in run_section
+        assert "torch.cuda.synchronize()" not in run_section
+        assert "time.perf_counter()" not in run_section
+
+
 def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None:
     source = (REPO_ROOT / "ch18" / "optimized_vllm_decode_graphs.py").read_text(encoding="utf-8")
     workspace_section = source.split("class BucketWorkspace", maxsplit=1)[1].split(

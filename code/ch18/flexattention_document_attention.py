@@ -6,12 +6,31 @@ their document boundaries, useful for multi-document batching.
 """
 
 import torch
+import time
 from typing import Dict, Any, Callable
 
 from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _time_region_ms(
+    device: torch.device,
+    fn: Callable[[], torch.Tensor],
+) -> tuple[float, torch.Tensor]:
+    if device.type == "cuda":
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+        output = fn()
+        end.record()
+        end.synchronize()
+        return start.elapsed_time(end), output
+
+    start = time.perf_counter()
+    output = fn()
+    return (time.perf_counter() - start) * 1000.0, output
 
 try:
     from torch.nn.attention.flex_attention import flex_attention, create_block_mask
@@ -87,15 +106,12 @@ class DocumentAttentionFlexAttention:
         """Execute document attention."""
         if not FLEX_ATTENTION_AVAILABLE:
             return 0.0
-        
-        import time
-        torch.cuda.synchronize()
-        start = time.perf_counter()
-        
-        output = self.attention_fn(self.q, self.k, self.v, block_mask=self.block_mask)
-        
-        torch.cuda.synchronize()
-        return (time.perf_counter() - start) * 1000
+
+        elapsed_ms, _ = _time_region_ms(
+            self.device,
+            lambda: self.attention_fn(self.q, self.k, self.v, block_mask=self.block_mask),
+        )
+        return elapsed_ms
     
     def cleanup(self):
         """Clean up."""
@@ -137,5 +153,4 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import benchmark_main
-    benchmark_main(get_benchmark)
+    print(run_benchmark())

@@ -54,14 +54,24 @@ def _sync() -> None:
 
 def _benchmark(label: str, fn, iters: int) -> float:
     _sync()
-    start = time.perf_counter()
     if QUICK_MODE:
         iters = min(iters, 5)
-    with torch.inference_mode():
-        for _ in range(iters):
-            fn()
-    _sync()
-    elapsed = (time.perf_counter() - start) * 1_000 / iters
+    if torch.cuda.is_available():
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+        with torch.inference_mode():
+            for _ in range(iters):
+                fn()
+        end.record()
+        end.synchronize()
+        elapsed = start.elapsed_time(end) / iters
+    else:
+        start = time.perf_counter()
+        with torch.inference_mode():
+            for _ in range(iters):
+                fn()
+        elapsed = (time.perf_counter() - start) * 1_000 / iters
     print(f"{label:<28}: {elapsed:7.3f} ms")
     return elapsed
 

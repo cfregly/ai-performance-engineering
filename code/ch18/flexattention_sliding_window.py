@@ -6,6 +6,7 @@ memory-efficient long-context processing.
 """
 
 import math
+import time
 from typing import Any, Callable, Dict
 
 import torch
@@ -14,6 +15,24 @@ from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkConfig, Be
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _time_region_ms(
+    device: torch.device,
+    fn: Callable[[], torch.Tensor],
+) -> tuple[float, torch.Tensor]:
+    if device.type == "cuda":
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+        output = fn()
+        end.record()
+        end.synchronize()
+        return start.elapsed_time(end), output
+
+    start = time.perf_counter()
+    output = fn()
+    return (time.perf_counter() - start) * 1000.0, output
 
 # Check for FlexAttention
 try:
@@ -119,40 +138,33 @@ class SlidingWindowFlexAttention:
         """Execute sliding window attention."""
         if not FLEX_ATTENTION_AVAILABLE:
             # Fallback
-            import time
-            start = time.perf_counter()
-            
-            scale = 1.0 / math.sqrt(self.head_dim)
-            scores = torch.matmul(self.q, self.k.transpose(-2, -1)) * scale
-            
-            # Apply window mask manually
-            half_window = self.window_size // 2
-            pos = torch.arange(self.seq_length, device=self.device)
-            q_pos = pos.unsqueeze(1)
-            kv_pos = pos.unsqueeze(0)
-            mask = (kv_pos < q_pos - half_window) | (kv_pos > q_pos + half_window)
-            
-            scores.masked_fill_(mask, float('-inf'))
-            attn = torch.softmax(scores, dim=-1)
-            output = torch.matmul(attn, self.v)
-            
-            torch.cuda.synchronize()
-            return (time.perf_counter() - start) * 1000
-        
-        torch.cuda.synchronize()
-        import time
-        start = time.perf_counter()
-        
-        # FlexAttention with sliding window
-        output = self.attention_fn(
-            self.q,
-            self.k,
-            self.v,
-            block_mask=self.block_mask
-        )
-        
-        torch.cuda.synchronize()
-        elapsed_ms = (time.perf_counter() - start) * 1000
+            def _run_fallback() -> torch.Tensor:
+                scale = 1.0 / math.sqrt(self.head_dim)
+                scores = torch.matmul(self.q, self.k.transpose(-2, -1)) * scale
+
+                # Apply window mask manually
+                half_window = self.window_size // 2
+                pos = torch.arange(self.seq_length, device=self.device)
+                q_pos = pos.unsqueeze(1)
+                kv_pos = pos.unsqueeze(0)
+                mask = (kv_pos < q_pos - half_window) | (kv_pos > q_pos + half_window)
+
+                scores.masked_fill_(mask, float('-inf'))
+                attn = torch.softmax(scores, dim=-1)
+                return torch.matmul(attn, self.v)
+
+            elapsed_ms, _ = _time_region_ms(self.device, _run_fallback)
+            return elapsed_ms
+
+        def _run_flex_attention() -> torch.Tensor:
+            return self.attention_fn(
+                self.q,
+                self.k,
+                self.v,
+                block_mask=self.block_mask
+            )
+
+        elapsed_ms, _ = _time_region_ms(self.device, _run_flex_attention)
         
         logger.info(f"Sliding window attention: {elapsed_ms:.2f} ms")
         

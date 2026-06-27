@@ -9,11 +9,30 @@ import torch
 import torch.nn as nn
 from typing import Dict, Any, Optional, Callable
 import math
+import time
 
 from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _time_region_ms(
+    device: torch.device,
+    fn: Callable[[], torch.Tensor],
+) -> tuple[float, torch.Tensor]:
+    if device.type == "cuda":
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+        output = fn()
+        end.record()
+        end.synchronize()
+        return start.elapsed_time(end), output
+
+    start = time.perf_counter()
+    output = fn()
+    return (time.perf_counter() - start) * 1000.0, output
 
 # Check for FlexAttention
 try:
@@ -123,31 +142,24 @@ class BlockSparseFlexAttention:
         """Execute block-sparse attention."""
         if not FLEX_ATTENTION_AVAILABLE:
             # Fallback: standard attention
-            import time
-            start = time.perf_counter()
-            
-            scale = 1.0 / math.sqrt(self.head_dim)
-            scores = torch.matmul(self.q, self.k.transpose(-2, -1)) * scale
-            attn = torch.softmax(scores, dim=-1)
-            output = torch.matmul(attn, self.v)
-            
-            torch.cuda.synchronize()
-            return (time.perf_counter() - start) * 1000
-        
-        torch.cuda.synchronize()
-        import time
-        start = time.perf_counter()
-        
-        # FlexAttention with block-sparse mask
-        output = self.attention_fn(
-            self.q,
-            self.k,
-            self.v,
-            block_mask=self.block_mask
-        )
-        
-        torch.cuda.synchronize()
-        elapsed_ms = (time.perf_counter() - start) * 1000
+            def _run_fallback() -> torch.Tensor:
+                scale = 1.0 / math.sqrt(self.head_dim)
+                scores = torch.matmul(self.q, self.k.transpose(-2, -1)) * scale
+                attn = torch.softmax(scores, dim=-1)
+                return torch.matmul(attn, self.v)
+
+            elapsed_ms, _ = _time_region_ms(self.device, _run_fallback)
+            return elapsed_ms
+
+        def _run_flex_attention() -> torch.Tensor:
+            return self.attention_fn(
+                self.q,
+                self.k,
+                self.v,
+                block_mask=self.block_mask
+            )
+
+        elapsed_ms, _ = _time_region_ms(self.device, _run_flex_attention)
         
         logger.info(f"Block-sparse attention: {elapsed_ms:.2f} ms")
         
@@ -207,5 +219,4 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import benchmark_main
-    benchmark_main(get_benchmark)
+    print(run_benchmark())
