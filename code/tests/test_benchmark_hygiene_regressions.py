@@ -2194,7 +2194,16 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)" in helper_section
     assert "torch.cat((accumulated_kv, chunk_kv), dim=1)" not in benchmark_section
     assert "request_start, prefill_end, decode_end = request_events[event_idx]" in benchmark_section
+    assert "self._last_outputs = [torch.empty(0) for _ in self.request_plans]" in setup_section
+    assert "outputs: List[torch.Tensor] = []" not in benchmark_section
+    assert "outputs = self._last_outputs" in benchmark_section
+    assert "output_idx = 0" in benchmark_section
+    assert "outputs.append(" not in benchmark_section
+    assert "outputs[output_idx] = output" in benchmark_section
+    assert "output_idx += 1" in benchmark_section
     assert "self._last_outputs = outputs" in benchmark_section
+    assert "self._outputs_ready = True" in benchmark_section
+    assert "if self.prompts is None or not self._outputs_ready:" in capture_section
     assert "self.output = torch.stack(self._last_outputs, dim=0)" in capture_section
 
 
@@ -2214,8 +2223,14 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     reduced_metrics_section = source.split("if rank == 0:", maxsplit=1)[1].split(
         "dist.destroy_process_group()", maxsplit=1
     )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def _prepare_verification_payload", maxsplit=1
     )[0]
 
     assert "kv_buffer = torch.empty(" in helper_section
@@ -2231,6 +2246,17 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "seed_buffer," in benchmark_section
     assert "_extend_cache_buffer(" in run_iteration_section
     assert "_extend_cache_buffer(" in benchmark_section
+    assert "self._output_parts = [torch.empty(0) for _ in self._request_plans]" in setup_section
+    assert "with torch.no_grad():" in setup_section
+    assert "with torch.no_grad():" in benchmark_section
+    assert "outputs: List[torch.Tensor] = []" not in benchmark_section
+    assert "outputs = self._output_parts" in benchmark_section
+    assert "output_idx = 0" in benchmark_section
+    assert "outputs.append(" not in benchmark_section
+    assert "outputs[output_idx] = output.detach()" in benchmark_section
+    assert "output_idx += 1" in benchmark_section
+    assert "self._outputs_ready = True" in benchmark_section
+    assert "if not self._outputs_ready or self._verify_prompt is None:" in capture_section
     assert "reduced_values = reduced.detach().cpu().tolist()" in reduced_metrics_section
     assert ".item()" not in reduced_metrics_section
 

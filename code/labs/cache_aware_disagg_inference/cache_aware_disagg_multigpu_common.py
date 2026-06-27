@@ -703,6 +703,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._verify_prompt: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_parts: List[torch.Tensor] = []
+        self._outputs_ready = False
         self.parameter_count: int = 0
         self._custom_metrics: Dict[str, float] = {}
         self._request_plans: List[DistributedRequestPlan] = []
@@ -824,7 +825,8 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         }
         self._prefill_seed_store = {}
         self.output = None
-        self._output_parts = []
+        self._output_parts = [torch.empty(0) for _ in self._request_plans]
+        self._outputs_ready = False
         self._custom_metrics = {}
         self._empty_kv_by_device = {}
         self._decode_seed_buffers = {}
@@ -876,26 +878,27 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             self._prompts[rank] = prompts
             total_params += sum(p.numel() for p in model.parameters())
 
-        for plan in self._request_plans:
-            if plan.warm_chunks <= 0:
-                continue
-            prompt = self._prompts[plan.prefill_rank][plan.local_request_idx]
-            chunks = _split_prompt(prompt, self.cfg.chunk_size)
-            prefix_parts: List[torch.Tensor] = []
-            seed: Optional[torch.Tensor] = None
-            prefill_model = self._prefill_models[plan.prefill_rank]
-            for chunk in chunks[: plan.warm_chunks]:
-                chunk_kv, seed = prefill_model.prefill(chunk)
-                prefix_parts.append(chunk_kv)
-            if seed is None:
-                raise RuntimeError(f"Warm request {plan.global_request_idx} did not produce a seed")
-            home_rank = _home_decode_rank(plan.global_request_idx, prefill_ranks, decode_ranks)
-            home_device = self._decode_device_for_rank(home_rank)
-            self._warm_cache_store[home_rank][plan.global_request_idx] = torch.cat(
-                prefix_parts,
-                dim=1,
-            ).to(home_device)
-            self._prefill_seed_store[plan.global_request_idx] = seed
+        with torch.no_grad():
+            for plan in self._request_plans:
+                if plan.warm_chunks <= 0:
+                    continue
+                prompt = self._prompts[plan.prefill_rank][plan.local_request_idx]
+                chunks = _split_prompt(prompt, self.cfg.chunk_size)
+                prefix_parts: List[torch.Tensor] = []
+                seed: Optional[torch.Tensor] = None
+                prefill_model = self._prefill_models[plan.prefill_rank]
+                for chunk in chunks[: plan.warm_chunks]:
+                    chunk_kv, seed = prefill_model.prefill(chunk)
+                    prefix_parts.append(chunk_kv)
+                if seed is None:
+                    raise RuntimeError(f"Warm request {plan.global_request_idx} did not produce a seed")
+                home_rank = _home_decode_rank(plan.global_request_idx, prefill_ranks, decode_ranks)
+                home_device = self._decode_device_for_rank(home_rank)
+                self._warm_cache_store[home_rank][plan.global_request_idx] = torch.cat(
+                    prefix_parts,
+                    dim=1,
+                ).to(home_device)
+                self._prefill_seed_store[plan.global_request_idx] = seed
 
         self.parameter_count = total_params
         self._verify_prompt = self._prompts[0][0].detach().cpu()
@@ -909,7 +912,11 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
         active_caches = {rank: {} for rank in self._decode_models}
         kv_buffers = {rank: {} for rank in self._decode_models}
-        outputs: List[torch.Tensor] = []
+        outputs = self._output_parts
+        if len(outputs) != len(self._request_plans):
+            outputs = [torch.empty(0) for _ in self._request_plans]
+            self._output_parts = outputs
+        output_idx = 0
         ttft_history: List[float] = []
         tpot_history: List[float] = []
         metrics = {
@@ -921,88 +928,91 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             "shared_reload_bytes": 0.0,
         }
 
-        for plan in self._request_plans:
-            prompt = self._prompts[plan.prefill_rank][plan.local_request_idx]
-            chunks = _split_prompt(prompt, self.cfg.chunk_size)
-            current_owner = (
-                _home_decode_rank(
-                    plan.global_request_idx,
-                    self._resolved_prefill_ranks,
-                    self._resolved_decode_ranks,
+        with torch.no_grad():
+            for plan in self._request_plans:
+                prompt = self._prompts[plan.prefill_rank][plan.local_request_idx]
+                chunks = _split_prompt(prompt, self.cfg.chunk_size)
+                current_owner = (
+                    _home_decode_rank(
+                        plan.global_request_idx,
+                        self._resolved_prefill_ranks,
+                        self._resolved_decode_ranks,
+                    )
+                    if plan.is_warm
+                    else None
                 )
-                if plan.is_warm
-                else None
-            )
-            seed = self._prefill_seed_store.get(plan.global_request_idx)
+                seed = self._prefill_seed_store.get(plan.global_request_idx)
 
-            self._sync_local_devices()
-            request_start = time.perf_counter()
+                self._sync_local_devices()
+                request_start = time.perf_counter()
 
-            for chunk_idx in range(plan.warm_chunks, plan.total_chunks):
-                target_rank = _choose_decode_rank(
+                for chunk_idx in range(plan.warm_chunks, plan.total_chunks):
+                    target_rank = _choose_decode_rank(
+                        plan,
+                        chunk_idx,
+                        affinity_mode=self.affinity_mode,
+                        prefill_ranks=self._resolved_prefill_ranks,
+                        decode_ranks=self._resolved_decode_ranks,
+                    )
+                    cache = self._ensure_local_cache(
+                        request_id=plan.global_request_idx,
+                        target_rank=target_rank,
+                        current_owner=current_owner,
+                        active_caches=active_caches,
+                        metrics=metrics,
+                    )
+                    chunk_kv, seed = self._prefill_models[plan.prefill_rank].prefill(chunks[chunk_idx])
+                    active_caches[target_rank][plan.global_request_idx] = _extend_cache_buffer(
+                        self.cfg,
+                        request_id=plan.global_request_idx,
+                        cache=cache,
+                        chunk_kv=chunk_kv,
+                        kv_buffers=kv_buffers[target_rank],
+                    )
+                    metrics["kv_transfer_bytes"] += _tensor_nbytes(chunk_kv)
+                    current_owner = target_rank
+
+                self._sync_local_devices()
+                prefill_end = time.perf_counter()
+
+                decode_rank = _choose_decode_rank(
                     plan,
-                    chunk_idx,
+                    plan.total_chunks,
                     affinity_mode=self.affinity_mode,
                     prefill_ranks=self._resolved_prefill_ranks,
                     decode_ranks=self._resolved_decode_ranks,
                 )
                 cache = self._ensure_local_cache(
                     request_id=plan.global_request_idx,
-                    target_rank=target_rank,
+                    target_rank=decode_rank,
                     current_owner=current_owner,
                     active_caches=active_caches,
                     metrics=metrics,
                 )
-                chunk_kv, seed = self._prefill_models[plan.prefill_rank].prefill(chunks[chunk_idx])
-                active_caches[target_rank][plan.global_request_idx] = _extend_cache_buffer(
-                    self.cfg,
-                    request_id=plan.global_request_idx,
-                    cache=cache,
-                    chunk_kv=chunk_kv,
-                    kv_buffers=kv_buffers[target_rank],
+                if seed is None:
+                    raise RuntimeError(f"Request {plan.global_request_idx} has no decode seed")
+                decode_device = self._decode_device_for_rank(decode_rank)
+                seed_buffer = self._decode_seed_buffers.get(decode_rank)
+                if seed_buffer is None or seed_buffer.device != decode_device:
+                    raise RuntimeError(f"Decode seed buffer missing for rank {decode_rank}")
+                seed_buffer.copy_(seed, non_blocking=True)
+                output = self._decode_models[decode_rank].decode(
+                    seed_buffer,
+                    cache,
+                    self.cfg.decode_tokens,
                 )
-                metrics["kv_transfer_bytes"] += _tensor_nbytes(chunk_kv)
-                current_owner = target_rank
-
-            self._sync_local_devices()
-            prefill_end = time.perf_counter()
-
-            decode_rank = _choose_decode_rank(
-                plan,
-                plan.total_chunks,
-                affinity_mode=self.affinity_mode,
-                prefill_ranks=self._resolved_prefill_ranks,
-                decode_ranks=self._resolved_decode_ranks,
-            )
-            cache = self._ensure_local_cache(
-                request_id=plan.global_request_idx,
-                target_rank=decode_rank,
-                current_owner=current_owner,
-                active_caches=active_caches,
-                metrics=metrics,
-            )
-            if seed is None:
-                raise RuntimeError(f"Request {plan.global_request_idx} has no decode seed")
-            decode_device = self._decode_device_for_rank(decode_rank)
-            seed_buffer = self._decode_seed_buffers.get(decode_rank)
-            if seed_buffer is None or seed_buffer.device != decode_device:
-                raise RuntimeError(f"Decode seed buffer missing for rank {decode_rank}")
-            seed_buffer.copy_(seed, non_blocking=True)
-            output = self._decode_models[decode_rank].decode(
-                seed_buffer,
-                cache,
-                self.cfg.decode_tokens,
-            )
-            active_caches[decode_rank].pop(plan.global_request_idx, None)
-            self._sync_local_devices()
-            total_ms = (time.perf_counter() - request_start) * 1000.0
-            ttft_ms = (prefill_end - request_start) * 1000.0
-            ttft_history.append(ttft_ms)
-            tpot_history.append(max(total_ms - ttft_ms, 0.0) / max(self.cfg.decode_tokens, 1))
-            outputs.append(output.detach())
+                active_caches[decode_rank].pop(plan.global_request_idx, None)
+                self._sync_local_devices()
+                total_ms = (time.perf_counter() - request_start) * 1000.0
+                ttft_ms = (prefill_end - request_start) * 1000.0
+                ttft_history.append(ttft_ms)
+                tpot_history.append(max(total_ms - ttft_ms, 0.0) / max(self.cfg.decode_tokens, 1))
+                outputs[output_idx] = output.detach()
+                output_idx += 1
 
         self.output = None
         self._output_parts = outputs
+        self._outputs_ready = True
         total_requests = max(
             float(self.cfg.requests_per_rank * self._resolved_prefill_ranks),
             1.0,
@@ -1034,7 +1044,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         }
 
     def capture_verification_payload(self) -> None:
-        if not self._output_parts or self._verify_prompt is None:
+        if not self._outputs_ready or self._verify_prompt is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         self.output = torch.stack([part.detach().cpu() for part in self._output_parts], dim=0)
         world_size = self._resolved_world_size or _world_size_hint()
@@ -1084,6 +1094,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._request_plans = []
         self.output = None
         self._output_parts = []
+        self._outputs_ready = False
         self._empty_kv_by_device = {}
         self._decode_seed_buffers = {}
         if torch.cuda.is_available():

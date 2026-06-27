@@ -164,6 +164,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._custom_metrics: Dict[str, float] = {}
         self._empty_kv_template: Optional[torch.Tensor] = None
         self._last_outputs: List[torch.Tensor] = []
+        self._outputs_ready = False
         self._request_event_pool: List[tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]] = []
         self._request_event_triplets: List[tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_metrics: Dict[str, float] = {}
@@ -264,7 +265,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     self.shared_seed_store[plan.request_idx] = seed
 
         self.output = None
-        self._last_outputs = []
+        self._last_outputs = [torch.empty(0) for _ in self.request_plans]
+        self._outputs_ready = False
         self._timing_history = {"ttft": [], "tpot": []}
         self._custom_metrics = {}
         self._request_event_pool = [
@@ -351,7 +353,11 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         worker_caches = [{} for _ in range(self.cfg.logical_decode_workers)]
         owners: Dict[int, int] = {}
         kv_buffers = self._kv_buffers
-        outputs: List[torch.Tensor] = []
+        outputs = self._last_outputs
+        if len(outputs) != len(self.request_plans):
+            outputs = [torch.empty(0) for _ in self.request_plans]
+            self._last_outputs = outputs
+        output_idx = 0
         metrics = {
             "cache_hits": 0.0,
             "cache_misses": 0.0,
@@ -427,15 +433,17 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     raise RuntimeError("Request finished without a decode seed")
                 output = self.decode_model.decode(seed, accumulated_kv, self.cfg.decode_tokens)
                 decode_end.record()
-                outputs.append(output)
+                outputs[output_idx] = output
+                output_idx += 1
 
         self._last_outputs = outputs
+        self._outputs_ready = True
         self.output = None
         self._request_event_triplets = request_events[: len(self.request_plans)]
         self._pending_metrics = metrics
 
     def capture_verification_payload(self) -> None:
-        if self.prompts is None or not self._last_outputs:
+        if self.prompts is None or not self._outputs_ready:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         if self.output is None:
             self.output = torch.stack(self._last_outputs, dim=0)
@@ -507,6 +515,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.shared_seed_store = {}
         self.output = None
         self._last_outputs = []
+        self._outputs_ready = False
         self._empty_kv_template = None
         self._request_event_pool = []
         self._request_event_triplets = []
