@@ -4206,6 +4206,14 @@ def test_ch13_mlp_benchmarks_use_inplace_relu_modules() -> None:
         assert "nn.ReLU(inplace=True)" in source
         assert "nn.ReLU()" not in source
 
+    optimized_quantization = (REPO_ROOT / "ch13" / "optimized_quantization.py").read_text(encoding="utf-8")
+    int8_forward = optimized_quantization.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1].split(
+        "class OptimizedQuantizationBenchmark",
+        maxsplit=1,
+    )[0]
+    assert "torch.relu_(x)" in int8_forward
+    assert "torch.relu(x)" not in int8_forward
+
 
 def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot_loop() -> None:
     for name in (

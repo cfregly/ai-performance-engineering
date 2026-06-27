@@ -67,7 +67,7 @@ class Int8MLP(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.fc1(x)
-        x = torch.relu(x)
+        x = torch.relu_(x)
         x = self.fc2(x)
         return x
 
