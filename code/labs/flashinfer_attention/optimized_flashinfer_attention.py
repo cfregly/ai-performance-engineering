@@ -89,9 +89,10 @@ class OptimizedFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         if self.q is None or self.k is None or self.v is None or self.wrapper is None or self.out_proj is None:
             raise RuntimeError("Benchmark not initialized")
         with self._nvtx_range("optimized_flashinfer_attention"):
-            attn_out = self.wrapper.run(self.q, self.k, self.v)
-            proj_in = attn_out.reshape(self.seq_len, self.hidden_size)
-            self.output = self.out_proj(proj_in)
+            with torch.inference_mode():
+                attn_out = self.wrapper.run(self.q, self.k, self.v)
+                proj_in = attn_out.reshape(self.seq_len, self.hidden_size)
+                self.output = self.out_proj(proj_in)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -144,5 +145,4 @@ class OptimizedFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedFlashInferAttentionLab()
-
 

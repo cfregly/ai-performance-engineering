@@ -73,7 +73,7 @@ def _ensure_backend_available(backend: str) -> None:
     if not torch.cuda.is_available():
         raise RuntimeError("SDP benchmark requires a CUDA device.")
     q = torch.randn(1, 1, 4, 64, device="cuda", dtype=torch.float16)
-    with _sdpa_context(backend):
+    with torch.inference_mode(), _sdpa_context(backend):
         _ = F.scaled_dot_product_attention(q, q, q, is_causal=False)
     torch.cuda.synchronize()
 
@@ -153,8 +153,8 @@ class FlashSDPLabBenchmark(VerificationPayloadMixin, BaseBenchmark):
         enable_nvtx = get_nvtx_enabled(config) if config else False
         nvtx_label = f"sdp_{self.backend}_baseline"
         with nvtx_range(nvtx_label, enable=enable_nvtx):
-            out = self.model(self.inputs)
-        self.output = out.detach()
+            with torch.inference_mode():
+                self.output = self.model(self.inputs)
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -223,5 +223,4 @@ def _parse_cli_backend(argv: Optional[list[str]] = None) -> Optional[str]:
     )
     args, _ = parser.parse_known_args(argv)
     return args.backend
-
 

@@ -1077,6 +1077,29 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     ).split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
     assert "with torch.inference_mode():" in optimized_flash_setup
 
+    cudnn_sdpa_source = (
+        REPO_ROOT / "labs" / "cudnn_sdpa_bench" / "baseline_flash_sdp.py"
+    ).read_text(encoding="utf-8")
+    cudnn_sdpa_benchmark = cudnn_sdpa_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    assert "with torch.inference_mode(), _sdpa_context(backend):" in cudnn_sdpa_source
+    assert "with torch.inference_mode():" in cudnn_sdpa_benchmark
+    assert "self.output = self.model(self.inputs)" in cudnn_sdpa_benchmark
+    assert "out.detach()" not in cudnn_sdpa_benchmark
+
+    for filename in ("baseline_flashinfer_attention.py", "optimized_flashinfer_attention.py"):
+        source = (REPO_ROOT / "labs" / "flashinfer_attention" / filename).read_text(
+            encoding="utf-8"
+        )
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "self.output = self.out_proj(proj_in)" in benchmark_section
+
     ch20_source = (REPO_ROOT / "ch20" / "ai_kernel_generator.py").read_text(
         encoding="utf-8"
     )

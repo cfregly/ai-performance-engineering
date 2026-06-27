@@ -71,19 +71,20 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         if self.q is None or self.k is None or self.v is None or self.attn_mask is None or self.out_proj is None:
             raise RuntimeError("Benchmark not initialized")
         with self._nvtx_range("baseline_flashinfer_attention"):
-            q = self.q.transpose(0, 1).unsqueeze(0)
-            k = self.k.transpose(0, 1).unsqueeze(0)
-            v = self.v.transpose(0, 1).unsqueeze(0)
-            out = F.scaled_dot_product_attention(
-                q,
-                k,
-                v,
-                attn_mask=self.attn_mask,
-                is_causal=False,
-            )
-            attn_out = out.squeeze(0).transpose(0, 1)
-            proj_in = attn_out.reshape(self.seq_len, self.hidden_size)
-            self.output = self.out_proj(proj_in)
+            with torch.inference_mode():
+                q = self.q.transpose(0, 1).unsqueeze(0)
+                k = self.k.transpose(0, 1).unsqueeze(0)
+                v = self.v.transpose(0, 1).unsqueeze(0)
+                out = F.scaled_dot_product_attention(
+                    q,
+                    k,
+                    v,
+                    attn_mask=self.attn_mask,
+                    is_causal=False,
+                )
+                attn_out = out.squeeze(0).transpose(0, 1)
+                proj_in = attn_out.reshape(self.seq_len, self.hidden_size)
+                self.output = self.out_proj(proj_in)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -136,5 +137,4 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineFlashInferAttentionLab()
-
 
