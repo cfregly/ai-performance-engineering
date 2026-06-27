@@ -54,7 +54,7 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Build model with same architecture as baseline for fair comparison
         self.model = nn.Sequential(
             nn.Linear(self.hidden_dim, self.inner_dim),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(self.inner_dim, self.hidden_dim),
         ).to(self.device).eval()
         
@@ -75,16 +75,15 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         with nvtx_range("optimized_nccl", enable=enable_nvtx):
             # Forward pass
-            with torch.no_grad():
+            with torch.inference_mode():
                 out = self.model(self.input)
             
-            # All-GPU reduction: chunk, reduce in-place, no CPU
-            shards = torch.chunk(out, chunks=self.num_shards, dim=0)
-            
-            # In-place sum reduction (stays on GPU)
-            self._reduction_buffer.copy_(shards[0])
-            for shard in shards[1:]:
-                self._reduction_buffer.add_(shard)
+            # All-GPU reduction over a strided shard view, no CPU or Python shard loop.
+            if out.shape[0] % self.num_shards != 0:
+                raise RuntimeError("Batch size must be divisible by num_shards")
+            reduced_rows = out.shape[0] // self.num_shards
+            shard_view = out.reshape(self.num_shards, reduced_rows, out.shape[1])
+            torch.sum(shard_view, dim=0, out=self._reduction_buffer)
             
             # Average
             self._output_buffer.copy_(self._reduction_buffer)

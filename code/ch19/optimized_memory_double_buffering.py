@@ -50,7 +50,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         torch.cuda.manual_seed_all(42)
         self.model = nn.Sequential(
             nn.Linear(self.hidden_dim, self.hidden_dim * 4),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(self.hidden_dim * 4, self.hidden_dim),
         )
         # Optimization: Use FP16 for faster computation - FAIL FAST if not supported

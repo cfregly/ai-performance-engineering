@@ -662,7 +662,7 @@ def demo_custom_optimizer(
     layers = []
     for _ in range(depth):
         layers.append(nn.Linear(hidden_dim, hidden_dim))
-        layers.append(nn.ReLU())
+        layers.append(nn.ReLU(inplace=True))
     layers.append(nn.Linear(hidden_dim, output_dim))
     model = nn.Sequential(*layers).to(device)
     
@@ -784,9 +784,9 @@ def demo_zero_style_sharding(*, allow_single_gpu: bool = False) -> None:
     # Create model
     model = nn.Sequential(
         nn.Linear(4096, 4096),
-        nn.ReLU(),
+        nn.ReLU(inplace=True),
         nn.Linear(4096, 4096),
-        nn.ReLU(),
+        nn.ReLU(inplace=True),
         nn.Linear(4096, 1000),
     ).to(device)
     

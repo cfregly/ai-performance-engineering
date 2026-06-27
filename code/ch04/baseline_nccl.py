@@ -50,7 +50,7 @@ class BaselineNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         self.model = nn.Sequential(
             nn.Linear(self.hidden_dim, self.inner_dim),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(self.inner_dim, self.hidden_dim),
         ).to(self.device).eval()
         

@@ -43,7 +43,7 @@ class OptimizedBatchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Harness provides seeding - model and input creation order must match baseline
         self.model = nn.Sequential(
             nn.Linear(self.hidden_dim, self.ffn_dim),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(self.ffn_dim, self.hidden_dim),
         ).to(self.device).eval()
         

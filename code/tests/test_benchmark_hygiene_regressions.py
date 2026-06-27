@@ -834,6 +834,38 @@ def test_ch03_ch05_accumulator_buffers_skip_setup_zero_fill() -> None:
         assert reset in benchmark_section
 
 
+def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
+    for relative in (
+        "ch03/baseline_pinned_prefetch_mlp.py",
+        "ch03/optimized_pinned_prefetch_mlp.py",
+        "ch03/baseline_double_buffered_batch_provisioning.py",
+        "ch03/optimized_double_buffered_batch_provisioning.py",
+        "ch03/bind_numa_affinity.py",
+        "ch04/baseline_nccl.py",
+        "ch04/optimized_nccl.py",
+        "ch04/baseline_cpu_reduction.py",
+        "ch04/optimized_cpu_reduction.py",
+        "ch04/baseline_disaggregated.py",
+        "ch04/optimized_disaggregated.py",
+        "ch04/baseline_disaggregated_multigpu.py",
+        "ch04/optimized_disaggregated_multigpu.py",
+        "ch04/symmetric_memory_training_advanced.py",
+        "ch05/ai_common.py",
+        "ch05/storage_io_optimization.py",
+        "ch09/baseline_compute_bound.py",
+        "ch09/optimized_compute_bound.py",
+        "ch10/baseline_batch.py",
+        "ch10/optimized_batch.py",
+        "ch19/baseline_memory_double_buffering.py",
+        "ch19/optimized_memory_double_buffering.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+
+        assert "ReLU(inplace=True)" in source
+        assert "nn.ReLU()" not in source
+        assert "torch.nn.ReLU()" not in source
+
+
 def test_ch06_ch12_cuda_output_buffers_skip_setup_zero_fill() -> None:
     targets = (
         "ch06/baseline_launch_bounds.py",

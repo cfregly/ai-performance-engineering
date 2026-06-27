@@ -44,7 +44,7 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
         torch.cuda.manual_seed_all(42)
         self.model = nn.Sequential(
             nn.Linear(1024, 1024),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(1024, 1024),
         ).to(self.device)
         

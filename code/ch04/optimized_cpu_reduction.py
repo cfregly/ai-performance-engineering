@@ -55,7 +55,7 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Build model with same architecture as baseline for fair comparison
         self.model = nn.Sequential(
             nn.Linear(self.hidden_dim, self.inner_dim),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(self.inner_dim, self.hidden_dim),
         ).to(self.device).eval()
         

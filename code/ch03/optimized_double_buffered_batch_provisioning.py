@@ -58,7 +58,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         # Same model as baseline for fair comparison
         self.model = nn.Sequential(
             nn.Linear(1024, 1024),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(1024, 1024),
         ).to(self.device)
         

@@ -69,7 +69,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Prefill model (optimized for parallel processing)
         base_model = nn.Sequential(
             nn.Linear(256, 512),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(512, 256),
         ).to(self.device).eval()
         self.prefill_model = base_model

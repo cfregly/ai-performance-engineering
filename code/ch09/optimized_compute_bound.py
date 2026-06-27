@@ -44,7 +44,7 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         self.model = nn.Sequential(
             nn.Linear(self.N, self.N * 2),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(self.N * 2, self.N),
         ).to(self.device, dtype=torch.float16).eval()
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float16)
@@ -141,5 +141,4 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return OptimizedComputeBoundBenchmark()
-
 

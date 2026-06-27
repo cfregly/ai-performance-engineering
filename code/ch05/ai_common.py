@@ -12,7 +12,7 @@ class TinyBlock(nn.Module):
     def __init__(self, hidden_dim: int):
         super().__init__()
         self.linear1 = nn.Linear(hidden_dim, hidden_dim * 2)
-        self.relu = nn.ReLU()
+        self.relu = nn.ReLU(inplace=True)
         self.linear2 = nn.Linear(hidden_dim * 2, hidden_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

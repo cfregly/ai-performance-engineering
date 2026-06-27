@@ -92,7 +92,7 @@ class OptimizedPinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmar
         # Use same model architecture as baseline for fair comparison
         self.model = nn.Sequential(
             nn.Linear(self.input_dim, self.hidden_dim),
-            nn.ReLU(),  # Same activation as baseline
+            nn.ReLU(inplace=True),  # Same activation as baseline
             nn.Linear(self.hidden_dim, self.output_dim),
         ).to(self.device)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-2)
@@ -183,4 +183,3 @@ class OptimizedPinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmar
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedPinnedPrefetchMLPBenchmark()
-

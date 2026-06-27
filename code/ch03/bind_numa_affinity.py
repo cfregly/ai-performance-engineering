@@ -339,7 +339,7 @@ def main() -> None:
             model = torch.nn.Sequential(
                 torch.nn.Flatten(),
                 torch.nn.Linear(dataset.feature_dim, 1024),
-                torch.nn.ReLU(),
+                torch.nn.ReLU(inplace=True),
                 torch.nn.Linear(1024, 10),
             ).to(device)
 
@@ -388,7 +388,7 @@ def main() -> None:
         model = torch.nn.Sequential(
             torch.nn.Flatten(),
             torch.nn.Linear(dataset.feature_dim, 1024),
-            torch.nn.ReLU(),
+            torch.nn.ReLU(inplace=True),
             torch.nn.Linear(1024, 10),
         ).to(device)
 

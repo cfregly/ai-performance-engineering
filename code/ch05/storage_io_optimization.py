@@ -83,7 +83,7 @@ def main() -> None:
     model = torch.nn.Sequential(
         torch.nn.Flatten(),
         torch.nn.Linear(3 * 224 * 224, 512),
-        torch.nn.ReLU(),
+        torch.nn.ReLU(inplace=True),
         torch.nn.Linear(512, 10),
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)

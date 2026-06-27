@@ -64,7 +64,7 @@ class BaselineDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # This baseline does not separate prefill and decode phases
         self.model = nn.Sequential(
             nn.Linear(256, 512),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(512, 256),
         )
         self.model = self.model.to(self.device).eval()

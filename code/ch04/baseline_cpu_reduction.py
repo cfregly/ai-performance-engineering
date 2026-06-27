@@ -53,7 +53,7 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         self.model = nn.Sequential(
             nn.Linear(self.hidden_dim, self.inner_dim),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(self.inner_dim, self.hidden_dim),
         ).to(self.device).eval()
         
@@ -156,5 +156,4 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return BaselineCpuReductionBenchmark()
-
 

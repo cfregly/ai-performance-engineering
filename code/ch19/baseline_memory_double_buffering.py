@@ -47,7 +47,7 @@ class MemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         self.model = nn.Sequential(
             nn.Linear(self.hidden_dim, self.hidden_dim * 4),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(self.hidden_dim * 4, self.hidden_dim),
         ).to(self.device).half().eval()
         self.buffer = torch.empty(

@@ -50,7 +50,7 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         log_allocator_guidance("ch03/baseline_pinned_prefetch_mlp", optimized=False)
         self.model = nn.Sequential(
             nn.Linear(self.input_dim, self.hidden_dim),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(self.hidden_dim, self.output_dim),
         ).to(self.device)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-2)
@@ -133,4 +133,3 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
 
 def get_benchmark() -> BaseBenchmark:
     return BaselinePinnedPrefetchMLPBenchmark()
-
