@@ -61,7 +61,7 @@ def build_model(
     return model
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def decode_fixed_precision(
     model: nn.Module,
     tokens: torch.Tensor,
@@ -99,7 +99,7 @@ def decode_fixed_precision(
     return generated[:, :current_len].contiguous()
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def decode_host_policy_baseline(
     model: nn.Module,
     tokens: torch.Tensor,
@@ -151,7 +151,7 @@ def decode_host_policy_baseline(
     return generated[:, :current_len].contiguous()
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def decode_dynamic_precision(
     model: nn.Module,
     tokens: torch.Tensor,

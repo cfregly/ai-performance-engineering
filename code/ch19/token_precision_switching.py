@@ -106,6 +106,7 @@ class TokenPrecisionController:
             return quant * scale
         return logits
 
+    @torch.inference_mode()
     def generate(self, input_ids: torch.Tensor, max_length: int = 20, temperature: float = 1.0) -> Tuple[torch.Tensor, List[Dict[str, float]]]:
         prompt = input_ids.clone()
         batch_size, prompt_len = prompt.shape
@@ -119,23 +120,22 @@ class TokenPrecisionController:
         stats: List[Dict[str, float]] = []
         for _step in range(max_length):
             active_tokens = tokens[:, :current_len]
-            with torch.no_grad():
-                logits = self.model(active_tokens).logits[0, -1, :]
-                logits = self._cast_logits(logits, self.current_precision)
-                metrics = self._confidence(logits, temperature)
-                next_precision = self._choose_precision(metrics)
-                if next_precision != self.current_precision:
-                    self.switch_count += 1
-                self.current_precision = next_precision
-                probs = F.softmax(logits / temperature, dim=-1)
-                next_token, next_token_host = self._next_token_buffers(probs.device)
-                torch.multinomial(probs, num_samples=1, out=next_token)
-                tokens[:, current_len : current_len + 1].copy_(next_token.view(1, 1))
-                current_len += 1
-                stats.append({"confidence": metrics.confidence_score, "precision": self.current_precision.value})
-                next_token_host.copy_(next_token)
-                if int(next_token_host[0]) == 0:
-                    break
+            logits = self.model(active_tokens).logits[0, -1, :]
+            logits = self._cast_logits(logits, self.current_precision)
+            metrics = self._confidence(logits, temperature)
+            next_precision = self._choose_precision(metrics)
+            if next_precision != self.current_precision:
+                self.switch_count += 1
+            self.current_precision = next_precision
+            probs = F.softmax(logits / temperature, dim=-1)
+            next_token, next_token_host = self._next_token_buffers(probs.device)
+            torch.multinomial(probs, num_samples=1, out=next_token)
+            tokens[:, current_len : current_len + 1].copy_(next_token.view(1, 1))
+            current_len += 1
+            stats.append({"confidence": metrics.confidence_score, "precision": self.current_precision.value})
+            next_token_host.copy_(next_token)
+            if int(next_token_host[0]) == 0:
+                break
         return tokens[:, :current_len].contiguous(), stats
 
 
@@ -185,7 +185,7 @@ def _precision_context(device: torch.device, use_fp8: bool, prefer_bfloat16: boo
 # ----------------------------
 # Main decode loop with smoothed, hysteretic precision switching
 # ----------------------------
-@torch.no_grad()
+@torch.inference_mode()
 def decode_with_dynamic_precision(
     model,
     tokens: torch.Tensor,

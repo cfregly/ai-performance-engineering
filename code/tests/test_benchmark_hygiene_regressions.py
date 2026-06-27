@@ -1309,6 +1309,8 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
 
     for filename in files:
         source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        assert "torch.inference_mode()" in source
+        assert "torch.no_grad()" not in source
         assert "torch.empty(\n        (batch_size, prompt_len + max_steps)" in source or (
             "torch.empty(\n            (batch_size, prompt_len + max_length)" in source
         )
@@ -1323,6 +1325,7 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
         "#",
         maxsplit=1,
     )[0]
+    assert "@torch.inference_mode()\n    def generate" in token_precision_source
     assert "self._next_token_buffer = None" in token_precision_source
     assert "self._next_token_host_buffer = None" in token_precision_source
     assert "def _next_token_buffers(self, device: torch.device)" in token_precision_source

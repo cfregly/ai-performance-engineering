@@ -163,7 +163,7 @@ def _memory_utilization_percent(device: torch.device) -> float:
         return 0.0
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def decode_with_dynamic_precision(
     model,
     tokens: torch.Tensor,
