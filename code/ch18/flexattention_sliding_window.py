@@ -5,10 +5,10 @@ Demonstrates sliding window attention using FlexAttention for
 memory-efficient long-context processing.
 """
 
-import torch
-import torch.nn as nn
-from typing import Dict, Any, Optional, Callable
 import math
+from typing import Any, Callable, Dict
+
+import torch
 
 from core.harness.benchmark_harness import BenchmarkHarness, BenchmarkConfig, BenchmarkMode
 from core.utils.logger import get_logger
@@ -127,14 +127,10 @@ class SlidingWindowFlexAttention:
             
             # Apply window mask manually
             half_window = self.window_size // 2
-            mask = torch.ones(
-                self.seq_length, self.seq_length,
-                device=self.device, dtype=torch.bool
-            )
-            for i in range(self.seq_length):
-                start_idx = max(0, i - half_window)
-                end_idx = min(self.seq_length, i + half_window + 1)
-                mask[i, start_idx:end_idx] = False
+            pos = torch.arange(self.seq_length, device=self.device)
+            q_pos = pos.unsqueeze(1)
+            kv_pos = pos.unsqueeze(0)
+            mask = (kv_pos < q_pos - half_window) | (kv_pos > q_pos + half_window)
             
             scores.masked_fill_(mask, float('-inf'))
             attn = torch.softmax(scores, dim=-1)
@@ -216,5 +212,4 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    from core.harness.benchmark_harness import benchmark_main
-    benchmark_main(get_benchmark)
+    print(run_benchmark())
