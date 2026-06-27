@@ -1197,6 +1197,17 @@ class InferenceServerMultiGPU:
             dtype=torch.float32,
             device=self.device,
         )
+        self._sampled_token_workspace = torch.empty(
+            (max_batch_size, 1),
+            dtype=torch.long,
+            device=self.device,
+        )
+        self._sampled_token_host_workspace = torch.empty(
+            max_batch_size,
+            dtype=torch.long,
+            device="cpu",
+            pin_memory=self.device.type == "cuda",
+        )
         self._last_token_lengths = [0] * max_batch_size
         self._prefill_graph: Optional[torch.cuda.CUDAGraph] = None
         self._prefill_graph_available = False
@@ -1457,15 +1468,18 @@ class InferenceServerMultiGPU:
         scaled_logits = logits / temp.unsqueeze(-1)
         probs = F.softmax(scaled_logits, dim=-1)
 
-        next_tokens_device = torch.empty(batch_size, dtype=torch.long, device=probs.device)
+        sampled_tokens_2d = self._sampled_token_workspace[:batch_size, :]
+        next_tokens_device = sampled_tokens_2d[:, 0]
         if self.world_size == 1 or not dist.is_initialized():
-            next_tokens_device.copy_(torch.multinomial(probs, num_samples=1).squeeze(-1))
+            torch.multinomial(probs, num_samples=1, out=sampled_tokens_2d)
         else:
             if self.rank == 0:
-                next_tokens_device.copy_(torch.multinomial(probs, num_samples=1).squeeze(-1))
+                torch.multinomial(probs, num_samples=1, out=sampled_tokens_2d)
             dist.broadcast(next_tokens_device, src=0)
 
-        generated = next_tokens_device.cpu().tolist()
+        generated_host = self._sampled_token_host_workspace[:batch_size]
+        generated_host.copy_(next_tokens_device)
+        generated = generated_host.tolist()
 
         for (_pack_idx, (_orig_idx, state)), token in zip(enumerate(eligible), generated):
             remaining = self.max_seq_len - state.current_position

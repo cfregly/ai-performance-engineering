@@ -2676,6 +2676,32 @@ def test_ch16_inference_serving_tracks_packed_max_tokens_on_host() -> None:
     assert ".max().item()" not in generate_batch_section
 
 
+def test_ch16_inference_serving_reuses_sampled_token_buffers() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    init_section = source.split("self._temperature_workspace = torch.ones", maxsplit=1)[
+        1
+    ].split("self._last_token_lengths", maxsplit=1)[0]
+    generate_batch_section = source.split("def generate_batch", maxsplit=1)[1].split(
+        "def serve_loop",
+        maxsplit=1,
+    )[0]
+
+    assert "self._sampled_token_workspace = torch.empty(" in init_section
+    assert "self._sampled_token_host_workspace = torch.empty(" in init_section
+    assert 'pin_memory=self.device.type == "cuda"' in init_section
+    assert "sampled_tokens_2d = self._sampled_token_workspace[:batch_size, :]" in generate_batch_section
+    assert "next_tokens_device = sampled_tokens_2d[:, 0]" in generate_batch_section
+    assert "torch.multinomial(probs, num_samples=1, out=sampled_tokens_2d)" in generate_batch_section
+    assert "generated_host = self._sampled_token_host_workspace[:batch_size]" in generate_batch_section
+    assert "generated_host.copy_(next_tokens_device)" in generate_batch_section
+    assert "generated = generated_host.tolist()" in generate_batch_section
+    assert "torch.empty(batch_size, dtype=torch.long, device=probs.device)" not in generate_batch_section
+    assert "torch.multinomial(probs, num_samples=1).squeeze(-1)" not in generate_batch_section
+    assert "next_tokens_device.cpu()" not in generate_batch_section
+
+
 def test_ch16_inference_serving_flushes_kv_views_without_stack() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"
