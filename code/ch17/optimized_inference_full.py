@@ -106,7 +106,7 @@ class OptimizedInferenceFullBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.model is not None and self.inputs is not None
 
         with self._nvtx_range("inference_full_comparison_early_exit"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 x = self.inputs
                 for layer in self.model.layers[: self.exit_layer]:
                     x = torch.relu(layer(x))

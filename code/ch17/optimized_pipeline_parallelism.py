@@ -89,7 +89,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
             # Compile for kernel fusion and optimization. Run once in setup so
             # verification stream-auditing sees steady-state execution only.
             self._compiled_model = torch.compile(model, mode="reduce-overhead")
-            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+            with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 _ = self._compiled_model(self._input_data)
         else:
             # Multi-GPU: use pipeline parallelism
@@ -132,7 +132,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                 raise RuntimeError("Single-GPU model not initialized")
             
             with self._nvtx_range("optimized_single_gpu"):
-                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                     self.output = self._compiled_model(self._input_data)
             self._bubble_fraction = 0.0  # No pipeline bubble
             self._last_stage_durations_ms = [0.0]
@@ -154,7 +154,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         stage_devices = [next(stage.parameters()).device for stage in self.pipeline_stages]
 
         with self._nvtx_range("optimized_pipeline_parallelism"):
-            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+            with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 for micro_idx in range(self.micro_batches + num_stages - 1):
                     for stage_idx, stage in enumerate(self.pipeline_stages):
                         chunk_idx = micro_idx - stage_idx

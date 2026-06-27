@@ -104,7 +104,7 @@ class BaselineInferenceFullBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.model is not None and self.inputs is not None
 
         with self._nvtx_range("inference_full_comparison_full_depth"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.model(self.inputs)
         if self.output is None or self.inputs is None:
             raise RuntimeError("benchmark_fn() must produce output")

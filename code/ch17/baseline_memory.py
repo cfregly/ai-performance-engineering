@@ -68,7 +68,7 @@ class BaselineMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.model is None:
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_memory"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 for compressed in self.host_batches:
                     host_batch = compressed.to(dtype=torch.float32)
                     host_batch.mul_(1.0 / 255.0)

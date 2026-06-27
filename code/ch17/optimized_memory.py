@@ -64,7 +64,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph_output = torch.empty_like(self.device_buffer)
         self._synchronize()
 
-        with torch.no_grad():
+        with torch.inference_mode():
             _ = self.model(self.device_buffer)
         self._synchronize()
 
@@ -74,7 +74,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # integer-valued floats, so no extra floor kernel is needed.
         self.device_buffer.random_(0, 256)
         self._synchronize()
-        with torch.cuda.graph(self.graph):
+        with torch.inference_mode(), torch.cuda.graph(self.graph):
             self.transform_buffer.copy_(self.device_buffer)
             self.transform_buffer.mul_(1.0 / 255.0)
             self.transform_buffer.add_(-0.5)
@@ -94,7 +94,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Optimized memory benchmark not initialized")
 
         with self._nvtx_range("optimized_memory"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 for _ in range(self.repetitions):
                     # Make the discrete input population explicit on every replay.
                     self.device_buffer.random_(0, 256)

@@ -110,7 +110,7 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
         )
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.expert(self.inputs.view(-1, self.hidden_size))
         self._synchronize()
 
@@ -127,7 +127,7 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
         flat = self.inputs.view(-1, self.hidden_size)
 
         with self._nvtx_range("baseline_moe_router_uniform"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 if self._remote_idx.numel() > 0:
                     if self._remote_buf_a is None or self._remote_buf_b is None:
                         raise RuntimeError("Remote buffers not initialized")
@@ -183,4 +183,3 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineMoERouterUniformBenchmark()
-

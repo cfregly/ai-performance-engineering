@@ -83,13 +83,13 @@ class OptimizedRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.model is not None and self.inputs is not None
 
         with self._nvtx_range("routing"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 if self.route_scores is None:
                     raise RuntimeError("Routing scores not initialized")
                 # Vectorized routing: compute all argmaxes in one kernel.
                 _ = torch.argmax(self.route_scores, dim=1)
             if self._verify_input is not None:
-                with torch.no_grad():
+                with torch.inference_mode():
                     self.output = self.model(self._verify_input)
         if self.output is None or self._verify_input is None:
             raise RuntimeError("benchmark_fn() must produce output")

@@ -69,7 +69,7 @@ class BaselinePipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchma
     def benchmark_fn(self) -> None:
         """Benchmark: Sequential processing of all layers."""
         with self._nvtx_range("baseline_pipeline_parallel_multigpuism"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 activations = self.input_data
                 for layer in self.model:
                     activations = layer(activations)
@@ -144,5 +144,4 @@ class BaselinePipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchma
 def get_benchmark() -> BaselinePipelineParallelismBenchmark:
     """Factory function for benchmark discovery."""
     return BaselinePipelineParallelismBenchmark()
-
 

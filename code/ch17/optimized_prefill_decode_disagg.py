@@ -64,7 +64,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._prefill_done = torch.cuda.Event()
 
         # Warm up to reduce first-iteration variance.
-        with torch.no_grad():
+        with torch.inference_mode():
             kv_cache = self.model.prefill(self.prompt)
             _ = self.model.decode(kv_cache, num_tokens=1)
         torch.cuda.synchronize(self.device)
@@ -106,7 +106,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         enable_nvtx = get_nvtx_enabled(self.get_config())
         with nvtx_range("optimized_disaggregated_multigpu.prefill_decode", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 ttft_events = self._get_ttft_events()
                 request_start, prefill_end = ttft_events
                 request_start.record()
@@ -220,4 +220,3 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedDisaggregatedBenchmark()
-

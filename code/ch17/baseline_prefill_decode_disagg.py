@@ -47,7 +47,7 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
         torch.cuda.manual_seed_all(42)
         self.model = SimpleLLM(hidden_dim=1024, num_layers=12).to(self.device).to(torch.bfloat16).eval()
         self.prompt = torch.randint(0, 10000, (1, 256), device=self.device)
-        with torch.no_grad():
+        with torch.inference_mode():
             self.kv_cache = self.model.prefill(self.prompt)
         torch.cuda.synchronize(self.device)
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
@@ -89,7 +89,7 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
         enable_nvtx = get_nvtx_enabled(self.get_config())
 
         with nvtx_range("inference_monolithic", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 ttft_events = self._get_ttft_events()
                 request_start, prefill_end = ttft_events
                 request_start.record()
@@ -181,4 +181,3 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery (Chapter 17 baseline)."""
     return BaselinePrefillDecodeMonolithicBenchmark()
-

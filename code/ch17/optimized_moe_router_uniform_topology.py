@@ -121,7 +121,7 @@ class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmar
         )
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.expert(self.inputs.view(-1, self.hidden_size))
         self._synchronize()
 
@@ -138,7 +138,7 @@ class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmar
         flat = self.inputs.view(-1, self.hidden_size)
 
         with self._nvtx_range("optimized_moe_router_topology"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 if self._remote_idx.numel() > 0:
                     if self._remote_buf_a is None or self._remote_buf_b is None:
                         raise RuntimeError("Remote buffers not initialized")

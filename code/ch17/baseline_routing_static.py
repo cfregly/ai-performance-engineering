@@ -83,14 +83,14 @@ class BaselineRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.model is not None and self.inputs is not None
 
         with self._nvtx_range("routing"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 if self.route_scores is None:
                     raise RuntimeError("Routing scores not initialized")
                 for idx in range(self.requests_per_iteration):
                     # Naive routing: per-request argmax (launch-heavy).
                     _ = torch.argmax(self.route_scores[idx])
             if self._verify_input is not None:
-                with torch.no_grad():
+                with torch.inference_mode():
                     self.output = self.model(self._verify_input)
         if self.output is None or self._verify_input is None:
             raise RuntimeError("benchmark_fn() must produce output")

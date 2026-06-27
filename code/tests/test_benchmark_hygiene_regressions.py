@@ -1794,6 +1794,9 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
 
 def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None:
     ch17_source = (REPO_ROOT / "ch17" / "optimized_memory.py").read_text(encoding="utf-8")
+    ch17_setup = ch17_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     ch17_benchmark = ch17_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -1801,6 +1804,8 @@ def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None
         "def teardown", maxsplit=1
     )[0]
 
+    assert "with torch.inference_mode(), torch.cuda.graph(self.graph):" in ch17_setup
+    assert "with torch.inference_mode():" in ch17_benchmark
     assert "self.output = self.graph_output.clone()" not in ch17_benchmark
     assert "self.output = self.graph_output" in ch17_benchmark
     assert ".floor_()" not in ch17_benchmark
@@ -2095,6 +2100,10 @@ def test_dynamic_router_wrappers_defer_metric_tensors_outside_hot_loop() -> None
 
 def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch17" / "optimized_pipeline_parallelism.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -2102,9 +2111,31 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
         "def get_custom_streams", maxsplit=1
     )[0]
 
+    assert "with torch.inference_mode(), torch.autocast(\"cuda\", dtype=torch.bfloat16):" in setup_section
+    assert "with torch.inference_mode(), torch.autocast(\"cuda\", dtype=torch.bfloat16):" in benchmark_section
     assert "torch.cat(final_outputs" not in benchmark_section
     assert "self._last_final_outputs = final_outputs" in benchmark_section
     assert "self.output = torch.cat(self._last_final_outputs, dim=0)" in capture_section
+
+
+def test_ch17_inference_wrappers_use_inference_mode() -> None:
+    for relative in (
+        "ch17/baseline_inference_full.py",
+        "ch17/optimized_inference_full.py",
+        "ch17/baseline_memory.py",
+        "ch17/baseline_routing_static.py",
+        "ch17/optimized_routing_static.py",
+        "ch17/baseline_pipeline_parallelism.py",
+        "ch17/baseline_prefill_decode_disagg.py",
+        "ch17/optimized_prefill_decode_disagg.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "with torch.no_grad():" not in benchmark_section
 
 
 def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop() -> None:
@@ -3350,6 +3381,8 @@ def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
         if relative.endswith("optimized_moe_router_uniform_topology.py"):
             assert "spill.any()" not in setup_section
             assert "expert_ids = torch.where(spill, spill_ids, expert_ids)" in setup_section
+        assert "with torch.inference_mode():" in setup_section
+        assert "with torch.inference_mode():" in benchmark_section
         assert "torch.index_select(flat, 0, self._remote_idx, out=self._remote_buf_a[:, : self.hidden_size])" in benchmark_section
         assert "self._remote_buf_b.copy_(self._remote_buf_a)" in benchmark_section
         assert "self._remote_buf_a.copy_(self._remote_buf_b)" in benchmark_section
