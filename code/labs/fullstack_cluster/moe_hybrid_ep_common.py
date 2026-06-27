@@ -323,6 +323,7 @@ class DeepSeekHybridEPModule(nn.Module):
         self._exchange_count_send_buffer: Optional[torch.Tensor] = None
         self._exchange_count_recv_buffer: Optional[torch.Tensor] = None
         self._exchange_count_host_buffer: Optional[torch.Tensor] = None
+        self._local_expert_count_host_buffer: Optional[torch.Tensor] = None
         self._comm_stream = torch.cuda.Stream() if optimized else None
 
     @property
@@ -424,6 +425,26 @@ class DeepSeekHybridEPModule(nn.Module):
             self._token_index_cache[key] = cached
         return cached
 
+    def _local_expert_count_list(self, expert_ids: torch.Tensor) -> List[int]:
+        counts = torch.bincount(expert_ids, minlength=self.local_experts)
+        needs_pinned = counts.device.type == "cuda"
+        if (
+            self._local_expert_count_host_buffer is None
+            or (
+                needs_pinned
+                and not self._local_expert_count_host_buffer.is_pinned()
+            )
+        ):
+            self._local_expert_count_host_buffer = torch.empty(
+                self.local_experts,
+                dtype=torch.long,
+                device="cpu",
+                pin_memory=needs_pinned,
+            )
+        host_counts = self._local_expert_count_host_buffer
+        host_counts.copy_(counts)
+        return [int(count) for count in host_counts.tolist()]
+
     def _apply_local_experts(self, tokens: torch.Tensor, expert_ids: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
         if tokens.numel() == 0:
             return tokens
@@ -444,7 +465,7 @@ class DeepSeekHybridEPModule(nn.Module):
             reuse=self.optimized,
             device=sorted_tokens.device,
         )
-        expert_count_list = torch.bincount(expert_ids, minlength=self.local_experts).detach().cpu().tolist()
+        expert_count_list = self._local_expert_count_list(expert_ids)
         offset = 0
         for local_id, expert in enumerate(self.experts):
             next_offset = offset + int(expert_count_list[local_id])

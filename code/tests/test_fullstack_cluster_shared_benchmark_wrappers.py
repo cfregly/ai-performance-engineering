@@ -279,7 +279,12 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "outputs.zero_()" not in apply_local_section
     assert "torch.zeros_like(tokens)" not in apply_local_section
     assert "torch.empty_like(sorted_tokens)" not in apply_local_section
-    assert "torch.bincount(expert_ids, minlength=self.local_experts).detach().cpu().tolist()" in apply_local_section
+    assert "expert_count_list = self._local_expert_count_list(expert_ids)" in apply_local_section
+    assert "torch.bincount(expert_ids, minlength=self.local_experts).detach().cpu().tolist()" not in apply_local_section
+    assert "self._local_expert_count_host_buffer: Optional[torch.Tensor] = None" in source
+    assert "def _local_expert_count_list(self, expert_ids: torch.Tensor)" in source
+    assert "counts = torch.bincount(expert_ids, minlength=self.local_experts)" in source
+    assert "host_counts.copy_(counts)" in source
     assert ".nonzero(" not in apply_local_section
     assert "bool(mask.any())" not in apply_local_section
     assert "outputs.index_copy_(0, sort_idx, sorted_outputs)" in apply_local_section
