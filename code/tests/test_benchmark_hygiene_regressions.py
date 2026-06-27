@@ -1722,6 +1722,23 @@ def test_ch20_bf16_mlp_preconverts_activation_dtype_outside_hot_loop() -> None:
     assert "self.output = self.model(self._x_model_dtype)" in benchmark_section
 
 
+def test_ch20_optimized_forward_paths_use_inference_mode() -> None:
+    for relative in (
+        "ch20/optimized_autotuning.py",
+        "ch20/optimized_bf16_mlp.py",
+        "ch20/optimized_end_to_end_bandwidth.py",
+        "ch20/optimized_moe.py",
+        "ch20/optimized_pipeline_sequential.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "with torch.no_grad():" not in benchmark_section
+
+
 def test_ch20_optimized_memory_standard_uses_scalar_addcmul_constants() -> None:
     source = (REPO_ROOT / "ch20" / "optimized_memory_standard.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]

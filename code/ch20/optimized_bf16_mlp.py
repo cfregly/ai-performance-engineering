@@ -17,7 +17,6 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
@@ -80,7 +79,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Warmup
         for _ in range(10):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self._x_model_dtype)
 
     def _refresh_model_input(self) -> None:
@@ -95,7 +94,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._refresh_model_input()
 
         with self._nvtx_range("multiple_techniques_optimized"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Optimization: Single forward pass (no redundant compute)
                 self.output = self.model(self._x_model_dtype)
                 _ = self.output.sum()  # Force materialization

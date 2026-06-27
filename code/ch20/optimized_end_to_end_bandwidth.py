@@ -56,13 +56,13 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.stacked_inputs = torch.stack(self.inputs, dim=0)
         self.flat_inputs = self.stacked_inputs.view(self.num_batches * self.batch_size, self.hidden_dim).contiguous()
         self.output = None
-        with torch.no_grad():
+        with torch.inference_mode():
             _ = self.model(self.flat_inputs)
     
     def benchmark_fn(self) -> None:
         assert self.model is not None and self.flat_inputs is not None
         with self._nvtx_range("optimized_end_to_end_bandwidth"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 flat_output = self.model(self.flat_inputs)
                 self.output = flat_output.view(self.num_batches, self.batch_size, self.hidden_dim)
 

@@ -76,19 +76,19 @@ class OptimizedMoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs = torch.randn(self.batch, self.hidden_dim, device=self.device, dtype=torch.float16)
         self._verify_input = self.inputs[0:1].clone()
         for _ in range(2):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.inputs)
 
     def benchmark_fn(self) -> None:
         assert self.model is not None and self.inputs is not None
         with self._nvtx_range("optimized_moe"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.inputs)
 
     def capture_verification_payload(self) -> None:
         if self._verify_input is None or self.model is None:
             raise RuntimeError("setup() must prepare verify input before verification")
-        with torch.no_grad():
+        with torch.inference_mode():
             self.output = self.model(self._verify_input).float().clone()
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
