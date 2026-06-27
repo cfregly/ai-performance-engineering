@@ -391,7 +391,9 @@ def test_trtllm_generated_token_slice_normalizes_beams_and_padding() -> None:
         ),
     )
     assert "gather_positions = prompt_offsets.unsqueeze(1) + token_offsets.unsqueeze(0)" in source
-    assert "torch.where(valid_positions, gathered" in source
+    assert "torch.where(valid_positions, gathered" not in source
+    assert "torch.full_like(gathered" not in source
+    assert "gathered.masked_fill_(valid_positions.logical_not_(), pad_value)" in source
     assert "generated = torch.cat" not in source
     assert "rows.append" not in source
 

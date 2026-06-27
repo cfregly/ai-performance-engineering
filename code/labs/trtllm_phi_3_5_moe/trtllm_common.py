@@ -303,7 +303,8 @@ def slice_generated_token_ids(
     gather_positions = prompt_offsets.unsqueeze(1) + token_offsets.unsqueeze(0)
     valid_positions = gather_positions < output_ids.size(1)
     gathered = output_ids.gather(1, gather_positions.clamp_max(output_ids.size(1) - 1))
-    return torch.where(valid_positions, gathered, torch.full_like(gathered, pad_value)).contiguous()
+    gathered.masked_fill_(valid_positions.logical_not_(), pad_value)
+    return gathered.contiguous()
 
 
 def verification_token_prefix_length(max_new_tokens: int) -> int:
