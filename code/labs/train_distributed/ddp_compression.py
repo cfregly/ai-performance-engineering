@@ -123,7 +123,7 @@ def _int8_allreduce_hook(
         dist.all_reduce(local_max, op=dist.ReduceOp.MAX, group=state.process_group)
     # Scale to keep the int8 sum in-range across all ranks.
     scale = (local_max / float(state.limit)).to(dtype=tensor.dtype)
-    scale = torch.where(scale == 0, torch.ones_like(scale), scale)
+    scale.masked_fill_(scale == 0, 1.0)
     quant = torch.clamp((tensor / scale).round(), -state.limit, state.limit).to(torch.int8)
     dist.all_reduce(quant, op=dist.ReduceOp.SUM, group=state.process_group)
     # Keep dequant in tensor dtype to reduce temporary memory overhead.

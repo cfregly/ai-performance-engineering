@@ -41,3 +41,15 @@ def test_ddp_compression_single_gpu_simulation_reuses_staging_buffers() -> None:
     assert "quant.cpu()" not in simulate_section
     assert "if max_val > 0" not in simulate_section
     assert "scale = buffer.abs().max().clamp_min(1e-12).div(127.0)" in simulate_section
+
+
+def test_ddp_compression_int8_hook_masks_zero_scale_in_place() -> None:
+    source = (LAB_DIR / "ddp_compression.py").read_text(encoding="utf-8")
+    hook_section = source.split("def _int8_allreduce_hook", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+
+    assert "torch.where(" not in hook_section
+    assert "torch.ones_like(scale)" not in hook_section
+    assert "scale.masked_fill_(scale == 0, 1.0)" in hook_section
