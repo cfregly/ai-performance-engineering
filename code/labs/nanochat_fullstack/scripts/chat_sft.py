@@ -178,7 +178,7 @@ for step in range(num_iterations):
         losses = []
         for _ in range(eval_steps):
             val_inputs, val_targets = next(val_iter)
-            with torch.no_grad(), autocast_ctx:
+            with torch.inference_mode(), autocast_ctx:
                 loss = model(val_inputs, val_targets)
             losses.append(loss)
         val_loss = torch.stack(losses).mean() # average over eval_steps
@@ -196,8 +196,8 @@ for step in range(num_iterations):
     if last_step or (step > 0 and step % eval_metrics_every == 0):
         model.eval()
         metrics = {}
-        with torch.no_grad(), autocast_ctx:
-            # note that because these are inside no_grad, we can usually afford to at least ~2X the batch size
+        with torch.inference_mode(), autocast_ctx:
+            # note that because these are inference-only, we can usually afford to at least ~2X the batch size
             metrics["mmlu_acc"] = run_chat_eval("MMLU", model, tokenizer, engine, batch_size=device_batch_size*2, max_problems=eval_metrics_max_problems)
             metrics["arc_easy_acc"] = run_chat_eval("ARC-Easy", model, tokenizer, engine, batch_size=device_batch_size*2, max_problems=eval_metrics_max_problems)
         metrics_str = ', '.join(f'{k}: {v:.6f}' for k, v in metrics.items())

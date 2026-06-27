@@ -3357,11 +3357,17 @@ def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
     source = (
         REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_sft.py"
     ).read_text(encoding="utf-8")
+    eval_section = source.split("# evaluate the validation loss", maxsplit=1)[1].split(
+        "if last_step:",
+        maxsplit=1,
+    )[0]
     logging_section = source.split("# logging", maxsplit=1)[1].split(
         "step += 1",
         maxsplit=1,
     )[0]
 
+    assert eval_section.count("with torch.inference_mode(), autocast_ctx:") == 2
+    assert "torch.no_grad()" not in eval_section
     assert "torch.stack((" in logging_section
     assert "train_loss.to(torch.float64)" in logging_section
     assert "num_tokens.to(torch.float64)" in logging_section
