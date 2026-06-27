@@ -2408,6 +2408,22 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
 
 
 def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> None:
+    from labs.real_world_models.deepseek_r1_moe_optimization import MoELayer
+
+    torch.manual_seed(123)
+    layer = MoELayer(hidden_size=4, num_experts=3, top_k=2, intermediate_size=8)
+    x = torch.randn(2, 3, 4)
+    output, _ = layer(x)
+    routing_weights, selected_experts, _ = layer.router(x)
+    x_flat = x.view(-1, x.shape[-1])
+    expected = torch.zeros_like(x_flat)
+    for token_idx in range(x_flat.shape[0]):
+        for route_idx in range(layer.top_k):
+            expert_idx = int(selected_experts.view(-1, layer.top_k)[token_idx, route_idx])
+            expert_out = layer.experts[expert_idx](x_flat[token_idx : token_idx + 1]).squeeze(0)
+            expected[token_idx] += expert_out * routing_weights.view(-1, layer.top_k)[token_idx, route_idx]
+    torch.testing.assert_close(output.view_as(expected), expected, rtol=1e-5, atol=1e-5)
+
     source = (REPO_ROOT / "labs" / "real_world_models" / "deepseek_r1_moe_optimization.py").read_text(
         encoding="utf-8"
     )
@@ -2433,10 +2449,12 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "torch.arange(1, n + 1" not in router_forward
     assert "def _route_token_ids" in moe_forward
     assert "repeat_interleave(self.top_k)" not in moe_forward
-    assert "torch.arange(num_tokens * self.top_k, device=device, dtype=torch.int64)" in moe_forward
-    assert 'token_ids.div_(self.top_k, rounding_mode="floor")' in moe_forward
-    assert "torch.argsort(flat_experts)" in moe_forward
-    assert "torch.bincount(flat_experts, minlength=self.num_experts).detach().cpu().tolist()" in moe_forward
+    assert "output_flat = torch.empty_like(x_flat)" in moe_forward
+    assert "output_flat = torch.zeros_like(x_flat)" not in moe_forward
+    assert "output_flat.index_copy_(0, token_indices, expert_output * weights)" in moe_forward
+    assert 'token_ids.div_(routes, rounding_mode="floor")' in moe_forward
+    assert "torch.argsort(remaining_experts)" in moe_forward
+    assert "torch.bincount(remaining_experts, minlength=self.num_experts).detach().cpu().tolist()" in moe_forward
     assert ".nonzero(" not in moe_forward
     assert "output_flat.index_add_(0, token_indices, expert_output * weights)" in moe_forward
     assert "torch.cuda.Event(" not in benchmark_section

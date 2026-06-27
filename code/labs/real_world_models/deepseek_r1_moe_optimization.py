@@ -123,7 +123,7 @@ class MoELayer(nn.Module):
         self.hidden_size = hidden_size
         self.num_experts = num_experts
         self.top_k = top_k
-        self._route_token_cache: Dict[Tuple[int, str], torch.Tensor] = {}
+        self._route_token_cache: Dict[Tuple[int, int, str], torch.Tensor] = {}
         
         self.router = LoadBalancedRouter(hidden_size, num_experts, top_k)
         
@@ -133,13 +133,19 @@ class MoELayer(nn.Module):
             for _ in range(num_experts)
         ])
 
-    def _route_token_ids(self, num_tokens: int, device: torch.device) -> torch.Tensor:
-        key = (num_tokens, str(device))
+    def _route_token_ids(
+        self,
+        num_tokens: int,
+        device: torch.device,
+        routes_per_token: Optional[int] = None,
+    ) -> torch.Tensor:
+        routes = self.top_k if routes_per_token is None else routes_per_token
+        key = (num_tokens, routes, str(device))
         token_ids = self._route_token_cache.get(key)
         if token_ids is None or token_ids.device != device:
-            token_ids = torch.arange(num_tokens * self.top_k, device=device, dtype=torch.int64)
-            if self.top_k != 1:
-                token_ids.div_(self.top_k, rounding_mode="floor")
+            token_ids = torch.arange(num_tokens * routes, device=device, dtype=torch.int64)
+            if routes != 1:
+                token_ids.div_(routes, rounding_mode="floor")
             self._route_token_cache[key] = token_ids
         return token_ids
     
@@ -159,25 +165,43 @@ class MoELayer(nn.Module):
         
         # Flatten for expert processing
         x_flat = x.view(-1, hidden_size)  # [batch * seq_len, hidden_size]
-        output_flat = torch.zeros_like(x_flat)
+        num_tokens = batch_size * seq_len
+        output_flat = torch.empty_like(x_flat)
 
-        flat_experts = selected_experts.reshape(-1)
-        flat_weights = routing_weights.reshape(-1)
-        route_order = torch.argsort(flat_experts)
-        route_count_list = torch.bincount(flat_experts, minlength=self.num_experts).detach().cpu().tolist()
-        flat_token_ids = self._route_token_ids(batch_size * seq_len, x.device)
+        first_experts = selected_experts[..., 0].reshape(-1)
+        first_weights = routing_weights[..., 0].reshape(-1)
+        first_order = torch.argsort(first_experts)
+        first_count_list = torch.bincount(first_experts, minlength=self.num_experts).detach().cpu().tolist()
 
         offset = 0
-        for expert_idx, route_count in enumerate(route_count_list):
+        for expert_idx, route_count in enumerate(first_count_list):
             next_offset = offset + int(route_count)
             if next_offset > offset:
-                route_indices = route_order[offset:next_offset]
-                token_indices = flat_token_ids.index_select(0, route_indices)
+                token_indices = first_order[offset:next_offset]
                 tokens_for_expert = x_flat.index_select(0, token_indices)
                 expert_output = self.experts[expert_idx](tokens_for_expert)
-                weights = flat_weights.index_select(0, route_indices).to(dtype=expert_output.dtype).unsqueeze(-1)
-                output_flat.index_add_(0, token_indices, expert_output * weights)
+                weights = first_weights.index_select(0, token_indices).to(dtype=expert_output.dtype).unsqueeze(-1)
+                output_flat.index_copy_(0, token_indices, expert_output * weights)
             offset = next_offset
+
+        if self.top_k > 1:
+            remaining_experts = selected_experts[..., 1:].reshape(-1)
+            remaining_weights = routing_weights[..., 1:].reshape(-1)
+            route_order = torch.argsort(remaining_experts)
+            route_count_list = torch.bincount(remaining_experts, minlength=self.num_experts).detach().cpu().tolist()
+            flat_token_ids = self._route_token_ids(num_tokens, x.device, self.top_k - 1)
+
+            offset = 0
+            for expert_idx, route_count in enumerate(route_count_list):
+                next_offset = offset + int(route_count)
+                if next_offset > offset:
+                    route_indices = route_order[offset:next_offset]
+                    token_indices = flat_token_ids.index_select(0, route_indices)
+                    tokens_for_expert = x_flat.index_select(0, token_indices)
+                    expert_output = self.experts[expert_idx](tokens_for_expert)
+                    weights = remaining_weights.index_select(0, route_indices).to(dtype=expert_output.dtype).unsqueeze(-1)
+                    output_flat.index_add_(0, token_indices, expert_output * weights)
+                offset = next_offset
         
         output = output_flat.view(batch_size, seq_len, hidden_size)
         
