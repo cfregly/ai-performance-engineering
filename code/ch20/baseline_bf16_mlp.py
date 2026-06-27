@@ -32,9 +32,9 @@ class UnoptimizedModel(nn.Module):
     def forward(self, x):
         # Anti-pattern 1: Separate operations that could be fused
         x = self.fc1(x)
-        x = torch.relu(x)  # Separate kernel
+        x = torch.relu_(x)  # Separate kernel
         x = self.fc2(x)
-        x = torch.relu(x)  # Another separate kernel
+        x = torch.relu_(x)  # Another separate kernel
         x = self.fc3(x)
         # Anti-pattern 2: Redundant normalization
         x = x / x.norm(dim=-1, keepdim=True).clamp(min=1e-8)

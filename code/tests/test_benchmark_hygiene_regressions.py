@@ -1878,6 +1878,21 @@ def test_ch20_baseline_inference_paths_use_inference_mode() -> None:
         assert "with torch.no_grad():" not in source
 
 
+def test_ch20_bf16_mlp_uses_inplace_relu_activations() -> None:
+    for relative in (
+        "ch20/baseline_bf16_mlp.py",
+        "ch20/optimized_bf16_mlp.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        forward_section = source.split("def forward(self, x)", maxsplit=1)[1].split(
+            "class ",
+            maxsplit=1,
+        )[0]
+
+        assert "torch.relu_(x)" in forward_section
+        assert "torch.relu(x)" not in forward_section
+
+
 def test_ch20_end_to_end_bandwidth_uses_inplace_activation() -> None:
     for relative in (
         "ch20/baseline_end_to_end_bandwidth.py",

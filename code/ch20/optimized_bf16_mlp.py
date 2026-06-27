@@ -36,9 +36,9 @@ class OptimizedModel(nn.Module):
     def forward(self, x):
         # Keep math identical to the baseline so verification is meaningful.
         x = self.fc1(x)
-        x = torch.relu(x)
+        x = torch.relu_(x)
         x = self.fc2(x)
-        x = torch.relu(x)
+        x = torch.relu_(x)
         x = self.fc3(x)
         x = x / x.norm(dim=-1, keepdim=True).clamp(min=1e-8)
         return x
