@@ -160,7 +160,7 @@ def convert_linear_layers(
                 params_dtype=params_dtype,
                 device=device,
             )
-            with torch.no_grad():
+            with torch.inference_mode():
                 te_linear.weight.copy_(child.weight.detach().to(te_linear.weight.dtype))
                 if child.bias is not None and te_linear.use_bias:
                     te_linear.bias.copy_(child.bias.detach().to(te_linear.bias.dtype))

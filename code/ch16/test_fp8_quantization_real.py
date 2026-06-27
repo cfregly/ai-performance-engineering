@@ -30,7 +30,7 @@ import torch.nn as nn
 import time
 import json
 from dataclasses import dataclass, asdict
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 
 @dataclass
@@ -142,16 +142,16 @@ def benchmark_model(
     print(f"  Warmup: {warmup} iterations")
     
     # Warmup
-    for _ in range(warmup):
-        with torch.no_grad():
+    with torch.inference_mode():
+        for _ in range(warmup):
             _ = model(input_ids)
     torch.cuda.synchronize()
     
     # Benchmark
     print(f"  Running: {iters} iterations")
     start = time.time()
-    for _ in range(iters):
-        with torch.no_grad():
+    with torch.inference_mode():
+        for _ in range(iters):
             _ = model(input_ids)
     torch.cuda.synchronize()
     elapsed = time.time() - start
@@ -281,7 +281,7 @@ def print_summary(results: Dict[str, BenchmarkResult]):
     if not baseline:
         baseline = results.get('fp16')
     
-    for precision, result in results.items():
+    for _precision, result in results.items():
         speedup = baseline.time_ms / result.time_ms if baseline else 1.0
         memory_ratio = result.memory_mb / baseline.memory_mb if baseline else 1.0
         

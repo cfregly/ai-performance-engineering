@@ -86,7 +86,7 @@ class BaselineFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.inputs = torch.randn(self.batch, self.seq_len, self.hidden, device=self.device, dtype=torch.float16)
         self._verify_input = self.inputs.detach().clone()
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(3):
                 _ = self.model(self.inputs)
         torch.cuda.synchronize(self.device)

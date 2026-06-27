@@ -1148,9 +1148,14 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         assert "with torch.inference_mode():" in flash_benchmark
         assert "self.output = self.model(self.inputs)" in flash_benchmark
 
+    baseline_flash_setup = (REPO_ROOT / "ch16" / "baseline_flash_sdp.py").read_text(
+        encoding="utf-8"
+    ).split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
     optimized_flash_setup = (REPO_ROOT / "ch16" / "optimized_flash_sdp.py").read_text(
         encoding="utf-8"
     ).split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
+    assert "with torch.inference_mode():" in baseline_flash_setup
+    assert "with torch.no_grad():" not in baseline_flash_setup
     assert "with torch.inference_mode():" in optimized_flash_setup
 
     cudnn_sdpa_source = (
@@ -1238,6 +1243,31 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     )
     assert "torch.triu(\n                torch.ones(seq_len, seq_len" not in ch14_demo_source
     assert "causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch14_demo_source
+
+
+def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
+    quick_source = (REPO_ROOT / "ch16" / "gpt_quick_test.py").read_text(encoding="utf-8")
+    fp8_test_source = (REPO_ROOT / "ch16" / "test_fp8_quantization_real.py").read_text(encoding="utf-8")
+    te_source = (REPO_ROOT / "ch16" / "fp8_transformer_engine.py").read_text(encoding="utf-8")
+    quick_benchmark = quick_source.split("def benchmark_quick", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+    fp8_benchmark = fp8_test_source.split("def benchmark_model", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+    te_convert = te_source.split("def convert_linear_layers", maxsplit=1)[1].split(
+        "def transformer_engine_warning",
+        maxsplit=1,
+    )[0]
+
+    assert quick_benchmark.count("with torch.inference_mode():") == 2
+    assert "with torch.no_grad():" not in quick_benchmark
+    assert fp8_benchmark.count("with torch.inference_mode():") == 2
+    assert "with torch.no_grad():" not in fp8_benchmark
+    assert "with torch.inference_mode():" in te_convert
+    assert "with torch.no_grad():" not in te_convert
 
 
 def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:

@@ -6,8 +6,6 @@ Shows realistic torch.compile speedup on B200
 """
 import time
 
-from tqdm import tqdm
-
 from core.utils.compile_utils import enable_tf32
 from core.utils.warning_filters import suppress_benchmark_import_warnings
 
@@ -35,15 +33,15 @@ class SimpleGPTBlock(nn.Module):
 def benchmark_quick(model, x, name, num_iters=20):
     """Quick benchmark"""
     # Warmup
-    for _ in range(5):
-        with torch.no_grad():
+    with torch.inference_mode():
+        for _ in range(5):
             _ = model(x)
     torch.cuda.synchronize()
     
     # Benchmark
     start = time.perf_counter()
-    for _ in range(num_iters):
-        with torch.no_grad():
+    with torch.inference_mode():
+        for _ in range(num_iters):
             _ = model(x)
     torch.cuda.synchronize()
     elapsed = time.perf_counter() - start
