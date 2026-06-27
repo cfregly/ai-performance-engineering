@@ -10,7 +10,7 @@ Demonstrates optimization of DeepSeek-R1 style MoE model:
 """
 
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -124,6 +124,7 @@ class MoELayer(nn.Module):
         self.num_experts = num_experts
         self.top_k = top_k
         self._route_token_cache: Dict[Tuple[int, int, str], torch.Tensor] = {}
+        self._route_count_host_buffer: Optional[torch.Tensor] = None
         
         self.router = LoadBalancedRouter(hidden_size, num_experts, top_k)
         
@@ -148,6 +149,22 @@ class MoELayer(nn.Module):
                 token_ids.div_(routes, rounding_mode="floor")
             self._route_token_cache[key] = token_ids
         return token_ids
+
+    def _route_count_list(self, expert_ids: torch.Tensor) -> List[int]:
+        counts = torch.bincount(expert_ids, minlength=self.num_experts)
+        needs_pinned = counts.device.type == "cuda"
+        if (
+            self._route_count_host_buffer is None
+            or (needs_pinned and not self._route_count_host_buffer.is_pinned())
+        ):
+            self._route_count_host_buffer = torch.empty(
+                self.num_experts,
+                dtype=counts.dtype,
+                device="cpu",
+                pin_memory=needs_pinned,
+            )
+        self._route_count_host_buffer.copy_(counts)
+        return [int(count) for count in self._route_count_host_buffer.tolist()]
     
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
         """
@@ -171,7 +188,7 @@ class MoELayer(nn.Module):
         first_experts = selected_experts[..., 0].reshape(-1)
         first_weights = routing_weights[..., 0].reshape(-1)
         first_order = torch.argsort(first_experts)
-        first_count_list = torch.bincount(first_experts, minlength=self.num_experts).detach().cpu().tolist()
+        first_count_list = self._route_count_list(first_experts)
 
         offset = 0
         for expert_idx, route_count in enumerate(first_count_list):
@@ -188,7 +205,7 @@ class MoELayer(nn.Module):
             remaining_experts = selected_experts[..., 1:].reshape(-1)
             remaining_weights = routing_weights[..., 1:].reshape(-1)
             route_order = torch.argsort(remaining_experts)
-            route_count_list = torch.bincount(remaining_experts, minlength=self.num_experts).detach().cpu().tolist()
+            route_count_list = self._route_count_list(remaining_experts)
             flat_token_ids = self._route_token_ids(num_tokens, x.device, self.top_k - 1)
 
             offset = 0

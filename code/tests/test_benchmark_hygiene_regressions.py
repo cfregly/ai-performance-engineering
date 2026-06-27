@@ -2480,6 +2480,7 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     layer = MoELayer(hidden_size=4, num_experts=3, top_k=2, intermediate_size=8)
     x = torch.randn(2, 3, 4)
     output, _ = layer(x)
+    route_count_host = layer._route_count_host_buffer
     routing_weights, selected_experts, _ = layer.router(x)
     x_flat = x.view(-1, x.shape[-1])
     expected = torch.zeros_like(x_flat)
@@ -2489,6 +2490,8 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
             expert_out = layer.experts[expert_idx](x_flat[token_idx : token_idx + 1]).squeeze(0)
             expected[token_idx] += expert_out * routing_weights.view(-1, layer.top_k)[token_idx, route_idx]
     torch.testing.assert_close(output.view_as(expected), expected, rtol=1e-5, atol=1e-5)
+    layer(x)
+    assert layer._route_count_host_buffer is route_count_host
 
     source = (REPO_ROOT / "labs" / "real_world_models" / "deepseek_r1_moe_optimization.py").read_text(
         encoding="utf-8"
@@ -2519,8 +2522,15 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "output_flat = torch.zeros_like(x_flat)" not in moe_forward
     assert "output_flat.index_copy_(0, token_indices, expert_output * weights)" in moe_forward
     assert 'token_ids.div_(routes, rounding_mode="floor")' in moe_forward
+    assert "self._route_count_host_buffer: Optional[torch.Tensor] = None" in moe_forward
+    assert "def _route_count_list(self, expert_ids: torch.Tensor)" in moe_forward
+    assert "counts = torch.bincount(expert_ids, minlength=self.num_experts)" in moe_forward
+    assert "self._route_count_host_buffer.copy_(counts)" in moe_forward
     assert "torch.argsort(remaining_experts)" in moe_forward
-    assert "torch.bincount(remaining_experts, minlength=self.num_experts).detach().cpu().tolist()" in moe_forward
+    assert "first_count_list = self._route_count_list(first_experts)" in moe_forward
+    assert "route_count_list = self._route_count_list(remaining_experts)" in moe_forward
+    assert "torch.bincount(remaining_experts, minlength=self.num_experts).detach().cpu().tolist()" not in moe_forward
+    assert "torch.bincount(first_experts, minlength=self.num_experts).detach().cpu().tolist()" not in moe_forward
     assert ".nonzero(" not in moe_forward
     assert "output_flat.index_add_(0, token_indices, expert_output * weights)" in moe_forward
     assert "torch.cuda.Event(" not in benchmark_section
