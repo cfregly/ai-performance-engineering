@@ -10,6 +10,7 @@ import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
+from labs.dynamic_router import vllm_runner
 from labs.dynamic_router.topology import detect_topology
 from labs.dynamic_router.vllm_runner import run_dual_pool_vllm_with_topology
 
@@ -32,8 +33,6 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._topology = detect_topology(max_gpus=torch.cuda.device_count())
 
     def benchmark_fn(self) -> None:
-        from labs.dynamic_router import vllm_runner
-
         self._summary = run_dual_pool_vllm_with_topology(
             "shared",
             topology_snapshot=self._topology,
@@ -75,4 +74,3 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory for discover_benchmarks()."""
     return BaselineDualPoolVllmBenchmark()
-

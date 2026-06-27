@@ -2699,6 +2699,7 @@ def test_dynamic_router_wrappers_defer_metric_tensors_outside_hot_loop() -> None
         )[0]
 
         assert "torch.tensor(" not in benchmark_section
+        assert "from labs.dynamic_router import vllm_runner" not in benchmark_section
         assert "self._metric_values = metric_values" in benchmark_section
         assert "self.output = torch.tensor(self._metric_values, dtype=torch.float32).unsqueeze(0)" in capture_section
 
