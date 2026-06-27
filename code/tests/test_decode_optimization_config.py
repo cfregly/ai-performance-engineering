@@ -85,6 +85,27 @@ def test_decode_state_buffers_are_overwritten_without_zero_fill() -> None:
     assert "self.current_tokens.copy_(self.gpu_prompt[:, -1])" in graph_section
 
 
+def test_decode_step_reuses_next_token_buffer() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    init_section = source.split("def _init_buffers", maxsplit=1)[1].split(
+        "def _maybe_compile",
+        maxsplit=1,
+    )[0]
+    decode_step_section = source.split("def _decode_step", maxsplit=1)[1].split(
+        "def _get_fp8_context",
+        maxsplit=1,
+    )[0]
+
+    assert "self._decode_next_token_values: Optional[torch.Tensor] = None" in source
+    assert "self._decode_next_token: Optional[torch.Tensor] = None" in source
+    assert "self._decode_next_token_values = torch.empty((bsz,), device=self.device, dtype=self.dtype)" in init_section
+    assert "self._decode_next_token = torch.empty((bsz,), device=self.device, dtype=torch.long)" in init_section
+    assert "torch.max(logits, dim=-1, out=(self._decode_next_token_values, self._decode_next_token))" in decode_step_section
+    assert "torch.argmax(logits, dim=-1)" not in decode_step_section
+
+
 def test_decode_nvtx_import_is_cached_outside_iteration_hot_paths() -> None:
     source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
         encoding="utf-8"

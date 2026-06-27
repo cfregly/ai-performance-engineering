@@ -124,6 +124,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph_includes_prefill: bool = False
         self.graph_logits: Optional[torch.Tensor] = None
         self.graph_next_token: Optional[torch.Tensor] = None
+        self._decode_next_token_values: Optional[torch.Tensor] = None
+        self._decode_next_token: Optional[torch.Tensor] = None
         self._custom_metrics: Dict[str, float] = {}
         self._pending_iteration_events: Optional[Dict[str, torch.cuda.Event]] = None
         self._fp8_enabled: bool = False
@@ -435,6 +437,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             (bsz, self.cfg.hidden_size), device=self.device, dtype=self.dtype
         )
         self.current_tokens = torch.empty((bsz,), device=self.device, dtype=torch.long)
+        self._decode_next_token_values = torch.empty((bsz,), device=self.device, dtype=self.dtype)
+        self._decode_next_token = torch.empty((bsz,), device=self.device, dtype=torch.long)
 
     # Compiled / graphed helpers
     def _maybe_compile(self) -> None:
@@ -507,8 +511,22 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             combined = token_hidden + state
             hidden = self.decode_mlp(combined)
             logits = self.lm_head(hidden)
-        next_token = torch.argmax(logits, dim=-1)
-        return logits, hidden, next_token
+        token_shape = logits.shape[:-1]
+        if (
+            self._decode_next_token_values is None
+            or self._decode_next_token_values.device != logits.device
+            or self._decode_next_token_values.dtype != logits.dtype
+            or tuple(self._decode_next_token_values.shape) != tuple(token_shape)
+        ):
+            self._decode_next_token_values = torch.empty(token_shape, device=logits.device, dtype=logits.dtype)
+        if (
+            self._decode_next_token is None
+            or self._decode_next_token.device != logits.device
+            or tuple(self._decode_next_token.shape) != tuple(token_shape)
+        ):
+            self._decode_next_token = torch.empty(token_shape, device=logits.device, dtype=torch.long)
+        torch.max(logits, dim=-1, out=(self._decode_next_token_values, self._decode_next_token))
+        return logits, hidden, self._decode_next_token
 
     def _get_fp8_context(self):
         """Return fp8_autocast context if FP8 is enabled, else nullcontext."""
@@ -887,6 +905,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "gpu_payloads",
             "state_buffer",
             "current_tokens",
+            "_decode_next_token_values",
+            "_decode_next_token",
             "next_token_out",
             "graph_logits",
             "graph_next_token",
