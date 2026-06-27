@@ -2455,6 +2455,15 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     source = (
         REPO_ROOT / "ch15" / "baseline_disaggregated_inference_multigpu.py"
     ).read_text(encoding="utf-8")
+    decode_helper = source.split("def _run_decode", maxsplit=1)[1].split(
+        "def _run_torchrun_worker", maxsplit=1
+    )[0]
+    torchrun_worker = source.split("def _run_torchrun_worker", maxsplit=1)[1].split(
+        "class _DisaggregatedInferenceMultiGPUBenchmark", maxsplit=1
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -2462,8 +2471,29 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
         "def _prepare_verification_payload", maxsplit=1
     )[0]
 
+    assert "outputs = [torch.empty(0) for _ in range(len(kv_chunks))]" in decode_helper
+    assert "request_kv_cache = kv_cache" in decode_helper
+    assert "request_kv_cache = allocate_kv_cache(" in decode_helper
+    assert "request_kv_cache[:, : cfg.context_window].copy_(kv_prompt)" in decode_helper
+    assert "outputs.append(" not in decode_helper
+    assert "outputs[output_idx] = tokens" in decode_helper
+    assert "decode_kv_cache = allocate_kv_cache(" in torchrun_worker
+    assert "decode_outputs = [torch.empty(0) for _ in range(cfg.requests_per_rank)]" in torchrun_worker
+    assert "outputs[req_idx] = tokens" in torchrun_worker
+    assert "outputs.append(" not in torchrun_worker
+    assert "decode_kv_cache = allocate_kv_cache(" in setup_section
+    assert "decode_outputs=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in setup_section
+    assert "self._pending_outputs = [" in setup_section
     assert "out.detach().cpu()" not in benchmark_section
     assert "torch.cat([out.detach().cpu()" not in benchmark_section
+    assert "outputs: List[torch.Tensor] = []" not in benchmark_section
+    assert "outputs = self._pending_outputs" in benchmark_section
+    assert "output_idx = 0" in benchmark_section
+    assert "kv_cache=pair.decode_kv_cache" in benchmark_section
+    assert "outputs=pair.decode_outputs" in benchmark_section
+    assert "outputs.extend(" not in benchmark_section
+    assert "outputs[output_idx] = decoded_tokens" in benchmark_section
+    assert "output_idx += 1" in benchmark_section
     assert "self._pending_outputs = outputs" in benchmark_section
     assert "torch.cat([out.detach().cpu() for out in self._pending_outputs], dim=0)" in capture_section
 

@@ -63,6 +63,8 @@ class _LocalPair:
     prefill_model: SimpleMoEGPT
     decode_model: SimpleMoEGPT
     prompts: torch.Tensor
+    decode_kv_cache: torch.Tensor
+    decode_outputs: List[torch.Tensor]
 
 
 def _build_moe_config(cfg: DisaggConfig) -> MoeInferenceConfig:
@@ -146,27 +148,33 @@ def _run_decode(
     kv_chunks: List[torch.Tensor],
     seed_chunks: List[torch.Tensor],
     device: torch.device,
+    *,
+    kv_cache: Optional[torch.Tensor] = None,
+    outputs: Optional[List[torch.Tensor]] = None,
 ) -> List[torch.Tensor]:
-    outputs: List[torch.Tensor] = []
+    if outputs is None or len(outputs) != len(kv_chunks):
+        outputs = [torch.empty(0) for _ in range(len(kv_chunks))]
     with torch.no_grad():
-        for kv_prompt, seed_tokens in zip(kv_chunks, seed_chunks):
-            kv_cache = allocate_kv_cache(
-                cfg.batch_size,
-                cfg.tokens_per_request,
-                cfg.hidden_size,
-                cfg.dtype,
-                device,
-            )
-            kv_cache[:, : cfg.context_window] = kv_prompt
+        for output_idx, (kv_prompt, seed_tokens) in enumerate(zip(kv_chunks, seed_chunks)):
+            request_kv_cache = kv_cache
+            if request_kv_cache is None:
+                request_kv_cache = allocate_kv_cache(
+                    cfg.batch_size,
+                    cfg.tokens_per_request,
+                    cfg.hidden_size,
+                    cfg.dtype,
+                    device,
+                )
+            request_kv_cache[:, : cfg.context_window].copy_(kv_prompt)
             tokens = seed_tokens
             for step in range(cfg.decode_tokens):
                 _, decode_logits = model.decode(
                     tokens,
-                    kv_cache=kv_cache,
+                    kv_cache=request_kv_cache,
                     position=cfg.context_window + step,
                 )
                 tokens = torch.argmax(decode_logits[:, -1, :], dim=-1, keepdim=True)
-            outputs.append(tokens)
+            outputs[output_idx] = tokens
     return outputs
 
 
@@ -255,8 +263,9 @@ def _run_torchrun_worker(
 
     recv_kv_bufs: List[torch.Tensor] = []
     recv_seed_bufs: List[torch.Tensor] = []
-    kv_caches: List[torch.Tensor] = []
-    if overlap and not is_prefill:
+    decode_kv_cache: Optional[torch.Tensor] = None
+    decode_outputs: List[torch.Tensor] = []
+    if not is_prefill:
         recv_kv_bufs = [
             torch.empty(
                 (cfg.batch_size, cfg.context_window, cfg.hidden_size),
@@ -273,16 +282,14 @@ def _run_torchrun_worker(
             )
             for _ in range(cfg.requests_per_rank)
         ]
-        kv_caches = [
-            allocate_kv_cache(
-                cfg.batch_size,
-                cfg.tokens_per_request,
-                cfg.hidden_size,
-                cfg.dtype,
-                device,
-            )
-            for _ in range(cfg.requests_per_rank)
-        ]
+        decode_kv_cache = allocate_kv_cache(
+            cfg.batch_size,
+            cfg.tokens_per_request,
+            cfg.hidden_size,
+            cfg.dtype,
+            device,
+        )
+        decode_outputs = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
 
     def run_iteration() -> List[torch.Tensor]:
         if is_prefill:
@@ -316,9 +323,11 @@ def _run_torchrun_worker(
             return []
 
         if overlap:
-            if not recv_kv_bufs or not recv_seed_bufs:
+            if not recv_kv_bufs or not recv_seed_bufs or decode_kv_cache is None:
                 raise RuntimeError("Overlap buffers not initialized")
-            outputs: List[torch.Tensor] = []
+            outputs = decode_outputs
+            if len(outputs) != cfg.requests_per_rank:
+                outputs = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
             pending: List[Optional[List[dist.Work]]] = [None] * cfg.requests_per_rank
             pending[0] = _batch_irecv(recv_kv_bufs[0], recv_seed_bufs[0])
             with torch.no_grad():
@@ -333,39 +342,36 @@ def _run_torchrun_worker(
                     if handles is None:
                         raise RuntimeError("Missing receive handle in overlap pipeline")
                     _wait_handles(handles)
-                    kv_cache = kv_caches[req_idx]
-                    kv_cache[:, : cfg.context_window] = recv_kv_bufs[req_idx]
+                    decode_kv_cache[:, : cfg.context_window].copy_(recv_kv_bufs[req_idx])
                     tokens = recv_seed_bufs[req_idx]
                     for step in range(cfg.decode_tokens):
                         _, decode_logits = model.decode(
                             tokens,
-                            kv_cache=kv_cache,
+                            kv_cache=decode_kv_cache,
                             position=cfg.context_window + step,
                         )
                         tokens = torch.argmax(decode_logits[:, -1, :], dim=-1, keepdim=True)
-                    outputs.append(tokens)
+                    outputs[req_idx] = tokens
             return outputs
 
-        kv_chunks: List[torch.Tensor] = []
-        seed_chunks: List[torch.Tensor] = []
-        for _ in range(cfg.requests_per_rank):
-            kv_buf = torch.empty(
-                (cfg.batch_size, cfg.context_window, cfg.hidden_size),
-                device=device,
-                dtype=cfg.dtype,
-            )
-            seed_buf = torch.empty(
-                (cfg.batch_size, 1),
-                device=device,
-                dtype=torch.long,
-            )
+        if not recv_kv_bufs or not recv_seed_bufs or decode_kv_cache is None:
+            raise RuntimeError("Decode receive buffers not initialized")
+        for req_idx in range(cfg.requests_per_rank):
+            kv_buf = recv_kv_bufs[req_idx]
+            seed_buf = recv_seed_bufs[req_idx]
             _recv_blocking(kv_buf, seed_buf)
             torch.cuda.synchronize(device)
             # Naive handoff: sync per request to keep baseline fully serialized.
             _barrier()
-            kv_chunks.append(kv_buf)
-            seed_chunks.append(seed_buf)
-        decoded = _run_decode(cfg, model, kv_chunks, seed_chunks, device)
+        decoded = _run_decode(
+            cfg,
+            model,
+            recv_kv_bufs,
+            recv_seed_bufs,
+            device,
+            kv_cache=decode_kv_cache,
+            outputs=decode_outputs,
+        )
         return decoded
 
     _barrier()
@@ -447,6 +453,13 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
             prefill_model = SimpleMoEGPT(moe_cfg, device=prefill_device).eval()
             decode_model = SimpleMoEGPT(moe_cfg, device=decode_device).eval()
             decode_model.load_state_dict(prefill_model.state_dict())
+            decode_kv_cache = allocate_kv_cache(
+                self.cfg.batch_size,
+                self.cfg.tokens_per_request,
+                self.cfg.hidden_size,
+                self.cfg.dtype,
+                decode_device,
+            )
             prompts = torch.randint(
                 0,
                 self.cfg.vocab_size,
@@ -463,6 +476,8 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                     prefill_model=prefill_model,
                     decode_model=decode_model,
                     prompts=prompts,
+                    decode_kv_cache=decode_kv_cache,
+                    decode_outputs=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)],
                 )
             )
 
@@ -470,6 +485,9 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         if not self._pairs:
             raise RuntimeError("Failed to initialize prompts for verification")
         self._verify_prompt = self._pairs[0].prompts
+        self._pending_outputs = [
+            torch.empty(0) for _ in range(self.num_pairs * self.cfg.requests_per_rank)
+        ]
         for pair in self._pairs:
             torch.cuda.synchronize(pair.prefill_device)
             torch.cuda.synchronize(pair.decode_device)
@@ -478,7 +496,12 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         if not self._pairs:
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        outputs: List[torch.Tensor] = []
+        expected_outputs = self.num_pairs * self.cfg.requests_per_rank
+        outputs = self._pending_outputs
+        if len(outputs) != expected_outputs:
+            outputs = [torch.empty(0) for _ in range(expected_outputs)]
+            self._pending_outputs = outputs
+        output_idx = 0
         with torch.no_grad():
             for pair in self._pairs:
                 kv_chunks, seed_chunks = _run_prefill(self.cfg, pair.prefill_model, pair.prompts)
@@ -488,8 +511,12 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                     [kv.to(pair.decode_device, non_blocking=self.overlap) for kv in kv_chunks],
                     [seed.to(pair.decode_device, non_blocking=self.overlap) for seed in seed_chunks],
                     pair.decode_device,
+                    kv_cache=pair.decode_kv_cache,
+                    outputs=pair.decode_outputs,
                 )
-                outputs.extend(decoded)
+                for decoded_tokens in decoded:
+                    outputs[output_idx] = decoded_tokens
+                    output_idx += 1
 
         self._pending_outputs = outputs
         self._output = None
