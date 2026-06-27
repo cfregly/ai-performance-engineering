@@ -4136,6 +4136,9 @@ def test_ch04_nvshmem_microbench_defers_output_tensor_outside_hot_loop() -> None
 
 def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch15" / "disaggregated_inference_single_common.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _allocate_kv_cache", maxsplit=1
+    )[0]
     output_helper = source.split("def _set_output_from_tokens", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -4147,8 +4150,15 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     )[0]
 
     assert "torch.cat(" not in output_helper
+    assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in setup_section
     assert "self._pending_outputs = outputs" in output_helper
     assert "torch.cat(" not in baseline_benchmark
+    assert "outputs: List[torch.Tensor] = []" not in baseline_benchmark
+    assert "outputs = self._pending_outputs" in baseline_benchmark
+    assert "output_idx = 0" in baseline_benchmark
+    assert "outputs.append(" not in baseline_benchmark
+    assert "outputs[output_idx] = self._run_decode_loop(self._baseline_kv_cache, seed_tokens)" in baseline_benchmark
+    assert "output_idx += 1" in baseline_benchmark
     assert "kv_cpu.to(self.device)" not in baseline_benchmark
     assert "hidden.cpu()" not in baseline_benchmark
     assert "self._baseline_kv_cache = self._allocate_kv_cache()" in baseline_benchmark

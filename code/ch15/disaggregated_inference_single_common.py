@@ -148,6 +148,8 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._param_count = sum(p.numel() for p in self.prefill_model.parameters()) + sum(
             p.numel() for p in self.decode_model.parameters()
         )
+        self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
+        self._output = None
         torch.cuda.synchronize(self.device)
 
     def _allocate_kv_cache(self) -> torch.Tensor:
@@ -292,7 +294,11 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
         if self._baseline_kv_cache is None or self._kv_host_staging is None:
             raise RuntimeError("Baseline KV staging buffers not initialized")
 
-        outputs: List[torch.Tensor] = []
+        outputs = self._pending_outputs
+        if len(outputs) != self.cfg.requests_per_rank:
+            outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
+            self._pending_outputs = outputs
+        output_idx = 0
         with torch.no_grad():
             for idx in range(self.cfg.requests_per_rank):
                 prompt = self.prompts[idx]
@@ -303,7 +309,8 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
                     self._kv_host_staging,
                     non_blocking=False,
                 )
-                outputs.append(self._run_decode_loop(self._baseline_kv_cache, seed_tokens))
+                outputs[output_idx] = self._run_decode_loop(self._baseline_kv_cache, seed_tokens)
+                output_idx += 1
 
         self._set_output_from_tokens(outputs)
 
