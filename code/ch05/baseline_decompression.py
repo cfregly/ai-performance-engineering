@@ -19,7 +19,6 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def __init__(self) -> None:
         super().__init__()
         self.counts: Optional[torch.Tensor] = None
-        self.counts_i64: Optional[torch.Tensor] = None
         self.values: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(bytes_per_iteration=float(1024 * 1024 * 4))
@@ -32,18 +31,17 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("total_len must be divisible by run_len for this benchmark")
         num_runs = total_len // run_len
         self.counts = torch.full((num_runs,), run_len, dtype=torch.int32)
-        self.counts_i64 = self.counts.to(torch.int64)
         self.values = torch.randn((num_runs,), dtype=torch.float32)
         self.output = None
 
     def benchmark_fn(self) -> Optional[dict]:
-        if self.counts_i64 is None or self.values is None:
+        if self.counts is None or self.values is None:
             raise RuntimeError("SKIPPED: missing encoded RLE buffers")
 
         enable_nvtx = get_nvtx_enabled(self.get_config())
         start = self._record_start()
         with nvtx_range("cpu_decompress", enable=enable_nvtx):
-            decompressed = torch.repeat_interleave(self.values, self.counts_i64)
+            decompressed = torch.repeat_interleave(self.values, self.counts)
         latency_ms = self._record_stop(start)
         self.output = decompressed.detach()
         self._payload_counts = self.counts

@@ -19,7 +19,6 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def __init__(self) -> None:
         super().__init__()
         self.counts: Optional[torch.Tensor] = None
-        self.counts_i64: Optional[torch.Tensor] = None
         self.values: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._run_len: int = 0
@@ -39,14 +38,13 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         counts = torch.full((num_runs,), run_len, dtype=torch.int32)
         values = torch.randn((num_runs,), dtype=torch.float32)
         self.counts = counts.to(self.device)
-        self.counts_i64 = self.counts.to(torch.int64)
         self.values = values.to(self.device)
         self._run_len = int(run_len)
         self._output_matrix = torch.empty((num_runs, run_len), device=self.device, dtype=self.values.dtype)
         self._output_flat = self._output_matrix.reshape(-1)
 
     def benchmark_fn(self) -> Optional[dict]:
-        if self.counts_i64 is None or self.values is None or self._output_matrix is None or self._output_flat is None:
+        if self.counts is None or self.values is None or self._output_matrix is None or self._output_flat is None:
             raise RuntimeError("SKIPPED: missing encoded RLE buffers")
 
         enable_nvtx = get_nvtx_enabled(self.get_config())
