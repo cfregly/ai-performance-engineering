@@ -4820,6 +4820,11 @@ def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
     assert "self._group_offsets = torch.empty(" in setup_section
     assert "self._group_offsets = torch.zeros(" not in setup_section
     assert "torch.cumsum(group_counts, dim=0, out=self._group_offsets[1:])" in setup_section
+    assert "with torch.inference_mode():" in setup_section
+    assert "with torch.no_grad():" not in setup_section
+    for run_section in (baseline_section, overlap_section, hierarchical_section):
+        assert "with torch.inference_mode():" in run_section
+        assert "with torch.no_grad():" not in run_section
     assert "self._baseline_out" not in source
     assert "self._local_out" not in source
     assert "self._remote_out" not in source

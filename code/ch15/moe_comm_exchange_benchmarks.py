@@ -153,7 +153,7 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.expert(flat)
         self._synchronize()
 
@@ -192,7 +192,7 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         flat = self.inputs.view(-1, self.hidden_size)
 
         with self._nvtx_range(self.label):
-            with torch.no_grad():
+            with torch.inference_mode():
                 torch.index_select(flat, 0, self._baseline_perm, out=self._baseline_packed)
                 baseline_out = self.expert(self._baseline_packed)
                 self._out_flat.index_copy_(0, self._baseline_perm, baseline_out)
@@ -215,7 +215,7 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         flat = self.inputs.view(-1, self.hidden_size)
 
         with self._nvtx_range(self.label):
-            with torch.no_grad():
+            with torch.inference_mode():
                 if self._remote_perm.numel() > 0:
                     with torch.cuda.stream(self._comm_stream):
                         self._remote_packed.copy_(self._remote_cpu_sorted, non_blocking=True)
@@ -241,7 +241,7 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         with self._nvtx_range(self.label):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self._hierarchical_packed.copy_(self._hierarchical_cpu_sorted, non_blocking=True)
                 for start, end in self._group_ranges:
                     if end <= start:
