@@ -110,6 +110,10 @@ def test_decode_common_inference_paths_skip_autograd_bookkeeping() -> None:
     source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
         encoding="utf-8"
     )
+    init_model_section = source.split("def _init_model", maxsplit=1)[1].split(
+        "def _cache_te_weight_workspaces",
+        maxsplit=1,
+    )[0]
     te_cache_section = source.split("def _cache_te_weight_workspaces", maxsplit=1)[1].split(
         "def _init_buffers",
         maxsplit=1,
@@ -126,6 +130,8 @@ def test_decode_common_inference_paths_skip_autograd_bookkeeping() -> None:
     assert "with torch.inference_mode(), te.fp8_autocast(enabled=True, fp8_recipe=self.fp8_recipe):" in te_cache_section
     assert "with torch.inference_mode(), self.sdpa_ctx_factory():" in prefill_section
     assert "with torch.inference_mode(), self.sdpa_ctx_factory():" in decode_step_section
+    assert "with torch.inference_mode():" in init_model_section
+    assert "with torch.no_grad():" not in init_model_section
     assert "with torch.no_grad(), te.fp8_autocast" not in te_cache_section
     assert "with torch.no_grad(), self.sdpa_ctx_factory()" not in prefill_section
     assert "with torch.no_grad(), self.sdpa_ctx_factory()" not in decode_step_section

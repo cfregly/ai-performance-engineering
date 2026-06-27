@@ -326,7 +326,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 params_dtype=self.dtype,
                 device=self.device,
             )
-            with torch.no_grad():
+            with torch.inference_mode():
                 te_linear.weight.copy_(ref.weight.to(self.device))
                 if bias and te_linear.bias is not None and ref.bias is not None:
                     te_linear.bias.copy_(ref.bias.to(self.device))
@@ -344,7 +344,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 params_dtype=self.dtype,
                 device=self.device,
             )
-            with torch.no_grad():
+            with torch.inference_mode():
                 te_mlp.layer_norm_weight.copy_(ref_ln.weight.to(self.device))
                 te_mlp.layer_norm_bias.copy_(ref_ln.bias.to(self.device))
                 te_mlp.fc1_weight.copy_(ref_fc1.weight.to(self.device))
