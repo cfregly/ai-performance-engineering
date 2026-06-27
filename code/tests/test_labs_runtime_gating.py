@@ -247,6 +247,21 @@ def test_nvfp4_group_gemm_scale_packer_reuses_scratch_tensor() -> None:
     torch.testing.assert_close(partial_sfb_tiles[0, 0], expected_sfb.reshape(128, 16))
 
 
+def test_nvfp4_group_gemm_prepare_zeroes_only_padding_tails() -> None:
+    source = inspect.getsource(custom_cuda_submission.prepare_custom_cuda)
+
+    assert "a_pad = torch.zeros((m_padded, k_bytes)" not in source
+    assert "b_pad = torch.zeros((n_padded_ab, k_bytes)" not in source
+    assert "a_pad = torch.empty((m_padded, k_bytes)" in source
+    assert "b_pad = torch.empty((n_padded_ab, k_bytes)" in source
+    assert "a_pad[m:, :].zero_()" in source
+    assert "b_pad[n:, :].zero_()" in source
+    assert "padded = torch.zeros((m_tiles_tma,)" not in source
+    assert "padded = torch.zeros((n_tiles_tma,)" not in source
+    assert "padded[m_tiles_actual:].zero_()" in source
+    assert "padded[n_tiles_actual:].zero_()" in source
+
+
 def test_trtllm_capture_verification_payload_uses_small_cpu_slice() -> None:
     bench = OptimizedTrtLlmPhi35MoeBenchmark()
     bench.input_ids = torch.arange(256, dtype=torch.long).view(1, 256)

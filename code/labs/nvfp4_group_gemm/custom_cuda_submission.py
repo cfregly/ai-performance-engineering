@@ -528,10 +528,14 @@ def prepare_custom_cuda(data_list: Sequence[input_t]) -> Optional[Sequence[tuple
                 n_padded_sf = ((n + 127) // 128) * 128
             n_padded_ab = n_padded_sf + extra_b_rows
 
-            a_pad = torch.zeros((m_padded, k_bytes), dtype=torch.uint8, device="cuda")
+            a_pad = torch.empty((m_padded, k_bytes), dtype=torch.uint8, device="cuda")
             a_pad[:m, :].copy_(a_u8)
-            b_pad = torch.zeros((n_padded_ab, k_bytes), dtype=torch.uint8, device="cuda")
+            if m_padded > m:
+                a_pad[m:, :].zero_()
+            b_pad = torch.empty((n_padded_ab, k_bytes), dtype=torch.uint8, device="cuda")
             b_pad[:n, :].copy_(b_u8)
+            if n_padded_ab > n:
+                b_pad[n:, :].zero_()
 
             # Scale factors: use the GPU MODE-reordered float8 tensors, but invert the permute
             # to get a contiguous rank-5 layout [mm, kk, 32, 4, 4] (l=1 dropped).
@@ -557,8 +561,9 @@ def prepare_custom_cuda(data_list: Sequence[input_t]) -> Optional[Sequence[tuple
             if m_tiles_tma < m_tiles_actual:
                 raise ValueError("Internal error: padded m_tiles is smaller than reordered tensor tiles")
             if m_tiles_tma != m_tiles_actual:
-                padded = torch.zeros((m_tiles_tma,) + tuple(sfa_inv_u8.shape[1:]), dtype=torch.uint8, device="cuda")
+                padded = torch.empty((m_tiles_tma,) + tuple(sfa_inv_u8.shape[1:]), dtype=torch.uint8, device="cuda")
                 padded[:m_tiles_actual].copy_(sfa_inv_u8)
+                padded[m_tiles_actual:].zero_()
                 sfa_inv_u8 = padded
 
             # Likewise, pad SFB's tile dimension so its tensormap height (based on padded N) matches
@@ -569,8 +574,9 @@ def prepare_custom_cuda(data_list: Sequence[input_t]) -> Optional[Sequence[tuple
             if n_tiles_tma < n_tiles_actual:
                 raise ValueError("Internal error: padded n_tiles is smaller than reordered tensor tiles")
             if n_tiles_tma != n_tiles_actual:
-                padded = torch.zeros((n_tiles_tma,) + tuple(sfb_inv_u8.shape[1:]), dtype=torch.uint8, device="cuda")
+                padded = torch.empty((n_tiles_tma,) + tuple(sfb_inv_u8.shape[1:]), dtype=torch.uint8, device="cuda")
                 padded[:n_tiles_actual].copy_(sfb_inv_u8)
+                padded[n_tiles_actual:].zero_()
                 sfb_inv_u8 = padded
 
             # For UnrollN=2 we keep K-major SFB packing so adjacent N tiles are contiguous
