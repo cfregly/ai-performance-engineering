@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ import torch
 from ch04.baseline_nixl_tier_handoff import get_benchmark as get_baseline_benchmark
 from ch04.optimized_nixl_tier_handoff import get_benchmark as get_optimized_benchmark
 from labs.nccl_nixl_nvshmem.comm_stack_common import TierHandoffBenchmark
+from labs.nccl_nixl_nvshmem.run_lab_nccl_nixl_nvshmem import _measure
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,6 +45,19 @@ def test_ch04_nixl_tier_handoff_optimized_reuses_pack_buffer() -> None:
     assert ".cpu().tolist()" not in benchmark_section
     assert "selected_cpu = self.selected_cpu" in benchmark_section
     assert "self.selected_cpu = [int(idx) for idx in selected_cpu.tolist()] if not self.optimized else None" in source
+
+
+def test_nccl_nixl_runner_measure_cuda_path_uses_single_event_bracket() -> None:
+    source = inspect.getsource(_measure)
+    cuda_section = source.split("if torch.cuda.is_available():", maxsplit=1)[1].split(
+        "timings = []",
+        maxsplit=1,
+    )[0]
+
+    assert cuda_section.count("torch.cuda.synchronize()") == 2
+    assert cuda_section.count("start.record()") == 1
+    assert cuda_section.count("end.record()") == 1
+    assert "timings.append(start.elapsed_time(end))" not in cuda_section
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for ch04 nixl tier handoff benchmark")
