@@ -5485,6 +5485,46 @@ def test_ch19_fp8_compiled_matmul_uses_cuda_event_timing() -> None:
     assert "time.perf_counter()" not in benchmark_section
 
 
+def test_ch19_quantization_validator_reuses_timing_events() -> None:
+    source = (REPO_ROOT / "ch19" / "validate_quantization_performance.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = source.split("def benchmark_function", maxsplit=1)[1].split(
+        "# Calculate statistics",
+        maxsplit=1,
+    )[0]
+    warmup_section = benchmark_section.split("# Warmup", maxsplit=1)[1].split(
+        "# Clear memory stats",
+        maxsplit=1,
+    )[0]
+    timing_section = benchmark_section.split(
+        'with nvtx.range(standardize_nvtx_label(f"compute_math:{self.name}_{precision}")):',
+        maxsplit=1,
+    )[1]
+    cuda_timing_section = timing_section.split("if cuda_available:", maxsplit=1)[
+        1
+    ].split("else:", maxsplit=1)[0]
+    before_sample_loop = cuda_timing_section.split(
+        "for i in range(benchmark_iters):",
+        maxsplit=1,
+    )[0]
+    sample_loop = cuda_timing_section.split(
+        "for i in range(benchmark_iters):",
+        maxsplit=1,
+    )[1]
+
+    assert "torch.cuda.synchronize()" not in warmup_section.split(
+        "for _ in range(warmup_iters):", maxsplit=1
+    )[1].split("if cuda_available:", maxsplit=1)[0]
+    assert "if cuda_available:\n            torch.cuda.synchronize()" in warmup_section
+    assert before_sample_loop.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "torch.cuda.Event(enable_timing=True)" not in sample_loop
+    assert "start_event.record()" in sample_loop
+    assert "end_event.record()" in sample_loop
+    assert "end_event.synchronize()" in sample_loop
+    assert "times.append(start_event.elapsed_time(end_event))" in sample_loop
+
+
 def test_ch19_nvfp4_training_defers_verification_forward_outside_hot_loop() -> None:
     for filename in ("baseline_nvfp4_training.py", "optimized_nvfp4_training.py"):
         source = (REPO_ROOT / "ch19" / filename).read_text(encoding="utf-8")

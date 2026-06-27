@@ -120,8 +120,10 @@ class ProfiledBenchmark:
         Returns:
             BenchmarkResult with comprehensive metrics
         """
+        cuda_available = torch.cuda.is_available()
+
         # Get GPU info
-        if torch.cuda.is_available():
+        if cuda_available:
             props = torch.cuda.get_device_properties(0)
             gpu_name = props.name
             compute_capability = f"{props.major}.{props.minor}"
@@ -133,31 +135,32 @@ class ProfiledBenchmark:
         with nvtx.range(standardize_nvtx_label(f"warmup:{self.name}_{precision}")):
             for _ in range(warmup_iters):
                 _ = func(*args)
-                if torch.cuda.is_available():
-                    torch.cuda.synchronize()
+        if cuda_available:
+            torch.cuda.synchronize()
 
         # Clear memory stats
-        if torch.cuda.is_available():
+        if cuda_available:
             torch.cuda.reset_peak_memory_stats()
             torch.cuda.empty_cache()
 
         # Benchmark
         times: List[float] = []
         with nvtx.range(standardize_nvtx_label(f"compute_math:{self.name}_{precision}")):
-            for i in range(benchmark_iters):
-                if torch.cuda.is_available():
-                    start_event = torch.cuda.Event(enable_timing=True)
-                    end_event = torch.cuda.Event(enable_timing=True)
+            if cuda_available:
+                start_event = torch.cuda.Event(enable_timing=True)
+                end_event = torch.cuda.Event(enable_timing=True)
+                for i in range(benchmark_iters):
                     start_event.record()
                     with nvtx.range(standardize_nvtx_label(f"iteration:{self.name}_{precision}_{i}")):
                         _ = func(*args)
                     end_event.record()
-                    torch.cuda.synchronize()
-                    elapsed_ms = start_event.elapsed_time(end_event)
-                    times.append(elapsed_ms)
-                else:
+                    end_event.synchronize()
+                    times.append(start_event.elapsed_time(end_event))
+            else:
+                for i in range(benchmark_iters):
                     start = time.time()
-                    _ = func(*args)
+                    with nvtx.range(standardize_nvtx_label(f"iteration:{self.name}_{precision}_{i}")):
+                        _ = func(*args)
                     elapsed_ms = (time.time() - start) * 1000
                     times.append(elapsed_ms)
 
@@ -168,7 +171,7 @@ class ProfiledBenchmark:
         std_time_ms = (sum((t - avg_time_ms) ** 2 for t in times) / len(times)) ** 0.5
 
         # Memory statistics
-        if torch.cuda.is_available():
+        if cuda_available:
             memory_allocated_mb = torch.cuda.max_memory_allocated() / 1024**2
             memory_reserved_mb = torch.cuda.max_memory_reserved() / 1024**2
         else:
