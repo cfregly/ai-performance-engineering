@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -25,6 +27,8 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.options = get_decode_options()
         self.inputs = None
         self.output: Optional[torch.Tensor] = None
+        self._product_buffer: Optional[torch.Tensor] = None
+        self._dot_buffer: Optional[torch.Tensor] = None
         batch, seq_len, head_dim = resolve_shapes()
         self.seq_len = seq_len
         self.batch = batch
@@ -38,19 +42,38 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
+        self.batch = int(self.inputs.q.shape[0])
+        self.seq_len = int(self.inputs.q.shape[1])
         self.head_dim = self.inputs.q.shape[-1]
         self.hidden_dim = self.head_dim
+        self._product_buffer = torch.empty(
+            self.batch,
+            self.head_dim,
+            device=self.inputs.q.device,
+            dtype=self.inputs.q.dtype,
+        )
+        self._dot_buffer = torch.empty(
+            self.batch,
+            1,
+            device=self.inputs.q.device,
+            dtype=self.inputs.q.dtype,
+        )
         self._synchronize()
 
     def _decode_step(self, t: int) -> None:
         assert self.inputs is not None
+        assert self._product_buffer is not None
+        assert self._dot_buffer is not None
         # Compute a simple dot per sequence for timestep t, then scale V.
         q_t = self.inputs.q[:, t, :]  # [batch, head_dim]
         k_t = self.inputs.k[:, t, :]
         v_t = self.inputs.v[:, t, :]
+        product = self._product_buffer
+        dot = self._dot_buffer
 
-        dot = (q_t * k_t).sum(dim=-1, keepdim=True)  # [batch, 1]
-        self.inputs.out[:, t, :] = v_t * dot
+        torch.mul(q_t, k_t, out=product)
+        torch.sum(product, dim=-1, keepdim=True, out=dot)
+        torch.mul(v_t, dot, out=self.inputs.out[:, t, :])
 
     def benchmark_fn(self) -> None:
         if self.inputs is None:
@@ -87,6 +110,8 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         torch.cuda.empty_cache()
         self.inputs = None
         self.output = None
+        self._product_buffer = None
+        self._dot_buffer = None
 
     def get_config(self) -> BenchmarkConfig:
         # Keep iterations small; focus on relative speedups and profiling

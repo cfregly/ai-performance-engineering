@@ -2071,6 +2071,30 @@ def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
     assert 'start_decode = self._piecewise_events["start_decode"]' in benchmark_section
 
 
+def test_persistent_decode_baseline_reuses_decode_step_buffers() -> None:
+    source = (REPO_ROOT / "labs" / "persistent_decode" / "baseline_persistent_decode.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _decode_step",
+        maxsplit=1,
+    )[0]
+    decode_step_section = source.split("def _decode_step", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+
+    assert "self._product_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._dot_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._product_buffer = torch.empty(" in setup_section
+    assert "self._dot_buffer = torch.empty(" in setup_section
+    assert "torch.mul(q_t, k_t, out=product)" in decode_step_section
+    assert "torch.sum(product, dim=-1, keepdim=True, out=dot)" in decode_step_section
+    assert "torch.mul(v_t, dot, out=self.inputs.out[:, t, :])" in decode_step_section
+    assert "(q_t * k_t).sum" not in decode_step_section
+    assert "v_t * dot" not in decode_step_section
+
+
 def test_persistent_decode_tma_buffers_avoid_zero_fill_before_overwrite() -> None:
     prefill_targets = [
         REPO_ROOT / "labs" / "persistent_decode" / "baseline_tma_prefill_decode.py",
