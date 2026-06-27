@@ -3436,15 +3436,29 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
         "#============================================================================",
         maxsplit=1,
     )[0]
-    info_section = demo_source.split("def get_calibration_info", maxsplit=1)[1].split(
+    info_section = demo_source.split("def _calibration_info_list", maxsplit=1)[1].split(
         "class StaticFP8Model",
         maxsplit=1,
     )[0]
 
-    assert "scale_values = torch.stack(" in scale_section
+    assert "self._scale_values: Optional[torch.Tensor] = None" in demo_source
+    assert "self._scale_values_host: Optional[torch.Tensor] = None" in demo_source
+    assert "scale_slice = self._scale_values[:count]" in scale_section
+    assert "scale_slice[2 * idx].copy_(layer.input_scale)" in scale_section
+    assert "scale_slice[2 * idx + 1].copy_(layer.weight_scale)" in scale_section
+    assert "scale_host.copy_(scale_slice)" in scale_section
+    assert "scale_values = scale_host.tolist()" in scale_section
+    assert "scale_values = torch.stack(" not in scale_section
     assert "layer.input_scale.item()" not in scale_section
     assert "self.is_calibrated.item()" not in info_section
-    assert "is_calibrated, input_scale, weight_scale = torch.stack(" in info_section
+    assert "self._calibration_info_host: Optional[torch.Tensor] = None" in demo_source
+    assert "def _calibration_info_list(self)" in demo_source
+    assert "values[0].copy_(self.is_calibrated)" in info_section
+    assert "values[1].copy_(self.input_scale)" in info_section
+    assert "values[2].copy_(self.weight_scale)" in info_section
+    assert "self._calibration_info_host.copy_(values)" in info_section
+    assert "is_calibrated, input_scale, weight_scale = self._calibration_info_list()" in info_section
+    assert "is_calibrated, input_scale, weight_scale = torch.stack(" not in info_section
 
 
 def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_loop() -> None:

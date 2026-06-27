@@ -160,6 +160,12 @@ class StaticFP8Linear(nn.Module):
         self.register_buffer('input_scale', torch.tensor(1.0))
         self.register_buffer('weight_scale', torch.tensor(1.0))
         self.register_buffer('is_calibrated', torch.tensor(False))
+        self.register_buffer(
+            '_calibration_info_values',
+            torch.empty(3, dtype=torch.float32, device=device),
+            persistent=False,
+        )
+        self._calibration_info_host: Optional[torch.Tensor] = None
         
         # Calibration state
         self._calibrating = False
@@ -258,16 +264,36 @@ class StaticFP8Linear(nn.Module):
             output = torch.nn.functional.linear(x, self.weight, self.bias)
         
         return output
+
+    def _calibration_info_list(self) -> List[float]:
+        values = self._calibration_info_values
+        if values.device != self.input_scale.device:
+            self._calibration_info_values = torch.empty(
+                3,
+                dtype=torch.float32,
+                device=self.input_scale.device,
+            )
+            values = self._calibration_info_values
+        values[0].copy_(self.is_calibrated)
+        values[1].copy_(self.input_scale)
+        values[2].copy_(self.weight_scale)
+        needs_pinned = values.device.type == "cuda"
+        if (
+            self._calibration_info_host is None
+            or (needs_pinned and not self._calibration_info_host.is_pinned())
+        ):
+            self._calibration_info_host = torch.empty(
+                3,
+                dtype=torch.float32,
+                device="cpu",
+                pin_memory=needs_pinned,
+            )
+        self._calibration_info_host.copy_(values)
+        return [float(value) for value in self._calibration_info_host.tolist()]
     
     def get_calibration_info(self) -> dict:
         """Get calibration information."""
-        is_calibrated, input_scale, weight_scale = torch.stack(
-            (
-                self.is_calibrated.to(dtype=torch.float32),
-                self.input_scale.to(dtype=torch.float32),
-                self.weight_scale.to(dtype=torch.float32),
-            )
-        ).tolist()
+        is_calibrated, input_scale, weight_scale = self._calibration_info_list()
         return {
             "is_calibrated": bool(is_calibrated),
             "input_scale": input_scale,
@@ -283,6 +309,8 @@ class StaticFP8Model(nn.Module):
         super().__init__()
         self.model = model
         self._fp8_layers: List[StaticFP8Linear] = []
+        self._scale_values: Optional[torch.Tensor] = None
+        self._scale_values_host: Optional[torch.Tensor] = None
         
         # Find all Linear layers and track for calibration
         self._find_fp8_layers(model)
@@ -387,13 +415,32 @@ class StaticFP8Model(nn.Module):
         """Get all frozen scales."""
         if not self._fp8_layers:
             return {}
-        scale_values = torch.stack(
-            [
-                scale.to(dtype=torch.float32)
-                for layer in self._fp8_layers
-                for scale in (layer.input_scale, layer.weight_scale)
-            ]
-        ).tolist()
+        count = 2 * len(self._fp8_layers)
+        first_scale = self._fp8_layers[0].input_scale
+        if (
+            self._scale_values is None
+            or self._scale_values.device != first_scale.device
+            or self._scale_values.numel() < count
+        ):
+            self._scale_values = torch.empty(
+                count,
+                dtype=torch.float32,
+                device=first_scale.device,
+            )
+            self._scale_values_host = torch.empty(
+                count,
+                dtype=torch.float32,
+                device="cpu",
+                pin_memory=first_scale.device.type == "cuda",
+            )
+        assert self._scale_values_host is not None
+        scale_slice = self._scale_values[:count]
+        for idx, layer in enumerate(self._fp8_layers):
+            scale_slice[2 * idx].copy_(layer.input_scale)
+            scale_slice[2 * idx + 1].copy_(layer.weight_scale)
+        scale_host = self._scale_values_host[:count]
+        scale_host.copy_(scale_slice)
+        scale_values = scale_host.tolist()
         scales = {}
         for i in range(len(self._fp8_layers)):
             scales[f"layer_{i}"] = (scale_values[2 * i], scale_values[2 * i + 1])
