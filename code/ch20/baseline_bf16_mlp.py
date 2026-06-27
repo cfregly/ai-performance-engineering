@@ -15,7 +15,6 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
@@ -70,13 +69,13 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         # Warmup
         for _ in range(5):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.x)
     
     def benchmark_fn(self) -> None:
         assert self.model is not None and self.x is not None
         with self._nvtx_range("multiple_techniques_baseline"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 out = self.model(self.x)
                 _ = out.sum()  # Force materialization
                 self.output = out.detach()

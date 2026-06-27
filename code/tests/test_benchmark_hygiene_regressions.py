@@ -1861,6 +1861,22 @@ def test_ch20_optimized_forward_paths_use_inference_mode() -> None:
         assert "with torch.no_grad():" not in benchmark_section
 
 
+def test_ch20_baseline_inference_paths_use_inference_mode() -> None:
+    for relative in (
+        "ch20/baseline_autotuning.py",
+        "ch20/baseline_bf16_mlp.py",
+        "ch20/baseline_moe.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+
+        assert "with torch.inference_mode():" in source
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "with torch.no_grad():" not in source
+
+
 def test_ch20_end_to_end_bandwidth_uses_inplace_activation() -> None:
     for relative in (
         "ch20/baseline_end_to_end_bandwidth.py",
