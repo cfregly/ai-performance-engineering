@@ -70,7 +70,7 @@ def _gemm_tflops(size: int, iters: int, warmup: int, dtype: torch.dtype) -> dict
     for _ in range(iters):
         _ = a @ b
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
 
     clocks_after = _nvml_clocks(0)
 

@@ -185,4 +185,4 @@ class OptimizedPrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
             self.cfg.batch_size,
             self.cfg.hidden_size,
         )
-        self._pending_outputs = []
+        self._pending_outputs.clear()

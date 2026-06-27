@@ -133,8 +133,7 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
         with self._nvtx_range("pipeline_sequential_optimized"):
             with torch.inference_mode():
                 for _ in range(self.repeats):
-                    outputs = self._run_pipelined_once()
-                self._last_outputs = outputs
+                    self._run_pipelined_once()
 
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self._last_outputs is None or self.stages is None:

@@ -1788,10 +1788,12 @@ def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:
         "ch14/triton_persistent_demo.py": "end.synchronize()",
         "ch14/sliding_window_demo.py": "end.synchronize()",
         "ch14/flex_attention_sparse_demo.py": "end.synchronize()",
+        "ch14/training_large_model_1_5x.py": "end.synchronize()",
         "ch16/inference_optimizations_blackwell.py": "end.synchronize()",
         "ch16/gpt_quick_test.py": "end.synchronize()",
         "ch16/test_fp8_quantization_real.py": "end.synchronize()",
         "ch16/moe_performance_benchmark.py": "end_event.synchronize()",
+        "ch16/synthetic_moe_inference_benchmark.py": "end_event.synchronize()",
         "ch18/flex_attention_native.py": "end.synchronize()",
         "ch18/flex_attention_enhanced.py": "end.synchronize()",
         "ch18/flex_attention_large_model.py": "end.synchronize()",
@@ -1804,6 +1806,11 @@ def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:
         "labs/cutlass_profiler_kernel_selector/run_triton_matmul.py": "end.synchronize()",
         "labs/moe_decode_blackwell_matrix/runner.py": "end_event.synchronize()",
         "labs/moe_optimization_journey/triton_fused_moe.py": "end.synchronize()",
+        "labs/nvfp4_dual_gemm/env_probe_b200.py": "end.synchronize()",
+        "labs/nvfp4_dual_gemm/local_eval.py": "end.synchronize()",
+        "labs/nvfp4_dual_gemm/official_semantics_eval.py": "end.synchronize()",
+        "labs/nvfp4_gemm/local_eval_official597.py": "end_event.synchronize()",
+        "labs/nvfp4_gemm/local_eval_submission.py": "end.synchronize()",
     }
 
     global_wait_after_event = re.compile(
@@ -2301,7 +2308,8 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
     assert "with torch.inference_mode():" in optimized_benchmark
     assert "with torch.no_grad():" not in optimized_benchmark
     assert "torch.cat(" not in optimized_benchmark
-    assert "self._last_outputs = outputs" in optimized_benchmark
+    assert "self._run_pipelined_once()" in optimized_benchmark
+    assert "self._last_outputs = outputs" not in optimized_benchmark
     assert "torch.cat([out.detach() for out in self._last_outputs], dim=0)" not in optimized_capture
     assert "self.output = torch.cat(self._last_outputs, dim=0).detach()" in optimized_capture
     assert "torch.cuda.Event(" not in optimized_benchmark
@@ -5497,7 +5505,8 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "outputs.append(" not in baseline_benchmark
     assert "torch.stack(" not in baseline_benchmark
     assert "self._output = decoded.view(" in optimized_benchmark
-    assert "self._pending_outputs = []" in optimized_benchmark
+    assert "self._pending_outputs.clear()" in optimized_benchmark
+    assert "self._pending_outputs = []" not in optimized_benchmark
     assert "with torch.inference_mode():" in optimized_benchmark
     assert "list(" not in optimized_benchmark
 

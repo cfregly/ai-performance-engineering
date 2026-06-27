@@ -105,7 +105,7 @@ def _run_case(
         for data in data_batch:
             submission_mod.custom_kernel(data)
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         repeat_us = float(start.elapsed_time(end) * 1000.0)
         samples_us.append(repeat_us / float(inputs_per_repeat))
 

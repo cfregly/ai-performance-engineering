@@ -183,7 +183,7 @@ def _worker_run_single_benchmark(
         for data in data_list:
             outputs.append(custom_kernel(data))
         end_event.record()
-        torch.cuda.synchronize()
+        end_event.synchronize()
 
         duration_ns = (start_event.elapsed_time(end_event) / NUM_ITERATIONS_PER_BENCHMARK) * 1e6
         durations.append(float(duration_ns))

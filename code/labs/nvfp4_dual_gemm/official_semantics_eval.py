@@ -15,6 +15,7 @@ import argparse
 import json
 import math
 import os
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -148,7 +149,7 @@ def _run_single_benchmark_case(
         for data in data_list:
             outputs_iter.append(submission_mod.custom_kernel(data))
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
 
         duration_ns = (start.elapsed_time(end) / float(num_iterations)) * 1e6
 

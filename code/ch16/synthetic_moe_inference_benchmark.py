@@ -436,7 +436,7 @@ def benchmark_inference(model, input_ids, name, num_warmup=20, num_iters=100, *,
                 else:
                     _ = model(input_ids)
             end_event.record()
-        torch.cuda.synchronize()
+        end_event.synchronize()
         elapsed = start_event.elapsed_time(end_event) / 1000.0
     else:
         start = time.perf_counter()

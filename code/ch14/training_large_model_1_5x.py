@@ -204,7 +204,7 @@ def benchmark_training(model, input_ids, labels, optimizer, name, num_warmup=10,
             print('.', end='', flush=True)
         _ = training_step(model, input_ids, labels, optimizer)
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     elapsed = start.elapsed_time(end) / 1000.0
     print(" done")
     
