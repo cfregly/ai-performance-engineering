@@ -141,18 +141,24 @@ def compare_mask_strategies() -> None:
     data = torch.randn(n, device=device)
     mask = torch.rand(n, device=device) < 0.1  # 10% active
 
-    zeros = torch.zeros_like(data)
+    inactive = mask.logical_not()
     active_indices = mask.nonzero(as_tuple=False).squeeze()
+    all_output = torch.empty_like(data)
+    all_scratch = torch.empty_like(data)
+    active_output = torch.empty_like(data)
 
     def process_all():
-        processed = torch.sin(data) * torch.cos(data)
-        return torch.where(mask, processed, zeros)
+        torch.sin(data, out=all_output)
+        torch.cos(data, out=all_scratch)
+        all_output.mul_(all_scratch)
+        all_output.masked_fill_(inactive, 0.0)
+        return all_output
 
     def process_active_only():
         processed = torch.sin(data[active_indices]) * torch.cos(data[active_indices])
-        result = zeros.clone()
-        result[active_indices] = processed
-        return result
+        active_output.zero_()
+        active_output[active_indices] = processed
+        return active_output
 
     res_all = None
     def run_all():

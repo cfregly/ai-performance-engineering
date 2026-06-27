@@ -218,6 +218,23 @@ def test_ch08_threshold_demos_use_relu_without_zero_tensor() -> None:
         assert "return torch.relu(x)" in function_section
 
 
+def test_ch08_mask_strategy_demo_reuses_output_workspaces() -> None:
+    source = _read("ch08/warp_divergence_pytorch.py")
+    mask_section = source.split("def compare_mask_strategies", maxsplit=1)[1].split(
+        "def compiled_conditionals",
+        maxsplit=1,
+    )[0]
+
+    assert "zeros = torch.zeros_like(data)" not in mask_section
+    assert "return torch.where(mask, processed, zeros)" not in mask_section
+    assert "result = zeros.clone()" not in mask_section
+    assert "all_output = torch.empty_like(data)" in mask_section
+    assert "active_output = torch.empty_like(data)" in mask_section
+    assert "torch.sin(data, out=all_output)" in mask_section
+    assert "all_output.masked_fill_(inactive, 0.0)" in mask_section
+    assert "active_output.zero_()" in mask_section
+
+
 def test_ch08_tiling_optimized_wrapper_uses_strict_fast_path() -> None:
     optimized_tiling = _read("ch08/optimized_tiling.py")
 
