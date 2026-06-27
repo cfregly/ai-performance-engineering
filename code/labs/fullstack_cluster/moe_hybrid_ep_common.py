@@ -316,6 +316,7 @@ class DeepSeekHybridEPModule(nn.Module):
         self._cached_bias: Optional[torch.Tensor] = None
         self._buffer_cache: Dict[Tuple[str, torch.device, Tuple[int, ...], torch.dtype], torch.Tensor] = {}
         self._token_index_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
+        self._range_index_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
         self._event_pair_cache: Dict[str, Tuple[torch.cuda.Event, torch.cuda.Event]] = {}
         self._phase_event_cache: Dict[str, PhaseEvents] = {}
         self._route_count_reduce_buffer: Optional[torch.Tensor] = None
@@ -429,6 +430,14 @@ class DeepSeekHybridEPModule(nn.Module):
             if self.top_k != 1:
                 cached.div_(self.top_k, rounding_mode="floor")
             self._token_index_cache[key] = cached
+        return cached
+
+    def _range_indices(self, length: int, device: torch.device) -> torch.Tensor:
+        key = (length, device)
+        cached = self._range_index_cache.get(key)
+        if cached is None:
+            cached = torch.arange(length, device=device, dtype=torch.int64)
+            self._range_index_cache[key] = cached
         return cached
 
     def _local_expert_count_list(self, expert_ids: torch.Tensor) -> List[int]:
@@ -664,7 +673,7 @@ class DeepSeekHybridEPModule(nn.Module):
             return tokens, None
         sort_idx = torch.argsort(dest_ranks)
         inverse_sort = torch.empty_like(sort_idx)
-        inverse_sort[sort_idx] = torch.arange(sort_idx.numel(), device=sort_idx.device)
+        inverse_sort[sort_idx] = self._range_indices(sort_idx.numel(), sort_idx.device)
         sorted_tokens = tokens.index_select(0, sort_idx)
         sorted_weights = weights.index_select(0, sort_idx)
         sorted_token_indices = token_indices.index_select(0, sort_idx)

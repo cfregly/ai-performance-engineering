@@ -275,6 +275,9 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "repeat_interleave(self.top_k)" not in token_indices_section
     assert "torch.arange(num_tokens * self.top_k, device=device, dtype=torch.int64)" in token_indices_section
     assert 'cached.div_(self.top_k, rounding_mode="floor")' in token_indices_section
+    assert "self._range_index_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}" in source
+    assert "def _range_indices(self, length: int, device: torch.device) -> torch.Tensor" in source
+    assert "torch.arange(length, device=device, dtype=torch.int64)" in source
     assert "expanded_tokens = hidden.index_select(0, token_indices)" in route_tokens_section
     assert "hidden.repeat_interleave(self.top_k" not in route_tokens_section
     assert "sort_idx = torch.argsort(expert_ids)" in apply_local_section
@@ -307,6 +310,8 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "def _destination_count_list(self, dest_ranks: torch.Tensor, group_size: int)" in source
     assert "send_counts = self._destination_count_list(dest_ranks, group_size)" in roundtrip_section
     assert "torch.bincount(dest_ranks, minlength=group_size).tolist()" not in roundtrip_section
+    assert "inverse_sort[sort_idx] = self._range_indices(sort_idx.numel(), sort_idx.device)" in roundtrip_section
+    assert "torch.arange(sort_idx.numel()" not in roundtrip_section
     assert '"route_meta"' in roundtrip_section
     assert "meta[:, 0].copy_(sorted_token_indices)" in roundtrip_section
     assert "meta[:, 1].copy_(sorted_local_ids)" in roundtrip_section
