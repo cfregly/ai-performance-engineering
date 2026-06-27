@@ -2824,6 +2824,7 @@ def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
     assert "self._remaining_lengths = torch.empty_like(self._prompt_lengths)" in setup_section
     assert "self._long_prefill = torch.empty_like(self._priorities, dtype=torch.bool)" in setup_section
     assert "self._served_offload_mask = torch.empty_like(self._long_prefill)" in setup_section
+    assert "self._count_values = torch.empty(2, dtype=torch.int64, device=self._priorities.device)" in setup_section
     assert "self._queue_length_rows = self._queue_length_table.tolist()" in setup_section
     assert "long_prefill = (" not in benchmark_section
     assert "capacity = self._queue_lengths" not in benchmark_section
@@ -2848,7 +2849,10 @@ def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
     assert "rejects_tensor = self.batch_size - self._admit_mask.sum()" in vectorized_timed_section
     assert "offloaded_tensor = self._served_offload_mask.sum()" in vectorized_timed_section
     assert ".item()" not in vectorized_timed_section
-    assert "rejects_value, offloaded_value = torch.stack(" in post_timing_section
+    assert "self._count_values[0].copy_(rejects_tensor)" in post_timing_section
+    assert "self._count_values[1].copy_(offloaded_tensor)" in post_timing_section
+    assert "rejects_value, offloaded_value = self._count_values.tolist()" in post_timing_section
+    assert "torch.stack(" not in benchmark_section
     assert "rejects = int(rejects_value)" in post_timing_section
     assert "offloaded = int(offloaded_value)" in post_timing_section
     assert "rejects_tensor.item()" not in post_timing_section

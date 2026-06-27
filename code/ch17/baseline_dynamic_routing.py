@@ -54,6 +54,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._offload_mask: Optional[torch.Tensor] = None
         self._admit_mask: Optional[torch.Tensor] = None
         self._served_offload_mask: Optional[torch.Tensor] = None
+        self._count_values: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         random.seed(42)
@@ -86,6 +87,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._offload_mask = torch.empty_like(self._long_prefill)
             self._admit_mask = torch.empty_like(self._long_prefill)
             self._served_offload_mask = torch.empty_like(self._long_prefill)
+            self._count_values = torch.empty(2, dtype=torch.int64, device=self._priorities.device)
         cfg = self.get_config()
         num_iters = (cfg.warmup or 0) + (cfg.iterations or 0) + 5
         high = self.router.PREFILL_QUEUE_MAX + 6  # match baseline randint upper bound
@@ -202,9 +204,11 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         elapsed_ms = self._record_stop(start)
         if rejects_tensor is not None and offloaded_tensor is not None:
-            rejects_value, offloaded_value = torch.stack(
-                (rejects_tensor, offloaded_tensor)
-            ).tolist()
+            if self._count_values is None:
+                raise RuntimeError("Vectorized count buffer not initialized")
+            self._count_values[0].copy_(rejects_tensor)
+            self._count_values[1].copy_(offloaded_tensor)
+            rejects_value, offloaded_value = self._count_values.tolist()
             rejects = int(rejects_value)
             offloaded = int(offloaded_value)
         self._history["lat_ms"].append(elapsed_ms)
@@ -263,6 +267,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._offload_mask = None
         self._admit_mask = None
         self._served_offload_mask = None
+        self._count_values = None
         self._queue_length_table = None
         self._queue_length_rows = None
         super().teardown()
