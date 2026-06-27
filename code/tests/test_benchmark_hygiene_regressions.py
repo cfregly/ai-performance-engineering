@@ -3078,6 +3078,21 @@ def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
     )
 
 
+def test_ch13_sequence_parallel_worker_reuses_full_sequence_buffer() -> None:
+    source = (REPO_ROOT / "ch13" / "sequence_parallel_benchmark_common.py").read_text(
+        encoding="utf-8"
+    )
+    run_section = source.split("def run_sequence_parallel", maxsplit=1)[1]
+    step_section = run_section.split("def _step", maxsplit=1)[1].split(
+        "for _ in range(max(warmup, 0)):",
+        maxsplit=1,
+    )[0]
+
+    assert "full_sequence_buf = torch.empty(" in run_section
+    assert "torch.cat(gather_buf, dim=1, out=full_sequence_buf)" in step_section
+    assert "full_sequence = torch.cat(gather_buf, dim=1)" not in step_section
+
+
 def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> None:
     perchannel_source = (REPO_ROOT / "ch13" / "fp8_perchannel_demo.py").read_text(encoding="utf-8")
     perchannel_stats = perchannel_source.split("def get_quantization_stats", maxsplit=1)[1].split(

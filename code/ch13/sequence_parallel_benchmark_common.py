@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 import time
-from typing import Optional, Tuple
+from typing import Tuple
 
 import torch
 import torch.distributed as dist
@@ -101,6 +101,15 @@ def run_sequence_parallel(
         torch.empty_like(x_local)
         for _ in range(world_size)
     ]
+    full_sequence_buf = None
+    if not sequence_parallel:
+        full_sequence_buf = torch.empty(
+            config.batch_size,
+            seq_len,
+            config.hidden_size,
+            device=device,
+            dtype=config.dtype,
+        )
 
     def _step() -> torch.Tensor:
         x = x_local
@@ -112,8 +121,10 @@ def run_sequence_parallel(
                 x = norms[layer_idx](out_partial)
             else:
                 dist.all_gather(gather_buf, out_partial)
-                full_sequence = torch.cat(gather_buf, dim=1)
-                full_sequence = norms[layer_idx](full_sequence)
+                if full_sequence_buf is None:
+                    raise RuntimeError("full_sequence buffer missing for TP-only path")
+                torch.cat(gather_buf, dim=1, out=full_sequence_buf)
+                full_sequence = norms[layer_idx](full_sequence_buf)
                 start = rank * seq_per_rank
                 end = start + seq_per_rank
                 x = full_sequence[:, start:end]
