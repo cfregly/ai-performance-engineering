@@ -2072,6 +2072,8 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "torch.max(last_logits, dim=-1, keepdim=True, out=(values, token_ids))" in decoder_section
     assert "torch.eq(candidate, target_next, out=matches)" in decode_section
     assert "torch.where(matches, candidate, target_next, out=tokens)" in decode_section
+    assert "with torch.inference_mode():" in decode_section
+    assert "with torch.no_grad():" not in decode_section
     assert "torch.sum(matches, dim=None, out=match_summary[0])" in decode_section
     assert "torch.all(matches, out=all_matches_tensor)" in decode_section
     assert "match_summary[1].copy_(all_matches_tensor)" in decode_section

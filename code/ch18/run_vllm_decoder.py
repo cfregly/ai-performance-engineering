@@ -270,7 +270,7 @@ class SpeculativeDecoder:
         emitted = 0
         per_token_times: List[float] = []
 
-        with torch.no_grad():
+        with torch.inference_mode():
             while emitted < total_tokens:
                 chunk = min(self.chunk_size, self.config.max_spec_tokens, total_tokens - emitted)
                 for _ in range(chunk):
