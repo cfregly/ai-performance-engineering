@@ -39,8 +39,8 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.randn(self.num_elements, device=f"cuda:{device_id}")
             for device_id in self.device_ids
         ]
-        self.local_sums = [torch.zeros(1, device=t.device, dtype=torch.float32) for t in self.data]
-        self.reduced_sums = [torch.zeros_like(t) for t in self.local_sums]
+        self.local_sums = [torch.empty(1, device=t.device, dtype=torch.float32) for t in self.data]
+        self.reduced_sums = [torch.empty_like(t) for t in self.local_sums]
         total_tokens = self.num_elements * len(self.device_ids)
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(len(self.device_ids)),

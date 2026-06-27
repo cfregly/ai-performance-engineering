@@ -1708,11 +1708,18 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
 
     assert "torch.tensor(" not in baseline_benchmark
     assert "self._cpu_total = cpu_total" in baseline_benchmark
     assert "self.output = torch.tensor(" in baseline_capture
     assert "[self._cpu_total]," in baseline_capture
+    assert "self.local_sums = [torch.empty(1, device=t.device, dtype=torch.float32) for t in self.data]" in optimized_setup
+    assert "self.reduced_sums = [torch.empty_like(t) for t in self.local_sums]" in optimized_setup
+    assert "torch.zeros(1" not in optimized_setup
+    assert "torch.zeros_like" not in optimized_setup
     assert "self.output = self.reduced_sums[0].detach().clone()" not in optimized_benchmark
     assert "torch.cuda.synchronize()" not in optimized_benchmark
     assert "self.output = self.reduced_sums[0]" in optimized_benchmark
