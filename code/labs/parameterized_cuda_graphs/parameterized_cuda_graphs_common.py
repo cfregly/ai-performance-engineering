@@ -127,9 +127,9 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._warmup_eager_path()
 
     def _build_request_slots(self) -> None:
-        self.host_inputs = []
-        self.host_scales = []
-        self.host_outputs = []
+        self.host_inputs = [torch.empty(0) for _ in range(self.cfg.request_slots)]
+        self.host_scales = [torch.empty(0) for _ in range(self.cfg.request_slots)]
+        self.host_outputs = [torch.empty(0) for _ in range(self.cfg.request_slots)]
         for slot_idx in range(self.cfg.request_slots):
             host_input = torch.randn(
                 (self.cfg.batch_size, self.cfg.hidden_size),
@@ -143,9 +143,9 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
                 device="cpu",
             ).pin_memory()
             host_output = torch.empty_like(host_input, device="cpu").pin_memory()
-            self.host_inputs.append(host_input)
-            self.host_scales.append(host_scale)
-            self.host_outputs.append(host_output)
+            self.host_inputs[slot_idx] = host_input
+            self.host_scales[slot_idx] = host_scale
+            self.host_outputs[slot_idx] = host_output
 
     def _warmup_eager_path(self) -> None:
         if self.capture_stream is None:

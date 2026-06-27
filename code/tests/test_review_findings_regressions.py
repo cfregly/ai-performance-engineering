@@ -1030,6 +1030,17 @@ def test_parameterized_graph_verification_capture_uses_fixed_request_slot() -> N
     source = _read("labs/parameterized_cuda_graphs/parameterized_cuda_graphs_common.py")
     assert "slot_idx = 0" in source
     assert "self._run_verification_slot(slot_idx)" in source
+    build_slots = source.split("def _build_request_slots", maxsplit=1)[1].split(
+        "def _warmup_eager_path",
+        maxsplit=1,
+    )[0]
+    assert "self.host_inputs = [torch.empty(0) for _ in range(self.cfg.request_slots)]" in build_slots
+    assert "self.host_scales = [torch.empty(0) for _ in range(self.cfg.request_slots)]" in build_slots
+    assert "self.host_outputs = [torch.empty(0) for _ in range(self.cfg.request_slots)]" in build_slots
+    assert "self.host_inputs[slot_idx] = host_input" in build_slots
+    assert "self.host_scales[slot_idx] = host_scale" in build_slots
+    assert "self.host_outputs[slot_idx] = host_output" in build_slots
+    assert ".append(" not in build_slots
 
 
 def test_ch18_and_fullstack_pairs_keep_semantics_fixed() -> None:
