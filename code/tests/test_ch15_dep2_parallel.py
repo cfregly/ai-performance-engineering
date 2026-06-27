@@ -9,7 +9,10 @@ from ch15.dep2_parallel_common import Dep2Config, Dep2Workload
 
 def test_dep2_vectorized_flattens_replicas_without_stack() -> None:
     source = inspect.getsource(Dep2Workload.forward_vectorized)
+    moe_source = inspect.getsource(Dep2Workload._moe_vectorized)
     assert "tokens = self.x.reshape(-1, self.cfg.hidden_size)" in source
+    assert "torch.relu_(h)" in moe_source
+    assert "torch.relu(h)" not in moe_source
     assert "torch.stack(" not in source
     assert "for replica in range" not in source
 
@@ -43,6 +46,8 @@ def test_dep2_vectorized_flattens_replicas_without_stack() -> None:
 def test_dep2_naive_moe_seeds_output_from_first_route() -> None:
     source = inspect.getsource(Dep2Workload._moe_naive)
     assert "out = torch.empty_like(tokens)" in source
+    assert "torch.relu_(h)" in source
+    assert "torch.relu(h)" not in source
     assert "torch.zeros_like(tokens)" not in source
     assert "for slot in range(self.cfg.top_k):" in source
     assert "token_ids = (expert_ids == expert).nonzero(as_tuple=True)[0]" in source

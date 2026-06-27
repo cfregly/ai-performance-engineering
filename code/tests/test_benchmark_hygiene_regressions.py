@@ -902,6 +902,8 @@ def test_moe_cuda_naive_backend_skips_redundant_mask_any_sync() -> None:
 
     assert "token_ids, slot_ids = (idx == expert).nonzero(as_tuple=True)" in naive_section
     assert "if token_ids.numel() == 0:" in naive_section
+    assert "torch.relu_(h)" in source
+    assert "torch.relu(h)" not in source
     assert "torch.any(mask)" not in naive_section
     assert "mask.nonzero" not in naive_section
     assert "@torch.inference_mode()\ndef select_best_backend" in source
@@ -5554,6 +5556,8 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     optimized_source = (REPO_ROOT / "ch15" / "optimized_inference_monolithic.py").read_text(encoding="utf-8")
 
     assert "def decode_step(" in common_source
+    assert "torch.relu_(layer(x))" in common_source
+    assert "torch.relu(layer(x))" not in common_source
     assert "with torch.inference_mode():" in optimized_source
     assert "for token_idx in range(num_tokens):" in optimized_source
     assert "buffer[:, token_idx : token_idx + 1, :] = current" in optimized_source

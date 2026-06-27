@@ -19,14 +19,14 @@ class SimpleLLM(nn.Module):
         """Prefill: process the full prompt (compute-bound path)."""
         x = self.embed(prompt_tokens)
         for layer in self.layers:
-            x = torch.relu(layer(x))
+            x = torch.relu_(layer(x))
         return x[:, -1:, :]
 
     def decode_step(self, kv_cache: torch.Tensor) -> torch.Tensor:
         """Advance the decode state by one token-equivalent step."""
         x = kv_cache
         for layer in self.layers:
-            x = torch.relu(layer(x))
+            x = torch.relu_(layer(x))
         return x
 
     def decode_autoregressive(

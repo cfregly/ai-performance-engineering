@@ -55,7 +55,7 @@ class MoEBackendWorkload:
                 continue
             x_e = x[token_ids]
             h = x_e @ self.w1[expert]
-            h = torch.relu(h)
+            h = torch.relu_(h)
             y = h @ self.w2[expert]
             out[token_ids] += y * weights[token_ids, slot_ids].unsqueeze(-1)
         return out
@@ -66,7 +66,7 @@ class MoEBackendWorkload:
         w2_sel = self.w2[idx]
         x_exp = x.unsqueeze(1).expand(-1, self.cfg.top_k, -1)
         h = torch.einsum("tki,tkij->tkj", x_exp, w1_sel)
-        h = torch.relu(h)
+        h = torch.relu_(h)
         y = torch.einsum("tkj,tkjh->tkh", h, w2_sel)
         return (y * weights.unsqueeze(-1)).sum(dim=1)
 
