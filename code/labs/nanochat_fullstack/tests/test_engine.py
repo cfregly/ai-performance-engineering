@@ -7,7 +7,7 @@ python -m pytest tests/test_engine.py -v
 import torch
 from pathlib import Path
 from types import SimpleNamespace
-from nanochat.engine import Engine, KVCache
+from nanochat.engine import Engine, KVCache, sample_next_token
 from nanochat.gpt import CausalSelfAttention, GPTConfig, _expand_gqa_kv_heads, apply_rotary_emb
 
 def test_kv_cache_resize():
@@ -117,10 +117,14 @@ def test_kv_cache_dense_row_pos_insert_skips_materialized_true_mask():
 def test_sample_batch_tokens_batches_uniform_sampling(monkeypatch):
     calls = []
 
-    def fake_sample_next_token(logits, rng, temperature=1.0, top_k=None):
+    def fake_sample_next_token(logits, rng, temperature=1.0, top_k=None, **kwargs):
         calls.append((logits.shape[0], temperature, top_k))
         return torch.arange(10, 10 + logits.shape[0], dtype=torch.long).view(-1, 1)
 
+    fake_self = SimpleNamespace(
+        _sample_workspace=lambda *args: {},
+        _token_tensor_to_list=lambda token_tensor: [int(token) for token in token_tensor.reshape(-1).tolist()],
+    )
     monkeypatch.setitem(
         Engine._sample_batch_tokens.__globals__, "sample_next_token", fake_sample_next_token
     )
@@ -128,7 +132,7 @@ def test_sample_batch_tokens_batches_uniform_sampling(monkeypatch):
     active_mask = object()
 
     tokens = Engine._sample_batch_tokens(
-        object(),
+        fake_self,
         logits,
         rng=None,
         temperatures=[0.7, 0.7, 0.7, 0.7],
@@ -145,10 +149,20 @@ def test_sample_batch_tokens_batches_uniform_sampling(monkeypatch):
 def test_sample_batch_tokens_preserves_mixed_sampling_fallback(monkeypatch):
     calls = []
 
-    def fake_sample_next_token(logits, rng, temperature=1.0, top_k=None):
+    def fake_sample_next_token(logits, rng, temperature=1.0, top_k=None, **kwargs):
         calls.append((logits.shape[0], temperature, top_k))
         return torch.tensor([[len(calls) + 20]], dtype=torch.long)
 
+    def fake_sample_token_buffers(count, device):
+        return (
+            torch.empty(count, dtype=torch.long, device=device),
+            torch.empty(count, dtype=torch.long, device="cpu"),
+        )
+
+    fake_self = SimpleNamespace(
+        _sample_workspace=lambda *args: {},
+        _sample_token_buffers=fake_sample_token_buffers,
+    )
     monkeypatch.setitem(
         Engine._sample_batch_tokens.__globals__, "sample_next_token", fake_sample_next_token
     )
@@ -156,7 +170,7 @@ def test_sample_batch_tokens_preserves_mixed_sampling_fallback(monkeypatch):
     active_mask = torch.tensor([True, True, False])
 
     tokens = Engine._sample_batch_tokens(
-        object(),
+        fake_self,
         logits,
         rng=None,
         temperatures=[0.7, 0.9, 0.7],
@@ -215,7 +229,7 @@ def test_generate_reuses_sampled_ids_without_forced_tokens(monkeypatch):
     second_ids = torch.tensor([[6]], dtype=torch.long)
     sampled_id_queue = [first_ids, second_ids]
 
-    def fake_sample_next_token(logits, rng, temperature=1.0, top_k=None):
+    def fake_sample_next_token(logits, rng, temperature=1.0, top_k=None, **kwargs):
         return sampled_id_queue.pop(0)
 
     monkeypatch.setitem(
@@ -235,6 +249,97 @@ def test_generate_reuses_sampled_ids_without_forced_tokens(monkeypatch):
     assert next(stream) == ([5], [1])
     assert next(stream) == ([6], [1])
     assert seen_decode_ids[0] is first_ids
+
+
+def test_sample_next_token_reuses_workspace_outputs():
+    logits = torch.tensor(
+        [
+            [0.1, 0.2, 0.3, 0.4],
+            [0.9, 0.1, 0.2, 0.3],
+        ],
+        dtype=torch.float32,
+    )
+    out = torch.empty((2, 1), dtype=torch.long)
+    choice = torch.empty((2, 1), dtype=torch.long)
+    max_values = torch.empty((2, 1), dtype=torch.float32)
+    probs = torch.empty_like(logits)
+    topk_values = torch.empty((2, 2), dtype=torch.float32)
+    topk_indices = torch.empty((2, 2), dtype=torch.long)
+    topk_probs = torch.empty_like(topk_values)
+
+    result = sample_next_token(
+        logits,
+        rng=None,
+        temperature=0.0,
+        out=out,
+        max_values_out=max_values,
+    )
+
+    assert result is out
+    torch.testing.assert_close(out, torch.tensor([[3], [0]], dtype=torch.long))
+
+    rng = torch.Generator(device="cpu").manual_seed(1)
+    result = sample_next_token(
+        logits,
+        rng=rng,
+        temperature=1.0,
+        top_k=2,
+        out=out,
+        choice_out=choice,
+        topk_values_out=topk_values,
+        topk_indices_out=topk_indices,
+        topk_probs_out=topk_probs,
+    )
+    assert result is out
+    assert out.shape == (2, 1)
+
+    rng = torch.Generator(device="cpu").manual_seed(1)
+    result = sample_next_token(
+        logits,
+        rng=rng,
+        temperature=1.0,
+        out=out,
+        probs_out=probs,
+    )
+    assert result is out
+    assert out.shape == (2, 1)
+
+
+def test_sample_batch_tokens_reuses_sampler_workspace():
+    engine = Engine(_TinyForwardModel(), _TinyTokenizer())
+    logits = torch.tensor(
+        [
+            [0.1, 0.2, 0.3, 0.4],
+            [0.9, 0.1, 0.2, 0.3],
+        ],
+        dtype=torch.float32,
+    )
+
+    tokens = engine._sample_batch_tokens(
+        logits,
+        rng=None,
+        temperatures=[0.0, 0.0],
+        top_ks=[None, None],
+        active_mask=torch.tensor([True, True]),
+        pad_id=0,
+    )
+    next_id_ptr = engine._sample_next_id_buffer.data_ptr()
+    max_values_ptr = engine._sample_max_values_buffer.data_ptr()
+
+    assert tokens == [3, 0]
+
+    tokens = engine._sample_batch_tokens(
+        logits,
+        rng=None,
+        temperatures=[0.0, 0.0],
+        top_ks=[None, None],
+        active_mask=torch.tensor([True, True]),
+        pad_id=0,
+    )
+
+    assert tokens == [3, 0]
+    assert engine._sample_next_id_buffer.data_ptr() == next_id_ptr
+    assert engine._sample_max_values_buffer.data_ptr() == max_values_ptr
 
 
 def test_build_attention_mask_reuses_position_buffer():
@@ -340,8 +445,13 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
 
     assert "self._sample_token_device_buffer = None" in text
     assert "self._sample_token_host_buffer = None" in text
+    assert "self._sample_next_id_buffer = None" in text
+    assert "self._sample_probs_buffer = None" in text
     assert "def _sample_token_buffers(self, count, device)" in text
+    assert "def _sample_workspace(self, logits, top_k, temperature)" in text
     assert "def _token_tensor_to_list(self, token_tensor)" in text
+    assert "**self._sample_workspace(active_logits, first_top_k, first_temp)," in sample_section
+    assert "**self._sample_workspace(row_logits, top_k, temp)," in sample_section
     assert "self._token_tensor_to_list(next_ids[:, 0])" in sample_section
     assert "sampled_device[sample_idx].copy_(next_id[0, 0])" in sample_section
     assert "sampled_host.copy_(sampled_device)" in sample_section

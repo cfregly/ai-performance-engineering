@@ -280,19 +280,54 @@ class KVCache:
 
 # -----------------------------------------------------------------------------
 @torch.inference_mode()
-def sample_next_token(logits, rng, temperature=1.0, top_k=None):
+def sample_next_token(
+    logits,
+    rng,
+    temperature=1.0,
+    top_k=None,
+    *,
+    out=None,
+    choice_out=None,
+    max_values_out=None,
+    probs_out=None,
+    topk_values_out=None,
+    topk_indices_out=None,
+    topk_probs_out=None,
+):
     """Sample a single next token from given logits of shape (B, vocab_size). Returns (B, 1)."""
     assert temperature >= 0.0, "temperature must be non-negative"
     if temperature == 0.0:
+        if out is not None and max_values_out is not None:
+            torch.max(logits, dim=-1, keepdim=True, out=(max_values_out, out))
+            return out
         return torch.argmax(logits, dim=-1, keepdim=True)
     if top_k is not None:
         k = min(top_k, logits.size(-1))
+        if (
+            out is not None
+            and choice_out is not None
+            and topk_values_out is not None
+            and topk_indices_out is not None
+            and topk_probs_out is not None
+        ):
+            torch.topk(logits, k, dim=-1, out=(topk_values_out, topk_indices_out))
+            topk_values_out.div_(temperature)
+            torch.softmax(topk_values_out, dim=-1, out=topk_probs_out)
+            torch.multinomial(topk_probs_out, num_samples=1, generator=rng, out=choice_out)
+            torch.gather(topk_indices_out, 1, choice_out, out=out)
+            return out
         vals, idx = torch.topk(logits, k, dim=-1)
         vals = vals / temperature
         probs = F.softmax(vals, dim=-1)
         choice = torch.multinomial(probs, num_samples=1, generator=rng)
         return idx.gather(1, choice)
     else:
+        if out is not None and probs_out is not None:
+            probs_out.copy_(logits)
+            probs_out.div_(temperature)
+            torch.softmax(probs_out, dim=-1, out=probs_out)
+            torch.multinomial(probs_out, num_samples=1, generator=rng, out=out)
+            return out
         logits = logits / temperature
         probs = F.softmax(logits, dim=-1)
         return torch.multinomial(probs, num_samples=1, generator=rng)
@@ -329,6 +364,13 @@ class Engine:
         self._active_mask_device = None
         self._sample_token_device_buffer = None
         self._sample_token_host_buffer = None
+        self._sample_next_id_buffer = None
+        self._sample_choice_buffer = None
+        self._sample_max_values_buffer = None
+        self._sample_probs_buffer = None
+        self._sample_topk_values_buffer = None
+        self._sample_topk_indices_buffer = None
+        self._sample_topk_probs_buffer = None
         self._pd_runner = PersistentDecodeRunner() if self.use_persistent_decode_kernel else None
         self._persistent_decode_kernel = (
             resolve_persistent_decode_kernel(
@@ -617,6 +659,56 @@ class Engine:
             )
         return self._sample_token_device_buffer[:count], self._sample_token_host_buffer[:count]
 
+    def _sample_long_buffer(self, name, shape, device):
+        buffer = getattr(self, name)
+        if buffer is None or buffer.device != device or tuple(buffer.shape) != tuple(shape):
+            buffer = torch.empty(shape, dtype=torch.long, device=device)
+            setattr(self, name, buffer)
+        return buffer
+
+    def _sample_like_buffer(self, name, tensor):
+        buffer = getattr(self, name)
+        if (
+            buffer is None
+            or buffer.device != tensor.device
+            or buffer.dtype != tensor.dtype
+            or tuple(buffer.shape) != tuple(tensor.shape)
+        ):
+            buffer = torch.empty_like(tensor)
+            setattr(self, name, buffer)
+        return buffer
+
+    def _sample_workspace(self, logits, top_k, temperature):
+        batch_size = logits.size(0)
+        workspace = {
+            "out": self._sample_long_buffer("_sample_next_id_buffer", (batch_size, 1), logits.device),
+        }
+        if temperature == 0.0:
+            workspace["max_values_out"] = self._sample_like_buffer("_sample_max_values_buffer", logits[:, :1])
+        elif top_k is None:
+            workspace["probs_out"] = self._sample_like_buffer("_sample_probs_buffer", logits)
+        else:
+            k = min(top_k, logits.size(-1))
+            workspace["choice_out"] = self._sample_long_buffer(
+                "_sample_choice_buffer",
+                (batch_size, 1),
+                logits.device,
+            )
+            workspace["topk_values_out"] = self._sample_like_buffer(
+                "_sample_topk_values_buffer",
+                logits[:, :k],
+            )
+            workspace["topk_indices_out"] = self._sample_long_buffer(
+                "_sample_topk_indices_buffer",
+                (batch_size, k),
+                logits.device,
+            )
+            workspace["topk_probs_out"] = self._sample_like_buffer(
+                "_sample_topk_probs_buffer",
+                workspace["topk_values_out"],
+            )
+        return workspace
+
     def _token_tensor_to_list(self, token_tensor):
         flat_tokens = token_tensor.reshape(-1)
         device_tokens, host_tokens = self._sample_token_buffers(flat_tokens.numel(), flat_tokens.device)
@@ -651,6 +743,7 @@ class Engine:
                 rng,
                 temperature=first_temp,
                 top_k=first_top_k,
+                **self._sample_workspace(active_logits, first_top_k, first_temp),
             )
             for idx, token in zip(active_rows, self._token_tensor_to_list(next_ids[:, 0])):
                 sampled_tokens[idx] = token
@@ -660,7 +753,14 @@ class Engine:
         for sample_idx, idx in enumerate(active_rows):
             temp = temperatures[idx]
             top_k = top_ks[idx]
-            next_id = sample_next_token(logits[idx:idx+1], rng, temperature=temp, top_k=top_k)
+            row_logits = logits[idx:idx+1]
+            next_id = sample_next_token(
+                row_logits,
+                rng,
+                temperature=temp,
+                top_k=top_k,
+                **self._sample_workspace(row_logits, top_k, temp),
+            )
             sampled_device[sample_idx].copy_(next_id[0, 0])
         sampled_host.copy_(sampled_device)
         for idx, token in zip(active_rows, sampled_host.tolist()):
