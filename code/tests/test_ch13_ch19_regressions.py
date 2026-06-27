@@ -131,6 +131,13 @@ def test_optimized_mxfp8_moe_reuses_token_ids_and_keeps_reorder_on_device() -> N
     assert "expanded_inputs = self.inputs.index_select(0, token_ids)" in setup_source
     assert "expert_order[idx].item()" not in supergroup_source
     assert "expert_order.index_select(0, order_tensor)" in supergroup_source
+    assert "row_order = torch.empty_like(base_rows)" in supergroup_source
+    assert "bucketed.index_select(0, row_order)" in supergroup_source
+    assert "bucket_indices.index_select(0, row_order)" in supergroup_source
+    assert "bucket_token_ids.index_select(0, row_order)" in supergroup_source
+    assert "gating_weights.index_select(0, row_order)" in supergroup_source
+    assert "reordered_inputs" not in supergroup_source
+    assert "torch.cat(reordered" not in supergroup_source
 
     torch.testing.assert_close(
         optimized_mxfp8_moe._flat_topk_token_ids(3, 1, torch.device("cpu")),
@@ -140,6 +147,37 @@ def test_optimized_mxfp8_moe_reuses_token_ids_and_keeps_reorder_on_device() -> N
         optimized_mxfp8_moe._flat_topk_token_ids(3, 2, torch.device("cpu")),
         torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.int64),
     )
+
+    bench = optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark()
+    bucketed = torch.arange(6, dtype=torch.float32).view(6, 1)
+    bucket_indices = torch.arange(10, 16, dtype=torch.int64)
+    expert_order = torch.tensor([7, 8, 9], dtype=torch.int64)
+    bucket_token_ids = torch.arange(20, 26, dtype=torch.int64)
+    gating_weights = torch.arange(30, 36, dtype=torch.float32)
+
+    (
+        new_bucketed,
+        new_splits,
+        new_indices,
+        new_order,
+        new_token_ids,
+        new_weights,
+    ) = bench._supergroup_tokens(
+        bucketed,
+        [2, 3, 1],
+        bucket_indices,
+        expert_order,
+        bucket_token_ids,
+        gating_weights,
+    )
+
+    expected_rows = torch.tensor([2, 3, 4, 0, 1, 5], dtype=torch.int64)
+    assert new_splits == [3, 2, 1]
+    torch.testing.assert_close(new_bucketed, bucketed.index_select(0, expected_rows))
+    torch.testing.assert_close(new_indices, bucket_indices.index_select(0, expected_rows))
+    torch.testing.assert_close(new_order, torch.tensor([8, 7, 9], dtype=torch.int64))
+    torch.testing.assert_close(new_token_ids, bucket_token_ids.index_select(0, expected_rows))
+    torch.testing.assert_close(new_weights, gating_weights.index_select(0, expected_rows))
 
 
 def test_native_fp6_quantization_avoids_tensor_bool_scale_branch() -> None:

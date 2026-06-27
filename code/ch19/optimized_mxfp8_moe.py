@@ -106,24 +106,21 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
             offsets.append((cursor, cursor + m))
             cursor += m
         order = sorted(range(len(m_splits)), key=lambda i: m_splits[i], reverse=True)
-        reordered_inputs: List[torch.Tensor] = []
-        reordered_indices: List[torch.Tensor] = []
-        reordered_splits: List[int] = []
-        reordered_token_ids: List[torch.Tensor] = []
-        reordered_weights: List[torch.Tensor] = []
+        reordered_splits = [m_splits[idx] for idx in order]
         order_tensor = torch.tensor(order, device=bucketed.device, dtype=torch.int64)
+        base_rows = torch.arange(bucketed.shape[0], device=bucketed.device, dtype=torch.int64)
+        row_order = torch.empty_like(base_rows)
+        row_cursor = 0
         for idx in order:
             start, end = offsets[idx]
-            reordered_inputs.append(bucketed.narrow(0, start, m_splits[idx]))
-            reordered_indices.append(bucket_indices.narrow(0, start, m_splits[idx]))
-            reordered_splits.append(m_splits[idx])
-            reordered_token_ids.append(bucket_token_ids.narrow(0, start, m_splits[idx]))
-            reordered_weights.append(gating_weights.narrow(0, start, m_splits[idx]))
-        new_bucketed = torch.cat(reordered_inputs, dim=0)
-        new_indices = torch.cat(reordered_indices, dim=0)
+            width = end - start
+            row_order.narrow(0, row_cursor, width).copy_(base_rows.narrow(0, start, width))
+            row_cursor += width
+        new_bucketed = bucketed.index_select(0, row_order)
+        new_indices = bucket_indices.index_select(0, row_order)
         new_order = expert_order.index_select(0, order_tensor)
-        new_token_ids = torch.cat(reordered_token_ids, dim=0)
-        new_weights = torch.cat(reordered_weights, dim=0)
+        new_token_ids = bucket_token_ids.index_select(0, row_order)
+        new_weights = gating_weights.index_select(0, row_order)
         return new_bucketed, reordered_splits, new_indices, new_order, new_token_ids, new_weights
 
     def _maybe_log_missing_te(self) -> None:
