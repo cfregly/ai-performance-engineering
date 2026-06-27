@@ -893,6 +893,10 @@ def test_custom_vs_cublas_dual_benches_cache_device_constants() -> None:
         "def make_randn_data",
         maxsplit=1,
     )[0]
+    dual_nvfp4_ref = dual_nvfp4.split("def fp32_ref", maxsplit=1)[1].split(
+        "def scaled_mm_nvfp4",
+        maxsplit=1,
+    )[0]
     dual_nvfp4_gates = dual_nvfp4.split("def run_gates", maxsplit=1)[1].split(
         "def main",
         maxsplit=1,
@@ -906,8 +910,32 @@ def test_custom_vs_cublas_dual_benches_cache_device_constants() -> None:
     assert "torch.tensor(" not in dual_nvfp4_exact
     assert "e2m1_values(x.device)" in dual_nvfp4_quantize
     assert "E2M1_VALS.to(" not in dual_nvfp4_decode + dual_nvfp4_quantize
+    assert "def expand_scale_blocks" in dual_nvfp4
+    assert "repeat_interleave(" not in dual_nvfp4_ref
+    assert "af = a_deq * expand_scale_blocks(sa)" in dual_nvfp4_ref
+    assert "bf = b_deq * expand_scale_blocks(sb)" in dual_nvfp4_ref
     assert "fp8_gate_values(" in dual_nvfp4_gates
     assert "torch.tensor(" not in dual_nvfp4_gates
+
+
+def test_nvfp4_gemv_dequant_expands_scales_without_repeat_interleave() -> None:
+    from labs.nvfp4_gemv import optimized_submission as submission
+
+    source = inspect.getsource(submission._nvfp4_dequant_gemv_one)
+    scales_2d = torch.arange(6, dtype=torch.float32).view(2, 3)
+    scales_1d = torch.arange(3, dtype=torch.float32)
+
+    assert "repeat_interleave" not in source
+    assert "_expand_scale_blocks(sfa)" in source
+    assert "_expand_scale_blocks(sfb)" in source
+    torch.testing.assert_close(
+        submission._expand_scale_blocks(scales_2d, 4),
+        scales_2d.repeat_interleave(4, dim=-1),
+    )
+    torch.testing.assert_close(
+        submission._expand_scale_blocks(scales_1d, 4),
+        scales_1d.repeat_interleave(4, dim=-1),
+    )
 
 
 def test_custom_vs_cublas_nvfp4_blocked_padding_zeroes_only_tails() -> None:

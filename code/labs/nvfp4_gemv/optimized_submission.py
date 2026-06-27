@@ -47,15 +47,22 @@ def _nvfp4_e2m1_lut() -> torch.Tensor:
     return _NVFP4_GEMV_LUT
 
 
+def _expand_scale_blocks(scales: torch.Tensor, block_size: int = sf_vec_size) -> torch.Tensor:
+    return scales.unsqueeze(-1).expand(*scales.shape, block_size).reshape(
+        *scales.shape[:-1],
+        scales.shape[-1] * block_size,
+    )
+
+
 def _nvfp4_dequant_gemv_one(a8, b8, sfa, sfb, lut):
     lo = (a8 & 0xF).long()
     hi = ((a8 >> 4) & 0xF).long()
     a_idx = torch.stack([lo, hi], dim=-1).reshape(a8.shape[0], -1)
-    a_f = lut[a_idx] * sfa.repeat_interleave(16, dim=1)
+    a_f = lut[a_idx] * _expand_scale_blocks(sfa)
     blo = (b8 & 0xF).long()
     bhi = ((b8 >> 4) & 0xF).long()
     b_idx = torch.stack([blo, bhi], dim=-1).reshape(-1)
-    b_f = lut[b_idx] * sfb.repeat_interleave(16)
+    b_f = lut[b_idx] * _expand_scale_blocks(sfb)
     return (a_f.float() @ b_f.float()).half()
 
 

@@ -120,6 +120,13 @@ def decode_codes(codes: torch.Tensor) -> torch.Tensor:
     return torch.where(codes >= 8, -mag, mag)
 
 
+def expand_scale_blocks(scales: torch.Tensor, block_size: int = SF_VEC) -> torch.Tensor:
+    return scales.unsqueeze(-1).expand(*scales.shape, block_size).reshape(
+        *scales.shape[:-1],
+        scales.shape[-1] * block_size,
+    )
+
+
 def make_exact_data(size: int):
     """Exact dataset: small e2m1 values + power-of-2 scales -> exact fp32."""
     torch.manual_seed(42)
@@ -165,8 +172,8 @@ def fp32_ref(a_deq, b_deq, sa, sb):
     saved = torch.backends.cuda.matmul.allow_tf32
     torch.backends.cuda.matmul.allow_tf32 = False
     try:
-        af = a_deq * sa.repeat_interleave(SF_VEC, dim=1)
-        bf = b_deq * sb.repeat_interleave(SF_VEC, dim=1)
+        af = a_deq * expand_scale_blocks(sa)
+        bf = b_deq * expand_scale_blocks(sb)
         return torch.matmul(af, bf.T)
     finally:
         torch.backends.cuda.matmul.allow_tf32 = saved
