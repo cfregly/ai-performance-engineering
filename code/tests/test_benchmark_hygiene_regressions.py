@@ -3874,13 +3874,29 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     benchmark_section = source.split("def _run_family_speculative_decode", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    seed_section = source.split("def _draft_seed_tokens", maxsplit=1)[1].split(
+        "def _run_family_speculative_decode",
+        maxsplit=1,
+    )[0]
 
     assert "self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)" in setup_section
     assert "self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)" in setup_section
+    assert "self._draft_head_offsets = torch.arange(wl.speculative_k, device=self.device, dtype=torch.int64).view(1, -1)" in setup_section
+    assert "self._draft_seed_buffer = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)" in setup_section
+    assert "self._draft_block_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
     assert "time.perf_counter" not in benchmark_section
     assert "draft_time_ms=None" in benchmark_section
     assert "verify_time_ms=None" in benchmark_section
     assert ".nonzero(" not in benchmark_section
+    assert ".argmax(" not in benchmark_section
+    assert "torch.arange(k" not in seed_section
+    assert "torch.add(prev.expand(-1, k), head_offsets, out=seed_tokens)" in seed_section
+    assert "seed_tokens.remainder_(self.workload.vocab_size)" in seed_section
+    assert "torch.max(logits_d, dim=-1, out=(draft_values, draft_block))" in benchmark_section
+    assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
+    assert "torch.eq(target_next, self._draft_ids[:, :k], out=matches)" in benchmark_section
     assert "torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)" in benchmark_section
     assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
 
