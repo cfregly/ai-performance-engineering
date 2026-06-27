@@ -59,7 +59,8 @@ def bucket_by_expert(
     elif token_ids.numel() != flat_assignments.numel():
         raise ValueError("token_ids must contain one source token id per assignment")
     gather_index = torch.argsort(flat_assignments)
-    counts = torch.bincount(flat_assignments, minlength=num_experts).detach().cpu().tolist()
+    counts_tensor = torch.bincount(flat_assignments, minlength=num_experts)
+    counts = counts_tensor.detach().cpu().tolist()
     m_splits = [int(count) for count in counts[:num_experts] if count]
     expert_order_list = [expert for expert, count in enumerate(counts[:num_experts]) if count]
     if not m_splits:
@@ -70,7 +71,8 @@ def bucket_by_expert(
         bucketed = tokens.index_select(0, gather_index)
     else:
         bucketed = tokens.index_select(0, bucket_token_ids_tensor)
-    expert_order_tensor = torch.tensor(expert_order_list, device=tokens.device, dtype=torch.int64)
+    expert_range = torch.arange(num_experts, device=tokens.device, dtype=torch.int64)
+    expert_order_tensor = expert_range[counts_tensor[:num_experts] > 0]
     if return_expert_order_list:
         return bucketed, m_splits, gather_index, expert_order_tensor, bucket_token_ids_tensor, expert_order_list
     return bucketed, m_splits, gather_index, expert_order_tensor, bucket_token_ids_tensor

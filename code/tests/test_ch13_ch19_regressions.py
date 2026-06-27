@@ -75,7 +75,11 @@ def test_bucket_by_expert_sorts_once_and_preserves_metadata() -> None:
     source = inspect.getsource(mxfp8_moe_common.bucket_by_expert)
 
     assert "torch.argsort(flat_assignments)" in source
-    assert "torch.bincount(flat_assignments, minlength=num_experts).detach().cpu().tolist()" in source
+    assert "counts_tensor = torch.bincount(flat_assignments, minlength=num_experts)" in source
+    assert "counts = counts_tensor.detach().cpu().tolist()" in source
+    assert "expert_range = torch.arange(num_experts, device=tokens.device, dtype=torch.int64)" in source
+    assert "expert_order_tensor = expert_range[counts_tensor[:num_experts] > 0]" in source
+    assert "torch.tensor(expert_order_list" not in source
     assert ".nonzero(" not in source
     assert "torch.cat(" not in source
 
