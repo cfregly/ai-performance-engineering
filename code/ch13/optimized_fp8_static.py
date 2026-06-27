@@ -51,15 +51,45 @@ class CalibrationStats:
     running_amax: float = 0.0
     num_samples: int = 0
     _amax_tensors: List[torch.Tensor] = field(default_factory=list, repr=False)
+    _amax_materialize_buffer: Optional[torch.Tensor] = field(default=None, init=False, repr=False)
+    _amax_materialize_host_buffer: Optional[torch.Tensor] = field(default=None, init=False, repr=False)
     
     def update(self, tensor: torch.Tensor):
         self._amax_tensors.append(tensor.detach().abs().amax())
         self.num_samples += 1
 
+    def _materialize_buffers(self, count: int, sample: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        if (
+            self._amax_materialize_buffer is None
+            or self._amax_materialize_buffer.device != sample.device
+            or self._amax_materialize_buffer.dtype != sample.dtype
+            or self._amax_materialize_buffer.numel() < count
+        ):
+            self._amax_materialize_buffer = torch.empty(
+                count,
+                device=sample.device,
+                dtype=sample.dtype,
+            )
+            self._amax_materialize_host_buffer = torch.empty(
+                count,
+                dtype=sample.dtype,
+                device="cpu",
+                pin_memory=sample.device.type == "cuda",
+            )
+        assert self._amax_materialize_host_buffer is not None
+        return self._amax_materialize_buffer, self._amax_materialize_host_buffer
+
     def _materialize_amax_history(self) -> None:
         if not self._amax_tensors:
             return
-        values = torch.stack(self._amax_tensors).detach().cpu().tolist()
+        count = len(self._amax_tensors)
+        value_buffer, host_buffer = self._materialize_buffers(count, self._amax_tensors[0])
+        value_slice = value_buffer[:count]
+        for idx, value in enumerate(self._amax_tensors):
+            value_slice[idx].copy_(value)
+        host_slice = host_buffer[:count]
+        host_slice.copy_(value_slice)
+        values = host_slice.tolist()
         self.amax_history.extend(float(value) for value in values)
         self.running_amax = max(self.running_amax, max(float(value) for value in values))
         self._amax_tensors.clear()
@@ -346,4 +376,3 @@ class StaticFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return StaticFP8Benchmark()
-

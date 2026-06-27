@@ -3420,7 +3420,14 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
         )[0]
 
         assert "self._amax_tensors.append(tensor.detach().abs().amax())" in stats_section
-        assert "torch.stack(self._amax_tensors).detach().cpu().tolist()" in stats_section
+        assert "_amax_materialize_buffer: Optional[torch.Tensor]" in stats_section
+        assert "_amax_materialize_host_buffer: Optional[torch.Tensor]" in stats_section
+        assert "def _materialize_buffers(" in stats_section
+        assert "value_slice = value_buffer[:count]" in stats_section
+        assert "value_slice[idx].copy_(value)" in stats_section
+        assert "host_slice.copy_(value_slice)" in stats_section
+        assert "values = host_slice.tolist()" in stats_section
+        assert "torch.stack(self._amax_tensors).detach().cpu().tolist()" not in stats_section
         assert "tensor.abs().max().item()" not in stats_section
         assert "self.running_amax = max(self.running_amax, current_amax)" not in stats_section
 
