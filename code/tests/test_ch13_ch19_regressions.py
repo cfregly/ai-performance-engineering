@@ -25,6 +25,14 @@ def test_optimized_autograd_standard_declares_capture_stream_when_present() -> N
     assert bench.get_custom_streams() == [sentinel]
 
 
+def test_optimized_autograd_standard_skips_post_capture_output_zero_fill() -> None:
+    setup_source = inspect.getsource(OptimizedAutogradCompiledBenchmark.setup)
+    train_step_source = inspect.getsource(OptimizedAutogradCompiledBenchmark._train_step)
+
+    assert "self.output_buffer.zero_()" not in setup_source
+    assert "self.output_buffer.copy_(outputs)" in train_step_source
+
+
 def test_restore_bucketed_reduce_casts_weighted_output_and_reuses_buffer() -> None:
     output = torch.tensor(
         [

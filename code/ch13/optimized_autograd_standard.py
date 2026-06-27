@@ -91,7 +91,6 @@ class OptimizedAutogradCompiledBenchmark(VerificationPayloadMixin, BaseBenchmark
         # Restore model/optimizer to post-setup state so capture does not advance training
         self.model.load_state_dict(saved_model_state)
         self.optimizer.load_state_dict(saved_opt_state)
-        self.output_buffer.zero_()
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - compiled autograd."""
