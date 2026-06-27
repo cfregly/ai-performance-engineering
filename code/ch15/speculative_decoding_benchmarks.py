@@ -38,6 +38,13 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_prev: Optional[torch.Tensor] = None
         self._accept_prefix: Optional[torch.Tensor] = None
         self._accept_count: Optional[torch.Tensor] = None
+        self._greedy_next_values: Optional[torch.Tensor] = None
+        self._greedy_next_tokens: Optional[torch.Tensor] = None
+        self._draft_next_values: Optional[torch.Tensor] = None
+        self._draft_next_tokens: Optional[torch.Tensor] = None
+        self._target_next_values: Optional[torch.Tensor] = None
+        self._target_next_tokens: Optional[torch.Tensor] = None
+        self._matches: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._metrics: Dict[str, float] = {}
 
@@ -73,6 +80,8 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.int64,
         )
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
+        self._greedy_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
+        self._greedy_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
         self.output = None
         self._metrics = {}
 
@@ -82,12 +91,22 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._verify_prev = None
             self._accept_prefix = None
             self._accept_count = None
+            self._draft_next_values = None
+            self._draft_next_tokens = None
+            self._target_next_values = None
+            self._target_next_tokens = None
+            self._matches = None
             return
 
         self._draft_ids = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
         self._verify_prev = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
         self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)
         self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)
+        self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
+        self._draft_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
+        self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)
+        self._target_next_tokens = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.long)
+        self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)
         if self.target_model is None:
             raise RuntimeError("Target model not initialized")
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
@@ -109,7 +128,13 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._run_greedy_decode()
 
     def _run_greedy_decode(self) -> None:
-        if self.target_model is None or self.input_ids is None or self._output_ids is None:
+        if (
+            self.target_model is None
+            or self.input_ids is None
+            or self._output_ids is None
+            or self._greedy_next_values is None
+            or self._greedy_next_tokens is None
+        ):
             raise RuntimeError("Benchmark not initialized")
 
         wl = self.workload
@@ -120,7 +145,8 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.no_grad():
                 for t in range(wl.total_tokens):
                     logits = self.target_model(out[:, t : t + 1])
-                    out[:, t + 1] = logits[:, 0, :].argmax(dim=-1)
+                    torch.max(logits[:, 0, :], dim=-1, out=(self._greedy_next_values, self._greedy_next_tokens))
+                    out[:, t + 1].copy_(self._greedy_next_tokens)
 
         self.output = out
 
@@ -134,6 +160,11 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._verify_prev is None
             or self._accept_prefix is None
             or self._accept_count is None
+            or self._draft_next_values is None
+            or self._draft_next_tokens is None
+            or self._target_next_values is None
+            or self._target_next_tokens is None
+            or self._matches is None
         ):
             raise RuntimeError("Benchmark not initialized")
 
@@ -156,8 +187,9 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     prev = out[:, pos : pos + 1]
                     for j in range(k):
                         logits_d = self.draft_model(prev)
-                        next_d = logits_d[:, 0, :].argmax(dim=-1)
-                        self._draft_ids[:, j] = next_d
+                        torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))
+                        self._draft_ids[:, j].copy_(self._draft_next_tokens)
+                        next_d = self._draft_next_tokens
                         prev = next_d.view(1, 1)
 
                     draft_tokens += int(k)
@@ -167,8 +199,11 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         self._verify_prev[:, 1:k] = self._draft_ids[:, : k - 1]
 
                     logits_t = self.target_model(self._verify_prev[:, :k])
-                    target_next = logits_t.argmax(dim=-1)
-                    matches = target_next.eq(self._draft_ids[:, :k])
+                    target_values = self._target_next_values[:, :k]
+                    target_next = self._target_next_tokens[:, :k]
+                    torch.max(logits_t, dim=-1, out=(target_values, target_next))
+                    matches = self._matches[:, :k]
+                    torch.eq(target_next, self._draft_ids[:, :k], out=matches)
 
                     accept_prefix = self._accept_prefix[:k]
                     torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)
@@ -217,6 +252,13 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_prev = None
         self._accept_prefix = None
         self._accept_count = None
+        self._greedy_next_values = None
+        self._greedy_next_tokens = None
+        self._draft_next_values = None
+        self._draft_next_tokens = None
+        self._target_next_values = None
+        self._target_next_tokens = None
+        self._matches = None
         self.output = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

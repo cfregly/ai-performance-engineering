@@ -3926,8 +3926,15 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
 
     assert "self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)" in setup_section
     assert "self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)" in setup_section
+    assert "self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
+    assert "torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))" in benchmark_section
+    assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
+    assert "torch.eq(target_next, self._draft_ids[:, :k], out=matches)" in benchmark_section
+    assert ".argmax(" not in benchmark_section
     assert "torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)" in benchmark_section
     assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
     assert "accept_k = int(self._accept_count.item())" in benchmark_section
@@ -3948,8 +3955,15 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
 
     assert "self._accept_prefix = torch.empty(" in setup_section
     assert "self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)" in setup_section
+    assert "self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
+    assert "torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))" in benchmark_section
+    assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
+    assert "torch.eq(target_next, self._draft_ids[:, :k], out=matches)" in benchmark_section
+    assert ".argmax(" not in benchmark_section
     assert "torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)" in benchmark_section
     assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
     assert "accept_k = int(self._accept_count.item())" in benchmark_section
