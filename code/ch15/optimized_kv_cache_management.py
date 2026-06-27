@@ -91,7 +91,7 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
         assert self.tokens is not None and self.k_cache is not None and self.v_cache is not None
         assert self._output_buffer is not None
         with self._nvtx_range("optimized_kv_cache_management"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 # Model "prefill-produced" KV cache: project the full token buffer once,
                 # then reuse those projected tensors across the decode loop.
                 k_all = self.k_proj(self.tokens)

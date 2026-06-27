@@ -89,7 +89,7 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.q_proj is not None and self.k_proj is not None and self.v_proj is not None and self.out_proj is not None
         assert self.inputs is not None and self.cache_buffer is not None and self._sequence_inputs is not None
         with self._nvtx_range("kv_cache_management_math"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 queries = self._sequence_inputs
                 k_cache = self._sequence_inputs
                 

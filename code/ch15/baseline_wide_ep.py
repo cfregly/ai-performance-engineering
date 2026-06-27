@@ -117,7 +117,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.expert(self.inputs.view(-1, self.hidden_size))
 
     def benchmark_fn(self) -> None:
@@ -134,7 +134,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         flat = self.inputs.view(-1, self.hidden_size)
 
         with self._nvtx_range("baseline_wide_ep"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 perm = self._perm
                 recv_buf = self._recv_buf
                 for indices, (start, end) in zip(self._rank_indices, self._rank_offsets):

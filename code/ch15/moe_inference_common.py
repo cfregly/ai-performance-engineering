@@ -163,7 +163,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         stream = torch.cuda.current_stream(device=self.device)
         cfg = self.config
 
-        with torch.no_grad():
+        with torch.inference_mode():
             with self._nvtx_range(self.label):
                 if any(
                     event is None

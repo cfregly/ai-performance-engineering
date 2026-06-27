@@ -99,7 +99,7 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.expert(self.inputs.view(-1, self.hidden_size))
 
     def benchmark_fn(self) -> None:
@@ -115,7 +115,7 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         flat = self.inputs.view(-1, self.hidden_size)
 
         with self._nvtx_range("optimized_wide_ep"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 perm = self._perm
                 recv_buf = self._recv_buf
                 torch.index_select(flat, 0, perm, out=recv_buf)

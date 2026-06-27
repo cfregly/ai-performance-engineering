@@ -80,7 +80,7 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         assert self.tokens is not None
         assert self._output_buffer is not None
         with self._nvtx_range("baseline_kv_cache_management"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 outputs = self._output_buffer
                 for t in range(self.steps):
                     query = self.tokens[:, t : t + 1, :]

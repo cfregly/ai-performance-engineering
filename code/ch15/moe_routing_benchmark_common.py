@@ -92,7 +92,7 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._verify_meta = torch.zeros(self.num_experts, dtype=torch.int8)
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.expert(self.inputs.view(-1, self.hidden_size))
 
     def benchmark_fn(self) -> None:
@@ -103,7 +103,7 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         expert_ids_flat = self.expert_ids.reshape(-1)
 
         with self._nvtx_range(self.nvtx_label):
-            with torch.no_grad():
+            with torch.inference_mode():
                 if self.dispatch_mode == "mask_scan":
                     dispatch_shared_expert_mask_scan(
                         flat,

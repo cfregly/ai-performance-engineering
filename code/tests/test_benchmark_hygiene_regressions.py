@@ -2697,6 +2697,7 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "self._next_token_buffer: Optional[torch.Tensor] = None" in source
     assert "self._next_token_buffer = torch.empty((cfg.batch_size, 1)" in setup_section
     assert "def _next_token_from_logits" in source
+    assert "with torch.inference_mode():" in benchmark_section
     assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in source
     assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in benchmark_section
     assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in benchmark_section
@@ -4446,8 +4447,23 @@ def test_ch15_kv_cache_math_preconcats_static_inputs() -> None:
     assert "self._sequence_inputs = torch.empty_like(self.cache_buffer)" in setup_section
     assert "torch.cat(self.inputs, dim=1, out=self._sequence_inputs)" in setup_section
     assert "torch.cat(self.inputs" not in benchmark_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert "queries = self._sequence_inputs" in benchmark_section
     assert "k_cache = self._sequence_inputs" in benchmark_section
+
+
+def test_ch15_kv_cache_management_wrappers_use_inference_mode() -> None:
+    for relative in (
+        "ch15/baseline_kv_cache_management.py",
+        "ch15/optimized_kv_cache_management.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "with torch.no_grad():" not in benchmark_section
 
 
 def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
@@ -4474,8 +4490,12 @@ def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
     assert "self._rank_indices.append(indices)" in baseline_setup
     assert "self._rank_offsets.append((offset, next_offset))" in baseline_setup
     assert "self._perm = torch.cat(self._rank_indices, dim=0)" in baseline_setup
+    assert "with torch.inference_mode():" in baseline_setup
+    assert "with torch.inference_mode():" in baseline_benchmark
     assert "self._dest_ranks = torch.div(" in optimized_setup
     assert "self._perm = torch.argsort(self._dest_ranks)" in optimized_setup
+    assert "with torch.inference_mode():" in optimized_setup
+    assert "with torch.inference_mode():" in optimized_benchmark
     assert "dest_ranks = torch.div(" not in baseline_benchmark
     assert "dest_ranks = torch.div(" not in optimized_benchmark
     assert "mask = dest_ranks == r" not in baseline_benchmark
@@ -4493,6 +4513,27 @@ def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
     assert "out_flat.index_copy_(0, perm, recv_out)" in optimized_benchmark
     assert "perm = self._perm" in optimized_benchmark
     assert "torch.index_select(flat, 0, perm, out=recv_buf)" in optimized_benchmark
+
+
+def test_ch15_moe_overlap_and_routing_use_inference_mode() -> None:
+    for relative in (
+        "ch15/baseline_moe_overlap.py",
+        "ch15/optimized_moe_overlap_shared_expert.py",
+        "ch15/moe_routing_benchmark_common.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "with torch.inference_mode():" in setup_section
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "with torch.no_grad():" not in setup_section
+        assert "with torch.no_grad():" not in benchmark_section
 
 
 def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:

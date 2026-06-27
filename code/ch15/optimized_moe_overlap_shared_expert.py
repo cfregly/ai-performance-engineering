@@ -108,7 +108,7 @@ class OptimizedMoeOverlapSharedExpertBenchmark(VerificationPayloadMixin, BaseBen
         self._verify_meta = torch.zeros(self.num_experts, dtype=torch.int8)
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.shared_expert(self.inputs.view(-1, self.hidden_size))
                 _ = self.routed_expert(self.inputs.view(-1, self.hidden_size))
         self._synchronize()
@@ -134,7 +134,7 @@ class OptimizedMoeOverlapSharedExpertBenchmark(VerificationPayloadMixin, BaseBen
 
         flat = self.inputs.view(-1, self.hidden_size)
         with self._nvtx_range("optimized_moe_overlap_shared_expert"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 total_tokens = flat.shape[0]
                 chunk_tokens = max(1, (total_tokens + self.comm_chunks - 1) // self.comm_chunks)
                 # Launch comm copies first on the copy stream, then compute the

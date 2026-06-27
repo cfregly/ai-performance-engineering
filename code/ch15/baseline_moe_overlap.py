@@ -105,7 +105,7 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_meta = torch.zeros(self.num_experts, dtype=torch.int8)
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.shared_expert(self.inputs.view(-1, self.hidden_size))
                 _ = self.routed_expert(self.inputs.view(-1, self.hidden_size))
 
@@ -126,7 +126,7 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         expert_ids_flat = self.expert_ids.reshape(-1)
 
         with self._nvtx_range("baseline_moe_overlap"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 shared_out = self.shared_expert(flat)
                 total_tokens = flat.shape[0]
                 chunk_tokens = max(1, (total_tokens + self.comm_chunks - 1) // self.comm_chunks)
