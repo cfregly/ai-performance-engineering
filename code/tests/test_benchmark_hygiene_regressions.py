@@ -2427,6 +2427,26 @@ def test_ch15_decode_worker_reuses_sampling_buffers() -> None:
     assert "next_token.item()" not in generate_section
 
 
+def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
+    source = (REPO_ROOT / "ch15" / "moe_inference_common.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _prepare_iteration_metrics",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+
+    assert "self._next_token_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._next_token_buffer = torch.empty((cfg.batch_size, 1)" in setup_section
+    assert "def _next_token_from_logits" in source
+    assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in source
+    assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in benchmark_section
+    assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in benchmark_section
+    assert "torch.argmax(" not in benchmark_section
+
+
 def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
     for filename in (
         "baseline_kv_cache_nvlink_pool.py",

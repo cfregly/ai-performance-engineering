@@ -46,6 +46,8 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.prompts: Optional[torch.Tensor] = None
         self.kv_cache: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._next_token_buffer: Optional[torch.Tensor] = None
+        self._next_token_values: Optional[torch.Tensor] = None
         self._history: Dict[str, List[float]] = {
             "ttft": [],
             "tpot": [],
@@ -110,6 +112,8 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             cfg.dtype_obj,
             self.device,
         )
+        self._next_token_buffer = torch.empty((cfg.batch_size, 1), dtype=torch.long, device=self.device)
+        self._next_token_values = None
         torch.cuda.synchronize(self.device)
         if hasattr(torch.cuda, "reset_peak_memory_stats"):
             torch.cuda.reset_peak_memory_stats(self.device)
@@ -132,6 +136,22 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._prefill_end_event = torch.cuda.Event(enable_timing=True)
         self._decode_start_event = torch.cuda.Event(enable_timing=True)
         self._decode_end_event = torch.cuda.Event(enable_timing=True)
+
+    def _next_token_from_logits(self, logits_last: torch.Tensor) -> torch.Tensor:
+        if self._next_token_buffer is None:
+            raise RuntimeError("Next-token buffer is not initialized")
+        batch_size = logits_last.size(0)
+        if tuple(self._next_token_buffer.shape) != (batch_size, 1):
+            self._next_token_buffer = torch.empty((batch_size, 1), dtype=torch.long, device=logits_last.device)
+        if (
+            self._next_token_values is None
+            or self._next_token_values.device != logits_last.device
+            or self._next_token_values.dtype != logits_last.dtype
+            or tuple(self._next_token_values.shape) != (batch_size, 1)
+        ):
+            self._next_token_values = torch.empty_like(logits_last[:, :1])
+        torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))
+        return self._next_token_buffer
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.prompts is None or self.kv_cache is None:
@@ -157,7 +177,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
                     raise RuntimeError("Iteration timing events not initialized")
                 self._prefill_start_event.record(stream)
                 _hidden, logits = self.model.prefill(self.prompts, kv_cache=self.kv_cache, cache_start=0)
-                seed_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+                seed_tokens = self._next_token_from_logits(logits[:, -1, :])
                 self._prefill_end_event.record(stream)
 
                 self._decode_start_event.record(stream)
@@ -167,7 +187,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
                         kv_cache=self.kv_cache,
                         position=cfg.context_window + step,
                     )
-                    seed_tokens = torch.argmax(decode_logits[:, -1, :], dim=-1, keepdim=True)
+                    seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])
                 self._decode_end_event.record(stream)
                 self.output = seed_tokens.detach()
 
