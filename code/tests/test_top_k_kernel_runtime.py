@@ -74,6 +74,7 @@ def test_compare_top_k_matrix_uses_cuda_event_timing() -> None:
     assert measure_section.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "start.record()" in measure_section
     assert "end.record()" in measure_section
+    assert "end.synchronize()" in measure_section
     assert "return start.elapsed_time(end) / iters" in measure_section
     assert "time.perf_counter()" not in measure_section
     assert "time.time()" not in measure_section

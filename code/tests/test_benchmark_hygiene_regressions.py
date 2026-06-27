@@ -780,6 +780,7 @@ def test_custom_vs_cublas_timing_helpers_use_cuda_events() -> None:
     ].split("# Available kernels", maxsplit=1)[0]
 
     assert runner_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "end.synchronize()" in runner_section
     assert "return elapsed_ms" in runner_section
     assert "start.elapsed_time(end) / iters" in runner_section
     assert "time.time()" not in runner_section
@@ -1701,6 +1702,7 @@ def test_timed_loops_reuse_cuda_events() -> None:
             assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
             assert timing_section.count("start.record()") == 1
             assert timing_section.count("end.record()") == 1
+            assert timing_section.count("end.synchronize()") == 1
             assert "samples.append(start.elapsed_time(end))" not in timing_section
 
 

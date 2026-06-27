@@ -130,7 +130,7 @@ def measure_cuda_callable(
     for _ in range(count):
         fn()
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     return float(start.elapsed_time(end) / count)
 
 

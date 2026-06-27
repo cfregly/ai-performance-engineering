@@ -44,7 +44,7 @@ def bench(fn, a, b, warmup=10, iters=50):
     for _ in range(iters):
         fn(a, b)
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     return start.elapsed_time(end) / iters  # ms
 
 

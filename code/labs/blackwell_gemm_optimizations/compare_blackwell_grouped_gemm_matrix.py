@@ -67,7 +67,7 @@ def _measure_variant(
             output_buffer=out,
         )
     end.record()
-    torch.cuda.synchronize(device)
+    end.synchronize()
     mean_ms = float(start.elapsed_time(end) / repeats)
     flops = 2.0 * workload.num_tokens * workload.hidden_dim * workload.expert_ffn_dim
     tflops = flops / (mean_ms * 1e-3) / 1e12

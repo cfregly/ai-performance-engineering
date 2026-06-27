@@ -246,7 +246,8 @@ def test_compare_measure_cuda_path_uses_single_event_bracket() -> None:
         maxsplit=1,
     )[0]
 
-    assert cuda_section.count("torch.cuda.synchronize()") == 2
+    assert cuda_section.count("torch.cuda.synchronize()") == 1
     assert cuda_section.count("start.record()") == 1
     assert cuda_section.count("end.record()") == 1
+    assert cuda_section.count("end.synchronize()") == 1
     assert "total_ms += start.elapsed_time(end)" not in cuda_section

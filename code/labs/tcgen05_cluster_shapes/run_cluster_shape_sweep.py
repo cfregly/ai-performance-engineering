@@ -30,7 +30,7 @@ def _benchmark(fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], a: torc
     for _ in range(iterations):
         fn(a, b)
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
     return start.elapsed_time(end) / iterations
 
 

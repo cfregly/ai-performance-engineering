@@ -74,7 +74,7 @@ def _measure_case(backend: str, mode: str, case: dict[str, int]) -> float:
         for _ in range(iters):
             bench.benchmark_fn()
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         return start.elapsed_time(end) / iters
     finally:
         bench.teardown()

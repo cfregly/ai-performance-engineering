@@ -32,7 +32,7 @@ def _measure(bench, *, warmup: int, iterations: int) -> float:
         for _ in range(iterations):
             bench.benchmark_fn()
         end.record()
-        torch.cuda.synchronize()
+        end.synchronize()
         return float(start.elapsed_time(end) / iterations)
 
     total_ms = 0.0

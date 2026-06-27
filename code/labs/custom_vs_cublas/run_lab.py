@@ -57,7 +57,7 @@ def benchmark_kernel(fn, *args, warmup=5, iters=20):
     for _ in range(iters):
         fn(*args)
     end.record()
-    torch.cuda.synchronize()
+    end.synchronize()
 
     elapsed_ms = start.elapsed_time(end) / iters
     return elapsed_ms
