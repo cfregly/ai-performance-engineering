@@ -9,7 +9,6 @@ optimized path is full causal SDPA rather than an explicit local-window mask.
 
 from __future__ import annotations
 
-import math
 from typing import Optional
 
 import torch
@@ -123,12 +122,12 @@ class OptimizedSlidingWindowBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Warmup
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.x)
 
     def benchmark_fn(self) -> None:
         """Benchmark fused full-sequence causal SDPA."""
-        with torch.no_grad():
+        with torch.inference_mode():
             self.output = self.model(self.x)
         if self.output is None or self.x is None:
             raise RuntimeError("benchmark_fn() must produce output")

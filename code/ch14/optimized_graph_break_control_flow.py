@@ -110,7 +110,7 @@ class OptimizedGraphBreakControlFlowBenchmark(VerificationPayloadMixin, BaseBenc
         # Warm up both branch directions to validate dynamic predicate capture.
         for i in range(20):
             b = self.b_pos if (i % 2 == 0) else self.b_neg
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.compiled_model(self.a, b)
         self._synchronize()
 
@@ -121,7 +121,7 @@ class OptimizedGraphBreakControlFlowBenchmark(VerificationPayloadMixin, BaseBenc
         b = self.b_pos if (self._step % 2 == 0) else self.b_neg
         self._step += 1
 
-        with torch.no_grad(), self._nvtx_range("optimized_graph_break_control_flow"):
+        with torch.inference_mode(), self._nvtx_range("optimized_graph_break_control_flow"):
             self._last_b = b
             self.output = self.compiled_model(self.a, b)
         if self.output is None or self._last_b is None:
@@ -130,7 +130,7 @@ class OptimizedGraphBreakControlFlowBenchmark(VerificationPayloadMixin, BaseBenc
     def capture_verification_payload(self) -> None:
         if self.compiled_model is None or self.a is None or self.b_neg is None:
             raise RuntimeError("Benchmark not initialized for verification")
-        with torch.no_grad():
+        with torch.inference_mode():
             verify_output = self.compiled_model(self.a, self.b_neg)
         self._set_verification_payload(
             inputs={"a": self.a, "b": self.b_neg},
@@ -179,5 +179,4 @@ class OptimizedGraphBreakControlFlowBenchmark(VerificationPayloadMixin, BaseBenc
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedGraphBreakControlFlowBenchmark()
-
 

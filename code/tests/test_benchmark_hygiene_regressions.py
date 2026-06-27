@@ -2963,6 +2963,58 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "float(out.sum())" not in optimized_benchmark
 
 
+def test_ch14_forward_benchmarks_use_inference_mode() -> None:
+    benchmark_files = (
+        "baseline_attention_eager_sdpa.py",
+        "optimized_attention_eager_sdpa.py",
+        "baseline_flex_attention_sparse.py",
+        "optimized_flex_attention_sparse.py",
+        "baseline_graph_break_control_flow.py",
+        "optimized_graph_break_control_flow.py",
+        "baseline_model_compile_reduced_precision.py",
+        "optimized_model_compile_reduced_precision.py",
+        "baseline_regional_triton.py",
+        "optimized_regional_triton.py",
+        "baseline_sliding_window.py",
+        "optimized_sliding_window.py",
+        "flash_attention_sdpa_bench.py",
+        "flex_attention_sparse_demo.py",
+        "sliding_window_demo.py",
+    )
+    setup_files = benchmark_files[1:]
+    verification_files = (
+        "baseline_graph_break_control_flow.py",
+        "optimized_graph_break_control_flow.py",
+    )
+
+    for filename in benchmark_files:
+        source = (REPO_ROOT / "ch14" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+
+    for filename in setup_files:
+        source = (REPO_ROOT / "ch14" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        assert "torch.inference_mode()" in setup_section
+        assert "torch.no_grad()" not in setup_section
+
+    for filename in verification_files:
+        source = (REPO_ROOT / "ch14" / filename).read_text(encoding="utf-8")
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        assert "torch.inference_mode()" in capture_section
+        assert "torch.no_grad()" not in capture_section
+
+
 def test_ch14_flash_attention_sdpa_bench_defers_output_clone_and_host_sync() -> None:
     source = (REPO_ROOT / "ch14" / "flash_attention_sdpa_bench.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

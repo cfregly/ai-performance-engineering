@@ -23,8 +23,7 @@ REQUIREMENTS:
 
 from __future__ import annotations
 
-import math
-from typing import Optional, Callable
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -303,7 +302,7 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Warmup
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.attn(self.x)
 
     def benchmark_fn(self) -> None:
@@ -311,7 +310,7 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         config = self.get_config()
         enable_nvtx = get_nvtx_enabled(config) if config else False
         with nvtx_range("optimized_flex_attention_sparse", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.model(self.x)
         if self.output is None or self.x is None:
             raise RuntimeError("benchmark_fn() must produce output")

@@ -451,13 +451,13 @@ class SlidingWindowDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Warmup - important for Flash Attention kernel selection
         for _ in range(10):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.x)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
         """Benchmark: SDPA/Flash Attention forward pass."""
-        with torch.no_grad():
+        with torch.inference_mode():
             self.output = self.model(self.x)
         if self.output is None or self.x is None:
             raise RuntimeError("benchmark_fn() must produce output")

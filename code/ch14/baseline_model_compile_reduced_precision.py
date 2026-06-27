@@ -66,7 +66,7 @@ class BaselineModelCompileReducedPrecisionBenchmark(VerificationPayloadMixin, Ba
         
         # Warm eager execution to the same reduced-precision steady state used by the compiled path.
         for _ in range(MODEL_EAGER_WARMUP_ITERS):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.input_ids)
     
     def benchmark_fn(self) -> None:
@@ -79,7 +79,7 @@ class BaselineModelCompileReducedPrecisionBenchmark(VerificationPayloadMixin, Ba
 
 
         with nvtx_range("model_compile_reduced_precision_baseline", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.model(self.input_ids)
         if self.output is None or self.input_ids is None:
             raise RuntimeError("benchmark_fn() must produce output")

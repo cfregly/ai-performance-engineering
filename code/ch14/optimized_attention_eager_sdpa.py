@@ -69,7 +69,7 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
         self.k = torch.randn(shape, device=self.device, dtype=self.dtype)
         self.v = torch.randn(shape, device=self.device, dtype=self.dtype)
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self._attention(self.q, self.k, self.v)
         torch.cuda.synchronize(self.device)
 
@@ -95,7 +95,10 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
         enable_nvtx = get_nvtx_enabled(config) if config else False
 
 
-        with nvtx_range("optimized_attention_eager_sdpa", enable=enable_nvtx):
+        with (
+            torch.inference_mode(),
+            nvtx_range("optimized_attention_eager_sdpa", enable=enable_nvtx),
+        ):
             if self.q is None or self.k is None or self.v is None:
                 raise RuntimeError("Tensors not initialized")
             out = self._attention(self.q, self.k, self.v)

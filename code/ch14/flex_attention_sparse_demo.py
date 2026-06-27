@@ -23,7 +23,6 @@ REQUIREMENTS:
 
 from __future__ import annotations
 
-import math
 from typing import Callable, Optional
 
 import torch
@@ -449,13 +448,14 @@ class FlexAttentionSparseDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
         # Warmup with causal pattern
         if HAS_FLEX_ATTENTION:
-            for _ in range(10):
-                _ = self.demo_benchmark._compiled_flex(
-                    self.demo_benchmark.q,
-                    self.demo_benchmark.k,
-                    self.demo_benchmark.v,
-                    block_mask=self._block_mask,
-                )
+            with torch.inference_mode():
+                for _ in range(10):
+                    _ = self.demo_benchmark._compiled_flex(
+                        self.demo_benchmark.q,
+                        self.demo_benchmark.k,
+                        self.demo_benchmark.v,
+                        block_mask=self._block_mask,
+                    )
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -465,7 +465,7 @@ class FlexAttentionSparseDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.demo_benchmark is None:
             raise RuntimeError("Benchmark not initialized")
 
-        with torch.no_grad():
+        with torch.inference_mode():
             self.output = self.demo_benchmark._compiled_flex(
                 self.demo_benchmark.q,
                 self.demo_benchmark.k,

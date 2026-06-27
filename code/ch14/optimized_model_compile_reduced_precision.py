@@ -74,13 +74,13 @@ class OptimizedModelCompileReducedPrecisionBenchmark(VerificationPayloadMixin, B
         
         # Extensive warmup for compilation and autotuning
         for _ in range(MODEL_EAGER_COMPILE_WARMUP_ITERS):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.compiled_model(self.input_ids)
         torch.cuda.synchronize(self.device)
         
         # Additional warmup after compilation
         for _ in range(MODEL_EAGER_WARMUP_ITERS):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.compiled_model(self.input_ids)
         torch.cuda.synchronize()
         self._payload_dtype = self.dtype
@@ -97,7 +97,7 @@ class OptimizedModelCompileReducedPrecisionBenchmark(VerificationPayloadMixin, B
 
 
         with nvtx_range("model_compile_reduced_precision_optimized", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.compiled_model(self.input_ids)
         if self.output is None or self.input_ids is None:
             raise RuntimeError("benchmark_fn() must produce output")

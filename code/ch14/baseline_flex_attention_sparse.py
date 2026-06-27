@@ -96,14 +96,14 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
         self.x = torch.randn(self.batch_size, self.seq_len, self.embed_dim, device=self.device, dtype=self.dtype)
 
         for _ in range(3):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.x, self.allowed_mask)
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.x is None or self.allowed_mask is None:
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_flex_attention_sparse"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output = self.model(self.x, self.allowed_mask)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output")
@@ -149,4 +149,3 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineFlexAttentionSparseBenchmark()
-

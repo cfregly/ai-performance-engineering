@@ -122,7 +122,7 @@ class OptimizedRegionalTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         # Warm every sequence bucket in setup so the timed path measures steady
         # state regional compilation, not first-bucket Inductor/autotune churn.
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(3):
                 for seq in self.sequence_schedule:
                     _ = self._compiled_model(self.inputs[seq])
@@ -142,7 +142,7 @@ class OptimizedRegionalTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Model not initialized")
         seq_len = self._next_sequence_length()
         x = self.inputs[seq_len]
-        with torch.no_grad(), self._nvtx_range("optimized_regional_triton"):
+        with torch.inference_mode(), self._nvtx_range("optimized_regional_triton"):
             self._last_input = x
             self.output = self._compiled_model(x)
         if self.output is None or self._last_input is None:

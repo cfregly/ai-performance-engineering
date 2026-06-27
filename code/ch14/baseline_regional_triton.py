@@ -116,7 +116,7 @@ class BaselineRegionalTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         # Warmup the compiled model to amortize any remaining JIT cost
         for seq in self.sequence_schedule:
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self._compiled_model(self.inputs[seq])
 
         self.register_workload_metadata(
@@ -136,7 +136,7 @@ class BaselineRegionalTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         seq_len = self._next_sequence_length()
         x = self.inputs[seq_len]
 
-        with torch.no_grad(), self._nvtx_range("baseline_regional_triton"):
+        with torch.inference_mode(), self._nvtx_range("baseline_regional_triton"):
             self._last_input = x
             self.output = self._compiled_model(x)
         if self.output is None or self._last_input is None:

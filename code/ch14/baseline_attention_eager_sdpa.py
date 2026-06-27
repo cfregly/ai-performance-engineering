@@ -66,7 +66,10 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         enable_nvtx = get_nvtx_enabled(config) if config else False
 
 
-        with nvtx_range("baseline_attention_eager_sdpa", enable=enable_nvtx):
+        with (
+            torch.inference_mode(),
+            nvtx_range("baseline_attention_eager_sdpa", enable=enable_nvtx),
+        ):
             if self.q is None or self.k is None or self.v is None:
                 raise RuntimeError("Tensors not initialized")
             scale = 1.0 / math.sqrt(self.head_dim)

@@ -127,12 +127,12 @@ class BaselineSlidingWindowBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Proper warmup to avoid cold cache effects
         for _ in range(5):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.x)
 
     def benchmark_fn(self) -> None:
         """Benchmark: Naive attention."""
-        with torch.no_grad():
+        with torch.inference_mode():
             self.output = self.model(self.x)
         if self.output is None or self.x is None:
             raise RuntimeError("benchmark_fn() must produce output")

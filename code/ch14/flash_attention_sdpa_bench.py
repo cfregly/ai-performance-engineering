@@ -113,12 +113,12 @@ class FlashAttentionSdpaBenchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Proper warmup to avoid cold cache effects
         for _ in range(5):
-            with torch.no_grad():
+            with torch.inference_mode():
                 _ = self.model(self.x)
 
     def benchmark_fn(self) -> None:
         """Benchmark: Flash Attention."""
-        with torch.no_grad():
+        with torch.inference_mode():
             output = self.model(self.x)
             self.output = output.detach()
         if self.output is None or self.x is None:
