@@ -96,6 +96,33 @@ def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
     assert "sorted_tokens = x.index_select(0, sorted_token_ids)" in benchmark_section
     assert "max_tokens = int(counts.max().item())" in benchmark_section
     assert benchmark_section.count("max_tokens=max_tokens") == 3
+    assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start.elapsed_time(end) / 10" in benchmark_section
+    assert "time.perf_counter()" not in benchmark_section
+
+
+def test_moe_journey_run_level_uses_reused_cuda_events() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "labs"
+        / "moe_optimization_journey"
+        / "moe_benchmark.py"
+    ).read_text(encoding="utf-8")
+    run_level_section = source.split("def run_level", maxsplit=1)[1].split(
+        'if __name__ == "__main__":',
+        maxsplit=1,
+    )[0]
+    timing_loop = run_level_section.split("for i in range(5):", maxsplit=1)[1].split(
+        "avg = sum(times) / len(times)",
+        maxsplit=1,
+    )[0]
+
+    assert run_level_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start_event.record()" in timing_loop
+    assert "end_event.record()" in timing_loop
+    assert "end_event.synchronize()" in timing_loop
+    assert "elapsed_ms = start_event.elapsed_time(end_event)" in timing_loop
+    assert "time.perf_counter()" not in run_level_section
 
 
 def test_moe_bmm_fusion_reuses_offset_buffer_without_cat() -> None:

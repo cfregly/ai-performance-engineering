@@ -11,7 +11,6 @@ import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
-import time
 
 
 def _flat_topk_token_ids(num_tokens: int, top_k: int, device: torch.device) -> torch.Tensor:
@@ -206,13 +205,16 @@ def benchmark_triton_moe():
             _ = triton_fused_moe(sorted_tokens, w_gate, w_up, w_down,
                                 sorted_weights, expert_offsets, E, H, I, max_tokens=max_tokens)
         torch.cuda.synchronize()
-        
-        start = time.perf_counter()
+
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
         for _ in range(10):
             _ = triton_fused_moe(sorted_tokens, w_gate, w_up, w_down,
                                 sorted_weights, expert_offsets, E, H, I, max_tokens=max_tokens)
+        end.record()
         torch.cuda.synchronize()
-        ms = (time.perf_counter() - start) * 1000 / 10
+        ms = start.elapsed_time(end) / 10
         
         flops = batch_seq * K * 3 * 2 * H * I
         tflops = flops / (ms / 1000) / 1e12

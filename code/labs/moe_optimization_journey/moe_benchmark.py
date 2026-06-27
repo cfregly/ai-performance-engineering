@@ -7,7 +7,6 @@ Optimizations are applied cumulatively based on level.
 
 from __future__ import annotations
 
-import time
 from typing import Any, Dict, Optional
 
 import torch
@@ -264,11 +263,14 @@ def run_level(level: int) -> None:
     benchmark.setup()
     
     times = []
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
     for i in range(5):
-        start = time.perf_counter()
+        start_event.record()
         benchmark.benchmark_fn()
-        torch.cuda.synchronize()
-        elapsed_ms = (time.perf_counter() - start) * 1000
+        end_event.record()
+        end_event.synchronize()
+        elapsed_ms = start_event.elapsed_time(end_event)
         times.append(elapsed_ms)
         total_tokens = benchmark.BATCH_SIZE * benchmark.SEQ_LEN
         tok_s = total_tokens / (elapsed_ms / 1000)
