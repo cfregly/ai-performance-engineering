@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Optional
 
 import torch
-import triton
-import triton.language as tl
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
@@ -124,7 +123,6 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         grid = (max(1, num_items),)
         BLOCK_K = self.block_k
         with torch.cuda.graph(self.full_graph):
-            self.inputs.out.zero_()
             qk = (self.inputs.q * self.inputs.k).sum(dim=-1)
             self.prefill_out.copy_(qk)
             persistent_decode_kernel[grid](

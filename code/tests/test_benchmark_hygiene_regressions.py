@@ -2272,18 +2272,23 @@ def test_persistent_decode_graphs_reuses_timing_events_outside_hot_loop() -> Non
         encoding="utf-8"
     )
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
-    prefill_section = source.split("def _prefill_shaped", maxsplit=1)[1].split(
-        "def _decode_graph", maxsplit=1
+    piecewise_capture_section = source.split("def _capture_piecewise_graphs", maxsplit=1)[1].split(
+        "def _capture_full_graph", maxsplit=1
+    )[0]
+    full_capture_section = source.split("def _capture_full_graph", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
     )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def finalize_iteration_metrics", maxsplit=1
     )[0]
 
     assert "torch.cuda.Event(enable_timing=True)" in setup_section
-    assert "self._prefill_events = [" in setup_section
-    assert "evt = self._prefill_events[idx]" in prefill_section
-    assert "torch.cuda.Event(" not in prefill_section
+    assert "self._full_events = {" in setup_section
+    assert "self._piecewise_events = {" in setup_section
+    assert "torch.cuda.Event(" not in piecewise_capture_section
+    assert "torch.cuda.Event(" not in full_capture_section
     assert "torch.cuda.Event(" not in benchmark_section
+    assert "self.inputs.out.zero_()" not in full_capture_section
     assert 'start = self._full_events["start"]' in benchmark_section
     assert 'start_prefill = self._piecewise_events["start_prefill"]' in benchmark_section
 
