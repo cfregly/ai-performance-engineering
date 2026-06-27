@@ -1173,6 +1173,16 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     assert "self._next_token_buffer = None" in token_precision_source
     assert "self._next_token_host_buffer = None" in token_precision_source
     assert "def _next_token_buffers(self, device: torch.device)" in token_precision_source
+    dynamic_decode_section = token_precision_source.split("def decode_with_dynamic_precision", maxsplit=1)[1].split(
+        "# ===== END dynamic_precision_inference =====",
+        maxsplit=1,
+    )[0]
+    assert "next_token = torch.empty((batch_size, 1), device=device, dtype=prompt.dtype)" in dynamic_decode_section
+    assert "top2_values = torch.empty(" in dynamic_decode_section
+    assert "top2_indices = torch.empty(" in dynamic_decode_section
+    assert "torch.topk(last, k=2, dim=topk_dim, out=(top2_values, top2_indices))" in dynamic_decode_section
+    assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in dynamic_decode_section
+    assert "next_token = torch.argmax(last_step_logits" not in dynamic_decode_section
     assert "torch.multinomial(probs, num_samples=1, out=next_token)" in token_precision_generate
     assert "tokens[:, current_len : current_len + 1].copy_(next_token.view(1, 1))" in token_precision_generate
     assert "next_token_host.copy_(next_token)" in token_precision_generate
