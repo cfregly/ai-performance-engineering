@@ -14,6 +14,13 @@ import triton.language as tl
 import time
 
 
+def _flat_topk_token_ids(num_tokens: int, top_k: int, device: torch.device) -> torch.Tensor:
+    token_ids = torch.arange(num_tokens * top_k, device=device, dtype=torch.int64)
+    if top_k > 1:
+        token_ids.div_(top_k, rounding_mode="floor")
+    return token_ids
+
+
 @triton.jit
 def fused_moe_expert_kernel(
     # Pointers
@@ -172,9 +179,11 @@ def benchmark_triton_moe():
     # Sort by expert
     flat_idx = expert_indices.view(-1)
     sorted_order = torch.argsort(flat_idx, stable=True)
-    sorted_tokens = x.repeat_interleave(K, dim=0)[sorted_order]
-    sorted_weights = expert_weights.view(-1)[sorted_order]
-    sorted_expert_ids = flat_idx[sorted_order]
+    flat_token_ids = _flat_topk_token_ids(batch_seq, K, x.device)
+    sorted_token_ids = flat_token_ids.index_select(0, sorted_order)
+    sorted_tokens = x.index_select(0, sorted_token_ids)
+    sorted_weights = expert_weights.view(-1).index_select(0, sorted_order)
+    sorted_expert_ids = flat_idx.index_select(0, sorted_order)
     
     # Compute expert offsets
     counts = torch.bincount(sorted_expert_ids, minlength=E)
@@ -218,4 +227,3 @@ def benchmark_triton_moe():
 
 if __name__ == "__main__":
     benchmark_triton_moe()
-

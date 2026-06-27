@@ -98,6 +98,21 @@ def test_bucket_by_expert_sorts_once_and_preserves_metadata() -> None:
     assert m_splits == [2, 1, 2]
     assert expert_order_list == [0, 1, 2]
 
+    route_assignments = torch.tensor([1, 0, 1, 0, 1, 0], dtype=torch.int64)
+    route_token_ids = torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.int64)
+    route_bucketed, _, route_gather, _, route_bucket_token_ids = bucket_by_expert(
+        tokens[:3],
+        route_assignments,
+        num_experts=2,
+        token_ids=route_token_ids,
+    )
+
+    torch.testing.assert_close(
+        route_bucketed,
+        tokens[:3].index_select(0, route_token_ids.index_select(0, route_gather)),
+    )
+    torch.testing.assert_close(route_bucket_token_ids, route_token_ids.index_select(0, route_gather))
+
 
 def test_optimized_mxfp8_moe_reuses_token_ids_and_keeps_reorder_on_device() -> None:
     module_source = inspect.getsource(optimized_mxfp8_moe)

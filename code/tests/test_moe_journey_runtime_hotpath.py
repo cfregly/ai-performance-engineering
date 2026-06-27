@@ -80,6 +80,11 @@ def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
     assert "if max_tokens is None:" in function_section
     assert "sorted_ids" not in function_section
     assert "Sorted_ids_ptr" not in source
+    assert "def _flat_topk_token_ids" in source
+    assert 'token_ids.div_(top_k, rounding_mode="floor")' in source
+    assert "x.repeat_interleave(K" not in benchmark_section
+    assert "sorted_token_ids = flat_token_ids.index_select(0, sorted_order)" in benchmark_section
+    assert "sorted_tokens = x.index_select(0, sorted_token_ids)" in benchmark_section
     assert "max_tokens = int(counts.max().item())" in benchmark_section
     assert benchmark_section.count("max_tokens=max_tokens") == 3
 
@@ -100,6 +105,9 @@ def test_moe_bmm_fusion_reuses_offset_buffer_without_cat() -> None:
     assert "starts[0] = 0" in bmm_fusion_section
     assert "starts[1:].copy_(cumsum[:-1])" in bmm_fusion_section
     assert "starts = torch.cat(" not in bmm_fusion_section
+    assert "x.repeat_interleave(top_k" not in bmm_fusion_section
+    assert "sorted_token_ids = flat_token_ids.index_select(0, sorted_order)" in bmm_fusion_section
+    assert "sorted_tokens = x.index_select(0, sorted_token_ids)" in bmm_fusion_section
 
 
 def test_triton_fused_moe_uses_overwritten_output_and_inplace_offsets() -> None:
@@ -121,6 +129,7 @@ def test_triton_fused_moe_uses_overwritten_output_and_inplace_offsets() -> None:
     assert "expert_offsets[0] = 0" in benchmark_section
     assert "expert_offsets[1:].copy_(counts.cumsum(0))" in benchmark_section
     assert "expert_offsets = torch.cat(" not in benchmark_section
+    assert "x.repeat_interleave(K" not in benchmark_section
 
 
 @CUDA_REQUIRED

@@ -37,6 +37,13 @@ except ImportError:
         return F.silu(gate) * up
 
 
+def _flat_topk_token_ids(num_tokens: int, top_k: int, device: torch.device) -> torch.Tensor:
+    token_ids = torch.arange(num_tokens * top_k, device=device, dtype=torch.int64)
+    if top_k > 1:
+        token_ids.div_(top_k, rounding_mode="floor")
+    return token_ids
+
+
 @dataclass
 class MoEOptimizations:
     """Optimization flags for MoE model."""
@@ -367,7 +374,7 @@ class MoEExperts(nn.Module):
         # path. That keeps the lab aligned with the production-style grouped-routing
         # utilities it already documents, and avoids the current sort-heavy slowdown.
         batch_seq, top_k = expert_indices.shape
-        repeated_tokens = x.repeat_interleave(top_k, dim=0)
+        flat_token_ids = _flat_topk_token_ids(batch_seq, top_k, x.device)
         flat_expert_ids = expert_indices.view(-1)
         (
             sorted_tokens,
@@ -377,9 +384,10 @@ class MoEExperts(nn.Module):
             _bucket_token_ids,
             expert_order_host,
         ) = bucket_grouped_tokens(
-            repeated_tokens,
+            x,
             flat_expert_ids,
             self.num_experts,
+            token_ids=flat_token_ids,
             return_expert_order_list=True,
         )
         sorted_weights = expert_weights.view(-1).index_select(0, bucket_indices)
@@ -438,9 +446,11 @@ class MoEExperts(nn.Module):
         # Sort by expert
         flat_idx = expert_indices.view(-1)
         sorted_order = torch.argsort(flat_idx, stable=True)
-        sorted_tokens = x.repeat_interleave(top_k, dim=0)[sorted_order]
-        sorted_weights = expert_weights.view(-1)[sorted_order]
-        sorted_expert_ids = flat_idx[sorted_order]
+        flat_token_ids = _flat_topk_token_ids(batch_seq, top_k, device)
+        sorted_token_ids = flat_token_ids.index_select(0, sorted_order)
+        sorted_tokens = x.index_select(0, sorted_token_ids)
+        sorted_weights = expert_weights.view(-1).index_select(0, sorted_order)
+        sorted_expert_ids = flat_idx.index_select(0, sorted_order)
         counts = torch.bincount(sorted_expert_ids, minlength=self.num_experts)
         max_count = counts.max().item()
         
@@ -507,7 +517,10 @@ class MoEExperts(nn.Module):
         batch_seq, top_k = expert_indices.shape
         flat_idx = expert_indices.reshape(-1)
         flat_weights = expert_weights.reshape(1, -1, 1).to(dtype=x.dtype)
-        expanded_x = x.repeat_interleave(top_k, dim=0)
+        expanded_x = x[:, None, :].expand(batch_seq, top_k, self.hidden_size).reshape(
+            batch_seq * top_k,
+            self.hidden_size,
+        )
 
         expert_mask = F.one_hot(flat_idx, num_classes=self.num_experts).transpose(0, 1)
         expert_mask = expert_mask.to(dtype=x.dtype)

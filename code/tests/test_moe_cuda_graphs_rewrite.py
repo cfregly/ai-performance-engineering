@@ -120,6 +120,8 @@ def test_graphable_moe_path_uses_fixed_capacity_dense_dispatch() -> None:
     assert "F.one_hot(" in graphable_section
     assert "counts.max().item()" not in implementation
     assert "torch.argsort" not in implementation
+    assert "repeat_interleave" not in implementation
+    assert "x[:, None, :].expand(batch_seq, top_k, self.hidden_size).reshape(" in implementation
 
 
 def test_level5_bmm_path_reuses_padding_workspaces() -> None:
@@ -204,9 +206,13 @@ def test_grouped_moe_path_uses_shared_bucket_helpers() -> None:
     )[0]
 
     assert "bucket_grouped_tokens(" in grouped_section
+    assert "def _flat_topk_token_ids" in text
+    assert "flat_token_ids = _flat_topk_token_ids(batch_seq, top_k, x.device)" in grouped_section
+    assert "token_ids=flat_token_ids" in grouped_section
     assert "return_expert_order_list=True" in grouped_section
     assert "output = torch.empty(" in grouped_section
     assert "torch.zeros(sorted_tokens.shape[0]" not in grouped_section
+    assert "repeat_interleave" not in grouped_section
     assert "for expert_id, count in zip(expert_order_host, counts)" in grouped_section
     assert "expert_order.tolist()" not in grouped_section
     assert "restore_grouped_tokens(" in grouped_section

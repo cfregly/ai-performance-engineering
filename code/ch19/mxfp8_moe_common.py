@@ -51,12 +51,13 @@ def bucket_by_expert(
         expert_order_list: Optional host-side expert ids aligned with m_splits
             when return_expert_order_list is True.
     """
-    if token_ids is None:
-        token_ids = torch.arange(tokens.shape[0], device=tokens.device, dtype=torch.int64)
     flat_assignments = assignments.reshape(-1)
-    if flat_assignments.numel() != tokens.shape[0]:
-        raise ValueError("assignments must contain one expert id per token row")
-
+    if token_ids is None:
+        if flat_assignments.numel() != tokens.shape[0]:
+            raise ValueError("assignments must contain one expert id per token row")
+        token_ids = torch.arange(tokens.shape[0], device=tokens.device, dtype=torch.int64)
+    elif token_ids.numel() != flat_assignments.numel():
+        raise ValueError("token_ids must contain one source token id per assignment")
     gather_index = torch.argsort(flat_assignments)
     counts = torch.bincount(flat_assignments, minlength=num_experts).detach().cpu().tolist()
     m_splits = [int(count) for count in counts[:num_experts] if count]
@@ -64,9 +65,12 @@ def bucket_by_expert(
     if not m_splits:
         raise RuntimeError("No expert received tokens; assignment mapping is empty.")
 
-    bucketed = tokens.index_select(0, gather_index)
-    expert_order_tensor = torch.tensor(expert_order_list, device=tokens.device, dtype=torch.int64)
     bucket_token_ids_tensor = token_ids.index_select(0, gather_index)
+    if flat_assignments.numel() == tokens.shape[0]:
+        bucketed = tokens.index_select(0, gather_index)
+    else:
+        bucketed = tokens.index_select(0, bucket_token_ids_tensor)
+    expert_order_tensor = torch.tensor(expert_order_list, device=tokens.device, dtype=torch.int64)
     if return_expert_order_list:
         return bucketed, m_splits, gather_index, expert_order_tensor, bucket_token_ids_tensor, expert_order_list
     return bucketed, m_splits, gather_index, expert_order_tensor, bucket_token_ids_tensor
