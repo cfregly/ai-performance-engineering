@@ -7,13 +7,22 @@ see the incremental benefit on Blackwell (B200).
 """
 
 import argparse
-import time
-from typing import Dict, Tuple
+from typing import Callable, Dict, Tuple
 
 import torch
 
 from nanochat.checkpoint_manager import load_model
 from nanochat.engine import Engine, KVCache
+
+
+def _time_cuda_region_seconds(fn: Callable[[], None]) -> float:
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+    start.record()
+    fn()
+    end.record()
+    end.synchronize()
+    return start.elapsed_time(end) / 1000.0
 
 
 def configure_mode(mode: str, config) -> Dict[str, bool]:
@@ -97,26 +106,22 @@ def bench_once(
     prompt = torch.randint(0, cfg.vocab_size, (batch_size, prompt_len), device=device, dtype=torch.long)
 
     # Prefill
-    torch.cuda.synchronize()
-    t0 = time.time()
-    _ = model(prompt, kv_cache=kv_cache)
-    torch.cuda.synchronize()
-    t1 = time.time()
-    prefill_tok_s = (batch_size * prompt_len) / (t1 - t0)
+    prefill_seconds = _time_cuda_region_seconds(lambda: model(prompt, kv_cache=kv_cache))
+    prefill_tok_s = (batch_size * prompt_len) / prefill_seconds
 
     # Decode steady-state (T=1)
     decode_tokens = torch.randint(0, cfg.vocab_size, (batch_size, decode_len), device=device, dtype=torch.long)
-    torch.cuda.synchronize()
-    t2 = time.time()
-    for t in range(decode_len):
-        step_ids = decode_tokens[:, t:t+1]
-        if engine is None:
-            _ = model(step_ids, kv_cache=kv_cache)
-        else:
-            _ = engine._execute_decode(step_ids, kv_cache)
-    torch.cuda.synchronize()
-    t3 = time.time()
-    decode_tok_s = (batch_size * decode_len) / (t3 - t2)
+
+    def _run_decode() -> None:
+        for t in range(decode_len):
+            step_ids = decode_tokens[:, t:t+1]
+            if engine is None:
+                _ = model(step_ids, kv_cache=kv_cache)
+            else:
+                _ = engine._execute_decode(step_ids, kv_cache)
+
+    decode_seconds = _time_cuda_region_seconds(_run_decode)
+    decode_tok_s = (batch_size * decode_len) / decode_seconds
     return prefill_tok_s, decode_tok_s
 
 

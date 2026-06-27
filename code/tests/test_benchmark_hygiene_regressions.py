@@ -2961,6 +2961,28 @@ def test_nanochat_incremental_benchmark_uses_cuda_event_timing() -> None:
     assert "time.time()" not in timed_section
 
 
+def test_nanochat_b200_flag_benchmark_uses_cuda_event_timing() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "bench_b200_flags.py"
+    ).read_text(encoding="utf-8")
+    helper_section = source.split("def _time_cuda_region_seconds", maxsplit=1)[1].split(
+        "def configure_mode",
+        maxsplit=1,
+    )[0]
+    run_once_section = source.split("def bench_once", maxsplit=1)[1].split(
+        "def run_benchmark",
+        maxsplit=1,
+    )[0]
+
+    assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "start.record()" in helper_section
+    assert "end.record()" in helper_section
+    assert "start.elapsed_time(end) / 1000.0" in helper_section
+    assert run_once_section.count("_time_cuda_region_seconds(") == 2
+    assert "time.time()" not in run_once_section
+    assert "torch.cuda.synchronize()" not in run_once_section
+
+
 def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
     source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "gpt.py").read_text(
         encoding="utf-8"
