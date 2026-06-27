@@ -38,7 +38,7 @@ def main() -> int:
 
     static_inp = torch.randn(int(args.batch), int(args.hidden), device=device, dtype=torch.float16)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         eager_out = model(static_inp)
         for _ in range(int(args.warmup)):
             _ = model(static_inp)

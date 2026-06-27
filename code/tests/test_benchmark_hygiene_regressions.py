@@ -5533,6 +5533,28 @@ def test_ch08_to_ch12_kernel_wrappers_use_inference_mode() -> None:
         assert "torch.no_grad()" not in benchmark_section
 
 
+def test_ch11_ch12_standalone_timing_tools_use_inference_mode() -> None:
+    paths = (
+        "ch11/memory_async_demo.py",
+        "ch11/event_timing_demo.py",
+        "ch11/stream_priority_demo.py",
+        "ch12/graph_capture_demo.py",
+        "ch12/instantiation_overhead_demo.py",
+        "ch12/graph_replay_benchmark.py",
+    )
+
+    for path in paths:
+        source = (REPO_ROOT / path).read_text(encoding="utf-8")
+        assert "torch.inference_mode()" in source
+        assert "torch.no_grad()" not in source
+
+    instantiation_source = (
+        REPO_ROOT / "ch12" / "instantiation_overhead_demo.py"
+    ).read_text(encoding="utf-8")
+    rebuild_section = instantiation_source.split("# Rebuild loop", maxsplit=1)[1]
+    assert "with torch.inference_mode(), torch.cuda.graph(g2):" in rebuild_section
+
+
 def test_ch12_bias_relu_residual_batches_verification_metric_reads() -> None:
     source = (REPO_ROOT / "ch12" / "bias_relu_residual_fusion_benchmark.py").read_text(
         encoding="utf-8"

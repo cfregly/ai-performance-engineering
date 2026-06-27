@@ -45,7 +45,7 @@ def main() -> int:
     model = _build_model(device, int(args.hidden), int(args.layers))
     x = torch.randn(int(args.batch), int(args.hidden), device=device, dtype=torch.float16)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         for _ in range(int(args.warmup)):
             _ = model(x)
         torch.cuda.synchronize(device)
@@ -72,7 +72,7 @@ def main() -> int:
         g2 = torch.cuda.CUDAGraph()
         torch.cuda.synchronize(device)
         t0 = time.perf_counter()
-        with torch.cuda.graph(g2):
+        with torch.inference_mode(), torch.cuda.graph(g2):
             _ = model(x)
         g2.replay()
         torch.cuda.synchronize(device)

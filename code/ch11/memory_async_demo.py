@@ -33,7 +33,7 @@ def _run_once(*, n_elems: int, matmul_size: int, pinned: bool) -> float:
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         start.record()
         with torch.cuda.stream(copy_stream):
             dev.copy_(host, non_blocking=True)

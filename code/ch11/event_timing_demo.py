@@ -45,7 +45,7 @@ def main() -> int:
     fixed_end = torch.cuda.Event(enable_timing=True)
 
     # WRONG: events recorded on default stream while work runs on a different stream.
-    with torch.no_grad():
+    with torch.inference_mode():
         bad_start.record(default_stream)
         with torch.cuda.stream(stream):
             torch.cuda._sleep(int(args.sleep_cycles))
@@ -55,7 +55,7 @@ def main() -> int:
     torch.cuda.synchronize(device)
 
     # CORRECT: record events on the stream that actually runs the work.
-    with torch.no_grad(), torch.cuda.stream(stream):
+    with torch.inference_mode(), torch.cuda.stream(stream):
         good_start.record()
         torch.cuda._sleep(int(args.sleep_cycles))
         good_end.record()
@@ -63,7 +63,7 @@ def main() -> int:
     good_ms = float(good_start.elapsed_time(good_end))
 
     # ALSO CORRECT: join the worker stream back to default, then time on default.
-    with torch.no_grad():
+    with torch.inference_mode():
         fixed_start.record(default_stream)
         with torch.cuda.stream(stream):
             torch.cuda._sleep(int(args.sleep_cycles))

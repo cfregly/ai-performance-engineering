@@ -49,7 +49,7 @@ def _run_once(
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         with torch.cuda.stream(low_stream):
             for _ in range(low_iters):
                 _ = a @ b

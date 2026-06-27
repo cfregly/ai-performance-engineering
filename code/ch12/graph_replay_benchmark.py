@@ -20,7 +20,7 @@ def _require_cuda() -> torch.device:
 def _time_eager(model: torch.nn.Module, x: torch.Tensor, iters: int) -> float:
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
-    with torch.no_grad():
+    with torch.inference_mode():
         start.record()
         for _ in range(iters):
             _ = model(x)
@@ -61,7 +61,7 @@ def main() -> int:
 
     x = torch.randn(int(args.batch), int(args.hidden), device=device, dtype=torch.float16)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         for _ in range(int(args.warmup)):
             _ = model(x)
         torch.cuda.synchronize(device)
