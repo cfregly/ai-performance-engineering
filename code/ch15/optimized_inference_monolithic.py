@@ -58,7 +58,7 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
             return buffer
 
         self._compiled_decode = torch.compile(_full_decode, mode="reduce-overhead")
-        with torch.no_grad():
+        with torch.inference_mode():
             for _ in range(5):
                 _ = self._compiled_decode(self.model.prefill(self.prompt))
         torch.cuda.synchronize(self.device)
@@ -68,7 +68,7 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
             raise RuntimeError("Model or prompt not initialized")
 
         with self._nvtx_range("inference_monolithic_optimized"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 kv_cache = self.model.prefill(self.prompt)
                 self.output = self._compiled_decode(kv_cache)
 
@@ -113,4 +113,3 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return OptimizedInferenceMonolithicBenchmark()
-

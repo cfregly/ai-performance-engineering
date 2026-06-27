@@ -132,7 +132,7 @@ def _run_prefill(
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
     kv_chunks: List[torch.Tensor] = []
     seed_chunks: List[torch.Tensor] = []
-    with torch.no_grad():
+    with torch.inference_mode():
         for req_idx in range(cfg.requests_per_rank):
             request_prompt = prompts[req_idx]
             hidden, logits = model.prefill(request_prompt)
@@ -154,7 +154,7 @@ def _run_decode(
 ) -> List[torch.Tensor]:
     if outputs is None or len(outputs) != len(kv_chunks):
         outputs = [torch.empty(0) for _ in range(len(kv_chunks))]
-    with torch.no_grad():
+    with torch.inference_mode():
         for output_idx, (kv_prompt, seed_tokens) in enumerate(zip(kv_chunks, seed_chunks)):
             request_kv_cache = kv_cache
             if request_kv_cache is None:
@@ -296,7 +296,7 @@ def _run_torchrun_worker(
             if overlap:
                 pending: List[List[dist.Work]] = []
                 max_inflight = min(8, cfg.requests_per_rank)
-                with torch.no_grad():
+                with torch.inference_mode():
                     for req_idx in range(cfg.requests_per_rank):
                         request_prompt = prompts[req_idx]
                         hidden, logits = model.prefill(request_prompt)
@@ -330,7 +330,7 @@ def _run_torchrun_worker(
                 outputs = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
             pending: List[Optional[List[dist.Work]]] = [None] * cfg.requests_per_rank
             pending[0] = _batch_irecv(recv_kv_bufs[0], recv_seed_bufs[0])
-            with torch.no_grad():
+            with torch.inference_mode():
                 for req_idx in range(cfg.requests_per_rank):
                     next_idx = req_idx + 1
                     if next_idx < cfg.requests_per_rank:
@@ -502,7 +502,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
             outputs = [torch.empty(0) for _ in range(expected_outputs)]
             self._pending_outputs = outputs
         output_idx = 0
-        with torch.no_grad():
+        with torch.inference_mode():
             for pair in self._pairs:
                 kv_chunks, seed_chunks = _run_prefill(self.cfg, pair.prefill_model, pair.prompts)
                 decoded = _run_decode(

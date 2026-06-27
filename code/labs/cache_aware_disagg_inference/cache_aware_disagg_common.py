@@ -247,7 +247,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             for plan in self.request_plans
         }
-        with torch.no_grad():
+        with torch.inference_mode():
             assert self.prompts is not None
             for plan in self.request_plans:
                 prompt = self.prompts[plan.request_idx]
@@ -372,7 +372,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if len(request_events) < len(self.request_plans):
             raise RuntimeError("Request timing events not initialized")
 
-        with torch.no_grad():
+        with torch.inference_mode():
             for event_idx, plan in enumerate(self.request_plans):
                 request_start, prefill_end, decode_end = request_events[event_idx]
                 request_start.record()

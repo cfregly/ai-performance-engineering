@@ -299,7 +299,7 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
             outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
             self._pending_outputs = outputs
         output_idx = 0
-        with torch.no_grad():
+        with torch.inference_mode():
             for idx in range(self.cfg.requests_per_rank):
                 prompt = self.prompts[idx]
                 hidden, logits = self.prefill_model.prefill(prompt)
@@ -342,7 +342,7 @@ class OptimizedDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceS
             raise RuntimeError("Optimized KV cache not initialized")
 
         flat_prompts = _flatten_prompt_batches(self.prompts)
-        with torch.no_grad():
+        with torch.inference_mode():
             hidden, logits = self.prefill_model.prefill(flat_prompts)
             seed_tokens = self._next_token_from_logits(logits[:, -1, :])
             self.batched_kv_cache[:, : self.cfg.context_window] = hidden

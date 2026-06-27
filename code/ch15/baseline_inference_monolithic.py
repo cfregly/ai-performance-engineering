@@ -61,7 +61,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         enable_nvtx = get_nvtx_enabled(self.get_config())
 
         with nvtx_range("inference_monolithic", enable=enable_nvtx):
-            with torch.no_grad():
+            with torch.inference_mode():
                 kv_cache = self.model.prefill(self.prompt)
                 decoded_tokens = self._last_decoded_tokens
                 if len(decoded_tokens) != self.num_tokens:

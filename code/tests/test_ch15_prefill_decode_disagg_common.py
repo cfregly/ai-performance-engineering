@@ -101,6 +101,7 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "host_buf.copy_(prefill_out, non_blocking=False)" in handoff_section
     assert "decode_buf.copy_(host_buf, non_blocking=False)" in handoff_section
     assert "decode_buf.copy_(prefill_out, non_blocking=True)" in handoff_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert "outputs = self._output_shards" in benchmark_section
     assert "output_idx = 0" in benchmark_section
     assert "outputs[output_idx] = token_state.squeeze(0).squeeze(0)" in benchmark_section

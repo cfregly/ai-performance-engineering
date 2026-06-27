@@ -2268,6 +2268,8 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
 
     assert "torch.cuda.Event(enable_timing=True)" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
+    assert "with torch.inference_mode():" in setup_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert "torch.stack(" not in benchmark_section
     assert "self._kv_buffers = {" in setup_section
     assert "kv_buffer = torch.empty(" in helper_section
@@ -2330,8 +2332,10 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "_extend_cache_buffer(" in run_iteration_section
     assert "_extend_cache_buffer(" in benchmark_section
     assert "self._output_parts = [torch.empty(0) for _ in self._request_plans]" in setup_section
-    assert "with torch.no_grad():" in setup_section
-    assert "with torch.no_grad():" in benchmark_section
+    assert "with torch.inference_mode():" in setup_section
+    assert "with torch.inference_mode():" in benchmark_section
+    assert "with torch.no_grad():" not in setup_section
+    assert "with torch.no_grad():" not in benchmark_section
     assert "outputs: List[torch.Tensor] = []" not in benchmark_section
     assert "outputs = self._output_parts" in benchmark_section
     assert "output_idx = 0" in benchmark_section
@@ -2541,6 +2545,9 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     )[0]
 
     assert "outputs = [torch.empty(0) for _ in range(len(kv_chunks))]" in decode_helper
+    assert "with torch.inference_mode():" in decode_helper
+    assert "with torch.inference_mode():" in torchrun_worker
+    assert "with torch.inference_mode():" in benchmark_section
     assert "request_kv_cache = kv_cache" in decode_helper
     assert "request_kv_cache = allocate_kv_cache(" in decode_helper
     assert "request_kv_cache[:, : cfg.context_window].copy_(kv_prompt)" in decode_helper
@@ -2657,6 +2664,7 @@ def test_ch15_single_disaggregated_optimized_reuses_next_token_buffer() -> None:
 
     assert "self._next_token_buffer: Optional[torch.Tensor] = None" in source
     assert "def _next_token_from_logits" in source
+    assert "with torch.inference_mode():" in optimized_section
     assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in source
     assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in optimized_section
     assert "tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in optimized_section
@@ -4308,6 +4316,7 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "outputs: List[torch.Tensor] = []" not in baseline_benchmark
     assert "outputs = self._pending_outputs" in baseline_benchmark
     assert "output_idx = 0" in baseline_benchmark
+    assert "with torch.inference_mode():" in baseline_benchmark
     assert "outputs.append(" not in baseline_benchmark
     assert "outputs[output_idx] = self._run_decode_loop(self._baseline_kv_cache, seed_tokens)" in baseline_benchmark
     assert "output_idx += 1" in baseline_benchmark
@@ -4749,8 +4758,11 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     optimized_source = (REPO_ROOT / "ch15" / "optimized_inference_monolithic.py").read_text(encoding="utf-8")
 
     assert "def decode_step(" in common_source
-    assert "self.output = self.model.decode_autoregressive(" in optimized_source
-    assert "output_buffer=self._decode_buffer" in optimized_source
+    assert "with torch.inference_mode():" in optimized_source
+    assert "for token_idx in range(num_tokens):" in optimized_source
+    assert "buffer[:, token_idx : token_idx + 1, :] = current" in optimized_source
+    assert "self._compiled_decode = torch.compile(_full_decode, mode=\"reduce-overhead\")" in optimized_source
+    assert "self.output = self._compiled_decode(kv_cache)" in optimized_source
     assert "self.output = self.model.decode(kv_cache, num_tokens=self.num_tokens)" not in optimized_source
 
 
@@ -4764,6 +4776,7 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     )[0]
 
     assert "torch.cuda.Event" not in source
+    assert "with torch.inference_mode():" in benchmark_section
     assert "torch.cat(" not in benchmark_section
     assert "self._last_decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]" in source
     assert "decoded_tokens = self._last_decoded_tokens" in benchmark_section

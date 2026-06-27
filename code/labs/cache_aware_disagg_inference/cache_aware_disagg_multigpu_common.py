@@ -878,7 +878,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             self._prompts[rank] = prompts
             total_params += sum(p.numel() for p in model.parameters())
 
-        with torch.no_grad():
+        with torch.inference_mode():
             for plan in self._request_plans:
                 if plan.warm_chunks <= 0:
                     continue
@@ -928,7 +928,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             "shared_reload_bytes": 0.0,
         }
 
-        with torch.no_grad():
+        with torch.inference_mode():
             for plan in self._request_plans:
                 prompt = self._prompts[plan.prefill_rank][plan.local_request_idx]
                 chunks = _split_prompt(prompt, self.cfg.chunk_size)

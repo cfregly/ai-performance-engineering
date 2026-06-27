@@ -214,7 +214,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._output_shards = outputs
         output_idx = 0
         with self._nvtx_range(self.label):
-            with torch.no_grad():
+            with torch.inference_mode():
                 for (_, decode_device), prefill_model, decode_model, batch in zip(
                     self.pairs,
                     self.prefill_models,
