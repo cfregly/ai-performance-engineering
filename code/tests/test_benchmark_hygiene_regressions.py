@@ -3376,6 +3376,20 @@ def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
     assert "num_tokens.item()" not in logging_section
 
 
+def test_ch19_memory_allocator_sizes_allocations_without_tensor_materialization() -> None:
+    source = (
+        REPO_ROOT / "ch19" / "memory_allocator_with_monitoring.py"
+    ).read_text(encoding="utf-8")
+    allocate_section = source.split("def allocate", maxsplit=1)[1].split(
+        "for attempt in range",
+        maxsplit=1,
+    )[0]
+
+    assert "from math import prod" in source
+    assert "size_bytes = prod(shape) * torch.finfo(dtype).bits // 8" in allocate_section
+    assert "torch.tensor(shape).prod().item()" not in allocate_section
+
+
 def test_train_distributed_pipeline_defers_microbatch_loss_syncs() -> None:
     source = (REPO_ROOT / "labs" / "train_distributed" / "pipeline.py").read_text(
         encoding="utf-8"

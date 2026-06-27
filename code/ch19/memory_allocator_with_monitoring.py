@@ -22,7 +22,8 @@ Usage:
 
 import torch
 import time
-from typing import Tuple, Optional, Dict, List, Any
+from math import prod
+from typing import Tuple, Optional, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
 import threading
@@ -313,7 +314,7 @@ class ManagedMemoryAllocator:
         Returns:
             Allocated tensor or None if all retries failed
         """
-        size_bytes = torch.tensor(shape).prod().item() * torch.finfo(dtype).bits // 8
+        size_bytes = prod(shape) * torch.finfo(dtype).bits // 8
         
         for attempt in range(max_retries + 1):
             try:
