@@ -90,6 +90,30 @@ def test_kv_cache_reuses_batch_index_buffer_for_padded_inserts():
     torch.testing.assert_close(kv_cache._batch_idx, torch.tensor([0, 1, 2]))
 
 
+def test_kv_cache_dense_row_pos_insert_skips_materialized_true_mask():
+    kv_cache = KVCache(
+        batch_size=2,
+        num_heads=1,
+        seq_len=4,
+        head_dim=1,
+        num_layers=1,
+    )
+    prefill_k = torch.tensor([[[[1.0]]], [[[2.0]]]])
+    prefill_v = prefill_k + 100
+    token_mask = torch.tensor([[True], [False]])
+
+    kv_cache.insert_kv(0, prefill_k, prefill_v, token_mask=token_mask)
+    torch.testing.assert_close(kv_cache.row_pos, torch.tensor([1, 0]))
+
+    decode_k = torch.tensor([[[[10.0], [11.0]]], [[[20.0], [21.0]]]])
+    decode_v = decode_k + 100
+    kv_cache.insert_kv(0, decode_k, decode_v)
+
+    torch.testing.assert_close(kv_cache.row_pos, torch.tensor([3, 2]))
+    torch.testing.assert_close(kv_cache.kv_cache[0, 0, 0, 0, :3, 0], torch.tensor([1.0, 10.0, 11.0]))
+    torch.testing.assert_close(kv_cache.kv_cache[0, 0, 1, 0, :2, 0], torch.tensor([20.0, 21.0]))
+
+
 def test_sample_batch_tokens_batches_uniform_sampling(monkeypatch):
     calls = []
 
@@ -305,6 +329,9 @@ def test_kv_cache_reuses_token_mask_row_sums():
     assert "token_increments = token_mask.sum(dim=1)" in insert_section
     assert "next_row_pos = base_row_pos + token_increments" in insert_section
     assert insert_section.count("token_mask.sum(dim=1)") == 1
+    assert "token_mask = torch.ones((B, T_add)" not in insert_section
+    assert "if token_mask is None:\n                next_row_pos = base_row_pos + T_add" in insert_section
+    assert "self.kv_cache[layer_idx, 0, batch_idx, :, positions] = k[:, :, t, :]" in insert_section
     assert "batch_idx = self._batch_index_buffer(B, k.device)" in insert_section
     assert "rows = batch_idx[active]" in insert_section
     assert "if rows.numel() == 0:" in insert_section

@@ -233,23 +233,30 @@ class KVCache:
                 self.row_pos = torch.zeros(B, device=k.device, dtype=torch.long)
             else:
                 assert self.row_pos.numel() == B, f"row_pos shape mismatch: {self.row_pos.numel()} != {B}"
-            if token_mask is None:
-                token_mask = torch.ones((B, T_add), device=k.device, dtype=torch.bool)
             # ensure we have enough capacity for the maximum position that will be written
             base_row_pos = self.row_pos
-            token_increments = token_mask.sum(dim=1)
-            next_row_pos = base_row_pos + token_increments
+            if token_mask is None:
+                next_row_pos = base_row_pos + T_add
+            else:
+                token_increments = token_mask.sum(dim=1)
+                next_row_pos = base_row_pos + token_increments
             max_needed = int(next_row_pos.max().item())
             self._maybe_grow_cache(max_needed, k.dtype, k.device)
             batch_idx = self._batch_index_buffer(B, k.device)
-            for t in range(T_add):
-                active = token_mask[:, t]
-                rows = batch_idx[active]
-                if rows.numel() == 0:
-                    continue
-                positions = base_row_pos[rows] + t
-                self.kv_cache[layer_idx, 0, rows, :, positions] = k[rows, :, t, :]
-                self.kv_cache[layer_idx, 1, rows, :, positions] = v[rows, :, t, :]
+            if token_mask is None:
+                for t in range(T_add):
+                    positions = base_row_pos + t
+                    self.kv_cache[layer_idx, 0, batch_idx, :, positions] = k[:, :, t, :]
+                    self.kv_cache[layer_idx, 1, batch_idx, :, positions] = v[:, :, t, :]
+            else:
+                for t in range(T_add):
+                    active = token_mask[:, t]
+                    rows = batch_idx[active]
+                    if rows.numel() == 0:
+                        continue
+                    positions = base_row_pos[rows] + t
+                    self.kv_cache[layer_idx, 0, rows, :, positions] = k[rows, :, t, :]
+                    self.kv_cache[layer_idx, 1, rows, :, positions] = v[rows, :, t, :]
             if layer_idx == self.kv_cache.size(0) - 1:
                 self.row_pos = next_row_pos
                 self.pos = int(self.row_pos.max().item())
