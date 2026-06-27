@@ -83,7 +83,7 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
         if len(self._decode_events) != self.decode_tokens:
             raise RuntimeError("Timing event count mismatch")
 
-        with torch.no_grad():
+        with torch.inference_mode():
             with self._nvtx_range("flex_prefill"):
                 prefill_start, prefill_end = self._prefill_events
                 prefill_start.record()
@@ -125,4 +125,3 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
 
 def get_benchmark():
     return OptimizedFlexDecodingGraphsBenchmark()
-

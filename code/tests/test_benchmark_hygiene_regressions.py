@@ -2298,6 +2298,21 @@ def test_optimized_flexdecode_graph_reuses_static_input_without_zero_fill() -> N
     assert "self.static_decode_in.copy_(self.decode_token)" in benchmark_section
 
 
+def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
+    for filename in (
+        "baseline_flexdecoding.py",
+        "optimized_flexdecoding.py",
+        "optimized_flexdecoding_graphs.py",
+    ):
+        source = (REPO_ROOT / "ch18" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "\n    def ", maxsplit=1
+        )[0]
+
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "with torch.no_grad():" not in benchmark_section
+
+
 def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> None:
     source = (REPO_ROOT / "labs" / "persistent_decode" / "paged_kv_offload_common.py").read_text(encoding="utf-8")
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]

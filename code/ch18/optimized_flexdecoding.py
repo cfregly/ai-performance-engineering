@@ -78,7 +78,7 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
 
         base_position = self.prefill_tokens.size(1)
 
-        with torch.no_grad():
+        with torch.inference_mode():
             with self._nvtx_range("flex_prefill"):
                 prefill_start, prefill_end = self._prefill_events
                 prefill_start.record()
