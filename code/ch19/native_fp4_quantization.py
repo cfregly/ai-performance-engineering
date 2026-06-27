@@ -57,6 +57,29 @@ def has_scaled_mm() -> bool:
     return hasattr(torch, '_scaled_mm')
 
 
+def _benchmark_forward(module: nn.Module, x: torch.Tensor, warmup_iters: int, bench_iters: int) -> Tuple[torch.Tensor, float]:
+    output = module(x)
+    for _ in range(warmup_iters):
+        output = module(x)
+
+    count = max(bench_iters, 1)
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+        for _ in range(count):
+            output = module(x)
+        end.record()
+        torch.cuda.synchronize()
+        return output, start.elapsed_time(end) / (count * 1000.0)
+
+    start_time = time.perf_counter()
+    for _ in range(count):
+        output = module(x)
+    return output, (time.perf_counter() - start_time) / count
+
+
 # FP4 E2M1 representable values (positive)
 # Sign bit gives us 16 total values: ±{0, 0.5, 1, 1.5, 2, 3, 4, 6}
 FP4_VALUES = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0])
@@ -419,17 +442,7 @@ def benchmark_fp4():
         nn.Linear(d_ff, d_model, dtype=dtype),
     ).to(device)
     
-    for _ in range(warmup_iters):
-        _ = mlp_fp16(x)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    
-    start = time.perf_counter()
-    for _ in range(bench_iters):
-        out_fp16 = mlp_fp16(x)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    time_fp16 = (time.perf_counter() - start) / bench_iters
+    out_fp16, time_fp16 = _benchmark_forward(mlp_fp16, x, warmup_iters, bench_iters)
     
     mem_fp16 = sum(p.numel() * p.element_size() for p in mlp_fp16.parameters()) / 1024**2
     
@@ -447,17 +460,7 @@ def benchmark_fp4():
     
     print(f"  Compression ratio: {mlp_fp4_storage.fc1.compression_ratio:.2f}x")
     
-    for _ in range(warmup_iters):
-        _ = mlp_fp4_storage(x)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    
-    start = time.perf_counter()
-    for _ in range(bench_iters):
-        out_storage = mlp_fp4_storage(x)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    time_storage = (time.perf_counter() - start) / bench_iters
+    out_storage, time_storage = _benchmark_forward(mlp_fp4_storage, x, warmup_iters, bench_iters)
     
     mem_storage = (mlp_fp4_storage.fc1.memory_bytes + mlp_fp4_storage.fc2.memory_bytes) / 1024**2
     
@@ -474,18 +477,7 @@ def benchmark_fp4():
     mlp_fp4_cached = FP4MLP(d_model, d_ff, dtype=dtype, mode='cached').to(device)
     mlp_fp4_cached.quantize()
     
-    # Warm up (this populates cache)
-    for _ in range(warmup_iters):
-        _ = mlp_fp4_cached(x)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    
-    start = time.perf_counter()
-    for _ in range(bench_iters):
-        out_cached = mlp_fp4_cached(x)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    time_cached = (time.perf_counter() - start) / bench_iters
+    out_cached, time_cached = _benchmark_forward(mlp_fp4_cached, x, warmup_iters, bench_iters)
     
     print(f"  Latency: {time_cached * 1000:.2f} ms")
     print(f"  Memory (packed): {mem_storage:.2f} MB")
@@ -501,17 +493,7 @@ def benchmark_fp4():
         mlp_fp4_fp8 = FP4MLP(d_model, d_ff, dtype=dtype, mode='fp8').to(device)
         mlp_fp4_fp8.quantize()
         
-        for _ in range(warmup_iters):
-            _ = mlp_fp4_fp8(x)
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        
-        start = time.perf_counter()
-        for _ in range(bench_iters):
-            out_fp8 = mlp_fp4_fp8(x)
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        time_fp8 = (time.perf_counter() - start) / bench_iters
+        out_fp8, time_fp8 = _benchmark_forward(mlp_fp4_fp8, x, warmup_iters, bench_iters)
         
         print(f"  Latency: {time_fp8 * 1000:.2f} ms")
         print(f"  Memory (packed): {mem_storage:.2f} MB")

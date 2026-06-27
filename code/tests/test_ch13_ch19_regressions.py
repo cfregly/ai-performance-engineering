@@ -8,6 +8,7 @@ import ch19.baseline_fp4_weight_quantization as baseline_fp4
 import ch19.baseline_mxfp8_moe as baseline_mxfp8_moe
 import ch19.mxfp8_moe_common as mxfp8_moe_common
 import ch19.native_fp4_quantization as native_fp4
+import ch19.native_fp6_quantization as native_fp6
 import ch19.optimized_mxfp8_moe as optimized_mxfp8_moe
 import ch19.optimized_fp4_weight_quantization as optimized_fp4
 from ch13.optimized_autograd_standard import OptimizedAutogradCompiledBenchmark
@@ -220,6 +221,24 @@ def test_native_fp6_quantization_avoids_tensor_bool_scale_branch() -> None:
 
     assert fp6.scales.device == data.device
     torch.testing.assert_close(fp6.scales, torch.ones_like(fp6.scales))
+
+
+def test_native_fp4_fp6_demo_timing_uses_cuda_events() -> None:
+    for module in (native_fp4, native_fp6):
+        source = inspect.getsource(module._benchmark_forward)
+        assert source.count("torch.cuda.Event(enable_timing=True)") == 2
+        assert "start.record()" in source
+        assert "end.record()" in source
+        assert "start.elapsed_time(end) / (count * 1000.0)" in source
+        assert "time.time()" not in source
+
+    fp4_demo = inspect.getsource(native_fp4.benchmark_fp4)
+    fp6_demo = inspect.getsource(native_fp6.benchmark_fp6_vs_fp16)
+
+    assert fp4_demo.count("_benchmark_forward(") == 4
+    assert "time.perf_counter()" not in fp4_demo
+    assert fp6_demo.count("_benchmark_forward(") == 2
+    assert "time.time()" not in fp6_demo
 
 
 def test_fp4_dequantization_decodes_signed_lookup_without_where() -> None:

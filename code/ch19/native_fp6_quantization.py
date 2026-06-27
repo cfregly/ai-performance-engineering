@@ -41,6 +41,29 @@ def is_blackwell() -> bool:
     return props.major >= 10
 
 
+def _benchmark_forward(module: nn.Module, x: torch.Tensor, warmup_iters: int, benchmark_iters: int) -> Tuple[torch.Tensor, float]:
+    output = module(x)
+    for _ in range(warmup_iters):
+        output = module(x)
+
+    count = max(benchmark_iters, 1)
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+        for _ in range(count):
+            output = module(x)
+        end.record()
+        torch.cuda.synchronize()
+        return output, start.elapsed_time(end) / (count * 1000.0)
+
+    start_time = time.perf_counter()
+    for _ in range(count):
+        output = module(x)
+    return output, (time.perf_counter() - start_time) / count
+
+
 # ============================================================================
 # FP6 Quantization Utilities
 # ============================================================================
@@ -354,19 +377,7 @@ def benchmark_fp6_vs_fp16():
     print("=" * 80)
     mlp_fp16 = FP6MLP(d_model, d_ff, dtype=dtype, use_fp6=False).to(device)
     
-    # Warmup
-    for _ in range(warmup_iters):
-        _ = mlp_fp16(x)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    
-    # Benchmark
-    start = time.time()
-    for _ in range(benchmark_iters):
-        output_fp16 = mlp_fp16(x)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    time_fp16 = (time.time() - start) / benchmark_iters
+    output_fp16, time_fp16 = _benchmark_forward(mlp_fp16, x, warmup_iters, benchmark_iters)
     
     mem_fp16 = torch.cuda.memory_allocated() / 1024**2 if torch.cuda.is_available() else (
         sum(p.numel() * p.element_size() for p in mlp_fp16.parameters()) / 1024**2
@@ -383,19 +394,7 @@ def benchmark_fp6_vs_fp16():
     mlp_fp6 = FP6MLP(d_model, d_ff, dtype=dtype, use_fp6=True).to(device)
     mlp_fp6.quantize()
     
-    # Warmup
-    for _ in range(warmup_iters):
-        _ = mlp_fp6(x)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    
-    # Benchmark
-    start = time.time()
-    for _ in range(benchmark_iters):
-        output_fp6 = mlp_fp6(x)
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-    time_fp6 = (time.time() - start) / benchmark_iters
+    output_fp6, time_fp6 = _benchmark_forward(mlp_fp6, x, warmup_iters, benchmark_iters)
     
     mem_fp6 = torch.cuda.memory_allocated() / 1024**2 if torch.cuda.is_available() else (
         sum(p.numel() * p.element_size() for p in mlp_fp6.parameters()) / 1024**2
