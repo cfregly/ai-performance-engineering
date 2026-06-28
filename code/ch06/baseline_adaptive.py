@@ -19,6 +19,7 @@ class BaselineAdaptiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._chunk_views: list[tuple[torch.Tensor, torch.Tensor]] = []
         self.N = 4_000_000
         self.static_chunk = 2048
         # Chunked processing benchmark - fixed input size
@@ -33,24 +34,29 @@ class BaselineAdaptiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.output = None
         self._output_buffer = torch.empty_like(self.input)
+        self._chunk_views = [
+            (self.input[start:end], self._output_buffer[start:end])
+            for start in range(0, self.N, self.static_chunk)
+            for end in (min(start + self.static_chunk, self.N),)
+        ]
         self._synchronize()
 
-    def _transform(self, tensor: torch.Tensor) -> torch.Tensor:
+    def _transform(self, tensor: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
         """Shared math used by both baseline and optimized variants."""
-        out = tensor.mul(1.75)
-        out = out.add(0.1)
-        return F.silu(out)
+        torch.mul(tensor, 1.75, out=out)
+        out.add_(0.1)
+        F.silu(out, inplace=True)
+        return out
     
     def benchmark_fn(self) -> None:
         """Benchmark: static configuration operations."""
         assert self.input is not None
         assert self._output_buffer is not None and self._output_buffer.shape == self.input.shape
+        if not self._chunk_views:
+            raise RuntimeError("setup() must initialize chunk views")
         with self._nvtx_range("baseline_adaptive"):
-            for start in range(0, self.N, self.static_chunk):
-                end = min(start + self.static_chunk, self.N)
-                window = self.input[start:end]
-                transformed = self._transform(window)
-                self._output_buffer[start:end].copy_(transformed)
+            for window, out_window in self._chunk_views:
+                self._transform(window, out_window)
             self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
@@ -67,6 +73,7 @@ class BaselineAdaptiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input = None
         self.output = None
         self._output_buffer = None
+        self._chunk_views = []
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
