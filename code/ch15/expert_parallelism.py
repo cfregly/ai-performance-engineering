@@ -83,11 +83,34 @@ class Top2MoE(nn.Module):
             ]
         )
         self._local_streams: Optional[list[torch.cuda.Stream]] = None
+        self._local_out_buffers: list[torch.Tensor] = []
+        self._local_accum_buffer: Optional[torch.Tensor] = None
 
     def init_local_streams(self, device: torch.device) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA required for local overlap streams")
         self._local_streams = [torch.cuda.Stream(device=device) for _ in range(2)]
+
+    def _local_buffers(self, flat_tokens: torch.Tensor, slots: int) -> tuple[list[torch.Tensor], torch.Tensor]:
+        needs_partials = (
+            len(self._local_out_buffers) != slots
+            or any(
+                buf.shape != flat_tokens.shape
+                or buf.device != flat_tokens.device
+                or buf.dtype != flat_tokens.dtype
+                for buf in self._local_out_buffers
+            )
+        )
+        if needs_partials:
+            self._local_out_buffers = [torch.empty_like(flat_tokens) for _ in range(slots)]
+        if (
+            self._local_accum_buffer is None
+            or self._local_accum_buffer.shape != flat_tokens.shape
+            or self._local_accum_buffer.device != flat_tokens.device
+            or self._local_accum_buffer.dtype != flat_tokens.dtype
+        ):
+            self._local_accum_buffer = torch.empty_like(flat_tokens)
+        return self._local_out_buffers, self._local_accum_buffer
 
     def forward_local(self, tokens: torch.Tensor) -> torch.Tensor:
         if self._local_streams is None:
@@ -104,24 +127,29 @@ class Top2MoE(nn.Module):
         mask_overflow = counts > cap
         overflow_flags = [bool(flag) for flag in mask_overflow.detach().cpu().tolist()]
 
-        partials: list[torch.Tensor] = []
+        local_buffers, local_accum = self._local_buffers(flat_tokens, len(self._local_streams))
+        current = torch.cuda.current_stream(tokens.device)
+        for stream in self._local_streams:
+            stream.wait_stream(current)
         for slot, stream in enumerate(self._local_streams):
             expert_ids = flat_idx[:, slot]
-            local_out = torch.zeros_like(flat_tokens)
+            local_out = local_buffers[slot]
             unique_expert_ids = [int(eid) for eid in torch.unique(expert_ids).detach().cpu().tolist()]
             with torch.cuda.stream(stream):
+                local_out.zero_()
                 for eid_int in unique_expert_ids:
                     if overflow_flags[eid_int]:
                         continue
                     mask = expert_ids == eid_int
                     contrib = self.experts[eid_int](flat_tokens[mask]) * flat_w[mask, slot:slot + 1]
                     local_out[mask] += contrib
-            partials.append(local_out)
 
-        current = torch.cuda.current_stream(tokens.device)
         for stream in self._local_streams:
             current.wait_stream(stream)
-        return sum(partials).view(batch, seq, hidden)
+        local_accum.copy_(local_buffers[0])
+        for local_out in local_buffers[1:]:
+            local_accum.add_(local_out)
+        return local_accum.view(batch, seq, hidden)
 
     def forward_distributed(self, tokens: torch.Tensor, *, ctx: DistributedContext) -> torch.Tensor:
         batch, seq, hidden = tokens.shape

@@ -6443,6 +6443,19 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
         assert "overflow_flags = [bool(flag) for flag in mask_overflow.detach().cpu().tolist()]" in section
         assert "eid.item()" not in section
         assert "mask.any()" not in section
+    assert "self._local_out_buffers: list[torch.Tensor] = []" in source
+    assert "self._local_accum_buffer: Optional[torch.Tensor] = None" in source
+    assert "def _local_buffers(self, flat_tokens: torch.Tensor, slots: int)" in source
+    assert "local_buffers, local_accum = self._local_buffers(flat_tokens, len(self._local_streams))" in local_section
+    assert "stream.wait_stream(current)" in local_section
+    assert "local_out = local_buffers[slot]" in local_section
+    assert "local_out.zero_()" in local_section
+    assert "local_accum.copy_(local_buffers[0])" in local_section
+    assert "local_accum.add_(local_out)" in local_section
+    assert "return local_accum.view(batch, seq, hidden)" in local_section
+    assert "torch.zeros_like(flat_tokens)" not in local_section
+    assert "partials: list[torch.Tensor]" not in local_section
+    assert "sum(partials)" not in local_section
     assert "unique_expert_ids = [int(eid) for eid in torch.unique(expert_ids).detach().cpu().tolist()]" in local_section
     assert "for eid_int in [int(eid) for eid in torch.unique(recv_ids).detach().cpu().tolist()]" in distributed_section
 
