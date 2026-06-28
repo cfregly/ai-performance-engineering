@@ -68,6 +68,7 @@ class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output: Optional[torch.Tensor] = None
         self._verify_probe: Optional[torch.Tensor] = None
         self._verify_meta: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -84,6 +85,7 @@ class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmar
         torch.cuda.manual_seed_all(42)
 
         self.expert = ExpertMLP(self.hidden_size, self.ffn_size, device=self.device, dtype=self.dtype).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())
         self.inputs = torch.randn(self.batch, self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
 
         token_ids = torch.arange(self.batch * self.seq, device=self.device, dtype=torch.int64)
@@ -154,12 +156,11 @@ class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmar
         if self.output is None or self._verify_probe is None or self._verify_meta is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         output_slice = self.output[:2, :2, :256].detach().cpu().float().clone()
-        param_count = sum(p.numel() for p in self.expert.parameters()) if self.expert is not None else 0
         self._set_verification_payload(
             inputs={"probe": self._verify_probe, "topology": self._verify_meta},
             output=output_slice,
             batch_size=int(self.batch),
-            parameter_count=int(param_count),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": True,

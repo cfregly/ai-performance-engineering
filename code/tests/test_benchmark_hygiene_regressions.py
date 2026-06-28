@@ -5232,6 +5232,10 @@ def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
 
         assert "self._remote_buf_a = torch.empty(" in setup_section
         assert "self._remote_buf_b = torch.empty(" in setup_section
@@ -5242,6 +5246,10 @@ def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
             assert "expert_ids = torch.where(spill, spill_ids, expert_ids)" in setup_section
         assert "with torch.inference_mode():" in setup_section
         assert "with torch.inference_mode():" in benchmark_section
+        assert "self._payload_parameter_count = 0" in source
+        assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
+        assert "param_count = sum(" not in capture_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "torch.index_select(flat, 0, self._remote_idx, out=self._remote_buf_a[:, : self.hidden_size])" in benchmark_section
         assert "self._remote_buf_b.copy_(self._remote_buf_a)" in benchmark_section
         assert "self._remote_buf_a.copy_(self._remote_buf_b)" in benchmark_section
