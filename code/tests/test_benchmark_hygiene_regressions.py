@@ -4643,6 +4643,29 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "sum(p.numel()" not in capture_section
 
 
+def test_ch15_allreduce_rmsnorm_naive_accumulates_in_place_without_mutating_input() -> None:
+    source = (REPO_ROOT / "ch15" / "allreduce_rmsnorm_common.py").read_text(
+        encoding="utf-8"
+    )
+    naive_section = source.split("def naive_allreduce", maxsplit=1)[1].split(
+        "def vectorized_allreduce",
+        maxsplit=1,
+    )[0]
+
+    assert "out = shards[0].clone()" in naive_section
+    assert "out.add_(shards[idx])" in naive_section
+    assert "out = out + shards[idx]" not in naive_section
+
+    from ch15.allreduce_rmsnorm_common import naive_allreduce
+
+    shards = torch.arange(24, dtype=torch.float32).reshape(3, 2, 4)
+    before = shards.clone()
+    out = naive_allreduce(shards)
+
+    torch.testing.assert_close(out, shards.sum(dim=0))
+    torch.testing.assert_close(shards, before)
+
+
 def test_ch15_single_disaggregated_optimized_reuses_next_token_buffer() -> None:
     source = (REPO_ROOT / "ch15" / "disaggregated_inference_single_common.py").read_text(
         encoding="utf-8"

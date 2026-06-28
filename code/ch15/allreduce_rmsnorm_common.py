@@ -40,9 +40,9 @@ def rms_norm(x: torch.Tensor, eps: float) -> torch.Tensor:
 
 def naive_allreduce(shards: torch.Tensor) -> torch.Tensor:
     """Naive all-reduce: sequential accumulation (models unfused AR)."""
-    out = shards[0]
+    out = shards[0].clone()
     for idx in range(1, shards.shape[0]):
-        out = out + shards[idx]
+        out.add_(shards[idx])
     return out
 
 
