@@ -3093,6 +3093,22 @@ def test_ch20_bf16_mlp_uses_inplace_relu_activations() -> None:
         assert "torch.relu(x)" not in forward_section
 
 
+def test_ch20_autotuning_model_uses_inplace_pointwise_chain() -> None:
+    source = (REPO_ROOT / "ch20" / "autotuning_common.py").read_text(encoding="utf-8")
+    forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1].split(
+        "return y",
+        maxsplit=1,
+    )[0]
+
+    assert "y.mul_(self.scale)" in forward_section
+    assert "y.add_(self.bias)" in forward_section
+    assert forward_section.count("torch.nn.functional.silu(y, inplace=True)") == 4
+    assert forward_section.count("y.mul_(1.0001).add_(0.0001)") == 4
+    assert forward_section.count("y.mul_(0.999).add_(0.001)") == 4
+    assert "y = y * self.scale + self.bias" not in forward_section
+    assert "torch.nn.functional.silu(y)" not in forward_section
+
+
 def test_ch20_end_to_end_bandwidth_uses_inplace_activation() -> None:
     for relative in (
         "ch20/baseline_end_to_end_bandwidth.py",

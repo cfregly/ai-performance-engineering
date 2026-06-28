@@ -18,17 +18,18 @@ class AutotuneModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         y = x * 0.01
-        y = y * self.scale + self.bias
-        y = torch.nn.functional.silu(y)
-        y = (y * 1.0001) + 0.0001
-        y = y * 0.999 + 0.001
-        y = torch.nn.functional.silu(y)
-        y = (y * 1.0001) + 0.0001
-        y = y * 0.999 + 0.001
-        y = torch.nn.functional.silu(y)
-        y = (y * 1.0001) + 0.0001
-        y = y * 0.999 + 0.001
-        y = torch.nn.functional.silu(y)
-        y = (y * 1.0001) + 0.0001
-        y = y * 0.999 + 0.001
+        y.mul_(self.scale)
+        y.add_(self.bias)
+        torch.nn.functional.silu(y, inplace=True)
+        y.mul_(1.0001).add_(0.0001)
+        y.mul_(0.999).add_(0.001)
+        torch.nn.functional.silu(y, inplace=True)
+        y.mul_(1.0001).add_(0.0001)
+        y.mul_(0.999).add_(0.001)
+        torch.nn.functional.silu(y, inplace=True)
+        y.mul_(1.0001).add_(0.0001)
+        y.mul_(0.999).add_(0.001)
+        torch.nn.functional.silu(y, inplace=True)
+        y.mul_(1.0001).add_(0.0001)
+        y.mul_(0.999).add_(0.001)
         return y
