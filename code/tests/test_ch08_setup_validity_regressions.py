@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -20,6 +22,7 @@ from ch08.optimized_tiling import OptimizedTilingBenchmark
 from ch08.optimized_tiling_tcgen05 import OptimizedTilingBenchmarkTCGen05
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
 CUDA_REQUIRED = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 
 
@@ -75,6 +78,29 @@ class _FakeTilingExtension:
         self, matrix_a: torch.Tensor, matrix_b_t: torch.Tensor
     ) -> torch.Tensor:
         return matrix_a @ matrix_b_t.t()
+
+
+def test_ch08_base_benchmarks_use_cached_nvtx_range() -> None:
+    base_files = (
+        "ai_optimization_benchmark_base.py",
+        "hbm_benchmark_base.py",
+        "loop_unrolling_benchmark_base.py",
+        "nccl_benchmark_base.py",
+        "threshold_benchmark_base.py",
+        "tiling_benchmark_base.py",
+    )
+
+    for filename in base_files:
+        source = (REPO_ROOT / "ch08" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload" if "def capture_verification_payload" in source else "def teardown",
+            maxsplit=1,
+        )[0]
+
+        assert "with self._nvtx_range(self.nvtx_label):" in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert "with nvtx_range(" not in benchmark_section
+        assert "from core.profiling.nvtx_helper" not in source
 
 
 @CUDA_REQUIRED

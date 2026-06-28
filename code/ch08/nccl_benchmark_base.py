@@ -8,7 +8,6 @@ from typing import Optional
 import torch
 
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 from core.utils.extension_loader_template import load_cuda_extension
 
 
@@ -48,9 +47,7 @@ class NcclBenchmarkBase(BaseBenchmark):
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range(self.nvtx_label, enable=enable_nvtx):
+        with self._nvtx_range(self.nvtx_label):
             self._invoke_kernel()
 
     def teardown(self) -> None:
