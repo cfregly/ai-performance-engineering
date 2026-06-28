@@ -8125,6 +8125,29 @@ def test_ch08_to_ch12_kernel_wrappers_use_inference_mode() -> None:
         assert "torch.no_grad()" not in benchmark_section
 
 
+def test_ch10_optimized_tcgen05_vs_cublas_reuses_output_buffer() -> None:
+    source = (
+        REPO_ROOT / "ch10" / "optimized_matmul_tcgen05_vs_cublas.py"
+    ).read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self.output = torch.empty(self.size, self.size, device=self.device, dtype=self.dtype)" in setup_section
+    assert "torch.mm(self.A, self.B.transpose(0, 1), out=self.output)" in benchmark_section
+    assert "torch.matmul(self.A, self.B.transpose(0, 1))" not in benchmark_section
+    assert "self.output = None" in teardown_section
+
+
 def test_ch11_stream_benchmarks_use_cached_nvtx_range() -> None:
     stream_base = (REPO_ROOT / "ch11" / "stream_overlap_base.py").read_text(encoding="utf-8")
     baseline_tensor_cores = (
