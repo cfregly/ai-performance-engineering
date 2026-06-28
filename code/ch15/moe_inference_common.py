@@ -73,6 +73,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._prefill_end_event: Optional[torch.cuda.Event] = None
         self._decode_start_event: Optional[torch.cuda.Event] = None
         self._decode_end_event: Optional[torch.cuda.Event] = None
+        self._payload_parameter_count = 0
 
     def _build_config(self) -> MoeInferenceConfig:
         return MoeInferenceConfig(
@@ -98,6 +99,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         cfg = self.config
         self.model = SimpleMoEGPT(cfg, device=self.device).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.prompts = torch.randint(
             0,
             cfg.vocab_size,
@@ -322,12 +324,11 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.output is None or self.prompts is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        param_count = sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0
         self._set_verification_payload(
             inputs={"prompt": self.prompts},
             output=self.output.to(dtype=torch.float32),
             batch_size=int(self.prompts.shape[0]),
-            parameter_count=param_count,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": self.config.dtype_obj == torch.float16,
                 "bf16": self.config.dtype_obj == torch.bfloat16,

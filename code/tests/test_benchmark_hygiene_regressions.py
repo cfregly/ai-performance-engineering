@@ -3852,15 +3852,22 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
         "def finalize_iteration_metrics",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
 
     assert "self._next_token_buffer: Optional[torch.Tensor] = None" in source
     assert "self._next_token_buffer = torch.empty((cfg.batch_size, 1)" in setup_section
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
     assert "def _next_token_from_logits" in source
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in source
     assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in benchmark_section
     assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in benchmark_section
     assert "torch.argmax(" not in benchmark_section
+    assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "sum(p.numel()" not in capture_section
 
 
 def test_ch15_single_disaggregated_optimized_reuses_next_token_buffer() -> None:
@@ -3893,9 +3900,13 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
 
         assert "self._k_gather_buffer = torch.empty(" in setup_section
         assert "self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)" in setup_section
+        assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
         assert "_slots" in setup_section
         assert "gathered_k" not in benchmark_section
         assert "gathered_v" not in benchmark_section
@@ -3907,6 +3918,8 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert "self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(" in benchmark_section
         assert "k_all = self._k_gather_buffer[:, :gather_idx, :]" in benchmark_section
         assert "v_all = self._v_gather_buffer[:, :gather_idx, :]" in benchmark_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "sum(p.numel()" not in capture_section
 
 
 def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
@@ -3921,9 +3934,13 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
 
         assert "self._k_gather_buffer = torch.empty(" in setup_section
         assert "self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)" in setup_section
+        assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
         assert "self._cache_key_slots = [" in setup_section
         assert "self._cache_value_slots = [" in setup_section
         assert "self._tier_slots = [\"\"] * self.seq_len" in setup_section
@@ -3932,6 +3949,8 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert ".append(" not in benchmark_section
         assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
         assert "self._gather_kv_into_buffers(cache_k, cache_v, tiers, step + 1)" in benchmark_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "sum(p.numel()" not in capture_section
 
     from ch15.optimized_kv_cache_nvlink_pool import (
         OptimizedKVCacheNvlinkPoolBenchmark as SinglePool,
@@ -6924,6 +6943,12 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
 def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     common_source = (REPO_ROOT / "ch15" / "inference_monolithic_common.py").read_text(encoding="utf-8")
     optimized_source = (REPO_ROOT / "ch15" / "optimized_inference_monolithic.py").read_text(encoding="utf-8")
+    optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
 
     assert "def decode_step(" in common_source
     assert "torch.relu_(layer(x))" in common_source
@@ -6934,6 +6959,9 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     assert "self._compiled_decode = torch.compile(_full_decode, mode=\"reduce-overhead\")" in optimized_source
     assert "self.output = self._compiled_decode(kv_cache)" in optimized_source
     assert "self.output = self.model.decode(kv_cache, num_tokens=self.num_tokens)" not in optimized_source
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in optimized_setup
+    assert "parameter_count=self._payload_parameter_count" in optimized_capture
+    assert "sum(p.numel()" not in optimized_capture
 
 
 def test_decode_handoff_benchmarks_do_not_allocate_placeholder_outputs_in_hot_path() -> None:

@@ -48,6 +48,7 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._cache_value_slots: List[torch.Tensor] = []
         self._tier_slots: List[str] = []
         self._peer_target_slots: List[Optional[torch.device]] = []
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -57,6 +58,7 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.device_ids = list(range(torch.cuda.device_count()))
         self.peer_devices = [torch.device(f"cuda:{idx}") for idx in self.device_ids[1:]]
         self.model = nn.MultiheadAttention(self.hidden, self.heads, batch_first=True).to(self.device).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self._query_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._key_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
@@ -141,7 +143,7 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
             inputs={"q": self._verify_q},
             output=self.output,
             batch_size=int(self.batch),
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

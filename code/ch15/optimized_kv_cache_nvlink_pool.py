@@ -46,6 +46,7 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._cache_key_slots: list[torch.Tensor] = []
         self._cache_value_slots: list[torch.Tensor] = []
         self._tier_slots: list[str] = []
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -55,6 +56,7 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         # Single-GPU: treat peer cache as an expanded local pool.
         self.peer_device = self.device
         self.model = nn.MultiheadAttention(self.hidden, self.heads, batch_first=True).to(self.device).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self._query_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._key_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
@@ -137,7 +139,7 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
             inputs={"q": self._verify_q},
             output=self.output,
             batch_size=int(self.batch),
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,
