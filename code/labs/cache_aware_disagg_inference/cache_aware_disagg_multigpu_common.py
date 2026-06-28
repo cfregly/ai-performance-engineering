@@ -963,8 +963,9 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         if len(outputs) != len(self._request_plans):
             raise RuntimeError("Decode output slots not initialized")
         output_idx = 0
-        ttft_history: List[float] = []
-        tpot_history: List[float] = []
+        ttft_total_ms = 0.0
+        tpot_total_ms = 0.0
+        timing_count = 0
         metrics = {
             "cache_hits": 0.0,
             "cache_misses": 0.0,
@@ -1050,8 +1051,9 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 self._sync_local_devices()
                 total_ms = (time.perf_counter() - request_start) * 1000.0
                 ttft_ms = (prefill_end - request_start) * 1000.0
-                ttft_history.append(ttft_ms)
-                tpot_history.append(max(total_ms - ttft_ms, 0.0) / max(self.cfg.decode_tokens, 1))
+                ttft_total_ms += ttft_ms
+                tpot_total_ms += max(total_ms - ttft_ms, 0.0) / max(self.cfg.decode_tokens, 1)
+                timing_count += 1
                 outputs[output_idx] = output.detach()
                 output_idx += 1
 
@@ -1063,10 +1065,11 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             1.0,
         )
         cache_decisions = max(metrics["cache_hits"] + metrics["cache_misses"], 1.0)
+        timing_divisor = max(timing_count, 1)
         self._custom_metrics = {
             **compute_inference_metrics(
-                ttft_ms=_mean(ttft_history),
-                tpot_ms=_mean(tpot_history),
+                ttft_ms=ttft_total_ms / timing_divisor,
+                tpot_ms=tpot_total_ms / timing_divisor,
                 total_tokens=int(
                     self.cfg.requests_per_rank
                     * self._resolved_prefill_ranks

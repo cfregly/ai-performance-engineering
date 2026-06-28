@@ -5833,6 +5833,14 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "with torch.no_grad():" not in setup_section
     assert "with torch.no_grad():" not in benchmark_section
     assert "outputs: List[torch.Tensor] = []" not in benchmark_section
+    assert "ttft_history: List[float] = []" not in benchmark_section
+    assert "tpot_history: List[float] = []" not in benchmark_section
+    assert "ttft_history.append(" not in benchmark_section
+    assert "tpot_history.append(" not in benchmark_section
+    assert "ttft_total_ms = 0.0" in benchmark_section
+    assert "tpot_total_ms = 0.0" in benchmark_section
+    assert "timing_count = 0" in benchmark_section
+    assert "timing_count += 1" in benchmark_section
     assert "outputs = self._output_parts" in benchmark_section
     assert "output_idx = 0" in benchmark_section
     assert "outputs.append(" not in benchmark_section
