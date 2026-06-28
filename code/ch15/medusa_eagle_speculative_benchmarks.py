@@ -114,6 +114,24 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._greedy_logits: Optional[torch.Tensor] = None
         self._draft_logits: Optional[torch.Tensor] = None
         self._target_logits: Optional[torch.Tensor] = None
+        self._output_step_views: list[torch.Tensor] = []
+        self._output_token_views: list[torch.Tensor] = []
+        self._output_write_views: list[list[torch.Tensor]] = []
+        self._draft_head_offset_views: list[torch.Tensor] = []
+        self._draft_seed_views: list[torch.Tensor] = []
+        self._draft_logits_views: list[torch.Tensor] = []
+        self._draft_block_value_views: list[torch.Tensor] = []
+        self._draft_block_token_views: list[torch.Tensor] = []
+        self._verify_prev_first: Optional[torch.Tensor] = None
+        self._verify_prev_views: list[torch.Tensor] = []
+        self._verify_prev_tail_views: list[torch.Tensor] = []
+        self._target_logits_views: list[torch.Tensor] = []
+        self._target_value_views: list[torch.Tensor] = []
+        self._target_token_views: list[torch.Tensor] = []
+        self._target_token_column_views: list[torch.Tensor] = []
+        self._match_views: list[torch.Tensor] = []
+        self._draft_id_views: list[torch.Tensor] = []
+        self._accept_prefix_views: list[torch.Tensor] = []
         self.output: Optional[torch.Tensor] = None
         self._metrics: Dict[str, float] = {}
         self._payload_parameter_count = 0
@@ -146,6 +164,12 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.input_ids = torch.randint(0, wl.vocab_size, (1, 1), device=self.device, dtype=torch.int64)
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
+        self._output_step_views = [
+            self._output_ids[:, token_idx : token_idx + 1] for token_idx in range(wl.total_tokens + 1)
+        ]
+        self._output_token_views = [
+            self._output_ids[:, token_idx] for token_idx in range(wl.total_tokens + 1)
+        ]
         self._greedy_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
         self._greedy_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
         self._greedy_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)
@@ -167,11 +191,28 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._matches = None
             self._draft_logits = None
             self._target_logits = None
+            self._output_write_views = []
+            self._draft_head_offset_views = []
+            self._draft_seed_views = []
+            self._draft_logits_views = []
+            self._draft_block_value_views = []
+            self._draft_block_token_views = []
+            self._verify_prev_first = None
+            self._verify_prev_views = []
+            self._verify_prev_tail_views = []
+            self._target_logits_views = []
+            self._target_value_views = []
+            self._target_token_views = []
+            self._target_token_column_views = []
+            self._match_views = []
+            self._draft_id_views = []
+            self._accept_prefix_views = []
             return
 
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
         self._draft_ids = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
         self._verify_prev = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
+        self._verify_prev_first = self._verify_prev[:, 0]
         self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)
         self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)
         self._draft_head_offsets = torch.arange(wl.speculative_k, device=self.device, dtype=torch.int64).view(1, -1)
@@ -183,6 +224,51 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)
         self._draft_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)
         self._target_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)
+        self._output_write_views = [
+            [
+                self._output_ids[:, start + 1 : start + length + 1]
+                for start in range(wl.total_tokens - length + 1)
+            ]
+            for length in range(1, wl.speculative_k + 1)
+        ]
+        self._draft_head_offset_views = [
+            self._draft_head_offsets[:, :k] for k in range(1, wl.speculative_k + 1)
+        ]
+        self._draft_seed_views = [
+            self._draft_seed_buffer[:, :k] for k in range(1, wl.speculative_k + 1)
+        ]
+        self._draft_logits_views = [
+            self._draft_logits[:, :k] for k in range(1, wl.speculative_k + 1)
+        ]
+        self._draft_block_value_views = [
+            self._draft_block_values[:, :k] for k in range(1, wl.speculative_k + 1)
+        ]
+        self._draft_block_token_views = [
+            self._draft_block_tokens[:, :k] for k in range(1, wl.speculative_k + 1)
+        ]
+        self._verify_prev_views = [
+            self._verify_prev[:, :k] for k in range(1, wl.speculative_k + 1)
+        ]
+        self._verify_prev_tail_views = [
+            self._verify_prev[:, 1:k] for k in range(2, wl.speculative_k + 1)
+        ]
+        self._target_logits_views = [
+            self._target_logits[:, :k] for k in range(1, wl.speculative_k + 1)
+        ]
+        self._target_value_views = [
+            self._target_next_values[:, :k] for k in range(1, wl.speculative_k + 1)
+        ]
+        self._target_token_views = [
+            self._target_next_tokens[:, :k] for k in range(1, wl.speculative_k + 1)
+        ]
+        self._target_token_column_views = [
+            self._target_next_tokens[:, token_idx] for token_idx in range(wl.speculative_k)
+        ]
+        self._match_views = [self._matches[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._accept_prefix_views = [
+            self._accept_prefix[:k] for k in range(1, wl.speculative_k + 1)
+        ]
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -199,19 +285,21 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._greedy_next_values is None
             or self._greedy_next_tokens is None
             or self._greedy_logits is None
+            or len(self._output_step_views) != self.workload.total_tokens + 1
+            or len(self._output_token_views) != self.workload.total_tokens + 1
         ):
             raise RuntimeError("Benchmark not initialized")
 
         wl = self.workload
         out = self._output_ids
-        out[:, 0] = self.input_ids[:, 0]
+        self._output_token_views[0].copy_(self.input_ids[:, 0])
 
         with self._nvtx_range(self.label):
             with torch.inference_mode():
                 for t in range(wl.total_tokens):
-                    logits = self.target_model.forward_into(out[:, t : t + 1], self._greedy_logits)
+                    logits = self.target_model.forward_into(self._output_step_views[t], self._greedy_logits)
                     torch.max(logits[:, 0, :], dim=-1, out=(self._greedy_next_values, self._greedy_next_tokens))
-                    out[:, t + 1].copy_(self._greedy_next_tokens)
+                    self._output_token_views[t + 1].copy_(self._greedy_next_tokens)
 
         self.output = out
         self._metrics = {
@@ -233,8 +321,9 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _draft_seed_tokens(self, prev: torch.Tensor, k: int, round_idx: int) -> torch.Tensor:
         if self.profile is None or self._draft_head_offsets is None or self._draft_seed_buffer is None:
             raise RuntimeError("Draft seeds are only valid for Medusa/EAGLE profiles")
-        head_offsets = self._draft_head_offsets[:, :k]
-        seed_tokens = self._draft_seed_buffer[:, :k]
+        view_idx = k - 1
+        head_offsets = self._draft_head_offset_views[view_idx]
+        seed_tokens = self._draft_seed_views[view_idx]
         round_offset = int(round_idx % self.profile.rejection_period)
         torch.add(prev.expand(-1, k), head_offsets, out=seed_tokens)
         seed_tokens.add_(round_offset)
@@ -259,12 +348,30 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._draft_logits is None
             or self._target_logits is None
             or self.profile is None
+            or self._verify_prev_first is None
+            or len(self._output_step_views) != self.workload.total_tokens + 1
+            or len(self._output_token_views) != self.workload.total_tokens + 1
+            or len(self._output_write_views) != self.workload.speculative_k
+            or len(self._draft_head_offset_views) != self.workload.speculative_k
+            or len(self._draft_seed_views) != self.workload.speculative_k
+            or len(self._draft_logits_views) != self.workload.speculative_k
+            or len(self._draft_block_value_views) != self.workload.speculative_k
+            or len(self._draft_block_token_views) != self.workload.speculative_k
+            or len(self._verify_prev_views) != self.workload.speculative_k
+            or len(self._verify_prev_tail_views) != max(0, self.workload.speculative_k - 1)
+            or len(self._target_logits_views) != self.workload.speculative_k
+            or len(self._target_value_views) != self.workload.speculative_k
+            or len(self._target_token_views) != self.workload.speculative_k
+            or len(self._target_token_column_views) != self.workload.speculative_k
+            or len(self._match_views) != self.workload.speculative_k
+            or len(self._draft_id_views) != self.workload.speculative_k
+            or len(self._accept_prefix_views) != self.workload.speculative_k
         ):
             raise RuntimeError("Benchmark not initialized")
 
         wl = self.workload
         out = self._output_ids
-        out[:, 0] = self.input_ids[:, 0]
+        self._output_token_views[0].copy_(self.input_ids[:, 0])
 
         draft_tokens = 0
         accepted_draft = 0
@@ -277,11 +384,12 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     rounds += 1
                     remaining = wl.total_tokens - pos
                     k = wl.speculative_k if remaining >= wl.speculative_k else remaining
+                    view_idx = k - 1
 
-                    draft_seed = self._draft_seed_tokens(out[:, pos : pos + 1], k, rounds)
-                    logits_d = self.draft_model.forward_into(draft_seed, self._draft_logits[:, :k])
-                    draft_values = self._draft_block_values[:, :k]
-                    draft_block = self._draft_block_tokens[:, :k]
+                    draft_seed = self._draft_seed_tokens(self._output_step_views[pos], k, rounds)
+                    logits_d = self.draft_model.forward_into(draft_seed, self._draft_logits_views[view_idx])
+                    draft_values = self._draft_block_value_views[view_idx]
+                    draft_block = self._draft_block_token_views[view_idx]
                     torch.max(logits_d, dim=-1, out=(draft_values, draft_block))
                     for j in range(k):
                         next_d = draft_block[:, j]
@@ -294,30 +402,36 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
                     draft_tokens += int(k)
 
-                    self._verify_prev[:, 0] = out[:, pos]
+                    self._verify_prev_first.copy_(self._output_token_views[pos])
                     if k > 1:
-                        self._verify_prev[:, 1:k] = self._draft_ids[:, : k - 1]
+                        self._verify_prev_tail_views[k - 2].copy_(self._draft_id_views[k - 2])
 
-                    logits_t = self.target_model.forward_into(self._verify_prev[:, :k], self._target_logits[:, :k])
-                    target_values = self._target_next_values[:, :k]
-                    target_next = self._target_next_tokens[:, :k]
+                    logits_t = self.target_model.forward_into(
+                        self._verify_prev_views[view_idx],
+                        self._target_logits_views[view_idx],
+                    )
+                    target_values = self._target_value_views[view_idx]
+                    target_next = self._target_token_views[view_idx]
                     torch.max(logits_t, dim=-1, out=(target_values, target_next))
-                    matches = self._matches[:, :k]
-                    torch.eq(target_next, self._draft_ids[:, :k], out=matches)
-                    accept_prefix = self._accept_prefix[:k]
+                    draft_window = self._draft_id_views[view_idx]
+                    matches = self._match_views[view_idx]
+                    torch.eq(target_next, draft_window, out=matches)
+                    accept_prefix = self._accept_prefix_views[view_idx]
                     torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)
                     torch.sum(accept_prefix, dim=0, out=self._accept_count)
                     accept_k = int(self._accept_count.item())
 
                     if accept_k == k:
-                        out[:, pos + 1 : pos + k + 1] = self._draft_ids[:, :k]
+                        self._output_write_views[view_idx][pos].copy_(draft_window)
                         accepted_draft += int(k)
                         pos += k
                     else:
                         if accept_k > 0:
-                            out[:, pos + 1 : pos + accept_k + 1] = self._draft_ids[:, :accept_k]
+                            self._output_write_views[accept_k - 1][pos].copy_(self._draft_id_views[accept_k - 1])
                             accepted_draft += int(accept_k)
-                        out[:, pos + accept_k + 1] = target_next[:, accept_k]
+                        self._output_token_views[pos + accept_k + 1].copy_(
+                            self._target_token_column_views[accept_k]
+                        )
                         pos += accept_k + 1
 
         self.output = out
@@ -381,6 +495,24 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._greedy_logits = None
         self._draft_logits = None
         self._target_logits = None
+        self._output_step_views = []
+        self._output_token_views = []
+        self._output_write_views = []
+        self._draft_head_offset_views = []
+        self._draft_seed_views = []
+        self._draft_logits_views = []
+        self._draft_block_value_views = []
+        self._draft_block_token_views = []
+        self._verify_prev_first = None
+        self._verify_prev_views = []
+        self._verify_prev_tail_views = []
+        self._target_logits_views = []
+        self._target_value_views = []
+        self._target_token_views = []
+        self._target_token_column_views = []
+        self._match_views = []
+        self._draft_id_views = []
+        self._accept_prefix_views = []
         self.output = None
         super().teardown()
 
