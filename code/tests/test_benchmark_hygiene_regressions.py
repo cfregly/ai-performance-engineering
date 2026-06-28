@@ -4533,6 +4533,11 @@ def test_ch17_inference_wrappers_use_inference_mode() -> None:
             )[0]
             assert "with torch.inference_mode():" in setup_section
             assert "with torch.no_grad():" not in setup_section
+            if relative == "ch17/optimized_inference_full.py":
+                assert "self._early_exit_layers: list[nn.Module] = []" in source
+                assert "self._early_exit_layers = list(self.model.layers[: self.exit_layer])" in setup_section
+                assert "for layer in self._early_exit_layers:" in benchmark_section
+                assert "self.model.layers[: self.exit_layer]" not in benchmark_section
 
 
 def test_ch17_inference_models_use_inplace_relu_on_layer_outputs() -> None:
