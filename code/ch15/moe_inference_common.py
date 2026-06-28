@@ -115,7 +115,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             self.device,
         )
         self._next_token_buffer = torch.empty((cfg.batch_size, 1), dtype=torch.long, device=self.device)
-        self._next_token_values = None
+        self._next_token_values = torch.empty((cfg.batch_size, 1), dtype=cfg.dtype_obj, device=self.device)
         torch.cuda.synchronize(self.device)
         if hasattr(torch.cuda, "reset_peak_memory_stats"):
             torch.cuda.reset_peak_memory_stats(self.device)
@@ -151,7 +151,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             or self._next_token_values.dtype != logits_last.dtype
             or tuple(self._next_token_values.shape) != (batch_size, 1)
         ):
-            self._next_token_values = torch.empty_like(logits_last[:, :1])
+            self._next_token_values = torch.empty((batch_size, 1), dtype=logits_last.dtype, device=logits_last.device)
         torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))
         return self._next_token_buffer
 

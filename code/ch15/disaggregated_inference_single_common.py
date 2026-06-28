@@ -148,7 +148,15 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._param_count = sum(p.numel() for p in self.prefill_model.parameters()) + sum(
             p.numel() for p in self.decode_model.parameters()
         )
-        self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
+        output_shape = (self.cfg.batch_size, 1)
+        if self.cfg.batch_size == 1:
+            output_shape = (1,)
+        self._pending_outputs = [
+            torch.empty(output_shape, dtype=torch.long, device=self.device)
+            for _ in range(self.cfg.requests_per_rank)
+        ]
+        self._next_token_buffer = torch.empty((self.cfg.batch_size, 1), dtype=torch.long, device=self.device)
+        self._next_token_values = torch.empty((self.cfg.batch_size, 1), dtype=self.cfg.dtype, device=self.device)
         self._output = None
         torch.cuda.synchronize(self.device)
 
@@ -167,7 +175,12 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         except RuntimeError:
             return torch.empty(shape, device="cpu", dtype=dtype)
 
-    def _run_decode_loop(self, kv_cache: torch.Tensor, seed_tokens: torch.Tensor) -> torch.Tensor:
+    def _run_decode_loop(
+        self,
+        kv_cache: torch.Tensor,
+        seed_tokens: torch.Tensor,
+        output: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         if self.decode_model is None:
             raise RuntimeError("Decode model not initialized")
         tokens = seed_tokens
@@ -177,8 +190,12 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
                 kv_cache=kv_cache,
                 position=self.cfg.context_window + step,
             )
-            tokens = torch.argmax(decode_logits[:, -1, :], dim=-1, keepdim=True)
-        return tokens.squeeze(0)
+            tokens = self._next_token_from_logits(decode_logits[:, -1, :])
+        decoded = tokens.squeeze(0)
+        if output is not None:
+            output.copy_(decoded)
+            return output
+        return decoded
 
     def _next_token_from_logits(self, logits_last: torch.Tensor) -> torch.Tensor:
         batch_size = logits_last.size(0)
@@ -194,7 +211,7 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
             or self._next_token_values.dtype != logits_last.dtype
             or tuple(self._next_token_values.shape) != (batch_size, 1)
         ):
-            self._next_token_values = torch.empty_like(logits_last[:, :1])
+            self._next_token_values = torch.empty((batch_size, 1), dtype=logits_last.dtype, device=logits_last.device)
         torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))
         return self._next_token_buffer
 
@@ -243,6 +260,8 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._kv_host_staging = None
         self._output = None
         self._pending_outputs = []
+        self._next_token_buffer = None
+        self._next_token_values = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -302,13 +321,17 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
             for idx in range(self.cfg.requests_per_rank):
                 prompt = self.prompts[idx]
                 hidden, logits = self.prefill_model.prefill(prompt)
-                seed_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+                seed_tokens = self._next_token_from_logits(logits[:, -1, :])
                 self._kv_host_staging.copy_(hidden, non_blocking=False)
                 self._baseline_kv_cache[:, : self.cfg.context_window].copy_(
                     self._kv_host_staging,
                     non_blocking=False,
                 )
-                outputs[output_idx] = self._run_decode_loop(self._baseline_kv_cache, seed_tokens)
+                outputs[output_idx] = self._run_decode_loop(
+                    self._baseline_kv_cache,
+                    seed_tokens,
+                    outputs[output_idx],
+                )
                 output_idx += 1
 
         self._set_output_from_tokens(outputs)
@@ -333,6 +356,8 @@ class OptimizedDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceS
             self.cfg.dtype,
             self.device,
         )
+        self._next_token_buffer = torch.empty((total_batch, 1), dtype=torch.long, device=self.device)
+        self._next_token_values = torch.empty((total_batch, 1), dtype=self.cfg.dtype, device=self.device)
 
     def benchmark_fn(self) -> None:
         if self.prefill_model is None or self.prompts is None:

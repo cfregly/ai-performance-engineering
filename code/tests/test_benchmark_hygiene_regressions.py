@@ -5690,10 +5690,12 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
 
     assert "self._next_token_buffer: Optional[torch.Tensor] = None" in source
     assert "self._next_token_buffer = torch.empty((cfg.batch_size, 1)" in setup_section
+    assert "self._next_token_values = torch.empty((cfg.batch_size, 1), dtype=cfg.dtype_obj, device=self.device)" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
     assert "def _next_token_from_logits" in source
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in source
+    assert "torch.empty_like(logits_last[:, :1])" not in source
     assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in benchmark_section
     assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in benchmark_section
     assert "torch.argmax(" not in benchmark_section
@@ -5796,7 +5798,10 @@ def test_ch15_single_disaggregated_optimized_reuses_next_token_buffer() -> None:
     assert "self._next_token_buffer: Optional[torch.Tensor] = None" in source
     assert "def _next_token_from_logits" in source
     assert "with torch.inference_mode():" in optimized_section
+    assert "self._next_token_buffer = torch.empty((total_batch, 1), dtype=torch.long, device=self.device)" in optimized_section
+    assert "self._next_token_values = torch.empty((total_batch, 1), dtype=self.cfg.dtype, device=self.device)" in optimized_section
     assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in source
+    assert "torch.empty_like(logits_last[:, :1])" not in source
     assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in optimized_section
     assert "tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in optimized_section
     assert "torch.argmax(" not in optimized_section
@@ -8561,7 +8566,12 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     )[0]
 
     assert "torch.cat(" not in output_helper
-    assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in setup_section
+    assert "output_shape = (self.cfg.batch_size, 1)" in setup_section
+    assert "if self.cfg.batch_size == 1:" in setup_section
+    assert "torch.empty(output_shape, dtype=torch.long, device=self.device)" in setup_section
+    assert "self._next_token_buffer = torch.empty((self.cfg.batch_size, 1), dtype=torch.long, device=self.device)" in setup_section
+    assert "self._next_token_values = torch.empty((self.cfg.batch_size, 1), dtype=self.cfg.dtype, device=self.device)" in setup_section
+    assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" not in setup_section
     assert "self._pending_outputs = outputs" in output_helper
     assert "torch.cat(" not in baseline_benchmark
     assert "outputs: List[torch.Tensor] = []" not in baseline_benchmark
@@ -8569,7 +8579,10 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "output_idx = 0" in baseline_benchmark
     assert "with torch.inference_mode():" in baseline_benchmark
     assert "outputs.append(" not in baseline_benchmark
-    assert "outputs[output_idx] = self._run_decode_loop(self._baseline_kv_cache, seed_tokens)" in baseline_benchmark
+    assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in baseline_benchmark
+    assert "outputs[output_idx] = self._run_decode_loop(" in baseline_benchmark
+    assert "outputs[output_idx]," in baseline_benchmark
+    assert "torch.argmax(" not in baseline_benchmark
     assert "output_idx += 1" in baseline_benchmark
     assert "kv_cpu.to(self.device)" not in baseline_benchmark
     assert "hidden.cpu()" not in baseline_benchmark
