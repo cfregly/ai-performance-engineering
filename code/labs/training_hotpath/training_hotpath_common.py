@@ -612,6 +612,7 @@ class PaddingAwareTransformerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._active_mask: Optional[torch.Tensor] = None
         self._extension = None
         self._custom_metrics: dict[str, float] = {}
+        self._payload_parameter_count = 0
         self._refresh_workload_metadata()
 
     def _refresh_workload_metadata(self) -> None:
@@ -634,6 +635,7 @@ class PaddingAwareTransformerBenchmark(VerificationPayloadMixin, BaseBenchmark):
             packed = self._extension.pack_rows(flat, self.active_rows)
             self._extension.scatter_rows(packed, self.active_rows, flat.shape[0])
         self.model = ToyTransformer(self.workload, optimized=self.optimized, device=self.device).to(self.device)
+        self._payload_parameter_count = sum(parameter.numel() for parameter in self.model.parameters())
         self.output = None
         total_tokens = self.workload.batch_size * self.workload.max_num_tokens
         active_fraction = active_tokens / float(total_tokens)
@@ -663,7 +665,7 @@ class PaddingAwareTransformerBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"inputs": self.inputs, "seq_lens": self.seq_lens},
             output=self.output,
             batch_size=self.workload.batch_size,
-            parameter_count=sum(parameter.numel() for parameter in self.model.parameters()) if self.model is not None else 0,
+            parameter_count=self._payload_parameter_count,
             precision_flags={"fp16": False, "bf16": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
             output_tolerance=(1e-5, 1e-5),
         )

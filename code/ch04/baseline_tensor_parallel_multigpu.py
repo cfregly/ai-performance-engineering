@@ -206,6 +206,7 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._world_size = 1
         self._hidden = _DEFAULT_HIDDEN
         self._hidden_per_rank = _DEFAULT_HIDDEN
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         require_min_gpus(2, "baseline_tensor_parallel_multigpu.py")
@@ -219,6 +220,11 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._hidden_per_rank,
             _DEFAULT_LAYERS,
             self.device,
+        )
+        self._payload_parameter_count = sum(
+            p.numel()
+            for module in (self._shard_layers, self._proj_layers, self._aux_layers)
+            for p in module.parameters()
         )
         self._input = torch.randn(
             _DEFAULT_BATCH,
@@ -258,16 +264,11 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self._output is None or self._input is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        param_count = sum(
-            p.numel()
-            for module in (self._shard_layers, self._proj_layers, self._aux_layers)
-            for p in module.parameters()
-        )
         self._set_verification_payload(
             inputs={"input": self._input},
             output=self._output,
             batch_size=_DEFAULT_BATCH,
-            parameter_count=int(param_count),
+            parameter_count=self._payload_parameter_count,
             precision_flags=PrecisionFlags(bf16=True, tf32=False),
             output_tolerance=(0.1, 1.0),
             signature_overrides={

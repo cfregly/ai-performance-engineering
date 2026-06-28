@@ -633,9 +633,29 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def _prepare_verification_payload",
+            maxsplit=1,
+        )[0]
 
         assert "self._full_out: Optional[torch.Tensor] = None" in source
         assert "self._full_out = torch.empty(" in source
+        assert "self._payload_parameter_count = 0" in source
+        if filename in {"baseline_tensor_parallel.py", "optimized_tensor_parallel_async.py"}:
+            assert (
+                "self._payload_parameter_count = 3 * _DEFAULT_LAYERS * (self._hidden * self._hidden)"
+                in setup_section
+            )
+        else:
+            assert "self._payload_parameter_count = sum(" in setup_section
+            assert "for module in (self._shard_layers, self._proj_layers, self._aux_layers)" in setup_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "param_count =" not in capture_section
+        assert "sum(" not in capture_section
         assert "def _replicate_tensor_parallel_shard(" in source
         assert "_replicate_tensor_parallel_shard(local_out, self._world_size, self._full_out)" in benchmark_section
         assert "proj_out = self._proj_layers[layer_idx](self._full_out)" in benchmark_section
@@ -645,6 +665,29 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
         assert "full_out = torch.cat(gather_list, dim=-1)" not in worker_section
         if "torch.cat(gather_list" in worker_section:
             assert "torch.cat(gather_list, dim=-1, out=full_out)" in worker_section
+
+
+def test_labs_training_hotpath_payload_caches_parameter_count() -> None:
+    source = (
+        REPO_ROOT / "labs" / "training_hotpath" / "training_hotpath_common.py"
+    ).read_text(encoding="utf-8")
+    class_section = source.split("class PaddingAwareTransformerBenchmark", maxsplit=1)[1]
+    setup_section = class_section.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    capture_section = class_section.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+
+    assert "self._payload_parameter_count = 0" in class_section
+    assert (
+        "self._payload_parameter_count = sum(parameter.numel() for parameter in self.model.parameters())"
+        in setup_section
+    )
+    assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "sum(parameter.numel()" not in capture_section
 
 
 def test_ch04_gradient_fusion_uses_dtype_byte_constant() -> None:
