@@ -198,7 +198,8 @@ class MoELayer(nn.Module):
                 tokens_for_expert = x_flat.index_select(0, token_indices)
                 expert_output = self.experts[expert_idx](tokens_for_expert)
                 weights = first_weights.index_select(0, token_indices).to(dtype=expert_output.dtype).unsqueeze(-1)
-                output_flat.index_copy_(0, token_indices, expert_output * weights)
+                expert_output.mul_(weights)
+                output_flat.index_copy_(0, token_indices, expert_output)
             offset = next_offset
 
         if self.top_k > 1:
@@ -217,7 +218,8 @@ class MoELayer(nn.Module):
                     tokens_for_expert = x_flat.index_select(0, token_indices)
                     expert_output = self.experts[expert_idx](tokens_for_expert)
                     weights = remaining_weights.index_select(0, route_indices).to(dtype=expert_output.dtype).unsqueeze(-1)
-                    output_flat.index_add_(0, token_indices, expert_output * weights)
+                    expert_output.mul_(weights)
+                    output_flat.index_add_(0, token_indices, expert_output)
                 offset = next_offset
         
         output = output_flat.view(batch_size, seq_len, hidden_size)

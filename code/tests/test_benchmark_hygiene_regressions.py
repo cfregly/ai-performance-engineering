@@ -4712,7 +4712,9 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "repeat_interleave(self.top_k)" not in moe_forward
     assert "output_flat = torch.empty_like(x_flat)" in moe_forward
     assert "output_flat = torch.zeros_like(x_flat)" not in moe_forward
-    assert "output_flat.index_copy_(0, token_indices, expert_output * weights)" in moe_forward
+    assert moe_forward.count("expert_output.mul_(weights)") == 2
+    assert "output_flat.index_copy_(0, token_indices, expert_output)" in moe_forward
+    assert "output_flat.index_copy_(0, token_indices, expert_output * weights)" not in moe_forward
     assert 'token_ids.div_(routes, rounding_mode="floor")' in moe_forward
     assert "self._route_count_host_buffer: Optional[torch.Tensor] = None" in moe_forward
     assert "def _route_count_list(self, expert_ids: torch.Tensor)" in moe_forward
@@ -4724,7 +4726,8 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "torch.bincount(remaining_experts, minlength=self.num_experts).detach().cpu().tolist()" not in moe_forward
     assert "torch.bincount(first_experts, minlength=self.num_experts).detach().cpu().tolist()" not in moe_forward
     assert ".nonzero(" not in moe_forward
-    assert "output_flat.index_add_(0, token_indices, expert_output * weights)" in moe_forward
+    assert "output_flat.index_add_(0, token_indices, expert_output)" in moe_forward
+    assert "output_flat.index_add_(0, token_indices, expert_output * weights)" not in moe_forward
     assert "torch.cuda.Event(" not in benchmark_section
     assert "start_event, end_event = self._timing_events" in benchmark_section
     assert "with torch.inference_mode():" in benchmark_section
