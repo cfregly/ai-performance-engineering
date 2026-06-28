@@ -86,11 +86,17 @@ class BaselineContextParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBen
         self._layers: Optional[torch.nn.ModuleList] = None
         self._input: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self._layers = build_layers(self._cp_config, self.device)
+        self._payload_parameter_count = sum(
+            p.numel()
+            for layer in self._layers
+            for p in layer.parameters()
+        )
         self._input = torch.randn(
             self._cp_config.batch_size,
             self._seq_len,
@@ -123,12 +129,11 @@ class BaselineContextParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBen
     def capture_verification_payload(self) -> None:
         if self._output is None or self._input is None or self._layers is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        param_count = sum(p.numel() for layer in self._layers for p in layer.parameters())
         self._set_verification_payload(
             inputs={"input": self._input},
             output=self._output,
             batch_size=self._cp_config.batch_size,
-            parameter_count=int(param_count),
+            parameter_count=self._payload_parameter_count,
             precision_flags=PrecisionFlags(
                 fp16=self._cp_config.dtype == torch.float16,
                 bf16=self._cp_config.dtype == torch.bfloat16,

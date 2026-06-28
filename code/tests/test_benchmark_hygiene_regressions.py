@@ -7146,6 +7146,34 @@ def test_ch13_dtensor_mesh_caches_nvtx_enablement() -> None:
     assert 'with nvtx_range("dtensor_mesh", enable=self._enable_nvtx):' in benchmark_section
 
 
+def test_ch13_multigpu_surrogates_cache_verification_parameter_counts() -> None:
+    expectations = {
+        "baseline_context_parallel_multigpu.py": "self._payload_parameter_count = sum(",
+        "optimized_context_parallel_multigpu.py": "self._payload_parameter_count = sum(",
+        "baseline_expert_parallel_multigpu.py": (
+            "self._payload_parameter_count = sum(p.numel() for p in self._expert_proj.parameters())"
+        ),
+        "optimized_expert_parallel_multigpu.py": (
+            "self._payload_parameter_count = sum(p.numel() for p in self._expert_proj.parameters())"
+        ),
+    }
+    for filename, setup_expected in expectations.items():
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def _prepare_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self._payload_parameter_count = 0" in source
+        assert setup_expected in setup_section
+        assert "param_count = sum(" not in capture_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+
+
 def test_ch11_ch12_standalone_timing_tools_use_inference_mode() -> None:
     paths = (
         "ch11/memory_async_demo.py",

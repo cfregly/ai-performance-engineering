@@ -67,6 +67,7 @@ class OptimizedExpertParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBen
         self._input: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
         self._expert_proj: Optional[nn.Linear] = None
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -84,6 +85,7 @@ class OptimizedExpertParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBen
             bias=False,
             dtype=self._ep_config.dtype,
         ).to(self.device)
+        self._payload_parameter_count = sum(p.numel() for p in self._expert_proj.parameters())
 
     def benchmark_fn(self) -> None:
         if self._input is None or self._expert_proj is None:
@@ -93,12 +95,11 @@ class OptimizedExpertParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBen
     def capture_verification_payload(self) -> None:
         if self._output is None or self._input is None or self._expert_proj is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        param_count = sum(p.numel() for p in self._expert_proj.parameters())
         self._set_verification_payload(
             inputs={"tokens": self._input},
             output=self._output,
             batch_size=self._ep_config.batch_size,
-            parameter_count=int(param_count),
+            parameter_count=self._payload_parameter_count,
             precision_flags=PrecisionFlags(
                 fp16=self._ep_config.dtype == torch.float16,
                 bf16=self._ep_config.dtype == torch.bfloat16,
