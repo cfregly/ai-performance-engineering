@@ -31,6 +31,7 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._trt_runner = None
         self._verification_payload = None
         self._enable_nvtx = False
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         config = getattr(self, "_config", None) or self.get_config()
@@ -68,6 +69,7 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError(f"SKIPPED: NVFP4 stack not available ({trt_msg})") from exc
 
         self.linear = nn.Linear(1024, 1024, bias=False).to(self.device).to(torch.float16)
+        self._payload_parameter_count = sum(p.numel() for p in self.linear.parameters())
         self.inputs = torch.randn(32, 1024, device=self.device, dtype=torch.float16)
         torch.cuda.synchronize(self.device)
 
@@ -118,7 +120,7 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"inputs": self.inputs},
             output=self.output,
             batch_size=self.inputs.shape[0],
-            parameter_count=sum(p.numel() for p in self.linear.parameters()) if self.linear is not None else 0,
+            parameter_count=self._payload_parameter_count,
             precision_flags={"fp16": self.output.dtype == torch.float16, "bf16": self.output.dtype == torch.bfloat16, "fp8": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
             output_tolerance=(0.1, 1.0),
         )

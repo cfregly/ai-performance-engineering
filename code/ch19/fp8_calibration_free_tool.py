@@ -306,11 +306,14 @@ class _FP8CalibrationFreeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._impl = OptimizedFP8CalibrationFree()
         self._output: Optional[torch.Tensor] = None
         self._verification_payload = None
+        self._payload_parameter_count = 0
         tokens = float(self._impl.batch_size * self._impl.seq_length)
         self.register_workload_metadata(requests_per_iteration=1.0, tokens_per_iteration=tokens)
 
     def setup(self) -> None:
         self._impl.setup()
+        if hasattr(self._impl, "layers"):
+            self._payload_parameter_count = sum(p.numel() for p in self._impl.layers.parameters())
 
     def benchmark_fn(self) -> None:
         output = self._impl.run()
@@ -323,7 +326,7 @@ class _FP8CalibrationFreeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"input": self._impl.input},
             output=self._output.detach().float().clone(),
             batch_size=self._impl.batch_size,
-            parameter_count=sum(p.numel() for p in self._impl.layers.parameters()) if hasattr(self._impl, "layers") else 0,
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.1, 1.0),
             precision_flags={"fp16": False, "bf16": True, "fp8": True, "tf32": False},
         )

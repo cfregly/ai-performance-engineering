@@ -38,6 +38,7 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.prompt: Optional[torch.Tensor] = None
         self.decode_tokens: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
 
         self.register_workload_metadata(
             tokens_per_iteration=float(self.batch_size * (self.prompt_len + self.decode_len)),
@@ -73,6 +74,7 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
         model.eval()
 
         self.model = model
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
         self.prompt = torch.randint(
             0,
@@ -123,7 +125,7 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
             inputs={"prompt": self.prompt, "decode_tokens": self.decode_tokens},
             output=self.output.detach().float().clone(),
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={"fp16": False, "bf16": True, "fp8": False, "tf32": False},
             output_tolerance=(0.05, 0.2),
         )
@@ -153,4 +155,3 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineNanochatInferenceBenchmark()
-

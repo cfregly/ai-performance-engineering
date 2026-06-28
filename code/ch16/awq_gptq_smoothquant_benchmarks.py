@@ -185,6 +185,7 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimized_model: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -194,6 +195,7 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
 
         self.reference_model = ReferenceMLP(self.workload, self.device).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.reference_model.parameters())
         self.inputs = torch.randn(
             self.workload.batch_size,
             self.workload.in_features,
@@ -241,7 +243,7 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"input": self.inputs.detach().float().clone()},
             output=self.output.detach().float().clone(),
             batch_size=self.inputs.shape[0],
-            parameter_count=sum(p.numel() for p in self.reference_model.parameters()) if self.reference_model is not None else 0,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": self.workload.dtype == torch.float16,
                 "bf16": self.workload.dtype == torch.bfloat16,

@@ -250,6 +250,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         self._pending_timing_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._last_aux_metrics: Dict[str, torch.Tensor] = {}
         self._last_elapsed_ms: Optional[float] = None
+        self._payload_parameter_count = 0
 
         logger.info(f"DeepSeek-R1 MoE Optimization")
         logger.info(f"  Experts: {num_experts}, Top-K: {top_k}")
@@ -266,6 +267,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
             num_experts=self.num_experts,
             top_k=self.top_k,
         ).to(self.device).to(torch.bfloat16)
+        self._payload_parameter_count = sum(p.numel() for p in self.moe_layer.parameters())
         
         # Create input
         self.input = torch.randn(
@@ -328,7 +330,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
             inputs={"input": self.input.detach()},
             output=self.output.detach().float().clone(),
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.moe_layer.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": True,

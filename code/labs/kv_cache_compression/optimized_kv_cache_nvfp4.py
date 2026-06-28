@@ -73,7 +73,7 @@ class OptimizedKVCacheNVFP4Benchmark(BaselineKVCacheBenchmark):
             },
             output=self.output,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": self.tensor_dtype == torch.bfloat16,

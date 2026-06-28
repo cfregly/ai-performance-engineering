@@ -395,6 +395,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._mem_log_path: Optional[Path] = None
         self._nvlink_warned: bool = False
         self._nvlink_status: str = "unknown"
+        self._payload_parameter_count = 0
         self.register_workload_metadata(
             requests_per_iteration=float(self.config.batch_size),
             tokens_per_iteration=float(self.config.tokens_per_iteration),
@@ -423,6 +424,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         cfg = self.config
         self.model = SimpleMoEGPT(cfg, device=self.device).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
         self.prompts = torch.randint(
             0,
@@ -837,7 +839,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"prompt": self.prompts},
             output=self.output.to(dtype=torch.float32),
             batch_size=int(self.prompts.shape[0]),
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": self.config.dtype_obj == torch.float16,
                 "bf16": self.config.dtype_obj == torch.bfloat16,

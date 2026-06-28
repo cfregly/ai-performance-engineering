@@ -2653,6 +2653,49 @@ def test_ch20_benchmarks_cache_verification_parameter_count() -> None:
         assert "sum(p.numel()" not in capture_section
 
 
+def test_remaining_benchmark_wrappers_cache_verification_parameter_count() -> None:
+    for relative, parameters_expr in (
+        ("ch16/awq_gptq_smoothquant_benchmarks.py", "self.reference_model.parameters()"),
+        ("ch18/nvfp4_trtllm_tool.py", "self.linear.parameters()"),
+        ("ch18/run_vllm_decoder.py", "self.model.parameters()"),
+        ("ch19/fp8_calibration_free_tool.py", "self._impl.layers.parameters()"),
+        ("labs/nanochat_fullstack/baseline_nanochat_inference.py", "self.model.parameters()"),
+        ("labs/nanochat_fullstack/optimized_nanochat_inference.py", "self.model.parameters()"),
+        ("labs/kv_cache_compression/baseline_kv_cache.py", "self.model.parameters()"),
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def ",
+            maxsplit=1,
+        )[0]
+
+        assert "self._payload_parameter_count = 0" in source
+        assert (
+            f"self._payload_parameter_count = sum(p.numel() for p in {parameters_expr})"
+            in setup_section
+        )
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "sum(p.numel()" not in capture_section
+
+    inherited_source = (
+        REPO_ROOT / "labs" / "kv_cache_compression" / "optimized_kv_cache_nvfp4.py"
+    ).read_text(encoding="utf-8")
+    inherited_capture = inherited_source.split("def capture_verification_payload", maxsplit=1)[
+        1
+    ].split(
+        "def get_custom_metrics",
+        maxsplit=1,
+    )[0]
+    assert "parameter_count=self._payload_parameter_count" in inherited_capture
+    assert "sum(p.numel()" not in inherited_capture
+
+
 def test_ch20_optimized_memory_standard_uses_scalar_addcmul_constants() -> None:
     source = (REPO_ROOT / "ch20" / "optimized_memory_standard.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
@@ -4277,12 +4320,15 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "torch.cuda.Event(" not in benchmark_section
     assert "start_event, end_event = self._timing_events" in benchmark_section
     assert "with torch.inference_mode():" in benchmark_section
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.moe_layer.parameters())" in setup_section
     assert ".detach().float().clone()" not in benchmark_section
     assert "self._last_aux_metrics.clear()" in benchmark_section
     assert "self._last_aux_metrics[key] = value.detach()" in benchmark_section
     assert "self._last_aux_metrics = {" not in benchmark_section
     assert "self.output = output[:1, : min(4, output.shape[1]), : min(8, output.shape[2])]" in benchmark_section
     assert "output=self.output.detach().float().clone()" in capture_section
+    assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "sum(p.numel()" not in capture_section
 
 
 def test_gpt4_architecture_runner_reuses_cuda_timing_events() -> None:

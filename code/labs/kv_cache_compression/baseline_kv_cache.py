@@ -83,6 +83,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.runtime_recipe = self.fp8_recipe
         self.output: Optional[torch.Tensor] = None
         self._cache_output_ready = False
+        self._payload_parameter_count = 0
 
     def _resolve_device(self) -> torch.device:
         return resolve_device()
@@ -106,6 +107,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 device=self.device,
             )
 
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.prefill_inputs, self.decode_inputs = build_token_batches(
             batch_size=self.batch_size,
             prefill_seq=self.prefill_seq // 2,  # two prefill windows
@@ -203,7 +205,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             },
             output=self.output,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": self.tensor_dtype == torch.bfloat16,
