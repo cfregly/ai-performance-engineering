@@ -124,12 +124,26 @@ def test_padding_aware_transformer_forward_uses_inference_swiglu_fast_path() -> 
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    block_source = common_source.split("class TransformerBlock", maxsplit=1)[1].split(
+        "class ToyTransformer",
+        maxsplit=1,
+    )[0]
+    toy_source = common_source.split("class ToyTransformer", maxsplit=1)[1].split(
+        "def build_padding_inputs",
+        maxsplit=1,
+    )[0]
 
     assert "if torch.is_grad_enabled() and up.requires_grad:" in helper_source
     assert "F.silu(up, inplace=True)" in helper_source
     assert "up.mul_(gate)" in helper_source
     assert "with torch.inference_mode():" in benchmark_source
     assert "y = _silu_mul_in_place_if_safe(up, gate)" in common_source
+    assert "active_mask_column = active_mask.unsqueeze(-1)" in common_source
+    assert "active_mask_column=active_mask_column" in common_source
+    assert "x = x * active_mask_column" in common_source
+    assert "return x * active_mask_column" in common_source
+    assert "active_mask.unsqueeze(-1)" not in block_source
+    assert toy_source.count("active_mask.unsqueeze(-1)") == 1
 
 
 def test_swiglu_helper_reuses_buffer_without_grad_and_preserves_backward() -> None:

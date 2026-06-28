@@ -298,6 +298,7 @@ class TransformerBlock(nn.Module):
         x: torch.Tensor,
         *,
         active_mask: torch.Tensor,
+        active_mask_column: torch.Tensor,
         active_rows: torch.Tensor,
         extension,
     ) -> torch.Tensor:
@@ -312,13 +313,13 @@ class TransformerBlock(nn.Module):
         attn = F.scaled_dot_product_attention(query, key, value, attn_mask=attn_mask)
         attn = attn.transpose(1, 2).reshape(batch_size, num_tokens, self.hidden_size)
         x = x + self.out_proj(attn, active_rows=active_rows, extension=extension)
-        x = x * active_mask.unsqueeze(-1)
+        x = x * active_mask_column
 
         y = self.ln2(x)
         up, gate = self.up_gate(y, active_rows=active_rows, extension=extension).chunk(2, dim=-1)
         y = _silu_mul_in_place_if_safe(up, gate)
         x = x + self.down(y, active_rows=active_rows, extension=extension)
-        return x * active_mask.unsqueeze(-1)
+        return x * active_mask_column
 
 
 class ToyTransformer(nn.Module):
@@ -350,12 +351,19 @@ class ToyTransformer(nn.Module):
         active_rows: torch.Tensor,
         extension,
     ) -> torch.Tensor:
+        active_mask_column = active_mask.unsqueeze(-1)
         x = self.input_proj(x, active_rows=active_rows, extension=extension)
-        x = x * active_mask.unsqueeze(-1)
+        x = x * active_mask_column
         for block in self.blocks:
-            x = block(x, active_mask=active_mask, active_rows=active_rows, extension=extension)
+            x = block(
+                x,
+                active_mask=active_mask,
+                active_mask_column=active_mask_column,
+                active_rows=active_rows,
+                extension=extension,
+            )
         x = self.output_proj(x, active_rows=active_rows, extension=extension)
-        return x * active_mask.unsqueeze(-1)
+        return x * active_mask_column
 
 
 def build_padding_inputs(
