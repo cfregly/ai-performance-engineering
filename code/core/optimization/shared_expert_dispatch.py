@@ -74,6 +74,29 @@ def dispatch_shared_expert_active_experts(
     return out
 
 
+def dispatch_shared_expert_precomputed_indices(
+    flat_tokens: torch.Tensor,
+    expert: nn.Module,
+    *,
+    out: torch.Tensor,
+    index_groups: list[torch.Tensor] | tuple[torch.Tensor, ...],
+) -> torch.Tensor:
+    """Dispatch with token index groups precomputed for static routing."""
+    if flat_tokens.dim() != 2:
+        raise ValueError(f"flat_tokens must be 2D [T, H], got shape {tuple(flat_tokens.shape)}")
+    if out.shape != flat_tokens.shape:
+        raise ValueError(f"out must match flat_tokens shape {tuple(flat_tokens.shape)}, got {tuple(out.shape)}")
+    for indices in index_groups:
+        if indices.dim() != 1:
+            raise ValueError(f"each index group must be 1D, got shape {tuple(indices.shape)}")
+        if indices.numel() == 0:
+            continue
+        if indices.dtype != torch.int64:
+            indices = indices.to(torch.int64)
+        out.index_copy_(0, indices, expert(flat_tokens.index_select(0, indices)))
+    return out
+
+
 def dispatch_shared_expert_sort_scatter(
     flat_tokens: torch.Tensor,
     expert_ids: torch.Tensor,

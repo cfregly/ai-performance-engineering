@@ -9354,6 +9354,12 @@ def test_ch15_moe_overlap_and_routing_use_inference_mode() -> None:
         if relative.endswith("moe_routing_benchmark_common.py"):
             assert "self._payload_parameter_count = 0" in source
             assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
+            assert "self._active_dispatch_indices: Optional[list[torch.Tensor]] = None" in source
+            assert "active_experts = torch.unique(expert_ids_flat).detach().cpu().tolist()" in setup_section
+            assert "self._active_dispatch_indices = [" in setup_section
+            assert "(expert_ids_flat == int(expert_id)).nonzero(as_tuple=False).squeeze(-1)" in setup_section
+            assert "dispatch_shared_expert_precomputed_indices(" in benchmark_section
+            assert "index_groups=self._active_dispatch_indices" in benchmark_section
             assert "param_count = sum(" not in capture_section
             assert "parameter_count=self._payload_parameter_count" in capture_section
 

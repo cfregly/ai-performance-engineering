@@ -14,6 +14,7 @@ from core.optimization.moe_inference import ExpertMLP
 from core.optimization.shared_expert_dispatch import (
     dispatch_shared_expert_active_experts,
     dispatch_shared_expert_mask_scan,
+    dispatch_shared_expert_precomputed_indices,
 )
 
 
@@ -61,6 +62,7 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.expert: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
         self.expert_ids: Optional[torch.Tensor] = None
+        self._active_dispatch_indices: Optional[list[torch.Tensor]] = None
         self._out_flat: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._verify_probe: Optional[torch.Tensor] = None
@@ -89,6 +91,15 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
 
         token_ids = torch.arange(self.batch * self.seq, device=self.device, dtype=torch.int64)
         self.expert_ids = self._build_expert_ids(token_ids).view(self.batch, self.seq)
+        expert_ids_flat = self.expert_ids.reshape(-1)
+        if self.dispatch_mode == "active_experts":
+            active_experts = torch.unique(expert_ids_flat).detach().cpu().tolist()
+            self._active_dispatch_indices = [
+                (expert_ids_flat == int(expert_id)).nonzero(as_tuple=False).squeeze(-1)
+                for expert_id in active_experts
+            ]
+        else:
+            self._active_dispatch_indices = None
         self._out_flat = torch.empty(self.batch * self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
         self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
         self._verify_meta = torch.zeros(self.num_experts, dtype=torch.int8)
@@ -115,12 +126,20 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
                         out=self._out_flat,
                     )
                 elif self.dispatch_mode == "active_experts":
-                    dispatch_shared_expert_active_experts(
-                        flat,
-                        expert_ids_flat,
-                        self.expert,
-                        out=self._out_flat,
-                    )
+                    if self._active_dispatch_indices is not None:
+                        dispatch_shared_expert_precomputed_indices(
+                            flat,
+                            self.expert,
+                            out=self._out_flat,
+                            index_groups=self._active_dispatch_indices,
+                        )
+                    else:
+                        dispatch_shared_expert_active_experts(
+                            flat,
+                            expert_ids_flat,
+                            self.expert,
+                            out=self._out_flat,
+                        )
                 else:
                     raise ValueError(f"Unknown dispatch mode: {self.dispatch_mode}")
                 self.output = self._out_flat.view(self.batch, self.seq, self.hidden_size)
@@ -147,6 +166,7 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.expert = None
         self.inputs = None
         self.expert_ids = None
+        self._active_dispatch_indices = None
         self._out_flat = None
         self.output = None
         super().teardown()

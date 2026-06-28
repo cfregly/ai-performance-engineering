@@ -9,6 +9,7 @@ import torch.nn as nn
 from core.optimization.shared_expert_dispatch import (
     dispatch_shared_expert_active_experts,
     dispatch_shared_expert_packed_scatter,
+    dispatch_shared_expert_precomputed_indices,
     dispatch_shared_expert_sort_scatter,
 )
 
@@ -71,6 +72,39 @@ def test_active_experts_overwrites_output_without_zero_fill() -> None:
         expert_ids,
         expert,
         out=actual,
+    )
+
+    assert not torch.isnan(actual).any()
+    torch.testing.assert_close(actual, expected)
+
+
+def test_precomputed_indices_match_active_expert_dispatch() -> None:
+    source = inspect.getsource(dispatch_shared_expert_precomputed_indices)
+    assert "torch.unique(" not in source
+    assert "expert_ids ==" not in source
+    assert "out.zero_()" not in source
+
+    expert = _build_expert()
+    flat_tokens = torch.randn(8, 4)
+    expert_ids = torch.tensor([1, 0, 1, 2, 0, 2, 1, 0], dtype=torch.int64)
+    index_groups = [
+        (expert_ids == expert_id).nonzero(as_tuple=False).squeeze(-1)
+        for expert_id in torch.unique(expert_ids).tolist()
+    ]
+    expected = torch.empty_like(flat_tokens)
+    actual = torch.full_like(flat_tokens, float("nan"))
+
+    dispatch_shared_expert_active_experts(
+        flat_tokens,
+        expert_ids,
+        expert,
+        out=expected,
+    )
+    dispatch_shared_expert_precomputed_indices(
+        flat_tokens,
+        expert,
+        out=actual,
+        index_groups=index_groups,
     )
 
     assert not torch.isnan(actual).any()
