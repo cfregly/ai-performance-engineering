@@ -318,7 +318,10 @@ def test_ch04_gradient_fusion_batches_reductions_per_timed_call() -> None:
     assert "tokens_per_iteration=float(total_bytes * self.reduction_repeats)" in common_text
     assert "for _ in range(1, self.reduction_repeats):" in common_text
     assert "accum.copy_(self.fused_tensor.sum())" in common_text
-    assert "accum.copy_(self.tensors[0].sum())" in common_text
+    assert "self._seed_tensor = self.tensors[0]" in common_text
+    assert "self._tail_tensors = self.tensors[1:]" in common_text
+    assert "accum.copy_(self._seed_tensor.sum())" in common_text
+    assert "for tensor in self._tail_tensors:" in common_text
     assert "accum.add_(self.fused_tensor.sum())" in common_text
     assert "accum.add_(tensor.sum())" in common_text
 

@@ -917,10 +917,14 @@ def test_ch04_gradient_fusion_seeds_accumulator_without_hot_loop_clear() -> None
     )[0]
 
     assert "self._accum_buffer = torch.empty((), device=self.device, dtype=torch.float32)" in setup_section
+    assert "self._seed_tensor = self.tensors[0]" in setup_section
+    assert "self._tail_tensors = self.tensors[1:]" in setup_section
     assert "self._accum_buffer = torch.zeros(" not in setup_section
     assert "accum.zero_()" not in benchmark_section
     assert "accum.copy_(self.fused_tensor.sum())" in benchmark_section
-    assert "accum.copy_(self.tensors[0].sum())" in benchmark_section
+    assert "accum.copy_(self._seed_tensor.sum())" in benchmark_section
+    assert "for tensor in self._tail_tensors:" in benchmark_section
+    assert "self.tensors[1:]" not in benchmark_section
 
 
 def test_dtype_byte_sizing_avoids_empty_tensor_metadata_allocations() -> None:
