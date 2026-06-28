@@ -40,6 +40,8 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_buffer: Optional[torch.Tensor] = None
         self._reduction_buffer: Optional[torch.Tensor] = None
         self._bytes_transferred: float = 0.0
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
         
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
@@ -49,6 +51,9 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Reduction benchmark: fixed dimensions
 
     def setup(self) -> None:
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
+
         # Use same seed as baseline for deterministic verification
         torch.manual_seed(42)
         
@@ -58,6 +63,7 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
             nn.ReLU(inplace=True),
             nn.Linear(self.inner_dim, self.hidden_dim),
         ).to(self.device).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.input = torch.randn(self.batch_size, self.hidden_dim, device=self.device)
         shard_size = self.batch_size // self.num_shards
@@ -67,12 +73,10 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
         assert self.input is not None and self.model is not None
         assert self._output_buffer is not None and self._reduction_buffer is not None
         
-        with nvtx_range("optimized_nccl", enable=enable_nvtx):
+        with nvtx_range("optimized_nccl", enable=self._enable_nvtx):
             # Forward pass
             with torch.inference_mode():
                 out = self.model(self.input)
@@ -98,12 +102,11 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.input is None or self.output is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        param_count = sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0
         self._set_verification_payload(
             inputs={"input": self.input},
             output=self.output,
             batch_size=int(self.batch_size),
-            parameter_count=param_count,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

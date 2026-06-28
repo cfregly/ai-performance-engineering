@@ -31,6 +31,7 @@ class NVLSCollectivesBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=1.0,
             bytes_per_iteration=float(32 * 32 * 4),
         )
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         if torch.cuda.device_count() < 2:
@@ -50,14 +51,15 @@ class NVLSCollectivesBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.tensor = torch.randn(32, 32, device=self.device, dtype=torch.float32)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self._initialized = True
 
     def benchmark_fn(self) -> Optional[dict]:
         if not self._initialized or self.tensor is None:
             raise RuntimeError("SKIPPED: NVLS benchmark not initialized")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("nvls_allreduce", enable=enable_nvtx):
+        with nvtx_range("nvls_allreduce", enable=self._enable_nvtx):
             dist.all_reduce(self.tensor)
         return {}
 

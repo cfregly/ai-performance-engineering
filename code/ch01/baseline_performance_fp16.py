@@ -21,13 +21,16 @@ class BaselinePerformanceFP16Benchmark(BaselinePerformanceBenchmark):
         self.register_workload_metadata(
             samples_per_iteration=PERFORMANCE_FP16_WORKLOAD.samples_per_iteration,
         )
+        self._enable_nvtx = False
+
+    def setup(self) -> None:
+        super().setup()
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
     def benchmark_fn(self) -> None:
         """Mirror the inherited baseline loop explicitly for pair-audit equivalence."""
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-        with nvtx_range("baseline_performance_fp16", enable=enable_nvtx):
+        with nvtx_range("baseline_performance_fp16", enable=self._enable_nvtx):
             total = len(self.microbatches)
             for start in range(0, total, self.fusion):
                 group_data = self.microbatches[start : start + self.fusion]
@@ -43,4 +46,3 @@ class BaselinePerformanceFP16Benchmark(BaselinePerformanceBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselinePerformanceFP16Benchmark()
-
