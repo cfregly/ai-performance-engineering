@@ -37,13 +37,11 @@ class ToyMoe(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        scores = torch.softmax(self.gate(x), dim=-1)
-        top_expert = scores.argmax(dim=-1)
+        top_expert = self.gate(x).argmax(dim=-1, keepdim=True)
         out0 = self.expert0(x)
         out1 = self.expert1(x)
-        mask0 = (top_expert == 0).float().unsqueeze(-1)
-        mask1 = (top_expert == 1).float().unsqueeze(-1)
-        return out0 * mask0 + out1 * mask1
+        route_expert0 = top_expert == 0
+        return torch.where(route_expert0, out0, out1)
 
 
 class OptimizedMoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
