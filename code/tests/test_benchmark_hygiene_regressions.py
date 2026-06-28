@@ -8191,6 +8191,11 @@ def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() 
         assert "torch.cuda.Event(" not in benchmark_section
         assert expected_field in benchmark_section
         assert "Timing events not initialized" in benchmark_section
+        if filename == "optimized_symmetric_memory_perf_multigpu.py":
+            assert "self._stream_timing_pairs: List[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []" in setup_section
+            assert "self._stream_timing_pairs = list(zip(self._copy_streams, self._timing_pairs, strict=True))" in setup_section
+            assert "for stream, (start_event, _) in self._stream_timing_pairs:" in benchmark_section
+            assert "zip((send_stream, recv_stream), timing_pairs)" not in benchmark_section
 
 
 def test_ch04_symmetric_queue_batches_head_tail_reads() -> None:

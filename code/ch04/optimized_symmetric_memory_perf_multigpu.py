@@ -77,6 +77,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._inner_iterations = 2000
         self._timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._stream_timing_pairs: List[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_output: Optional[torch.Tensor] = None
@@ -125,6 +126,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
             )
             for _ in range(2)
         ]
+        self._stream_timing_pairs = list(zip(self._copy_streams, self._timing_pairs, strict=True))
         
         torch.cuda.synchronize()
 
@@ -139,17 +141,12 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
             raise RuntimeError("Tensors not initialized")
 
         timing_pairs = self._timing_pairs
-        if len(timing_pairs) < 2:
+        if self._copy_streams is None or len(timing_pairs) < 2 or len(self._stream_timing_pairs) < 2:
             raise RuntimeError("Timing events not initialized")
-        if self._copy_streams is None:
-            self._copy_streams = (
-                torch.cuda.Stream(device=self.device),
-                torch.cuda.Stream(device=self.device),
-            )
         send_stream, recv_stream = self._copy_streams
         send_stream.wait_stream(torch.cuda.current_stream())
         recv_stream.wait_stream(torch.cuda.current_stream())
-        for stream, (start_event, _) in zip((send_stream, recv_stream), timing_pairs):
+        for stream, (start_event, _) in self._stream_timing_pairs:
             with torch.cuda.stream(stream):
                 start_event.record()
         for _ in range(self._inner_iterations):
@@ -232,6 +229,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._buffer_inflight = None
         self._timing_pairs = []
         self._pending_timing_pairs = []
+        self._stream_timing_pairs = []
         self._verify_output = None
         self._local_buffer = None
         self._peer_buffer = None
@@ -289,4 +287,3 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return OptimizedSymmetricMemoryPerfBenchmark(size_mb=0.0625)
-
