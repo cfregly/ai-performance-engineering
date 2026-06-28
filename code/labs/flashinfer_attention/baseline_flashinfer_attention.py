@@ -31,8 +31,14 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self.q: Optional[torch.Tensor] = None
         self.k: Optional[torch.Tensor] = None
         self.v: Optional[torch.Tensor] = None
+        self._q_sdp: Optional[torch.Tensor] = None
+        self._k_sdp: Optional[torch.Tensor] = None
+        self._v_sdp: Optional[torch.Tensor] = None
         self.attn_mask: Optional[torch.Tensor] = None
         self.out_proj: Optional[nn.Linear] = None
+        self._proj_weight_t: Optional[torch.Tensor] = None
+        self._attn_layout_buffer: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.sparsity_ratio = 0.0
         self._payload_parameter_count = 0
@@ -53,6 +59,9 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self.q = torch.randn(self.seq_len, self.heads, self.head_dim, device=self.device, dtype=torch.float16)
         self.k = torch.randn(self.seq_len, self.heads, self.head_dim, device=self.device, dtype=torch.float16)
         self.v = torch.randn(self.seq_len, self.heads, self.head_dim, device=self.device, dtype=torch.float16)
+        self._q_sdp = self.q.transpose(0, 1).unsqueeze(0)
+        self._k_sdp = self.k.transpose(0, 1).unsqueeze(0)
+        self._v_sdp = self.v.transpose(0, 1).unsqueeze(0)
         block_mask = build_block_sparse_pattern(
             seq_len=self.seq_len,
             block_size=self.block_size,
@@ -66,27 +75,43 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         )
         _, _, self.sparsity_ratio = build_bsr_from_block_mask(block_mask, device=self.device)
         self.out_proj = nn.Linear(self.hidden_size, self.hidden_size, bias=False).to(self.device, dtype=torch.float16)
+        self._proj_weight_t = self.out_proj.weight.t()
+        self._attn_layout_buffer = torch.empty_like(self.q)
+        self._output_buffer = torch.empty(
+            self.seq_len,
+            self.hidden_size,
+            device=self.device,
+            dtype=torch.float16,
+        )
         self._payload_parameter_count = self.out_proj.weight.numel()
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        if self.q is None or self.k is None or self.v is None or self.attn_mask is None or self.out_proj is None:
+        if (
+            self.q is None
+            or self.k is None
+            or self.v is None
+            or self._q_sdp is None
+            or self._k_sdp is None
+            or self._v_sdp is None
+            or self.attn_mask is None
+            or self._proj_weight_t is None
+            or self._attn_layout_buffer is None
+            or self._output_buffer is None
+        ):
             raise RuntimeError("Benchmark not initialized")
         with self._nvtx_range("baseline_flashinfer_attention"):
             with torch.inference_mode():
-                q = self.q.transpose(0, 1).unsqueeze(0)
-                k = self.k.transpose(0, 1).unsqueeze(0)
-                v = self.v.transpose(0, 1).unsqueeze(0)
                 out = F.scaled_dot_product_attention(
-                    q,
-                    k,
-                    v,
+                    self._q_sdp,
+                    self._k_sdp,
+                    self._v_sdp,
                     attn_mask=self.attn_mask,
                     is_causal=False,
                 )
-                attn_out = out.squeeze(0).transpose(0, 1)
-                proj_in = attn_out.reshape(self.seq_len, self.hidden_size)
-                self.output = self.out_proj(proj_in)
+                self._attn_layout_buffer.copy_(out.squeeze(0).transpose(0, 1))
+                proj_in = self._attn_layout_buffer.view(self.seq_len, self.hidden_size)
+                self.output = torch.matmul(proj_in, self._proj_weight_t, out=self._output_buffer)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -115,8 +140,14 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self.q = None
         self.k = None
         self.v = None
+        self._q_sdp = None
+        self._k_sdp = None
+        self._v_sdp = None
         self.attn_mask = None
         self.out_proj = None
+        self._proj_weight_t = None
+        self._attn_layout_buffer = None
+        self._output_buffer = None
         self.output = None
         torch.cuda.empty_cache()
 

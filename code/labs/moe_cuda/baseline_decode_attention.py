@@ -26,6 +26,8 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.q: Optional[torch.Tensor] = None  # [B, H, 1, D]
         self.k: Optional[torch.Tensor] = None  # [B, H, S, D]
         self.v: Optional[torch.Tensor] = None  # [B, H, S, D]
+        self._k_t: Optional[torch.Tensor] = None
+        self._scale = 0.0
         tokens = self.batch * self.kv_seq
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch),
@@ -56,6 +58,8 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.float32,
         )
         self.v = torch.randn_like(self.k)
+        self._k_t = self.k.transpose(-2, -1)
+        self._scale = 1.0 / math.sqrt(self.head_dim)
         torch.cuda.synchronize(self.device)
         self.output = None
         self._payload_meta = torch.tensor(
@@ -77,7 +81,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._timing_pair
 
     def benchmark_fn(self) -> Dict[str, List[float]]:
-        if any(t is None for t in (self.q, self.k, self.v)):
+        if any(t is None for t in (self.q, self.k, self.v, self._k_t)):
             raise RuntimeError("Decode tensors missing")
 
         with nvtx_range("moe_cuda_decode_naive", enable=self._enable_nvtx):
@@ -86,10 +90,9 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 start_event, end_event = timing_pair
                 start_event.record()
                 q = self.q
-                k = self.k
                 v = self.v
-                scale = 1.0 / math.sqrt(self.head_dim)
-                scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+                scores = torch.matmul(q, self._k_t)
+                scores.mul_(self._scale)
                 probs = torch.softmax(scores, dim=-1)
                 attn = torch.matmul(probs, v)
                 attn_out = attn.transpose(1, 2).reshape(self.batch, 1, self.num_heads * self.head_dim)
@@ -125,6 +128,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.q = None
         self.k = None
         self.v = None
+        self._k_t = None
         self.output = None
         self._payload_meta = None
         self._timing_pair = None

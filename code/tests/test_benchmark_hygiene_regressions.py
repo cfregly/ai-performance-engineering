@@ -2541,14 +2541,28 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         )[0]
         assert "with torch.inference_mode():" in benchmark_section
         if filename.startswith("baseline"):
-            assert "self.output = self.out_proj(proj_in)" in benchmark_section
+            assert "self._q_sdp = self.q.transpose(0, 1).unsqueeze(0)" in setup_section
+            assert "self._k_sdp = self.k.transpose(0, 1).unsqueeze(0)" in setup_section
+            assert "self._v_sdp = self.v.transpose(0, 1).unsqueeze(0)" in setup_section
+            assert "self._proj_weight_t = self.out_proj.weight.t()" in setup_section
+            assert "self._attn_layout_buffer = torch.empty_like(self.q)" in setup_section
+            assert "self._output_buffer = torch.empty(" in setup_section
+            assert "self._attn_layout_buffer.copy_(out.squeeze(0).transpose(0, 1))" in benchmark_section
+            assert "proj_in = self._attn_layout_buffer.view(self.seq_len, self.hidden_size)" in benchmark_section
+            assert "self.output = torch.matmul(proj_in, self._proj_weight_t, out=self._output_buffer)" in benchmark_section
+            assert "self.output = self.out_proj(proj_in)" not in benchmark_section
+            assert "self.q.transpose(0, 1).unsqueeze(0)" not in benchmark_section
+            assert "self.k.transpose(0, 1).unsqueeze(0)" not in benchmark_section
+            assert "self.v.transpose(0, 1).unsqueeze(0)" not in benchmark_section
         else:
+            assert "self._proj_weight_t = self.out_proj.weight.t()" in setup_section
             assert "self._output_buffer = torch.empty(" in setup_section
             assert (
-                "self.output = torch.matmul(proj_in, self.out_proj.weight.t(), out=self._output_buffer)"
+                "self.output = torch.matmul(proj_in, self._proj_weight_t, out=self._output_buffer)"
                 in benchmark_section
             )
             assert "self.output = self.out_proj(proj_in)" not in benchmark_section
+            assert "self.out_proj.weight.t()" not in benchmark_section
         assert "self._payload_parameter_count = 0" in source
         assert "self._payload_parameter_count = self.out_proj.weight.numel()" in setup_section
         assert "parameter_count = self.out_proj.weight.numel()" not in capture_section
@@ -3520,6 +3534,12 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     assert "q = self._q_bf16" in benchmark_section
     assert "k = self._k_bf16" in benchmark_section
     assert "v = self._v_bf16" in benchmark_section
+    assert "self._k_t = self.k.transpose(-2, -1)" in baseline_setup
+    assert "self._scale = 1.0 / math.sqrt(self.head_dim)" in baseline_setup
+    assert "scores = torch.matmul(q, self._k_t)" in baseline_benchmark
+    assert "scores.mul_(self._scale)" in baseline_benchmark
+    assert "k.transpose(-2, -1)" not in baseline_benchmark
+    assert " * scale" not in baseline_benchmark
     for setup, benchmark in ((baseline_setup, baseline_benchmark), (setup_section, benchmark_section)):
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup
         assert "get_config()" not in benchmark
@@ -6868,11 +6888,22 @@ def test_ch16_block_sparse_bsr_build_uses_vectorized_metadata() -> None:
 
     for filename in ("baseline_flashinfer_block_sparse.py", "optimized_flashinfer_block_sparse.py"):
         benchmark_source = (REPO_ROOT / "ch16" / filename).read_text(encoding="utf-8")
+        setup_section = benchmark_source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
         benchmark_section = benchmark_source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
         assert "with torch.inference_mode():" in benchmark_section
+        if filename.startswith("baseline"):
+            assert "self._q_sdp = self.q.transpose(0, 1).unsqueeze(0)" in setup_section
+            assert "self._k_sdp = self.k.transpose(0, 1).unsqueeze(0)" in setup_section
+            assert "self._v_sdp = self.v.transpose(0, 1).unsqueeze(0)" in setup_section
+            assert "self.q.transpose(0, 1).unsqueeze(0)" not in benchmark_section
+            assert "self.k.transpose(0, 1).unsqueeze(0)" not in benchmark_section
+            assert "self.v.transpose(0, 1).unsqueeze(0)" not in benchmark_section
 
     pattern = build_block_sparse_pattern(seq_len=16, block_size=4, window_blocks=1)
     expected_pattern = torch.tensor(

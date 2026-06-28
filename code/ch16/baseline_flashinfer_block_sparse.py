@@ -28,6 +28,9 @@ class BaselineFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBench
         self.q: Optional[torch.Tensor] = None
         self.k: Optional[torch.Tensor] = None
         self.v: Optional[torch.Tensor] = None
+        self._q_sdp: Optional[torch.Tensor] = None
+        self._k_sdp: Optional[torch.Tensor] = None
+        self._v_sdp: Optional[torch.Tensor] = None
         self.attn_mask: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.sparsity_ratio = 0.0
@@ -47,6 +50,9 @@ class BaselineFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBench
         self.q = torch.randn(self.seq_len, self.heads, self.head_dim, device=self.device, dtype=torch.float16)
         self.k = torch.randn(self.seq_len, self.heads, self.head_dim, device=self.device, dtype=torch.float16)
         self.v = torch.randn(self.seq_len, self.heads, self.head_dim, device=self.device, dtype=torch.float16)
+        self._q_sdp = self.q.transpose(0, 1).unsqueeze(0)
+        self._k_sdp = self.k.transpose(0, 1).unsqueeze(0)
+        self._v_sdp = self.v.transpose(0, 1).unsqueeze(0)
         block_mask = build_block_sparse_pattern(
             seq_len=self.seq_len,
             block_size=self.block_size,
@@ -61,17 +67,22 @@ class BaselineFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBench
         _, _, self.sparsity_ratio = build_bsr_from_block_mask(block_mask, device=self.device)
 
     def benchmark_fn(self) -> None:
-        if self.q is None or self.k is None or self.v is None or self.attn_mask is None:
+        if (
+            self.q is None
+            or self.k is None
+            or self.v is None
+            or self._q_sdp is None
+            or self._k_sdp is None
+            or self._v_sdp is None
+            or self.attn_mask is None
+        ):
             raise RuntimeError("Benchmark not initialized")
         with self._nvtx_range("baseline_flashinfer_block_sparse"):
             with torch.inference_mode():
-                q = self.q.transpose(0, 1).unsqueeze(0)
-                k = self.k.transpose(0, 1).unsqueeze(0)
-                v = self.v.transpose(0, 1).unsqueeze(0)
                 out = F.scaled_dot_product_attention(
-                    q,
-                    k,
-                    v,
+                    self._q_sdp,
+                    self._k_sdp,
+                    self._v_sdp,
                     attn_mask=self.attn_mask,
                     is_causal=False,
                 )
@@ -103,6 +114,9 @@ class BaselineFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBench
         self.q = None
         self.k = None
         self.v = None
+        self._q_sdp = None
+        self._k_sdp = None
+        self._v_sdp = None
         self.attn_mask = None
         self.output = None
         torch.cuda.empty_cache()
@@ -121,4 +135,3 @@ class BaselineFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBench
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineFlashInferBlockSparseBenchmark()
-

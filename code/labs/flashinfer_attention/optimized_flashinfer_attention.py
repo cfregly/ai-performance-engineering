@@ -39,6 +39,7 @@ class OptimizedFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self.k: Optional[torch.Tensor] = None
         self.v: Optional[torch.Tensor] = None
         self.out_proj: Optional[nn.Linear] = None
+        self._proj_weight_t: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self.wrapper: Optional[flashinfer.BlockSparseAttentionWrapper] = None
@@ -85,6 +86,7 @@ class OptimizedFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
             sm_scale=sm_scale,
         )
         self.out_proj = nn.Linear(self.hidden_size, self.hidden_size, bias=False).to(self.device, dtype=torch.float16)
+        self._proj_weight_t = self.out_proj.weight.t()
         self._output_buffer = torch.empty(
             self.seq_len,
             self.hidden_size,
@@ -101,6 +103,7 @@ class OptimizedFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
             or self.v is None
             or self.wrapper is None
             or self.out_proj is None
+            or self._proj_weight_t is None
             or self._output_buffer is None
         ):
             raise RuntimeError("Benchmark not initialized")
@@ -108,7 +111,7 @@ class OptimizedFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
             with torch.inference_mode():
                 attn_out = self.wrapper.run(self.q, self.k, self.v)
                 proj_in = attn_out.reshape(self.seq_len, self.hidden_size)
-                self.output = torch.matmul(proj_in, self.out_proj.weight.t(), out=self._output_buffer)
+                self.output = torch.matmul(proj_in, self._proj_weight_t, out=self._output_buffer)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -138,6 +141,7 @@ class OptimizedFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self.k = None
         self.v = None
         self.out_proj = None
+        self._proj_weight_t = None
         self.output = None
         self._output_buffer = None
         self.wrapper = None
