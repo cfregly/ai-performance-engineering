@@ -13,7 +13,6 @@ import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -70,9 +69,6 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         The intent is to expose host/runtime launch overhead around a fixed
         GEMM, not to demonstrate a Chapter 3-specific math-kernel trick.
         """
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
         # Accumulate result from blocked matmul operations
         # C = A @ B = sum over blocks of (A[:, block_i] @ B[block_i, :])
         result = self._output_buffer
@@ -80,7 +76,7 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Output buffer not initialized")
         result.zero_()
         
-        with nvtx_range("baseline_gemm", enable=enable_nvtx):
+        with self._nvtx_range("baseline_gemm"):
             for i in range(self.num_blocks):
                 start = i * self.block_size
                 end = start + self.block_size

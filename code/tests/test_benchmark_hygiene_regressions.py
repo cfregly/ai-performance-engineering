@@ -6531,6 +6531,13 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
     )
     baseline_rack_prep = (REPO_ROOT / "ch03" / "baseline_rack_prep.py").read_text(encoding="utf-8")
     optimized_rack_prep = (REPO_ROOT / "ch03" / "optimized_rack_prep.py").read_text(encoding="utf-8")
+    baseline_pinned_prefetch_mlp = (
+        REPO_ROOT / "ch03" / "baseline_pinned_prefetch_mlp.py"
+    ).read_text(encoding="utf-8")
+    optimized_pinned_prefetch_mlp = (
+        REPO_ROOT / "ch03" / "optimized_pinned_prefetch_mlp.py"
+    ).read_text(encoding="utf-8")
+    baseline_gemm = (REPO_ROOT / "ch03" / "baseline_gemm.py").read_text(encoding="utf-8")
 
     for source in (baseline_pipeline, optimized_pipeline, baseline_gluon, optimized_gluon):
         assert "iterations=10" in source
@@ -6551,6 +6558,9 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
     for source, label in (
         (baseline_rack_prep, "baseline_rack_prep"),
         (optimized_rack_prep, "optimized_rack_prep"),
+        (baseline_pinned_prefetch_mlp, "baseline_pinned_prefetch_mlp"),
+        (optimized_pinned_prefetch_mlp, "optimized_pinned_prefetch_mlp"),
+        (baseline_gemm, "baseline_gemm"),
     ):
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload",

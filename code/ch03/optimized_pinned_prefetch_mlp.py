@@ -16,7 +16,6 @@ import torch.nn as nn
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.optimization.allocator_tuning import log_allocator_guidance
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 class Prefetcher:
@@ -107,8 +106,6 @@ class OptimizedPinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmar
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
         assert (
             self.model is not None
             and self.optimizer is not None
@@ -116,7 +113,7 @@ class OptimizedPinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmar
         )
 
         inputs, targets = self.prefetcher.next()
-        with nvtx_range("optimized_pinned_prefetch_mlp", enable=enable_nvtx):
+        with self._nvtx_range("optimized_pinned_prefetch_mlp"):
             out = self.model(inputs)
             loss = torch.nn.functional.mse_loss(out, targets)
             self.optimizer.zero_grad(set_to_none=True)

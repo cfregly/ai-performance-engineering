@@ -17,7 +17,6 @@ from core.benchmark.smoke import is_smoke_mode
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.optimization.allocator_tuning import log_allocator_guidance
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -63,8 +62,6 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
         assert self.model is not None and self.optimizer is not None
 
         idx = self.batch_idx % len(self.host_batches)
@@ -72,7 +69,7 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         host_y = self.targets[idx]
         self.batch_idx += 1
 
-        with nvtx_range("baseline_pinned_prefetch_mlp", enable=enable_nvtx):
+        with self._nvtx_range("baseline_pinned_prefetch_mlp"):
             x = self.to_device(host_x)  # blocking copy (tensor not pinned)
             y = self.to_device(host_y)
             out = self.model(x)
