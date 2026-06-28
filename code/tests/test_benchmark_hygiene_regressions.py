@@ -7709,9 +7709,11 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "token_slice = slice(" not in moe_benchmark
     assert "output[token_slice].copy_(expert_out)" not in moe_benchmark
     assert "expert_out * weights_e" not in moe_benchmark
-    assert "self.output = output[:1, : min(8, output.shape[1])]" in moe_benchmark
+    assert "self.output = output" in moe_benchmark
+    assert "self.output = output[:1, : min(8, output.shape[1])]" not in moe_benchmark
+    assert "output_slice = self.output[:1, : min(8, self.output.shape[1])]" in moe_capture
     assert "self._payload_param_count = int(" in moe_source
-    assert "output=self.output.detach().float().clone()" in moe_capture
+    assert "output=output_slice.detach().float().clone()" in moe_capture
 
 
 def test_moe_level6_full_stack_weights_expert_outputs_in_place() -> None:
@@ -10024,7 +10026,18 @@ def test_moe_cuda_graphs_journey_uses_real_graph_capture_and_correct_leveling() 
     assert "self._cuda_graph.replay()" in model_source
     assert "with torch.inference_mode():" in model_source
     assert "with torch.no_grad():" not in model_source
-    assert "self.output = logits[:, :1, : min(8, logits.shape[-1])]" in benchmark_source
+    benchmark_hot_section = benchmark_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    benchmark_capture = benchmark_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    assert "self.output = logits" in benchmark_hot_section
+    assert "self.output = logits[:, :1, : min(8, logits.shape[-1])]" not in benchmark_hot_section
+    assert "output_slice = self.output[:, :1, : min(8, self.output.shape[-1])]" in benchmark_capture
+    assert "output=output_slice.detach().float().clone()" in benchmark_capture
     assert ".float().clone()" not in benchmark_source.split("def capture_verification_payload", maxsplit=1)[0]
     assert "Level6CUDAGraphs" in cuda_graph_source
     assert "LEVEL = 6" in cuda_graph_source

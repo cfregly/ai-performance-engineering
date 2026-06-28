@@ -198,7 +198,7 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
             expert_out.mul_(weights_e)
             self._expert_output_views[e].copy_(expert_out)
         
-        self.output = output[:1, : min(8, output.shape[1])]
+        self.output = output
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -206,9 +206,10 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
         if self.output is None:
             raise RuntimeError("benchmark_fn() must run before verification capture")
         param_count = self._payload_param_count
+        output_slice = self.output[:1, : min(8, self.output.shape[1])]
         self._set_verification_payload(
             inputs={"x": self.x.detach()},
-            output=self.output.detach().float().clone(),
+            output=output_slice.detach().float().clone(),
             batch_size=self.BATCH_SIZE,
             parameter_count=param_count,
             precision_flags={"bf16": True, "fp8": True, "tf32": torch.backends.cuda.matmul.allow_tf32},

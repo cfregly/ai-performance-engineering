@@ -182,14 +182,17 @@ class MoEJourneyBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with self._nvtx_range(f"level{self.LEVEL}"):
             with torch.inference_mode():
                 logits = self.compiled_model(self.input_ids)
-        self.output = logits[:, :1, : min(8, logits.shape[-1])]
+        self.output = logits
         if self.input_ids is None or self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
+        if self.input_ids is None or self.output is None:
+            raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+        output_slice = self.output[:, :1, : min(8, self.output.shape[-1])]
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids.detach()},
-            output=self.output.detach().float().clone(),
+            output=output_slice.detach().float().clone(),
             batch_size=self.BATCH_SIZE,
             parameter_count=self.parameter_count,
             precision_flags={"bf16": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
