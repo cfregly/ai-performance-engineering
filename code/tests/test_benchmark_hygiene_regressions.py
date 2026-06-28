@@ -4000,6 +4000,21 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
             assert "traffic = getattr(" not in benchmark_section
             assert "sum(batch * seqlen for batch, seqlen in traffic)" not in benchmark_section
             assert "traffic = self._payload_traffic" in capture_section
+        if relative.endswith("optimized_cudagraph_bucketing.py"):
+            setup_section = source.split("def setup", maxsplit=1)[1].split(
+                "def benchmark_fn", maxsplit=1
+            )[0]
+            metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
+                "def get_workload_metadata", maxsplit=1
+            )[0]
+            assert "self._optimized_runner: Optional[OptimizedCUDAGraphBucketing] = None" in source
+            assert "def _build_optimized_runner" in source
+            assert "def _optimized_simulator_runner" in source
+            assert "self._optimized_runner = self._build_optimized_runner()" in setup_section
+            assert "runner = self._optimized_simulator_runner()" in benchmark_section
+            assert "OptimizedCUDAGraphBucketing(" not in benchmark_section
+            assert "self._last_sim.stats.summary()" in metrics_section
+            assert "self._last_sim.summary()" not in metrics_section
         if relative.endswith("scheduling_vllm_sglang.py"):
             setup_section = source.split("def setup", maxsplit=1)[1].split(
                 "def _enqueue_requests", maxsplit=1
