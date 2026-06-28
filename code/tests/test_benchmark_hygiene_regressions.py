@@ -7247,16 +7247,34 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "self._sorted_tokens = torch.empty(" in moe_setup
     assert "self._tokens_fp8_buffer = torch.empty(" in moe_setup
     assert "self._hidden_fp8_buffer = torch.empty(" in moe_setup
+    assert "self._expert_token_views = []" in moe_setup
+    assert "self._expert_weight_views = []" in moe_setup
+    assert "self._expert_output_views = []" in moe_setup
+    assert "self._expert_tokens_fp8_views = []" in moe_setup
+    assert "self._expert_hidden_fp8_views = []" in moe_setup
+    assert "self._expert_token_views.append(self._sorted_tokens[offset:next_offset])" in moe_setup
+    assert "self._expert_weight_views.append(self._sorted_weights[offset:next_offset].unsqueeze(-1))" in moe_setup
+    assert "self._expert_output_views.append(self._output_buffer[offset:next_offset])" in moe_setup
+    assert "self._expert_tokens_fp8_views.append(self._tokens_fp8_buffer[:count])" in moe_setup
+    assert "self._expert_hidden_fp8_views.append(self._hidden_fp8_buffer[:count])" in moe_setup
     assert "x.repeat_interleave(self.TOP_K" not in moe_benchmark
     assert "self.expert_weights.view(-1)[self.sorted_order]" not in moe_benchmark
     assert "torch.index_select(x, 0, self._sorted_token_indices, out=self._sorted_tokens)" in moe_benchmark
     assert ".to(torch.float8_e4m3fn)" not in moe_benchmark
+    assert "tokens_e = self._expert_token_views[e]" in moe_benchmark
+    assert "tokens_fp8_slice = self._expert_tokens_fp8_views[e]" in moe_benchmark
     assert "tokens_fp8_slice.copy_(tokens_e)" in moe_benchmark
+    assert "weights_e = self._expert_weight_views[e]" in moe_benchmark
     assert "F.silu(gate, inplace=True)" in moe_benchmark
     assert "gate.mul_(up)" in moe_benchmark
+    assert "hidden_fp8_slice = self._expert_hidden_fp8_views[e]" in moe_benchmark
     assert "hidden_fp8_slice.copy_(gate)" in moe_benchmark
     assert "expert_out.mul_(weights_e)" in moe_benchmark
-    assert "output[token_slice].copy_(expert_out)" in moe_benchmark
+    assert "self._expert_output_views[e].copy_(expert_out)" in moe_benchmark
+    assert "tokens_fp8[:count]" not in moe_benchmark
+    assert "hidden_fp8[:count]" not in moe_benchmark
+    assert "token_slice = slice(" not in moe_benchmark
+    assert "output[token_slice].copy_(expert_out)" not in moe_benchmark
     assert "expert_out * weights_e" not in moe_benchmark
     assert "self.output = output[:1, : min(8, output.shape[1])]" in moe_benchmark
     assert "self._payload_param_count = int(" in moe_source

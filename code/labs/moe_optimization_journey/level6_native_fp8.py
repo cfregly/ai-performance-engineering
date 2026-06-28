@@ -132,6 +132,20 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float8_e4m3fn,
         )
+        self._expert_token_views = []
+        self._expert_weight_views = []
+        self._expert_output_views = []
+        self._expert_tokens_fp8_views = []
+        self._expert_hidden_fp8_views = []
+        offset = 0
+        for count in self.counts:
+            next_offset = offset + count
+            self._expert_token_views.append(self._sorted_tokens[offset:next_offset])
+            self._expert_weight_views.append(self._sorted_weights[offset:next_offset].unsqueeze(-1))
+            self._expert_output_views.append(self._output_buffer[offset:next_offset])
+            self._expert_tokens_fp8_views.append(self._tokens_fp8_buffer[:count])
+            self._expert_hidden_fp8_views.append(self._hidden_fp8_buffer[:count])
+            offset = next_offset
         self._payload_param_count = int(self.w1_fp8.numel() + self.w2_fp8.numel() + self.w3_fp8.numel())
         
         print(f"FP8 weight memory: {(self.w1_fp8.numel() + self.w3_fp8.numel() + self.w2_fp8.numel()) / 1e9:.2f} GB")
@@ -142,27 +156,20 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
         """Run FP8 MoE forward pass."""
         x = self.x
         E = self.NUM_EXPERTS
-        H = self.HIDDEN_SIZE
         scale = self.scale
         output = self._output_buffer
-        tokens_fp8 = self._tokens_fp8_buffer
-        hidden_fp8 = self._hidden_fp8_buffer
 
         torch.index_select(x, 0, self._sorted_token_indices, out=self._sorted_tokens)
-        sorted_tokens = self._sorted_tokens
-        sorted_w = self._sorted_weights
 
-        offset = 0
         for e in range(E):
             count = self.counts[e]
             if count == 0:
                 continue
                 
-            token_slice = slice(offset, offset + count)
-            tokens_e = sorted_tokens[token_slice]
-            tokens_fp8_slice = tokens_fp8[:count]
+            tokens_e = self._expert_token_views[e]
+            tokens_fp8_slice = self._expert_tokens_fp8_views[e]
             tokens_fp8_slice.copy_(tokens_e)
-            weights_e = sorted_w[token_slice].unsqueeze(-1)
+            weights_e = self._expert_weight_views[e]
             
             # Native FP8 matmul via _scaled_mm
             gate = torch._scaled_mm(
@@ -179,7 +186,7 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
             )
             
             gate.mul_(up)
-            hidden_fp8_slice = hidden_fp8[:count]
+            hidden_fp8_slice = self._expert_hidden_fp8_views[e]
             hidden_fp8_slice.copy_(gate)
             
             expert_out = torch._scaled_mm(
@@ -189,8 +196,7 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
             )
             
             expert_out.mul_(weights_e)
-            output[token_slice].copy_(expert_out)
-            offset += count
+            self._expert_output_views[e].copy_(expert_out)
         
         self.output = output[:1, : min(8, output.shape[1])]
         if self.output is None:
