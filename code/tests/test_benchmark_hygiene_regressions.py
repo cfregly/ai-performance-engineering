@@ -3988,11 +3988,16 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "self._flat_token_index_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}" in base_section
     assert "self._combine_index_cache: dict[tuple[int, int, int, torch.device], torch.Tensor] = {}" in base_section
     assert "def _flat_token_indices_for(self, batch: int, device: torch.device | str)" in base_section
+    assert "self._flat_tokens_buffer: Optional[torch.Tensor] = None" in base_section
+    assert "def _flat_tokens_for(self, tokens: torch.Tensor, token_indices: torch.Tensor)" in base_section
+    assert "if torch.is_grad_enabled() and tokens.requires_grad:" in base_section
+    assert "torch.index_select(tokens, 0, token_indices, out=self._flat_tokens_buffer)" in base_section
     assert "self._scatter_output_buffer: Optional[torch.Tensor] = None" in base_section
     assert "def _scatter_output_for(self, tokens: torch.Tensor)" in base_section
     assert "def _combine_index_for(self, token_indices: torch.Tensor, values: torch.Tensor)" in base_section
     assert "token_indices = self._flat_token_indices_for(tokens.shape[0], tokens.device)" in base_section
-    assert "flat_tokens = tokens.index_select(0, token_indices)" in base_forward_section
+    assert "flat_tokens = self._flat_tokens_for(tokens, token_indices)" in base_forward_section
+    assert "flat_tokens = tokens.index_select(0, token_indices)" not in base_forward_section
     assert "tokens.unsqueeze(1).expand" not in base_forward_section
     assert "output = self._scatter_output_for(tokens)" in base_forward_section
     assert "output = torch.empty_like(tokens" not in base_forward_section
@@ -4013,7 +4018,8 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "self._static_combine_index = self._static_token_indices.unsqueeze(-1).expand(assignments, self.hidden_size)" in source
     assert "model.configure_static_dispatch_buffers(self.batch_size, self.inputs.device)" in setup_section
     assert "token_indices = self._token_indices_for(tokens, batch)" in forward_section
-    assert "flat_tokens = tokens.index_select(0, token_indices)" in forward_section
+    assert "flat_tokens = self._flat_tokens_for(tokens, token_indices)" in forward_section
+    assert "flat_tokens = tokens.index_select(0, token_indices)" not in forward_section
     assert "expert_range = self._expert_range_for(tokens)" in forward_section
     assert "self._overflow_slots_for(slots, num_slots)" in forward_section
     assert "flat_weights.masked_fill_(~valid.unsqueeze(1), 0)" in forward_section
@@ -4082,9 +4088,11 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     with torch.inference_mode():
         base_output = base_model(x_base)
         output_ptr = base_output.data_ptr()
+        flat_tokens_ptr = base_model._flat_tokens_buffer.data_ptr()
         base_output_snapshot = base_output.clone()
         base_output_again = base_model(x_base)
     assert base_output_again.data_ptr() == output_ptr
+    assert base_model._flat_tokens_buffer.data_ptr() == flat_tokens_ptr
     torch.testing.assert_close(base_output_again, base_output_snapshot)
 
     model = GroupedTopKMoE(hidden_size=8, num_experts=4, top_k=2, expansion=1)
@@ -4098,10 +4106,13 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     output_ptr = model._static_output_buffer.data_ptr()
 
     x = torch.randn(3, 8)
-    expected = model(x).clone()
+    with torch.inference_mode():
+        expected = model(x).clone()
+    flat_tokens_ptr = model._flat_tokens_buffer.data_ptr()
     model._static_output_buffer.fill_(float("nan"))
     model.assume_static_no_overflow = True
-    output = model(x)
+    with torch.inference_mode():
+        output = model(x)
 
     assert output.shape == (3, 8)
     assert not torch.isnan(output).any()
@@ -4112,6 +4123,7 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert model._static_combine_index.data_ptr() == combine_ptr
     assert model._static_dense_input.data_ptr() == dense_ptr
     assert model._static_output_buffer.data_ptr() == output_ptr
+    assert model._flat_tokens_buffer.data_ptr() == flat_tokens_ptr
     torch.testing.assert_close(
         model._static_token_indices,
         torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.int64),

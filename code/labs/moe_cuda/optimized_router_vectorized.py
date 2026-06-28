@@ -147,6 +147,7 @@ class VectorizedTopKMoE(nn.Module):
         self._flat_token_index_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}
         self._combine_index_cache: dict[tuple[int, int, int, torch.device], torch.Tensor] = {}
         self._scatter_output_buffer: Optional[torch.Tensor] = None
+        self._flat_tokens_buffer: Optional[torch.Tensor] = None
 
     def _flat_token_indices_for(self, batch: int, device: torch.device | str) -> torch.Tensor:
         device = torch.device(device)
@@ -157,6 +158,20 @@ class VectorizedTopKMoE(nn.Module):
             token_indices = _flat_token_indices(int(batch), self.top_k, device)
             self._flat_token_index_cache[key] = token_indices
         return token_indices
+
+    def _flat_tokens_for(self, tokens: torch.Tensor, token_indices: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled() and tokens.requires_grad:
+            return tokens.index_select(0, token_indices)
+        expected_shape = (int(token_indices.numel()), tokens.shape[1])
+        if (
+            self._flat_tokens_buffer is None
+            or self._flat_tokens_buffer.device != tokens.device
+            or self._flat_tokens_buffer.dtype != tokens.dtype
+            or tuple(self._flat_tokens_buffer.shape) != expected_shape
+        ):
+            self._flat_tokens_buffer = torch.empty(expected_shape, dtype=tokens.dtype, device=tokens.device)
+        torch.index_select(tokens, 0, token_indices, out=self._flat_tokens_buffer)
+        return self._flat_tokens_buffer
 
     def _scatter_output_for(self, tokens: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled():
@@ -189,7 +204,7 @@ class VectorizedTopKMoE(nn.Module):
         probs = torch.softmax(top_scores, dim=-1, dtype=tokens.dtype)
 
         token_indices = self._flat_token_indices_for(tokens.shape[0], tokens.device)
-        flat_tokens = tokens.index_select(0, token_indices)
+        flat_tokens = self._flat_tokens_for(tokens, token_indices)
         flat_expert_ids = expert_ids.reshape(-1)
         flat_probs = probs.reshape(-1, 1)
 
@@ -379,7 +394,7 @@ class GroupedTopKMoE(VectorizedTopKMoE):
 
         batch = tokens.shape[0]
         token_indices = self._token_indices_for(tokens, batch)
-        flat_tokens = tokens.index_select(0, token_indices)
+        flat_tokens = self._flat_tokens_for(tokens, token_indices)
         flat_expert_ids = expert_ids.reshape(-1)
         flat_probs = probs.reshape(-1, 1)
 
