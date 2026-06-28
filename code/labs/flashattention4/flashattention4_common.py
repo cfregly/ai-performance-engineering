@@ -67,6 +67,7 @@ FLASHATTENTION4_EDUCATIONAL_TARGET = "labs/flashattention4:flashattention4"
 FLASHATTENTION4_ABSOLUTE_TARGET = "labs/flashattention4:best_available_attention"
 FLASHATTENTION4_REPRODUCTION_ENTRYPOINT = "labs/flashattention4/tflops_microbench.py"
 _ALIBI_DISTANCE_CACHE: dict[tuple[int, torch.device], torch.Tensor] = {}
+_ALIBI_SLOPE_CACHE: dict[tuple[int, torch.device], torch.Tensor] = {}
 
 
 @dataclass(frozen=True)
@@ -394,6 +395,10 @@ def _alibi_distance_for(seq_len: int, device: torch.device) -> torch.Tensor:
 
 def build_alibi_slopes(num_heads: int, *, device: torch.device) -> torch.Tensor:
     """Standard ALiBi slope generation."""
+    key = (int(num_heads), torch.device(device))
+    cached = _ALIBI_SLOPE_CACHE.get(key)
+    if cached is not None:
+        return cached
 
     def _slopes_power_of_two(head_count: int) -> list[float]:
         start = 2 ** (-(2 ** -(math.log2(head_count) - 3)))
@@ -407,7 +412,9 @@ def build_alibi_slopes(num_heads: int, *, device: torch.device) -> torch.Tensor:
         slopes = _slopes_power_of_two(closest)
         extra = _slopes_power_of_two(2 * closest)[0::2]
         slopes.extend(extra[: num_heads - closest])
-    return torch.tensor(slopes, device=device, dtype=torch.float32)
+    cached = torch.tensor(slopes, device=device, dtype=torch.float32)
+    _ALIBI_SLOPE_CACHE[key] = cached
+    return cached
 
 
 def build_reference_inputs(

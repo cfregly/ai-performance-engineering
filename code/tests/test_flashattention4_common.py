@@ -14,9 +14,11 @@ from labs.flashattention4.flashattention4_common import (
     FlashAttention4Inputs,
     FlashAttention4Config,
     _ALIBI_DISTANCE_CACHE,
+    _ALIBI_SLOPE_CACHE,
     _alibi_distance_for,
     _experimental_windowed_skip_reason,
     best_available_candidate_providers,
+    build_alibi_slopes,
     build_flashattention4_mode_table_payload,
     build_reference_inputs,
     build_dense_attention_mask,
@@ -70,15 +72,21 @@ def test_reference_attention_reuses_alibi_distance_cache_on_cpu() -> None:
         mode="alibi",
         dtype=torch.float32,
     )
-    inputs = build_reference_inputs(cfg, device=torch.device("cpu"), include_block_mask=False)
     _ALIBI_DISTANCE_CACHE.clear()
+    _ALIBI_SLOPE_CACHE.clear()
+    inputs = build_reference_inputs(cfg, device=torch.device("cpu"), include_block_mask=False)
 
     first = reference_attention(inputs)
     first_distance = _alibi_distance_for(cfg.seq_len, inputs.q.device)
+    first_slopes = build_alibi_slopes(cfg.heads, device=inputs.q.device)
     second = reference_attention(inputs)
     second_distance = _alibi_distance_for(cfg.seq_len, inputs.q.device)
+    second_slopes = build_alibi_slopes(cfg.heads, device=inputs.q.device)
 
     assert second_distance.data_ptr() == first_distance.data_ptr()
+    assert second_slopes.data_ptr() == first_slopes.data_ptr()
+    assert inputs.alibi_slopes is not None
+    assert first_slopes.data_ptr() == inputs.alibi_slopes.data_ptr()
     torch.testing.assert_close(first, second)
 
 
