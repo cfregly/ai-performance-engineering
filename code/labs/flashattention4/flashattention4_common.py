@@ -68,6 +68,7 @@ FLASHATTENTION4_ABSOLUTE_TARGET = "labs/flashattention4:best_available_attention
 FLASHATTENTION4_REPRODUCTION_ENTRYPOINT = "labs/flashattention4/tflops_microbench.py"
 _ALIBI_DISTANCE_CACHE: dict[tuple[int, torch.device], torch.Tensor] = {}
 _ALIBI_SLOPE_CACHE: dict[tuple[int, torch.device], torch.Tensor] = {}
+_DENSE_MASK_POSITION_CACHE: dict[tuple[int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
 
 
 @dataclass(frozen=True)
@@ -374,12 +375,24 @@ def build_dense_attention_mask(
     if mode == "dense":
         return None
 
-    q_idx = torch.arange(seq_len, device=device)[:, None]
-    kv_idx = torch.arange(seq_len, device=device)[None, :]
+    q_idx, kv_idx = _dense_mask_positions_for(seq_len, device)
     mask = q_idx >= kv_idx
     if mode in {"windowed", "alibi_windowed"}:
         mask = mask & ((q_idx - kv_idx) < window_size)
     return mask.unsqueeze(0).unsqueeze(0)
+
+
+def _dense_mask_positions_for(
+    seq_len: int,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    key = (int(seq_len), torch.device(device))
+    cached = _DENSE_MASK_POSITION_CACHE.get(key)
+    if cached is None:
+        positions = torch.arange(seq_len, device=device)
+        cached = (positions[:, None], positions[None, :])
+        _DENSE_MASK_POSITION_CACHE[key] = cached
+    return cached
 
 
 def _alibi_distance_for(seq_len: int, device: torch.device) -> torch.Tensor:

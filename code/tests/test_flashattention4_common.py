@@ -15,7 +15,9 @@ from labs.flashattention4.flashattention4_common import (
     FlashAttention4Config,
     _ALIBI_DISTANCE_CACHE,
     _ALIBI_SLOPE_CACHE,
+    _DENSE_MASK_POSITION_CACHE,
     _alibi_distance_for,
+    _dense_mask_positions_for,
     _experimental_windowed_skip_reason,
     best_available_candidate_providers,
     build_alibi_slopes,
@@ -34,13 +36,28 @@ from labs.flashattention4.flashattention4_common import (
 
 
 def test_dense_attention_mask_for_windowed_mode_is_causal_and_bounded() -> None:
+    _DENSE_MASK_POSITION_CACHE.clear()
     mask = build_dense_attention_mask(
         "windowed",
         seq_len=8,
         window_size=3,
         device=torch.device("cpu"),
     )
+    first_q_idx, first_kv_idx = _dense_mask_positions_for(8, torch.device("cpu"))
+    second_mask = build_dense_attention_mask(
+        "windowed",
+        seq_len=8,
+        window_size=3,
+        device=torch.device("cpu"),
+    )
+    second_q_idx, second_kv_idx = _dense_mask_positions_for(8, torch.device("cpu"))
+
     assert mask is not None
+    assert second_mask is not None
+    assert second_mask.data_ptr() != mask.data_ptr()
+    assert second_q_idx.data_ptr() == first_q_idx.data_ptr()
+    assert second_kv_idx.data_ptr() == first_kv_idx.data_ptr()
+    torch.testing.assert_close(mask, second_mask)
     mask_2d = mask[0, 0]
     assert bool(mask_2d[3, 3])
     assert bool(mask_2d[3, 1])
