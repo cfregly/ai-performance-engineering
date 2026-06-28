@@ -31,6 +31,8 @@ from core.profiling.gpu_memory_logger import (  # noqa: E402
 )
 from core.profiling.gpu_telemetry import query_gpu_telemetry  # noqa: E402
 from core.optimization.moe_inference import (  # noqa: E402
+    MoEFeedForward,
+    MoEFeedForwardSortedDispatch,
     MoeInferenceConfig,
     SimpleMoEGPT,
     dtype_bytes,
@@ -419,12 +421,34 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.bfloat16,
         )
 
+    def _replace_moe_dispatch(self, model: SimpleMoEGPT, cfg: MoeInferenceConfig) -> int:
+        converted = 0
+        for block in getattr(model, "layers", []):
+            ff = getattr(block, "ff", None)
+            if not isinstance(ff, MoEFeedForward) or isinstance(ff, MoEFeedForwardSortedDispatch):
+                continue
+            replacement = MoEFeedForwardSortedDispatch(
+                cfg.hidden_size,
+                cfg.ffn_size,
+                num_experts=cfg.num_experts,
+                top_k=cfg.top_k,
+                router_noise=cfg.router_noise,
+                capacity_factor=cfg.capacity_factor,
+                device=self.device,
+                dtype=cfg.dtype_obj,
+            )
+            replacement.load_state_dict(ff.state_dict(), strict=True)
+            block.ff = replacement
+            converted += 1
+        return converted
+
     # --------------------------------------------------------------------- setup
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         cfg = self.config
         self.model = SimpleMoEGPT(cfg, device=self.device).eval()
+        self._replace_moe_dispatch(self.model, cfg)
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
         self.prompts = torch.randint(
@@ -450,6 +474,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=cfg.dtype_obj,
         )
         self.draft_model = SimpleMoEGPT(draft_cfg, device=self.device).eval()
+        self._replace_moe_dispatch(self.draft_model, draft_cfg)
 
         config_path: Optional[Path] = None
         if self.spec_config_path and self.spec_config_path.exists():

@@ -4678,6 +4678,13 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._prefill_next_values: Optional[torch.Tensor] = None" in benchmark_section
     assert "self._prefill_next_tokens: Optional[torch.Tensor] = None" in benchmark_section
     assert "self._router_prompt_stub: List[int] = []" in benchmark_section
+    assert "MoEFeedForwardSortedDispatch" in source
+    assert "def _replace_moe_dispatch(self, model: SimpleMoEGPT, cfg: MoeInferenceConfig) -> int" in benchmark_section
+    assert "replacement = MoEFeedForwardSortedDispatch(" in benchmark_section
+    assert "replacement.load_state_dict(ff.state_dict(), strict=True)" in benchmark_section
+    assert "block.ff = replacement" in benchmark_section
+    assert "self._replace_moe_dispatch(self.model, cfg)" in setup_section
+    assert "self._replace_moe_dispatch(self.draft_model, draft_cfg)" in setup_section
     assert "self._router_prompt_stub = [0] * cfg.context_window" in setup_section
     assert "def _prefill_next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor" in benchmark_section
     assert (
