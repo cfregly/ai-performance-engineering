@@ -523,12 +523,11 @@ def test_decode_step_helpers_reuse_token_and_active_mask_buffers():
     assert refreshed_rows == [0, 1, 2]
 
     tokens = engine._token_tensor_to_list(torch.tensor([10, 11], dtype=torch.long))
-    sample_device_ptr = engine._sample_token_device_buffer.data_ptr()
     sample_host = engine._sample_token_host_buffer
 
     assert tokens == [10, 11]
+    assert engine._sample_token_device_buffer is None
     assert engine._token_tensor_to_list(torch.tensor([12, 13], dtype=torch.long)) == [12, 13]
-    assert engine._sample_token_device_buffer.data_ptr() == sample_device_ptr
     assert engine._sample_token_host_buffer is sample_host
 
 
@@ -537,6 +536,10 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     text = source.read_text(encoding="utf-8")
     sample_section = text.split("def _sample_batch_tokens", maxsplit=1)[1].split(
         "@torch.inference_mode()",
+        maxsplit=1,
+    )[0]
+    token_list_section = text.split("def _token_tensor_to_list", maxsplit=1)[1].split(
+        "def _sample_batch_tokens",
         maxsplit=1,
     )[0]
     generate_section = text.split("def generate(self, tokens", maxsplit=1)[1].split(
@@ -548,9 +551,13 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "self._sample_token_host_buffer = None" in text
     assert "self._sample_next_id_buffer = None" in text
     assert "self._sample_probs_buffer = None" in text
+    assert "def _sample_host_token_buffer(self, count, source_device)" in text
     assert "def _sample_token_buffers(self, count, device)" in text
     assert "def _sample_workspace(self, logits, top_k, temperature)" in text
     assert "def _token_tensor_to_list(self, token_tensor)" in text
+    assert "host_tokens = self._sample_host_token_buffer(flat_tokens.numel(), flat_tokens.device)" in token_list_section
+    assert "host_tokens.copy_(flat_tokens, non_blocking=flat_tokens.device.type == \"cuda\")" in token_list_section
+    assert "device_tokens.copy_(flat_tokens)" not in token_list_section
     assert "**self._sample_workspace(active_logits, first_top_k, first_temp)," in sample_section
     assert "**self._sample_workspace(row_logits, top_k, temp)," in sample_section
     assert "self._token_tensor_to_list(next_ids[:, 0])" in sample_section

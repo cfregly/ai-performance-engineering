@@ -703,6 +703,21 @@ class Engine:
             return active_mask, active_rows
         return active_mask
 
+    def _sample_host_token_buffer(self, count, source_device):
+        pin_memory = source_device.type == "cuda"
+        if (
+            self._sample_token_host_buffer is None
+            or self._sample_token_host_buffer.numel() < count
+            or self._sample_token_host_buffer.is_pinned() != pin_memory
+        ):
+            self._sample_token_host_buffer = torch.empty(
+                count,
+                dtype=torch.long,
+                device="cpu",
+                pin_memory=pin_memory,
+            )
+        return self._sample_token_host_buffer[:count]
+
     def _sample_token_buffers(self, count, device):
         if (
             self._sample_token_device_buffer is None
@@ -710,13 +725,7 @@ class Engine:
             or self._sample_token_device_buffer.numel() < count
         ):
             self._sample_token_device_buffer = torch.empty(count, dtype=torch.long, device=device)
-            self._sample_token_host_buffer = torch.empty(
-                count,
-                dtype=torch.long,
-                device="cpu",
-                pin_memory=device.type == "cuda",
-            )
-        return self._sample_token_device_buffer[:count], self._sample_token_host_buffer[:count]
+        return self._sample_token_device_buffer[:count], self._sample_host_token_buffer(count, device)
 
     def _sample_long_buffer(self, name, shape, device):
         buffer = getattr(self, name)
@@ -770,9 +779,8 @@ class Engine:
 
     def _token_tensor_to_list(self, token_tensor):
         flat_tokens = token_tensor.reshape(-1)
-        device_tokens, host_tokens = self._sample_token_buffers(flat_tokens.numel(), flat_tokens.device)
-        device_tokens.copy_(flat_tokens)
-        host_tokens.copy_(device_tokens)
+        host_tokens = self._sample_host_token_buffer(flat_tokens.numel(), flat_tokens.device)
+        host_tokens.copy_(flat_tokens, non_blocking=flat_tokens.device.type == "cuda")
         return [int(token) for token in host_tokens.tolist()]
 
     def _sample_batch_tokens(
