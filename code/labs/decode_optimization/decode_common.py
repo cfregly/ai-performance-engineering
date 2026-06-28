@@ -536,28 +536,13 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             token_hidden = self.embedding(tokens)
             if (
                 self._decode_combined is None
-                or self._decode_combined.device != token_hidden.device
-                or self._decode_combined.dtype != token_hidden.dtype
-                or tuple(self._decode_combined.shape) != tuple(token_hidden.shape)
+                or self._decode_next_token_values is None
+                or self._decode_next_token is None
             ):
-                self._decode_combined = torch.empty_like(token_hidden)
+                raise RuntimeError("Decode buffers must be initialized before _decode_step()")
             torch.add(token_hidden, state, out=self._decode_combined)
             hidden = self.decode_mlp(self._decode_combined)
             logits = self.lm_head(hidden)
-        token_shape = logits.shape[:-1]
-        if (
-            self._decode_next_token_values is None
-            or self._decode_next_token_values.device != logits.device
-            or self._decode_next_token_values.dtype != logits.dtype
-            or tuple(self._decode_next_token_values.shape) != tuple(token_shape)
-        ):
-            self._decode_next_token_values = torch.empty(token_shape, device=logits.device, dtype=logits.dtype)
-        if (
-            self._decode_next_token is None
-            or self._decode_next_token.device != logits.device
-            or tuple(self._decode_next_token.shape) != tuple(token_shape)
-        ):
-            self._decode_next_token = torch.empty(token_shape, device=logits.device, dtype=torch.long)
         torch.max(logits, dim=-1, out=(self._decode_next_token_values, self._decode_next_token))
         return hidden, self._decode_next_token
 
