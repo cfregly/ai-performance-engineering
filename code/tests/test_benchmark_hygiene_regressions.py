@@ -4110,12 +4110,24 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
     assert "self.request_ids: list[str] = []" in source
+    assert "self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []" in source
     assert "self.request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
+    assert "(block_idx * self.block_size, block_view)" in setup_section
+    assert "enumerate(x.split(self.block_size, dim=1))" in setup_section
     assert "if len(self.request_ids) != len(self.inputs):" in benchmark_section
-    assert "for request_id, x in zip(self.request_ids, self.inputs):" in benchmark_section
+    assert "if len(self._input_block_views) != len(self.inputs):" in benchmark_section
+    assert "for request_id, (seq_len, block_views) in zip(self.request_ids, self._input_block_views):" in benchmark_section
+    assert "for pos, block_view in block_views:" in benchmark_section
+    assert "x[:, pos:pos + self.block_size, :]" not in benchmark_section
+    assert "range(0, seq_len, self.block_size)" not in benchmark_section
     assert "request_id = f\"req_{seq_idx}\"" not in benchmark_section
+    assert "self._input_block_views = []" in teardown_section
     assert "k_block = k.permute(0, 2, 1, 3).contiguous()" not in attention_section
     assert "v_block = v.permute(0, 2, 1, 3).contiguous()" not in attention_section
     assert "k[batch_idx].transpose(0, 1)" in attention_section
@@ -7928,11 +7940,10 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
     assert "layer.configure_kv_workspace(" in flash_source
 
 
-def test_ch13_optimized_kv_cache_variants_precompute_request_ids() -> None:
+def test_ch13_optimized_kv_cache_variants_precompute_request_views() -> None:
     for filename in (
         "optimized_kv_cache_naive.py",
         "optimized_kv_cache_naive_pool.py",
-        "optimized_kv_cache_naive_flash_blockwise.py",
     ):
         source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
         setup_section = source.split("def setup", maxsplit=1)[1].split(
@@ -7943,12 +7954,55 @@ def test_ch13_optimized_kv_cache_variants_precompute_request_ids() -> None:
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
 
         assert "self._request_ids: list[str] = []" in source
+        assert "self._input_token_views: list[list[torch.Tensor]] = []" in source
         assert "self._request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
+        assert "list(x.split(1, dim=1))" in setup_section
         assert "if len(self._request_ids) != len(self.inputs):" in benchmark_section
-        assert "for request_id, x in zip(self._request_ids, self.inputs):" in benchmark_section
+        assert "if len(self._input_token_views) != len(self.inputs):" in benchmark_section
+        assert "for request_id, token_views in zip(self._request_ids, self._input_token_views):" in benchmark_section
+        if filename == "optimized_kv_cache_naive.py":
+            assert "seq_len = len(token_views)" in benchmark_section
+        assert "for pos, token_view in enumerate(token_views):" in benchmark_section
+        assert "x[:, pos:pos + 1, :]" not in benchmark_section
+        assert "x[:, pos:pos+1, :]" not in benchmark_section
         assert "request_id = f\"req_{seq_idx}\"" not in benchmark_section
+        assert "self._input_token_views = []" in teardown_section
+
+    source = (
+        REPO_ROOT / "ch13" / "optimized_kv_cache_naive_flash_blockwise.py"
+    ).read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._request_ids: list[str] = []" in source
+    assert "self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []" in source
+    assert "self._request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
+    assert "(block_idx * self.block_size, block_view)" in setup_section
+    assert "enumerate(x.split(self.block_size, dim=1))" in setup_section
+    assert "if len(self._request_ids) != len(self.inputs):" in benchmark_section
+    assert "if len(self._input_block_views) != len(self.inputs):" in benchmark_section
+    assert "for request_id, (seq_len, block_views) in zip(self._request_ids, self._input_block_views):" in benchmark_section
+    assert "for pos, block_view in block_views:" in benchmark_section
+    assert "x[:, pos:pos + self.block_size, :]" not in benchmark_section
+    assert "range(0, seq_len, self.block_size)" not in benchmark_section
+    assert "request_id = f\"req_{seq_idx}\"" not in benchmark_section
+    assert "self._input_block_views = []" in teardown_section
 
 
 def test_ch13_token_kv_cache_attention_skips_contiguous_for_single_token_decode() -> None:

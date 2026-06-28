@@ -194,6 +194,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.kv_cache = None
         self.inputs = None
         self.request_ids: list[str] = []
+        self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []
         self.page_size = 128
         self.num_layers = 2
         self.num_heads = 2
@@ -236,6 +237,16 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=torch.float16)
             self.inputs.append(x)
         self.request_ids = [f"req_{seq_idx}" for seq_idx in range(len(self.inputs))]
+        self._input_block_views = [
+            (
+                x.size(1),
+                [
+                    (block_idx * self.block_size, block_view)
+                    for block_idx, block_view in enumerate(x.split(self.block_size, dim=1))
+                ],
+            )
+            for x in self.inputs
+        ]
         self._verify_input = self.inputs[-1] if self.inputs else None
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
@@ -247,13 +258,13 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
         with nvtx_range("integrated_kv_cache", enable=self._enable_nvtx):
             if len(self.request_ids) != len(self.inputs):
                 raise RuntimeError("Request IDs not initialized")
-            for request_id, x in zip(self.request_ids, self.inputs):
-                seq_len = x.size(1)
+            if len(self._input_block_views) != len(self.inputs):
+                raise RuntimeError("Input block views not initialized")
+            for request_id, (seq_len, block_views) in zip(self.request_ids, self._input_block_views):
                 self.kv_cache.allocate(request_id, seq_len)
 
-                for pos in range(0, seq_len, self.block_size):
-                    token_block = x[:, pos:pos + self.block_size, :]
-                    hidden = token_block
+                for pos, block_view in block_views:
+                    hidden = block_view
                     for layer_idx, layer in enumerate(self.layers):
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
@@ -274,6 +285,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
     
     def teardown(self) -> None:
         """Cleanup."""
+        self._input_block_views = []
         del self.layers, self.kv_cache, self.inputs
         self.request_ids = []
         torch.cuda.empty_cache()

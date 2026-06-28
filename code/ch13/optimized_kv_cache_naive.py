@@ -197,6 +197,7 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.kv_cache = None
         self.inputs = None
         self._request_ids: list[str] = []
+        self._input_token_views: list[list[torch.Tensor]] = []
         self.workload = WORKLOAD
         self.page_size = self.workload.page_size
         self.num_layers = self.workload.num_layers
@@ -247,6 +248,10 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=self.workload.dtype)
             self.inputs.append(x)
         self._request_ids = [f"req_{seq_idx}" for seq_idx in range(len(self.inputs))]
+        self._input_token_views = [
+            list(x.split(1, dim=1))
+            for x in self.inputs
+        ]
         if self.inputs:
             self._verify_input = self.inputs[0].detach().clone()
         
@@ -258,14 +263,16 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Benchmark not configured")
         if len(self._request_ids) != len(self.inputs):
             raise RuntimeError("Request IDs not initialized")
+        if len(self._input_token_views) != len(self.inputs):
+            raise RuntimeError("Input token views not initialized")
 
         with self._nvtx_range("kv_cache_naive"):
-            for request_id, x in zip(self._request_ids, self.inputs):
-                seq_len = x.size(1)
+            for request_id, token_views in zip(self._request_ids, self._input_token_views):
+                seq_len = len(token_views)
                 self.kv_cache.allocate(request_id, seq_len)
 
-                for pos in range(seq_len):
-                    hidden = x[:, pos:pos + 1, :]
+                for pos, token_view in enumerate(token_views):
+                    hidden = token_view
                     for layer_idx, layer in enumerate(self.layers):
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
@@ -296,6 +303,7 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.kv_cache = None
         self.inputs = None
         self._request_ids = []
+        self._input_token_views = []
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:

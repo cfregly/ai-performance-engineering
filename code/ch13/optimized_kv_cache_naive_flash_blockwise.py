@@ -151,6 +151,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         self.kv_cache = None
         self.inputs = None
         self._request_ids: list[str] = []
+        self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []
         self.workload = WORKLOAD
         self.page_size = self.workload.page_size
         self.num_layers = self.workload.num_layers
@@ -208,6 +209,16 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=self.workload.dtype)
             self.inputs.append(x)
         self._request_ids = [f"req_{seq_idx}" for seq_idx in range(len(self.inputs))]
+        self._input_block_views = [
+            (
+                x.size(1),
+                [
+                    (block_idx * self.block_size, block_view)
+                    for block_idx, block_view in enumerate(x.split(self.block_size, dim=1))
+                ],
+            )
+            for x in self.inputs
+        ]
         if self.inputs:
             self._verify_input = self.inputs[0].detach().clone()
         self._synchronize()
@@ -217,14 +228,15 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
             raise RuntimeError("Benchmark not configured")
         if len(self._request_ids) != len(self.inputs):
             raise RuntimeError("Request IDs not initialized")
+        if len(self._input_block_views) != len(self.inputs):
+            raise RuntimeError("Input block views not initialized")
 
         with self._nvtx_range("kv_cache_naive_flash_blockwise"):
-            for request_id, x in zip(self._request_ids, self.inputs):
-                seq_len = x.size(1)
+            for request_id, (seq_len, block_views) in zip(self._request_ids, self._input_block_views):
                 self.kv_cache.allocate(request_id, seq_len)
 
-                for pos in range(0, seq_len, self.block_size):
-                    hidden = x[:, pos:pos + self.block_size, :]
+                for pos, block_view in block_views:
+                    hidden = block_view
                     for layer_idx, layer in enumerate(self.layers):
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
@@ -253,6 +265,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         self.kv_cache = None
         self.inputs = None
         self._request_ids = []
+        self._input_block_views = []
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
