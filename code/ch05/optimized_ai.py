@@ -10,9 +10,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ch05.ai_common import TinyBlock, compute_ai_workload_metrics
+from ch05.ai_common import BufferedTinyBlock, TinyBlock, compute_ai_workload_metrics
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
+
+__all__ = ["OptimizedAIBenchmark", "TinyBlock", "get_benchmark"]
 
 
 class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -44,7 +46,7 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        self.block = TinyBlock(self.hidden).to(self.device).eval()
+        self.block = BufferedTinyBlock(self.hidden).to(self.device).eval()
         self.parameter_count = sum(p.numel() for p in self.block.parameters())
 
         host_batches = np.random.default_rng(42).standard_normal(

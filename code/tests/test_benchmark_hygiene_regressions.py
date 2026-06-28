@@ -1265,6 +1265,7 @@ def test_ch05_optimized_vectorization_reuses_reduction_output_buffer() -> None:
 
 def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
     source = (REPO_ROOT / "ch05" / "optimized_ai.py").read_text(encoding="utf-8")
+    helper_source = (REPO_ROOT / "ch05" / "ai_common.py").read_text(encoding="utf-8")
     enqueue_section = source.split("def _enqueue_copy", maxsplit=1)[1].split(
         "def _wait_for_copy",
         maxsplit=1,
@@ -1279,6 +1280,12 @@ def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
         "out = self.block(current_input)"
     )
     assert "last_input = current_input" in benchmark_section
+    assert "self.block = BufferedTinyBlock(self.hidden).to(self.device).eval()" in source
+    assert "class BufferedTinyBlock(nn.Module):" in helper_source
+    assert "if torch.is_grad_enabled():" in helper_source
+    assert "torch.matmul(x, self.linear1.weight.t(), out=hidden)" in helper_source
+    assert "torch.relu_(hidden)" in helper_source
+    assert "torch.matmul(hidden, self.linear2.weight.t(), out=output)" in helper_source
 
 
 def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:

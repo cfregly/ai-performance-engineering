@@ -19,6 +19,52 @@ class TinyBlock(nn.Module):
         return self.linear2(self.relu(self.linear1(x)))
 
 
+class BufferedTinyBlock(nn.Module):
+    """TinyBlock variant that reuses inference buffers for repeated calls."""
+
+    def __init__(self, hidden_dim: int):
+        super().__init__()
+        self.linear1 = nn.Linear(hidden_dim, hidden_dim * 2)
+        self.relu = nn.ReLU(inplace=True)
+        self.linear2 = nn.Linear(hidden_dim * 2, hidden_dim)
+        self._hidden_buffer: torch.Tensor | None = None
+        self._output_buffer: torch.Tensor | None = None
+
+    def _ensure_buffers(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        prefix = tuple(x.shape[:-1])
+        hidden_shape = (*prefix, self.linear1.out_features)
+        output_shape = (*prefix, self.linear2.out_features)
+        if (
+            self._hidden_buffer is None
+            or self._hidden_buffer.shape != hidden_shape
+            or self._hidden_buffer.device != x.device
+            or self._hidden_buffer.dtype != x.dtype
+        ):
+            self._hidden_buffer = torch.empty(hidden_shape, device=x.device, dtype=x.dtype)
+        if (
+            self._output_buffer is None
+            or self._output_buffer.shape != output_shape
+            or self._output_buffer.device != x.device
+            or self._output_buffer.dtype != x.dtype
+        ):
+            self._output_buffer = torch.empty(output_shape, device=x.device, dtype=x.dtype)
+        return self._hidden_buffer, self._output_buffer
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled():
+            return self.linear2(self.relu(self.linear1(x)))
+
+        hidden, output = self._ensure_buffers(x)
+        torch.matmul(x, self.linear1.weight.t(), out=hidden)
+        if self.linear1.bias is not None:
+            hidden.add_(self.linear1.bias)
+        torch.relu_(hidden)
+        torch.matmul(hidden, self.linear2.weight.t(), out=output)
+        if self.linear2.bias is not None:
+            output.add_(self.linear2.bias)
+        return output
+
+
 def compute_ai_workload_metrics(
     *,
     batch_size: int,
