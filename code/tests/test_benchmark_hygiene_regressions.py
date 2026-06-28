@@ -1958,6 +1958,39 @@ def test_real_world_model_entrypoints_return_harness_benchmarks() -> None:
     assert isinstance(get_gpt4_benchmark(), BaseBenchmark)
 
 
+def test_base_benchmark_nvtx_range_caches_config_flag() -> None:
+    source = (REPO_ROOT / "core" / "harness" / "benchmark_harness.py").read_text(
+        encoding="utf-8"
+    )
+    base_section = source.split("class BaseBenchmark:", maxsplit=1)[1].split(
+        "class BenchmarkHarness",
+        maxsplit=1,
+    )[0]
+    init_section = base_section.split("def __init__", maxsplit=1)[1].split(
+        "@property\n    def device",
+        maxsplit=1,
+    )[0]
+    teardown_section = base_section.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+    nvtx_section = base_section.split("def _nvtx_range(self, name: str):", maxsplit=1)[
+        1
+    ].split(
+        "def _synchronize",
+        maxsplit=1,
+    )[0]
+
+    assert "self._nvtx_config_cache: Optional[Any] = None" in init_section
+    assert "self._nvtx_enabled_cache = False" in init_section
+    assert "self._nvtx_config_cache = None" in teardown_section
+    assert "self._nvtx_enabled_cache = False" in teardown_section
+    assert "elif config is not self._nvtx_config_cache:" in nvtx_section
+    assert "self._nvtx_enabled_cache = get_nvtx_enabled(config)" in nvtx_section
+    assert "with nvtx_range(name, enable=self._nvtx_enabled_cache):" in nvtx_section
+    assert "enable_nvtx = get_nvtx_enabled(config)" not in nvtx_section
+
+
 def test_cleanup_process_group_escalates_when_group_survives(monkeypatch: pytest.MonkeyPatch) -> None:
     signals: list[int] = []
 

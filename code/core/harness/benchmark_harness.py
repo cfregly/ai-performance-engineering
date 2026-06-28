@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING, Union, cast
 
 import numpy as np
 import torch
@@ -41,6 +41,9 @@ from core.utils.compile_utils import enable_tf32
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.backend_policy import apply_backend_policy, normalize_backend_policy, restore_backend_policy
 from core.harness.verify_output_codec import deserialize_verify_tensor
+
+if TYPE_CHECKING:
+    from core.benchmark.verification import VerifyResult
 
 # Pydantic is required - fail fast if not available
 from core.benchmark.models import (
@@ -1588,6 +1591,8 @@ class BaseBenchmark:
         self._workload_registered: bool = False
         self._execution_marker: Optional[torch.Tensor] = None
         self._verification_payload = None
+        self._nvtx_config_cache: Optional[Any] = None
+        self._nvtx_enabled_cache = False
 
     @property
     def device(self) -> torch.device:
@@ -1648,6 +1653,8 @@ class BaseBenchmark:
             torch.cuda.empty_cache()
         # Clear any cached config from a previous harness run
         self._config = None
+        self._nvtx_config_cache = None
+        self._nvtx_enabled_cache = False
     
     def get_config(self) -> Optional[BenchmarkConfig]:
         """Return the active harness config when available.
@@ -2042,11 +2049,18 @@ class BaseBenchmark:
         """
         from core.profiling.nvtx_helper import nvtx_range, get_nvtx_enabled
         
-        # Prefer the harness-merged config if present to honor CLI flags
+        # Prefer the harness-merged config if present to honor CLI flags.
+        # Cache by config object so repeated hot-path NVTX ranges avoid
+        # re-reading profiling flags while still honoring a new harness config.
         config = getattr(self, "_config", None) or self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        
-        with nvtx_range(name, enable=enable_nvtx):
+        if config is None:
+            self._nvtx_config_cache = None
+            self._nvtx_enabled_cache = False
+        elif config is not self._nvtx_config_cache:
+            self._nvtx_config_cache = config
+            self._nvtx_enabled_cache = get_nvtx_enabled(config)
+
+        with nvtx_range(name, enable=self._nvtx_enabled_cache):
             yield
     
     def _synchronize(self) -> None:
