@@ -379,12 +379,16 @@ class SyntheticMoEModel(nn.Module):
         self.total_params = _count_parameters_with_fp8(self)
         
     def forward(self, input_ids):
-        x = self.embedding(input_ids).to(self.compute_dtype)
+        x = self.embedding(input_ids)
+        if x.dtype != self.compute_dtype:
+            x = x.to(self.compute_dtype)
         
         for block in self.blocks:
             x = block(x)
             
-        x = self.ln_f(x.to(self.compute_dtype))
+        if x.dtype != self.compute_dtype:
+            x = x.to(self.compute_dtype)
+        x = self.ln_f(x)
         logits = self.lm_head(x)
         
         return logits

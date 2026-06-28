@@ -7168,6 +7168,10 @@ def test_ch16_synthetic_moe_benchmark_hoists_inference_mode() -> None:
         maxsplit=1,
     )[0]
     fp8_forward = fp8_linear_source.split("def forward", maxsplit=1)[1]
+    model_forward = source.split("class SyntheticMoEModel", maxsplit=1)[1].split(
+        "def estimate_memory_usage",
+        maxsplit=1,
+    )[0].split("def forward", maxsplit=1)[1]
     benchmark_function = source.split("def benchmark_inference", maxsplit=1)[1].split(
         "def main", maxsplit=1
     )[0]
@@ -7180,6 +7184,11 @@ def test_ch16_synthetic_moe_benchmark_hoists_inference_mode() -> None:
     assert "scale = self.weight_scale.to(self.compute_dtype)" not in fp8_forward
     assert "self.weight_fp8.to(self.compute_dtype) * scale" not in fp8_forward
     assert "self.bias.to(self.compute_dtype)" not in fp8_forward
+    assert "x = self.embedding(input_ids)" in model_forward
+    assert model_forward.count("if x.dtype != self.compute_dtype:") == 2
+    assert "x = self.embedding(input_ids).to(self.compute_dtype)" not in model_forward
+    assert "x = self.ln_f(x.to(self.compute_dtype))" not in model_forward
+    assert "x = self.ln_f(x)" in model_forward
     assert benchmark_function.count("with torch.inference_mode():") == 3
     assert "with torch.no_grad():" not in benchmark_function
     assert "for _ in range(num_warmup):\n            if use_autocast:" in benchmark_function
