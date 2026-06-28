@@ -9007,13 +9007,16 @@ def test_ch15_baseline_kv_cache_management_reuses_step_views() -> None:
     assert "self._query_step_views: list[torch.Tensor] = []" in source
     assert "self._prefix_views: list[torch.Tensor] = []" in source
     assert "self._output_step_views: list[torch.Tensor] = []" in source
+    assert "self._decode_step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
     assert "self._query_step_views = [self.tokens[:, t : t + 1, :] for t in range(self.steps)]" in setup_section
     assert "self._prefix_views = [self.tokens[:, : t + 1, :] for t in range(self.steps)]" in setup_section
     assert "self._output_step_views = [self._output_buffer[:, t : t + 1, :] for t in range(self.steps)]" in setup_section
-    assert "for query, prefix, output_step in zip(" in benchmark_section
+    assert "self._decode_step_groups = list(" in setup_section
+    assert "for query, prefix, output_step in self._decode_step_groups:" in benchmark_section
     assert "k = self.k_proj(prefix)" in benchmark_section
     assert "v = self.v_proj(prefix)" in benchmark_section
     assert "output_step.copy_(out)" in benchmark_section
+    assert "for query, prefix, output_step in zip(" not in benchmark_section
     assert "for t in range(self.steps):" not in benchmark_section
     assert "query = self.tokens[:, t : t + 1, :]" not in benchmark_section
     assert "prefix = self.tokens[:, : t + 1, :]" not in benchmark_section
@@ -9021,6 +9024,7 @@ def test_ch15_baseline_kv_cache_management_reuses_step_views() -> None:
     assert "self._query_step_views = []" in teardown_section
     assert "self._prefix_views = []" in teardown_section
     assert "self._output_step_views = []" in teardown_section
+    assert "self._decode_step_groups = []" in teardown_section
 
 
 def test_ch15_optimized_kv_cache_management_projects_into_cache_buffers() -> None:

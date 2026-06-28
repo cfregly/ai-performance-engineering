@@ -43,6 +43,7 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._query_step_views: list[torch.Tensor] = []
         self._prefix_views: list[torch.Tensor] = []
         self._output_step_views: list[torch.Tensor] = []
+        self._decode_step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self._verify_input: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
         self.register_workload_metadata(
@@ -83,6 +84,14 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._query_step_views = [self.tokens[:, t : t + 1, :] for t in range(self.steps)]
         self._prefix_views = [self.tokens[:, : t + 1, :] for t in range(self.steps)]
         self._output_step_views = [self._output_buffer[:, t : t + 1, :] for t in range(self.steps)]
+        self._decode_step_groups = list(
+            zip(
+                self._query_step_views,
+                self._prefix_views,
+                self._output_step_views,
+                strict=True,
+            )
+        )
         self._synchronize()
         self._verify_input = self.tokens.detach()
     
@@ -94,15 +103,11 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         assert len(self._query_step_views) == self.steps
         assert len(self._prefix_views) == self.steps
         assert len(self._output_step_views) == self.steps
+        assert len(self._decode_step_groups) == self.steps
         with self._nvtx_range("baseline_kv_cache_management"):
             with torch.inference_mode():
                 outputs = self._output_buffer
-                for query, prefix, output_step in zip(
-                    self._query_step_views,
-                    self._prefix_views,
-                    self._output_step_views,
-                    strict=True,
-                ):
+                for query, prefix, output_step in self._decode_step_groups:
                     q = self.q_proj(query)
                     k = self.k_proj(prefix)
                     v = self.v_proj(prefix)
@@ -152,6 +157,7 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._query_step_views = []
         self._prefix_views = []
         self._output_step_views = []
+        self._decode_step_groups = []
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
