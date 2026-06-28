@@ -1269,6 +1269,9 @@ def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
     baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     baseline_capture = baseline_source.split(
         "def capture_verification_payload", maxsplit=1
     )[1].split("def teardown", maxsplit=1)[0]
@@ -1285,6 +1288,22 @@ def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
     assert "self.tensor.detach().clone()" not in baseline_benchmark
     assert "self.output = self.tensor.detach()" in baseline_benchmark
     assert "output=self.output.detach().clone()" in baseline_capture
+    assert "self._host_chunk = torch.empty(self.chunk_len, dtype=torch.float32, pin_memory=use_pinned_host)" in baseline_setup
+    assert "self._host_quantized = torch.empty(self.chunk_len, dtype=torch.int8, pin_memory=use_pinned_host)" in baseline_setup
+    assert "self._host_dequant = torch.empty_like(self._host_chunk)" in baseline_setup
+    assert "self._host_sum = torch.empty((), dtype=torch.float32)" in baseline_setup
+    assert "self.tensor[idx].detach().cpu()" not in baseline_benchmark
+    assert "torch.round(chunk * scale).to(torch.int8)" not in baseline_benchmark
+    assert "q.float() / scale" not in baseline_benchmark
+    assert "dq.to(self.device)" not in baseline_benchmark
+    assert "self._host_chunk.copy_(self.tensor[idx], non_blocking=False)" in baseline_benchmark
+    assert "torch.abs(self._host_chunk, out=self._host_abs)" in baseline_benchmark
+    assert "torch.mul(self._host_chunk, self._host_scale, out=self._host_quant_float)" in baseline_benchmark
+    assert "self._host_quantized.copy_(self._host_quant_float)" in baseline_benchmark
+    assert "self._host_dequant.copy_(self._host_quantized)" in baseline_benchmark
+    assert "self._host_dequant.mul_(self._host_dequant_scale)" in baseline_benchmark
+    assert "torch.sum(self._host_dequant, dim=0, out=self._host_sum)" in baseline_benchmark
+    assert "self.tensor[idx].copy_(self._host_dequant, non_blocking=False)" in baseline_benchmark
     assert "float(dequant.sum())" not in optimized_benchmark
     assert "self.output = dequant.clone()" not in optimized_benchmark
     assert "self._abs_buffer = torch.empty_like(self.tensor)" in optimized_setup
