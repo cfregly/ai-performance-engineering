@@ -245,6 +245,25 @@ def test_grouped_ffn_cuda_does_not_clear_discarded_padding_rows() -> None:
     torch.testing.assert_close(actual, expected)
 
 
+def test_moe_cuda_ptx_swiglu_paths_use_grad_safe_inplace_helper() -> None:
+    module_source = inspect.getsource(moe_common)
+    reference_source = inspect.getsource(moe_common.grouped_ffn_reference)
+    cuda_source = inspect.getsource(moe_common.grouped_ffn_cuda)
+    baseline_source = inspect.getsource(moe_common.run_layer_baseline)
+
+    assert "def _silu_mul_in_place_if_safe" in module_source
+    assert "if torch.is_grad_enabled() and gate.requires_grad:" in module_source
+    assert "return F.silu(gate) * up" in module_source
+    assert "F.silu(gate, inplace=True)" in module_source
+    assert "gate.mul_(up)" in module_source
+
+    for source in (reference_source, cuda_source, baseline_source):
+        assert "hidden = _silu_mul_in_place_if_safe(gate, up)" in source
+        assert "hidden = F.silu(gate) * up" not in source
+        assert "gate * up" not in source
+        assert "F.silu(tokens_e @" not in source
+
+
 def test_moe_cuda_ptx_skewed_routes_use_cpu_counts_without_fragment_cat() -> None:
     source = inspect.getsource(moe_common._build_primary_routes)
     count_source = "\n".join(

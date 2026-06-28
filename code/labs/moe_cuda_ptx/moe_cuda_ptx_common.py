@@ -402,11 +402,20 @@ def grouped_ffn_reference(
         if count == 0:
             continue
         tokens_e = packed_tokens[offset : offset + count]
-        gate = F.silu(tokens_e @ gate_proj[expert_idx])
+        gate = tokens_e @ gate_proj[expert_idx]
         up = tokens_e @ up_proj[expert_idx]
-        output[offset : offset + count] = (gate * up) @ down_proj[expert_idx]
+        hidden = _silu_mul_in_place_if_safe(gate, up)
+        output[offset : offset + count] = hidden @ down_proj[expert_idx]
         offset += count
     return output
+
+
+def _silu_mul_in_place_if_safe(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
+    if torch.is_grad_enabled() and gate.requires_grad:
+        return F.silu(gate) * up
+    F.silu(gate, inplace=True)
+    gate.mul_(up)
+    return gate
 
 
 def grouped_ffn_cuda(
@@ -430,7 +439,7 @@ def grouped_ffn_cuda(
         grouped_tokens = packed_tokens.view(num_experts, packed.max_count, hidden_dim)
         gate = torch.bmm(grouped_tokens, gate_proj)
         up = torch.bmm(grouped_tokens, up_proj)
-        hidden = F.silu(gate) * up
+        hidden = _silu_mul_in_place_if_safe(gate, up)
         return torch.bmm(hidden, down_proj).reshape(-1, output_dim)
 
     flat_slots = num_experts * packed.max_count
@@ -443,7 +452,7 @@ def grouped_ffn_cuda(
 
     gate = torch.bmm(padded_tokens, gate_proj)
     up = torch.bmm(padded_tokens, up_proj)
-    hidden = F.silu(gate) * up
+    hidden = _silu_mul_in_place_if_safe(gate, up)
     out = torch.bmm(hidden, down_proj)
     flat_out = out.reshape(flat_slots, output_dim)
     return flat_out.index_select(0, packed.padded_indices).contiguous()
@@ -485,9 +494,10 @@ def run_layer_baseline(
             if token_ids.numel() == 0:
                 continue
             tokens_e = state.x[token_ids]
-            gate = F.silu(tokens_e @ state.gate_proj[expert_idx])
+            gate = tokens_e @ state.gate_proj[expert_idx]
             up = tokens_e @ state.up_proj[expert_idx]
-            expert_out = (gate * up) @ state.down_proj[expert_idx]
+            hidden = _silu_mul_in_place_if_safe(gate, up)
+            expert_out = hidden @ state.down_proj[expert_idx]
             output[token_ids] += expert_out * state.expert_weights[token_ids, slot_idx].unsqueeze(-1)
     return output
 
