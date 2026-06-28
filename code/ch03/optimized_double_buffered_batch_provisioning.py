@@ -29,6 +29,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         self.device_batches: List[torch.Tensor] = []
         self.device_targets: List[torch.Tensor] = []
         self.copy_stream = torch.cuda.Stream()
+        self.copy_events: List[torch.cuda.Event] = []
         self.cur_slot = 0
         self.next_slot = 1
         self.batch_idx = 0
@@ -52,6 +53,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
             self.copy_stream.wait_stream(compute_stream)
             self.device_batches[slot].copy_(self.host_batches[batch_idx], non_blocking=True)
             self.device_targets[slot].copy_(self.target_batches[batch_idx], non_blocking=True)
+            self.copy_events[slot].record(self.copy_stream)
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -79,6 +81,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
             torch.empty(512, 1024, device=self.device, dtype=torch.float32),
             torch.empty(512, 1024, device=self.device, dtype=torch.float32),
         ]
+        self.copy_events = [torch.cuda.Event() for _ in self.device_batches]
         
         self.batch_idx = 0
         self.cur_slot = 0
@@ -88,7 +91,8 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         with torch.cuda.stream(self.copy_stream):
             self.device_batches[self.cur_slot].copy_(self.host_batches[0], non_blocking=True)
             self.device_targets[self.cur_slot].copy_(self.target_batches[0], non_blocking=True)
-        torch.cuda.current_stream().wait_stream(self.copy_stream)
+            self.copy_events[self.cur_slot].record(self.copy_stream)
+        torch.cuda.current_stream().wait_event(self.copy_events[self.cur_slot])
 
         # Start prefetching the *next* batch into slot 1 (batch 1).
         self._prefetch_slot(self.next_slot)
@@ -99,7 +103,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         assert self.model is not None
         
         # Wait for current batch to be ready
-        torch.cuda.current_stream().wait_stream(self.copy_stream)
+        torch.cuda.current_stream().wait_event(self.copy_events[self.cur_slot])
         data = self.device_batches[self.cur_slot]
         target = self.device_targets[self.cur_slot]
         
@@ -145,6 +149,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         self.target_batches = []
         self.device_batches = []
         self.device_targets = []
+        self.copy_events = []
         self.output = None
         super().teardown()
 

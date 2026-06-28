@@ -52,6 +52,7 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.device_buffers: List[torch.Tensor] = []
         self.norm: Optional[nn.Module] = None
         self.copy_stream: Optional[torch.cuda.Stream] = None
+        self.copy_events: List[torch.cuda.Event] = []
         self.cur_slot = 0
         self.next_slot = 1
         self.nic_plan: List[NICInfo] = []
@@ -112,24 +113,29 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.norm = nn.LayerNorm(self.hidden_size, device=self.device, dtype=torch.float32)
         self._payload_parameter_count = sum(p.numel() for p in self.norm.parameters())
         self.copy_stream = torch.cuda.Stream(device=self.device)
+        self.copy_events = [torch.cuda.Event() for _ in self.device_buffers]
         self.cur_slot = 0
         self.next_slot = 1
         self._start_copy(self.cur_slot)
-        torch.cuda.current_stream().wait_stream(self.copy_stream)
+        torch.cuda.current_stream().wait_event(self.copy_events[self.cur_slot])
         self._start_copy(self.next_slot)
         
 
     def _start_copy(self, slot: int) -> None:
         if self.copy_stream is None:
             raise RuntimeError("Copy stream not initialized")
+        if not self.copy_events:
+            raise RuntimeError("Copy events not initialized")
         with torch.cuda.stream(self.copy_stream):
+            self.copy_stream.wait_stream(torch.cuda.current_stream())
             self.device_buffers[slot].copy_(self.host_buffers[slot], non_blocking=True)
+            self.copy_events[slot].record(self.copy_stream)
 
     def benchmark_fn(self) -> None:
         assert self.norm is not None
         if self.copy_stream is None:
             raise RuntimeError("Copy stream not initialized")
-        torch.cuda.current_stream().wait_stream(self.copy_stream)
+        torch.cuda.current_stream().wait_event(self.copy_events[self.cur_slot])
         with self._nvtx_range("optimized_rack_prep"):
             self.output = self.norm(self.device_buffers[self.cur_slot])
         if self.output is None:
@@ -162,6 +168,7 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.norm = None
         self.output = None
         self.copy_stream = None
+        self.copy_events = []
         self._last_slot = 0
         super().teardown()
 

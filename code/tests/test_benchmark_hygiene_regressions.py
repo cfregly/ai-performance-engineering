@@ -1209,6 +1209,25 @@ def test_ch03_ch09_benchmarks_cache_verification_parameter_count() -> None:
         assert "sum(p.numel()" not in capture_section
 
 
+def test_ch03_double_buffered_optimized_paths_wait_on_slot_events() -> None:
+    for relative in (
+        "ch03/optimized_rack_prep.py",
+        "ch03/optimized_double_buffered_batch_provisioning.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self.copy_events: List[torch.cuda.Event] = []" in source
+        assert "self.copy_events = [torch.cuda.Event() for _ in self.device" in source
+        assert "self.copy_events[slot].record(self.copy_stream)" in source
+        assert "self.copy_stream.wait_stream(" in source
+        assert "wait_event(self.copy_events[self.cur_slot])" in benchmark_section
+        assert "wait_stream(self.copy_stream)" not in benchmark_section
+
+
 def test_ch09_compute_bound_baseline_uses_inference_mode_and_cached_nvtx() -> None:
     source = (REPO_ROOT / "ch09" / "baseline_compute_bound.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
