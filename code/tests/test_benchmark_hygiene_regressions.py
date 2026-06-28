@@ -6512,6 +6512,19 @@ def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    for source in (baseline_source, optimized_source):
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        assert "self._payload_parameter_count = 0" in source
+        assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
+        assert "param_count = sum(" not in capture_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
 
     assert "self._dest_ranks = torch.div(" in baseline_setup
     assert "self._rank_indices.append(indices)" in baseline_setup
@@ -6557,10 +6570,20 @@ def test_ch15_moe_overlap_and_routing_use_inference_mode() -> None:
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
         assert "with torch.inference_mode():" in setup_section
         assert "with torch.inference_mode():" in benchmark_section
         assert "with torch.no_grad():" not in setup_section
         assert "with torch.no_grad():" not in benchmark_section
+        if relative.endswith(("baseline_moe_overlap.py", "optimized_moe_overlap_shared_expert.py")):
+            assert "self._payload_parameter_count = 0" in source
+            assert "self._payload_parameter_count = sum(p.numel() for p in self.shared_expert.parameters())" in setup_section
+            assert "param_count = 0" not in capture_section
+            assert "sum(p.numel()" not in capture_section
+            assert "parameter_count=self._payload_parameter_count" in capture_section
 
 
 def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:

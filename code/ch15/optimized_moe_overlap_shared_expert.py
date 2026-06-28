@@ -73,6 +73,7 @@ class OptimizedMoeOverlapSharedExpertBenchmark(VerificationPayloadMixin, BaseBen
         self.output: Optional[torch.Tensor] = None
         self._verify_probe: Optional[torch.Tensor] = None
         self._verify_meta: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -93,6 +94,9 @@ class OptimizedMoeOverlapSharedExpertBenchmark(VerificationPayloadMixin, BaseBen
             device=self.device,
             dtype=self.dtype,
         ).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.shared_expert.parameters()) + sum(
+            p.numel() for p in self.routed_expert.parameters()
+        )
         self.inputs = torch.randn(self.batch, self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
 
         token_ids = torch.arange(self.batch * self.seq, device=self.device, dtype=torch.int64)
@@ -160,16 +164,11 @@ class OptimizedMoeOverlapSharedExpertBenchmark(VerificationPayloadMixin, BaseBen
         if self.output is None or self._verify_probe is None or self._verify_meta is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         output_slice = self.output[:2, :2, :256].detach().cpu().float().clone()
-        param_count = 0
-        if self.shared_expert is not None:
-            param_count += sum(p.numel() for p in self.shared_expert.parameters())
-        if self.routed_expert is not None:
-            param_count += sum(p.numel() for p in self.routed_expert.parameters())
         self._set_verification_payload(
             inputs={"probe": self._verify_probe, "expert_meta": self._verify_meta},
             output=output_slice,
             batch_size=int(self.batch),
-            parameter_count=int(param_count),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": True,
