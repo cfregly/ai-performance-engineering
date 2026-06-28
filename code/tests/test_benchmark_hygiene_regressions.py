@@ -7577,6 +7577,9 @@ def test_ch16_and_lab_forward_benchmarks_use_inference_mode() -> None:
         )[0]
         assert "torch.inference_mode()" in benchmark_section
         assert "torch.no_grad()" not in benchmark_section
+        if path == "labs/train_distributed/training_utils/torchrun_harness.py":
+            assert "output.add_(meta_scale)" in benchmark_section
+            assert "self._output = output + meta_scale" not in benchmark_section
         if path in (
             "labs/moe_optimization_journey/baseline_moe_pad_quant.py",
             "labs/moe_optimization_journey/optimized_moe_pad_quant.py",

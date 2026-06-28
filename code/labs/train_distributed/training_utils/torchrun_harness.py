@@ -97,7 +97,8 @@ class TorchrunScriptBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with torch.inference_mode():
             output = self._model(self._input)
             meta_scale = self._meta.mean(dim=-1, keepdim=True)
-            self._output = output + meta_scale
+            output.add_(meta_scale)
+            self._output = output
 
     def capture_verification_payload(self) -> None:
         if self._output is None or self._input is None or self._meta is None:
