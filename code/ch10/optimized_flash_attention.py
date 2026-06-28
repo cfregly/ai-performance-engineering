@@ -83,20 +83,67 @@ class TiledAttentionModule(nn.Module):
         self.k_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
         self.v_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
         self.out_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self._q_buffer: Optional[torch.Tensor] = None
+        self._k_buffer: Optional[torch.Tensor] = None
+        self._v_buffer: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
+
+    def _ensure_projection_buffers(
+        self,
+        x: torch.Tensor,
+        batch_size: int,
+        seq_len: int,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        shape = (batch_size, seq_len, self.hidden_dim)
+        buffers = (self._q_buffer, self._k_buffer, self._v_buffer, self._output_buffer)
+        if any(
+            buffer is None
+            or buffer.shape != shape
+            or buffer.device != x.device
+            or buffer.dtype != x.dtype
+            for buffer in buffers
+        ):
+            self._q_buffer = torch.empty(shape, device=x.device, dtype=x.dtype)
+            self._k_buffer = torch.empty(shape, device=x.device, dtype=x.dtype)
+            self._v_buffer = torch.empty(shape, device=x.device, dtype=x.dtype)
+            self._output_buffer = torch.empty(shape, device=x.device, dtype=x.dtype)
+        return self._q_buffer, self._k_buffer, self._v_buffer, self._output_buffer
 
     def _project_qkv(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Project input into [batch, seq, heads, head_dim] tensors."""
         batch_size, seq_len, _ = x.shape
-        q = self.q_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
-        k = self.k_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
-        v = self.v_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
-        return q.contiguous(), k.contiguous(), v.contiguous()
+        if torch.is_grad_enabled():
+            q = self.q_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
+            k = self.k_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
+            v = self.v_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
+            return q, k, v
+
+        q_buffer, k_buffer, v_buffer, _output_buffer = self._ensure_projection_buffers(
+            x,
+            batch_size,
+            seq_len,
+        )
+        q = torch.matmul(x, self.q_proj.weight.t(), out=q_buffer)
+        k = torch.matmul(x, self.k_proj.weight.t(), out=k_buffer)
+        v = torch.matmul(x, self.v_proj.weight.t(), out=v_buffer)
+        return (
+            q.view(batch_size, seq_len, self.num_heads, self.head_dim),
+            k.view(batch_size, seq_len, self.num_heads, self.head_dim),
+            v.view(batch_size, seq_len, self.num_heads, self.head_dim),
+        )
 
     def _project_output(self, attn_output: torch.Tensor) -> torch.Tensor:
         """Project [batch, seq, heads, head_dim] attention output back to hidden_dim."""
         batch_size, seq_len, _, _ = attn_output.shape
         merged = attn_output.reshape(batch_size, seq_len, self.hidden_dim)
-        return self.out_proj(merged)
+        if torch.is_grad_enabled():
+            return self.out_proj(merged)
+        _q_buffer, _k_buffer, _v_buffer, output_buffer = self._ensure_projection_buffers(
+            merged,
+            batch_size,
+            seq_len,
+        )
+        return torch.matmul(merged, self.out_proj.weight.t(), out=output_buffer)
         
     def forward(self, x: torch.Tensor, is_causal: bool = False) -> torch.Tensor:
         """Forward pass using tiled attention.

@@ -46,3 +46,22 @@ def test_baseline_flash_attention_builds_causal_mask_directly() -> None:
     assert ".triu(" not in setup_source
     assert "pos = torch.arange(self.seq_len, device=self.device)" in setup_source
     assert "self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in setup_source
+
+
+def test_optimized_flash_attention_reuses_projection_buffers_in_inference() -> None:
+    source = (REPO_ROOT / "ch10/optimized_flash_attention.py").read_text()
+    tiled_module = source.split("class TiledAttentionModule", maxsplit=1)[1].split(
+        "class OptimizedFlashAttentionBenchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "self._q_buffer: Optional[torch.Tensor] = None" in tiled_module
+    assert "self._k_buffer: Optional[torch.Tensor] = None" in tiled_module
+    assert "self._v_buffer: Optional[torch.Tensor] = None" in tiled_module
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in tiled_module
+    assert "def _ensure_projection_buffers(" in tiled_module
+    assert "if torch.is_grad_enabled():" in tiled_module
+    assert "q = torch.matmul(x, self.q_proj.weight.t(), out=q_buffer)" in tiled_module
+    assert "k = torch.matmul(x, self.k_proj.weight.t(), out=k_buffer)" in tiled_module
+    assert "v = torch.matmul(x, self.v_proj.weight.t(), out=v_buffer)" in tiled_module
+    assert "return torch.matmul(merged, self.out_proj.weight.t(), out=output_buffer)" in tiled_module
