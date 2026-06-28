@@ -25,6 +25,7 @@ class VectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._work: Optional[torch.Tensor] = None
         self._verify_probe_a: Optional[torch.Tensor] = None
         self._verify_probe_b: Optional[torch.Tensor] = None
+        self._enable_nvtx = False
 
         # Use a large tensor that exceeds L2 so the kernel is HBM bandwidth bound.
         # Keep the iteration count low to avoid kernel-launch overhead dominating.
@@ -43,6 +44,8 @@ class VectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.tensor_a = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.tensor_b = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self._work = torch.empty(self.N, device=self.device, dtype=torch.float32)
@@ -53,9 +56,7 @@ class VectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self.tensor_a is None or self.tensor_b is None or self._work is None:
             raise RuntimeError("setup() must be called before benchmark_fn()")
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("baseline_vectorization", enable=enable_nvtx):
+        with nvtx_range("baseline_vectorization", enable=self._enable_nvtx):
             for _ in range(self.repeats):
                 torch.add(self.tensor_a, self.tensor_b, out=self._work)
             self.output = self._work.detach()
@@ -103,5 +104,4 @@ class VectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return VectorizationBenchmark()
-
 

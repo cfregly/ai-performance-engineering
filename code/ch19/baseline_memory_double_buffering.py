@@ -36,6 +36,8 @@ class MemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self._verification_payload = None
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
         self.register_workload_metadata(
             requests_per_iteration=float(self.micro_batches),
             tokens_per_iteration=float(tokens),
@@ -45,11 +47,14 @@ class MemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Setup: Initialize single-GPU tensors."""
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.model = nn.Sequential(
             nn.Linear(self.hidden_dim, self.hidden_dim * 4),
             nn.ReLU(inplace=True),
             nn.Linear(self.hidden_dim * 4, self.hidden_dim),
         ).to(self.device).half().eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.buffer = torch.empty(
             self.batch_size,
             self.seq_len,
@@ -71,15 +76,13 @@ class MemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         """Benchmark: Single-GPU stream-ordered operations."""
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
         assert (
             self.model is not None
             and self.buffer is not None
             and self.stream is not None
             and self.host_batches
         )
-        with nvtx_range("baseline_memory_double_buffering", enable=enable_nvtx):
+        with nvtx_range("baseline_memory_double_buffering", enable=self._enable_nvtx):
             with torch.inference_mode():
                 for host_batch in self.host_batches:
                     self.buffer.copy_(host_batch, non_blocking=False)
@@ -97,7 +100,7 @@ class MemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"buffer": self.buffer},
             output=self.output,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.1, 1.0),
             precision_flags={
                 "fp16": dtype == torch.float16,

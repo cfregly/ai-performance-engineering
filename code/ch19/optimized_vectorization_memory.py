@@ -37,6 +37,7 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
         self._work: Optional[torch.Tensor] = None
         self._verify_probe_a: Optional[torch.Tensor] = None
         self._verify_probe_b: Optional[torch.Tensor] = None
+        self._enable_nvtx = False
 
         self.repeats = 12
         self.N = 67_108_864
@@ -53,6 +54,8 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.tensor_a = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.tensor_b = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self._tensor_a_fp16 = self.tensor_a.to(self._compute_dtype)
@@ -65,9 +68,7 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
     def benchmark_fn(self) -> None:
         if self._work is None or self._tensor_a_fp16 is None or self._tensor_b_fp16 is None:
             raise RuntimeError("setup() must be called before benchmark_fn()")
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("optimized_vectorization", enable=enable_nvtx):
+        with nvtx_range("optimized_vectorization", enable=self._enable_nvtx):
             for _ in range(self.repeats):
                 torch.add(self._tensor_a_fp16, self._tensor_b_fp16, out=self._work)
             self.output = self._work.detach()
@@ -120,4 +121,3 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedVectorizationMemoryBenchmark()
-

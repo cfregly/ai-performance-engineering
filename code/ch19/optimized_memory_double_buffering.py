@@ -43,12 +43,16 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         self.micro_batches = 16
         self.host_batches: list[torch.Tensor] = []
         self._verification_payload = None
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
         self.register_workload_metadata(requests_per_iteration=float(self.micro_batches))
     
     def setup(self) -> None:
         """Setup: Initialize model and double buffers."""
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.model = nn.Sequential(
             nn.Linear(self.hidden_dim, self.hidden_dim * 4),
             nn.ReLU(inplace=True),
@@ -66,6 +70,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         params = list(self.model.parameters())
         if not params:
             raise RuntimeError("Model has no parameters - cannot determine dtype")
+        self._payload_parameter_count = sum(p.numel() for p in params)
         model_dtype = params[0].dtype
         self.buffer_a = torch.empty(
             self.batch_size, self.seq_len, self.hidden_dim,
@@ -91,14 +96,8 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
     
     def benchmark_fn(self) -> None:
         """Benchmark: Double buffering with overlapping operations."""
-        # Use conditional NVTX ranges - only enabled when profiling
-
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
         assert self.copy_stream is not None and self.compute_stream is not None
-        with nvtx_range("optimized_memory_double_buffering", enable=enable_nvtx):
+        with nvtx_range("optimized_memory_double_buffering", enable=self._enable_nvtx):
             with torch.inference_mode():
                 buffers = self.buffers
                 copy_events = self.copy_events
@@ -136,7 +135,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
             inputs={"buffer": self.buffer_a if self.buffer_a is not None else self.buffer_b},
             output=self.output,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.1, 1.0),
             precision_flags={
                 "fp16": True,

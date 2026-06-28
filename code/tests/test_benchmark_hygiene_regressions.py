@@ -2163,7 +2163,14 @@ def test_ch04_nvshmem_symmetric_broadcast_overlap_defines_done_event() -> None:
 
 
 def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
+    baseline_source = (REPO_ROOT / "ch19" / "baseline_vectorization_memory.py").read_text(
+        encoding="utf-8"
+    )
     source = (REPO_ROOT / "ch19" / "optimized_vectorization_memory.py").read_text(encoding="utf-8")
+    baseline_setup = baseline_source.split("def benchmark_fn", maxsplit=1)[0]
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
@@ -2175,6 +2182,11 @@ def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
     assert "self._tensor_b_fp16 = self.tensor_b.to(self._compute_dtype)" in setup_section
     assert "torch.add(self._tensor_a_fp16, self._tensor_b_fp16, out=self._work)" in benchmark_section
     assert ".to(self._compute_dtype)" not in benchmark_section
+    for setup, benchmark in ((baseline_setup, baseline_benchmark), (setup_section, benchmark_section)):
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup
+        assert "get_config()" not in benchmark
+        assert "get_nvtx_enabled(" not in benchmark
+        assert "enable=self._enable_nvtx" in benchmark
 
 
 def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
@@ -5684,25 +5696,48 @@ def test_ch15_speculative_decode_common_uses_inference_mode_for_setup_mutations(
 def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     baseline_source = (REPO_ROOT / "ch19" / "baseline_memory_double_buffering.py").read_text(encoding="utf-8")
     source = (REPO_ROOT / "ch19" / "optimized_memory_double_buffering.py").read_text(encoding="utf-8")
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
+    )[0]
+    baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
     )[0]
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
 
+    assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in baseline_setup
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in baseline_setup
     assert "with torch.inference_mode():" in baseline_benchmark
     assert "with torch.no_grad():" not in baseline_benchmark
+    assert "get_config()" not in baseline_benchmark
+    assert "get_nvtx_enabled(" not in baseline_benchmark
+    assert "enable=self._enable_nvtx" in baseline_benchmark
+    assert "parameter_count=self._payload_parameter_count" in baseline_capture
+    assert "sum(p.numel()" not in baseline_capture
+    assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+    assert "self._payload_parameter_count = sum(p.numel() for p in params)" in setup_section
     assert "self.copy_events = [torch.cuda.Event(blocking=False) for _ in range(2)]" in setup_section
     assert "self.buffers = [self.buffer_a, self.buffer_b]" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
+    assert "get_config()" not in benchmark_section
+    assert "get_nvtx_enabled(" not in benchmark_section
+    assert "enable=self._enable_nvtx" in benchmark_section
     assert "buffers = [self.buffer_a, self.buffer_b]" not in benchmark_section
     assert "buffers = self.buffers" in benchmark_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "with torch.no_grad():" not in benchmark_section
     assert "copy_events = self.copy_events" in benchmark_section
     assert "Double buffers or copy events not initialized" in benchmark_section
+    assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "sum(p.numel()" not in capture_section
 
 
 def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() -> None:
