@@ -42,7 +42,9 @@ class RegionalCompilationTransformer(DummyTransformer):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for layer in self.layers:
-            x = x + _run_compiled_layer(layer, x)
+            layer_out = _run_compiled_layer(layer, x)
+            layer_out.add_(x)
+            x = layer_out
         return x
 
 

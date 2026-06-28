@@ -2170,11 +2170,18 @@ def test_ch16_piece_and_regional_graphs_cache_nvtx_outside_hot_loop() -> None:
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    optimized_model_forward = optimized_source.split(
+        "class RegionalCompilationTransformer", maxsplit=1
+    )[1].split("GraphCacheEntry", maxsplit=1)[0]
 
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in optimized_setup
     assert "get_config()" not in optimized_benchmark
     assert "get_nvtx_enabled(" not in optimized_benchmark
     assert "self._run_with_cuda_graph(seq_len, self._enable_nvtx)" in optimized_benchmark
+    assert "layer_out = _run_compiled_layer(layer, x)" in optimized_model_forward
+    assert "layer_out.add_(x)" in optimized_model_forward
+    assert "x = layer_out" in optimized_model_forward
+    assert "x = x + _run_compiled_layer(layer, x)" not in optimized_model_forward
 
 
 def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
