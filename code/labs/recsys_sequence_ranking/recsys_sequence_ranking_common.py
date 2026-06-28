@@ -76,6 +76,7 @@ class RankingWorkspace:
     sequence_accum: torch.Tensor
     context_accum: torch.Tensor
     score_output: torch.Tensor
+    candidate_embedding_flat: torch.Tensor
     sequence_mask_float: torch.Tensor
     sequence_length_recip: torch.Tensor
     context_table_index: torch.Tensor
@@ -330,6 +331,12 @@ def build_workspace(workload: SequenceRankingWorkload, device: torch.device) -> 
             device=device,
             dtype=torch.float32,
         ),
+        candidate_embedding_flat=torch.empty(
+            workload.batch_size * workload.num_candidates,
+            workload.embedding_dim,
+            device=device,
+            dtype=workload.dtype,
+        ),
         sequence_mask_float=torch.empty(
             workload.batch_size,
             workload.seq_len,
@@ -459,8 +466,35 @@ def candidate_scores_torch(
     inputs: RankingInputs,
     state: RankingModelState,
     out: torch.Tensor | None = None,
+    candidate_buffer: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    candidate_emb = F.embedding(inputs.candidate_ids, state.item_embeddings)
+    flat_candidate_ids = inputs.candidate_ids.reshape(-1)
+    candidate_rows = int(flat_candidate_ids.numel())
+    embedding_dim = int(state.item_embeddings.shape[1])
+    can_reuse_candidate_buffer = (
+        candidate_buffer is not None
+        and candidate_buffer.dim() == 2
+        and candidate_buffer.device == state.item_embeddings.device
+        and candidate_buffer.dtype == state.item_embeddings.dtype
+        and candidate_buffer.size(0) >= candidate_rows
+        and candidate_buffer.size(1) == embedding_dim
+        and not (torch.is_grad_enabled() and state.item_embeddings.requires_grad)
+    )
+    if can_reuse_candidate_buffer:
+        candidate_buffer_view = candidate_buffer[:candidate_rows]
+        torch.index_select(
+            state.item_embeddings,
+            0,
+            flat_candidate_ids,
+            out=candidate_buffer_view,
+        )
+        candidate_emb = candidate_buffer_view.view(
+            inputs.candidate_ids.shape[0],
+            inputs.candidate_ids.shape[1],
+            embedding_dim,
+        )
+    else:
+        candidate_emb = F.embedding(inputs.candidate_ids, state.item_embeddings)
     candidate_emb_f32 = candidate_emb.to(torch.float32)
     user_vec_f32 = user_vec.to(torch.float32).unsqueeze(2)
     if out is None or (
@@ -608,7 +642,15 @@ def optimized_forward(
         if workspace is None:
             raise RuntimeError("Triton scoring requires a RankingWorkspace")
         return candidate_scores_triton(user_vec, inputs, state, workspace.score_output)
-    return candidate_scores_torch(user_vec, inputs, state, workspace.score_output if workspace is not None else None)
+    if workspace is None:
+        return candidate_scores_torch(user_vec, inputs, state)
+    return candidate_scores_torch(
+        user_vec,
+        inputs,
+        state,
+        workspace.score_output,
+        workspace.candidate_embedding_flat,
+    )
 
 
 def ranking_metrics(
@@ -649,8 +691,16 @@ def warm_optimized_path(
             if workspace is None:
                 raise RuntimeError("Triton scoring requires a RankingWorkspace")
             _ = candidate_scores_triton(user_vec, inputs, state, workspace.score_output)
+        elif workspace is None:
+            _ = candidate_scores_torch(user_vec, inputs, state)
         else:
-            _ = candidate_scores_torch(user_vec, inputs, state, workspace.score_output if workspace is not None else None)
+            _ = candidate_scores_torch(
+                user_vec,
+                inputs,
+                state,
+                workspace.score_output,
+                workspace.candidate_embedding_flat,
+            )
     if torch.cuda.is_available():
         torch.cuda.synchronize()
 

@@ -168,6 +168,10 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
 
     assert workspace.sequence_metadata_key is not None
     assert workspace.context_table_index.shape == (1, workload.num_tables)
+    assert workspace.candidate_embedding_flat.shape == (
+        workload.batch_size * workload.num_candidates,
+        workload.embedding_dim,
+    )
     assert ".expand(workload.batch_size, -1).clone()" not in build_workspace_source
     assert workspace_sequence.data_ptr() == workspace.sequence_accum.data_ptr()
     assert workspace_context.data_ptr() == workspace.context_accum.data_ptr()
@@ -188,9 +192,17 @@ def test_torch_candidate_scoring_reuses_workspace_output_on_cpu() -> None:
     source = inspect.getsource(candidate_scores_torch)
 
     fallback_scores = candidate_scores_torch(user_vec, inputs, state)
-    workspace_scores = candidate_scores_torch(user_vec, inputs, state, workspace.score_output)
+    workspace_scores = candidate_scores_torch(
+        user_vec,
+        inputs,
+        state,
+        workspace.score_output,
+        workspace.candidate_embedding_flat,
+    )
 
     assert "out=out.unsqueeze(2)" in source
+    assert "torch.index_select(" in source
+    assert "out=candidate_buffer_view" in source
     assert workspace_scores.data_ptr() == workspace.score_output.data_ptr()
     torch.testing.assert_close(workspace_scores, fallback_scores, rtol=1e-6, atol=1e-6)
 
