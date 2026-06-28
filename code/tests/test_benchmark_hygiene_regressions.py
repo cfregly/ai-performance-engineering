@@ -5405,6 +5405,9 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def get_custom_streams", maxsplit=1
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
 
     assert "with torch.inference_mode(), torch.autocast(\"cuda\", dtype=torch.bfloat16):" in setup_section
     assert "with torch.inference_mode(), torch.autocast(\"cuda\", dtype=torch.bfloat16):" in benchmark_section
@@ -5412,6 +5415,7 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._stage_transfer_buffers: List[List[Optional[torch.Tensor]]] = []" in source
     assert "self._stage_devices: List[torch.device] = []" in source
     assert "self._final_output_slots: List[torch.Tensor] = []" in source
+    assert "self._final_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._last_final_output_count: int = 0" in source
     assert "self._stage_buffers = [" in setup_section
     assert "stage_output_features = [" in setup_section
@@ -5429,7 +5433,12 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "p.numel() for stage in self.pipeline_stages for p in stage.parameters()" not in benchmark_section
     assert "torch.cat(final_outputs" not in benchmark_section
     assert "self._last_final_outputs = final_outputs" in benchmark_section
-    assert "self.output = torch.cat(self._last_final_outputs[: self._last_final_output_count], dim=0)" in capture_section
+    assert "self._final_output_buffer = torch.empty(" in setup_section
+    assert "for output_idx in range(self._last_final_output_count):" in capture_section
+    assert "output_buffer[offset:next_offset].copy_(out)" in capture_section
+    assert "self.output = torch.cat(" not in capture_section
+    assert "self._last_final_outputs[: self._last_final_output_count]" not in capture_section
+    assert "self._final_output_buffer = None" in teardown_section
 
 
 def test_ch17_inference_wrappers_use_inference_mode() -> None:

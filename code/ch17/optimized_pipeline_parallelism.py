@@ -47,6 +47,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self._stage_transfer_buffers: List[List[Optional[torch.Tensor]]] = []
         self._stage_devices: List[torch.device] = []
         self._final_output_slots: List[torch.Tensor] = []
+        self._final_output_buffer: Optional[torch.Tensor] = None
         self._last_final_output_count: int = 0
         self._single_gpu_mode: bool = False
         self._compiled_model: Optional[nn.Module] = None
@@ -141,6 +142,11 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                 torch.empty(0, device=self._stage_devices[-1], dtype=torch.bfloat16)
                 for _ in range(self.micro_batches)
             ]
+            self._final_output_buffer = torch.empty(
+                (int(self._input_data.shape[0]), self.hidden_size),
+                device=self._stage_devices[-1],
+                dtype=torch.bfloat16,
+            )
             self._stage_transfer_buffers = []
             for stage_idx, feature_count in enumerate(stage_output_features):
                 next_stage_idx = stage_idx + 1
@@ -274,7 +280,21 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         if self.output is None:
             if self._last_final_outputs is None or self._last_final_output_count <= 0:
                 raise RuntimeError("benchmark_fn() must be called before capture_verification_payload()")
-            self.output = torch.cat(self._last_final_outputs[: self._last_final_output_count], dim=0)
+            output_buffer = self._final_output_buffer
+            if output_buffer is None:
+                raise RuntimeError("Final output buffer not initialized")
+            offset = 0
+            final_outputs = self._last_final_outputs
+            with torch.cuda.device(output_buffer.device), torch.inference_mode():
+                for output_idx in range(self._last_final_output_count):
+                    out = final_outputs[output_idx]
+                    rows = int(out.shape[0])
+                    next_offset = offset + rows
+                    if next_offset > output_buffer.shape[0]:
+                        raise RuntimeError("Final pipeline output exceeds reusable buffer")
+                    output_buffer[offset:next_offset].copy_(out)
+                    offset = next_offset
+            self.output = output_buffer if offset == output_buffer.shape[0] else output_buffer[:offset]
         if self.output is None:
             raise RuntimeError("benchmark_fn() must be called before capture_verification_payload()")
         dtype = self.output.dtype
@@ -317,6 +337,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self._stage_transfer_buffers = []
         self._stage_devices = []
         self._final_output_slots = []
+        self._final_output_buffer = None
         self._last_final_output_count = 0
         self._compiled_model = None
         self._input_data = None
