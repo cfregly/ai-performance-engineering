@@ -65,10 +65,13 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.routed_expert: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
         self.expert_ids: Optional[torch.Tensor] = None
+        self._flat_inputs: Optional[torch.Tensor] = None
+        self._expert_ids_flat: Optional[torch.Tensor] = None
         self._dispatch_order: Optional[torch.Tensor] = None
         self._remote_cpu_flat: Optional[torch.Tensor] = None
         self._comm_flat: Optional[torch.Tensor] = None
         self._routed_out_flat: Optional[torch.Tensor] = None
+        self._comm_copy_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_probe: Optional[torch.Tensor] = None
         self._verify_meta: Optional[torch.Tensor] = None
@@ -100,10 +103,19 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         token_ids = torch.arange(self.batch * self.seq, device=self.device, dtype=torch.int64)
         self.expert_ids = _pseudo_uniform_expert_ids(token_ids, self.num_experts).view(self.batch, self.seq)
-        self._dispatch_order = torch.argsort(self.expert_ids.reshape(-1))
-        self._remote_cpu_flat = self.inputs.view(-1, self.hidden_size).detach().cpu().pin_memory()
+        self._flat_inputs = self.inputs.view(-1, self.hidden_size)
+        self._expert_ids_flat = self.expert_ids.reshape(-1)
+        self._dispatch_order = torch.argsort(self._expert_ids_flat)
+        self._remote_cpu_flat = self._flat_inputs.detach().cpu().pin_memory()
         self._comm_flat = torch.empty(self.batch * self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
         self._routed_out_flat = torch.empty(self.batch * self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
+        total_tokens = self._flat_inputs.shape[0]
+        chunk_tokens = max(1, (total_tokens + self.comm_chunks - 1) // self.comm_chunks)
+        self._comm_copy_pairs = [
+            (self._comm_flat[start:end], self._remote_cpu_flat[start:end])
+            for start in range(0, total_tokens, chunk_tokens)
+            for end in (min(start + chunk_tokens, total_tokens),)
+        ]
 
         self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
         self._verify_meta = torch.zeros(self.num_experts, dtype=torch.int8)
@@ -119,25 +131,26 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.routed_expert is None
             or self.inputs is None
             or self.expert_ids is None
+            or self._flat_inputs is None
+            or self._expert_ids_flat is None
             or self._dispatch_order is None
             or self._remote_cpu_flat is None
             or self._comm_flat is None
             or self._routed_out_flat is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
+        if not self._comm_copy_pairs:
+            raise RuntimeError("setup() must initialize communication chunk views")
 
-        flat = self.inputs.view(-1, self.hidden_size)
-        expert_ids_flat = self.expert_ids.reshape(-1)
+        flat = self._flat_inputs
+        expert_ids_flat = self._expert_ids_flat
 
         with self._nvtx_range("baseline_moe_overlap"):
             with torch.inference_mode():
                 shared_out = self.shared_expert(flat)
-                total_tokens = flat.shape[0]
-                chunk_tokens = max(1, (total_tokens + self.comm_chunks - 1) // self.comm_chunks)
                 for _ in range(self.comm_round_trips):
-                    for start in range(0, total_tokens, chunk_tokens):
-                        end = min(start + chunk_tokens, total_tokens)
-                        self._comm_flat[start:end].copy_(self._remote_cpu_flat[start:end], non_blocking=True)
+                    for comm_chunk, remote_chunk in self._comm_copy_pairs:
+                        comm_chunk.copy_(remote_chunk, non_blocking=True)
                 dispatch_shared_expert_sort_scatter(
                     self._comm_flat,
                     expert_ids_flat,
@@ -171,10 +184,13 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.routed_expert = None
         self.inputs = None
         self.expert_ids = None
+        self._flat_inputs = None
+        self._expert_ids_flat = None
         self._dispatch_order = None
         self._remote_cpu_flat = None
         self._comm_flat = None
         self._routed_out_flat = None
+        self._comm_copy_pairs = []
         self.output = None
         super().teardown()
 

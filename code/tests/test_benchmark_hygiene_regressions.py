@@ -8393,6 +8393,51 @@ def test_ch15_moe_overlap_and_routing_use_inference_mode() -> None:
     assert "combined = self._routed_out_flat + shared_out" not in optimized_benchmark
 
 
+def test_ch15_moe_overlap_reuses_comm_chunk_views() -> None:
+    for relative in (
+        "ch15/baseline_moe_overlap.py",
+        "ch15/optimized_moe_overlap_shared_expert.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def get_custom_streams" if "optimized" in relative else "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._flat_inputs: Optional[torch.Tensor] = None" in source
+        assert "self._comm_copy_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in source
+        assert "self._flat_inputs = self.inputs.view(-1, self.hidden_size)" in setup_section
+        assert "self._comm_copy_pairs = [" in setup_section
+        assert "for start in range(0, total_tokens, chunk_tokens)" in setup_section
+        assert "flat = self._flat_inputs" in benchmark_section
+        assert "for comm_chunk, remote_chunk in self._comm_copy_pairs:" in benchmark_section
+        assert "comm_chunk.copy_(remote_chunk, non_blocking=True)" in benchmark_section
+        assert "start:end" not in benchmark_section
+        assert "range(0, total_tokens, chunk_tokens)" not in benchmark_section
+        assert "chunk_tokens = max" not in benchmark_section
+        assert "self.inputs.view(-1, self.hidden_size)" not in benchmark_section
+        assert "self._comm_copy_pairs = []" in teardown_section
+
+    baseline_source = (REPO_ROOT / "ch15" / "baseline_moe_overlap.py").read_text(
+        encoding="utf-8"
+    )
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    assert "self._expert_ids_flat: Optional[torch.Tensor] = None" in baseline_source
+    assert "expert_ids_flat = self._expert_ids_flat" in baseline_benchmark
+    assert "self.expert_ids.reshape(-1)" not in baseline_benchmark
+
+
 def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
     source = (REPO_ROOT / "ch15" / "moe_comm_exchange_benchmarks.py").read_text(
         encoding="utf-8"
