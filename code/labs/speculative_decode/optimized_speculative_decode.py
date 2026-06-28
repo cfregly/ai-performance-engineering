@@ -52,6 +52,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._target_next_tokens: Optional[torch.Tensor] = None
         self._matches: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
 
         self._metrics: Dict[str, float] = {}
 
@@ -75,6 +76,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             dtype=wl.dtype,
         ).eval()
         scale_tail_dims_(self.target_model, wl.draft_hidden, wl.tail_scale)
+        self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())
 
         # Deterministic starting token. Must be created BEFORE draft init so it
         # matches the baseline.
@@ -179,14 +181,11 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
     def capture_verification_payload(self) -> None:
         if self.input_ids is None or self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        parameter_count = 0
-        if self.target_model is not None:
-            parameter_count = sum(p.numel() for p in self.target_model.parameters())
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids},
             output=self.output.float(),
             batch_size=1,
-            parameter_count=int(parameter_count),
+            parameter_count=self._payload_parameter_count,
             precision_flags={"bf16": False, "fp16": False, "fp8": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
             output_tolerance=(0.0, 0.0),
         )

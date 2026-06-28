@@ -113,6 +113,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._matches: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._metrics: Dict[str, float] = {}
+        self._payload_parameter_count = 0
 
         tokens = float(self.workload.total_tokens)
         self._workload = WorkloadMetadata(
@@ -138,6 +139,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).eval()
         if self.profile is not None:
             scale_tail_dims_(self.target_model, wl.draft_hidden, wl.tail_scale)
+        self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())
 
         self.input_ids = torch.randint(0, wl.vocab_size, (1, 1), device=self.device, dtype=torch.int64)
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
@@ -331,9 +333,6 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.input_ids is None or self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        parameter_count = 0
-        if self.target_model is not None:
-            parameter_count = sum(p.numel() for p in self.target_model.parameters())
         in_vocab = ((self.output >= 0) & (self.output < self.workload.vocab_size)).sum()
         verify_summary = torch.stack(
             (
@@ -346,7 +345,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"input_ids": self.input_ids},
             output=verify_summary,
             batch_size=1,
-            parameter_count=int(parameter_count),
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.0, 0.0),
         )
 

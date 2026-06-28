@@ -5889,6 +5889,10 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     benchmark_section = source.split("def _run_family_speculative_decode", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_workload_metadata",
+        maxsplit=1,
+    )[0]
     seed_section = source.split("def _draft_seed_tokens", maxsplit=1)[1].split(
         "def _run_family_speculative_decode",
         maxsplit=1,
@@ -5901,6 +5905,7 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._draft_block_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "time.perf_counter" not in benchmark_section
     assert "draft_time_ms=None" in benchmark_section
@@ -5915,6 +5920,8 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "torch.eq(target_next, self._draft_ids[:, :k], out=matches)" in benchmark_section
     assert "torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)" in benchmark_section
     assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
+    assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "sum(p.numel()" not in capture_section
 
 
 def test_medusa_eagle_validation_batches_output_bounds_check() -> None:
@@ -5955,12 +5962,17 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
 
     assert "self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)" in setup_section
     assert "self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)" in setup_section
     assert "self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
@@ -5971,6 +5983,8 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)" in benchmark_section
     assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
     assert "accept_k = int(self._accept_count.item())" in benchmark_section
+    assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "sum(p.numel()" not in capture_section
 
 
 def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
@@ -5988,12 +6002,17 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
 
     assert "self._accept_prefix = torch.empty(" in setup_section
     assert "self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)" in setup_section
     assert "self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
     assert "torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))" in benchmark_section
@@ -6003,6 +6022,8 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)" in benchmark_section
     assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
     assert "accept_k = int(self._accept_count.item())" in benchmark_section
+    assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "sum(p.numel()" not in capture_section
     assert common_source.count("with torch.inference_mode():") >= 2
     assert "with torch.no_grad():" not in common_source
 
@@ -6019,12 +6040,19 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
 
     assert "self._next_token_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._next_token_ids = torch.empty((1,), device=self.device, dtype=torch.long)" in setup_section
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.max(logits[:, 0, :], dim=-1, out=(self._next_token_values, self._next_token_ids))" in benchmark_section
     assert ".argmax(" not in benchmark_section
+    assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "sum(p.numel()" not in capture_section
 
 
 def test_ch15_speculative_decode_common_uses_inference_mode_for_setup_mutations() -> None:

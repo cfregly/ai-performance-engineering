@@ -47,6 +47,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._matches: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._metrics: Dict[str, float] = {}
+        self._payload_parameter_count = 0
 
         tokens = self.workload.total_tokens * 1.0
         self._workload = WorkloadMetadata(
@@ -71,6 +72,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=wl.dtype,
         ).eval()
         scale_tail_dims_(self.target_model, wl.draft_hidden, wl.tail_scale)
+        self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())
 
         self.input_ids = torch.randint(
             0,
@@ -232,14 +234,11 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.input_ids is None or self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        parameter_count = 0
-        if self.target_model is not None:
-            parameter_count = sum(p.numel() for p in self.target_model.parameters())
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids},
             output=self.output.float(),
             batch_size=1,
-            parameter_count=int(parameter_count),
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.0, 0.0),
         )
 

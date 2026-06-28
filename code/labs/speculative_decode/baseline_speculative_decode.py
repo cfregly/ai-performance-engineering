@@ -27,6 +27,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._next_token_values: Optional[torch.Tensor] = None
         self._next_token_ids: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
 
         tokens = float(self.workload.total_tokens)
         self._workload = WorkloadMetadata(
@@ -48,6 +49,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             dtype=wl.dtype,
         ).eval()
         scale_tail_dims_(self.target_model, wl.draft_hidden, wl.tail_scale)
+        self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())
 
         self.input_ids = torch.randint(0, wl.vocab_size, (1, 1), device=self.device, dtype=torch.int64)
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
@@ -81,14 +83,11 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
     def capture_verification_payload(self) -> None:
         if self.input_ids is None or self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        parameter_count = 0
-        if self.target_model is not None:
-            parameter_count = sum(p.numel() for p in self.target_model.parameters())
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids},
             output=self.output.float(),
             batch_size=1,
-            parameter_count=int(parameter_count),
+            parameter_count=self._payload_parameter_count,
             precision_flags={"bf16": False, "fp16": False, "fp8": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
             output_tolerance=(0.0, 0.0),
         )
