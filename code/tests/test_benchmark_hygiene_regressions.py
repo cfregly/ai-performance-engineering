@@ -3411,10 +3411,17 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
     optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
+    optimized_stage_forward = optimized_source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1].split(
+        "class OptimizedPipelineOverlapBenchmark",
+        maxsplit=1,
+    )[0]
     optimized_run = optimized_source.split("def _run_pipelined_once", maxsplit=1)[1].split(
         "def benchmark_fn", maxsplit=1
     )[0]
 
+    assert "out.add_(x)" in optimized_stage_forward
+    assert "return self.norm(out)" in optimized_stage_forward
+    assert "return self.norm(out + x)" not in optimized_stage_forward
     assert "self.stage_events = [" in optimized_setup
     assert "torch.cuda.Event(enable_timing=False)" in optimized_setup
     assert "self._stage_outputs = [" in optimized_setup

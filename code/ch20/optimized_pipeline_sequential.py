@@ -29,7 +29,8 @@ class SimpleStage(nn.Module):
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.ffn(x)
-        return self.norm(out + x)
+        out.add_(x)
+        return self.norm(out)
 
 
 class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
