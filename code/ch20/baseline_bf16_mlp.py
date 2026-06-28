@@ -59,12 +59,14 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
         )
+        self._payload_parameter_count = 0
     
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         # FP32 - no tensor core acceleration
         self.model = UnoptimizedModel(hidden_dim=self.hidden_dim).to(self.device).float().eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.x = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
         self.output = None
         # Warmup
@@ -86,7 +88,7 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"x": self.x},
             output=self.output.float(),
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.5, 6.0),
         )
     

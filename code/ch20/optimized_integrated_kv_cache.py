@@ -206,6 +206,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.register_workload_metadata(requests_per_iteration=1.0)
         self.output: Optional[torch.Tensor] = None
         self._verification_payload = None
+        self._payload_parameter_count = 0
     
     def setup(self) -> None:
         """Setup: Initialize model with integrated KV cache."""
@@ -219,6 +220,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
                 for _ in range(self.num_layers)
             ]
         ).to(self.device).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.layers.parameters())
         
         self.kv_cache = PagedKVCache(
             page_size=self.page_size,
@@ -267,7 +269,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
             inputs={"input": self._verify_input},
             output=self.output,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.layers.parameters()) if self.layers is not None else 0,
+            parameter_count=self._payload_parameter_count,
             precision_flags={"fp16": True, "bf16": False, "fp8": False, "tf32": False},
             output_tolerance=(0.1, 1.0),
         )

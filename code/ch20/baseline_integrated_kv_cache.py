@@ -117,6 +117,7 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.batch_size = 1
         self.sequence_lengths = [512, 1024, 2048]
         self.register_workload_metadata(requests_per_iteration=1.0)
+        self._payload_parameter_count = 0
     
     def setup(self) -> None:
         """Setup: Initialize baseline model with naive KV cache."""
@@ -128,6 +129,7 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
         for _ in range(self.num_layers):
             layers.append(AttentionLayer(self.hidden_dim, self.num_heads, self.head_dim, dtype=dtype))
         self.model = nn.Sequential(*layers).to(self.device).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.kv_cache = NaiveKVCache(
             max_seq_len=self.max_seq_len,
@@ -179,7 +181,7 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
             inputs={"input": self._verify_input},
             output=self.output,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            parameter_count=self._payload_parameter_count,
             precision_flags={"fp16": True, "bf16": False, "fp8": False, "tf32": False},
             output_tolerance=(0.1, 1.0),
         )

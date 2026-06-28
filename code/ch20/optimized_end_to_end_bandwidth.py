@@ -44,11 +44,13 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
             requests_per_iteration=float(tokens),
             tokens_per_iteration=float(tokens),
         )
+        self._payload_parameter_count = 0
     
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.model = SimplePipeline(hidden_dim=self.hidden_dim).to(self.device, dtype=torch.float32).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.inputs = [
             torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32).contiguous()
             for _ in range(self.num_batches)
@@ -73,7 +75,7 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
             inputs={"inputs": self.stacked_inputs.detach()},
             output=self.output.detach().clone(),
             batch_size=int(self.stacked_inputs.shape[0]),
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.1, 1.0),
         )
     

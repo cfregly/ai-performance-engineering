@@ -35,12 +35,14 @@ class BaselineAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self._verify_input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
 
         self.model = AutotuneModel(self.hidden_dim).to(self.device, dtype=torch.bfloat16).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.inputs = torch.randn(self.batch, self.hidden_dim, device=self.device, dtype=torch.bfloat16)
         self._verify_input = self.inputs[0:1].clone()
 
@@ -64,7 +66,7 @@ class BaselineAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"verify_input": self._verify_input},
             output=self.output,
             batch_size=int(self._verify_input.shape[0]),
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.1, 1.0),
         )
 

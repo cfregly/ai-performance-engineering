@@ -2615,6 +2615,44 @@ def test_ch20_training_and_moe_use_inplace_relu_modules() -> None:
         assert "nn.ReLU()" not in source
 
 
+def test_ch20_benchmarks_cache_verification_parameter_count() -> None:
+    for relative, parameters_expr in (
+        ("ch20/baseline_autotuning.py", "self.model.parameters()"),
+        ("ch20/optimized_autotuning.py", "self.model.parameters()"),
+        ("ch20/baseline_end_to_end_bandwidth.py", "self.model.parameters()"),
+        ("ch20/optimized_end_to_end_bandwidth.py", "self.model.parameters()"),
+        ("ch20/baseline_bf16_mlp.py", "self.model.parameters()"),
+        ("ch20/optimized_bf16_mlp.py", "self.model.parameters()"),
+        ("ch20/baseline_training_single.py", "self.model.parameters()"),
+        ("ch20/optimized_training_single.py", "self.model.parameters()"),
+        ("ch20/baseline_moe.py", "self.model.parameters()"),
+        ("ch20/optimized_moe.py", "self.model.parameters()"),
+        ("ch20/baseline_pipeline_sequential.py", "self.stages.parameters()"),
+        ("ch20/optimized_pipeline_sequential.py", "self.stages.parameters()"),
+        ("ch20/baseline_integrated_kv_cache.py", "self.model.parameters()"),
+        ("ch20/optimized_integrated_kv_cache.py", "self.layers.parameters()"),
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+
+        assert "self._payload_parameter_count = 0" in source
+        assert (
+            f"self._payload_parameter_count = sum(p.numel() for p in {parameters_expr})"
+            in setup_section
+        )
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "sum(p.numel()" not in capture_section
+
+
 def test_ch20_optimized_memory_standard_uses_scalar_addcmul_constants() -> None:
     source = (REPO_ROOT / "ch20" / "optimized_memory_standard.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]

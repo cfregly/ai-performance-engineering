@@ -57,6 +57,7 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
             tokens_per_iteration=float(self.batch_size),
             samples_per_iteration=float(self.batch_size),
         )
+        self._payload_parameter_count = 0
     
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -65,6 +66,7 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.stages = nn.ModuleList(
             [SimpleStage(self.hidden_dim).to(self.device).half() for _ in range(self.num_stages)]
         ).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.stages.parameters())
         
         self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float16)
         self.microbatches = [chunk.contiguous() for chunk in self.inputs.chunk(self.num_microbatches, dim=0)]
@@ -145,7 +147,7 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
             inputs={"inputs": self.inputs},
             output=self.output.float(),
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.stages.parameters()) if self.stages is not None else 0,
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.1, 1.0),
         )
 

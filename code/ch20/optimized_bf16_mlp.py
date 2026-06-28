@@ -64,6 +64,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
         )
+        self._payload_parameter_count = 0
     
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -73,6 +74,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verification_payload = None
         self._model_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         self.model = OptimizedModel(hidden_dim=self.hidden_dim).to(self.device, dtype=self._model_dtype).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.x = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
         self._refresh_model_input()
         self.output = None
@@ -105,7 +107,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"x": self.x},
             output=self.output.float(),
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.5, 6.0),
             precision_flags={
                 "fp16": False,

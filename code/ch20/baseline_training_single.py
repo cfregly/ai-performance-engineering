@@ -46,11 +46,13 @@ class BaselineTrainingSingleBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
         )
+        self._payload_parameter_count = 0
     
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.model = SimpleModel(hidden_dim=self.hidden_dim).to(self.device).float().train()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
         self.targets = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=0.01)
@@ -77,7 +79,7 @@ class BaselineTrainingSingleBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"inputs": self.inputs, "targets": self.targets},
             output=output,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(1e-2, 1e-2),
         )
     
