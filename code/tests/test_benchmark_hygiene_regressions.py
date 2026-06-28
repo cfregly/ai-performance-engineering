@@ -1179,6 +1179,42 @@ def test_ch04_nvshmem_training_example_defers_reduced_norm_sync() -> None:
     assert "reduced_norm = float(bucket.tensor.norm())" in bucket_demo
 
 
+def test_ch04_nvshmem_wrappers_cache_benchmark_argv() -> None:
+    wrapper_cases = {
+        "ch04/baseline_nvshmem_pipeline_parallel_multigpu.py": "--schedule",
+        "ch04/optimized_nvshmem_pipeline_parallel_multigpu.py": "--schedule",
+        "ch04/baseline_nvshmem_training_example_multigpu.py": "--demo",
+        "ch04/optimized_nvshmem_training_example_multigpu.py": "--demo",
+        "ch04/baseline_nvshmem_training_patterns_multigpu.py": "--pattern",
+        "ch04/optimized_nvshmem_training_patterns_multigpu.py": "--pattern",
+    }
+
+    for relative_path, argv_flag in wrapper_cases.items():
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self._benchmark_argv: list[str] = []" in source
+        assert "self._benchmark_argv = [" in setup_section
+        assert argv_flag in setup_section
+        assert "setup() must initialize benchmark argv before benchmark_fn()" in benchmark_section
+        assert "original_argv = sys.argv" in benchmark_section
+        assert "original_argv = sys.argv[:]" not in benchmark_section
+        assert "sys.argv = self._benchmark_argv" in benchmark_section
+        assert "sys.argv = [" not in benchmark_section
+        assert "self._benchmark_argv = []" in teardown_section
+
+
 def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
     source = (REPO_ROOT / "ch09" / "fusion_pytorch.py").read_text(encoding="utf-8")
 

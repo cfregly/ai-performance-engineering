@@ -48,6 +48,7 @@ class OptimizedNVSHMEMTrainingPatternsMultiGPU(VerificationPayloadMixin, BaseBen
     def __init__(self) -> None:
         super().__init__()
         self.register_workload_metadata(requests_per_iteration=1.0)
+        self._benchmark_argv: list[str] = []
         self._verify_input: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
@@ -58,14 +59,17 @@ class OptimizedNVSHMEMTrainingPatternsMultiGPU(VerificationPayloadMixin, BaseBen
         _configure_blackwell_nccl()
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        self._benchmark_argv = [sys.argv[0], "--pattern", "gradient", "--benchmark"]
         self._verify_input = torch.randn(64, 64, device=self.device, dtype=torch.float32)
 
     def benchmark_fn(self) -> None:
-        original_argv = sys.argv[:]
+        if not self._benchmark_argv:
+            raise RuntimeError("setup() must initialize benchmark argv before benchmark_fn()")
+        original_argv = sys.argv
         original_grad = os.environ.get("AISP_GRAD_SYNC_NAIVE")
         try:
             os.environ["AISP_GRAD_SYNC_NAIVE"] = "0"
-            sys.argv = [original_argv[0], "--pattern", "gradient", "--benchmark"]
+            sys.argv = self._benchmark_argv
             nvshmem_train_patterns_main()
         finally:
             sys.argv = original_argv
@@ -77,6 +81,7 @@ class OptimizedNVSHMEMTrainingPatternsMultiGPU(VerificationPayloadMixin, BaseBen
     def teardown(self) -> None:
         if dist.is_initialized():
             dist.destroy_process_group()
+        self._benchmark_argv = []
         torch.cuda.empty_cache()
 
     def capture_verification_payload(self) -> None:
