@@ -680,6 +680,53 @@ def test_attention_reuses_causal_mask_buffers():
     )
 
 
+def test_attention_reuses_padded_mask_buffer_and_skips_decode_causal_mask():
+    config = GPTConfig(
+        sequence_len=8,
+        vocab_size=32,
+        n_layer=1,
+        n_head=2,
+        n_kv_head=2,
+        n_embd=8,
+        use_flash3=False,
+        use_padded_attention=True,
+    )
+    attn = CausalSelfAttention(config, layer_idx=0)
+
+    key_mask = torch.tensor([[[[True, True, False, False]]]])
+    causal = torch.tensor(
+        [
+            [True, False, False, False],
+            [True, True, False, False],
+        ],
+        dtype=torch.bool,
+    )
+
+    mask = attn._padded_attn_mask_for(key_mask, causal)
+    mask_ptr = mask.data_ptr()
+    mask_again = attn._padded_attn_mask_for(key_mask, causal)
+
+    assert mask_again.data_ptr() == mask_ptr
+    torch.testing.assert_close(mask, key_mask & causal)
+
+    source = Path(__file__).resolve().parents[1] / "nanochat" / "gpt.py"
+    gpt_source = source.read_text(encoding="utf-8")
+    forward_section = gpt_source.split("def forward(self, x, cos_sin", maxsplit=1)[1].split(
+        "# Attention: queries attend",
+        maxsplit=1,
+    )[1].split(
+        "fa3_out = None",
+        maxsplit=1,
+    )[0]
+
+    assert "self._padded_attn_mask_cache = None" in gpt_source
+    assert "def _padded_attn_mask_for(self, key_mask, causal)" in gpt_source
+    assert "torch.logical_and(key_mask, causal, out=attn_mask)" in gpt_source
+    assert "if kv_cache is not None and Tq == 1 and Tq != Tk:" in forward_section
+    assert "attn_mask = key_mask" in forward_section
+    assert "attn_mask = key_mask & causal" not in forward_section
+
+
 def test_apply_rotary_emb_inference_matches_reference():
     x = torch.randn(2, 3, 4, 8, dtype=torch.float32)
     cos = torch.randn(1, 3, 1, 4, dtype=torch.float32)

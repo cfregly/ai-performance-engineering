@@ -160,6 +160,7 @@ class CausalSelfAttention(nn.Module):
         self._cu_k_cache = None
         self._causal_mask_cache = None
         self._prefix_causal_mask_cache = None
+        self._padded_attn_mask_cache = None
         if self.use_flash3:
             self._init_flash3()
 
@@ -230,6 +231,22 @@ class CausalSelfAttention(nn.Module):
             self._prefix_causal_mask_cache = mask
             self._prefix_causal_mask_spec = spec
         return self._prefix_causal_mask_cache
+
+    def _padded_attn_mask_for(self, key_mask, causal):
+        shape = torch.broadcast_shapes(key_mask.shape, causal.shape)
+        cached = self._padded_attn_mask_cache
+        if (
+            cached is None
+            or cached.device != key_mask.device
+            or cached.dim() != len(shape)
+            or any(cached.size(dim) < size for dim, size in enumerate(shape))
+        ):
+            cached = torch.empty(tuple(shape), dtype=torch.bool, device=key_mask.device)
+            self._padded_attn_mask_cache = cached
+        slices = tuple(slice(0, int(size)) for size in shape)
+        attn_mask = cached[slices]
+        torch.logical_and(key_mask, causal, out=attn_mask)
+        return attn_mask
 
     def _flash3_attention(self, q, k, v, kv_cache, enable_gqa, use_clustering=False):
         """Varlen FlashAttention-3 path (no masks). Returns None on fallback."""
@@ -334,11 +351,14 @@ class CausalSelfAttention(nn.Module):
                 key_mask = attention_mask
             key_mask = key_mask.to(dtype=torch.bool, device=q.device)
             assert key_mask.size(-1) == Tk, f"attention_mask length mismatch: {key_mask.size(-1)} != {Tk}"
-            if kv_cache is not None and Tq != Tk:
+            if kv_cache is not None and Tq == 1 and Tq != Tk:
+                attn_mask = key_mask
+            elif kv_cache is not None and Tq != Tk:
                 causal = self._prefix_causal_mask_for(Tq, Tk, q.device)
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
             else:
                 causal = self._causal_mask_for(Tq, Tk, q.device)
-            attn_mask = key_mask & causal
+                attn_mask = self._padded_attn_mask_for(key_mask, causal)
         fa3_out = None
         if attn_mask is None and self._flash3_supported(q, attn_mask):
             fa3_out = self._flash3_attention(q, k, v, kv_cache, enable_gqa=enable_gqa, use_clustering=use_cta_hint)
