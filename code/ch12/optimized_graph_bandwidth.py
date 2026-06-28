@@ -13,7 +13,6 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 # Import CUDA extension
 from ch12.cuda_extensions import load_graph_bandwidth_extension
@@ -63,14 +62,7 @@ class OptimizedGraphBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: CUDA graph kernel."""
-        # Use conditional NVTX ranges - only enabled when profiling
-
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
-        with nvtx_range("optimized_graph_bandwidth_graph", enable=enable_nvtx):
+        with self._nvtx_range("optimized_graph_bandwidth_graph"):
             # Call CUDA extension with graph kernel
             self._extension.graph_kernel(self.dst, self.src, self.iterations)
         if self._verify_input is None or self.dst is None:

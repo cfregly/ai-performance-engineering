@@ -13,7 +13,6 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 # Import CUDA extension
 from ch12.cuda_extensions import load_graph_bandwidth_extension
@@ -55,14 +54,7 @@ class BaselineGraphBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: Separate kernel launches (memory copy)."""
-        # Use conditional NVTX ranges - only enabled when profiling
-
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
-        with nvtx_range("graph_bandwidth", enable=enable_nvtx):
+        with self._nvtx_range("graph_bandwidth"):
             # Keep Python overhead out of the comparison: launch the kernel loop
             # inside the extension so baseline vs optimized differs only by
             # kernel-launch vs graph-launch overhead.

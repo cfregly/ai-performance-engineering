@@ -6429,6 +6429,11 @@ def test_ch12_core_benchmarks_use_cached_nvtx_range() -> None:
         "optimized_kernel_fusion.py": "kernel_fusion",
         "baseline_cuda_graphs.py": "cuda_graphs",
         "optimized_cuda_graphs.py": "cuda_graphs",
+        "baseline_work_queue.py": "work_queue",
+        "optimized_work_queue.py": "work_queue",
+        "baseline_graph_bandwidth.py": "graph_bandwidth",
+        "optimized_graph_bandwidth.py": "optimized_graph_bandwidth_graph",
+        "optimized_cuda_graphs_router.py": "cuda_graphs_router",
     }
 
     for filename, label in expected_labels.items():

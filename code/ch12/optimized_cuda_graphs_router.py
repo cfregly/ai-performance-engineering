@@ -13,7 +13,6 @@ import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata  # noqa: E402
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
 from ch12.cuda_extensions import load_cuda_graphs_extension  # noqa: E402
 
 
@@ -48,8 +47,7 @@ class CUDAGraphRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._extension is None or self.data is None:
             raise RuntimeError("SKIPPED: graph not initialized")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("cuda_graphs_router", enable=enable_nvtx):
+        with self._nvtx_range("cuda_graphs_router"):
             # Flip route between iterations to emulate a conditional branch.
             self.route_flag ^= 1
             self._extension.graph_replay(self.data, self.iterations)
