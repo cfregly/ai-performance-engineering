@@ -3262,7 +3262,14 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     assert "next_token = torch.empty((batch_size, 1), device=device, dtype=prompt.dtype)" in dynamic_decode_section
     assert "top2_values = torch.empty(" in dynamic_decode_section
     assert "top2_indices = torch.empty(" in dynamic_decode_section
+    assert "margin_values: torch.Tensor | None = None" in dynamic_decode_section
+    assert "margin_mean: torch.Tensor | None = None" in dynamic_decode_section
     assert "torch.topk(last, k=2, dim=topk_dim, out=(top2_values, top2_indices))" in dynamic_decode_section
+    assert "torch.sub(top2_values[:, 0], top2_values[:, 1], out=margin_values)" in dynamic_decode_section
+    assert "torch.mean(margin_values, out=margin_mean)" in dynamic_decode_section
+    assert "ema_conf.mul_(1 - alpha).add_(margin_mean, alpha=alpha)" in dynamic_decode_section
+    assert "(top2_values[:, 0] - top2_values[:, 1]).mean()" not in dynamic_decode_section
+    assert "ema_conf = (1 - alpha) *" not in dynamic_decode_section
     assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in dynamic_decode_section
     assert "next_token = torch.argmax(last_step_logits" not in dynamic_decode_section
     assert "torch.multinomial(probs, num_samples=1, out=next_token)" in token_precision_generate

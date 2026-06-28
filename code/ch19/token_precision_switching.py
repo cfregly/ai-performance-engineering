@@ -236,6 +236,8 @@ def decode_with_dynamic_precision(
     next_token_values: torch.Tensor | None = None
     top2_values: torch.Tensor | None = None
     top2_indices: torch.Tensor | None = None
+    margin_values: torch.Tensor | None = None
+    margin_mean: torch.Tensor | None = None
 
     # Internal state
     use_fp8: bool = False  # start in AMP; upgrade to FP8 when sustained confidence permits
@@ -245,7 +247,7 @@ def decode_with_dynamic_precision(
 
     # A tiny helper to update on-device EMA without host sync
     def _update_confidence_ema(logits: torch.Tensor) -> torch.Tensor:
-        nonlocal ema_conf, top2_values, top2_indices, top2_shape_tuple
+        nonlocal ema_conf, top2_values, top2_indices, top2_shape_tuple, margin_values, margin_mean
         # logits: [B, vocab] or [B, T, vocab]. Use the last time-step if 3D.
         last = logits if logits.dim() == 2 else logits[:, -1, :]
         # Compute top-2 margin on-device
@@ -261,9 +263,19 @@ def decode_with_dynamic_precision(
         ):
             top2_values = torch.empty(top2_shape_tuple, dtype=last.dtype, device=last.device)
             top2_indices = torch.empty(top2_shape_tuple, dtype=torch.long, device=last.device)
+            margin_values = torch.empty(last.shape[0], dtype=last.dtype, device=last.device)
+            margin_mean = torch.empty((), dtype=last.dtype, device=last.device)
         torch.topk(last, k=2, dim=topk_dim, out=(top2_values, top2_indices))
-        margin = (top2_values[:, 0] - top2_values[:, 1]).mean()          # scalar tensor on device
-        ema_conf = (1 - alpha) * (ema_conf if ema_conf is not None else margin) + alpha * margin
+        if margin_values is None or margin_mean is None:
+            margin_values = torch.empty(last.shape[0], dtype=last.dtype, device=last.device)
+            margin_mean = torch.empty((), dtype=last.dtype, device=last.device)
+        torch.sub(top2_values[:, 0], top2_values[:, 1], out=margin_values)
+        torch.mean(margin_values, out=margin_mean)
+        if ema_conf is None:
+            ema_conf = torch.empty_like(margin_mean)
+            ema_conf.copy_(margin_mean)
+        else:
+            ema_conf.mul_(1 - alpha).add_(margin_mean, alpha=alpha)
         return ema_conf  # device scalar
 
     # Decode
