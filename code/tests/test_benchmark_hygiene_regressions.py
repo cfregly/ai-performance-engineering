@@ -6432,14 +6432,28 @@ def test_ch15_kv_cache_management_wrappers_use_inference_mode() -> None:
     for relative in (
         "ch15/baseline_kv_cache_management.py",
         "ch15/optimized_kv_cache_management.py",
+        "ch15/kv_cache_management_math.py",
     ):
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
         assert "with torch.inference_mode():" in benchmark_section
         assert "with torch.no_grad():" not in benchmark_section
+        assert "self._payload_parameter_count = 0" in source
+        assert "self._payload_parameter_count = sum(" in setup_section
+        assert "param_count = 0" not in capture_section
+        assert "sum(p.numel() for p in layer.parameters())" not in capture_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
 
 
 def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:

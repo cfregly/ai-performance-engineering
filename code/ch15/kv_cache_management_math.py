@@ -57,6 +57,7 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self._verify_input: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
     
     def setup(self) -> None:
         if torch.cuda.is_available():
@@ -74,6 +75,11 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.out_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
         for module in (self.q_proj, self.k_proj, self.v_proj, self.out_proj):
             module.eval()
+        self._payload_parameter_count = sum(
+            p.numel()
+            for layer in (self.q_proj, self.k_proj, self.v_proj, self.out_proj)
+            for p in layer.parameters()
+        )
         
         self.cache_buffer = torch.empty(self.batch_size, self.steps, self.hidden_dim, device=self.device, dtype=torch.bfloat16)
         self.inputs = [
@@ -115,14 +121,11 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
         if any(layer is None for layer in (self.q_proj, self.k_proj, self.v_proj, self.out_proj)):
             raise RuntimeError("Projection layers not initialized")
-        param_count = 0
-        for layer in (self.q_proj, self.k_proj, self.v_proj, self.out_proj):
-            param_count += sum(p.numel() for p in layer.parameters())
         self._set_verification_payload(
             inputs={"tokens": self._verify_input},
             output=self.output,
             batch_size=int(self.batch_size),
-            parameter_count=param_count,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": True,
