@@ -4988,6 +4988,13 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "prompt_stub = self._router_prompt_stub" in hot_section
     assert "setup() must initialize router prompt stub" in hot_section
     assert "prompt_stub = [0] * cfg.context_window" not in hot_section
+    assert 'router_assignments = {"prefill": 0, "decode": 0}' not in hot_section
+    assert "prefill_assignments = 0" in hot_section
+    assert "decode_assignments = 0" in hot_section
+    assert "prefill_assignments += 1" in hot_section
+    assert "decode_assignments += 1" in hot_section
+    assert 'self._history["graph_path"].append(graph_path)' not in hot_section
+    assert '"graph_path": []' not in benchmark_section
     assert "torch.no_grad()" not in eager_section
 
 

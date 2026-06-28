@@ -388,7 +388,6 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "paged_hit": [],
             "page_faults": [],
             "memory_gb": [],
-            "graph_path": [],
         }
         self._iteration = 0
         self._router_prefix_cache_lengths: List[int] = []
@@ -758,7 +757,8 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         logical_index = self.device.index if self.device.index is not None else None
         telemetry_before = query_gpu_telemetry(logical_index)
 
-        router_assignments = {"prefill": 0, "decode": 0}
+        prefill_assignments = 0
+        decode_assignments = 0
         if not self._router_prefix_cache_lengths:
             raise RuntimeError("setup() must initialize router prefix-cache lengths")
         prompt_stub = self._router_prompt_stub
@@ -780,9 +780,9 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 )
                 stage, _ = self.router.route_request(req)
                 if stage == "prefill":
-                    router_assignments["prefill"] += 1
+                    prefill_assignments += 1
                 else:
-                    router_assignments["decode"] += 1
+                    decode_assignments += 1
 
         ttft_times: List[float] = []
         tpot_times: List[float] = []
@@ -836,14 +836,14 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             spec_chunk_used = spec.current_chunk_size()
         self._history["spec_accept"].append(spec_accept_used)
         self._history["spec_chunk"].append(spec_chunk_used)
-        self._history["graph_path"].append(graph_path)
         self._history["nvlink"].append(nvlink_gbps)
         if measured_nvlink is not None:
             self._history["nvlink_measured"].append(measured_nvlink)
         else:
             if not self._nvlink_warned:
                 self._nvlink_warned = True
-        self._history["prefill_share"].append(router_assignments["prefill"] / max(1, cfg.batch_size))
+        routed_requests = max(prefill_assignments + decode_assignments, 1)
+        self._history["prefill_share"].append(prefill_assignments / routed_requests)
         self._history["paged_hit"].append(paged_cache.occupancy_ratio)
         self._history["page_faults"].append(float(paged_cache.page_faults))
         if torch.cuda.is_available():
