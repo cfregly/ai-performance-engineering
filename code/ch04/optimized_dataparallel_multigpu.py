@@ -48,6 +48,10 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
         self.streams: List[torch.cuda.Stream] = []
         self._grad_staging: List[List[torch.Tensor]] = []
         self._parameter_groups: list[tuple[nn.Parameter, ...]] = []
+        self._launch_groups: list[tuple[torch.cuda.Stream, int, nn.Module, torch.Tensor, torch.Tensor]] = []
+        self._wait_groups: list[tuple[torch.cuda.Stream, int]] = []
+        self._reduction_groups: list[tuple[nn.Parameter, tuple[tuple[nn.Parameter, torch.Tensor], ...]]] = []
+        self._broadcast_groups: list[tuple[nn.Parameter, tuple[nn.Parameter, ...]]] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_state: Optional[dict] = None
         self._verify_input: Optional[torch.Tensor] = None
@@ -127,6 +131,22 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
             ]
             for _ in self.models[1:]
         ]
+        self._launch_groups = list(
+            zip(self.streams, self.device_ids, self.models, self.inputs, self.targets, strict=True)
+        )
+        self._wait_groups = list(zip(self.streams, self.device_ids, strict=True))
+        self._reduction_groups = []
+        self._broadcast_groups = []
+        for param_idx, param_group in enumerate(self._parameter_groups):
+            master_param = param_group[0]
+            replica_pairs = tuple(
+                (replica_param, self._grad_staging[replica_idx][param_idx])
+                for replica_idx, replica_param in enumerate(param_group[1:])
+            )
+            self._reduction_groups.append((master_param, replica_pairs))
+            self._broadcast_groups.append(
+                (master_param, tuple(replica_param for replica_param, _ in replica_pairs))
+            )
 
         self._sync_all()
 
@@ -137,50 +157,41 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
         first_output: Optional[torch.Tensor] = None
 
         with self._nvtx_range("optimized_dataparallel_multigpu"):
-            for model_idx, (stream, device_id, model, batch, target) in enumerate(
-                zip(
-                    self.streams,
-                    self.device_ids,
-                    self.models,
-                    self.inputs,
-                    self.targets,
-                )
-            ):
+            for stream, device_id, model, batch, target in self._launch_groups:
                 with torch.cuda.device(device_id), torch.cuda.stream(stream):
                     output = model(batch)
                     loss = nn.functional.mse_loss(output, target)
                     loss.backward()
-                    if model_idx == 0:
+                    if first_output is None:
                         first_output = output
 
-            for stream, device_id in zip(self.streams, self.device_ids):
+            for stream, device_id in self._wait_groups:
                 with torch.cuda.device(device_id):
                     torch.cuda.current_stream(device_id).wait_stream(stream)
 
             # Reduce gradients onto GPU0 and update master parameters.
-            for param_idx, param_group in enumerate(self._parameter_groups):
-                master_grad = param_group[0].grad
+            for master_param, replica_pairs in self._reduction_groups:
+                master_grad = master_param.grad
                 if master_grad is None:
                     continue
                 reduced = master_grad.detach()
-                for replica_idx, replica_param in enumerate(param_group[1:]):
+                for replica_param, staging in replica_pairs:
                     grad = replica_param.grad
                     if grad is None:
                         continue
-                    staging = self._grad_staging[replica_idx][param_idx]
                     staging.copy_(grad, non_blocking=True)
                     reduced.add_(staging)
-                param_group[0].grad = reduced
+                master_param.grad = reduced
 
             self.optimizers[0].step()
             for opt in self.optimizers:
                 opt.zero_grad(set_to_none=True)
 
             # Broadcast updated parameters from GPU0 to all replicas.
-            for param_group in self._parameter_groups:
-                master_param = param_group[0].data
-                for replica_param in param_group[1:]:
-                    replica_param.data.copy_(master_param, non_blocking=True)
+            for master_param, replica_params in self._broadcast_groups:
+                master_data = master_param.data
+                for replica_param in replica_params:
+                    replica_param.data.copy_(master_data, non_blocking=True)
 
         if first_output is None:
             raise RuntimeError("No model output captured")
@@ -224,6 +235,10 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
         self.streams = []
         self._grad_staging = []
         self._parameter_groups = []
+        self._launch_groups = []
+        self._wait_groups = []
+        self._reduction_groups = []
+        self._broadcast_groups = []
         self._verify_state = None
         self._verify_input = None
         self._verify_target = None

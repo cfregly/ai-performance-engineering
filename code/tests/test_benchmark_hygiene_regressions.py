@@ -185,23 +185,36 @@ def test_ch04_optimized_dataparallel_reuses_gradient_staging_buffers() -> None:
 
     assert "self._grad_staging: List[List[torch.Tensor]] = []" in source
     assert "self._parameter_groups: list[tuple[nn.Parameter, ...]] = []" in source
+    assert "self._launch_groups: list[tuple[torch.cuda.Stream, int, nn.Module, torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._wait_groups: list[tuple[torch.cuda.Stream, int]] = []" in source
+    assert "self._reduction_groups: list[tuple[nn.Parameter, tuple[tuple[nn.Parameter, torch.Tensor], ...]]] = []" in source
+    assert "self._broadcast_groups: list[tuple[nn.Parameter, tuple[nn.Parameter, ...]]] = []" in source
     assert "self._parameter_groups = [" in setup_section
     assert "zip(*(model.parameters() for model in self.models), strict=True)" in setup_section
     assert "self._grad_staging = [" in setup_section
     assert "torch.empty_like(param_group[0], device=master_device)" in setup_section
     assert "for param_group in self._parameter_groups" in setup_section
+    assert "self._launch_groups = list(" in setup_section
+    assert "self._wait_groups = list(zip(self.streams, self.device_ids, strict=True))" in setup_section
+    assert "self._reduction_groups.append((master_param, replica_pairs))" in setup_section
+    assert "(master_param, tuple(replica_param for replica_param, _ in replica_pairs))" in setup_section
     assert "grad.to(master_device" not in benchmark_section
     assert "zip(*(model.parameters() for model in self.models))" not in benchmark_section
     assert "zip(*(model.parameters() for model in self.models), strict=True)" not in benchmark_section
+    assert "zip(self.streams, self.device_ids" not in benchmark_section
+    assert "param_group[1:]" not in benchmark_section
     assert "staging.copy_(grad, non_blocking=True)" in benchmark_section
     assert "reduced.add_(staging)" in benchmark_section
     assert "outputs: List[torch.Tensor] = []" not in benchmark_section
     assert "outputs.append(" not in benchmark_section
     assert "first_output: Optional[torch.Tensor] = None" in benchmark_section
     assert "grads = [param.grad for param in param_group]" not in benchmark_section
-    assert "for param_idx, param_group in enumerate(self._parameter_groups):" in benchmark_section
-    assert "for param_group in self._parameter_groups:" in benchmark_section
-    assert "master_grad = param_group[0].grad" in benchmark_section
+    assert "for stream, device_id, model, batch, target in self._launch_groups:" in benchmark_section
+    assert "for stream, device_id in self._wait_groups:" in benchmark_section
+    assert "for master_param, replica_pairs in self._reduction_groups:" in benchmark_section
+    assert "for replica_param, staging in replica_pairs:" in benchmark_section
+    assert "for master_param, replica_params in self._broadcast_groups:" in benchmark_section
+    assert "master_grad = master_param.grad" in benchmark_section
 
 
 def test_ch04_dataparallel_and_reduction_payloads_cache_parameter_counts() -> None:
