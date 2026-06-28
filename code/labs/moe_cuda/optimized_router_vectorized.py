@@ -144,6 +144,17 @@ class VectorizedTopKMoE(nn.Module):
         self.b2 = nn.Parameter(torch.zeros(num_experts, hidden_size))
         nn.init.kaiming_uniform_(self.w1, a=math.sqrt(5))
         nn.init.kaiming_uniform_(self.w2, a=math.sqrt(5))
+        self._flat_token_index_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}
+
+    def _flat_token_indices_for(self, batch: int, device: torch.device | str) -> torch.Tensor:
+        device = torch.device(device)
+        key = (int(batch), self.top_k, device)
+        token_indices = self._flat_token_index_cache.get(key)
+        expected = int(batch) * self.top_k
+        if token_indices is None or token_indices.device != device or token_indices.numel() != expected:
+            token_indices = _flat_token_indices(int(batch), self.top_k, device)
+            self._flat_token_index_cache[key] = token_indices
+        return token_indices
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:  # pragma: no cover - benchmarked
         logits = self.router(tokens)
@@ -165,7 +176,7 @@ class VectorizedTopKMoE(nn.Module):
         expert_out = torch.bmm(hidden.unsqueeze(1), w2).squeeze(1) + b2
         weighted = expert_out * flat_probs
 
-        token_indices = _flat_token_indices(tokens.shape[0], self.top_k, tokens.device)
+        token_indices = self._flat_token_indices_for(tokens.shape[0], tokens.device)
         output = torch.empty_like(tokens, dtype=tokens.dtype)
         combine_index = token_indices.unsqueeze(-1).expand_as(weighted)
         output.scatter_reduce_(0, combine_index, weighted, reduce="sum", include_self=False)
@@ -251,7 +262,7 @@ class GroupedTopKMoE(VectorizedTopKMoE):
             and self._static_token_indices.numel() == expected
         ):
             return self._static_token_indices
-        return _flat_token_indices(batch, self.top_k, tokens.device)
+        return self._flat_token_indices_for(batch, tokens.device)
 
     def _expert_range_for(self, tokens: torch.Tensor) -> torch.Tensor:
         if (

@@ -2699,6 +2699,10 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     source = (
         REPO_ROOT / "labs" / "moe_cuda" / "optimized_router_vectorized.py"
     ).read_text(encoding="utf-8")
+    base_section = source.split("class VectorizedTopKMoE", maxsplit=1)[1].split(
+        "class GroupedTopKMoE",
+        maxsplit=1,
+    )[0]
     forward_section = source.split("def forward(self, tokens: torch.Tensor)", maxsplit=2)[2].split(
         "class VectorizedRouterBenchmark", maxsplit=1
     )[0]
@@ -2708,6 +2712,10 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
 
     assert "configure_static_dispatch_buffers" in source
     assert "def _flat_token_indices" in source
+    assert "self._flat_token_index_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}" in base_section
+    assert "def _flat_token_indices_for(self, batch: int, device: torch.device | str)" in base_section
+    assert "token_indices = self._flat_token_indices_for(tokens.shape[0], tokens.device)" in base_section
+    assert "return self._flat_token_indices_for(batch, tokens.device)" in source
     assert "repeat_interleave(self.top_k)" not in source
     assert 'token_indices.div_(top_k, rounding_mode="floor")' in source
     assert "model.configure_static_dispatch_buffers(self.batch_size, self.inputs.device)" in setup_section
@@ -2729,7 +2737,11 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "model.assume_static_no_overflow = True" in setup_section
     assert ".item()) == num_slots" not in source
 
-    from labs.moe_cuda.optimized_router_vectorized import GroupedTopKMoE, _flat_token_indices
+    from labs.moe_cuda.optimized_router_vectorized import (
+        GroupedTopKMoE,
+        VectorizedTopKMoE,
+        _flat_token_indices,
+    )
 
     torch.testing.assert_close(
         _flat_token_indices(3, 1, torch.device("cpu")),
@@ -2742,6 +2754,16 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     torch.testing.assert_close(
         _flat_token_indices(2, 3, torch.device("cpu")),
         torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.int64),
+    )
+
+    base_model = VectorizedTopKMoE(hidden_size=8, num_experts=4, top_k=2, expansion=1)
+    base_indices = base_model._flat_token_indices_for(3, torch.device("cpu"))
+    base_ptr = base_indices.data_ptr()
+    base_indices_again = base_model._flat_token_indices_for(3, torch.device("cpu"))
+    assert base_indices_again.data_ptr() == base_ptr
+    torch.testing.assert_close(
+        base_indices_again,
+        torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.int64),
     )
 
     model = GroupedTopKMoE(hidden_size=8, num_experts=4, top_k=2, expansion=1)
