@@ -357,6 +357,7 @@ class Engine:
         self._compile_error = None
         self._graph_cache_gen = None  # cache generation tied to current capture
         self._attention_positions = None
+        self._attention_mask = None
         self._batch_row_indices = None
         self._token_column_host = None
         self._active_mask_host = None
@@ -585,12 +586,26 @@ class Engine:
             self._attention_positions = positions
         return positions[:max_len]
 
+    def _attention_mask_buffer(self, batch_size, max_len, device):
+        mask = self._attention_mask
+        if (
+            mask is None
+            or mask.device != device
+            or mask.size(0) < batch_size
+            or mask.size(1) < max_len
+        ):
+            mask = torch.empty((batch_size, max_len), dtype=torch.bool, device=device)
+            self._attention_mask = mask
+        return mask[:batch_size, :max_len]
+
     def _build_attention_mask(self, lengths, max_len=None):
         max_len = int(max_len if max_len is not None else lengths.max().item())
+        mask = self._attention_mask_buffer(lengths.size(0), max_len, lengths.device)
         if max_len <= 0:
-            return torch.zeros((lengths.size(0), 0), dtype=torch.bool, device=lengths.device)
+            return mask
         positions = self._attention_position_buffer(max_len, lengths.device)
-        return positions.unsqueeze(0) < lengths.unsqueeze(1)
+        torch.lt(positions.unsqueeze(0), lengths.unsqueeze(1), out=mask)
+        return mask
 
     def _batch_row_index_buffer(self, batch_size, device):
         indices = self._batch_row_indices
@@ -957,7 +972,8 @@ class Engine:
         generated_counts = [0] * batch_size
 
         use_pinned_transfer = device.type == "cuda"
-        max_prompt_len = max(len(seq) for seq in prompt_tokens_batch)
+        prompt_lengths = [len(seq) for seq in prompt_tokens_batch]
+        max_prompt_len = max(prompt_lengths)
         if max_prompt_len == 0:
             raise ValueError("prompt batch must contain at least one token")
         lengths_host, ids_host = self._prompt_pack_buffers(
@@ -967,7 +983,7 @@ class Engine:
             use_pinned_transfer,
         )
         for i, seq in enumerate(prompt_tokens_batch):
-            seq_len = len(seq)
+            seq_len = prompt_lengths[i]
             lengths_host[i] = seq_len
             if seq_len == 0:
                 continue
@@ -1003,6 +1019,7 @@ class Engine:
 
         row_states = [RowState(tokens.copy()) for tokens in prompt_tokens_batch]
         lengths_by_batch = lengths.clone()
+        lengths_by_row = prompt_lengths.copy()
         ids_buf = torch.empty((batch_size, 1), dtype=torch.long, device=device) if self.reuse_ids_buffer else None
 
         # Special tokens for control flow
@@ -1041,8 +1058,10 @@ class Engine:
                     return_active_rows=True,
                 )
                 step_token_mask = active_mask.unsqueeze(1)
-                next_lengths = lengths_by_batch + step_token_mask[:, 0].to(lengths_by_batch.dtype)
-                attn_mask = self._build_attention_mask(next_lengths)
+                lengths_by_batch.add_(step_token_mask[:, 0])
+                for row_idx in active_rows:
+                    lengths_by_row[row_idx] += 1
+                attn_mask = self._build_attention_mask(lengths_by_batch, max(lengths_by_row))
                 logits = self._execute_decode(step_ids, kv_cache_decode, attention_mask=attn_mask, token_mask=step_token_mask)
                 logits = logits[:, -1, :]
                 sampled_tokens = self._sample_batch_tokens(
@@ -1054,7 +1073,6 @@ class Engine:
                     pad_id,
                     active_rows=active_rows,
                 )
-                lengths_by_batch = next_lengths
                 current_tokens = sampled_tokens
 
             token_column = []

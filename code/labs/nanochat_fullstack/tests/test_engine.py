@@ -348,6 +348,7 @@ def test_build_attention_mask_reuses_position_buffer():
 
     mask = engine._build_attention_mask(lengths, max_len=5)
     positions_ptr = engine._attention_positions.data_ptr()
+    mask_ptr = mask.data_ptr()
 
     expected = torch.tensor(
         [
@@ -360,6 +361,7 @@ def test_build_attention_mask_reuses_position_buffer():
     shorter = engine._build_attention_mask(torch.tensor([1, 3], dtype=torch.long), max_len=5)
 
     assert engine._attention_positions.data_ptr() == positions_ptr
+    assert shorter.data_ptr() == mask_ptr
     torch.testing.assert_close(
         shorter,
         torch.tensor(
@@ -373,6 +375,7 @@ def test_build_attention_mask_reuses_position_buffer():
     grown = engine._build_attention_mask(torch.tensor([6], dtype=torch.long), max_len=6)
 
     assert engine._attention_positions.numel() >= 6
+    assert engine._attention_mask.numel() >= 6
     torch.testing.assert_close(grown, torch.ones((1, 6), dtype=torch.bool))
 
 
@@ -575,10 +578,17 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     assert "lengths.max().item()" not in prompt_pack_section
     assert "torch.tensor(seq, dtype=torch.long, device=device)" not in prompt_pack_section
     assert "self._batch_row_indices = None" in text
+    assert "self._attention_mask = None" in text
+    assert "def _attention_mask_buffer(self, batch_size, max_len, device)" in text
+    assert "torch.lt(positions.unsqueeze(0), lengths.unsqueeze(1), out=mask)" in text
     assert "batch_rows = self._batch_row_index_buffer(batch_size, device)" in generate_batched
     assert "torch.arange(batch_size, device=device)" not in generate_batched
     assert "active_mask = self._full_active_mask(batch_size, device)" in generate_batched
     assert "torch.ones(batch_size, dtype=torch.bool, device=device)" not in generate_batched
+    assert "lengths_by_batch.add_(step_token_mask[:, 0])" in generate_batched
+    assert "attn_mask = self._build_attention_mask(lengths_by_batch, max(lengths_by_row))" in generate_batched
+    assert "next_lengths = lengths_by_batch +" not in generate_batched
+    assert "attn_mask = self._build_attention_mask(next_lengths)" not in generate_batched
 
 
 def test_attention_reuses_cu_seqlens_buffers():
