@@ -42,9 +42,8 @@ def eval_with_timeout(formula, max_time=3):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", SyntaxWarning)
                 return eval(formula, {"__builtins__": {}}, {})
-    except Exception as e:
+    except Exception:
         signal.alarm(0)
-        # print(f"Warning: Failed to eval {formula}, exception: {e}") # it's ok ignore wrong calculator usage
         return None
 
 def use_calculator(expr):
@@ -362,6 +361,8 @@ class Engine:
         self._token_column_host = None
         self._active_mask_host = None
         self._active_mask_device = None
+        self._active_indices_host = None
+        self._active_indices_device = None
         self._sample_token_device_buffer = None
         self._sample_token_host_buffer = None
         self._sample_next_id_buffer = None
@@ -661,6 +662,31 @@ class Engine:
             self._active_mask_device = torch.empty(count, dtype=torch.bool, device=device)
         return self._active_mask_device[:count]
 
+    def _active_index_buffers(self, count, device):
+        if (
+            self._active_indices_device is None
+            or self._active_indices_device.device != device
+            or self._active_indices_device.numel() < count
+        ):
+            self._active_indices_device = torch.empty(count, dtype=torch.long, device=device)
+        active_indices = self._active_indices_device[:count]
+        if device.type == "cpu":
+            return active_indices, active_indices
+
+        pin_memory = device.type == "cuda"
+        if (
+            self._active_indices_host is None
+            or self._active_indices_host.numel() < count
+            or self._active_indices_host.is_pinned() != pin_memory
+        ):
+            self._active_indices_host = torch.empty(
+                count,
+                dtype=torch.long,
+                device="cpu",
+                pin_memory=pin_memory,
+            )
+        return active_indices, self._active_indices_host[:count]
+
     def _full_active_mask(self, count, device):
         active_mask = self._active_mask_buffer(count, device)
         active_mask.fill_(True)
@@ -680,17 +706,31 @@ class Engine:
         return ids_buf[:count]
 
     def _active_mask_for_rows(
-        self, row_states, generated_counts, row_max_tokens, device, return_active_rows=False,
+        self,
+        row_states,
+        generated_counts,
+        row_max_tokens,
+        device,
+        return_active_rows=False,
+        return_active_indices=False,
     ):
         count = len(row_states)
         active_mask = self._active_mask_buffer(count, device)
         active_rows = [] if return_active_rows else None
+        active_indices = None
+        active_index_target = None
+        active_count = 0
+        if return_active_indices:
+            active_indices, active_index_target = self._active_index_buffers(count, device)
         if active_mask.device.type == "cpu":
             for idx, state in enumerate(row_states):
                 is_active = (not state.completed) and generated_counts[idx] < row_max_tokens[idx]
                 active_mask[idx] = is_active
                 if is_active and active_rows is not None:
                     active_rows.append(idx)
+                if is_active and active_index_target is not None:
+                    active_index_target[active_count] = idx
+                    active_count += 1
         else:
             host = self._host_bool_buffer(count)
             for idx, state in enumerate(row_states):
@@ -698,9 +738,23 @@ class Engine:
                 host[idx] = is_active
                 if is_active and active_rows is not None:
                     active_rows.append(idx)
+                if is_active and active_index_target is not None:
+                    active_index_target[active_count] = idx
+                    active_count += 1
             active_mask.copy_(host, non_blocking=True)
+            if active_indices is not None:
+                active_indices[:active_count].copy_(
+                    active_index_target[:active_count],
+                    non_blocking=True,
+                )
+        if active_indices is not None:
+            active_indices = active_indices[:active_count]
+        if return_active_rows and return_active_indices:
+            return active_mask, active_rows, active_indices
         if return_active_rows:
             return active_mask, active_rows
+        if return_active_indices:
+            return active_mask, active_indices
         return active_mask
 
     def _sample_host_token_buffer(self, count, source_device):
@@ -784,12 +838,20 @@ class Engine:
         return [int(token) for token in host_tokens.tolist()]
 
     def _sample_batch_tokens(
-        self, logits, rng, temperatures, top_ks, active_mask, pad_id, active_rows=None,
+        self,
+        logits,
+        rng,
+        temperatures,
+        top_ks,
+        active_mask,
+        pad_id,
+        active_rows=None,
+        active_indices=None,
     ):
         sampled_tokens = [pad_id] * logits.size(0)
-        active_indices = None
         if active_rows is None:
-            active_indices = active_mask.nonzero(as_tuple=False).squeeze(-1)
+            if active_indices is None:
+                active_indices = active_mask.nonzero(as_tuple=False).squeeze(-1)
             if active_indices.numel() == 0:
                 return sampled_tokens
             active_rows = active_indices.tolist()
@@ -852,7 +914,6 @@ class Engine:
         bos = self.tokenizer.get_bos_token_id() # if sampled, ends row
 
         # 1) Run a batch 1 prefill of the prompt tokens
-        m = self.model.config
         kv_cache_prefill = KVCache(**self._kv_cache_params(batch_size=1, seq_len=len(tokens)))
         ids = torch.tensor([tokens], dtype=torch.long, device=device)
         logits = self.model.forward(ids, kv_cache=kv_cache_prefill)
@@ -1001,7 +1062,6 @@ class Engine:
 
         attention_mask = self._build_attention_mask(lengths, max_prompt_len)
 
-        m = self.model.config
         kv_length_hint = max_prompt_len + int(max(row_max_tokens)) if row_max_tokens else max_prompt_len
         kv_cache_prefill = KVCache(**self._kv_cache_params(batch_size=batch_size, seq_len=max_prompt_len))
         logits = self.model.forward(ids, kv_cache=kv_cache_prefill, attention_mask=attention_mask, token_mask=attention_mask)
@@ -1058,12 +1118,13 @@ class Engine:
                     step_ids = self._fill_ids_buffer_from_tokens(ids_buf, token_column)
                 else:
                     step_ids = torch.tensor(token_column, dtype=torch.long, device=device).unsqueeze(1)
-                active_mask, active_rows = self._active_mask_for_rows(
+                active_mask, active_rows, active_indices = self._active_mask_for_rows(
                     row_states,
                     generated_counts,
                     row_max_tokens,
                     device,
                     return_active_rows=True,
+                    return_active_indices=True,
                 )
                 step_token_mask = active_mask.unsqueeze(1)
                 lengths_by_batch.add_(step_token_mask[:, 0])
@@ -1080,6 +1141,7 @@ class Engine:
                     active_mask,
                     pad_id,
                     active_rows=active_rows,
+                    active_indices=active_indices,
                 )
                 current_tokens = sampled_tokens
 

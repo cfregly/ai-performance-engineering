@@ -148,6 +148,7 @@ def test_sample_batch_tokens_batches_uniform_sampling(monkeypatch):
         active_mask=active_mask,
         pad_id=0,
         active_rows=[0, 2, 3],
+        active_indices=torch.tensor([0, 2, 3], dtype=torch.long),
     )
 
     assert calls == [(3, 0.7, 4)]
@@ -497,30 +498,36 @@ def test_decode_step_helpers_reuse_token_and_active_mask_buffers():
         SimpleNamespace(completed=True),
         SimpleNamespace(completed=False),
     ]
-    active_mask, active_rows = engine._active_mask_for_rows(
+    active_mask, active_rows, active_indices = engine._active_mask_for_rows(
         row_states,
         generated_counts=[0, 0, 2],
         row_max_tokens=[2, 2, 2],
         device=torch.device("cpu"),
         return_active_rows=True,
+        return_active_indices=True,
     )
     mask_ptr = engine._active_mask_device.data_ptr()
+    indices_ptr = engine._active_indices_device.data_ptr()
 
     torch.testing.assert_close(active_mask, torch.tensor([True, False, False]))
     assert active_rows == [0]
+    torch.testing.assert_close(active_indices, torch.tensor([0]))
 
     row_states[1].completed = False
-    refreshed, refreshed_rows = engine._active_mask_for_rows(
+    refreshed, refreshed_rows, refreshed_indices = engine._active_mask_for_rows(
         row_states,
         generated_counts=[1, 1, 1],
         row_max_tokens=[2, 2, 2],
         device=torch.device("cpu"),
         return_active_rows=True,
+        return_active_indices=True,
     )
 
     assert engine._active_mask_device.data_ptr() == mask_ptr
+    assert engine._active_indices_device.data_ptr() == indices_ptr
     torch.testing.assert_close(refreshed, torch.tensor([True, True, True]))
     assert refreshed_rows == [0, 1, 2]
+    torch.testing.assert_close(refreshed_indices, torch.tensor([0, 1, 2]))
 
     tokens = engine._token_tensor_to_list(torch.tensor([10, 11], dtype=torch.long))
     sample_host = engine._sample_token_host_buffer
@@ -549,6 +556,8 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
 
     assert "self._sample_token_device_buffer = None" in text
     assert "self._sample_token_host_buffer = None" in text
+    assert "self._active_indices_device = None" in text
+    assert "self._active_indices_host = None" in text
     assert "self._sample_next_id_buffer = None" in text
     assert "self._sample_probs_buffer = None" in text
     assert "def _sample_host_token_buffer(self, count, source_device)" in text
@@ -560,6 +569,7 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "device_tokens.copy_(flat_tokens)" not in token_list_section
     assert "**self._sample_workspace(active_logits, first_top_k, first_temp)," in sample_section
     assert "**self._sample_workspace(row_logits, top_k, temp)," in sample_section
+    assert "active_indices=None" in sample_section
     assert "self._token_tensor_to_list(next_ids[:, 0])" in sample_section
     assert "sampled_device[sample_idx].copy_(next_id[0, 0])" in sample_section
     assert "sampled_host.copy_(sampled_device, non_blocking=sampled_device.device.type == \"cuda\")" in sample_section
@@ -624,6 +634,9 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     assert "active_mask = self._full_active_mask(batch_size, device)" in generate_batched
     assert "torch.ones(batch_size, dtype=torch.bool, device=device)" not in generate_batched
     assert "lengths_by_batch.add_(step_token_mask[:, 0])" in generate_batched
+    assert "return_active_indices=True" in generate_batched
+    assert "active_indices=active_indices" in generate_batched
+    assert "torch.as_tensor(active_rows" not in generate_batched
     assert "attn_mask = self._build_attention_mask(lengths_by_batch, max(lengths_by_row))" in generate_batched
     assert "next_lengths = lengths_by_batch +" not in generate_batched
     assert "attn_mask = self._build_attention_mask(next_lengths)" not in generate_batched
