@@ -125,6 +125,7 @@ class MoELayer(nn.Module):
         self.top_k = top_k
         self._route_token_cache: Dict[Tuple[int, int, str], torch.Tensor] = {}
         self._route_count_host_buffer: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         
         self.router = LoadBalancedRouter(hidden_size, num_experts, top_k)
         
@@ -133,6 +134,18 @@ class MoELayer(nn.Module):
             ExpertMLP(hidden_size, intermediate_size)
             for _ in range(num_experts)
         ])
+
+    def _output_for(self, flat: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled() and flat.requires_grad:
+            return torch.empty_like(flat)
+        if (
+            self._output_buffer is None
+            or self._output_buffer.shape != flat.shape
+            or self._output_buffer.device != flat.device
+            or self._output_buffer.dtype != flat.dtype
+        ):
+            self._output_buffer = torch.empty_like(flat)
+        return self._output_buffer
 
     def _route_token_ids(
         self,
@@ -183,7 +196,7 @@ class MoELayer(nn.Module):
         # Flatten for expert processing
         x_flat = x.view(-1, hidden_size)  # [batch * seq_len, hidden_size]
         num_tokens = batch_size * seq_len
-        output_flat = torch.empty_like(x_flat)
+        output_flat = self._output_for(x_flat)
 
         first_experts = selected_experts[..., 0].reshape(-1)
         first_weights = routing_weights[..., 0].reshape(-1)

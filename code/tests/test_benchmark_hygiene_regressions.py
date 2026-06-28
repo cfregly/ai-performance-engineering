@@ -4859,6 +4859,10 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     torch.testing.assert_close(output.view_as(expected), expected, rtol=1e-5, atol=1e-5)
     layer(x)
     assert layer._route_count_host_buffer is route_count_host
+    assert layer._output_buffer is not None
+    output_ptr = layer._output_buffer.data_ptr()
+    layer(x)
+    assert layer._output_buffer.data_ptr() == output_ptr
 
     source = (REPO_ROOT / "labs" / "real_world_models" / "deepseek_r1_moe_optimization.py").read_text(
         encoding="utf-8"
@@ -4885,7 +4889,12 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "torch.arange(1, n + 1" not in router_forward
     assert "def _route_token_ids" in moe_forward
     assert "repeat_interleave(self.top_k)" not in moe_forward
-    assert "output_flat = torch.empty_like(x_flat)" in moe_forward
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in moe_forward
+    assert "def _output_for(self, flat: torch.Tensor) -> torch.Tensor:" in moe_forward
+    assert "if torch.is_grad_enabled() and flat.requires_grad:" in moe_forward
+    assert "self._output_buffer = torch.empty_like(flat)" in moe_forward
+    assert "output_flat = self._output_for(x_flat)" in moe_forward
+    assert "output_flat = torch.empty_like(x_flat)" not in moe_forward
     assert "output_flat = torch.zeros_like(x_flat)" not in moe_forward
     assert moe_forward.count("expert_output.mul_(weights)") == 2
     assert "output_flat.index_copy_(0, token_indices, expert_output)" in moe_forward
