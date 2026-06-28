@@ -118,7 +118,7 @@ class CUDAGraphBucketing:
         warmup_stream = torch.cuda.Stream()
         warmup_stream.wait_stream(torch.cuda.current_stream())
         
-        with torch.cuda.stream(warmup_stream):
+        with torch.cuda.stream(warmup_stream), torch.inference_mode():
             for _ in range(3):
                 _ = self.model(self.static_inputs[key])
         
@@ -126,7 +126,7 @@ class CUDAGraphBucketing:
         
         # Capture the graph
         self.graphs[key] = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(self.graphs[key]):
+        with torch.inference_mode(), torch.cuda.graph(self.graphs[key]):
             self.static_outputs[key] = self.model(self.static_inputs[key])
         
         self.capture_count += 1
@@ -165,7 +165,8 @@ class CUDAGraphBucketing:
             Output tensor, unpadded to original size
         """
         if not torch.cuda.is_available():
-            return self.model(x)
+            with torch.inference_mode():
+                return self.model(x)
         
         batch, seq = x.shape[:2]
         key = self._find_bucket(batch, seq)
@@ -173,7 +174,8 @@ class CUDAGraphBucketing:
         if key is None or key not in self.graphs:
             # Fallback to eager execution
             self.fallback_count += 1
-            return self.model(x)
+            with torch.inference_mode():
+                return self.model(x)
         
         bucket_batch, bucket_seq = key
         

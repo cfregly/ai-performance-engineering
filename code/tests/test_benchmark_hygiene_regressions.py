@@ -3923,6 +3923,16 @@ def test_ch18_cudagraph_bucketing_static_inputs_avoid_zero_fill() -> None:
 
         assert "self.static_inputs[key] = torch.empty(" in capture_section
         assert "self.static_inputs[key] = torch.zeros(" not in capture_section
+        if relative.endswith("optimized_cudagraph_bucketing.py"):
+            forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1].split(
+                "def get_stats",
+                maxsplit=1,
+            )[0]
+            assert "with torch.cuda.stream(warmup_stream), torch.inference_mode():" in capture_section
+            assert "with torch.inference_mode(), torch.cuda.graph(self.graphs[key]):" in capture_section
+            assert forward_section.count("with torch.inference_mode():") >= 2
+            assert "torch.no_grad()" not in capture_section
+            assert "torch.no_grad()" not in forward_section
 
 
 def test_ch18_dynamic_flex_attention_mask_avoids_scalar_tensor_allocation() -> None:
