@@ -3368,6 +3368,24 @@ def test_ch20_end_to_end_bandwidth_uses_inplace_activation() -> None:
         assert "with torch.no_grad():" not in benchmark_section
 
 
+def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
+    source = (REPO_ROOT / "ch20" / "optimized_end_to_end_bandwidth.py").read_text(encoding="utf-8")
+    pipeline_section = source.split("class SimplePipeline", maxsplit=1)[1].split(
+        "class OptimizedEndToEndBandwidthBenchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "self._fc1_buffer: Optional[torch.Tensor] = None" in pipeline_section
+    assert "self._fc2_buffer: Optional[torch.Tensor] = None" in pipeline_section
+    assert "def _ensure_forward_buffers(" in pipeline_section
+    assert "if torch.is_grad_enabled():" in pipeline_section
+    assert "torch.mm(x, self.fc1.weight.t(), out=fc1_out)" in pipeline_section
+    assert "fc1_out.add_(self.fc1.bias)" in pipeline_section
+    assert "self.relu(fc1_out)" in pipeline_section
+    assert "torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)" in pipeline_section
+    assert "fc2_out.add_(self.fc2.bias)" in pipeline_section
+
+
 def test_ch20_training_and_moe_use_inplace_relu_modules() -> None:
     for relative in (
         "ch20/baseline_training_single.py",
