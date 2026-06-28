@@ -5933,7 +5933,7 @@ def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
     )
 
 
-def test_ch13_sequence_parallel_worker_reuses_full_sequence_buffer() -> None:
+def test_ch13_sequence_parallel_worker_reuses_rank_major_gather_buffer() -> None:
     source = (REPO_ROOT / "ch13" / "sequence_parallel_benchmark_common.py").read_text(
         encoding="utf-8"
     )
@@ -5943,8 +5943,12 @@ def test_ch13_sequence_parallel_worker_reuses_full_sequence_buffer() -> None:
         maxsplit=1,
     )[0]
 
-    assert "full_sequence_buf = torch.empty(" in run_section
-    assert "torch.cat(gather_buf, dim=1, out=full_sequence_buf)" in step_section
+    assert "full_sequence_gather_buf = torch.empty(" in run_section
+    assert "dist.all_gather_into_tensor(full_sequence_gather_buf, out_partial)" in step_section
+    assert "full_sequence_by_rank = full_sequence_gather_buf.view(" in step_section
+    assert "x = full_sequence[rank]" in step_section
+    assert "dist.all_gather(gather_buf, out_partial)" not in step_section
+    assert "torch.cat(gather_buf, dim=1, out=full_sequence_buf)" not in step_section
     assert "full_sequence = torch.cat(gather_buf, dim=1)" not in step_section
 
 

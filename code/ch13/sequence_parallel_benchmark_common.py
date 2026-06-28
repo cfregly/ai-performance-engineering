@@ -97,15 +97,11 @@ def run_sequence_parallel(
         device=device,
         dtype=config.dtype,
     )
-    gather_buf = [
-        torch.empty_like(x_local)
-        for _ in range(world_size)
-    ]
-    full_sequence_buf = None
+    full_sequence_gather_buf = None
     if not sequence_parallel:
-        full_sequence_buf = torch.empty(
-            config.batch_size,
-            seq_len,
+        full_sequence_gather_buf = torch.empty(
+            world_size * config.batch_size,
+            seq_per_rank,
             config.hidden_size,
             device=device,
             dtype=config.dtype,
@@ -120,14 +116,17 @@ def run_sequence_parallel(
             if sequence_parallel:
                 x = norms[layer_idx](out_partial)
             else:
-                dist.all_gather(gather_buf, out_partial)
-                if full_sequence_buf is None:
-                    raise RuntimeError("full_sequence buffer missing for TP-only path")
-                torch.cat(gather_buf, dim=1, out=full_sequence_buf)
-                full_sequence = norms[layer_idx](full_sequence_buf)
-                start = rank * seq_per_rank
-                end = start + seq_per_rank
-                x = full_sequence[:, start:end]
+                if full_sequence_gather_buf is None:
+                    raise RuntimeError("full_sequence gather buffer missing for TP-only path")
+                dist.all_gather_into_tensor(full_sequence_gather_buf, out_partial)
+                full_sequence_by_rank = full_sequence_gather_buf.view(
+                    world_size,
+                    config.batch_size,
+                    seq_per_rank,
+                    config.hidden_size,
+                )
+                full_sequence = norms[layer_idx](full_sequence_by_rank)
+                x = full_sequence[rank]
         return x
 
     for _ in range(max(warmup, 0)):
