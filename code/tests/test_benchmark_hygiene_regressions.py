@@ -1506,6 +1506,25 @@ def test_ch04_eval_reduction_and_disagg_paths_use_inference_mode() -> None:
         assert "with torch.no_grad():" not in benchmark_section
 
 
+def test_ch04_optimized_disaggregated_normalizes_allreduce_in_place() -> None:
+    for relative in (
+        "ch04/optimized_disaggregated.py",
+        "ch04/optimized_disaggregated_multigpu.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "dist.all_reduce(prefill_output, op=dist.ReduceOp.SUM)" in benchmark_section
+        assert "prefill_output.div_(self.world_size)" in benchmark_section
+        assert "prefill_output = prefill_output / self.world_size" not in benchmark_section
+        assert "dist.all_reduce(decode_output, op=dist.ReduceOp.SUM)" in benchmark_section
+        assert "decode_output.div_(self.world_size)" in benchmark_section
+        assert "decode_output = decode_output / self.world_size" not in benchmark_section
+
+
 def test_ch06_ch12_cuda_output_buffers_skip_setup_zero_fill() -> None:
     targets = (
         "ch06/baseline_launch_bounds.py",

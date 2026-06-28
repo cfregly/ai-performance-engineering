@@ -15,7 +15,6 @@ import torch.nn as nn
 import torch.distributed as dist
 import copy
 
-from core.utils.compile_utils import compile_model
 from core.benchmark.gpu_requirements import skip_if_insufficient_gpus
 from core.common.device_utils import resolve_local_rank
 
@@ -122,7 +121,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 # Synchronize prefill across GPUs
                 if self.is_distributed:
                     dist.all_reduce(prefill_output, op=dist.ReduceOp.SUM)
-                    prefill_output = prefill_output / self.world_size
+                    prefill_output.div_(self.world_size)
                 
                 # Process decode on dedicated decode GPUs (autoregressive, latency-sensitive)
                 decode_output = self.decode_model(self.decode_input)
@@ -130,7 +129,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 # Synchronize decode across GPUs
                 if self.is_distributed:
                     dist.all_reduce(decode_output, op=dist.ReduceOp.SUM)
-                    decode_output = decode_output / self.world_size
+                    decode_output.div_(self.world_size)
                 self.output = decode_output.detach()
 
     def capture_verification_payload(self) -> None:
