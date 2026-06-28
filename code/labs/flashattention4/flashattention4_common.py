@@ -66,6 +66,7 @@ FLASHATTENTION4_CLAIM_TYPE_IDS = {
 FLASHATTENTION4_EDUCATIONAL_TARGET = "labs/flashattention4:flashattention4"
 FLASHATTENTION4_ABSOLUTE_TARGET = "labs/flashattention4:best_available_attention"
 FLASHATTENTION4_REPRODUCTION_ENTRYPOINT = "labs/flashattention4/tflops_microbench.py"
+_ALIBI_DISTANCE_CACHE: dict[tuple[int, torch.device], torch.Tensor] = {}
 
 
 @dataclass(frozen=True)
@@ -380,6 +381,17 @@ def build_dense_attention_mask(
     return mask.unsqueeze(0).unsqueeze(0)
 
 
+def _alibi_distance_for(seq_len: int, device: torch.device) -> torch.Tensor:
+    key = (int(seq_len), torch.device(device))
+    cached = _ALIBI_DISTANCE_CACHE.get(key)
+    if cached is None:
+        positions = torch.arange(seq_len, device=device, dtype=torch.float32)
+        cached = positions[:, None] - positions[None, :]
+        cached.clamp_min_(0)
+        _ALIBI_DISTANCE_CACHE[key] = cached
+    return cached
+
+
 def build_alibi_slopes(num_heads: int, *, device: torch.device) -> torch.Tensor:
     """Standard ALiBi slope generation."""
 
@@ -495,9 +507,7 @@ def reference_attention(inputs: FlashAttention4Inputs) -> torch.Tensor:
 
     if inputs.alibi_slopes is not None:
         seq_len = inputs.q.size(-2)
-        q_pos = torch.arange(seq_len, device=inputs.q.device)[:, None]
-        kv_pos = torch.arange(seq_len, device=inputs.q.device)[None, :]
-        distance = (q_pos - kv_pos).clamp_min(0).to(torch.float32)
+        distance = _alibi_distance_for(seq_len, inputs.q.device)
         scores = scores - inputs.alibi_slopes.view(1, -1, 1, 1) * distance.view(1, 1, seq_len, seq_len)
 
     if inputs.softcap_scale is not None:

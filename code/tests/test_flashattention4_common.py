@@ -13,6 +13,8 @@ from labs.flashattention4.optimized_best_available_attention_alibi import (
 from labs.flashattention4.flashattention4_common import (
     FlashAttention4Inputs,
     FlashAttention4Config,
+    _ALIBI_DISTANCE_CACHE,
+    _alibi_distance_for,
     _experimental_windowed_skip_reason,
     best_available_candidate_providers,
     build_flashattention4_mode_table_payload,
@@ -57,6 +59,27 @@ def test_reference_attention_runs_for_softcap_mode_on_cpu() -> None:
     output = reference_attention(inputs)
     assert output.shape == (1, 2, 8, 4)
     assert output.dtype == torch.float32
+
+
+def test_reference_attention_reuses_alibi_distance_cache_on_cpu() -> None:
+    cfg = FlashAttention4Config(
+        batch=1,
+        heads=2,
+        seq_len=8,
+        head_dim=4,
+        mode="alibi",
+        dtype=torch.float32,
+    )
+    inputs = build_reference_inputs(cfg, device=torch.device("cpu"), include_block_mask=False)
+    _ALIBI_DISTANCE_CACHE.clear()
+
+    first = reference_attention(inputs)
+    first_distance = _alibi_distance_for(cfg.seq_len, inputs.q.device)
+    second = reference_attention(inputs)
+    second_distance = _alibi_distance_for(cfg.seq_len, inputs.q.device)
+
+    assert second_distance.data_ptr() == first_distance.data_ptr()
+    torch.testing.assert_close(first, second)
 
 
 def test_attention_flop_count_matches_dense_and_causal_conventions() -> None:
