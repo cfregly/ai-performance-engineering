@@ -19,6 +19,8 @@ class BaselineElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input: Optional[torch.Tensor] = None
         self._buf0: Optional[torch.Tensor] = None
         self._buf1: Optional[torch.Tensor] = None
+        self._output_view0: Optional[torch.Tensor] = None
+        self._output_view1: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.N = 50_000_000
         self._extension = None
@@ -40,11 +42,14 @@ class BaselineElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32) * 0.1
         self._buf0 = torch.empty(self.N, device=self.device, dtype=torch.float32)
         self._buf1 = torch.empty(self.N, device=self.device, dtype=torch.float32)
+        self._output_view0 = self._buf0[:1024]
+        self._output_view1 = self._buf1[:1024]
         self._synchronize()
     
     def benchmark_fn(self) -> None:
         """Benchmark: sequential operations (low ILP)."""
         assert self._extension is not None and self.input is not None and self._buf0 is not None and self._buf1 is not None
+        assert self._output_view0 is not None and self._output_view1 is not None
         with self._nvtx_range("elementwise_ilp_baseline"):
             src: torch.Tensor = self.input
             buf0: torch.Tensor = self._buf0
@@ -54,7 +59,7 @@ class BaselineElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._extension.sequential_ops(dst, src)
                 src, dst = dst, (buf1 if dst is buf0 else buf0)
 
-        self.output = src[:1024]
+        self.output = self._output_view0 if src is buf0 else self._output_view1
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -72,6 +77,8 @@ class BaselineElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input = None
         self._buf0 = None
         self._buf1 = None
+        self._output_view0 = None
+        self._output_view1 = None
         self.output = None
         torch.cuda.empty_cache()
 

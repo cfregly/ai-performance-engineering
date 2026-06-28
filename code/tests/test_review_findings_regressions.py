@@ -119,10 +119,18 @@ def test_ch06_ilp_benchmarks_defer_verification_clone_out_of_hot_path() -> None:
         "ch06/baseline_attention_ilp.py",
         "ch06/optimized_attention_ilp.py",
     ):
+        source_text = _read(relative_path)
         benchmark_text = _benchmark_section(relative_path)
-        capture_text = _read(relative_path).split("def capture_verification_payload", 1)[1]
+        capture_text = source_text.split("def capture_verification_payload", 1)[1]
+        probe_size = "4096" if "attention" in relative_path else "1024"
 
+        assert "self._output_view0: Optional[torch.Tensor] = None" in source_text
+        assert "self._output_view1: Optional[torch.Tensor] = None" in source_text
+        assert f"self._output_view0 = self._buf0[:{probe_size}]" in source_text
+        assert f"self._output_view1 = self._buf1[:{probe_size}]" in source_text
         assert ".clone()" not in benchmark_text
+        assert "self.output = src[:" not in benchmark_text
+        assert "self.output = self._output_view0 if src is buf0 else self._output_view1" in benchmark_text
         assert "output=self.output.detach().clone()" in capture_text
 
 
