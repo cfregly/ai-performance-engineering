@@ -63,6 +63,7 @@ class DensePagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(self.batch_size * self.seq_len),
         )
+        self._enable_nvtx = False
 
     def _configure_backend(self) -> None:
         if self.backend == "math":
@@ -75,6 +76,8 @@ class DensePagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         if not torch.cuda.is_available():
             raise RuntimeError("FAIL FAST: paged attention benchmark requires CUDA")
 
@@ -95,8 +98,7 @@ class DensePagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
         k = self.qkv[:, :, :, 1]
         v = self.qkv[:, :, :, 2]
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range(self.nvtx_label, enable=enable_nvtx):
+        with nvtx_range(self.nvtx_label, enable=self._enable_nvtx):
             self.output = F.scaled_dot_product_attention(q, k, v)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output")
@@ -177,10 +179,13 @@ class LayoutPagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(self.batch_size * self.decode_tokens),
         )
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         if not torch.cuda.is_available():
             raise RuntimeError("FAIL FAST: paged attention benchmark requires CUDA")
         if self.seq_len % self.block_size != 0:
@@ -286,8 +291,7 @@ class LayoutPagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
         return self._flex_attention_fn(self.q, self.k_dense, self.v_dense, block_mask=self.block_mask)
 
     def benchmark_fn(self) -> Optional[dict]:
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range(self.nvtx_label, enable=enable_nvtx):
+        with nvtx_range(self.nvtx_label, enable=self._enable_nvtx):
             self.output = self._run_attention()
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output")

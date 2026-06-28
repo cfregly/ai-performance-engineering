@@ -25,9 +25,12 @@ class SchedulingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.request_lengths: list[int] = []
         self.output: Optional[torch.Tensor] = None
         self._output_values: Optional[list[float]] = None
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         random.seed(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.queue.clear()
         self.request_lengths = [random.randint(4, 32) for _ in range(8)]
         self.output = None
@@ -42,8 +45,7 @@ class SchedulingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return accepted
 
     def benchmark_fn(self) -> Optional[dict]:
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("scheduling_vllm_sglang", enable=enable_nvtx):
+        with nvtx_range("scheduling_vllm_sglang", enable=self._enable_nvtx):
             if not self.queue:
                 self._enqueue_requests()
             batch_tokens = 0

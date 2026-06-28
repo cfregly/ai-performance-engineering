@@ -2186,6 +2186,10 @@ def test_ch18_paged_attention_uses_real_block_table_sparse_kernel() -> None:
     assert "return self._flex_attention_fn(self.q, self.k_dense, self.v_dense, block_mask=self.block_mask)" in common_source
     assert "_gather_paged_kv" not in common_source
     assert "LayoutPagedAttnBase" in optimized_source
+    assert common_source.count("self._enable_nvtx = get_nvtx_enabled(config) if config else False") == 2
+    assert "get_nvtx_enabled(self.get_config())" not in common_source
+    assert "enable=enable_nvtx" not in common_source
+    assert common_source.count("enable=self._enable_nvtx") == 2
 
 
 def test_ch04_nvshmem_symmetric_broadcast_overlap_defines_done_event() -> None:
@@ -2701,6 +2705,14 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
         assert "torch.tensor(" not in benchmark_section
         assert "self._output_values =" in benchmark_section
         assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
+        if relative.endswith("scheduling_vllm_sglang.py"):
+            setup_section = source.split("def setup", maxsplit=1)[1].split(
+                "def _enqueue_requests", maxsplit=1
+            )[0]
+            assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+            assert "get_config()" not in benchmark_section
+            assert "get_nvtx_enabled(" not in benchmark_section
+            assert "enable=self._enable_nvtx" in benchmark_section
 
 
 def test_ch18_cudagraph_bucketing_static_inputs_avoid_zero_fill() -> None:
