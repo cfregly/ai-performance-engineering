@@ -73,3 +73,45 @@ def test_dep2_naive_moe_seeds_output_from_first_route() -> None:
     tokens = workload.x.reshape(-1, cfg.hidden_size)
 
     torch.testing.assert_close(workload._moe_naive(tokens), workload._moe_vectorized(tokens))
+
+
+def test_dep2_naive_forward_reuses_output_buffer_without_stack() -> None:
+    class_source = inspect.getsource(Dep2Workload)
+    forward_source = inspect.getsource(Dep2Workload.forward_naive)
+
+    assert "self._naive_output: torch.Tensor | None = None" in class_source
+    assert "def _naive_output_buffer(self) -> torch.Tensor:" in class_source
+    assert "output = self._naive_output_buffer()" in forward_source
+    assert "replica_out = output[replica].reshape(-1, self.cfg.hidden_size)" in forward_source
+    assert "torch.add(attn, moe, out=replica_out)" in forward_source
+    assert "outputs = []" not in forward_source
+    assert "outputs.append(" not in forward_source
+    assert "torch.stack(outputs" not in forward_source
+
+    torch.manual_seed(2)
+    cfg = Dep2Config(
+        dp_replicas=2,
+        batch_size=2,
+        seq_len=3,
+        hidden_size=8,
+        intermediate_size=16,
+        num_experts=4,
+        top_k=2,
+        dtype=torch.float32,
+    )
+    workload = Dep2Workload(cfg, torch.device("cpu"))
+
+    expected = torch.empty_like(workload.x)
+    for replica in range(cfg.dp_replicas):
+        tokens = workload.x[replica].reshape(-1, cfg.hidden_size)
+        expected[replica].view(-1, cfg.hidden_size).copy_(
+            (tokens @ workload.attn_weight) + workload._moe_naive(tokens)
+        )
+
+    first = workload.forward_naive()
+    first_ptr = first.data_ptr()
+    second = workload.forward_naive()
+
+    assert second.data_ptr() == first_ptr
+    torch.testing.assert_close(first, expected)
+    torch.testing.assert_close(second, expected)

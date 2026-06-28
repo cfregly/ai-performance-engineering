@@ -47,6 +47,23 @@ class Dep2Workload:
         self.gate_weight = torch.randn(cfg.hidden_size, cfg.num_experts, device=device, dtype=cfg.dtype)
         self.w1 = torch.randn(cfg.num_experts, cfg.hidden_size, cfg.intermediate_size, device=device, dtype=cfg.dtype)
         self.w2 = torch.randn(cfg.num_experts, cfg.intermediate_size, cfg.hidden_size, device=device, dtype=cfg.dtype)
+        self._naive_output: torch.Tensor | None = None
+
+    def _naive_output_buffer(self) -> torch.Tensor:
+        shape = (
+            self.cfg.dp_replicas,
+            self.cfg.batch_size,
+            self.cfg.seq_len,
+            self.cfg.hidden_size,
+        )
+        if (
+            self._naive_output is None
+            or self._naive_output.shape != shape
+            or self._naive_output.device != self.x.device
+            or self._naive_output.dtype != self.x.dtype
+        ):
+            self._naive_output = torch.empty(shape, device=self.x.device, dtype=self.x.dtype)
+        return self._naive_output
 
     def _moe_naive(self, tokens: torch.Tensor) -> torch.Tensor:
         idx, weights = _topk_gating(tokens, self.gate_weight, self.cfg.top_k)
@@ -79,19 +96,14 @@ class Dep2Workload:
         return (y * weights.unsqueeze(-1)).sum(dim=1)
 
     def forward_naive(self) -> torch.Tensor:
-        outputs = []
+        output = self._naive_output_buffer()
         for replica in range(self.cfg.dp_replicas):
             tokens = self.x[replica].reshape(-1, self.cfg.hidden_size)
             attn = tokens @ self.attn_weight
             moe = self._moe_naive(tokens)
-            outputs.append(attn + moe)
-        stacked = torch.stack(outputs, dim=0)
-        return stacked.view(
-            self.cfg.dp_replicas,
-            self.cfg.batch_size,
-            self.cfg.seq_len,
-            self.cfg.hidden_size,
-        )
+            replica_out = output[replica].reshape(-1, self.cfg.hidden_size)
+            torch.add(attn, moe, out=replica_out)
+        return output
 
     def forward_vectorized(self) -> torch.Tensor:
         tokens = self.x.reshape(-1, self.cfg.hidden_size)
