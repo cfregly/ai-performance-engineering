@@ -34,6 +34,7 @@ class OptimizedKernelFusionReuseStaticTensorBenchmark(VerificationPayloadMixin, 
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.N * self.iterations),
         )
+        self._enable_nvtx = False
     
     def setup(self) -> None:
         """Setup: Initialize tensors and load CUDA extension.
@@ -45,6 +46,8 @@ class OptimizedKernelFusionReuseStaticTensorBenchmark(VerificationPayloadMixin, 
         """
         # Load CUDA extension (will compile on first call)
         self._extension = load_kernel_fusion_extension()
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
         # Initialize data once; we keep this buffer layout stable
         torch.manual_seed(42)
@@ -68,12 +71,7 @@ class OptimizedKernelFusionReuseStaticTensorBenchmark(VerificationPayloadMixin, 
     
     def benchmark_fn(self) -> None:
         """Benchmark: Fused kernel (single memory round trip)."""
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
-        with nvtx_range("kernel_fusion", enable=enable_nvtx):
+        with nvtx_range("kernel_fusion", enable=self._enable_nvtx):
             # Call CUDA extension with fused kernel
             self._extension.fused_kernel(self.data, self.iterations)
         if self.data is None:

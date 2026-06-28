@@ -35,6 +35,7 @@ class OptimizedKernelFusionPersistentBufferBenchmark(VerificationPayloadMixin, B
             tokens_per_iteration=float(self.N * self.iterations),
         )
         self._initialized = False
+        self._enable_nvtx = False
     
     def setup(self) -> None:
         """Setup: Initialize tensors and load the fused-kernel extension.
@@ -46,6 +47,8 @@ class OptimizedKernelFusionPersistentBufferBenchmark(VerificationPayloadMixin, B
         # Load CUDA extension (will compile on first call)
         if self._extension is None:
             self._extension = load_kernel_fusion_extension()
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
         # Allocate data once and reuse it across benchmark iterations.
         # Keep the seed fixed so verification remains deterministic.
@@ -67,12 +70,7 @@ class OptimizedKernelFusionPersistentBufferBenchmark(VerificationPayloadMixin, B
     
     def benchmark_fn(self) -> None:
         """Benchmark: Fused kernel (single memory round trip)."""
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
-        with nvtx_range("kernel_fusion", enable=enable_nvtx):
+        with nvtx_range("kernel_fusion", enable=self._enable_nvtx):
             # Call CUDA extension with fused kernel
             self._extension.fused_kernel(self.data, self.iterations)
         if self.data is None:

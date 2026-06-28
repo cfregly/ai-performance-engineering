@@ -35,6 +35,7 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
             tokens_per_iteration=float(self.N * self.iterations),
         )
         self._stream = None
+        self._enable_nvtx = False
     
     def setup(self) -> None:
         """Setup: Initialize tensors, stream, and load CUDA extension.
@@ -45,6 +46,8 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
         """
         # Load CUDA extension (will compile on first call)
         self._extension = load_kernel_fusion_extension()
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
         # Create a dedicated non-blocking stream for this benchmark if not created.
         if self._stream is None:
@@ -83,12 +86,9 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
         default stream, which helps approach steady-state bandwidth on
         Blackwell.
         """
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
         stream = self._stream if self._stream is not None else torch.cuda.current_stream(device=self.device)
 
-        with nvtx_range("kernel_fusion", enable=enable_nvtx):
+        with nvtx_range("kernel_fusion", enable=self._enable_nvtx):
             # Enqueue the fused kernel on our dedicated stream.
             with torch.cuda.stream(stream):
                 self._extension.fused_kernel(self.data, self.iterations)

@@ -7081,6 +7081,28 @@ def test_ch12_core_benchmarks_use_cached_nvtx_range() -> None:
         assert "from core.profiling.nvtx_helper" not in source
 
 
+def test_ch12_llm_kernel_fusion_variants_cache_nvtx_enablement() -> None:
+    for filename in (
+        "optimized_kernel_fusion_llm_dedicated_stream_and_prefetch_for_blackwell.py",
+        "optimized_kernel_fusion_llm_persistent_buffer_and_stream_friendly_setup.py",
+        "optimized_kernel_fusion_llm_reuse_static_tensor_and_simplify_setup.py",
+    ):
+        source = (REPO_ROOT / "ch12" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+        assert "get_config()" not in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert 'with nvtx_range("kernel_fusion", enable=self._enable_nvtx):' in benchmark_section
+
+
 def test_ch11_ch12_standalone_timing_tools_use_inference_mode() -> None:
     paths = (
         "ch11/memory_async_demo.py",
