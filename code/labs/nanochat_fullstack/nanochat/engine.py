@@ -226,7 +226,8 @@ class KVCache:
         B, H, T_add, D = k.size()
         use_row_pos = token_mask is not None or self.row_pos is not None
         if token_mask is not None:
-            token_mask = token_mask.to(device=k.device, dtype=torch.bool)
+            if token_mask.device != k.device or token_mask.dtype != torch.bool:
+                token_mask = token_mask.to(device=k.device, dtype=torch.bool)
         if use_row_pos:
             if self.row_pos is None:
                 self.row_pos = torch.zeros(B, device=k.device, dtype=torch.long)

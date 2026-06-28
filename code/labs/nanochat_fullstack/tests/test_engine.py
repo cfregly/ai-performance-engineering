@@ -592,6 +592,8 @@ def test_kv_cache_reuses_token_mask_row_sums():
 
     assert "token_increments = token_mask.sum(dim=1)" in insert_section
     assert "next_row_pos = base_row_pos + token_increments" in insert_section
+    assert "if token_mask.device != k.device or token_mask.dtype != torch.bool:" in insert_section
+    assert "token_mask = token_mask.to(device=k.device, dtype=torch.bool)" in insert_section
     assert insert_section.count("token_mask.sum(dim=1)") == 1
     assert "token_mask = torch.ones((B, T_add)" not in insert_section
     assert "if token_mask is None:\n                next_row_pos = base_row_pos + T_add" in insert_section
