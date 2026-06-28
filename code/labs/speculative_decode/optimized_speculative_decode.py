@@ -53,6 +53,14 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._matches: Optional[torch.Tensor] = None
         self._draft_logits: Optional[torch.Tensor] = None
         self._target_logits: Optional[torch.Tensor] = None
+        self._verify_prev_views: list[torch.Tensor] = []
+        self._verify_prev_tail_views: list[torch.Tensor] = []
+        self._target_logits_views: list[torch.Tensor] = []
+        self._target_value_views: list[torch.Tensor] = []
+        self._target_token_views: list[torch.Tensor] = []
+        self._match_views: list[torch.Tensor] = []
+        self._draft_id_views: list[torch.Tensor] = []
+        self._accept_prefix_views: list[torch.Tensor] = []
         self.output: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
@@ -96,6 +104,14 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)
         self._draft_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)
         self._target_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)
+        self._verify_prev_views = [self._verify_prev[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._verify_prev_tail_views = [self._verify_prev[:, 1:k] for k in range(2, wl.speculative_k + 1)]
+        self._target_logits_views = [self._target_logits[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._target_value_views = [self._target_next_values[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._target_token_views = [self._target_next_tokens[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._match_views = [self._matches[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._accept_prefix_views = [self._accept_prefix[:k] for k in range(1, wl.speculative_k + 1)]
 
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
         self.output = None
@@ -119,6 +135,14 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             or self._matches is None
             or self._draft_logits is None
             or self._target_logits is None
+            or len(self._verify_prev_views) != self.workload.speculative_k
+            or len(self._verify_prev_tail_views) != max(0, self.workload.speculative_k - 1)
+            or len(self._target_logits_views) != self.workload.speculative_k
+            or len(self._target_value_views) != self.workload.speculative_k
+            or len(self._target_token_views) != self.workload.speculative_k
+            or len(self._match_views) != self.workload.speculative_k
+            or len(self._draft_id_views) != self.workload.speculative_k
+            or len(self._accept_prefix_views) != self.workload.speculative_k
         ):
             raise RuntimeError("Benchmark not initialized")
 
@@ -151,27 +175,32 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 # Verify: compute target predictions for the k steps in one call.
                 self._verify_prev[:, 0] = out[:, pos]
                 if k > 1:
-                    self._verify_prev[:, 1:k] = self._draft_ids[:, : k - 1]
+                    self._verify_prev_tail_views[k - 2].copy_(self._draft_id_views[k - 2])
 
-                logits_t = self.target_model.forward_into(self._verify_prev[:, :k], self._target_logits[:, :k])
-                target_values = self._target_next_values[:, :k]
-                target_next = self._target_next_tokens[:, :k]
+                view_idx = k - 1
+                draft_window = self._draft_id_views[view_idx]
+                logits_t = self.target_model.forward_into(
+                    self._verify_prev_views[view_idx],
+                    self._target_logits_views[view_idx],
+                )
+                target_values = self._target_value_views[view_idx]
+                target_next = self._target_token_views[view_idx]
                 torch.max(logits_t, dim=-1, out=(target_values, target_next))
-                matches = self._matches[:, :k]
-                torch.eq(target_next, self._draft_ids[:, :k], out=matches)
+                matches = self._match_views[view_idx]
+                torch.eq(target_next, draft_window, out=matches)
 
-                accept_prefix = self._accept_prefix[:k]
+                accept_prefix = self._accept_prefix_views[view_idx]
                 torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)
                 torch.sum(accept_prefix, dim=0, out=self._accept_count)
                 accept_k = int(self._accept_count.item())
 
                 if accept_k == k:
-                    out[:, pos + 1 : pos + k + 1] = self._draft_ids[:, :k]
+                    out[:, pos + 1 : pos + k + 1] = draft_window
                     accepted_draft += int(k)
                     pos += k
                 else:
                     if accept_k > 0:
-                        out[:, pos + 1 : pos + accept_k + 1] = self._draft_ids[:, :accept_k]
+                        out[:, pos + 1 : pos + accept_k + 1] = self._draft_id_views[accept_k - 1]
                         accepted_draft += int(accept_k)
                     out[:, pos + accept_k + 1] = target_next[:, accept_k]
                     pos += accept_k + 1
@@ -212,6 +241,14 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._matches = None
         self._draft_logits = None
         self._target_logits = None
+        self._verify_prev_views = []
+        self._verify_prev_tail_views = []
+        self._target_logits_views = []
+        self._target_value_views = []
+        self._target_token_views = []
+        self._match_views = []
+        self._draft_id_views = []
+        self._accept_prefix_views = []
         self.output = None
         torch.cuda.empty_cache()
 

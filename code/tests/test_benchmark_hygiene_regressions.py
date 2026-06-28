@@ -7836,18 +7836,38 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
     assert "self._draft_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._verify_prev_views = [self._verify_prev[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._verify_prev_tail_views = [self._verify_prev[:, 1:k] for k in range(2, wl.speculative_k + 1)]" in setup_section
+    assert "self._target_logits_views = [self._target_logits[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._target_value_views = [self._target_next_values[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._target_token_views = [self._target_next_tokens[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._match_views = [self._matches[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._accept_prefix_views = [self._accept_prefix[:k] for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
     assert "self.draft_model.forward_into(prev, self._draft_logits)" in benchmark_section
-    assert "self.target_model.forward_into(self._verify_prev[:, :k], self._target_logits[:, :k])" in benchmark_section
+    assert "self._verify_prev_tail_views[k - 2].copy_(self._draft_id_views[k - 2])" in benchmark_section
+    assert "view_idx = k - 1" in benchmark_section
+    assert "draft_window = self._draft_id_views[view_idx]" in benchmark_section
+    assert "self._verify_prev_views[view_idx]" in benchmark_section
+    assert "self._target_logits_views[view_idx]" in benchmark_section
+    assert "target_values = self._target_value_views[view_idx]" in benchmark_section
+    assert "target_next = self._target_token_views[view_idx]" in benchmark_section
+    assert "matches = self._match_views[view_idx]" in benchmark_section
     assert "torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))" in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
-    assert "torch.eq(target_next, self._draft_ids[:, :k], out=matches)" in benchmark_section
+    assert "torch.eq(target_next, draft_window, out=matches)" in benchmark_section
     assert ".argmax(" not in benchmark_section
+    assert "accept_prefix = self._accept_prefix_views[view_idx]" in benchmark_section
     assert "torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)" in benchmark_section
     assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
     assert "accept_k = int(self._accept_count.item())" in benchmark_section
+    assert "self.target_model.forward_into(self._verify_prev[:, :k], self._target_logits[:, :k])" not in benchmark_section
+    assert "self._draft_ids[:, : k - 1]" not in benchmark_section
+    assert "self._draft_ids[:, :k]" not in benchmark_section
+    assert "self._accept_prefix[:k]" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
     assert "def forward_into(self, token_ids: torch.Tensor, logits_out: torch.Tensor)" in common_source
