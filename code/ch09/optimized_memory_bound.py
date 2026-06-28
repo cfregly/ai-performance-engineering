@@ -27,6 +27,7 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.N = 16_777_216  # Same size as baseline (~64 MB)
         self.repeats = 64
         self.output: Optional[torch.Tensor] = None
+        self.output_buffer: Optional[torch.Tensor] = None
         self._compiled_run = None
         # Memory-bound benchmark - fixed dimensions for roofline analysis
         self._workload = WorkloadMetadata(
@@ -39,6 +40,7 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.data = torch.randn(self.N, dtype=torch.float32, device=self.device)
+        self.output_buffer = torch.empty_like(self.data)
         self.register_workload_metadata(
             requests_per_iteration=self._workload.requests_per_iteration,
             tokens_per_iteration=self._workload.tokens_per_iteration,
@@ -46,23 +48,26 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not hasattr(torch, "compile"):
             raise RuntimeError("torch.compile is required for the fused memory-bound optimization.")
 
-        def fused_kernel(t: torch.Tensor) -> torch.Tensor:
+        def fused_kernel(inp: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+            out.copy_(inp)
             for _ in range(self.repeats):
-                t = t * 1.0001 + 0.0001
-            return t
+                out.mul_(1.0001).add_(0.0001)
+            return out
 
         self._compiled_run = torch.compile(fused_kernel, mode="reduce-overhead", fullgraph=True)
         # Warmup to trigger compilation outside the timed region.
-        _ = self._compiled_run(self.data)
+        _ = self._compiled_run(self.data, self.output_buffer)
     
     def benchmark_fn(self) -> None:
         """Benchmark: Fused operations (high AI)."""
         if self.data is None:
             raise RuntimeError("Data tensor not initialized")
+        if self.output_buffer is None:
+            raise RuntimeError("Output buffer not initialized")
         if self._compiled_run is None:
             raise RuntimeError("Compiled kernel not initialized")
         with self._nvtx_range("memory_bound"):
-            self.output = self._compiled_run(self.data)
+            self.output = self._compiled_run(self.data, self.output_buffer)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -89,6 +94,7 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         self.data = None
+        self.output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
@@ -126,4 +132,3 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return OptimizedMemoryBoundBenchmark()
-
