@@ -45,6 +45,8 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._v_gather_buffer: Optional[torch.Tensor] = None
         self._cache_key_slots: list[torch.Tensor] = []
         self._cache_value_slots: list[torch.Tensor] = []
+        self._host_key_slots: list[torch.Tensor] = []
+        self._host_value_slots: list[torch.Tensor] = []
         self._tier_slots: list[str] = []
         self._payload_parameter_count = 0
 
@@ -70,6 +72,27 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
             torch.empty(0, device=self.device)
             for _ in range(self.seq_len)
         ]
+        host_capacity = max(self.seq_len - self.local_cache_limit - self.peer_cache_limit, 0)
+        self._host_key_slots = [
+            torch.empty(
+                self.batch,
+                1,
+                self.hidden,
+                dtype=self._key_steps.dtype,
+                pin_memory=True,
+            )
+            for _ in range(host_capacity)
+        ]
+        self._host_value_slots = [
+            torch.empty(
+                self.batch,
+                1,
+                self.hidden,
+                dtype=self._value_steps.dtype,
+                pin_memory=True,
+            )
+            for _ in range(host_capacity)
+        ]
         self._tier_slots = [""] * self.seq_len
         self._verify_q = self._query_steps[0, :1].detach().clone()
         self._synchronize()
@@ -80,7 +103,14 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
             return k, v, "local"
         if self.peer_device is not None and step < self.local_cache_limit + self.peer_cache_limit:
             return k.to(self.peer_device, non_blocking=True), v.to(self.peer_device, non_blocking=True), "peer"
-        return k.cpu(), v.cpu(), "host"
+        host_idx = step - self.local_cache_limit - self.peer_cache_limit
+        if host_idx >= len(self._host_key_slots) or host_idx >= len(self._host_value_slots):
+            raise RuntimeError("Host KV cache slots not initialized")
+        host_k = self._host_key_slots[host_idx]
+        host_v = self._host_value_slots[host_idx]
+        host_k.copy_(k, non_blocking=True)
+        host_v.copy_(v, non_blocking=True)
+        return host_k, host_v, "host"
 
     def _gather_kv_into_buffers(
         self,
@@ -158,6 +188,8 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._v_gather_buffer = None
         self._cache_key_slots = []
         self._cache_value_slots = []
+        self._host_key_slots = []
+        self._host_value_slots = []
         self._tier_slots = []
         torch.cuda.empty_cache()
 

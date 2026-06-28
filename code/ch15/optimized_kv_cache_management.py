@@ -38,6 +38,10 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
         )
         self.output = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._q_buffer: Optional[torch.Tensor] = None
+        self._tokens_2d: Optional[torch.Tensor] = None
+        self._k_cache_2d: Optional[torch.Tensor] = None
+        self._v_cache_2d: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
         self.register_workload_metadata(
@@ -68,6 +72,7 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._tokens_2d = self.tokens.reshape(self.batch_size * self.steps, self.hidden_dim)
         self.k_cache = torch.empty(
             self.batch_size,
             self.steps,
@@ -82,9 +87,17 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._k_cache_2d = self.k_cache.reshape(self.batch_size * self.steps, self.hidden_dim)
+        self._v_cache_2d = self.v_cache.reshape(self.batch_size * self.steps, self.hidden_dim)
         self._output_buffer = torch.empty(
             self.batch_size,
             self.steps,
+            self.hidden_dim,
+            device=self.device,
+            dtype=torch.bfloat16,
+        )
+        self._q_buffer = torch.empty(
+            self.batch_size,
             self.hidden_dim,
             device=self.device,
             dtype=torch.bfloat16,
@@ -96,24 +109,24 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
         assert self.q_proj is not None and self.k_proj is not None and self.v_proj is not None and self.out_proj is not None
         assert self.tokens is not None and self.k_cache is not None and self.v_cache is not None
         assert self._output_buffer is not None
+        assert self._q_buffer is not None and self._tokens_2d is not None
+        assert self._k_cache_2d is not None and self._v_cache_2d is not None
         with self._nvtx_range("optimized_kv_cache_management"):
             with torch.inference_mode():
                 # Model "prefill-produced" KV cache: project the full token buffer once,
                 # then reuse those projected tensors across the decode loop.
-                k_all = self.k_proj(self.tokens)
-                v_all = self.v_proj(self.tokens)
-                self.k_cache.copy_(k_all)
-                self.v_cache.copy_(v_all)
+                torch.mm(self._tokens_2d, self.k_proj.weight.t(), out=self._k_cache_2d)
+                torch.mm(self._tokens_2d, self.v_proj.weight.t(), out=self._v_cache_2d)
 
                 outputs = self._output_buffer
                 for t in range(self.steps):
-                    query = self.tokens[:, t : t + 1, :]
-                    q = self.q_proj(query)
+                    query = self.tokens[:, t, :]
+                    torch.mm(query, self.q_proj.weight.t(), out=self._q_buffer)
 
                     k = self.k_cache[:, : t + 1, :]
                     v = self.v_cache[:, : t + 1, :]
 
-                    q = q.reshape(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+                    q = self._q_buffer.view(self.batch_size, 1, self.num_heads, self.head_dim).transpose(1, 2)
                     k = k.reshape(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
                     v = v.reshape(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
 
@@ -121,9 +134,8 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
                     # so a causal mask is unnecessary here; is_causal=True would
                     # incorrectly mask all but the first key.
                     attn = F.scaled_dot_product_attention(q, k, v, is_causal=False)
-                    attn = attn.transpose(1, 2).contiguous().reshape(self.batch_size, 1, self.hidden_dim)
-                    out = self.out_proj(attn)
-                    outputs[:, t : t + 1, :] = out
+                    attn = attn[:, :, 0, :].reshape(self.batch_size, self.hidden_dim)
+                    torch.mm(attn, self.out_proj.weight.t(), out=outputs[:, t, :])
 
                 self.output = outputs
 
@@ -155,6 +167,10 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.k_cache = None
         self.v_cache = None
         self._output_buffer = None
+        self._q_buffer = None
+        self._tokens_2d = None
+        self._k_cache_2d = None
+        self._v_cache_2d = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

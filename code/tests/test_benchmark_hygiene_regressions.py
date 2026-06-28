@@ -4948,6 +4948,10 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         setup_section = source.split("def setup", maxsplit=1)[1].split(
             "def _place_kv", maxsplit=1
         )[0]
+        place_section = source.split("def _place_kv", maxsplit=1)[1].split(
+            "def _gather_kv_into_buffers",
+            maxsplit=1,
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
@@ -4960,7 +4964,13 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
         assert "self._cache_key_slots = [" in setup_section
         assert "self._cache_value_slots = [" in setup_section
+        assert "self._host_key_slots = [" in setup_section
+        assert "self._host_value_slots = [" in setup_section
+        assert "pin_memory=True" in setup_section
         assert "self._tier_slots = [\"\"] * self.seq_len" in setup_section
+        assert "host_k.copy_(k, non_blocking=True)" in place_section
+        assert "host_v.copy_(v, non_blocking=True)" in place_section
+        assert ".cpu()" not in place_section
         assert "torch.cat(" not in benchmark_section
         assert ".to(self.device" not in benchmark_section
         assert ".append(" not in benchmark_section
@@ -4980,6 +4990,10 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         bench = benchmark_cls()
         bench._k_gather_buffer = torch.empty(2, 3, 4)
         bench._v_gather_buffer = torch.empty(2, 3, 4)
+        bench.local_cache_limit = 1
+        bench.peer_cache_limit = 0
+        bench._host_key_slots = [torch.empty(2, 1, 4)]
+        bench._host_value_slots = [torch.empty(2, 1, 4)]
         cache_k = [torch.full((2, 1, 4), float(idx)) for idx in range(3)]
         cache_v = [torch.full((2, 1, 4), float(idx + 10)) for idx in range(3)]
 
@@ -4993,6 +5007,14 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert gathered_v.data_ptr() == bench._v_gather_buffer.data_ptr()
         torch.testing.assert_close(gathered_k, torch.cat(cache_k, dim=1))
         torch.testing.assert_close(gathered_v, torch.cat(cache_v, dim=1))
+
+        placed = bench._place_kv(cache_k[1], cache_v[1], step=1)
+        placed_k, placed_v, tier = placed[:3]
+        assert tier == "host"
+        assert placed_k.data_ptr() == bench._host_key_slots[0].data_ptr()
+        assert placed_v.data_ptr() == bench._host_value_slots[0].data_ptr()
+        torch.testing.assert_close(placed_k, cache_k[1])
+        torch.testing.assert_close(placed_v, cache_v[1])
 
 
 def test_ch02_grace_coherent_memory_defers_verification_slice_clone() -> None:
@@ -6902,6 +6924,29 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
     assert "layer.configure_kv_workspace(" in flash_source
 
 
+def test_ch13_optimized_kv_cache_variants_precompute_request_ids() -> None:
+    for filename in (
+        "optimized_kv_cache_naive.py",
+        "optimized_kv_cache_naive_pool.py",
+        "optimized_kv_cache_naive_flash_blockwise.py",
+    ):
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self._request_ids: list[str] = []" in source
+        assert "self._request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
+        assert "if len(self._request_ids) != len(self.inputs):" in benchmark_section
+        assert "for request_id, x in zip(self._request_ids, self.inputs):" in benchmark_section
+        assert "request_id = f\"req_{seq_idx}\"" not in benchmark_section
+
+
 def test_flash_blockwise_attention_reuses_workspace_for_cached_kv() -> None:
     from ch13.optimized_kv_cache_naive import PagedKVCache
     from ch13.optimized_kv_cache_naive_flash_blockwise import FlashBlockwiseAttentionLayer
@@ -7456,6 +7501,36 @@ def test_ch15_kv_cache_math_preconcats_static_inputs() -> None:
     assert "with torch.inference_mode():" in benchmark_section
     assert "queries = self._sequence_inputs" in benchmark_section
     assert "k_cache = self._sequence_inputs" in benchmark_section
+
+
+def test_ch15_optimized_kv_cache_management_projects_into_cache_buffers() -> None:
+    source = (REPO_ROOT / "ch15" / "optimized_kv_cache_management.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._q_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._tokens_2d: Optional[torch.Tensor] = None" in source
+    assert "self._k_cache_2d: Optional[torch.Tensor] = None" in source
+    assert "self._v_cache_2d: Optional[torch.Tensor] = None" in source
+    assert "self._tokens_2d = self.tokens.reshape(" in setup_section
+    assert "self._k_cache_2d = self.k_cache.reshape(" in setup_section
+    assert "self._v_cache_2d = self.v_cache.reshape(" in setup_section
+    assert "self._q_buffer = torch.empty(" in setup_section
+    assert "torch.mm(self._tokens_2d, self.k_proj.weight.t(), out=self._k_cache_2d)" in benchmark_section
+    assert "torch.mm(self._tokens_2d, self.v_proj.weight.t(), out=self._v_cache_2d)" in benchmark_section
+    assert "torch.mm(query, self.q_proj.weight.t(), out=self._q_buffer)" in benchmark_section
+    assert "torch.mm(attn, self.out_proj.weight.t(), out=outputs[:, t, :])" in benchmark_section
+    assert "k_all = self.k_proj(self.tokens)" not in benchmark_section
+    assert "v_all = self.v_proj(self.tokens)" not in benchmark_section
+    assert "out = self.out_proj(attn)" not in benchmark_section
 
 
 def test_ch15_kv_cache_management_wrappers_use_inference_mode() -> None:

@@ -150,6 +150,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         self.layers = None
         self.kv_cache = None
         self.inputs = None
+        self._request_ids: list[str] = []
         self.workload = WORKLOAD
         self.page_size = self.workload.page_size
         self.num_layers = self.workload.num_layers
@@ -206,6 +207,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         for seq_len in self.sequence_lengths:
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=self.workload.dtype)
             self.inputs.append(x)
+        self._request_ids = [f"req_{seq_idx}" for seq_idx in range(len(self.inputs))]
         if self.inputs:
             self._verify_input = self.inputs[0].detach().clone()
         self._synchronize()
@@ -213,10 +215,11 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
     def benchmark_fn(self) -> None:
         if self.layers is None or self.kv_cache is None or self.inputs is None:
             raise RuntimeError("Benchmark not configured")
+        if len(self._request_ids) != len(self.inputs):
+            raise RuntimeError("Request IDs not initialized")
 
         with self._nvtx_range("kv_cache_naive_flash_blockwise"):
-            for seq_idx, x in enumerate(self.inputs):
-                request_id = f"req_{seq_idx}"
+            for request_id, x in zip(self._request_ids, self.inputs):
                 seq_len = x.size(1)
                 self.kv_cache.allocate(request_id, seq_len)
 
@@ -249,6 +252,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         self.layers = None
         self.kv_cache = None
         self.inputs = None
+        self._request_ids = []
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
