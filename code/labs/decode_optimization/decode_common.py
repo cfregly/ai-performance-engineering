@@ -633,11 +633,19 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         prefill_stream = self.compute_stream or torch.cuda.current_stream()
         copy_stream = self.copy_stream or prefill_stream
         timing_stream = prefill_stream
+        can_overlap_second_copy = bool(
+            self.cfg.use_pinned_host and copy_stream is not prefill_stream
+        )
 
         nvtx = self._nvtx
 
         iter_start.record(timing_stream)
         event0 = self._copy_prompt_to_device_idx(0, stream=copy_stream, record_event=True)
+        event1 = (
+            self._copy_prompt_to_device_idx(1, stream=copy_stream, record_event=True)
+            if can_overlap_second_copy
+            else None
+        )
         if event0 is not None:
             prefill_stream.wait_event(event0)
 
@@ -653,7 +661,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 nvtx.range_pop()
             batch0_end.record(timing_stream)
 
-            event1 = self._copy_prompt_to_device_idx(1, stream=copy_stream, record_event=True)
+            if event1 is None:
+                event1 = self._copy_prompt_to_device_idx(1, stream=copy_stream, record_event=True)
             if event1 is not None:
                 prefill_stream.wait_event(event1)
 

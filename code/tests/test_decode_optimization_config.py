@@ -283,6 +283,37 @@ def test_decode_prompt_copy_waits_on_consumer_stream() -> None:
     assert "self._copy_prompts_to_device(wait_stream=copy_wait_stream)" in benchmark_section
 
 
+def test_decode_prefetch_overlaps_second_copy_only_when_async_safe() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    prefetch_section = source.split("def _benchmark_prefetch_batches", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    first_copy_idx = prefetch_section.index(
+        "event0 = self._copy_prompt_to_device_idx(0, stream=copy_stream, record_event=True)"
+    )
+    early_second_copy_idx = prefetch_section.index(
+        "event1 = (\n"
+        "            self._copy_prompt_to_device_idx(1, stream=copy_stream, record_event=True)"
+    )
+    batch0_compute_idx = prefetch_section.index(
+        "self._run_prefill_decode(\n"
+        "                self.gpu_prompts[0],"
+    )
+    fallback_second_copy_idx = prefetch_section.rindex(
+        "event1 = self._copy_prompt_to_device_idx(1, stream=copy_stream, record_event=True)"
+    )
+
+    assert "can_overlap_second_copy = bool(" in prefetch_section
+    assert "self.cfg.use_pinned_host and copy_stream is not prefill_stream" in prefetch_section
+    assert "if can_overlap_second_copy" in prefetch_section
+    assert first_copy_idx < early_second_copy_idx < batch0_compute_idx
+    assert batch0_compute_idx < fallback_second_copy_idx
+    assert "if event1 is None:" in prefetch_section
+
+
 def test_decode_pinned_pair_uses_transfer_heavy_workload_with_only_pin_state_changed() -> None:
     baseline = get_baseline_decode_pinned()
     optimized = get_optimized_decode_pinned()
