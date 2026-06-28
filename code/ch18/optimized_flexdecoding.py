@@ -49,12 +49,23 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
     def _decode_step(self, token: torch.Tensor, position: int) -> torch.Tensor:
         if self.model is None:
             raise RuntimeError("Windowed decode not initialized")
+        q, k, v = self.model._project_token(token)
+        return self._decode_projected_step(q, k, v, position)
+
+    def _decode_projected_step(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        position: int,
+    ) -> torch.Tensor:
+        if self.model is None:
+            raise RuntimeError("Windowed decode not initialized")
         window = self.config.window
         start = position - window
         if start < 0:
             raise RuntimeError("Windowed decode expects position >= window size")
         end = position + 1
-        q, k, v = self.model._project_token(token)
         self.model._update_cache(k, v, position)
         self.model._set_offset(position)
         k_slice = self.model.k_cache[:, start:end]
@@ -67,7 +78,7 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
             dropout_p=0.0,
             is_causal=False,
         )
-        return self.model.o_proj(out.transpose(1, 2).reshape(token.shape[0], 1, self.config.dim))
+        return self.model.o_proj(out.transpose(1, 2).reshape(q.shape[0], 1, self.config.dim))
 
     def benchmark_fn(self) -> Optional[Dict[str, List[float]]]:
         if self.model is None or self.prefill_tokens is None or self.decode_token is None:
@@ -86,12 +97,19 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
                 prefill_out = self._prefill_step()
                 prefill_end.record()
 
+            decode_q, decode_k, decode_v = self.model._project_token(self.decode_token)
+
             with self._nvtx_range("flex_decode"):
                 with sdpa_kernel(self._flash_attention_backends):
                     for pos in range(self.decode_tokens):
                         start_evt, end_evt = self._decode_events[pos]
                         start_evt.record()
-                        decode_out = self._decode_step(self.decode_token, base_position + pos)
+                        decode_out = self._decode_projected_step(
+                            decode_q,
+                            decode_k,
+                            decode_v,
+                            base_position + pos,
+                        )
                         end_evt.record()
 
         self._last_output = decode_out if "decode_out" in locals() else prefill_out
