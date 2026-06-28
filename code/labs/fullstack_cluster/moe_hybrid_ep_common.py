@@ -802,7 +802,14 @@ class DeepSeekHybridEPModule(nn.Module):
             same_rank_mask = owner_ranks == self.topology.rank
             if owner_nodes is None:
                 same_node_mask = ~same_rank_mask
-                remote_node_mask = torch.zeros_like(same_rank_mask)
+                remote_node_mask = self._buffer(
+                    "remote_node_mask",
+                    tuple(same_rank_mask.shape),
+                    same_rank_mask.dtype,
+                    reuse=True,
+                    device=same_rank_mask.device,
+                )
+                remote_node_mask.zero_()
             else:
                 same_node_mask = (owner_nodes == self.topology.node_rank) & ~same_rank_mask
                 remote_node_mask = owner_nodes != self.topology.node_rank
