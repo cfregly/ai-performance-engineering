@@ -16,6 +16,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
+from ch04.reduction_common import ReusableReductionMlp
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -40,7 +41,7 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
-        self._reduction_buffer: Optional[torch.Tensor] = None
+        self._reduced_rows = 0
         self._enable_nvtx = False
         self._payload_parameter_count = 0
         
@@ -55,21 +56,18 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Use same seed as baseline for deterministic verification
         torch.manual_seed(42)
         
-        # Build model with same architecture as baseline for fair comparison
-        self.model = nn.Sequential(
-            nn.Linear(self.hidden_dim, self.inner_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.inner_dim, self.hidden_dim),
-        ).to(self.device).eval()
+        # Build model with same architecture as baseline for fair comparison.
+        self.model = ReusableReductionMlp(self.hidden_dim, self.inner_dim).to(self.device).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         
         self.input = torch.randn(self.batch_size, self.hidden_dim, device=self.device)
-        reduced_rows = self.batch_size // self.num_shards
+        if self.batch_size % self.num_shards != 0:
+            raise RuntimeError("Batch size must be divisible by num_shards")
+        self._reduced_rows = self.batch_size // self.num_shards
         self.output = None
-        self._output_buffer = torch.empty((reduced_rows, self.hidden_dim), device=self.device)
-        self._reduction_buffer = torch.empty_like(self._output_buffer)
+        self._output_buffer = torch.empty((self._reduced_rows, self.hidden_dim), device=self.device)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -81,16 +79,12 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 out = self.model(self.input)
             
             # All-GPU reduction over a strided shard view, no CPU or Python shard loop.
-            if self._reduction_buffer is None or self._output_buffer is None:
-                raise RuntimeError("Reduction buffers not initialized")
-            if out.shape[0] % self.num_shards != 0:
-                raise RuntimeError("Batch size must be divisible by num_shards")
-            reduced_rows = out.shape[0] // self.num_shards
-            shard_view = out.reshape(self.num_shards, reduced_rows, out.shape[1])
-            torch.sum(shard_view, dim=0, out=self._reduction_buffer)
+            if self._output_buffer is None:
+                raise RuntimeError("Output buffer not initialized")
+            shard_view = out.view(self.num_shards, self._reduced_rows, self.hidden_dim)
+            torch.sum(shard_view, dim=0, out=self._output_buffer)
             
-            # Average
-            self._output_buffer.copy_(self._reduction_buffer)
+            # Average in place; the sum already landed in the reusable output buffer.
             self._output_buffer.div_(self.num_shards)
             self.output = self._output_buffer
         
@@ -117,7 +111,7 @@ class OptimizedGpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input = None
         self.output = None
         self._output_buffer = None
-        self._reduction_buffer = None
+        self._reduced_rows = 0
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

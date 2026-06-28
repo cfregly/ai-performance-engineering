@@ -1544,6 +1544,7 @@ def test_ch06_quantization_ilp_reuses_output_buffers() -> None:
 
 def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_nccl.py").read_text(encoding="utf-8")
+    common_source = (REPO_ROOT / "ch04" / "reduction_common.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
         "def benchmark_fn",
         maxsplit=1,
@@ -1558,23 +1559,28 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     )[0]
 
     assert "self._output_buffer = torch.empty(" in setup_section
-    assert "self._reduction_buffer = torch.empty_like(self._output_buffer)" in setup_section
+    assert "self._reduced_rows = self.batch_size // self.num_shards" in setup_section
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
     assert "self._output_buffer = torch.zeros(" not in setup_section
-    assert "self._reduction_buffer = torch.zeros(" not in setup_section
+    assert "self._reduction_buffer" not in source
     assert "with torch.inference_mode():" in benchmark_section
     assert "get_config()" not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
     assert "enable=self._enable_nvtx" in benchmark_section
+    assert "Batch size must be divisible by num_shards" not in benchmark_section
     assert "torch.chunk(" not in benchmark_section
     assert "for shard in" not in benchmark_section
-    assert "shard_view = out.reshape(self.num_shards, reduced_rows, out.shape[1])" in benchmark_section
-    assert "torch.sum(shard_view, dim=0, out=self._reduction_buffer)" in benchmark_section
-    assert "self._reduction_buffer.zero_()" not in benchmark_section
-    assert "self._output_buffer.copy_(self._reduction_buffer)" in benchmark_section
+    assert "shard_view = out.view(self.num_shards, self._reduced_rows, self.hidden_dim)" in benchmark_section
+    assert "torch.sum(shard_view, dim=0, out=self._output_buffer)" in benchmark_section
+    assert "self._output_buffer.copy_(" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
+    assert "self._fc1_buffer: Optional[torch.Tensor] = None" in common_source
+    assert "self._fc2_buffer: Optional[torch.Tensor] = None" in common_source
+    assert "if torch.is_grad_enabled():" in common_source
+    assert "torch.mm(x, self.fc1.weight.t(), out=fc1_out)" in common_source
+    assert "torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)" in common_source
 
 
 def test_ch01_fp16_and_ch04_nvls_cache_nvtx_enablement() -> None:
@@ -1623,13 +1629,17 @@ def test_ch04_optimized_gpu_reduction_uses_single_gpu_sum_kernel() -> None:
 
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
+    assert "self._reduced_rows = self.batch_size // self.num_shards" in setup_section
+    assert "self._reduction_buffer" not in source
     assert "get_config()" not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
     assert "enable=self._enable_nvtx" in benchmark_section
+    assert "Batch size must be divisible by num_shards" not in benchmark_section
     assert "torch.chunk(" not in benchmark_section
     assert "for shard in" not in benchmark_section
-    assert "torch.sum(shard_view, dim=0, out=self._reduction_buffer)" in benchmark_section
-    assert "self._reduction_buffer.zero_()" not in benchmark_section
+    assert "shard_view = out.view(self.num_shards, self._reduced_rows, self.hidden_dim)" in benchmark_section
+    assert "torch.sum(shard_view, dim=0, out=self._output_buffer)" in benchmark_section
+    assert "self._output_buffer.copy_(" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
 
