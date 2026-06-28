@@ -5157,7 +5157,12 @@ def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
         maxsplit=1,
     )[0]
 
-    assert "output = torch.empty_like(flat)" in forward_section
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in forward_section
+    assert "def _output_for(self, flat: torch.Tensor) -> torch.Tensor:" in forward_section
+    assert "if torch.is_grad_enabled() and flat.requires_grad:" in forward_section
+    assert "self._output_buffer = torch.empty_like(flat)" in forward_section
+    assert "output = self._output_for(flat)" in forward_section
+    assert "output = torch.empty_like(flat)" not in forward_section
     assert "torch.zeros_like(flat)" not in forward_section
     assert "token_ids = (expert_ids == expert_id).nonzero(as_tuple=True)[0]" in forward_section
     assert "if token_ids.numel() == 0:" in forward_section
@@ -5165,6 +5170,20 @@ def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
     assert "output[token_ids] = weighted_out" in forward_section
     assert "output[token_ids] += weighted_out" in forward_section
     assert "mask.any()" not in forward_section
+
+    from ch16.moe_performance_benchmark import MoEConfig, MoEFeedForward
+
+    config = MoEConfig(d_model=8, d_ff=16, num_experts=2, top_k=2)
+    layer = MoEFeedForward(config).eval()
+    x = torch.randn(2, 3, 8)
+    with torch.inference_mode():
+        out = layer(x)
+        ptr = layer._output_buffer.data_ptr()
+        out_again = layer(x)
+
+    assert out.shape == x.shape
+    assert out_again.shape == x.shape
+    assert layer._output_buffer.data_ptr() == ptr
 
 
 def test_ch16_moe_performance_benchmark_uses_cuda_event_timing() -> None:

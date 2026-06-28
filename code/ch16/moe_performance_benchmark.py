@@ -17,7 +17,7 @@ import json
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -59,6 +59,19 @@ class MoEFeedForward(nn.Module):
         self.d_model = config.d_model
         self.gate = nn.Linear(config.d_model, config.num_experts)
         self.experts = nn.ModuleList([ExpertMLP(config.d_model, config.d_ff) for _ in range(config.num_experts)])
+        self._output_buffer: Optional[torch.Tensor] = None
+
+    def _output_for(self, flat: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled() and flat.requires_grad:
+            return torch.empty_like(flat)
+        if (
+            self._output_buffer is None
+            or self._output_buffer.device != flat.device
+            or self._output_buffer.dtype != flat.dtype
+            or tuple(self._output_buffer.shape) != tuple(flat.shape)
+        ):
+            self._output_buffer = torch.empty_like(flat)
+        return self._output_buffer
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: [batch, seq, hidden]
@@ -68,7 +81,7 @@ class MoEFeedForward(nn.Module):
         scores = F.softmax(logits, dim=-1)
         top_scores, top_indices = torch.topk(scores, k=self.top_k, dim=-1)
 
-        output = torch.empty_like(flat)
+        output = self._output_for(flat)
         for k in range(self.top_k):
             expert_ids = top_indices[:, k]
             weights = top_scores[:, k].unsqueeze(-1)
