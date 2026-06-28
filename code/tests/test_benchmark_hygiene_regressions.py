@@ -8479,6 +8479,7 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._draft_logits_views = [" in setup_section
     assert "self._draft_block_value_views = [" in setup_section
     assert "self._draft_block_token_views = [" in setup_section
+    assert "self._draft_block_token_column_views = [" in setup_section
     assert "self._verify_prev_first = self._verify_prev[:, 0]" in setup_section
     assert "self._verify_prev_views = [" in setup_section
     assert "self._verify_prev_tail_views = [" in setup_section
@@ -8488,6 +8489,7 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._target_token_column_views = [" in setup_section
     assert "self._match_views = [" in setup_section
     assert "self._draft_id_views = [" in setup_section
+    assert "self._draft_id_column_views = [" in setup_section
     assert "self._accept_prefix_views = [" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
@@ -8512,6 +8514,9 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "target_next = self._target_token_views[view_idx]" in benchmark_section
     assert "draft_window = self._draft_id_views[view_idx]" in benchmark_section
     assert "torch.max(logits_d, dim=-1, out=(draft_values, draft_block))" in benchmark_section
+    assert "next_d = self._draft_block_token_column_views[j]" in benchmark_section
+    assert "next_d = self._draft_id_column_views[j]" in benchmark_section
+    assert "self._draft_id_column_views[j].copy_(next_d)" in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
     assert "torch.eq(target_next, draft_window, out=matches)" in benchmark_section
     assert "accept_prefix = self._accept_prefix_views[view_idx]" in benchmark_section
@@ -8525,6 +8530,8 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._target_next_values[:, :k]" not in benchmark_section
     assert "self._target_next_tokens[:, :k]" not in benchmark_section
     assert "self._matches[:, :k]" not in benchmark_section
+    assert "draft_block[:, j]" not in benchmark_section
+    assert "self._draft_ids[:, j]" not in benchmark_section
     assert "self._accept_prefix[:k]" not in benchmark_section
     assert "out[:, pos" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section

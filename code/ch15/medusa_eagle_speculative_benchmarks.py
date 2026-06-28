@@ -122,6 +122,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._draft_logits_views: list[torch.Tensor] = []
         self._draft_block_value_views: list[torch.Tensor] = []
         self._draft_block_token_views: list[torch.Tensor] = []
+        self._draft_block_token_column_views: list[torch.Tensor] = []
         self._verify_prev_first: Optional[torch.Tensor] = None
         self._verify_prev_views: list[torch.Tensor] = []
         self._verify_prev_tail_views: list[torch.Tensor] = []
@@ -131,6 +132,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._target_token_column_views: list[torch.Tensor] = []
         self._match_views: list[torch.Tensor] = []
         self._draft_id_views: list[torch.Tensor] = []
+        self._draft_id_column_views: list[torch.Tensor] = []
         self._accept_prefix_views: list[torch.Tensor] = []
         self.output: Optional[torch.Tensor] = None
         self._metrics: Dict[str, float] = {}
@@ -197,6 +199,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._draft_logits_views = []
             self._draft_block_value_views = []
             self._draft_block_token_views = []
+            self._draft_block_token_column_views = []
             self._verify_prev_first = None
             self._verify_prev_views = []
             self._verify_prev_tail_views = []
@@ -206,6 +209,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._target_token_column_views = []
             self._match_views = []
             self._draft_id_views = []
+            self._draft_id_column_views = []
             self._accept_prefix_views = []
             return
 
@@ -246,6 +250,9 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._draft_block_token_views = [
             self._draft_block_tokens[:, :k] for k in range(1, wl.speculative_k + 1)
         ]
+        self._draft_block_token_column_views = [
+            self._draft_block_tokens[:, token_idx] for token_idx in range(wl.speculative_k)
+        ]
         self._verify_prev_views = [
             self._verify_prev[:, :k] for k in range(1, wl.speculative_k + 1)
         ]
@@ -266,6 +273,9 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._match_views = [self._matches[:, :k] for k in range(1, wl.speculative_k + 1)]
         self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._draft_id_column_views = [
+            self._draft_ids[:, token_idx] for token_idx in range(wl.speculative_k)
+        ]
         self._accept_prefix_views = [
             self._accept_prefix[:k] for k in range(1, wl.speculative_k + 1)
         ]
@@ -357,6 +367,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or len(self._draft_logits_views) != self.workload.speculative_k
             or len(self._draft_block_value_views) != self.workload.speculative_k
             or len(self._draft_block_token_views) != self.workload.speculative_k
+            or len(self._draft_block_token_column_views) != self.workload.speculative_k
             or len(self._verify_prev_views) != self.workload.speculative_k
             or len(self._verify_prev_tail_views) != max(0, self.workload.speculative_k - 1)
             or len(self._target_logits_views) != self.workload.speculative_k
@@ -365,6 +376,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or len(self._target_token_column_views) != self.workload.speculative_k
             or len(self._match_views) != self.workload.speculative_k
             or len(self._draft_id_views) != self.workload.speculative_k
+            or len(self._draft_id_column_views) != self.workload.speculative_k
             or len(self._accept_prefix_views) != self.workload.speculative_k
         ):
             raise RuntimeError("Benchmark not initialized")
@@ -392,13 +404,17 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     draft_block = self._draft_block_token_views[view_idx]
                     torch.max(logits_d, dim=-1, out=(draft_values, draft_block))
                     for j in range(k):
-                        next_d = draft_block[:, j]
+                        next_d = self._draft_block_token_column_views[j]
                         if self._should_perturb(rounds, j):
-                            next_d = self._draft_ids[:, j]
-                            torch.add(draft_block[:, j], self.profile.perturb_stride * (j + 1), out=next_d)
+                            next_d = self._draft_id_column_views[j]
+                            torch.add(
+                                self._draft_block_token_column_views[j],
+                                self.profile.perturb_stride * (j + 1),
+                                out=next_d,
+                            )
                             next_d.remainder_(self.workload.vocab_size)
                         else:
-                            self._draft_ids[:, j].copy_(next_d)
+                            self._draft_id_column_views[j].copy_(next_d)
 
                     draft_tokens += int(k)
 
@@ -503,6 +519,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._draft_logits_views = []
         self._draft_block_value_views = []
         self._draft_block_token_views = []
+        self._draft_block_token_column_views = []
         self._verify_prev_first = None
         self._verify_prev_views = []
         self._verify_prev_tail_views = []
@@ -512,6 +529,7 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._target_token_column_views = []
         self._match_views = []
         self._draft_id_views = []
+        self._draft_id_column_views = []
         self._accept_prefix_views = []
         self.output = None
         super().teardown()
