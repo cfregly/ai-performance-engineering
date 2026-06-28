@@ -4808,6 +4808,31 @@ def test_dynamic_router_wrappers_defer_metric_tensors_outside_hot_loop() -> None
             assert "if not self._summary_ready:" in capture_section
 
 
+def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
+    source = (REPO_ROOT / "labs" / "dynamic_router" / "eval_stack.py").read_text(encoding="utf-8")
+    percentile_section = source.split("def _percentiles", maxsplit=1)[1].split(
+        "def _summarize_quality_rows",
+        maxsplit=1,
+    )[0]
+    moe_section = source.split("def _simulate_moe", maxsplit=1)[1].split(
+        "def _compute_throughput",
+        maxsplit=1,
+    )[0]
+
+    assert "def _percentile_from_ordered" in source
+    assert "ordered = sorted(values)" in percentile_section
+    assert "p50\": _percentile_from_ordered(ordered, 50)" in percentile_section
+    assert "p95\": _percentile_from_ordered(ordered, 95)" in percentile_section
+    assert "_percentile(values, 50)" not in percentile_section
+    assert "_percentile(values, 95)" not in percentile_section
+    assert "experts = self.cfg.experts" in moe_section
+    assert "top_k = self.cfg.top_k" in moe_section
+    assert "dirichlet_alpha = 0.85 if optimized else 0.55" in moe_section
+    assert "ranked_experts = sorted(expert_ids, key=probs.__getitem__, reverse=True)" in moe_section
+    assert "sorted(probs, reverse=True)" not in moe_section
+    assert "lambda i: probs[i]" not in moe_section
+
+
 def test_ch04_optimized_nvlink_topology_reuses_chunk_views() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_nvlink_topology_aware.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(

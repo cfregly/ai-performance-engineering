@@ -67,7 +67,12 @@ def _read_json(path: Path) -> Dict:
 def _percentile(values: Sequence[float], pct: float) -> float:
     if not values:
         return 0.0
-    ordered = sorted(values)
+    return _percentile_from_ordered(sorted(values), pct)
+
+
+def _percentile_from_ordered(ordered: Sequence[float], pct: float) -> float:
+    if not ordered:
+        return 0.0
     k = (len(ordered) - 1) * (pct / 100.0)
     lo = math.floor(k)
     hi = math.ceil(k)
@@ -94,9 +99,10 @@ def _dirichlet(rng: random.Random, alpha: float, k: int) -> List[float]:
 
 
 def _percentiles(values: Sequence[float]) -> Dict[str, float]:
+    ordered = sorted(values)
     return {
-        "p50": _percentile(values, 50),
-        "p95": _percentile(values, 95),
+        "p50": _percentile_from_ordered(ordered, 50),
+        "p95": _percentile_from_ordered(ordered, 95),
     }
 
 
@@ -497,12 +503,16 @@ class CheapEvalStack:
         traffic_rows: List[Dict] = []
 
         rng = self._rng
-        expert_hist = [0 for _ in range(self.cfg.experts)]
+        experts = self.cfg.experts
+        top_k = self.cfg.top_k
+        expert_ids = range(experts)
+        expert_hist = [0 for _ in expert_ids]
         entropy_samples: List[float] = []
         margin_samples: List[float] = []
 
         drop_chance = 0.0065 if not optimized else 0.0008
         imbalance_tilt = 0.35 if not optimized else 0.15
+        dirichlet_alpha = 0.85 if optimized else 0.55
 
         total_tokens = 0
         dropped_tokens = 0
@@ -513,16 +523,16 @@ class CheapEvalStack:
         for step in range(total_steps):
             probs = _dirichlet(
                 rng,
-                alpha=0.55 if not optimized else 0.85,
-                k=self.cfg.experts,
+                alpha=dirichlet_alpha,
+                k=experts,
             )
-            sorted_probs = sorted(probs, reverse=True)
+            ranked_experts = sorted(expert_ids, key=probs.__getitem__, reverse=True)
             entropy = -sum(p * math.log(p + 1e-9) for p in probs)
-            margin = sorted_probs[0] - sorted_probs[1]
+            best_prob = probs[ranked_experts[0]]
+            second_prob = probs[ranked_experts[1]] if experts > 1 else 0.0
+            margin = best_prob - second_prob
 
-            token_experts = sorted(range(self.cfg.experts), key=lambda i: probs[i], reverse=True)[
-                : self.cfg.top_k
-            ]
+            token_experts = ranked_experts[:top_k]
             for e in token_experts:
                 expert_hist[e] += 1
 
