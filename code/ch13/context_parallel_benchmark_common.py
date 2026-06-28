@@ -30,6 +30,8 @@ class ContextParallelConfig:
 class AttentionWorkspace:
     gather_k: Optional[list[torch.Tensor]] = None
     gather_v: Optional[list[torch.Tensor]] = None
+    k_full: Optional[torch.Tensor] = None
+    v_full: Optional[torch.Tensor] = None
     recv_k: Optional[torch.Tensor] = None
     recv_v: Optional[torch.Tensor] = None
 
@@ -60,11 +62,14 @@ def build_attention_workspace(
     device: torch.device,
 ) -> AttentionWorkspace:
     shape = (batch_size, num_heads, seq_shard, head_dim)
+    full_shape = (batch_size, num_heads, seq_shard * world_size, head_dim)
     if world_size <= 1:
         return AttentionWorkspace()
     return AttentionWorkspace(
         gather_k=[torch.empty(shape, device=device, dtype=dtype) for _ in range(world_size)],
         gather_v=[torch.empty(shape, device=device, dtype=dtype) for _ in range(world_size)],
+        k_full=torch.empty(full_shape, device=device, dtype=dtype),
+        v_full=torch.empty(full_shape, device=device, dtype=dtype),
         recv_k=torch.empty(shape, device=device, dtype=dtype),
         recv_v=torch.empty(shape, device=device, dtype=dtype),
     )
@@ -134,14 +139,22 @@ def all_gather_attention(
     workspace: Optional[AttentionWorkspace] = None,
 ) -> torch.Tensor:
     if world_size > 1 and dist.is_initialized():
-        if workspace is None or workspace.gather_k is None or workspace.gather_v is None:
+        if (
+            workspace is None
+            or workspace.gather_k is None
+            or workspace.gather_v is None
+            or workspace.k_full is None
+            or workspace.v_full is None
+        ):
             raise RuntimeError("all_gather_attention() requires preallocated gather buffers when world_size > 1")
         gather_k = workspace.gather_k
         gather_v = workspace.gather_v
         dist.all_gather(gather_k, k, group=process_group)
         dist.all_gather(gather_v, v, group=process_group)
-        k_full = torch.cat(gather_k, dim=2)
-        v_full = torch.cat(gather_v, dim=2)
+        torch.cat(gather_k, dim=2, out=workspace.k_full)
+        torch.cat(gather_v, dim=2, out=workspace.v_full)
+        k_full = workspace.k_full
+        v_full = workspace.v_full
     else:
         k_full = k
         v_full = v

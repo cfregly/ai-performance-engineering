@@ -5952,6 +5952,30 @@ def test_ch13_sequence_parallel_worker_reuses_rank_major_gather_buffer() -> None
     assert "full_sequence = torch.cat(gather_buf, dim=1)" not in step_section
 
 
+def test_ch13_context_parallel_all_gather_reuses_full_kv_buffers() -> None:
+    source = (REPO_ROOT / "ch13" / "context_parallel_benchmark_common.py").read_text(
+        encoding="utf-8"
+    )
+    workspace_section = source.split("def build_attention_workspace", maxsplit=1)[1].split(
+        "def init_distributed",
+        maxsplit=1,
+    )[0]
+    all_gather_section = source.split("def all_gather_attention", maxsplit=1)[1].split(
+        "def ring_attention",
+        maxsplit=1,
+    )[0]
+
+    assert "k_full: Optional[torch.Tensor] = None" in source
+    assert "v_full: Optional[torch.Tensor] = None" in source
+    assert "full_shape = (batch_size, num_heads, seq_shard * world_size, head_dim)" in workspace_section
+    assert "k_full=torch.empty(full_shape" in workspace_section
+    assert "v_full=torch.empty(full_shape" in workspace_section
+    assert "torch.cat(gather_k, dim=2, out=workspace.k_full)" in all_gather_section
+    assert "torch.cat(gather_v, dim=2, out=workspace.v_full)" in all_gather_section
+    assert "k_full = torch.cat(gather_k, dim=2)" not in all_gather_section
+    assert "v_full = torch.cat(gather_v, dim=2)" not in all_gather_section
+
+
 def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> None:
     perchannel_source = (REPO_ROOT / "ch13" / "fp8_perchannel_demo.py").read_text(encoding="utf-8")
     perchannel_stats = perchannel_source.split("def get_quantization_stats", maxsplit=1)[1].split(
