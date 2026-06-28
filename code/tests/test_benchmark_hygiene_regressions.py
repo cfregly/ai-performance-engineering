@@ -6366,6 +6366,9 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
@@ -6377,6 +6380,14 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "torch.stack(" not in baseline_benchmark
     assert "outputs = []" not in baseline_benchmark
     assert "outputs.append(" not in baseline_benchmark
+    assert "self._attention_scale = 1.0 / math.sqrt(self.head_dim)" in baseline_setup
+    assert "self._head_inputs = [" in baseline_setup
+    assert "(self.q[:, head, :], self.k[:, head, :].transpose(0, 1), self.v[:, head, :])" in baseline_setup
+    assert "for qh, kh_t, vh in self._head_inputs:" in baseline_benchmark
+    assert "self.q[:, head, :]" not in baseline_benchmark
+    assert "self.k[:, head, :]" not in baseline_benchmark
+    assert ".transpose(0, 1)" not in baseline_benchmark
+    assert "math.sqrt(self.head_dim)" not in baseline_benchmark
     assert "self._last_outputs[output_idx] = torch.matmul(attn, vh)" in baseline_benchmark
     assert "output_idx += 1" in baseline_benchmark
     assert "stacked = torch.stack(self._last_outputs, dim=1)" in baseline_capture
