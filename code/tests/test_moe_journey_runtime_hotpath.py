@@ -156,8 +156,14 @@ def test_moe_bmm_fusion_reuses_offset_buffer_without_cat() -> None:
     assert "position_ids = self._position_ids_for(sorted_expert_ids.numel(), device)" in bmm_fusion_section
     assert "torch.sub(position_ids, expert_offsets, out=positions)" in bmm_fusion_section
     assert "torch.mul(sorted_expert_ids, max_count, out=padded_indices)" in bmm_fusion_section
+    assert "out.mul_(padded_weights)" in bmm_fusion_section
+    assert "if torch.is_grad_enabled() and flat_out.requires_grad:" in bmm_fusion_section
+    assert "valid_out = flat_out.index_select(0, padded_indices)" in bmm_fusion_section
+    assert "torch.index_select(flat_out, 0, padded_indices, out=valid_out)" in bmm_fusion_section
     assert "unsort[sorted_order] = position_ids" in bmm_fusion_section
-    assert "valid_out.index_select(0, unsort)" in bmm_fusion_section
+    assert "if torch.is_grad_enabled() and valid_out.requires_grad:" in bmm_fusion_section
+    assert "restored = valid_out.index_select(0, unsort)" in bmm_fusion_section
+    assert "torch.index_select(valid_out, 0, unsort, out=restored)" in bmm_fusion_section
     assert "torch.arange(len(sorted_expert_ids)" not in bmm_fusion_section
     assert "torch.argsort(sorted_order)" not in bmm_fusion_section
 

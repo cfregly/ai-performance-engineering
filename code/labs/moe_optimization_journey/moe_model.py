@@ -104,6 +104,8 @@ class MoEExperts(nn.Module):
         self._cuda_graph_last_error: Optional[str] = None
         self._bmm_padded_tokens: Optional[torch.Tensor] = None
         self._bmm_padded_weights: Optional[torch.Tensor] = None
+        self._bmm_valid_out: Optional[torch.Tensor] = None
+        self._bmm_restored: Optional[torch.Tensor] = None
         self._bmm_flat_token_ids_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}
         self._bmm_position_ids_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
 
@@ -565,11 +567,20 @@ class MoEExperts(nn.Module):
         # Padding rows are ignored by the gather, so clearing the workspace is unnecessary.
         padded_weights.scatter_(0, padded_indices.unsqueeze(1), sorted_weights.unsqueeze(1))
         padded_weights = padded_weights.view(self.num_experts, max_count, 1)
-        out = out * padded_weights
+        out.mul_(padded_weights)
         
         # Gather back using same indices
         flat_out = out.view(-1, self.hidden_size)
-        valid_out = flat_out.index_select(0, padded_indices)
+        if torch.is_grad_enabled() and flat_out.requires_grad:
+            valid_out = flat_out.index_select(0, padded_indices)
+        else:
+            valid_out = self._bmm_workspace(
+                "_bmm_valid_out",
+                (assignments, self.hidden_size),
+                device=device,
+                dtype=out.dtype,
+            )
+            torch.index_select(flat_out, 0, padded_indices, out=valid_out)
         
         # Restore order
         unsort = self._bmm_workspace(
@@ -579,7 +590,17 @@ class MoEExperts(nn.Module):
             dtype=torch.int64,
         )
         unsort[sorted_order] = position_ids
-        restored = valid_out.index_select(0, unsort).view(batch_seq, top_k, -1)
+        if torch.is_grad_enabled() and valid_out.requires_grad:
+            restored = valid_out.index_select(0, unsort)
+        else:
+            restored = self._bmm_workspace(
+                "_bmm_restored",
+                (assignments, self.hidden_size),
+                device=device,
+                dtype=valid_out.dtype,
+            )
+            torch.index_select(valid_out, 0, unsort, out=restored)
+        restored = restored.view(batch_seq, top_k, -1)
         return restored.sum(dim=1)
 
     def _forward_bmm_fused_graphable(

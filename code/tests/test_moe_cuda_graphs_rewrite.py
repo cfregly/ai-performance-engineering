@@ -144,6 +144,8 @@ def test_level5_bmm_path_reuses_padding_workspaces() -> None:
     assert "cached = getattr(self, name, None)" in text
     assert "self._bmm_padded_tokens: Optional[torch.Tensor] = None" in text
     assert "self._bmm_padded_weights: Optional[torch.Tensor] = None" in text
+    assert "self._bmm_valid_out: Optional[torch.Tensor] = None" in text
+    assert "self._bmm_restored: Optional[torch.Tensor] = None" in text
     assert "self._bmm_flat_token_ids_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}" in text
     assert "self._bmm_position_ids_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}" in text
     assert "def _flat_topk_token_ids_for(self, num_tokens: int, top_k: int, device: torch.device)" in text
@@ -158,9 +160,16 @@ def test_level5_bmm_path_reuses_padding_workspaces() -> None:
     assert "position_ids = self._position_ids_for(sorted_expert_ids.numel(), device)" in bmm_section
     assert "torch.sub(position_ids, expert_offsets, out=positions)" in bmm_section
     assert "torch.mul(sorted_expert_ids, max_count, out=padded_indices)" in bmm_section
+    assert "out.mul_(padded_weights)" in bmm_section
+    assert "if torch.is_grad_enabled() and flat_out.requires_grad:" in bmm_section
     assert "valid_out = flat_out.index_select(0, padded_indices)" in bmm_section
+    assert '"_bmm_valid_out",' in bmm_section
+    assert "torch.index_select(flat_out, 0, padded_indices, out=valid_out)" in bmm_section
     assert "unsort[sorted_order] = position_ids" in bmm_section
-    assert "restored = valid_out.index_select(0, unsort).view(batch_seq, top_k, -1)" in bmm_section
+    assert "if torch.is_grad_enabled() and valid_out.requires_grad:" in bmm_section
+    assert "restored = valid_out.index_select(0, unsort)" in bmm_section
+    assert '"_bmm_restored",' in bmm_section
+    assert "torch.index_select(valid_out, 0, unsort, out=restored)" in bmm_section
     assert 'padded_tokens = self._bmm_workspace(' in bmm_section
     assert '"_bmm_padded_tokens",' in bmm_section
     assert 'padded_weights = self._bmm_workspace(' in bmm_section
