@@ -40,7 +40,9 @@ class OptimizedModel(nn.Module):
         x = self.fc2(x)
         x = torch.relu_(x)
         x = self.fc3(x)
-        x = x / x.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+        norm = x.norm(dim=-1, keepdim=True)
+        norm.clamp_(min=1e-8)
+        x.div_(norm)
         return x
 
 

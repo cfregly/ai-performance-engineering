@@ -3150,6 +3150,12 @@ def test_ch20_bf16_mlp_uses_inplace_relu_activations() -> None:
         assert "torch.relu_(x)" in forward_section
         assert "torch.relu(x)" not in forward_section
 
+        if relative.endswith("optimized_bf16_mlp.py"):
+            assert "norm = x.norm(dim=-1, keepdim=True)" in forward_section
+            assert "norm.clamp_(min=1e-8)" in forward_section
+            assert "x.div_(norm)" in forward_section
+            assert "x = x / x.norm(dim=-1, keepdim=True).clamp(min=1e-8)" not in forward_section
+
 
 def test_ch20_autotuning_model_uses_inplace_pointwise_chain() -> None:
     source = (REPO_ROOT / "ch20" / "autotuning_common.py").read_text(encoding="utf-8")
