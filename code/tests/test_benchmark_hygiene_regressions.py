@@ -2718,6 +2718,8 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "self._scatter_output_buffer: Optional[torch.Tensor] = None" in base_section
     assert "def _scatter_output_for(self, tokens: torch.Tensor)" in base_section
     assert "token_indices = self._flat_token_indices_for(tokens.shape[0], tokens.device)" in base_section
+    assert "flat_tokens = tokens.index_select(0, token_indices)" in base_forward_section
+    assert "tokens.unsqueeze(1).expand" not in base_forward_section
     assert "output = self._scatter_output_for(tokens)" in base_forward_section
     assert "output = torch.empty_like(tokens" not in base_forward_section
     assert "return self._flat_token_indices_for(batch, tokens.device)" in source

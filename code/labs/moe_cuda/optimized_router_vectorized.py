@@ -174,7 +174,8 @@ class VectorizedTopKMoE(nn.Module):
         top_scores, expert_ids = torch.topk(logits, self.top_k, dim=-1)
         probs = torch.softmax(top_scores, dim=-1, dtype=tokens.dtype)
 
-        flat_tokens = tokens.unsqueeze(1).expand(-1, self.top_k, -1).reshape(-1, self.hidden_size)
+        token_indices = self._flat_token_indices_for(tokens.shape[0], tokens.device)
+        flat_tokens = tokens.index_select(0, token_indices)
         flat_expert_ids = expert_ids.reshape(-1)
         flat_probs = probs.reshape(-1, 1).to(tokens.dtype)
 
@@ -189,7 +190,6 @@ class VectorizedTopKMoE(nn.Module):
         expert_out = torch.bmm(hidden.unsqueeze(1), w2).squeeze(1) + b2
         weighted = expert_out * flat_probs
 
-        token_indices = self._flat_token_indices_for(tokens.shape[0], tokens.device)
         output = self._scatter_output_for(tokens)
         combine_index = token_indices.unsqueeze(-1).expand_as(weighted)
         output.scatter_reduce_(0, combine_index, weighted, reduce="sum", include_self=False)
