@@ -77,6 +77,8 @@ def test_graphable_bmm_fused_path_matches_dynamic_bmm_path() -> None:
         position_ids_ptr = experts._bmm_position_ids_cache[(4, torch.device("cpu"))].data_ptr()
         dynamic_again = experts.forward_bmm_fused(x, expert_indices, expert_weights)
         graphable = experts._forward_bmm_fused_graphable(x, expert_indices, expert_weights)
+        graph_workspace_ptr = experts._graph_padded_tokens.data_ptr()
+        graphable_again = experts._forward_bmm_fused_graphable(x, expert_indices, expert_weights)
 
     assert experts._bmm_padded_tokens.data_ptr() == token_workspace_ptr
     assert experts._bmm_padded_weights.data_ptr() == weight_workspace_ptr
@@ -92,8 +94,10 @@ def test_graphable_bmm_fused_path_matches_dynamic_bmm_path() -> None:
     torch.testing.assert_close(sorted_weight_column_view[:, 0], experts._bmm_sorted_weights)
     assert experts._bmm_flat_token_ids_cache[(4, 1, torch.device("cpu"))].data_ptr() == flat_token_ids_ptr
     assert experts._bmm_position_ids_cache[(4, torch.device("cpu"))].data_ptr() == position_ids_ptr
+    assert experts._graph_padded_tokens.data_ptr() == graph_workspace_ptr
     torch.testing.assert_close(dynamic_again, dynamic)
     torch.testing.assert_close(graphable, dynamic)
+    torch.testing.assert_close(graphable_again, dynamic)
 
 
 def test_moe_benchmark_metrics_surface_model_cuda_graph_state() -> None:
@@ -143,6 +147,10 @@ def test_graphable_moe_path_uses_fixed_capacity_dense_dispatch() -> None:
     assert "torch.argsort" not in implementation
     assert "repeat_interleave" not in implementation
     assert "x[:, None, :].expand(batch_seq, top_k, self.hidden_size).reshape(" in implementation
+    assert "self._graph_padded_tokens: Optional[torch.Tensor] = None" in text
+    assert 'padded_tokens = self._bmm_workspace(\n                "_graph_padded_tokens",' in implementation
+    assert "torch.mul(expert_mask_column, expanded_x_broadcast, out=padded_tokens)" in implementation
+    assert "padded_tokens = expert_mask.unsqueeze(-1) * expanded_x.unsqueeze(0)" not in implementation
 
 
 def test_level5_bmm_path_reuses_padding_workspaces() -> None:
@@ -306,7 +314,8 @@ def test_moe_expert_paths_weight_outputs_in_place_when_grad_disabled() -> None:
         assert "(out * expert_weights.unsqueeze(-1)).sum(dim=1)" not in section
     assert "weighted_out = _weight_routes_in_place_if_safe(expert_out, weights_e)" in grouped_section
     assert "expert_out * weights_e" not in grouped_section
-    assert "out = _weight_routes_in_place_if_safe(out, expert_mask.unsqueeze(-1))" in graphable_section
+    assert "expert_mask_column = expert_mask.unsqueeze(-1)" in graphable_section
+    assert "out = _weight_routes_in_place_if_safe(out, expert_mask_column)" in graphable_section
     assert "out = _weight_routes_in_place_if_safe(out, flat_weights)" in graphable_section
     assert "out = out * expert_mask.unsqueeze(-1) * flat_weights" not in graphable_section
     assert "self._mem_out_buffer: Optional[torch.Tensor] = None" in text

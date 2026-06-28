@@ -125,6 +125,7 @@ class MoEExperts(nn.Module):
         self._bmm_valid_out: Optional[torch.Tensor] = None
         self._bmm_restored: Optional[torch.Tensor] = None
         self._bmm_reduced: Optional[torch.Tensor] = None
+        self._graph_padded_tokens: Optional[torch.Tensor] = None
         self._grouped_output: Optional[torch.Tensor] = None
         self._grouped_restored: Optional[torch.Tensor] = None
         self._grouped_reduced: Optional[torch.Tensor] = None
@@ -725,6 +726,7 @@ class MoEExperts(nn.Module):
         compute stays vectorized, but all tensor shapes become capture-safe.
         """
         batch_seq, top_k = expert_indices.shape
+        device = x.device
         flat_idx = expert_indices.reshape(-1)
         flat_weights = expert_weights.reshape(1, -1, 1).to(dtype=x.dtype)
         expanded_x = x[:, None, :].expand(batch_seq, top_k, self.hidden_size).reshape(
@@ -734,13 +736,24 @@ class MoEExperts(nn.Module):
 
         expert_mask = F.one_hot(flat_idx, num_classes=self.num_experts).transpose(0, 1)
         expert_mask = expert_mask.to(dtype=x.dtype)
-        padded_tokens = expert_mask.unsqueeze(-1) * expanded_x.unsqueeze(0)
+        expert_mask_column = expert_mask.unsqueeze(-1)
+        expanded_x_broadcast = expanded_x.unsqueeze(0)
+        if torch.is_grad_enabled() and expanded_x.requires_grad:
+            padded_tokens = expert_mask_column * expanded_x_broadcast
+        else:
+            padded_tokens = self._bmm_workspace(
+                "_graph_padded_tokens",
+                (self.num_experts, batch_seq * top_k, self.hidden_size),
+                device=device,
+                dtype=x.dtype,
+            )
+            torch.mul(expert_mask_column, expanded_x_broadcast, out=padded_tokens)
 
         gate = torch.bmm(padded_tokens, self.w1_stacked)
         up = torch.bmm(padded_tokens, self.w3_stacked)
         hidden = _silu_mul_in_place_if_safe(gate, up)
         out = torch.bmm(hidden, self.w2_stacked)
-        out = _weight_routes_in_place_if_safe(out, expert_mask.unsqueeze(-1))
+        out = _weight_routes_in_place_if_safe(out, expert_mask_column)
         out = _weight_routes_in_place_if_safe(out, flat_weights)
 
         combined = out.sum(dim=0)
