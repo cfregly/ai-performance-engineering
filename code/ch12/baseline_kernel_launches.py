@@ -16,7 +16,6 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 def many_small_ops_regular(x: torch.Tensor, iterations: int = 100) -> torch.Tensor:
@@ -62,14 +61,7 @@ class BaselineKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
-        # Use conditional NVTX ranges - only enabled when profiling
-
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
-        with nvtx_range("kernel_launches", enable=enable_nvtx):
+        with self._nvtx_range("kernel_launches"):
             with torch.inference_mode():
                 self.output = many_small_ops_regular(self.x, self.iterations)
         if self._verify_input is None:

@@ -6421,6 +6421,28 @@ def test_ch11_stream_benchmarks_use_cached_nvtx_range() -> None:
         assert "with nvtx_range(" not in source
 
 
+def test_ch12_core_benchmarks_use_cached_nvtx_range() -> None:
+    expected_labels = {
+        "baseline_kernel_launches.py": "kernel_launches",
+        "optimized_kernel_launches.py": "kernel_launches",
+        "baseline_kernel_fusion.py": "kernel_fusion",
+        "optimized_kernel_fusion.py": "kernel_fusion",
+        "baseline_cuda_graphs.py": "cuda_graphs",
+        "optimized_cuda_graphs.py": "cuda_graphs",
+    }
+
+    for filename, label in expected_labels.items():
+        source = (REPO_ROOT / "ch12" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert f'with self._nvtx_range("{label}"):' in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert "with nvtx_range(" not in benchmark_section
+        assert "from core.profiling.nvtx_helper" not in source
+
+
 def test_ch11_ch12_standalone_timing_tools_use_inference_mode() -> None:
     paths = (
         "ch11/memory_async_demo.py",

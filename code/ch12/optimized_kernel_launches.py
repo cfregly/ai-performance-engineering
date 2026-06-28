@@ -12,7 +12,6 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 
 class OptimizedKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -64,12 +63,7 @@ class OptimizedKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
-        with nvtx_range("kernel_launches", enable=enable_nvtx):
+        with self._nvtx_range("kernel_launches"):
             with torch.inference_mode():
                 self.graph.replay()
                 self.output = self.graph_output

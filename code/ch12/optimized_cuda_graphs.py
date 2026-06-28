@@ -12,7 +12,6 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 from ch12.cuda_extensions import load_cuda_graphs_extension
 
@@ -51,12 +50,7 @@ class OptimizedCudaGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: CUDA graph replay."""
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
-        with nvtx_range("cuda_graphs", enable=enable_nvtx):
+        with self._nvtx_range("cuda_graphs"):
             self._extension.graph_replay(self.data, self.iterations)
         if self.data is None or self._verify_input is None:
             raise RuntimeError("Data or verification input not initialized")
