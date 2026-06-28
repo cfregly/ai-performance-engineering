@@ -142,7 +142,8 @@ def _run_worker(
             for rank_idx, shard_slice in enumerate(shard_slices):
                 full_out[..., shard_slice].copy_(gather_list[rank_idx])
             proj_out = proj_layers[layer_idx](full_out)
-            x = proj_out + aux_out
+            proj_out.add_(aux_out)
+            x = proj_out
 
     with torch.inference_mode():
         for _ in range(max(warmup, 0)):
@@ -259,7 +260,8 @@ class OptimizedTensorParallelAllGatherBenchmark(VerificationPayloadMixin, BaseBe
             for _ in range(_AUX_PASSES):
                 aux_out = self._aux_layers[layer_idx](aux_out)
             proj_out = self._proj_layers[layer_idx](self._full_out)
-            x = proj_out + aux_out
+            proj_out.add_(aux_out)
+            x = proj_out
         self._output = x
 
     def capture_verification_payload(self) -> None:

@@ -140,7 +140,8 @@ def _run_worker(
                 aux_out = aux_layers[layer_idx](aux_out)
             torch.cat(gather_list, dim=-1, out=full_out)
             proj_out = proj_layers[layer_idx](full_out)
-            x = proj_out + aux_out
+            proj_out.add_(aux_out)
+            x = proj_out
 
     with torch.inference_mode():
         for _ in range(max(warmup, 0)):
@@ -257,7 +258,8 @@ class OptimizedTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 aux_out = self._aux_layers[layer_idx](aux_out)
             _replicate_tensor_parallel_shard(local_out, self._world_size, self._full_out)
             proj_out = self._proj_layers[layer_idx](self._full_out)
-            x = proj_out + aux_out
+            proj_out.add_(aux_out)
+            x = proj_out
         self._output = x
 
     def capture_verification_payload(self) -> None:

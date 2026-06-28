@@ -722,6 +722,14 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
         assert "full_out = torch.cat(gather_list, dim=-1)" not in worker_section
         if "torch.cat(gather_list" in worker_section:
             assert "torch.cat(gather_list, dim=-1, out=full_out)" in worker_section
+        if filename.startswith("optimized_"):
+            assert "proj_out.add_(aux_out)" in worker_section
+            assert "proj_out.add_(aux_out)" in benchmark_section
+            assert "x = proj_out + aux_out" not in worker_section
+            assert "x = proj_out + aux_out" not in benchmark_section
+        else:
+            assert "x = proj_out + aux_out" in worker_section
+            assert "x = proj_out + aux_out" in benchmark_section
 
 
 def test_labs_training_hotpath_payload_caches_parameter_count() -> None:
