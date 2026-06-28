@@ -207,7 +207,6 @@ def main():
 
             loss.backward()
             micro_step += 1
-            loss_value = loss.item() * args.grad_accum
 
             should_step = micro_step % args.grad_accum == 0
             if should_step:
@@ -223,6 +222,7 @@ def main():
                 and (optimizer_step % 5 == 0 or optimizer_step == total_updates)
             ):
                 metrics.update(gpu_memory_usage(local_rank))
+                loss_value = float(loss.detach()) * args.grad_accum
                 msg = (
                     f"[optimized_fsdp2] step {optimizer_step}/{total_updates} "
                     f"loss={loss_value:.4f}" + ThroughputTracker.format(metrics, include_memory=True)

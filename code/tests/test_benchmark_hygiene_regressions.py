@@ -5351,6 +5351,37 @@ def test_nanochat_base_train_defers_grad_norm_sync_until_logging() -> None:
     assert "train_loss.item()" not in logging_section
 
 
+def test_train_distributed_optimized_fsdp_defers_loss_sync_until_logging() -> None:
+    for relative in (
+        "optimized_fsdp.py",
+        "optimized_fsdp_multigpu.py",
+        "optimized_fsdp2.py",
+        "optimized_fsdp2_multigpu.py",
+    ):
+        source = (REPO_ROOT / "labs" / "train_distributed" / relative).read_text(
+            encoding="utf-8"
+        )
+        loop_section = source.split("while optimizer_step < total_updates:", maxsplit=1)[1].split(
+            "if optimizer_step >= total_updates:",
+            maxsplit=1,
+        )[0]
+        before_logging = loop_section.split(
+            "metrics.update(gpu_memory_usage(local_rank))",
+            maxsplit=1,
+        )[0]
+        logging_section = loop_section.split(
+            "metrics.update(gpu_memory_usage(local_rank))",
+            maxsplit=1,
+        )[1].split(
+            "print(msg, flush=True)",
+            maxsplit=1,
+        )[0]
+
+        assert "loss.item() * args.grad_accum" not in loop_section
+        assert "loss_value =" not in before_logging
+        assert "loss_value = float(loss.detach()) * args.grad_accum" in logging_section
+
+
 def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
     source = (
         REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_sft.py"
