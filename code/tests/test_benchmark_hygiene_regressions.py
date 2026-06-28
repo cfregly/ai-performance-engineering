@@ -477,6 +477,11 @@ def test_ch07_lookup_pytorch_reuses_table_and_timing_events() -> None:
     main_section = source.split("def main", maxsplit=1)[1]
 
     assert "out = torch.empty_like" not in source
+    assert "_TABLE_CACHE: dict[tuple[str, int | None], torch.Tensor] = {}" in source
+    assert "def _table_for(device: torch.device) -> torch.Tensor:" in source
+    assert "table = _TABLE_CACHE.get(key)" in source
+    assert "_TABLE_CACHE[key] = table" in source
+    assert "table = _table_for(indices.device)" in run_section
     assert "events: tuple[torch.cuda.Event, torch.cuda.Event] | None = None" in run_section
     assert "start_event, end_event = events" in run_section
     assert "table = torch.arange(N, device=device, dtype=torch.float32)" in main_section

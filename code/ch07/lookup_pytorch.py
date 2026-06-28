@@ -8,6 +8,16 @@ from __future__ import annotations
 import torch
 
 N = 1 << 20
+_TABLE_CACHE: dict[tuple[str, int | None], torch.Tensor] = {}
+
+
+def _table_for(device: torch.device) -> torch.Tensor:
+    key = (device.type, device.index)
+    table = _TABLE_CACHE.get(key)
+    if table is None or table.device != device:
+        table = torch.arange(N, device=device, dtype=torch.float32)
+        _TABLE_CACHE[key] = table
+    return table
 
 
 def run(
@@ -17,7 +27,7 @@ def run(
     events: tuple[torch.cuda.Event, torch.cuda.Event] | None = None,
 ) -> float:
     if table is None:
-        table = torch.arange(N, device=indices.device, dtype=torch.float32)
+        table = _table_for(indices.device)
 
     if indices.device.type == "cuda":
         # Use CUDA Events for accurate GPU timing
