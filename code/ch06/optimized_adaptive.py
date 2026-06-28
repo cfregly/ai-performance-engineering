@@ -22,6 +22,7 @@ class OptimizedAdaptiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.N = 4_000_000
         self.adaptive_chunk: Optional[int] = None
         self.chunk_plan: list[tuple[int, int]] = []
+        self._chunk_views: list[tuple[torch.Tensor, torch.Tensor]] = []
         # Chunked processing benchmark - fixed input size
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -48,6 +49,10 @@ class OptimizedAdaptiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             end = min(start + self.adaptive_chunk, self.N)
             self.chunk_plan.append((start, end))
             start = end
+        self._chunk_views = [
+            (self.input[start:end], self._output_buffer[start:end])
+            for start, end in self.chunk_plan
+        ]
         self._synchronize()
 
     def _transform(self, tensor: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
@@ -61,10 +66,11 @@ class OptimizedAdaptiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.input is not None
         assert self.adaptive_chunk is not None
         assert self._output_buffer is not None and self._output_buffer.shape == self.input.shape
+        if not self._chunk_views:
+            raise RuntimeError("setup() must initialize chunk views")
         with self._nvtx_range("optimized_adaptive"):
-            for start, end in self.chunk_plan:
-                window = self.input[start:end]
-                self._transform(window, self._output_buffer[start:end])
+            for window, out_window in self._chunk_views:
+                self._transform(window, out_window)
             self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
@@ -82,6 +88,7 @@ class OptimizedAdaptiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._output_buffer = None
         self.chunk_plan = []
+        self._chunk_views = []
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

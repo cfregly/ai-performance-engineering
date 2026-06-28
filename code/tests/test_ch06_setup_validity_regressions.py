@@ -31,8 +31,17 @@ def test_optimized_autotuning_writes_transform_into_reused_buffers() -> None:
     assert "F.silu(out, inplace=True)" in transform_section
     assert "transformed = self._transform" not in source
     assert ".copy_(transformed)" not in source
+    assert "self._chunk_views: list[tuple[torch.Tensor, torch.Tensor]] = []" in source
+    assert "def _build_chunk_views(self, chunk: int) -> list[tuple[torch.Tensor, torch.Tensor]]" in source
+    assert "self._chunk_views = self._build_chunk_views(self.optimal_chunk)" in source
     assert "self._transform(window, scratch[offset : offset + span])" in source
-    assert "self._transform(window, self._output_buffer[offset : offset + span])" in source
+    assert "for window, out_window in self._chunk_views:" in source
+    assert "self._transform(window, out_window)" in source
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    assert "offset : offset + span" not in benchmark_section
 
     bench = OptimizedAutotuningBenchmark()
     x = torch.randn(16, dtype=torch.float32)
@@ -57,7 +66,16 @@ def test_optimized_adaptive_writes_transform_into_reused_buffer() -> None:
     assert "F.silu(out, inplace=True)" in transform_section
     assert "transformed = self._transform" not in source
     assert ".copy_(transformed)" not in source
-    assert "self._transform(window, self._output_buffer[start:end])" in source
+    assert "self._chunk_views: list[tuple[torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._chunk_views = [" in source
+    assert "for window, out_window in self._chunk_views:" in source
+    assert "self._transform(window, out_window)" in source
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    assert "self.input[start:end]" not in benchmark_section
+    assert "self._output_buffer[start:end]" not in benchmark_section
 
     bench = OptimizedAdaptiveBenchmark()
     x = torch.randn(16, dtype=torch.float32)

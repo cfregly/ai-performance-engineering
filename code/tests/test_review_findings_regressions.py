@@ -143,10 +143,12 @@ def test_ch06_optimized_adaptive_uses_chunk_plan_without_extra_staging_buffers()
     optimized_text = _read("ch06/optimized_adaptive.py")
 
     assert "self.chunk_plan: list[tuple[int, int]] = []" in optimized_text
+    assert "self._chunk_views: list[tuple[torch.Tensor, torch.Tensor]] = []" in optimized_text
     assert "self._output_buffer = torch.empty_like(self.input)" in optimized_text
-    assert "for start, end in self.chunk_plan:" in optimized_text
-    assert "window = self.input[start:end]" in optimized_text
-    assert "self._transform(window, self._output_buffer[start:end])" in optimized_text
+    assert "for start, end in self.chunk_plan" in optimized_text
+    assert "self._chunk_views = [" in optimized_text
+    assert "for window, out_window in self._chunk_views:" in optimized_text
+    assert "self._transform(window, out_window)" in optimized_text
     assert "self._output_buffer[start:end].copy_(transformed)" not in optimized_text
 
     for forbidden in ("host_buffer", "device_buffer", "pin_memory", "torch.cuda.Stream"):
@@ -1136,7 +1138,6 @@ def test_persistent_decode_keeps_canonical_iteration_parity_and_marks_cuda_varia
     baseline_source = _read("labs/persistent_decode/baseline_persistent_decode.py")
     triton_source = _read("labs/persistent_decode/optimized_persistent_decode_triton.py")
     cuda_source = _read("labs/persistent_decode/optimized_persistent_decode_cuda.py")
-    readme_text = _read("labs/persistent_decode/README.md")
 
     assert "iterations=12" in baseline_source
     assert "iterations=12" in triton_source

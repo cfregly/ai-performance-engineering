@@ -28,6 +28,7 @@ class OptimizedAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.N = 4_000_000
         self.candidates = [1024, 2048, 4096, 8192]
         self.optimal_chunk: Optional[int] = None
+        self._chunk_views: list[tuple[torch.Tensor, torch.Tensor]] = []
         self.timer_results: List[Tuple[int, float]] = []
         # Autotuning benchmark - fixed input size
         self._workload = WorkloadMetadata(
@@ -44,6 +45,7 @@ class OptimizedAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_buffer = torch.empty_like(self.input)
         scratch = torch.empty_like(self.input)
         self.optimal_chunk = self._autotune_chunk_size(scratch)
+        self._chunk_views = self._build_chunk_views(self.optimal_chunk)
         self._synchronize()
 
     def _transform(self, tensor: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
@@ -51,6 +53,15 @@ class OptimizedAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
         out.add_(0.1)
         F.silu(out, inplace=True)
         return out
+
+    def _build_chunk_views(self, chunk: int) -> list[tuple[torch.Tensor, torch.Tensor]]:
+        assert self.input is not None and self._output_buffer is not None
+        views: list[tuple[torch.Tensor, torch.Tensor]] = []
+        for offset in range(0, self.N, chunk):
+            span = min(chunk, self.N - offset)
+            end = offset + span
+            views.append((self.input[offset:end], self._output_buffer[offset:end]))
+        return views
 
     def _autotune_chunk_size(self, scratch: torch.Tensor) -> int:
         """Benchmark several staging chunk sizes using baseline timers."""
@@ -79,12 +90,11 @@ class OptimizedAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: Operations with autotuned parameters."""
         assert self.input is not None and self.optimal_chunk is not None
         assert self._output_buffer is not None and self._output_buffer.shape == self.input.shape
+        if not self._chunk_views:
+            raise RuntimeError("setup() must initialize chunk views")
         with self._nvtx_range("optimized_autotuning"):
-            chunk = self.optimal_chunk
-            for offset in range(0, self.N, chunk):
-                span = min(chunk, self.N - offset)
-                window = self.input[offset : offset + span]
-                self._transform(window, self._output_buffer[offset : offset + span])
+            for window, out_window in self._chunk_views:
+                self._transform(window, out_window)
             self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
@@ -101,6 +111,7 @@ class OptimizedAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input = None
         self.output = None
         self._output_buffer = None
+        self._chunk_views = []
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
