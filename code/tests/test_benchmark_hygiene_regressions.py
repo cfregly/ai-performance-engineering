@@ -118,6 +118,25 @@ def test_ch01_fp16_benchmark_precomputes_microbatch_groups() -> None:
     assert "group_size = max(" not in benchmark_section
 
 
+def test_ch01_optimized_verification_reuses_cached_model_dtype() -> None:
+    for filename in ("optimized_performance.py", "optimized_performance_fp16.py"):
+        source = (REPO_ROOT / "ch01" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+
+        assert "self._model_dtype = torch.float32" in source
+        assert "self._model_dtype = dtype" in setup_section
+        assert "verify_input = verify_input.to(dtype=self._model_dtype, device=self.device)" in capture_section
+        assert "list(self.model.parameters())" not in capture_section
+        assert "model_params" not in capture_section
+
+
 def test_ch01_baseline_benchmarks_precompute_microbatch_groups() -> None:
     base_source = inspect.getsource(BaselinePerformanceBenchmark)
     base_setup = base_source.split("def setup", maxsplit=1)[1].split(

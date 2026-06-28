@@ -63,6 +63,7 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
         self._microbatch_groups = None
         self._target_groups = None
         self._group_sizes = None
+        self._model_dtype = torch.float32
         self._tf32_state: tuple[bool, bool | None] | None = None
         self.register_workload_metadata(
             samples_per_iteration=PERFORMANCE_FP16_WORKLOAD.samples_per_iteration,
@@ -80,6 +81,7 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
         else:
             dtype = torch.float32
         self.model = self.model.to(self.device).eval()
+        self._model_dtype = dtype
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
 
         self.microbatches = [
@@ -139,10 +141,8 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
         if self.model is None or self._verify_input is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         with torch.no_grad():
-            model_params = list(self.model.parameters())
             verify_input = self._verify_input
-            if model_params:
-                verify_input = verify_input.to(dtype=model_params[0].dtype, device=self.device)
+            verify_input = verify_input.to(dtype=self._model_dtype, device=self.device)
             self._verify_output = self.model(verify_input).float().clone()
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
@@ -150,7 +150,7 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
             batch_size=self._verify_input.shape[0],
             parameter_count=int(self.parameter_count),
             precision_flags={
-                "fp16": bool(model_params) and model_params[0].dtype == torch.float16,
+                "fp16": self._model_dtype == torch.float16,
                 "bf16": False,
                 "fp8": False,
                 "tf32": torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32),
@@ -163,6 +163,7 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
         self._microbatch_groups = None
         self._target_groups = None
         self._group_sizes = None
+        self._model_dtype = torch.float32
         restore_tf32_state(self._tf32_state)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
