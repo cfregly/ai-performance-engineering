@@ -7565,6 +7565,9 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
+    model_section = source.split("class BufferedMicrobatchMlp", maxsplit=1)[1].split(
+        "class OptimizedMemoryDoubleBufferingBenchmark", maxsplit=1
+    )[0]
 
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in baseline_setup
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in baseline_setup
@@ -7577,6 +7580,15 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "sum(p.numel()" not in baseline_capture
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in params)" in setup_section
+    assert "self.model = BufferedMicrobatchMlp(self.hidden_dim)" in setup_section
+    assert "nn.Sequential(" not in setup_section
+    assert "self._fc1_buffer: Optional[torch.Tensor] = None" in model_section
+    assert "self._fc2_buffer: Optional[torch.Tensor] = None" in model_section
+    assert "def _ensure_forward_buffers(" in model_section
+    assert "if torch.is_grad_enabled():" in model_section
+    assert "torch.matmul(x, self.fc1.weight.t(), out=fc1_out)" in model_section
+    assert "self.relu(fc1_out)" in model_section
+    assert "torch.matmul(fc1_out, self.fc2.weight.t(), out=fc2_out)" in model_section
     assert "self.copy_events = [torch.cuda.Event(blocking=False) for _ in range(2)]" in setup_section
     assert "self.buffers = [self.buffer_a, self.buffer_b]" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section

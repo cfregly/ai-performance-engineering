@@ -22,6 +22,54 @@ from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 resolve_device = partial(require_cuda_device, "CUDA required for ch19")
 
+
+class BufferedMicrobatchMlp(nn.Module):
+    """Microbatch MLP that reuses forward buffers in inference mode."""
+
+    def __init__(self, hidden_dim: int):
+        super().__init__()
+        self.fc1 = nn.Linear(hidden_dim, hidden_dim * 4)
+        self.relu = nn.ReLU(inplace=True)
+        self.fc2 = nn.Linear(hidden_dim * 4, hidden_dim)
+        self._fc1_buffer: Optional[torch.Tensor] = None
+        self._fc2_buffer: Optional[torch.Tensor] = None
+
+    def _ensure_forward_buffers(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        prefix = tuple(x.shape[:-1])
+        fc1_shape = (*prefix, self.fc1.out_features)
+        fc2_shape = (*prefix, self.fc2.out_features)
+        if (
+            self._fc1_buffer is None
+            or self._fc1_buffer.shape != fc1_shape
+            or self._fc1_buffer.device != x.device
+            or self._fc1_buffer.dtype != x.dtype
+        ):
+            self._fc1_buffer = torch.empty(fc1_shape, device=x.device, dtype=x.dtype)
+        if (
+            self._fc2_buffer is None
+            or self._fc2_buffer.shape != fc2_shape
+            or self._fc2_buffer.device != x.device
+            or self._fc2_buffer.dtype != x.dtype
+        ):
+            self._fc2_buffer = torch.empty(fc2_shape, device=x.device, dtype=x.dtype)
+        return self._fc1_buffer, self._fc2_buffer
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled():
+            x = self.relu(self.fc1(x))
+            return self.fc2(x)
+
+        fc1_out, fc2_out = self._ensure_forward_buffers(x)
+        torch.matmul(x, self.fc1.weight.t(), out=fc1_out)
+        if self.fc1.bias is not None:
+            fc1_out.add_(self.fc1.bias)
+        self.relu(fc1_out)
+        torch.matmul(fc1_out, self.fc2.weight.t(), out=fc2_out)
+        if self.fc2.bias is not None:
+            fc2_out.add_(self.fc2.bias)
+        return fc2_out
+
+
 class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: double buffering for overlapping operations."""
     
@@ -53,11 +101,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         torch.cuda.manual_seed_all(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
-        self.model = nn.Sequential(
-            nn.Linear(self.hidden_dim, self.hidden_dim * 4),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.hidden_dim * 4, self.hidden_dim),
-        )
+        self.model = BufferedMicrobatchMlp(self.hidden_dim)
         # Optimization: Use FP16 for faster computation - FAIL FAST if not supported
         if self.device.type != "cuda":
             raise RuntimeError("CUDA required for optimized_memory_double_buffering benchmark")
