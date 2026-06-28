@@ -76,6 +76,8 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._restored_out: Optional[torch.Tensor] = None
         self._restored_weight: Optional[torch.Tensor] = None
         self._verification_payload = None
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     @staticmethod
@@ -137,12 +139,15 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("SKIPPED: MXFP8 path disabled via arch_config.USE_TE_FP8.")
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.inputs = torch.randn(
             self.num_tokens, self.hidden_dim, device=self.device, dtype=torch.bfloat16
         )
         self.weights = torch.randn(
             self.num_experts, self.ffn_dim, self.hidden_dim, device=self.device, dtype=torch.bfloat16
         )
+        self._payload_parameter_count = self.weights.numel()
         base_assign = balanced_assignments(
             num_tokens=self.num_tokens, num_experts=self.num_experts, device=self.device
         )
@@ -262,8 +267,7 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
 
     def benchmark_fn(self) -> None:
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with torch.inference_mode(), nvtx_range("mxfp8_moe_optimized", enable=enable_nvtx):
+        with torch.inference_mode(), nvtx_range("mxfp8_moe_optimized", enable=self._enable_nvtx):
             if self.use_cuda_graphs and self._graph is not None and self._graph_out is not None:
                 self._graph.replay()
                 self.output = self._graph_out
@@ -277,7 +281,7 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"inputs": self.inputs},
             output=self.output.to(torch.float16) if self.output is not None else self.output,
             batch_size=self.num_tokens,
-            parameter_count=self.weights.numel() if self.weights is not None else 0,
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.5, 20.0),
             precision_flags={"fp16": False, "bf16": True, "fp8": True, "tf32": False},
         )

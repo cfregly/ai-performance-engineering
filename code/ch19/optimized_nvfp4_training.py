@@ -105,12 +105,16 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.micro_batches),
             tokens_per_iteration=float(tokens),
         )
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         if not TE_AVAILABLE:
             raise RuntimeError(f"Transformer Engine not available: {TE_IMPORT_ERROR}")
 
         torch.manual_seed(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
         if not is_nvfp4_available() or self.nvfp4_recipe is None:
             raise RuntimeError("NVFP4 not available: ensure Blackwell GPU + Transformer Engine NVFP4 support")
@@ -126,6 +130,7 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         with quantized_model_init(enabled=True, recipe=self.active_recipe):
             self.model = nn.Sequential(*layers).to(self.device, dtype=torch.bfloat16)
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=3e-4, fused=True)
         
@@ -178,10 +183,7 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer.step()
 
     def benchmark_fn(self) -> None:
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-        with nvtx_range("nvfp4_training", enable=enable_nvtx):
+        with nvtx_range("nvfp4_training", enable=self._enable_nvtx):
             for idx in range(self.micro_batches):
                 self._train_step(idx)
         self.output = None
@@ -203,7 +205,7 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"verify_input": self._verify_input},
             output=self.output,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags=precision_flags,
             output_tolerance=(0.5, 5.0),
         )

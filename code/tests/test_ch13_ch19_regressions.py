@@ -199,13 +199,29 @@ def test_baseline_mxfp8_moe_reuses_bucketed_output_buffer() -> None:
 
 
 def test_mxfp8_moe_benchmark_wrappers_use_inference_mode() -> None:
+    baseline_setup = inspect.getsource(baseline_mxfp8_moe.BaselineMXFP8MoEBenchmark.setup)
     baseline_benchmark = inspect.getsource(baseline_mxfp8_moe.BaselineMXFP8MoEBenchmark.benchmark_fn)
+    baseline_capture = inspect.getsource(
+        baseline_mxfp8_moe.BaselineMXFP8MoEBenchmark.capture_verification_payload
+    )
+    optimized_setup = inspect.getsource(optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark.setup)
     optimized_benchmark = inspect.getsource(optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark.benchmark_fn)
+    optimized_capture = inspect.getsource(
+        optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark.capture_verification_payload
+    )
 
-    assert 'with torch.inference_mode(), nvtx_range("mxfp8_moe_baseline"' in baseline_benchmark
-    assert 'with torch.inference_mode(), nvtx_range("mxfp8_moe_optimized"' in optimized_benchmark
-    assert "torch.no_grad()" not in baseline_benchmark
-    assert "torch.no_grad()" not in optimized_benchmark
+    for setup_source, benchmark_source, capture_source, label in (
+        (baseline_setup, baseline_benchmark, baseline_capture, "mxfp8_moe_baseline"),
+        (optimized_setup, optimized_benchmark, optimized_capture, "mxfp8_moe_optimized"),
+    ):
+        assert f'with torch.inference_mode(), nvtx_range("{label}", enable=self._enable_nvtx):' in benchmark_source
+        assert "torch.no_grad()" not in benchmark_source
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_source
+        assert "self._payload_parameter_count = self.weights.numel()" in setup_source
+        assert "get_config()" not in benchmark_source
+        assert "get_nvtx_enabled(" not in benchmark_source
+        assert "parameter_count=self._payload_parameter_count" in capture_source
+        assert "self.weights.numel()" not in capture_source
 
 
 def test_native_fp6_quantization_avoids_tensor_bool_scale_branch() -> None:

@@ -65,6 +65,8 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self._verification_payload = None
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
         self.register_workload_metadata(
             requests_per_iteration=float(self.micro_batches),
             tokens_per_iteration=float(tokens),
@@ -72,11 +74,14 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         torch.manual_seed(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.model = _BF16Trainer(
             hidden_dim=self.hidden_dim,
             intermediate_dim=self.intermediate_dim,
             num_layers=self.num_layers,
         ).to(self.device, dtype=torch.bfloat16)
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=3e-4, fused=True)
         self.inputs = [
             torch.randn(
@@ -111,10 +116,7 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer.step()
 
     def benchmark_fn(self) -> None:
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-        with nvtx_range("nvfp4_training_baseline", enable=enable_nvtx):
+        with nvtx_range("nvfp4_training_baseline", enable=self._enable_nvtx):
             for idx in range(self.micro_batches):
                 self._train_step(idx)
         self.output = None
@@ -128,7 +130,7 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"verify_input": self._verify_input},
             output=self.output,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={"fp16": False, "bf16": True, "fp8": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
             output_tolerance=(0.5, 5.0),
         )
