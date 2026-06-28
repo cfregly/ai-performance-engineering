@@ -51,10 +51,13 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._pending_tpot_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._ttft_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._tpot_events: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
         self.model = SimpleLLM(hidden_dim=self.hidden, num_layers=12).to(self.device).to(self.dtype).eval()
         self.prompt = torch.randint(0, 10000, (self.batch_size, self.prefill_seq), device=self.device)
@@ -104,8 +107,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.model is None or self.prompt is None or self.prefill_stream is None or self.decode_stream is None or self._prefill_done is None:
             raise RuntimeError("Model/inputs/streams not initialized")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("optimized_disaggregated_multigpu.prefill_decode", enable=enable_nvtx):
+        with nvtx_range("optimized_disaggregated_multigpu.prefill_decode", enable=self._enable_nvtx):
             with torch.inference_mode():
                 ttft_events = self._get_ttft_events()
                 request_start, prefill_end = ttft_events

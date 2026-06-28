@@ -3074,6 +3074,16 @@ def test_ch17_inference_wrappers_use_inference_mode() -> None:
         )[0]
         assert "with torch.inference_mode():" in benchmark_section
         assert "with torch.no_grad():" not in benchmark_section
+        if relative in {"ch17/baseline_prefill_decode_disagg.py", "ch17/optimized_prefill_decode_disagg.py"}:
+            setup_section = source.split("def setup", maxsplit=1)[1].split(
+                "def _get_ttft_events",
+                maxsplit=1,
+            )[0]
+            assert "self._enable_nvtx = False" in source
+            assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+            assert "get_config()" not in benchmark_section
+            assert "get_nvtx_enabled(" not in benchmark_section
+            assert "enable=self._enable_nvtx" in benchmark_section
         if relative in {"ch17/baseline_inference_full.py", "ch17/optimized_inference_full.py"}:
             setup_section = source.split("def setup", maxsplit=1)[1].split(
                 "def benchmark_fn",

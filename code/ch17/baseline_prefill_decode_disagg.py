@@ -41,10 +41,13 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
         self._pending_tpot_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._ttft_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._tpot_events: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.model = SimpleLLM(hidden_dim=1024, num_layers=12).to(self.device).to(torch.bfloat16).eval()
         self.prompt = torch.randint(0, 10000, (1, 256), device=self.device)
         with torch.inference_mode():
@@ -86,9 +89,7 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
         if self.model is None or self.prompt is None:
             raise RuntimeError("Model or prompt not initialized")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-
-        with nvtx_range("inference_monolithic", enable=enable_nvtx):
+        with nvtx_range("inference_monolithic", enable=self._enable_nvtx):
             with torch.inference_mode():
                 ttft_events = self._get_ttft_events()
                 request_start, prefill_end = ttft_events
