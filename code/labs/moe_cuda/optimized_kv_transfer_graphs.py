@@ -32,8 +32,10 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.workspace: Optional[torch.Tensor] = None
         self.kv_dest: Optional[torch.Tensor] = None
         self.graph: Optional[torch.cuda.CUDAGraph] = None
+        self._graph_chunk_triplets: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self._payload_meta: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_view: Optional[torch.Tensor] = None
         tokens = self.num_chunks * self.chunk_size
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.num_chunks),
@@ -64,11 +66,21 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.workspace = torch.empty_like(self.input_chunks)
         self.kv_dest = torch.empty_like(self.input_chunks)
+        self._graph_chunk_triplets = list(
+            zip(
+                self.input_chunks.unbind(0),
+                self.workspace.unbind(0),
+                self.kv_dest.unbind(0),
+                strict=True,
+            )
+        )
+        self._output_view = self.kv_dest[0, :1, : min(8, self.hidden_size)]
         self._payload_meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
 
         # Warmup to ensure cuBLAS/allocator state is initialized before graph capture.
-        torch.matmul(self.input_chunks[0], self.weight, out=self.workspace[0])
-        self.kv_dest[0].copy_(self.workspace[0])
+        first_input, first_workspace, first_dest = self._graph_chunk_triplets[0]
+        torch.matmul(first_input, self.weight, out=first_workspace)
+        first_dest.copy_(first_workspace)
         torch.cuda.synchronize(self.device)
         
         self._maybe_capture_graph()
@@ -76,13 +88,15 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _maybe_capture_graph(self) -> None:
         if any(t is None for t in (self.input_chunks, self.weight, self.workspace, self.kv_dest)):
             raise RuntimeError("Buffers not initialized")
+        if len(self._graph_chunk_triplets) != self.num_chunks:
+            raise RuntimeError("Chunk views not initialized")
         # Capture the steady-state pipeline so replay avoids Python/launch overhead.
         self.graph = torch.cuda.CUDAGraph()
         torch.cuda.synchronize(self.device)
         with torch.cuda.graph(self.graph):
-            for i in range(self.num_chunks):
-                torch.matmul(self.input_chunks[i], self.weight, out=self.workspace[i])
-                self.kv_dest[i].copy_(self.workspace[i])
+            for input_chunk, workspace_chunk, dest_chunk in self._graph_chunk_triplets:
+                torch.matmul(input_chunk, self.weight, out=workspace_chunk)
+                dest_chunk.copy_(workspace_chunk)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -95,7 +109,7 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.graph.replay()
         if self.kv_dest is None:
             raise RuntimeError("KV destination missing")
-        self.output = self.kv_dest[0, :1, : min(8, self.hidden_size)]
+        self.output = self._output_view
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -118,7 +132,9 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.weight = None
         self.workspace = None
         self.kv_dest = None
+        self._graph_chunk_triplets = []
         self.output = None
+        self._output_view = None
         self._payload_meta = None
         
         torch.cuda.empty_cache()

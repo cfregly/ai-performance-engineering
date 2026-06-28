@@ -3556,11 +3556,20 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
             "def capture_verification_payload", maxsplit=1
         )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
 
         assert "torch.tensor(" not in benchmark_section
         assert ".clone()" not in benchmark_section
         assert ".float()" not in benchmark_section
         assert "output=self.output.detach().float().clone()" in capture_section
+        assert "self._output_view: Optional[torch.Tensor] = None" in source
+        assert "self._output_view = self.kv_dest[0, :1, : min(8, self.hidden_size)]" in setup_section
+        assert "self.output = self._output_view" in benchmark_section
+        assert "self.kv_dest[0, :1, : min(8, self.hidden_size)]" not in benchmark_section
+        assert "self._output_view = None" in teardown_section
         assert "self.workspace = torch.empty_like(self.input_chunks)" in setup_section
         assert "self.kv_dest = torch.empty_like(self.input_chunks)" in setup_section
         assert "torch.zeros_like(self.input_chunks)" not in setup_section
@@ -3568,6 +3577,34 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
         assert "get_config()" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert "enable=self._enable_nvtx" in benchmark_section
+
+        if name == "optimized_kv_transfer.py":
+            launch_compute_section = source.split("def _launch_compute", maxsplit=1)[1].split(
+                "def _launch_copy",
+                maxsplit=1,
+            )[0]
+            assert "self._compute_chunk_specs: List[tuple[torch.Tensor, torch.Tensor, torch.cuda.Event]] = []" in source
+            assert "self._copy_chunk_specs: List[tuple[torch.Tensor, torch.Tensor, torch.cuda.Event]] = []" in source
+            assert "self._compute_chunk_specs = list(zip(input_views, workspace_views, self.compute_done_events, strict=True))" in setup_section
+            assert "self._copy_chunk_specs = list(zip(workspace_views, dest_views, self.compute_done_events, strict=True))" in setup_section
+            assert "for chunk, workspace_chunk, compute_event in self._compute_chunk_specs:" in benchmark_section
+            assert "for workspace_chunk, dest_chunk, compute_event in self._copy_chunk_specs:" in benchmark_section
+            assert "self.input_chunks[idx]" not in launch_compute_section
+            assert "self.workspace[idx]" not in launch_compute_section
+            assert "self._compute_chunk_specs = []" in teardown_section
+            assert "self._copy_chunk_specs = []" in teardown_section
+        elif name == "optimized_kv_transfer_graphs.py":
+            graph_section = source.split("def _maybe_capture_graph", maxsplit=1)[1].split(
+                "def benchmark_fn",
+                maxsplit=1,
+            )[0]
+            assert "self._graph_chunk_triplets: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
+            assert "self._graph_chunk_triplets = list(" in setup_section
+            assert "for input_chunk, workspace_chunk, dest_chunk in self._graph_chunk_triplets:" in graph_section
+            assert "self.input_chunks[i]" not in graph_section
+            assert "self.workspace[i]" not in graph_section
+            assert "self.kv_dest[i]" not in graph_section
+            assert "self._graph_chunk_triplets = []" in teardown_section
 
 
 def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:

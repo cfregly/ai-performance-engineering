@@ -31,6 +31,7 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.workspace: Optional[torch.Tensor] = None
         self.kv_dest: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_view: Optional[torch.Tensor] = None
         tokens = self.num_chunks * self.chunk_size
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.num_chunks),
@@ -62,6 +63,7 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.workspace = torch.empty_like(self.input_chunks)
         self.kv_dest = torch.empty_like(self.input_chunks)
+        self._output_view = self.kv_dest[0, :1, : min(8, self.hidden_size)]
         self._payload_meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
         self._synchronize()
 
@@ -76,7 +78,7 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.workspace[i].copy_(out)
                 self.kv_dest[i].copy_(self.workspace[i])
         # Verification: capture first chunk output (common across optimized variants)
-        self.output = self.kv_dest[0, :1, : min(8, self.hidden_size)]
+        self.output = self._output_view
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -99,6 +101,7 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.workspace = None
         self.kv_dest = None
         self.output = None
+        self._output_view = None
         self._payload_meta = None
         torch.cuda.empty_cache()
 
