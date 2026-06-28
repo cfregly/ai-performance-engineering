@@ -200,6 +200,10 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
 
     for relative in torchcomms_files:
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        worker_section = source.split("def _run_worker", maxsplit=1)[1].split(
+            "def main",
+            maxsplit=1,
+        )[0]
         setup_section = source.split("def setup", maxsplit=1)[1].split(
             "def benchmark_fn",
             maxsplit=1,
@@ -219,6 +223,8 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
             in setup_section
         )
         assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "with torch.inference_mode():" in worker_section
+        assert "torch.no_grad()" not in worker_section
         assert "param_count = sum(" not in capture_section
         assert "sum(p.numel()" not in capture_section
 

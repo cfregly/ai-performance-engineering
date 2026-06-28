@@ -72,7 +72,7 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
     inputs = torch.randn(batch, hidden, device=device)
 
     def _step() -> None:
-        with torch.no_grad():
+        with torch.inference_mode():
             comm_out = comm_block(inputs)
             if world_size > 1:
                 dist.all_reduce(comm_out, op=dist.ReduceOp.AVG)
@@ -217,4 +217,3 @@ class BaselineTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineTorchcommsBenchmark()
-

@@ -82,7 +82,7 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
     comm_payload = torch.randn(batch, hidden * _COMM_PAYLOAD_MULT, device=device)
     comm_stream = torch.cuda.Stream(device=device)
     def _step() -> None:
-        with torch.no_grad():
+        with torch.inference_mode():
             comm_out = comm_block(inputs)
             comm_stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(comm_stream):

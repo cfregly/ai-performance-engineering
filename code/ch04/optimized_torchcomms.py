@@ -86,7 +86,7 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
     comm_stream = torch.cuda.Stream()
 
     def _step() -> None:
-        with torch.no_grad():
+        with torch.inference_mode():
             comm_out = comm_block(inputs)
             if world_size > 1:
                 comm_stream.wait_stream(torch.cuda.current_stream())
@@ -236,4 +236,3 @@ class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedTorchcommsBenchmark()
-
