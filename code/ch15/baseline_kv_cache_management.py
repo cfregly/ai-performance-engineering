@@ -40,6 +40,9 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
         self.output = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._query_step_views: list[torch.Tensor] = []
+        self._prefix_views: list[torch.Tensor] = []
+        self._output_step_views: list[torch.Tensor] = []
         self._verify_input: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
         self.register_workload_metadata(
@@ -77,6 +80,9 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._query_step_views = [self.tokens[:, t : t + 1, :] for t in range(self.steps)]
+        self._prefix_views = [self.tokens[:, : t + 1, :] for t in range(self.steps)]
+        self._output_step_views = [self._output_buffer[:, t : t + 1, :] for t in range(self.steps)]
         self._synchronize()
         self._verify_input = self.tokens.detach()
     
@@ -85,13 +91,18 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         assert self.q_proj is not None and self.k_proj is not None and self.v_proj is not None and self.out_proj is not None
         assert self.tokens is not None
         assert self._output_buffer is not None
+        assert len(self._query_step_views) == self.steps
+        assert len(self._prefix_views) == self.steps
+        assert len(self._output_step_views) == self.steps
         with self._nvtx_range("baseline_kv_cache_management"):
             with torch.inference_mode():
                 outputs = self._output_buffer
-                for t in range(self.steps):
-                    query = self.tokens[:, t : t + 1, :]
-                    prefix = self.tokens[:, : t + 1, :]
-
+                for query, prefix, output_step in zip(
+                    self._query_step_views,
+                    self._prefix_views,
+                    self._output_step_views,
+                    strict=True,
+                ):
                     q = self.q_proj(query)
                     k = self.k_proj(prefix)
                     v = self.v_proj(prefix)
@@ -106,7 +117,7 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
                     attn = F.scaled_dot_product_attention(q, k, v, is_causal=False)
                     attn = attn.transpose(1, 2).contiguous().reshape(self.batch_size, 1, self.hidden_dim)
                     out = self.out_proj(attn)
-                    outputs[:, t : t + 1, :] = out
+                    output_step.copy_(out)
 
                 self.output = outputs
         if self.output is None:
@@ -138,6 +149,9 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.out_proj = None
         self.tokens = None
         self._output_buffer = None
+        self._query_step_views = []
+        self._prefix_views = []
+        self._output_step_views = []
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
