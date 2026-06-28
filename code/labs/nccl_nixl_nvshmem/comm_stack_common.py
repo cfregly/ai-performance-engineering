@@ -205,6 +205,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.selected_idx: Optional[torch.Tensor] = None
         self.selected_cpu: Optional[list[int]] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._expected_buffer: Optional[torch.Tensor] = None
         self.copy_stream: Optional[torch.cuda.Stream] = None
         self.copy_ready: Optional[torch.cuda.Event] = None
         self.baseline_copy_ready: Optional[torch.cuda.Event] = None
@@ -251,6 +252,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.packed_stage = torch.empty_like(self.gpu_stage) if self.optimized else None
         self._output_buffer = torch.empty_like(self.gpu_stage)
+        self._expected_buffer = torch.empty_like(self.gpu_stage)
         selected_cpu = _selected_indices_cpu(self.workload)
         self.selected_idx = selected_cpu.to(device=self.device)
         self.selected_cpu = [int(idx) for idx in selected_cpu.tolist()] if not self.optimized else None
@@ -314,12 +316,12 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         }
 
     def capture_verification_payload(self) -> None:
-        if self.src is None or self.output is None or self.selected_idx is None:
+        if self.src is None or self.output is None or self.selected_idx is None or self._expected_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        selected_source = self.src.index_select(0, self.selected_idx)
+        torch.index_select(self.src, 0, self.selected_idx, out=self._expected_buffer)
         self._set_verification_payload(
             inputs={
-                "selected_source": selected_source,
+                "selected_source": self._expected_buffer,
                 "selected_idx": self.selected_idx,
             },
             output=self.output,
@@ -342,6 +344,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.selected_idx = None
         self.selected_cpu = None
         self._output_buffer = None
+        self._expected_buffer = None
         self.copy_stream = None
         self.copy_ready = None
         self.baseline_copy_ready = None
@@ -367,12 +370,12 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return dict(self._metrics)
 
     def validate_result(self) -> Optional[str]:
-        if self.src is None or self.output is None or self.selected_idx is None:
+        if self.src is None or self.output is None or self.selected_idx is None or self._expected_buffer is None:
             return "Output not produced"
-        expected = self.src.index_select(0, self.selected_idx)
-        if self.output.shape != expected.shape:
+        torch.index_select(self.src, 0, self.selected_idx, out=self._expected_buffer)
+        if self.output.shape != self._expected_buffer.shape:
             return "Unexpected output shape"
-        if not torch.equal(self.output, expected):
+        if not torch.equal(self.output, self._expected_buffer):
             return "Selected blocks changed during handoff"
         return None
 

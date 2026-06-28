@@ -31,9 +31,16 @@ def test_ch04_nixl_tier_handoff_optimized_reuses_pack_buffer() -> None:
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+    validate_section = source.split("def validate_result", maxsplit=1)[1].split(
+        "def apply_target_overrides", maxsplit=1
+    )[0]
 
     assert "self.packed_stage = torch.empty_like(self.gpu_stage)" in source
     assert "self._output_buffer = torch.empty_like(self.gpu_stage)" in source
+    assert "self._expected_buffer = torch.empty_like(self.gpu_stage)" in source
     assert "self.dst = torch.empty_like(self.src)" in source
     assert "self.dst = torch.zeros_like(self.src)" not in source
     assert "self.dst.zero_()" not in benchmark_section
@@ -41,6 +48,10 @@ def test_ch04_nixl_tier_handoff_optimized_reuses_pack_buffer() -> None:
     assert "torch.index_select(self.src, 0, self.selected_idx, out=self.packed_stage)" in benchmark_section
     assert "self.output = self.dst.index_select(0, self.selected_idx)" not in benchmark_section
     assert "torch.index_select(self.dst, 0, self.selected_idx, out=self._output_buffer)" in benchmark_section
+    assert "selected_source = self.src.index_select(0, self.selected_idx)" not in capture_section
+    assert "expected = self.src.index_select(0, self.selected_idx)" not in validate_section
+    assert "torch.index_select(self.src, 0, self.selected_idx, out=self._expected_buffer)" in capture_section
+    assert "torch.index_select(self.src, 0, self.selected_idx, out=self._expected_buffer)" in validate_section
     assert "self.selected_idx.cpu().tolist()" not in source
     assert ".cpu().tolist()" not in benchmark_section
     assert "selected_cpu = self.selected_cpu" in benchmark_section
