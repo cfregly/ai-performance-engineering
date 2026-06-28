@@ -124,8 +124,10 @@ class MoEExperts(nn.Module):
         self._bmm_padded_weights: Optional[torch.Tensor] = None
         self._bmm_valid_out: Optional[torch.Tensor] = None
         self._bmm_restored: Optional[torch.Tensor] = None
+        self._bmm_reduced: Optional[torch.Tensor] = None
         self._grouped_output: Optional[torch.Tensor] = None
         self._grouped_restored: Optional[torch.Tensor] = None
+        self._grouped_reduced: Optional[torch.Tensor] = None
         self._bmm_flat_token_ids_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}
         self._bmm_position_ids_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
 
@@ -497,7 +499,17 @@ class MoEExperts(nn.Module):
             dtype=x.dtype,
         )
         restore_grouped_tokens(output, bucket_indices, batch_seq * top_k, out=restored)
-        return restored.view(batch_seq, top_k, -1).sum(dim=1)
+        restored = restored.view(batch_seq, top_k, self.hidden_size)
+        if torch.is_grad_enabled() and restored.requires_grad:
+            return restored.sum(dim=1)
+        reduced = self._bmm_workspace(
+            "_grouped_reduced",
+            (batch_seq, self.hidden_size),
+            device=x.device,
+            dtype=restored.dtype,
+        )
+        torch.sum(restored, dim=1, out=reduced)
+        return reduced
     
     def forward_bmm_fused(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
@@ -655,8 +667,17 @@ class MoEExperts(nn.Module):
                 dtype=valid_out.dtype,
             )
             torch.index_select(valid_out, 0, unsort, out=restored)
-        restored = restored.view(batch_seq, top_k, -1)
-        return restored.sum(dim=1)
+        restored = restored.view(batch_seq, top_k, self.hidden_size)
+        if torch.is_grad_enabled() and restored.requires_grad:
+            return restored.sum(dim=1)
+        reduced = self._bmm_workspace(
+            "_bmm_reduced",
+            (batch_seq, self.hidden_size),
+            device=device,
+            dtype=restored.dtype,
+        )
+        torch.sum(restored, dim=1, out=reduced)
+        return reduced
 
     def _forward_bmm_fused_graphable(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
