@@ -11,6 +11,7 @@ import torch.nn as nn
 
 from typing import Optional
 
+from ch04.reduction_common import ReusableReductionMlp
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -35,6 +36,8 @@ class BaselineNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model: Optional[nn.Module] = None
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
+        self._reduced_rows = 0
         self._bytes_transferred: float = 0.0
         self._payload_parameter_count = 0
         
@@ -49,32 +52,41 @@ class BaselineNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Setup: Initialize model."""
         torch.manual_seed(42)
         
-        self.model = nn.Sequential(
-            nn.Linear(self.hidden_dim, self.inner_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.inner_dim, self.hidden_dim),
-        ).to(self.device).eval()
+        self.model = ReusableReductionMlp(self.hidden_dim, self.inner_dim).to(self.device).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.input = torch.randn(self.batch_size, self.hidden_dim, device=self.device)
-        self._bytes_transferred = 0.0
+        if self.batch_size % self.num_shards != 0:
+            raise RuntimeError("Batch size must be divisible by num_shards")
+        self._reduced_rows = self.batch_size // self.num_shards
+        self._output_buffer = torch.empty((self._reduced_rows, self.hidden_dim), device=self.device)
+        element_size = self.input.element_size()
+        self._bytes_transferred = float(
+            (self.batch_size * self.hidden_dim + self._reduced_rows * self.hidden_dim)
+            * element_size
+        )
         torch.cuda.synchronize(self.device)
     
     def benchmark_fn(self) -> None:
         """Benchmark: CPU-based reduction (inefficient)."""
+        assert self.input is not None and self.model is not None
+        assert self._output_buffer is not None
+
         with self._nvtx_range("baseline_nccl"):
             with torch.inference_mode():
                 output = self.model(self.input)
                 
                 # Naively copy each shard to CPU to aggregate (slow!)
-                shards = torch.chunk(output, chunks=self.num_shards, dim=0)
+                shards = output.view(self.num_shards, self._reduced_rows, self.hidden_dim)
                 # This is the bottleneck: multiple GPU->CPU copies + CPU addition
-                cpu_shards = [shard.cpu() for shard in shards]
-                reduced = sum(cpu_shards) / float(self.num_shards)
-                # Copy result back to GPU
-                self.output = reduced.to(self.device)
-                shard_bytes = sum(shard.numel() * shard.element_size() for shard in shards)
-                self._bytes_transferred = float(shard_bytes + reduced.numel() * reduced.element_size())
+                cpu_shards = [shards[idx].cpu() for idx in range(self.num_shards)]
+                reduced = cpu_shards[0]
+                for shard in cpu_shards[1:]:
+                    reduced.add_(shard)
+                reduced.div_(float(self.num_shards))
+                # Copy result back to GPU without allocating a fresh destination.
+                self._output_buffer.copy_(reduced, non_blocking=False)
+                self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
         if self.input is None or self.output is None:
@@ -98,6 +110,8 @@ class BaselineNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.input = None
         self.output = None
+        self._output_buffer = None
+        self._reduced_rows = 0
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

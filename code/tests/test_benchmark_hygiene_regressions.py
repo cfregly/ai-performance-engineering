@@ -1652,6 +1652,8 @@ def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
     ):
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
         if relative in {
+            "ch04/baseline_nccl.py",
+            "ch04/baseline_cpu_reduction.py",
             "ch04/optimized_nccl.py",
             "ch04/optimized_cpu_reduction.py",
             "ch04/optimized_disaggregated.py",
@@ -1662,6 +1664,46 @@ def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
         assert "ReLU(inplace=True)" in source
         assert "nn.ReLU()" not in source
         assert "torch.nn.ReLU()" not in source
+
+
+def test_ch04_cpu_staged_reduction_baselines_reuse_buffered_mlp_and_outputs() -> None:
+    for relative in (
+        "ch04/baseline_nccl.py",
+        "ch04/baseline_cpu_reduction.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "from ch04.reduction_common import ReusableReductionMlp" in source
+        assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._reduced_rows = 0" in source
+        assert "self.model = ReusableReductionMlp(self.hidden_dim, self.inner_dim).to(self.device).eval()" in setup_section
+        assert "nn.Sequential(" not in setup_section
+        assert "self._output_buffer = torch.empty((self._reduced_rows, self.hidden_dim), device=self.device)" in setup_section
+        assert "self._bytes_transferred = float(" in setup_section
+        assert "shards = output.view(self.num_shards, self._reduced_rows, self.hidden_dim)" in benchmark_section
+        assert "cpu_shards = [shards[idx].cpu() for idx in range(self.num_shards)]" in benchmark_section
+        assert "for shard in cpu_shards[1:]:" in benchmark_section
+        assert "reduced.add_(shard)" in benchmark_section
+        assert "reduced.div_(float(self.num_shards))" in benchmark_section
+        assert "self._output_buffer.copy_(reduced, non_blocking=False)" in benchmark_section
+        assert "self.output = self._output_buffer" in benchmark_section
+        assert "torch.chunk(" not in benchmark_section
+        assert "sum(cpu_shards)" not in benchmark_section
+        assert "reduced.to(self.device)" not in benchmark_section
+        assert "self._output_buffer = None" in teardown_section
+        assert "self._reduced_rows = 0" in teardown_section
 
 
 def test_ch10_baseline_batch_reuses_microbatch_views() -> None:
