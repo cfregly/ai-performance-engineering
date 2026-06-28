@@ -103,6 +103,7 @@ class MoEExperts(nn.Module):
                 self.w3_stacked[idx].copy_(expert["w3"].weight.t())
         
         # Pre-allocated buffers for memory-efficient mode
+        self._naive_output: Optional[torch.Tensor] = None
         self._gate_buffer: Optional[torch.Tensor] = None
         self._up_buffer: Optional[torch.Tensor] = None
         self._cuda_graph = None
@@ -172,6 +173,18 @@ class MoEExperts(nn.Module):
         workspace = torch.empty(shape, device=device, dtype=dtype)
         setattr(self, name, workspace)
         return workspace
+
+    def _naive_output_like(self, x: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled() and x.requires_grad:
+            return torch.empty_like(x)
+        if (
+            self._naive_output is None
+            or self._naive_output.shape != x.shape
+            or self._naive_output.device != x.device
+            or self._naive_output.dtype != x.dtype
+        ):
+            self._naive_output = torch.empty_like(x)
+        return self._naive_output
 
     def _flat_topk_token_ids_for(self, num_tokens: int, top_k: int, device: torch.device) -> torch.Tensor:
         key = (num_tokens, top_k, device)
@@ -262,7 +275,7 @@ class MoEExperts(nn.Module):
         
         Problems: Python loop overhead, no parallelism, memory inefficient
         """
-        output = torch.empty_like(x)
+        output = self._naive_output_like(x)
         
         for k in range(num_experts_per_tok):
             for expert_idx in range(self.num_experts):

@@ -192,7 +192,11 @@ def test_naive_moe_path_seeds_output_from_first_route() -> None:
         maxsplit=1,
     )[0]
 
-    assert "output = torch.empty_like(x)" in naive_section
+    assert "self._naive_output: Optional[torch.Tensor] = None" in text
+    assert "def _naive_output_like(self, x: torch.Tensor) -> torch.Tensor:" in text
+    assert "if torch.is_grad_enabled() and x.requires_grad:" in text
+    assert "output = self._naive_output_like(x)" in naive_section
+    assert "output = torch.empty_like(x)" not in naive_section
     assert "torch.zeros_like(x)" not in naive_section
     assert "for k in range(num_experts_per_tok):" in naive_section
     assert "token_ids = (expert_indices[:, k] == expert_idx).nonzero(as_tuple=True)[0]" in naive_section
@@ -201,6 +205,35 @@ def test_naive_moe_path_seeds_output_from_first_route() -> None:
     assert "output[token_ids] = weighted_output" in naive_section
     assert "output[token_ids] += weighted_output" in naive_section
     assert "mask.any()" not in naive_section
+
+    torch.manual_seed(0)
+    opts = MoEOptimizations()
+    experts = MoEExperts(num_experts=3, hidden_size=4, intermediate_size=8, opts=opts)
+    x = torch.randn(5, 4)
+    expert_indices = torch.tensor(
+        [[0, 1], [2, 0], [1, 2], [0, 2], [1, 0]],
+        dtype=torch.long,
+    )
+    expert_weights = torch.tensor(
+        [[0.7, 0.3], [0.4, 0.6], [0.5, 0.5], [0.8, 0.2], [0.25, 0.75]],
+        dtype=torch.float32,
+    )
+
+    first = experts.forward_naive(x, expert_indices, expert_weights, num_experts_per_tok=2)
+    first_ptr = first.data_ptr()
+    second = experts.forward_naive(x, expert_indices, expert_weights, num_experts_per_tok=2)
+
+    assert second.data_ptr() == first_ptr
+    torch.testing.assert_close(second, first)
+
+    x_requires_grad = x.detach().requires_grad_(True)
+    grad_output = experts.forward_naive(
+        x_requires_grad,
+        expert_indices,
+        expert_weights,
+        num_experts_per_tok=2,
+    )
+    assert grad_output.data_ptr() != first_ptr
 
 
 def test_moe_expert_paths_weight_outputs_in_place_when_grad_disabled() -> None:
