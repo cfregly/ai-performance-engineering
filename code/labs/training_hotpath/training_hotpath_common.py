@@ -297,7 +297,7 @@ class TransformerBlock(nn.Module):
         self,
         x: torch.Tensor,
         *,
-        active_mask: torch.Tensor,
+        active_attn_mask: torch.Tensor,
         active_mask_column: torch.Tensor,
         active_rows: torch.Tensor,
         extension,
@@ -309,8 +309,7 @@ class TransformerBlock(nn.Module):
         query = query.view(batch_size, num_tokens, self.num_heads, self.head_size).transpose(1, 2)
         key = key.view(batch_size, num_tokens, self.num_heads, self.head_size).transpose(1, 2)
         value = value.view(batch_size, num_tokens, self.num_heads, self.head_size).transpose(1, 2)
-        attn_mask = active_mask[:, None, None, :]
-        attn = F.scaled_dot_product_attention(query, key, value, attn_mask=attn_mask)
+        attn = F.scaled_dot_product_attention(query, key, value, attn_mask=active_attn_mask)
         attn = attn.transpose(1, 2).reshape(batch_size, num_tokens, self.hidden_size)
         x = x + self.out_proj(attn, active_rows=active_rows, extension=extension)
         x = x * active_mask_column
@@ -352,12 +351,13 @@ class ToyTransformer(nn.Module):
         extension,
     ) -> torch.Tensor:
         active_mask_column = active_mask.unsqueeze(-1)
+        active_attn_mask = active_mask[:, None, None, :]
         x = self.input_proj(x, active_rows=active_rows, extension=extension)
         x = x * active_mask_column
         for block in self.blocks:
             x = block(
                 x,
-                active_mask=active_mask,
+                active_attn_mask=active_attn_mask,
                 active_mask_column=active_mask_column,
                 active_rows=active_rows,
                 extension=extension,
