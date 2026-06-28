@@ -7741,6 +7741,13 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
         "def get_config", maxsplit=1
     )[0]
 
+    assert "import statistics" not in source
+    assert 'self._history: Dict[str, List[float]] = {"lat_ms": []}' not in source
+    assert 'self._history["lat_ms"].append(elapsed_ms)' not in benchmark_section
+    assert "self._latency_total_ms = 0.0" in source
+    assert "self._latency_count = 0" in source
+    assert "self._latency_total_ms += elapsed_ms" in benchmark_section
+    assert "self._latency_count += 1" in benchmark_section
     assert "torch.tensor(" not in benchmark_section
     assert "self._output_values = [float(served), float(rejects), float(offloaded)]" in benchmark_section
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section

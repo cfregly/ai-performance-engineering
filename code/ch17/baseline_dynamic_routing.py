@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import random
-import statistics
 import time
 from typing import Dict, List, Optional
 
@@ -26,7 +25,8 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.batch_size = batch_size
         self.vectorized = vectorized
         self.router = DisaggregatedRouter()
-        self._history: Dict[str, List[float]] = {"lat_ms": []}
+        self._latency_total_ms = 0.0
+        self._latency_count = 0
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(batch_size),
             tokens_per_iteration=float(batch_size * 128),
@@ -211,7 +211,8 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             rejects_value, offloaded_value = self._count_values.tolist()
             rejects = int(rejects_value)
             offloaded = int(offloaded_value)
-        self._history["lat_ms"].append(elapsed_ms)
+        self._latency_total_ms += elapsed_ms
+        self._latency_count += 1
         served = len(requests) - rejects
 
         self._output_values = [float(served), float(rejects), float(offloaded)]
@@ -246,10 +247,10 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._workload
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
-        if not self._history["lat_ms"]:
+        if self._latency_count == 0:
             return None
         return {
-            "routing.latency_ms": float(statistics.mean(self._history["lat_ms"])),
+            "routing.latency_ms": float(self._latency_total_ms / self._latency_count),
         }
 
     def validate_result(self) -> Optional[str]:
@@ -270,6 +271,8 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._count_values = None
         self._queue_length_table = None
         self._queue_length_rows = None
+        self._latency_total_ms = 0.0
+        self._latency_count = 0
         super().teardown()
 
 
