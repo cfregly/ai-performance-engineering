@@ -285,7 +285,11 @@ class ExpertMLP(nn.Module):
         self.down_proj = nn.Linear(ffn_size, hidden_size, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
+        gate = self.gate_proj(x)
+        F.silu(gate, inplace=True)
+        up = self.up_proj(x)
+        gate.mul_(up)
+        return self.down_proj(gate)
 
 
 class DeepSeekHybridEPModule(nn.Module):

@@ -235,6 +235,10 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
         "class ExpertMLP",
         maxsplit=1,
     )[0]
+    expert_forward = source.split("class ExpertMLP", maxsplit=1)[1].split(
+        "class DeepSeekHybridEPModule",
+        maxsplit=1,
+    )[0]
     apply_local_section = source.split("def _apply_local_experts", maxsplit=1)[1].split(
         "def _exchange_counts",
         maxsplit=1,
@@ -272,6 +276,9 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert 'self.register_buffer(\n            "_gini_index",' in router_section
     assert "def _gini_index_for" in router_section
     assert "torch.arange(1, n + 1" not in router_section
+    assert "F.silu(gate, inplace=True)" in expert_forward
+    assert "gate.mul_(up)" in expert_forward
+    assert "F.silu(self.gate_proj(x)) * self.up_proj(x)" not in expert_forward
     assert "repeat_interleave(self.top_k)" not in token_indices_section
     assert "torch.arange(num_tokens * self.top_k, device=device, dtype=torch.int64)" in token_indices_section
     assert 'cached.div_(self.top_k, rounding_mode="floor")' in token_indices_section
