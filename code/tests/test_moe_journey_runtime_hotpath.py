@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from labs.moe_optimization_journey import get_config
-from labs.moe_optimization_journey.level4_triton import Level4Triton
+from labs.moe_optimization_journey.level4_triton import GroupedMoEExperts, Level4Triton
 from labs.moe_optimization_journey.level6_full_stack import Level6FullStack
 
 CUDA_REQUIRED = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
@@ -39,9 +39,12 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
     assert "self._expert_metadata_workspace: Optional[torch.Tensor] = None" in grouped_section
     assert "self._expert_metadata_host: Optional[torch.Tensor] = None" in grouped_section
     assert "self._sorted_output_buffer: Optional[torch.Tensor] = None" in grouped_section
+    assert "self._unsorted_output_buffer: Optional[torch.Tensor] = None" in grouped_section
     assert "def _expert_metadata_buffers(self, device: torch.device)" in grouped_section
     assert "def _sorted_output_like(self, sorted_x: torch.Tensor) -> torch.Tensor" in grouped_section
+    assert "def _unsorted_output_like(self, output: torch.Tensor) -> torch.Tensor" in grouped_section
     assert "if torch.is_grad_enabled() and sorted_x.requires_grad:" in grouped_section
+    assert "if torch.is_grad_enabled() and output.requires_grad:" in grouped_section
     assert "torch.cumsum(expert_counts, dim=0, out=expert_offsets)" in grouped_section
     assert "expert_offsets.sub_(expert_counts)" in grouped_section
     assert "expert_metadata[1].copy_(expert_counts)" in grouped_section
@@ -74,6 +77,10 @@ def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
         "# Unsort back to original order",
         maxsplit=1,
     )[0]
+    unsort_section = grouped_section.split("# Unsort back to original order", maxsplit=1)[1].split(
+        "# Sum over top-k experts",
+        maxsplit=1,
+    )[0]
 
     assert "output = self._sorted_output_like(sorted_x)" in expert_loop_section
     assert "output = torch.empty_like(sorted_x)" not in expert_loop_section
@@ -83,6 +90,47 @@ def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
     assert "hidden = gate * up" not in expert_loop_section
     assert "output.mul_(sorted_weights.unsqueeze(-1))" in apply_weights_section
     assert "output = output * sorted_weights.unsqueeze(-1)" not in grouped_section
+    assert "unsorted_output = self._unsorted_output_like(output)" in unsort_section
+    assert "unsorted_output.index_copy_(0, sorted_indices, output)" in unsort_section
+    assert "torch.argsort(sorted_indices)" not in grouped_section
+
+
+def test_level4_grouped_moe_unsort_scatter_matches_reference() -> None:
+    torch.manual_seed(123)
+    layer = GroupedMoEExperts(num_experts=3, hidden_size=4, intermediate_size=8).eval()
+    x = torch.randn(5, 4)
+    expert_indices = torch.tensor(
+        [
+            [2, 0],
+            [1, 2],
+            [0, 1],
+            [2, 1],
+            [1, 0],
+        ],
+        dtype=torch.long,
+    )
+    expert_weights = torch.rand(5, 2)
+    expert_weights = expert_weights / expert_weights.sum(dim=-1, keepdim=True)
+
+    with torch.inference_mode():
+        output = layer(x, expert_indices, expert_weights)
+        first_unsorted_ptr = layer._unsorted_output_buffer.data_ptr()
+        output_again = layer(x, expert_indices, expert_weights)
+
+        reference = torch.zeros_like(x)
+        for token_idx in range(x.shape[0]):
+            token = x[token_idx : token_idx + 1]
+            for route_idx in range(expert_indices.shape[1]):
+                expert_id = int(expert_indices[token_idx, route_idx])
+                gate = token @ layer.w1[expert_id]
+                torch.nn.functional.silu(gate, inplace=True)
+                gate.mul_(token @ layer.w3[expert_id])
+                expert_out = gate @ layer.w2[expert_id]
+                reference[token_idx].add_(expert_out.squeeze(0) * expert_weights[token_idx, route_idx])
+
+    torch.testing.assert_close(output, reference)
+    torch.testing.assert_close(output_again, reference)
+    assert layer._unsorted_output_buffer.data_ptr() == first_unsorted_ptr
 
 
 def test_moe_route_weight_normalization_uses_inplace_inference_guard() -> None:

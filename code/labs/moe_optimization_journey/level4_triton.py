@@ -120,6 +120,7 @@ class GroupedMoEExperts(nn.Module):
         self._expert_metadata_workspace: Optional[torch.Tensor] = None
         self._expert_metadata_host: Optional[torch.Tensor] = None
         self._sorted_output_buffer: Optional[torch.Tensor] = None
+        self._unsorted_output_buffer: Optional[torch.Tensor] = None
         
         for w in [self.w1, self.w2, self.w3]:
             nn.init.kaiming_uniform_(w)
@@ -154,6 +155,18 @@ class GroupedMoEExperts(nn.Module):
         ):
             self._sorted_output_buffer = torch.empty_like(sorted_x)
         return self._sorted_output_buffer
+
+    def _unsorted_output_like(self, output: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled() and output.requires_grad:
+            return torch.empty_like(output)
+        if (
+            self._unsorted_output_buffer is None
+            or self._unsorted_output_buffer.shape != output.shape
+            or self._unsorted_output_buffer.device != output.device
+            or self._unsorted_output_buffer.dtype != output.dtype
+        ):
+            self._unsorted_output_buffer = torch.empty_like(output)
+        return self._unsorted_output_buffer
     
     def forward(
         self,
@@ -209,9 +222,10 @@ class GroupedMoEExperts(nn.Module):
         # Apply weights
         output.mul_(sorted_weights.unsqueeze(-1))
         
-        # Unsort back to original order
-        unsort_indices = torch.argsort(sorted_indices)
-        output = output[unsort_indices]
+        # Unsort back to original order without launching a second argsort.
+        unsorted_output = self._unsorted_output_like(output)
+        unsorted_output.index_copy_(0, sorted_indices, output)
+        output = unsorted_output
         
         # Sum over top-k experts
         output = output.view(batch_seq, top_k, -1).sum(dim=1)
