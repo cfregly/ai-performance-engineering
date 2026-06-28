@@ -14,6 +14,8 @@ from types import SimpleNamespace
 import pytest
 import torch
 
+from ch01.baseline_performance import BaselinePerformanceBenchmark
+from ch01.baseline_performance_fp16 import BaselinePerformanceFP16Benchmark
 from ch01.optimized_performance import OptimizedPerformanceBatchBenchmark
 from ch01.optimized_performance_fp16 import OptimizedPerformanceFP16Benchmark
 from ch02.baseline_cublas import BaselineCublasBenchmark
@@ -114,6 +116,35 @@ def test_ch01_fp16_benchmark_precomputes_microbatch_groups() -> None:
     assert "self.microbatches[start : start + self.fusion]" not in benchmark_section
     assert "self.targets[start : start + self.fusion]" not in benchmark_section
     assert "group_size = max(" not in benchmark_section
+
+
+def test_ch01_baseline_benchmarks_precompute_microbatch_groups() -> None:
+    base_source = inspect.getsource(BaselinePerformanceBenchmark)
+    base_setup = base_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+
+    assert "data_group = tuple(self.microbatches[start : start + self.fusion])" in base_setup
+    assert "target_group = tuple(self.targets[start : start + self.fusion])" in base_setup
+    assert "self._group_sizes.append(len(data_group))" in base_setup
+
+    for benchmark_cls in (BaselinePerformanceBenchmark, BaselinePerformanceFP16Benchmark):
+        source = inspect.getsource(benchmark_cls)
+        benchmark_end = (
+            "def capture_verification_payload"
+            if benchmark_cls is BaselinePerformanceBenchmark
+            else "def get_benchmark"
+        )
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            benchmark_end,
+            maxsplit=1,
+        )[0]
+
+        assert "for group_data, group_targets, group_size in zip(" in benchmark_section
+        assert "self.microbatches[start : start + self.fusion]" not in benchmark_section
+        assert "self.targets[start : start + self.fusion]" not in benchmark_section
+        assert "group_size = max(" not in benchmark_section
 
 
 def test_ch02_cublas_metrics_report_gemm_workload_not_transfer_placeholders() -> None:

@@ -30,12 +30,17 @@ class BaselinePerformanceFP16Benchmark(BaselinePerformanceBenchmark):
 
     def benchmark_fn(self) -> None:
         """Mirror the inherited baseline loop explicitly for pair-audit equivalence."""
+        assert (
+            self._microbatch_groups is not None
+            and self._target_groups is not None
+            and self._group_sizes is not None
+        )
         with nvtx_range("baseline_performance_fp16", enable=self._enable_nvtx):
-            total = len(self.microbatches)
-            for start in range(0, total, self.fusion):
-                group_data = self.microbatches[start : start + self.fusion]
-                group_targets = self.targets[start : start + self.fusion]
-                group_size = max(1, len(group_data))
+            for group_data, group_targets, group_size in zip(
+                self._microbatch_groups,
+                self._target_groups,
+                self._group_sizes,
+            ):
                 self.optimizer.zero_grad(set_to_none=True)
                 for data, target in zip(group_data, group_targets):
                     logits = self.model(data)

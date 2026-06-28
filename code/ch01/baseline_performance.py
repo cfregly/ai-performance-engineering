@@ -63,6 +63,9 @@ class BaselinePerformanceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_input = None
         self._verify_output = None
         self.parameter_count = 0
+        self._microbatch_groups = None
+        self._target_groups = None
+        self._group_sizes = None
         self._tf32_state: tuple[bool, bool | None] | None = None
         samples = float(self.batch_size * self.num_microbatches)
         self.register_workload_metadata(samples_per_iteration=samples)
@@ -102,15 +105,29 @@ class BaselinePerformanceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.device.type == "cuda":
             torch.cuda.synchronize()
         self.optimizer.zero_grad(set_to_none=True)
+        self._microbatch_groups = []
+        self._target_groups = []
+        self._group_sizes = []
+        for start in range(0, len(self.microbatches), self.fusion):
+            data_group = tuple(self.microbatches[start : start + self.fusion])
+            target_group = tuple(self.targets[start : start + self.fusion])
+            self._microbatch_groups.append(data_group)
+            self._target_groups.append(target_group)
+            self._group_sizes.append(len(data_group))
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
+        assert (
+            self._microbatch_groups is not None
+            and self._target_groups is not None
+            and self._group_sizes is not None
+        )
         with self._nvtx_range("baseline_performance"):
-            total = len(self.microbatches)
-            for start in range(0, total, self.fusion):
-                group_data = self.microbatches[start : start + self.fusion]
-                group_targets = self.targets[start : start + self.fusion]
-                group_size = max(1, len(group_data))
+            for group_data, group_targets, group_size in zip(
+                self._microbatch_groups,
+                self._target_groups,
+                self._group_sizes,
+            ):
                 self.optimizer.zero_grad(set_to_none=True)
                 for data, target in zip(group_data, group_targets):
                     logits = self.model(data)
@@ -142,6 +159,9 @@ class BaselinePerformanceBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Cleanup."""
         del self.model, self.microbatches, self.targets, self.optimizer
+        self._microbatch_groups = None
+        self._target_groups = None
+        self._group_sizes = None
         restore_tf32_state(self._tf32_state)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
