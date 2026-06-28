@@ -3107,6 +3107,9 @@ def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
 
     assert "metrics = torch.stack(" in confidence_section
     assert ").detach().cpu()" in confidence_section
+    assert "log_probs = F.log_softmax(scaled, dim=-1)" in confidence_section
+    assert "probs = log_probs.exp()" in confidence_section
+    assert "F.softmax(scaled, dim=-1)" not in confidence_section
     assert "float(probs.max())" not in confidence_section
     assert "float(-(probs * log_probs).sum())" not in confidence_section
     assert "float(top2[0] - top2[1])" not in confidence_section

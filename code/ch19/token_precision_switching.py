@@ -85,8 +85,8 @@ class TokenPrecisionController:
     @staticmethod
     def _confidence(logits: torch.Tensor, temperature: float = 1.0) -> ConfidenceMetrics:
         scaled = logits / temperature
-        probs = F.softmax(scaled, dim=-1)
         log_probs = F.log_softmax(scaled, dim=-1)
+        probs = log_probs.exp()
         top2 = torch.topk(scaled, k=2).values
         metrics = torch.stack(
             (
