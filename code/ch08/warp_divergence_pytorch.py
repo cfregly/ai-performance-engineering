@@ -146,6 +146,8 @@ def compare_mask_strategies() -> None:
     all_output = torch.empty_like(data)
     all_scratch = torch.empty_like(data)
     active_output = torch.empty_like(data)
+    active_data = torch.empty(active_indices.numel(), device=device, dtype=data.dtype)
+    active_scratch = torch.empty_like(active_data)
 
     def process_all():
         torch.sin(data, out=all_output)
@@ -155,10 +157,12 @@ def compare_mask_strategies() -> None:
         return all_output
 
     def process_active_only():
-        active_data = data[active_indices]
-        processed = torch.sin(active_data) * torch.cos(active_data)
+        torch.index_select(data, 0, active_indices, out=active_data)
+        torch.cos(active_data, out=active_scratch)
+        torch.sin(active_data, out=active_data)
+        active_data.mul_(active_scratch)
         active_output.zero_()
-        active_output[active_indices] = processed
+        active_output.index_copy_(0, active_indices, active_data)
         return active_output
 
     res_all = None
