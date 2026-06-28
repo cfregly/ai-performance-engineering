@@ -99,6 +99,8 @@ def restore_bucketed_reduce(
     out: torch.Tensor,
     weight_out: torch.Tensor,
     weighted_out: Optional[torch.Tensor] = None,
+    bucket_token_ids_expanded: Optional[torch.Tensor] = None,
+    weights_expanded: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Scatter-accumulate bucketed outputs to tokens, handling duplicate assignments."""
     if out.shape != (num_tokens, output.shape[-1]):
@@ -115,13 +117,26 @@ def restore_bucketed_reduce(
     out.zero_()
     weight_out.zero_()
     weights = weights.to(dtype=out.dtype, copy=False)
+    if bucket_token_ids_expanded is None:
+        bucket_token_ids_expanded = bucket_token_ids.unsqueeze(-1).expand_as(output)
+    elif bucket_token_ids_expanded.shape != output.shape:
+        raise ValueError("restore_bucketed_reduce() expanded bucket ids must match output shape")
+    if weights_expanded is None:
+        weights_expanded = weights.unsqueeze(-1)
+    else:
+        if weights_expanded.shape != (output.shape[0], 1):
+            raise ValueError("restore_bucketed_reduce() expanded weights must have shape [rows, 1]")
+        if weights_expanded.dtype != out.dtype:
+            raise ValueError("restore_bucketed_reduce() expanded weights must match output dtype")
+        if weights_expanded.device != output.device:
+            raise ValueError("restore_bucketed_reduce() expanded weights must live on the output device")
     if weighted_out is None:
         weighted_output = output.to(dtype=out.dtype, copy=True)
-        weighted_output.mul_(weights.unsqueeze(-1))
+        weighted_output.mul_(weights_expanded)
     else:
         weighted_output = weighted_out
-        torch.mul(output, weights.unsqueeze(-1), out=weighted_output)
-    out.scatter_add_(0, bucket_token_ids.unsqueeze(-1).expand_as(output), weighted_output)
+        torch.mul(output, weights_expanded, out=weighted_output)
+    out.scatter_add_(0, bucket_token_ids_expanded, weighted_output)
     weight_out.scatter_add_(0, bucket_token_ids, weights)
     weight_out.clamp_(min=torch.finfo(out.dtype).eps)
     out.div_(weight_out.unsqueeze(-1))

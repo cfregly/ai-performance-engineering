@@ -65,7 +65,9 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.bucket_indices: Optional[torch.Tensor] = None
         self.expert_order: Optional[torch.Tensor] = None
         self.bucket_token_ids: Optional[torch.Tensor] = None
+        self._bucket_token_scatter_index: Optional[torch.Tensor] = None
         self.gating_weights: Optional[torch.Tensor] = None
+        self._gating_weight_factors: Optional[torch.Tensor] = None
         self.m_splits: List[int] = []
         self.weights: Optional[torch.Tensor] = None
         self.layer: Optional[GroupedLinear] = None
@@ -191,7 +193,12 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.bucket_indices = bucket_indices
         self.expert_order = expert_order
         self.bucket_token_ids = bucket_token_ids
+        self._bucket_token_scatter_index = bucket_token_ids.unsqueeze(-1).expand(
+            bucketed.shape[0],
+            self.ffn_dim,
+        )
         self.gating_weights = gating_weights
+        self._gating_weight_factors = gating_weights.unsqueeze(-1)
         self.m_splits = m_splits
 
         ordered_weights = self.weights.index_select(0, self.expert_order)
@@ -236,7 +243,9 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
             and self.bucketed_inputs is not None
             and self.bucket_indices is not None
             and self.bucket_token_ids is not None
+            and self._bucket_token_scatter_index is not None
             and self.gating_weights is not None
+            and self._gating_weight_factors is not None
             and self._restored_out is not None
             and self._restored_weight is not None
             and self._weighted_out is not None
@@ -255,13 +264,17 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
             out=self._restored_out,
             weight_out=self._restored_weight,
             weighted_out=self._weighted_out,
+            bucket_token_ids_expanded=self._bucket_token_scatter_index,
+            weights_expanded=self._gating_weight_factors,
         )
 
     def _capture_graph(self) -> None:
         assert (
             self.bucketed_inputs is not None
             and self.bucket_token_ids is not None
+            and self._bucket_token_scatter_index is not None
             and self.gating_weights is not None
+            and self._gating_weight_factors is not None
         )
         self._graph = torch.cuda.CUDAGraph()
         self._graph_out = torch.empty(
@@ -287,6 +300,8 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 out=self._graph_out,
                 weight_out=self._graph_weight,
                 weighted_out=self._graph_weighted_out,
+                bucket_token_ids_expanded=self._bucket_token_scatter_index,
+                weights_expanded=self._gating_weight_factors,
             )
 
     def benchmark_fn(self) -> None:
@@ -335,7 +350,9 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.bucket_indices = None
         self.expert_order = None
         self.bucket_token_ids = None
+        self._bucket_token_scatter_index = None
         self.gating_weights = None
+        self._gating_weight_factors = None
         self.m_splits = []
         self.layer = None
         self._graph = None

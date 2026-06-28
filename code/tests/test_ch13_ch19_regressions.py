@@ -42,9 +42,14 @@ def test_restore_bucketed_reduce_casts_weighted_output_and_reuses_buffer() -> No
     source = inspect.getsource(mxfp8_moe_common.restore_bucketed_reduce)
 
     assert "weighted_out: Optional[torch.Tensor] = None" in source
+    assert "bucket_token_ids_expanded: Optional[torch.Tensor] = None" in source
+    assert "weights_expanded: Optional[torch.Tensor] = None" in source
+    assert "bucket_token_ids_expanded = bucket_token_ids.unsqueeze(-1).expand_as(output)" in source
+    assert "weights_expanded = weights.unsqueeze(-1)" in source
     assert "weighted_output = output.to(dtype=out.dtype, copy=True)" in source
-    assert "weighted_output.mul_(weights.unsqueeze(-1))" in source
-    assert "torch.mul(output, weights.unsqueeze(-1), out=weighted_output)" in source
+    assert "weighted_output.mul_(weights_expanded)" in source
+    assert "torch.mul(output, weights_expanded, out=weighted_output)" in source
+    assert "out.scatter_add_(0, bucket_token_ids_expanded, weighted_output)" in source
 
     output = torch.tensor(
         [
@@ -59,6 +64,8 @@ def test_restore_bucketed_reduce_casts_weighted_output_and_reuses_buffer() -> No
     out = torch.empty((2, 3), dtype=torch.float16)
     weight_out = torch.empty((2,), dtype=torch.float16)
     weighted_out = torch.empty_like(output, dtype=torch.float16)
+    scatter_index = bucket_token_ids.unsqueeze(-1).expand_as(output)
+    weight_factors = weights.unsqueeze(-1)
 
     restored = restore_bucketed_reduce(
         output,
@@ -68,6 +75,8 @@ def test_restore_bucketed_reduce_casts_weighted_output_and_reuses_buffer() -> No
         out=out,
         weight_out=weight_out,
         weighted_out=weighted_out,
+        bucket_token_ids_expanded=scatter_index,
+        weights_expanded=weight_factors,
     )
 
     expected = torch.tensor(
@@ -142,15 +151,22 @@ def test_bucket_by_expert_sorts_once_and_preserves_metadata() -> None:
 
 def test_optimized_mxfp8_moe_reuses_token_ids_and_keeps_reorder_on_device() -> None:
     module_source = inspect.getsource(optimized_mxfp8_moe)
+    class_source = inspect.getsource(optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark)
     setup_source = inspect.getsource(optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark.setup)
     supergroup_source = inspect.getsource(optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark._supergroup_tokens)
+    forward_source = inspect.getsource(optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark._forward_grouped)
+    graph_source = inspect.getsource(optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark._capture_graph)
 
     assert "def _flat_topk_token_ids" in module_source
     assert 'token_ids.div_(top_k, rounding_mode="floor")' in module_source
+    assert "self._bucket_token_scatter_index: Optional[torch.Tensor] = None" in class_source
+    assert "self._gating_weight_factors: Optional[torch.Tensor] = None" in class_source
     assert "repeat_interleave(" not in setup_source
     assert "with torch.inference_mode():" in setup_source
     assert "with torch.no_grad():" not in setup_source
     assert "expanded_inputs = self.inputs.index_select(0, token_ids)" in setup_source
+    assert "self._bucket_token_scatter_index = bucket_token_ids.unsqueeze(-1).expand(" in setup_source
+    assert "self._gating_weight_factors = gating_weights.unsqueeze(-1)" in setup_source
     assert "expert_order[idx].item()" not in supergroup_source
     assert "expert_order.index_select(0, order_tensor)" in supergroup_source
     assert "row_order = torch.empty_like(base_rows)" in supergroup_source
@@ -159,12 +175,12 @@ def test_optimized_mxfp8_moe_reuses_token_ids_and_keeps_reorder_on_device() -> N
     assert "bucket_token_ids.index_select(0, row_order)" in supergroup_source
     assert "gating_weights.index_select(0, row_order)" in supergroup_source
     assert "self._weighted_out = torch.empty((bucketed.shape[0], self.ffn_dim)" in setup_source
-    assert "weighted_out=self._weighted_out" in inspect.getsource(
-        optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark._forward_grouped
-    )
-    assert "weighted_out=self._graph_weighted_out" in inspect.getsource(
-        optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark._capture_graph
-    )
+    assert "weighted_out=self._weighted_out" in forward_source
+    assert "bucket_token_ids_expanded=self._bucket_token_scatter_index" in forward_source
+    assert "weights_expanded=self._gating_weight_factors" in forward_source
+    assert "weighted_out=self._graph_weighted_out" in graph_source
+    assert "bucket_token_ids_expanded=self._bucket_token_scatter_index" in graph_source
+    assert "weights_expanded=self._gating_weight_factors" in graph_source
     assert "reordered_inputs" not in supergroup_source
     assert "torch.cat(reordered" not in supergroup_source
 
