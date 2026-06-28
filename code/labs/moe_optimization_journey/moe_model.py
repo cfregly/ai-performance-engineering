@@ -746,7 +746,12 @@ class MoELayer(nn.Module):
         router_logits = self.gate(x_flat)
         routing_weights = F.softmax(router_logits.float(), dim=-1)
         expert_weights, expert_indices = torch.topk(routing_weights, self.num_experts_per_tok, dim=-1)
-        expert_weights = (expert_weights / expert_weights.sum(dim=-1, keepdim=True)).to(x.dtype)
+        expert_weight_sums = expert_weights.sum(dim=-1, keepdim=True)
+        if torch.is_grad_enabled() and expert_weights.requires_grad:
+            expert_weights = expert_weights / expert_weight_sums
+        else:
+            expert_weights.div_(expert_weight_sums)
+        expert_weights = expert_weights.to(x.dtype)
         
         output = self.experts(x_flat, expert_indices, expert_weights, self.num_experts_per_tok)
         

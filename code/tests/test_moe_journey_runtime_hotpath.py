@@ -85,6 +85,45 @@ def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
     assert "output = output * sorted_weights.unsqueeze(-1)" not in grouped_section
 
 
+def test_moe_route_weight_normalization_uses_inplace_inference_guard() -> None:
+    targets = (
+        (
+            "moe_model.py",
+            "class MoELayer",
+            "class MoEBlock",
+        ),
+        (
+            "level4_triton.py",
+            "class TritonMoELayer",
+            "class TritonMoEBlock",
+        ),
+        (
+            "level6_full_stack.py",
+            "class CUDAGraphMoELayer",
+            "class CUDAGraphMoEBlock",
+        ),
+    )
+
+    for filename, start_marker, end_marker in targets:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "labs"
+            / "moe_optimization_journey"
+            / filename
+        ).read_text(encoding="utf-8")
+        layer_section = source.split(start_marker, maxsplit=1)[1].split(
+            end_marker,
+            maxsplit=1,
+        )[0]
+
+        assert "expert_weight_sums = expert_weights.sum(dim=-1, keepdim=True)" in layer_section
+        assert "if torch.is_grad_enabled() and expert_weights.requires_grad:" in layer_section
+        assert "expert_weights = expert_weights / expert_weight_sums" in layer_section
+        assert "expert_weights.div_(expert_weight_sums)" in layer_section
+        assert "expert_weights / expert_weights.sum" not in layer_section
+        assert "(expert_weights / expert_weights.sum" not in layer_section
+
+
 def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
     source = (
         Path(__file__).resolve().parents[1]

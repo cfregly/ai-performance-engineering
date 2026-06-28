@@ -240,7 +240,11 @@ class TritonMoELayer(nn.Module):
         router_logits = self.gate(x_flat)
         routing_weights = F.softmax(router_logits, dim=-1, dtype=torch.float32)
         expert_weights, expert_indices = torch.topk(routing_weights, self.top_k, dim=-1)
-        expert_weights = expert_weights / expert_weights.sum(dim=-1, keepdim=True)
+        expert_weight_sums = expert_weights.sum(dim=-1, keepdim=True)
+        if torch.is_grad_enabled() and expert_weights.requires_grad:
+            expert_weights = expert_weights / expert_weight_sums
+        else:
+            expert_weights.div_(expert_weight_sums)
         expert_weights = expert_weights.to(x.dtype)
         
         # Compute
