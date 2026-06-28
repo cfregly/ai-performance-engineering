@@ -175,10 +175,14 @@ class FP8Linear(nn.Module):
             "weight_scale",
             torch.ones(out_features, 1, dtype=torch.float32),
         )
+        self.register_buffer(
+            "weight_dequant",
+            torch.empty(out_features, in_features, dtype=compute_dtype),
+        )
         if bias:
-            self.register_buffer("bias", torch.zeros(out_features, dtype=torch.float32))
+            self.register_buffer("bias", torch.zeros(out_features, dtype=compute_dtype))
         else:
-            self.register_buffer("bias", torch.empty(0, dtype=torch.float32))
+            self.register_buffer("bias", torch.empty(0, dtype=compute_dtype))
 
         self.reset_parameters()
 
@@ -195,21 +199,34 @@ class FP8Linear(nn.Module):
         quant = torch.clamp((weight_fp32 / scale).round(), -240, 240).to(self.fp8_dtype)
         self.weight_fp8.copy_(quant)
         self.weight_scale.copy_(scale)
+        self._refresh_dequantized_weight()
+
+    def _refresh_dequantized_weight(self) -> None:
+        scale = self.weight_scale.to(dtype=self.compute_dtype, device=self.weight_fp8.device)
+        dequant = self.weight_fp8.to(dtype=self.compute_dtype).mul_(scale)
+        if (
+            self.weight_dequant.device != dequant.device
+            or self.weight_dequant.dtype != dequant.dtype
+            or tuple(self.weight_dequant.shape) != tuple(dequant.shape)
+        ):
+            self.weight_dequant = dequant
+        else:
+            self.weight_dequant.copy_(dequant)
 
     def convert_precision(self, compute_dtype: torch.dtype) -> None:
         """Update compute dtype while keeping FP8 weights intact."""
         self.compute_dtype = compute_dtype
         if self.has_bias and self.bias.dtype != compute_dtype:
             self.bias = self.bias.to(compute_dtype)
+        self._refresh_dequantized_weight()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         if input.dtype != self.compute_dtype:
             input = input.to(self.compute_dtype)
-        scale = self.weight_scale.to(self.compute_dtype)
-        weight = self.weight_fp8.to(self.compute_dtype) * scale
+        weight = self.weight_dequant
         bias = None
         if self.has_bias:
-            bias = self.bias if self.bias.dtype == self.compute_dtype else self.bias.to(self.compute_dtype)
+            bias = self.bias
         return F.linear(input, weight, bias)
 
 

@@ -5581,10 +5581,23 @@ def test_ch16_synthetic_moe_benchmark_hoists_inference_mode() -> None:
     source = (REPO_ROOT / "ch16" / "synthetic_moe_inference_benchmark.py").read_text(
         encoding="utf-8"
     )
+    fp8_linear_source = source.split("class FP8Linear", maxsplit=1)[1].split(
+        "def _convert_module_precision",
+        maxsplit=1,
+    )[0]
+    fp8_forward = fp8_linear_source.split("def forward", maxsplit=1)[1]
     benchmark_function = source.split("def benchmark_inference", maxsplit=1)[1].split(
         "def main", maxsplit=1
     )[0]
 
+    assert '"weight_dequant"' in fp8_linear_source
+    assert "def _refresh_dequantized_weight(self) -> None" in fp8_linear_source
+    assert "self._refresh_dequantized_weight()" in fp8_linear_source
+    assert "weight = self.weight_dequant" in fp8_forward
+    assert "bias = self.bias" in fp8_forward
+    assert "scale = self.weight_scale.to(self.compute_dtype)" not in fp8_forward
+    assert "self.weight_fp8.to(self.compute_dtype) * scale" not in fp8_forward
+    assert "self.bias.to(self.compute_dtype)" not in fp8_forward
     assert benchmark_function.count("with torch.inference_mode():") == 3
     assert "with torch.no_grad():" not in benchmark_function
     assert "for _ in range(num_warmup):\n            if use_autocast:" in benchmark_function
