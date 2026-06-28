@@ -259,10 +259,17 @@ def test_ch05_optimized_storage_cpu_opens_mmap_outside_hot_loop() -> None:
         "def get_config", maxsplit=1
     )[0]
 
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in source
     assert 'self._mapped_array = np.load(self.filepath, mmap_mode="r")' in setup_section
+    assert "self._output_buffer = torch.empty(1, device=self.device, dtype=torch.float32)" in setup_section
     assert 'np.load(self.filepath, mmap_mode="r")' not in benchmark_section
+    assert "with torch.inference_mode(), self._nvtx_range(\"storage_cpu_optimized\"):" in benchmark_section
     assert "np.copyto(self._host_buffer_view, self._mapped_array)" in benchmark_section
+    assert "torch.sum(self.device_buffer, dim=0, keepdim=True, out=self._output_buffer)" in benchmark_section
+    assert "self.device_buffer.sum().unsqueeze(0)" not in benchmark_section
+    assert "torch.empty(" not in benchmark_section
     assert "self._mapped_array = None" in teardown_section
+    assert "self._output_buffer = None" in teardown_section
 
 
 def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:

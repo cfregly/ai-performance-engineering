@@ -25,6 +25,7 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.filepath: Optional[str] = None
         self.host_buffer: Optional[torch.Tensor] = None
         self.device_buffer: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._host_buffer_view: Optional[np.ndarray] = None
         self._mapped_array: Optional[np.ndarray] = None
         self.size_mb = 64  # Smaller for faster benchmark
@@ -49,6 +50,7 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_buffer = torch.empty(self.size, device="cpu", dtype=torch.float32, pin_memory=True)
         self._host_buffer_view = self.host_buffer.numpy()
         self.device_buffer = torch.empty(self.size, device=self.device, dtype=torch.float32)
+        self._output_buffer = torch.empty(1, device=self.device, dtype=torch.float32)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
@@ -58,11 +60,13 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self._host_buffer_view is not None
         assert self._mapped_array is not None
         assert self.device_buffer is not None
-        with self._nvtx_range("storage_cpu_optimized"):
+        assert self._output_buffer is not None
+        with torch.inference_mode(), self._nvtx_range("storage_cpu_optimized"):
             np.copyto(self._host_buffer_view, self._mapped_array)
             self.device_buffer.copy_(self.host_buffer, non_blocking=True)
             self.data = self.device_buffer
-        self.output = self.device_buffer.sum().unsqueeze(0)
+            torch.sum(self.device_buffer, dim=0, keepdim=True, out=self._output_buffer)
+        self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
@@ -88,6 +92,7 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.filepath = None
         self.host_buffer = None
         self.device_buffer = None
+        self._output_buffer = None
         self._host_buffer_view = None
         torch.cuda.empty_cache()
     
