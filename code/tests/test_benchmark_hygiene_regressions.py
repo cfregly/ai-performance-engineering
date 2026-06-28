@@ -1991,6 +1991,10 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "self._flash_backends = [SDPBackend.FLASH_ATTENTION]" in flash_module_section
     assert "with sdpa_kernel(self._flash_backends):" in flash_module_section
     assert "with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):" not in flash_module_section
+    assert "self._qkv_buffer: Optional[torch.Tensor] = None" in flash_module_section
+    assert "def _ensure_qkv_buffer(" in flash_module_section
+    assert "qkv = torch.matmul(x, self.qkv.weight.t(), out=qkv_buffer)" in flash_module_section
+    assert "if torch.is_grad_enabled():" in flash_module_section
 
     baseline_flash_setup = (REPO_ROOT / "ch16" / "baseline_flash_sdp.py").read_text(
         encoding="utf-8"

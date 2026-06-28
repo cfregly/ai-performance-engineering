@@ -37,10 +37,26 @@ class FlashAttentionModule(nn.Module):
         self.num_heads = num_heads
         self.qkv = nn.Linear(hidden_dim, hidden_dim * 3, bias=False)
         self._flash_backends = [SDPBackend.FLASH_ATTENTION]
+        self._qkv_buffer: Optional[torch.Tensor] = None
+
+    def _ensure_qkv_buffer(self, x: torch.Tensor, batch_size: int, seq_len: int) -> torch.Tensor:
+        shape = (batch_size, seq_len, self.hidden_dim * 3)
+        if (
+            self._qkv_buffer is None
+            or self._qkv_buffer.shape != shape
+            or self._qkv_buffer.device != x.device
+            or self._qkv_buffer.dtype != x.dtype
+        ):
+            self._qkv_buffer = torch.empty(shape, device=x.device, dtype=x.dtype)
+        return self._qkv_buffer
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, T, _ = x.shape
-        qkv = self.qkv(x)
+        if torch.is_grad_enabled():
+            qkv = self.qkv(x)
+        else:
+            qkv_buffer = self._ensure_qkv_buffer(x, B, T)
+            qkv = torch.matmul(x, self.qkv.weight.t(), out=qkv_buffer)
         qkv = qkv.view(B, T, 3, self.num_heads, self.hidden_dim // self.num_heads)
         qkv = qkv.permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
