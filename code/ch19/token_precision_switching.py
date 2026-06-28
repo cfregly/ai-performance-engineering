@@ -229,22 +229,23 @@ def decode_with_dynamic_precision(
     use_fp8: bool = False  # start in AMP; upgrade to FP8 when sustained confidence permits
     ema_conf: torch.Tensor | None = None  # stays on device; host consults only at intervals
     alpha = 0.2  # EMA smoothing factor for confidence
+    top2_shape_tuple: tuple[int, ...] | None = None
 
     # A tiny helper to update on-device EMA without host sync
     def _update_confidence_ema(logits: torch.Tensor) -> torch.Tensor:
-        nonlocal ema_conf, top2_values, top2_indices
+        nonlocal ema_conf, top2_values, top2_indices, top2_shape_tuple
         # logits: [B, vocab] or [B, T, vocab]. Use the last time-step if 3D.
         last = logits if logits.dim() == 2 else logits[:, -1, :]
         # Compute top-2 margin on-device
-        top2_shape = list(last.shape)
-        top2_shape[topk_dim] = 2
-        top2_shape_tuple = tuple(top2_shape)
+        if top2_shape_tuple is None:
+            top2_shape = list(last.shape)
+            top2_shape[topk_dim] = 2
+            top2_shape_tuple = tuple(top2_shape)
         if (
             top2_values is None
             or top2_indices is None
             or top2_values.device != last.device
             or top2_values.dtype != last.dtype
-            or tuple(top2_values.shape) != top2_shape_tuple
         ):
             top2_values = torch.empty(top2_shape_tuple, dtype=last.dtype, device=last.device)
             top2_indices = torch.empty(top2_shape_tuple, dtype=torch.long, device=last.device)

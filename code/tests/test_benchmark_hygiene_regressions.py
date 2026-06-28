@@ -1593,6 +1593,9 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
         assert "torch.cat([tokens, next_token.unsqueeze(0)]" not in source
         assert "torch.empty_like(last_step_logits[:, :1])" not in source
         assert "tuple(next_token_values.shape)" not in source
+        if "top2_values" in source:
+            assert "if top2_shape_tuple is None:" in source
+            assert "tuple(top2_values.shape)" not in source
 
     common_source = (REPO_ROOT / "ch19" / "dynamic_precision_benchmark_common.py").read_text(
         encoding="utf-8"
