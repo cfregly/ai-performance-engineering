@@ -185,7 +185,6 @@ class SpeculativeDecoder:
         self.accepted_tokens = 0
         self.total_tokens = 0
         self._match_summary_workspace: Optional[torch.Tensor] = None
-        self._all_matches_workspace: Optional[torch.Tensor] = None
         self._draft_next_values: Optional[torch.Tensor] = None
         self._draft_next_tokens: Optional[torch.Tensor] = None
         self._target_next_values: Optional[torch.Tensor] = None
@@ -199,15 +198,13 @@ class SpeculativeDecoder:
         self.total_tokens = 0
         self.chunk_size = self._base_chunk
 
-    def _match_workspaces(self, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _match_count_workspace(self, device: torch.device) -> torch.Tensor:
         if (
             self._match_summary_workspace is None
             or self._match_summary_workspace.device != device
         ):
-            self._match_summary_workspace = torch.empty(2, dtype=torch.long, device=device)
-            self._all_matches_workspace = torch.empty((), dtype=torch.bool, device=device)
-        assert self._all_matches_workspace is not None
-        return self._match_summary_workspace, self._all_matches_workspace
+            self._match_summary_workspace = torch.empty((), dtype=torch.long, device=device)
+        return self._match_summary_workspace
 
     @staticmethod
     def _next_token_from_logits(
@@ -258,8 +255,7 @@ class SpeculativeDecoder:
         self._target_next_tokens = torch.empty(shape, dtype=torch.long, device=device)
         self._matches_workspace = torch.empty(shape, dtype=torch.bool, device=device)
         self._selected_tokens = torch.empty(shape, dtype=torch.long, device=device)
-        self._match_summary_workspace = torch.empty(2, dtype=torch.long, device=device)
-        self._all_matches_workspace = torch.empty((), dtype=torch.bool, device=device)
+        self._match_summary_workspace = torch.empty((), dtype=torch.long, device=device)
 
     def decode(
         self,
@@ -302,17 +298,16 @@ class SpeculativeDecoder:
                     self._target_next_tokens = target_next
                     matches = self._matches_buffer(candidate)
                     torch.eq(candidate, target_next, out=matches)
-                    match_summary, all_matches_tensor = self._match_workspaces(matches.device)
-                    torch.sum(matches, dim=None, out=match_summary[0])
-                    torch.all(matches, out=all_matches_tensor)
-                    match_summary[1].copy_(all_matches_tensor)
+                    match_summary = self._match_count_workspace(matches.device)
+                    torch.sum(matches, dim=None, out=match_summary)
                     self.total_tokens += matches.numel()
                     tokens = self._selection_workspace(candidate)
                     torch.where(matches, candidate, target_next, out=tokens)
 
                     # This host read is required for control flow; keep it after token selection
                     # so it also accounts for the queued decode work used by the timing sample.
-                    match_count, all_matches = match_summary.tolist()
+                    match_count = int(match_summary.tolist())
+                    all_matches = match_count == matches.numel()
                     self.accepted_tokens += int(match_count)
                     per_token_times[emitted] = (time.perf_counter() - start) * 1000.0
                     emitted += 1
