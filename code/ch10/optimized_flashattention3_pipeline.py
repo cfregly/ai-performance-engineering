@@ -130,6 +130,49 @@ class FA3PipelinedAttention(nn.Module):
         
         # Output projection
         self.out_proj = nn.Linear(num_heads * self.head_dim, hidden_dim, bias=False)
+        self._q_buffer: Optional[torch.Tensor] = None
+        self._k_buffer: Optional[torch.Tensor] = None
+        self._v_buffer: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
+
+    def _ensure_projection_buffers(
+        self,
+        x: torch.Tensor,
+        batch_size: int,
+        seq_len: int,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        q_shape = (batch_size, seq_len, self.num_heads * self.head_dim)
+        kv_shape = (batch_size, seq_len, self.num_kv_heads * self.head_dim)
+        output_shape = (batch_size, seq_len, self.hidden_dim)
+        if (
+            self._q_buffer is None
+            or self._q_buffer.shape != q_shape
+            or self._q_buffer.device != x.device
+            or self._q_buffer.dtype != x.dtype
+        ):
+            self._q_buffer = torch.empty(q_shape, device=x.device, dtype=x.dtype)
+        if (
+            self._k_buffer is None
+            or self._k_buffer.shape != kv_shape
+            or self._k_buffer.device != x.device
+            or self._k_buffer.dtype != x.dtype
+        ):
+            self._k_buffer = torch.empty(kv_shape, device=x.device, dtype=x.dtype)
+        if (
+            self._v_buffer is None
+            or self._v_buffer.shape != kv_shape
+            or self._v_buffer.device != x.device
+            or self._v_buffer.dtype != x.dtype
+        ):
+            self._v_buffer = torch.empty(kv_shape, device=x.device, dtype=x.dtype)
+        if (
+            self._output_buffer is None
+            or self._output_buffer.shape != output_shape
+            or self._output_buffer.device != x.device
+            or self._output_buffer.dtype != x.dtype
+        ):
+            self._output_buffer = torch.empty(output_shape, device=x.device, dtype=x.dtype)
+        return self._q_buffer, self._k_buffer, self._v_buffer, self._output_buffer
         
     def _check_fp8_support(self) -> bool:
         """Check if FP8 is supported on current GPU."""
@@ -180,9 +223,24 @@ class FA3PipelinedAttention(nn.Module):
         """
         batch_size, seq_len, _ = x.shape
 
-        q = self.q_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
-        k = self.k_proj(x).view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
-        v = self.v_proj(x).view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        if torch.is_grad_enabled():
+            q_proj = self.q_proj(x)
+            k_proj = self.k_proj(x)
+            v_proj = self.v_proj(x)
+            output_buffer = None
+        else:
+            q_buffer, k_buffer, v_buffer, output_buffer = self._ensure_projection_buffers(
+                x,
+                batch_size,
+                seq_len,
+            )
+            q_proj = torch.matmul(x, self.q_proj.weight.t(), out=q_buffer)
+            k_proj = torch.matmul(x, self.k_proj.weight.t(), out=k_buffer)
+            v_proj = torch.matmul(x, self.v_proj.weight.t(), out=v_buffer)
+
+        q = q_proj.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        k = k_proj.view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        v = v_proj.view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
         enable_gqa = self.num_kv_heads != self.num_heads
         
         # Pipelined attention with optimal backend
@@ -197,6 +255,8 @@ class FA3PipelinedAttention(nn.Module):
         
         # Reshape and project output
         attn_output = attn_output.transpose(1, 2).reshape(batch_size, seq_len, -1)
+        if output_buffer is not None:
+            return torch.matmul(attn_output, self.out_proj.weight.t(), out=output_buffer)
         return self.out_proj(attn_output)
 
 
