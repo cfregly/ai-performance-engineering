@@ -5976,6 +5976,18 @@ def test_ch13_context_parallel_all_gather_reuses_full_kv_buffers() -> None:
     assert "v_full = torch.cat(gather_v, dim=2)" not in all_gather_section
 
 
+def test_ch13_multigpu_worker_loops_use_inference_mode() -> None:
+    for filename, function_name in (
+        ("context_parallel_benchmark_common.py", "run_context_parallel"),
+        ("sequence_parallel_benchmark_common.py", "run_sequence_parallel"),
+    ):
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        run_section = source.split(f"def {function_name}", maxsplit=1)[1]
+
+        assert "with torch.inference_mode():" in run_section
+        assert "torch.no_grad()" not in run_section
+
+
 def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> None:
     perchannel_source = (REPO_ROOT / "ch13" / "fp8_perchannel_demo.py").read_text(encoding="utf-8")
     perchannel_stats = perchannel_source.split("def get_quantization_stats", maxsplit=1)[1].split(

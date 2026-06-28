@@ -129,14 +129,15 @@ def run_sequence_parallel(
                 x = full_sequence[rank]
         return x
 
-    for _ in range(max(warmup, 0)):
-        _step()
-    torch.cuda.synchronize(device)
+    with torch.inference_mode():
+        for _ in range(max(warmup, 0)):
+            _step()
+        torch.cuda.synchronize(device)
 
-    start = time.perf_counter()
-    for _ in range(max(iters, 1)):
-        _step()
-    torch.cuda.synchronize(device)
+        start = time.perf_counter()
+        for _ in range(max(iters, 1)):
+            _step()
+        torch.cuda.synchronize(device)
     elapsed = time.perf_counter() - start
 
     if rank == 0:
