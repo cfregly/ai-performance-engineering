@@ -127,6 +127,20 @@ def test_ch02_cublas_metrics_report_gemm_workload_not_transfer_placeholders() ->
     assert "transfer.achieved_gbps" not in optimized_metrics
 
 
+def test_ch02_optimized_cublas_reuses_output_buffer() -> None:
+    source = (REPO_ROOT / "ch02" / "optimized_cublas.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self.C = torch.empty(self.m, self.n, device=self.device, dtype=torch.float32)" in setup_section
+    assert "torch.mm(self.A, self.B, out=self.C)" in benchmark_section
+    assert "self.C = torch.matmul(self.A, self.B)" not in benchmark_section
+
+
 def test_ch04_optimized_dataparallel_reuses_gradient_staging_buffers() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_dataparallel_multigpu.py").read_text(
         encoding="utf-8"

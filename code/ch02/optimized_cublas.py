@@ -51,7 +51,7 @@ class OptimizedCublasBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float32)
         self.B = torch.randn(self.k, self.n, device=self.device, dtype=torch.float32)
-        self.C = None
+        self.C = torch.empty(self.m, self.n, device=self.device, dtype=torch.float32)
 
         # Warmup a handful of GEMMs so cuBLAS Lt heuristics settle before measurement.
         for _ in range(10):
@@ -59,9 +59,9 @@ class OptimizedCublasBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         """cuBLAS TF32 GEMM."""
-        assert self.A is not None and self.B is not None
+        assert self.A is not None and self.B is not None and self.C is not None
         with self._nvtx_range("optimized_cublas_tf32"):
-            self.C = torch.matmul(self.A, self.B)
+            torch.mm(self.A, self.B, out=self.C)
 
         if self.C is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
