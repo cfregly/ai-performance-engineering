@@ -20,6 +20,7 @@ from torch.nn.attention.flex_attention import (
 
 _COMPILED_FLEX = None
 _DEVICE: torch.device = torch.device("cuda")
+_REFERENCE_POSITION_CACHE: dict[tuple[int, int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
 
 
 def _using_cuda() -> bool:
@@ -56,13 +57,27 @@ def _causal_mask(_batch, _head, q_idx, kv_idx):
     return q_idx >= kv_idx
 
 
+def _reference_position_views(
+    q_len: int,
+    kv_len: int,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    key = (int(q_len), int(kv_len), device)
+    cached = _REFERENCE_POSITION_CACHE.get(key)
+    if cached is None:
+        q_pos = torch.arange(q_len, device=device).view(1, 1, q_len, 1)
+        kv_pos = torch.arange(kv_len, device=device).view(1, 1, 1, kv_len)
+        cached = (q_pos, kv_pos)
+        _REFERENCE_POSITION_CACHE[key] = cached
+    return cached
+
+
 def _reference_attention(q, k, v, scale, causal):
-    bsz, num_heads, q_len, head_dim = q.shape
+    q_len = q.shape[2]
     kv_len = k.shape[2]
     logits = torch.einsum("bhqd,bhkd->bhqk", q, k)
     logits = logits * scale
-    q_pos = torch.arange(q_len, device=q.device).view(1, 1, q_len, 1)
-    kv_pos = torch.arange(kv_len, device=q.device).view(1, 1, 1, kv_len)
+    q_pos, kv_pos = _reference_position_views(q_len, kv_len, q.device)
     logits = logits + (q_pos - kv_pos) * 1.44269504
     if causal:
         mask = kv_pos > q_pos

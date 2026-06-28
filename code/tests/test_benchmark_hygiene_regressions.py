@@ -2656,6 +2656,10 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     )[0]
     assert "torch.triu(" not in ch20_reference
     assert "torch.ones(q_len, kv_len" not in ch20_reference
+    assert "_REFERENCE_POSITION_CACHE" in ch20_source
+    assert "def _reference_position_views" in ch20_source
+    assert "q_pos, kv_pos = _reference_position_views(q_len, kv_len, q.device)" in ch20_reference
+    assert "torch.arange(q_len, device=q.device)" not in ch20_reference
     assert "mask = kv_pos > q_pos" in ch20_reference
     assert ch20_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "start.elapsed_time(end) / count" in ch20_benchmark
