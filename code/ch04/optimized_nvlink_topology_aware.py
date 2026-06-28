@@ -24,6 +24,7 @@ class OptimizedNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchm
         self._src_chunks: list[torch.Tensor] = []
         self._dst_chunks: list[torch.Tensor] = []
         self._host_chunks: list[torch.Tensor] = []
+        self._chunk_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
         # Match baseline: 16M float16 = 32 MB to show topology benefit on same workload
         self.numel = 16 * 1024 * 1024
         self.chunk_elems = self.numel // 8
@@ -50,19 +51,15 @@ class OptimizedNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchm
         self._src_chunks = list(self.src.split(self.chunk_elems))
         self._dst_chunks = list(self.dst.split(self.chunk_elems))
         self._host_chunks = list(self.host_buffer.split(self.chunk_elems))
+        self._chunk_groups = list(zip(self._host_chunks, self._src_chunks, self._dst_chunks, strict=True))
         self._synchronize()
 
     def benchmark_fn(self) -> None:
         assert self.src is not None and self.dst is not None and self.host_buffer is not None
-        if not self._src_chunks or not self._dst_chunks or not self._host_chunks:
+        if not self._chunk_groups:
             raise RuntimeError("setup() must initialize chunk views")
         with self._nvtx_range("optimized_nvlink_topology_aware"):
-            for host_chunk, src_chunk, dst_chunk in zip(
-                self._host_chunks,
-                self._src_chunks,
-                self._dst_chunks,
-                strict=True,
-            ):
+            for host_chunk, src_chunk, dst_chunk in self._chunk_groups:
                 host_chunk.copy_(src_chunk, non_blocking=True)
                 dst_chunk.copy_(host_chunk, non_blocking=True)
 
@@ -92,6 +89,7 @@ class OptimizedNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchm
         self._src_chunks = []
         self._dst_chunks = []
         self._host_chunks = []
+        self._chunk_groups = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -129,4 +127,3 @@ class OptimizedNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchm
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedNvlinkTopologyAwareBenchmark()
-

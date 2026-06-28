@@ -4471,16 +4471,19 @@ def test_ch04_optimized_nvlink_topology_reuses_chunk_views() -> None:
     assert "self._src_chunks: list[torch.Tensor] = []" in source
     assert "self._dst_chunks: list[torch.Tensor] = []" in source
     assert "self._host_chunks: list[torch.Tensor] = []" in source
+    assert "self._chunk_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
     assert "self._src_chunks = list(self.src.split(self.chunk_elems))" in setup_section
     assert "self._dst_chunks = list(self.dst.split(self.chunk_elems))" in setup_section
     assert "self._host_chunks = list(self.host_buffer.split(self.chunk_elems))" in setup_section
-    assert "for host_chunk, src_chunk, dst_chunk in zip(" in benchmark_section
-    assert "strict=True" in benchmark_section
+    assert "self._chunk_groups = list(zip(self._host_chunks, self._src_chunks, self._dst_chunks, strict=True))" in setup_section
+    assert "for host_chunk, src_chunk, dst_chunk in self._chunk_groups:" in benchmark_section
+    assert "zip(" not in benchmark_section
     assert "host_chunk.copy_(src_chunk, non_blocking=True)" in benchmark_section
     assert "dst_chunk.copy_(host_chunk, non_blocking=True)" in benchmark_section
     assert "start:end" not in benchmark_section
     assert "range(0, self.numel, self.chunk_elems)" not in benchmark_section
     assert "self._src_chunks = []" in teardown_section
+    assert "self._chunk_groups = []" in teardown_section
 
 
 def test_ch04_baseline_nvlink_topology_reuses_blocking_chunk_views() -> None:
@@ -4501,16 +4504,19 @@ def test_ch04_baseline_nvlink_topology_reuses_blocking_chunk_views() -> None:
     assert "self._src_chunks: list[torch.Tensor] = []" in source
     assert "self._dst_chunks: list[torch.Tensor] = []" in source
     assert "self._host_chunks: list[torch.Tensor] = []" in source
+    assert "self._chunk_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
     assert "self._src_chunks = list(self.src.split(self.chunk_elems))" in setup_section
     assert "self._dst_chunks = list(self.dst.split(self.chunk_elems))" in setup_section
     assert "self._host_chunks = list(self.host_buffer.split(self.chunk_elems))" in setup_section
-    assert "for host_chunk, src_chunk, dst_chunk in zip(" in benchmark_section
-    assert "strict=True" in benchmark_section
+    assert "self._chunk_groups = list(zip(self._host_chunks, self._src_chunks, self._dst_chunks, strict=True))" in setup_section
+    assert "for host_chunk, src_chunk, dst_chunk in self._chunk_groups:" in benchmark_section
+    assert "zip(" not in benchmark_section
     assert "host_chunk.copy_(src_chunk, non_blocking=False)" in benchmark_section
     assert "dst_chunk.copy_(host_chunk, non_blocking=False)" in benchmark_section
     assert "start:end" not in benchmark_section
     assert "range(0, self.numel, self.chunk_elems)" not in benchmark_section
     assert "self._src_chunks = []" in teardown_section
+    assert "self._chunk_groups = []" in teardown_section
 
 
 def test_ch04_optimized_nvlink_multigpu_reuses_stream_groups() -> None:
