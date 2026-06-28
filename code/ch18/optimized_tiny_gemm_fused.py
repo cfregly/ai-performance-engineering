@@ -55,7 +55,10 @@ class OptimizedTinyGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             proj = self.x @ self.w_fused
             hidden = self.cfg.hidden_size
             q, k, v, router = proj.split(hidden, dim=1)
-            self.output = q + k + v + router
+            q.add_(k)
+            q.add_(v)
+            q.add_(router)
+            self.output = q
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 

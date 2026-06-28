@@ -2789,6 +2789,21 @@ def test_ch18_paged_attention_uses_real_block_table_sparse_kernel() -> None:
     assert common_source.count("enable=self._enable_nvtx") == 2
 
 
+def test_ch18_tiny_gemm_fused_accumulates_split_views_in_place() -> None:
+    source = (REPO_ROOT / "ch18" / "optimized_tiny_gemm_fused.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "q, k, v, router = proj.split(hidden, dim=1)" in benchmark_section
+    assert "q.add_(k)" in benchmark_section
+    assert "q.add_(v)" in benchmark_section
+    assert "q.add_(router)" in benchmark_section
+    assert "self.output = q" in benchmark_section
+    assert "self.output = q + k + v + router" not in benchmark_section
+
+
 def test_ch04_nvshmem_symmetric_broadcast_overlap_defines_done_event() -> None:
     source = (REPO_ROOT / "ch04" / "nvshmem_vs_nccl_benchmark.py").read_text(encoding="utf-8")
     symmetric_section = source.split("def _measure_symmetric_broadcast", maxsplit=1)[1].split(
