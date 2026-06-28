@@ -15,6 +15,7 @@ except ImportError:
     _NEW_SDPA_API = False
 
 _FLASH3_ACCEPTS_CLUSTERS: bool | None = None
+_CU_SEQLENS_CACHE: dict[tuple[int, int, torch.device], torch.Tensor] = {}
 
 
 def _efficient_sdpa_context():
@@ -48,6 +49,15 @@ def _flash3_accepts_clusters(flash3_fn) -> bool:
     return _FLASH3_ACCEPTS_CLUSTERS
 
 
+def _cu_seqlens_for(batch: int, seq_len: int, device: torch.device) -> torch.Tensor:
+    key = (batch, seq_len, device)
+    cached = _CU_SEQLENS_CACHE.get(key)
+    if cached is None:
+        cached = torch.arange(0, (batch + 1) * seq_len, step=seq_len, device=device, dtype=torch.int32)
+        _CU_SEQLENS_CACHE[key] = cached
+    return cached
+
+
 def _flash3_clustered(q, k, v, causal: bool, num_sm_clusters: int | None, enable_gqa: bool):
     # q,k,v: (B, H, T, D)
     if enable_gqa and q.size(1) != k.size(1):
@@ -59,8 +69,8 @@ def _flash3_clustered(q, k, v, causal: bool, num_sm_clusters: int | None, enable
     q_flat = q.transpose(1, 2).reshape(B * Tq, Hq, D)
     k_flat = k.transpose(1, 2).reshape(B * Tk, Hk, D)
     v_flat = v.transpose(1, 2).reshape(B * Tk, Hk, D)
-    cu_q = torch.arange(0, (B + 1) * Tq, step=Tq, device=q.device, dtype=torch.int32)
-    cu_k = torch.arange(0, (B + 1) * Tk, step=Tk, device=q.device, dtype=torch.int32)
+    cu_q = _cu_seqlens_for(B, Tq, q.device)
+    cu_k = _cu_seqlens_for(B, Tk, q.device)
 
     try:
         from flash_attn.flash_attn_interface import flash_attn_varlen_func  # type: ignore

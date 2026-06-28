@@ -5908,11 +5908,26 @@ def test_nanochat_clustered_attention_fallback_uses_native_sdpa_gqa(monkeypatch:
 
     source = inspect.getsource(clustered_attention_module.clustered_attention)
     flash3_source = inspect.getsource(clustered_attention_module._flash3_clustered)
+    cu_seqlens_source = inspect.getsource(clustered_attention_module._cu_seqlens_for)
     assert "repeat_interleave" not in source
     assert "repeat_interleave" not in flash3_source
     assert "inspect.signature" not in flash3_source
     assert "_flash3_accepts_clusters" in flash3_source
+    assert "cu_q = _cu_seqlens_for(B, Tq, q.device)" in flash3_source
+    assert "cu_k = _cu_seqlens_for(B, Tk, q.device)" in flash3_source
+    assert "torch.arange(0, (B + 1)" not in flash3_source
+    assert "_CU_SEQLENS_CACHE.get(key)" in cu_seqlens_source
     assert "enable_gqa=enable_gqa" in source
+
+    clustered_attention_module._CU_SEQLENS_CACHE.clear()
+    cu_q = clustered_attention_module._cu_seqlens_for(2, 3, torch.device("cpu"))
+    cu_q_ptr = cu_q.data_ptr()
+    cu_q_again = clustered_attention_module._cu_seqlens_for(2, 3, torch.device("cpu"))
+    cu_q_grown = clustered_attention_module._cu_seqlens_for(2, 4, torch.device("cpu"))
+    assert cu_q_again.data_ptr() == cu_q_ptr
+    assert cu_q_grown.data_ptr() != cu_q_ptr
+    torch.testing.assert_close(cu_q_again, torch.tensor([0, 3, 6], dtype=torch.int32))
+    torch.testing.assert_close(cu_q_grown, torch.tensor([0, 4, 8], dtype=torch.int32))
 
     calls: dict[str, object] = {}
 
