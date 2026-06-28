@@ -58,6 +58,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._ordered_grad_slots: List[torch.Tensor] = []
         self._ordered_bucket_indices: List[int] = []
         self._reduction_results: List[torch.Tensor] = []
+        self._model_update_groups: List[Tuple[int, nn.Linear, torch.Tensor]] = []
         tokens = self.batch_size * self.hidden * self.microbatches
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size * self.microbatches),
@@ -115,6 +116,10 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
             torch.empty_like(model.weight, device=model.weight.device)
             for model in self.models
         ]
+        self._model_update_groups = [
+            (model_idx, model, update_buffer)
+            for model_idx, (model, update_buffer) in enumerate(zip(self.models, self._update_buffers, strict=True))
+        ][: len(self._reduction_results)]
         self._synchronize()
 
     def _async_reduce_to_root(self, grads: List[torch.Tensor], buffer_index: int) -> torch.Tensor:
@@ -154,6 +159,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
                 or len(self._ordered_grad_slots) != len(self.models)
                 or len(self._ordered_bucket_indices) != len(self.models)
                 or len(self._reduction_results) != self.microbatches
+                or not self._model_update_groups
             ):
                 raise RuntimeError("Gradient reduction slots not initialized")
             grads = self._grad_slots
@@ -179,9 +185,10 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
 
             # Finalize reductions and apply updates
             torch.cuda.current_stream(self.root_device).wait_stream(self.comm_stream)
-            for model_idx, (model, root_buf) in enumerate(zip(self.models, reduction_results)):
+            for model_idx, model, update_buffer in self._model_update_groups:
+                root_buf = reduction_results[model_idx]
                 if root_buf.device != model.weight.device:
-                    root_local = self._update_buffers[model_idx]
+                    root_local = update_buffer
                     root_local.copy_(root_buf, non_blocking=True)
                 else:
                     root_local = root_buf
@@ -222,6 +229,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._ordered_grad_slots = []
         self._ordered_bucket_indices = []
         self._reduction_results = []
+        self._model_update_groups = []
         self.output = None
         torch.cuda.empty_cache()
 

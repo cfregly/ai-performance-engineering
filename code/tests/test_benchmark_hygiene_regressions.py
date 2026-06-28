@@ -461,6 +461,7 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._ordered_grad_slots: List[torch.Tensor] = []" in source
     assert "self._ordered_bucket_indices: List[int] = []" in source
     assert "self._reduction_results: List[torch.Tensor] = []" in source
+    assert "self._model_update_groups: List[Tuple[int, nn.Linear, torch.Tensor]] = []" in source
     assert "self._allreduce_buffer = torch.empty_like(" in naive_setup
     assert "self._grad_slots = [" in naive_setup
     assert "self._allreduce_buffer = torch.zeros_like(" not in naive_setup
@@ -476,6 +477,8 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._ordered_grad_slots = [" in setup_section
     assert "self._ordered_bucket_indices = [bucket_idx for _, bucket_idx in bucket_order]" in setup_section
     assert "self._reduction_results = [" in setup_section
+    assert "self._model_update_groups = [" in setup_section
+    assert "zip(self.models, self._update_buffers, strict=True)" in setup_section
     assert "torch.cuda.Event()" not in reduce_section
     assert "g.to(self.root_device" not in reduce_section
     assert "root_buf.copy_(first)" in reduce_section
@@ -485,10 +488,14 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "sorted(zip(grads, _bucket_order())" not in benchmark_section
     assert "ordered_grads = [g for g, _ in ordered]" not in benchmark_section
     assert "reduction_results[micro] = self._async_reduce_to_root(ordered_grads, micro)" in benchmark_section
+    assert "for model_idx, model, update_buffer in self._model_update_groups:" in benchmark_section
+    assert "root_buf = reduction_results[model_idx]" in benchmark_section
+    assert "zip(self.models, reduction_results)" not in benchmark_section
     assert "root_buf.zero_()" not in reduce_section
     assert "root_buf.to(model.weight.device" not in benchmark_section
-    assert "staging.copy_(g, non_blocking=True)" in reduce_section
     assert "root_local.copy_(root_buf, non_blocking=True)" in benchmark_section
+    assert "staging.copy_(g, non_blocking=True)" in reduce_section
+    assert "self._model_update_groups = []" in source
 
 
 def test_ch04_gradient_compression_int8_reuses_cast_buffers() -> None:
