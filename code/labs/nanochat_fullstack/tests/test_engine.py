@@ -376,6 +376,21 @@ def test_build_attention_mask_reuses_position_buffer():
     torch.testing.assert_close(grown, torch.ones((1, 6), dtype=torch.bool))
 
 
+def test_batch_row_index_buffer_reuses_arange_storage():
+    engine = Engine(_TinyForwardModel(), _TinyTokenizer())
+
+    first = engine._batch_row_index_buffer(3, torch.device("cpu"))
+    first_ptr = first.data_ptr()
+    shorter = engine._batch_row_index_buffer(2, torch.device("cpu"))
+    grown = engine._batch_row_index_buffer(5, torch.device("cpu"))
+
+    torch.testing.assert_close(first, torch.tensor([0, 1, 2]))
+    assert shorter.data_ptr() == first_ptr
+    torch.testing.assert_close(shorter, torch.tensor([0, 1]))
+    assert grown.numel() == 5
+    torch.testing.assert_close(grown, torch.tensor([0, 1, 2, 3, 4]))
+
+
 def test_decode_step_helpers_reuse_token_and_active_mask_buffers():
     engine = Engine(_TinyForwardModel(), _TinyTokenizer())
     ids_buf = torch.empty((3, 1), dtype=torch.long)
@@ -490,7 +505,8 @@ def test_kv_cache_reuses_token_mask_row_sums():
 
 def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     source = Path(__file__).resolve().parents[1] / "nanochat" / "engine.py"
-    generate_batched = source.read_text(encoding="utf-8").split(
+    text = source.read_text(encoding="utf-8")
+    generate_batched = text.split(
         "def generate_batched", maxsplit=1,
     )[1]
     prompt_pack_section = generate_batched.split(
@@ -502,6 +518,9 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     assert "ids_host.to(device=device, non_blocking=use_pinned_transfer)" in prompt_pack_section
     assert "lengths.max().item()" not in prompt_pack_section
     assert "torch.tensor(seq, dtype=torch.long, device=device)" not in prompt_pack_section
+    assert "self._batch_row_indices = None" in text
+    assert "batch_rows = self._batch_row_index_buffer(batch_size, device)" in generate_batched
+    assert "torch.arange(batch_size, device=device)" not in generate_batched
 
 
 def test_attention_reuses_cu_seqlens_buffers():

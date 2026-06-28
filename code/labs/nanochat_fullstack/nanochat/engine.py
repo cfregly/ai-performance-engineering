@@ -357,6 +357,7 @@ class Engine:
         self._compile_error = None
         self._graph_cache_gen = None  # cache generation tied to current capture
         self._attention_positions = None
+        self._batch_row_indices = None
         self._token_column_host = None
         self._active_mask_host = None
         self._active_mask_device = None
@@ -588,6 +589,13 @@ class Engine:
             return torch.zeros((lengths.size(0), 0), dtype=torch.bool, device=lengths.device)
         positions = self._attention_position_buffer(max_len, lengths.device)
         return positions.unsqueeze(0) < lengths.unsqueeze(1)
+
+    def _batch_row_index_buffer(self, batch_size, device):
+        indices = self._batch_row_indices
+        if indices is None or indices.device != device or indices.numel() < batch_size:
+            indices = torch.arange(batch_size, device=device)
+            self._batch_row_indices = indices
+        return indices[:batch_size]
 
     def _host_long_buffer(self, count):
         if self._token_column_host is None or self._token_column_host.numel() < count:
@@ -939,7 +947,8 @@ class Engine:
         kv_cache_prefill = KVCache(**self._kv_cache_params(batch_size=batch_size, seq_len=max_prompt_len))
         logits = self.model.forward(ids, kv_cache=kv_cache_prefill, attention_mask=attention_mask, token_mask=attention_mask)
         last_indices = (lengths - 1).clamp(min=0)
-        logits = logits[torch.arange(batch_size, device=device), last_indices, :]
+        batch_rows = self._batch_row_index_buffer(batch_size, device)
+        logits = logits[batch_rows, last_indices, :]
 
         active_mask = torch.ones(batch_size, dtype=torch.bool, device=device)
         sampled_tokens = self._sample_batch_tokens(
