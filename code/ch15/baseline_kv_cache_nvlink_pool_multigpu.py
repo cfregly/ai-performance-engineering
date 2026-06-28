@@ -44,6 +44,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._value_steps: Optional[torch.Tensor] = None
         self._k_gather_buffer: Optional[torch.Tensor] = None
         self._v_gather_buffer: Optional[torch.Tensor] = None
+        self._peer_host_k_stage: Optional[torch.Tensor] = None
+        self._peer_host_v_stage: Optional[torch.Tensor] = None
         self._cache_key_slots: List[torch.Tensor] = []
         self._cache_value_slots: List[torch.Tensor] = []
         self._tier_slots: List[str] = []
@@ -64,6 +66,20 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._k_gather_buffer = torch.empty(self.batch, self.seq_len, self.hidden, device=self.device)
         self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)
+        self._peer_host_k_stage = torch.empty(
+            self.batch,
+            1,
+            self.hidden,
+            dtype=self._key_steps.dtype,
+            pin_memory=True,
+        )
+        self._peer_host_v_stage = torch.empty(
+            self.batch,
+            1,
+            self.hidden,
+            dtype=self._value_steps.dtype,
+            pin_memory=True,
+        )
         self._cache_key_slots = [
             torch.empty(0, device=self.device)
             for _ in range(self.seq_len)
@@ -121,10 +137,16 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
                         self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tk)
                         self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tv)
                     elif t == "peer" and peer_dev is not None:
-                        host_k = tk.cpu()
-                        host_v = tv.cpu()
-                        self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(host_k)
-                        self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(host_v)
+                        if self._peer_host_k_stage is None or self._peer_host_v_stage is None:
+                            raise RuntimeError("Peer host staging buffers not initialized")
+                        self._peer_host_k_stage.copy_(tk, non_blocking=False)
+                        self._peer_host_v_stage.copy_(tv, non_blocking=False)
+                        self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(
+                            self._peer_host_k_stage
+                        )
+                        self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(
+                            self._peer_host_v_stage
+                        )
                     else:
                         self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tk)
                         self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tv)
@@ -160,6 +182,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._value_steps = None
         self._k_gather_buffer = None
         self._v_gather_buffer = None
+        self._peer_host_k_stage = None
+        self._peer_host_v_stage = None
         self._cache_key_slots = []
         self._cache_value_slots = []
         self._tier_slots = []

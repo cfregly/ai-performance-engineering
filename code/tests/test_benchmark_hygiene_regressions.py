@@ -6370,6 +6370,18 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert ".pop(0)" not in benchmark_section
         assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
         assert "self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(" in benchmark_section
+        if filename.endswith("_multigpu.py"):
+            assert "self._peer_host_k_stage: Optional[torch.Tensor] = None" in source
+            assert "self._peer_host_v_stage: Optional[torch.Tensor] = None" in source
+            assert "self._peer_host_k_stage = torch.empty(" in setup_section
+            assert "self._peer_host_v_stage = torch.empty(" in setup_section
+            assert "pin_memory=True" in setup_section
+            assert "self._peer_host_k_stage.copy_(tk, non_blocking=False)" in benchmark_section
+            assert "self._peer_host_v_stage.copy_(tv, non_blocking=False)" in benchmark_section
+            assert "self._peer_host_k_stage" in benchmark_section
+            assert "self._peer_host_v_stage" in benchmark_section
+            assert "host_k = tk.cpu()" not in benchmark_section
+            assert "host_v = tv.cpu()" not in benchmark_section
         assert "k_all = self._k_gather_buffer[:, :gather_idx, :]" in benchmark_section
         assert "v_all = self._v_gather_buffer[:, :gather_idx, :]" in benchmark_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
