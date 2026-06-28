@@ -38,7 +38,10 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
 
     assert "self._expert_metadata_workspace: Optional[torch.Tensor] = None" in grouped_section
     assert "self._expert_metadata_host: Optional[torch.Tensor] = None" in grouped_section
+    assert "self._sorted_output_buffer: Optional[torch.Tensor] = None" in grouped_section
     assert "def _expert_metadata_buffers(self, device: torch.device)" in grouped_section
+    assert "def _sorted_output_like(self, sorted_x: torch.Tensor) -> torch.Tensor" in grouped_section
+    assert "if torch.is_grad_enabled() and sorted_x.requires_grad:" in grouped_section
     assert "torch.cumsum(expert_counts, dim=0, out=expert_offsets)" in grouped_section
     assert "expert_offsets.sub_(expert_counts)" in grouped_section
     assert "expert_metadata[1].copy_(expert_counts)" in grouped_section
@@ -72,7 +75,8 @@ def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
         maxsplit=1,
     )[0]
 
-    assert "output = torch.empty_like(sorted_x)" in expert_loop_section
+    assert "output = self._sorted_output_like(sorted_x)" in expert_loop_section
+    assert "output = torch.empty_like(sorted_x)" not in expert_loop_section
     assert "torch.zeros_like(sorted_x)" not in expert_loop_section
     assert "output.mul_(sorted_weights.unsqueeze(-1))" in apply_weights_section
     assert "output = output * sorted_weights.unsqueeze(-1)" not in grouped_section

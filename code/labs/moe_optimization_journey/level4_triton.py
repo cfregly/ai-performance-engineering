@@ -119,6 +119,7 @@ class GroupedMoEExperts(nn.Module):
         self.w3 = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
         self._expert_metadata_workspace: Optional[torch.Tensor] = None
         self._expert_metadata_host: Optional[torch.Tensor] = None
+        self._sorted_output_buffer: Optional[torch.Tensor] = None
         
         for w in [self.w1, self.w2, self.w3]:
             nn.init.kaiming_uniform_(w)
@@ -141,6 +142,18 @@ class GroupedMoEExperts(nn.Module):
             )
         assert self._expert_metadata_host is not None
         return self._expert_metadata_workspace, self._expert_metadata_host
+
+    def _sorted_output_like(self, sorted_x: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled() and sorted_x.requires_grad:
+            return torch.empty_like(sorted_x)
+        if (
+            self._sorted_output_buffer is None
+            or self._sorted_output_buffer.shape != sorted_x.shape
+            or self._sorted_output_buffer.device != sorted_x.device
+            or self._sorted_output_buffer.dtype != sorted_x.dtype
+        ):
+            self._sorted_output_buffer = torch.empty_like(sorted_x)
+        return self._sorted_output_buffer
     
     def forward(
         self,
@@ -175,7 +188,7 @@ class GroupedMoEExperts(nn.Module):
         expert_offsets_cpu, expert_counts_cpu = expert_metadata_host.tolist()
         
         # Process each expert's tokens (grouped by expert for coalescing)
-        output = torch.empty_like(sorted_x)
+        output = self._sorted_output_like(sorted_x)
         
         for expert_id, (start, count) in enumerate(zip(expert_offsets_cpu, expert_counts_cpu)):
             if count == 0:
