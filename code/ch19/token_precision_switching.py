@@ -53,6 +53,7 @@ class TokenPrecisionController:
         self.history: List[PrecisionLevel] = []
         self._next_token_buffer = None
         self._next_token_host_buffer = None
+        self._token_buffer = None
 
     def _next_token_buffers(self, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
         if self._next_token_buffer is None or self._next_token_buffer.device != device:
@@ -64,6 +65,22 @@ class TokenPrecisionController:
                 pin_memory=device.type == "cuda",
             )
         return self._next_token_buffer, self._next_token_host_buffer
+
+    def _generation_token_buffer(self, input_ids: torch.Tensor, total_len: int) -> torch.Tensor:
+        batch_size = input_ids.size(0)
+        if (
+            self._token_buffer is None
+            or self._token_buffer.device != input_ids.device
+            or self._token_buffer.dtype != input_ids.dtype
+            or self._token_buffer.size(0) != batch_size
+            or self._token_buffer.size(1) < total_len
+        ):
+            self._token_buffer = torch.empty(
+                (batch_size, total_len),
+                device=input_ids.device,
+                dtype=input_ids.dtype,
+            )
+        return self._token_buffer[:, :total_len]
 
     @staticmethod
     def _confidence(logits: torch.Tensor, temperature: float = 1.0) -> ConfidenceMetrics:
@@ -108,14 +125,9 @@ class TokenPrecisionController:
 
     @torch.inference_mode()
     def generate(self, input_ids: torch.Tensor, max_length: int = 20, temperature: float = 1.0) -> Tuple[torch.Tensor, List[Dict[str, float]]]:
-        prompt = input_ids.clone()
-        batch_size, prompt_len = prompt.shape
-        tokens = torch.empty(
-            (batch_size, prompt_len + max_length),
-            device=prompt.device,
-            dtype=prompt.dtype,
-        )
-        tokens[:, :prompt_len].copy_(prompt)
+        batch_size, prompt_len = input_ids.shape
+        tokens = self._generation_token_buffer(input_ids, prompt_len + max_length)
+        tokens[:, :prompt_len].copy_(input_ids)
         current_len = prompt_len
         stats: List[Dict[str, float]] = []
         for _step in range(max_length):
@@ -136,7 +148,7 @@ class TokenPrecisionController:
             next_token_host.copy_(next_token)
             if int(next_token_host[0]) == 0:
                 break
-        return tokens[:, :current_len].contiguous(), stats
+        return tokens[:, :current_len].clone(memory_format=torch.contiguous_format), stats
 
 
 #

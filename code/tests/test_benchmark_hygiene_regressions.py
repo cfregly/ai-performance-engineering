@@ -2145,7 +2145,12 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     assert "@torch.inference_mode()\n    def generate" in token_precision_source
     assert "self._next_token_buffer = None" in token_precision_source
     assert "self._next_token_host_buffer = None" in token_precision_source
+    assert "self._token_buffer = None" in token_precision_source
     assert "def _next_token_buffers(self, device: torch.device)" in token_precision_source
+    assert "def _generation_token_buffer(self, input_ids: torch.Tensor, total_len: int)" in token_precision_source
+    assert "tokens = self._generation_token_buffer(input_ids, prompt_len + max_length)" in token_precision_generate
+    assert "prompt = input_ids.clone()" not in token_precision_generate
+    assert "return tokens[:, :current_len].clone(memory_format=torch.contiguous_format), stats" in token_precision_generate
     dynamic_decode_section = token_precision_source.split("def decode_with_dynamic_precision", maxsplit=1)[1].split(
         "# ===== END dynamic_precision_inference =====",
         maxsplit=1,
@@ -2161,6 +2166,37 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     assert "next_token_host.copy_(next_token)" in token_precision_generate
     assert "next_token = torch.multinomial(probs, num_samples=1)" not in token_precision_generate
     assert "next_token.item()" not in token_precision_generate
+
+
+def test_ch19_token_precision_generate_reuses_workspace_without_return_alias() -> None:
+    from ch19.token_precision_switching import TokenPrecisionController
+
+    class ToyModel(torch.nn.Module):
+        def forward(self, input_ids: torch.Tensor):
+            logits = torch.zeros(
+                (*input_ids.shape, 4),
+                device=input_ids.device,
+                dtype=torch.float32,
+            )
+            logits[..., 1] = 1000.0
+            return SimpleNamespace(logits=logits)
+
+    controller = TokenPrecisionController(ToyModel())
+    input_ids = torch.tensor([[2, 3]], dtype=torch.long)
+
+    first, _ = controller.generate(input_ids, max_length=3)
+    workspace_ptr = controller._token_buffer.data_ptr()
+    second, _ = controller.generate(input_ids, max_length=3)
+
+    assert controller._token_buffer.data_ptr() == workspace_ptr
+    assert first.data_ptr() != workspace_ptr
+    assert second.data_ptr() != workspace_ptr
+    assert torch.equal(first, second)
+
+    with torch.inference_mode():
+        controller._token_buffer[:, 0].fill_(99)
+    assert int(first[0, 0]) == 2
+    assert int(second[0, 0]) == 2
 
 
 def test_ch19_fp4_baseline_keeps_scale_on_device() -> None:
