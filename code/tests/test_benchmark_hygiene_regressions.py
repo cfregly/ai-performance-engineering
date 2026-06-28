@@ -925,6 +925,8 @@ def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
     assert "torch.sqrt(torch.tensor(2.0 / torch.pi))" not in source
     assert "GELU_TANH_SCALE * (x + 0.044715 * torch.pow(x, 3))" in source
     assert "GELU_TANH_SCALE * (scaled + 0.044715 * torch.pow(scaled, 3))" in source
+    assert "normalized.mul_(self.weight).add_(self.bias)" in source
+    assert "scaled = normalized * self.weight + self.bias" not in source
 
 
 def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:

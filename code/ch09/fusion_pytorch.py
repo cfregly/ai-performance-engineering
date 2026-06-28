@@ -50,7 +50,8 @@ class FusedLayerNormGELU(nn.Module):
         mean = x.mean(-1, keepdim=True)
         var = x.var(-1, keepdim=True, unbiased=False)
         normalized = (x - mean) / torch.sqrt(var + self.eps)
-        scaled = normalized * self.weight + self.bias
+        normalized.mul_(self.weight).add_(self.bias)
+        scaled = normalized
         
         # Apply GELU activation
         return 0.5 * scaled * (1.0 + torch.tanh(
