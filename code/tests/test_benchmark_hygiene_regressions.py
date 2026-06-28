@@ -1292,6 +1292,8 @@ def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
         "ch19/optimized_memory_double_buffering.py",
     ):
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        if relative in {"ch04/optimized_nccl.py", "ch04/optimized_cpu_reduction.py"}:
+            source += (REPO_ROOT / "ch04" / "reduction_common.py").read_text(encoding="utf-8")
 
         assert "ReLU(inplace=True)" in source
         assert "nn.ReLU()" not in source
@@ -2171,6 +2173,35 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     )
     assert "torch.triu(\n                torch.ones(seq_len, seq_len" not in ch14_demo_source
     assert "causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch14_demo_source
+
+
+def test_ch10_optimized_batch_reuses_mlp_buffers() -> None:
+    source = (REPO_ROOT / "ch10" / "optimized_batch.py").read_text(encoding="utf-8")
+    model_section = source.split("class BufferedBatchMlp", maxsplit=1)[1].split(
+        "class OptimizedBatchBenchmark",
+        maxsplit=1,
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._fc1_buffer: torch.Tensor | None = None" in model_section
+    assert "self._fc2_buffer: torch.Tensor | None = None" in model_section
+    assert "def _ensure_forward_buffers(" in model_section
+    assert "if torch.is_grad_enabled():" in model_section
+    assert "torch.mm(x, self.fc1.weight.t(), out=fc1_out)" in model_section
+    assert "fc1_out.add_(self.fc1.bias)" in model_section
+    assert "self.relu(fc1_out)" in model_section
+    assert "torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)" in model_section
+    assert "fc2_out.add_(self.fc2.bias)" in model_section
+    assert "self.model = BufferedBatchMlp(self.hidden_dim, self.ffn_dim)" in setup_section
+    assert "nn.Sequential(" not in setup_section
+    assert "self.output = self.model(self.input)" in benchmark_section
 
 
 def test_ch16_optimized_dense_attention_flash_reuses_projection_buffers() -> None:
