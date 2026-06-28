@@ -64,6 +64,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._dest_ranks: Optional[torch.Tensor] = None
         self._rank_indices: list[torch.Tensor] = []
         self._rank_offsets: list[tuple[int, int]] = []
+        self._rank_copy_groups: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._perm: Optional[torch.Tensor] = None
         self._recv_buf: Optional[torch.Tensor] = None
         self._out_flat: Optional[torch.Tensor] = None
@@ -97,6 +98,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         offset = 0
         self._rank_indices = []
         self._rank_offsets = []
+        self._rank_copy_groups = []
         for rank in range(self.world_size):
             indices = (self._dest_ranks == rank).nonzero(as_tuple=False).squeeze(-1)
             if indices.numel() == 0:
@@ -111,6 +113,10 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         flat = self.inputs.view(-1, self.hidden_size)
         self._recv_buf = torch.empty_like(flat)
         self._out_flat = torch.empty_like(flat)
+        self._rank_copy_groups = [
+            (indices, self._recv_buf[start:end])
+            for indices, (start, end) in zip(self._rank_indices, self._rank_offsets, strict=True)
+        ]
 
         self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
         self._verify_meta = torch.tensor(
@@ -129,7 +135,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._perm is None
             or self._recv_buf is None
             or self._out_flat is None
-            or not self._rank_indices
+            or not self._rank_copy_groups
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
@@ -139,8 +145,8 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.inference_mode():
                 perm = self._perm
                 recv_buf = self._recv_buf
-                for indices, (start, end) in zip(self._rank_indices, self._rank_offsets):
-                    torch.index_select(flat, 0, indices, out=recv_buf[start:end])
+                for indices, recv_view in self._rank_copy_groups:
+                    torch.index_select(flat, 0, indices, out=recv_view)
 
                 recv_out = self.expert(recv_buf)
 
@@ -178,6 +184,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._dest_ranks = None
         self._rank_indices = []
         self._rank_offsets = []
+        self._rank_copy_groups = []
         self._perm = None
         self._recv_buf = None
         self._out_flat = None
