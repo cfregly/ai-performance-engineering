@@ -23,6 +23,7 @@ class OptimizedTinyGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.w_v: Optional[torch.Tensor] = None
         self.w_router: Optional[torch.Tensor] = None
         self.w_fused: Optional[torch.Tensor] = None
+        self._proj_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.batch_size),
@@ -46,13 +47,19 @@ class OptimizedTinyGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.w_router,
             self.w_fused,
         ) = build_tiny_gemm_inputs(self.device, self.cfg)
+        self._proj_buffer = torch.empty(
+            self.cfg.tokens,
+            self.cfg.hidden_size * 4,
+            device=self.device,
+            dtype=self.cfg.dtype,
+        )
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        if self.x is None or self.w_fused is None:
+        if self.x is None or self.w_fused is None or self._proj_buffer is None:
             raise RuntimeError("Benchmark not initialized")
         with torch.inference_mode():
-            proj = self.x @ self.w_fused
+            proj = torch.mm(self.x, self.w_fused, out=self._proj_buffer)
             hidden = self.cfg.hidden_size
             q, k, v, router = proj.split(hidden, dim=1)
             q.add_(k)

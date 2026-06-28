@@ -2855,11 +2855,19 @@ def test_ch18_paged_attention_uses_real_block_table_sparse_kernel() -> None:
 
 def test_ch18_tiny_gemm_fused_accumulates_split_views_in_place() -> None:
     source = (REPO_ROOT / "ch18" / "optimized_tiny_gemm_fused.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
 
+    assert "self._proj_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._proj_buffer = torch.empty(" in setup_section
+    assert "proj = torch.mm(self.x, self.w_fused, out=self._proj_buffer)" in benchmark_section
+    assert "proj = self.x @ self.w_fused" not in benchmark_section
     assert "q, k, v, router = proj.split(hidden, dim=1)" in benchmark_section
     assert "q.add_(k)" in benchmark_section
     assert "q.add_(v)" in benchmark_section
