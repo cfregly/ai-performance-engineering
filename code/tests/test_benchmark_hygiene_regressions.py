@@ -3141,6 +3141,25 @@ def test_ch19_fp4_helpers_cache_lookup_values_per_device() -> None:
         assert "signs = (unpacked >> 3)" not in dequantize_section
 
 
+def test_ch19_fp4_linears_skip_matching_dtype_activation_casts() -> None:
+    cases = (
+        ("baseline_fp4_weight_quantization.py", "class NaiveFP16MLP"),
+        ("optimized_fp4_weight_quantization.py", "def _forward_fp8"),
+        ("native_fp4_quantization.py", "def _forward_fp8"),
+    )
+    for filename, end_marker in cases:
+        source = (REPO_ROOT / "ch19" / filename).read_text(encoding="utf-8")
+        forward_section = source.split(
+            "def forward(self, x: torch.Tensor)",
+            maxsplit=1,
+        )[1].split(end_marker, maxsplit=1)[0]
+
+        assert "if x.dtype != weight.dtype:" in forward_section
+        assert "x = x.to(weight.dtype)" in forward_section
+        assert "return F.linear(x, weight, self.bias)" in forward_section
+        assert "F.linear(x.to(weight.dtype)" not in forward_section
+
+
 def test_ch19_fp4_weight_quantization_uses_inference_mode() -> None:
     baseline_source = (
         REPO_ROOT / "ch19" / "baseline_fp4_weight_quantization.py"

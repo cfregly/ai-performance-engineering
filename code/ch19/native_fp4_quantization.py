@@ -131,7 +131,6 @@ def quantize_to_fp4_packed(
     """
     device = tensor.device
     dtype = tensor.dtype
-    original_shape = tensor.shape
     
     # Flatten and pad to block size
     flat = tensor.flatten().float()
@@ -340,7 +339,9 @@ class FP4Linear(nn.Module):
             return self._forward_fp8(x)
         
         weight = self._get_weight()
-        return F.linear(x.to(weight.dtype), weight, self.bias)
+        if x.dtype != weight.dtype:
+            x = x.to(weight.dtype)
+        return F.linear(x, weight, self.bias)
     
     def _forward_fp8(self, x: torch.Tensor) -> torch.Tensor:
         """Forward using FP8 tensor cores for acceleration."""

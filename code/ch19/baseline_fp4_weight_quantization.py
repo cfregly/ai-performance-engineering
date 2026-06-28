@@ -70,7 +70,6 @@ def quantize_fp4_baseline(
     """
     device = tensor.device
     dtype = tensor.dtype
-    original_shape = tensor.shape
     
     # Flatten for quantization
     flat = tensor.flatten().float()
@@ -187,7 +186,9 @@ class BaselineFP4Linear(nn.Module):
         else:
             weight = self._weight_fp16
         
-        return F.linear(x.to(weight.dtype), weight, self.bias)
+        if x.dtype != weight.dtype:
+            x = x.to(weight.dtype)
+        return F.linear(x, weight, self.bias)
 
 
 class NaiveFP16MLP(nn.Module):
