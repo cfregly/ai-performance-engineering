@@ -86,12 +86,14 @@ class TinyTransformerBlock(nn.Module):
         residual = x
         x = self.ln1(x)
         attn_out, _ = self.attn(x, x, x, need_weights=False)
-        x = residual + attn_out
+        attn_out.add_(residual)
+        x = attn_out
 
         residual = x
         x = self.ln2(x)
-        x = residual + self.mlp(x)
-        return x
+        mlp_out = self.mlp(x)
+        mlp_out.add_(residual)
+        return mlp_out
 
 
 class OptimizedRegionalCompileBenchmark(VerificationPayloadMixin, BaseBenchmark):

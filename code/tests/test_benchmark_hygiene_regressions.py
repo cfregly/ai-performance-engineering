@@ -5179,6 +5179,20 @@ def test_ch14_forward_benchmarks_use_inference_mode() -> None:
         assert "torch.no_grad()" not in capture_section
 
 
+def test_ch14_regional_triton_accumulates_residuals_in_place() -> None:
+    source = (REPO_ROOT / "ch14" / "optimized_regional_triton.py").read_text(encoding="utf-8")
+    forward_section = source.split("class TinyTransformerBlock", maxsplit=1)[1].split(
+        "class OptimizedRegionalTritonBenchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "attn_out.add_(residual)" in forward_section
+    assert "mlp_out = self.mlp(x)" in forward_section
+    assert "mlp_out.add_(residual)" in forward_section
+    assert "x = residual + attn_out" not in forward_section
+    assert "x = residual + self.mlp(x)" not in forward_section
+
+
 def test_ch14_compile_tools_use_inference_mode() -> None:
     paths = (
         "torch_compile_large_model.py",
@@ -7547,6 +7561,17 @@ def test_ch13_regional_compile_moves_verification_materialization_out_of_hot_loo
         assert output_assignment in benchmark_section
         assert "self._verify_output = self.output" in benchmark_section
         assert "output=self._verify_output.float().clone()" in capture_section
+
+    optimized_source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
+    optimized_forward = optimized_source.split("class TinyTransformerBlock", maxsplit=1)[1].split(
+        "class OptimizedRegionalCompileBenchmark",
+        maxsplit=1,
+    )[0]
+    assert "attn_out.add_(residual)" in optimized_forward
+    assert "mlp_out = self.mlp(x)" in optimized_forward
+    assert "mlp_out.add_(residual)" in optimized_forward
+    assert "x = residual + attn_out" not in optimized_forward
+    assert "x = residual + self.mlp(x)" not in optimized_forward
 
 
 def test_ch13_inference_precision_benchmarks_use_inference_mode() -> None:
