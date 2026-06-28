@@ -28,12 +28,21 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         assert "self._active_layer_slice = slice(0, active_layers)" in init_source
         assert "self._generated_step_pairs = list(" in setup_source
         assert "zip(self._generated_k_steps, self._generated_v_steps, strict=True)" in setup_source
+        if benchmark_cls is BaselineKVStandard:
+            assert "self._generated_step_layer_view_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in init_source
+            assert "self._generated_step_layer_view_pairs = [" in setup_source
+            assert "(k_step.unsqueeze(1), v_step.unsqueeze(1))" in setup_source
         assert "self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]" in setup_source
         assert "seq_len = self._seq_lengths_host[batch_idx]" in get_kv_source
         assert ".item()" not in get_kv_source
         assert "self.seq_lengths += 1" not in benchmark_source
         assert "self.seq_lengths.zero_()" not in benchmark_source
-        assert "for pos, (new_k, new_v) in enumerate(self._generated_step_pairs):" in benchmark_source
+        if benchmark_cls is BaselineKVStandard:
+            assert "for pos, (new_k_layer, new_v_layer) in enumerate(" in benchmark_source
+            assert "self._generated_step_layer_view_pairs" in benchmark_source
+            assert "self.append_active_layer_views(new_k_layer, new_v_layer, pos=pos)" in benchmark_source
+        else:
+            assert "for pos, (new_k, new_v) in enumerate(self._generated_step_pairs):" in benchmark_source
         assert "self.seq_lengths.fill_(num_decode_steps)" in benchmark_source
         assert "self._set_host_seq_lengths(0)" in benchmark_source
         assert "self._set_host_seq_lengths(num_decode_steps)" in benchmark_source
@@ -44,6 +53,8 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         assert "self._seq_lengths_host = [0] * self.batch_size" not in benchmark_source
         assert "self._seq_lengths_host = [num_decode_steps] * self.batch_size" not in benchmark_source
         assert "self._generated_step_pairs = []" in teardown_source
+        if benchmark_cls is BaselineKVStandard:
+            assert "self._generated_step_layer_view_pairs = []" in teardown_source
         assert "self._output_view = None" in teardown_source
 
 
@@ -64,11 +75,17 @@ def test_fp8_append_paths_reuse_quantization_buffers() -> None:
 
     assert "self._k_quantized_step = torch.empty(" in setup_source
     assert "self._v_quantized_step = torch.empty_like(self._k_quantized_step)" in setup_source
+    assert "self._k_quantized_layer_view = self._k_quantized_step.unsqueeze(1)" in setup_source
+    assert "self._v_quantized_layer_view = self._v_quantized_step.unsqueeze(1)" in setup_source
     assert "torch.mul(x, scale, out=out)" in quantize_source
     assert "k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)" in append_source
     assert "v_quantized = self._quantize_step_into(v, v_scale, self._v_quantized_step)" in append_source
     assert "k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)" in append_active_source
     assert "v_quantized = self._quantize_step_into(v, v_scale, self._v_quantized_step)" in append_active_source
+    assert "k_layer = (" in append_active_source
+    assert "self._k_quantized_layer_view" in append_active_source
+    assert "self.kv_cache[:, active, 0, :, pos, :].copy_(k_layer)" in append_active_source
+    assert "self.kv_cache[:, active, 1, :, pos, :].copy_(v_layer)" in append_active_source
     assert "(k * k_scale).to(self.cache_dtype)" not in append_source
     assert "(v * v_scale).to(self.cache_dtype)" not in append_source
     assert "(k * k_scale).to(self.cache_dtype)" not in append_active_source

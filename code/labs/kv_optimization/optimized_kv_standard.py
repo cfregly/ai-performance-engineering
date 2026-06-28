@@ -65,6 +65,8 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._generated_step_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._k_quantized_step: Optional[torch.Tensor] = None
         self._v_quantized_step: Optional[torch.Tensor] = None
+        self._k_quantized_layer_view: Optional[torch.Tensor] = None
+        self._v_quantized_layer_view: Optional[torch.Tensor] = None
         self._output_view: Optional[torch.Tensor] = None
         self._seq_lengths_host: list[int] = [0] * batch_size
         self._active_layer_slice = slice(0, active_layers)
@@ -137,6 +139,8 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             dtype=self.cache_dtype,
         )
         self._v_quantized_step = torch.empty_like(self._k_quantized_step)
+        self._k_quantized_layer_view = self._k_quantized_step.unsqueeze(1)
+        self._v_quantized_layer_view = self._v_quantized_step.unsqueeze(1)
         self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]
 
         logger.debug(f"Optimized KV Cache ({self.cache_dtype})")
@@ -208,16 +212,31 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
 
         k_scale = self._compute_scale(k)
         v_scale = self._compute_scale(v)
-        if self._k_quantized_step is None or self._v_quantized_step is None:
+        if (
+            self._k_quantized_step is None
+            or self._v_quantized_step is None
+            or self._k_quantized_layer_view is None
+            or self._v_quantized_layer_view is None
+        ):
             raise RuntimeError("Quantization buffers not initialized")
         k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)
         v_quantized = self._quantize_step_into(v, v_scale, self._v_quantized_step)
+        k_layer = (
+            self._k_quantized_layer_view
+            if k_quantized is self._k_quantized_step
+            else k_quantized.unsqueeze(1)
+        )
+        v_layer = (
+            self._v_quantized_layer_view
+            if v_quantized is self._v_quantized_step
+            else v_quantized.unsqueeze(1)
+        )
 
         active = self._active_layer_slice
         self.k_scales[active, pos] = k_scale
         self.v_scales[active, pos] = v_scale
-        self.kv_cache[:, active, 0, :, pos, :].copy_(k_quantized.unsqueeze(1))
-        self.kv_cache[:, active, 1, :, pos, :].copy_(v_quantized.unsqueeze(1))
+        self.kv_cache[:, active, 0, :, pos, :].copy_(k_layer)
+        self.kv_cache[:, active, 1, :, pos, :].copy_(v_layer)
     
     def get_kv(
         self,
@@ -342,6 +361,8 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._generated_step_pairs = []
         self._k_quantized_step = None
         self._v_quantized_step = None
+        self._k_quantized_layer_view = None
+        self._v_quantized_layer_view = None
         self._output_view = None
         self.output = None
         self._seq_lengths_host = [0] * self.batch_size
