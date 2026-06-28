@@ -85,6 +85,7 @@ class Top2MoE(nn.Module):
         self._local_streams: Optional[list[torch.cuda.Stream]] = None
         self._local_out_buffers: list[torch.Tensor] = []
         self._local_accum_buffer: Optional[torch.Tensor] = None
+        self._distributed_workspaces: dict[str, torch.Tensor] = {}
 
     def init_local_streams(self, device: torch.device) -> None:
         if not torch.cuda.is_available():
@@ -111,6 +112,25 @@ class Top2MoE(nn.Module):
         ):
             self._local_accum_buffer = torch.empty_like(flat_tokens)
         return self._local_out_buffers, self._local_accum_buffer
+
+    def _distributed_workspace(
+        self,
+        name: str,
+        shape: tuple[int, ...],
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        workspace = self._distributed_workspaces.get(name)
+        if (
+            workspace is None
+            or workspace.shape != shape
+            or workspace.device != device
+            or workspace.dtype != dtype
+        ):
+            workspace = torch.empty(shape, device=device, dtype=dtype)
+            self._distributed_workspaces[name] = workspace
+        return workspace
 
     def forward_local(self, tokens: torch.Tensor) -> torch.Tensor:
         if self._local_streams is None:
@@ -193,15 +213,36 @@ class Top2MoE(nn.Module):
         )
 
         total_recv = int(sum(recv_splits))
-        recv_buf = torch.empty(total_recv, hidden, device=tokens.device, dtype=flat_tokens.dtype)
-        recv_ids = torch.empty(total_recv, device=tokens.device, dtype=torch.int64)
-        recv_pos = torch.empty(total_recv, device=tokens.device, dtype=torch.int64)
+        recv_buf = self._distributed_workspace(
+            "recv_buf",
+            (total_recv, hidden),
+            device=tokens.device,
+            dtype=flat_tokens.dtype,
+        )
+        recv_ids = self._distributed_workspace(
+            "recv_ids",
+            (total_recv,),
+            device=tokens.device,
+            dtype=torch.int64,
+        )
+        recv_pos = self._distributed_workspace(
+            "recv_pos",
+            (total_recv,),
+            device=tokens.device,
+            dtype=torch.int64,
+        )
 
         dist.all_to_all_single(recv_buf, send_buf, out_split_sizes=recv_splits, in_split_sizes=send_splits)
         dist.all_to_all_single(recv_ids, send_ids, out_split_sizes=recv_splits, in_split_sizes=send_splits)
         dist.all_to_all_single(recv_pos, send_pos, out_split_sizes=recv_splits, in_split_sizes=send_splits)
 
-        local_out = torch.zeros_like(recv_buf)
+        local_out = self._distributed_workspace(
+            "local_out",
+            (total_recv, hidden),
+            device=tokens.device,
+            dtype=flat_tokens.dtype,
+        )
+        local_out.zero_()
         for eid_int in [int(eid) for eid in torch.unique(recv_ids).detach().cpu().tolist()]:
             if overflow_flags[eid_int]:
                 continue
@@ -213,8 +254,18 @@ class Top2MoE(nn.Module):
         send_back_splits = recv_splits
         recv_back_splits = send_splits
         total_back = int(sum(recv_back_splits))
-        recv_back_buf = torch.empty(total_back, hidden, device=tokens.device, dtype=flat_tokens.dtype)
-        recv_back_pos = torch.empty(total_back, device=tokens.device, dtype=torch.int64)
+        recv_back_buf = self._distributed_workspace(
+            "recv_back_buf",
+            (total_back, hidden),
+            device=tokens.device,
+            dtype=flat_tokens.dtype,
+        )
+        recv_back_pos = self._distributed_workspace(
+            "recv_back_pos",
+            (total_back,),
+            device=tokens.device,
+            dtype=torch.int64,
+        )
 
         dist.all_to_all_single(
             recv_back_buf, local_out, out_split_sizes=recv_back_splits, in_split_sizes=send_back_splits
@@ -223,7 +274,13 @@ class Top2MoE(nn.Module):
             recv_back_pos, recv_pos, out_split_sizes=recv_back_splits, in_split_sizes=send_back_splits
         )
 
-        out = torch.zeros_like(flat_tokens)
+        out = self._distributed_workspace(
+            "out",
+            (flat_tokens.shape[0], hidden),
+            device=tokens.device,
+            dtype=flat_tokens.dtype,
+        )
+        out.zero_()
         out[recv_back_pos] = recv_back_buf
         return out.view(batch, seq, hidden)
 

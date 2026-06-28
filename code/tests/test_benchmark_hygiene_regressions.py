@@ -6445,7 +6445,11 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
         assert "mask.any()" not in section
     assert "self._local_out_buffers: list[torch.Tensor] = []" in source
     assert "self._local_accum_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._distributed_workspaces: dict[str, torch.Tensor] = {}" in source
     assert "def _local_buffers(self, flat_tokens: torch.Tensor, slots: int)" in source
+    assert "def _distributed_workspace(" in source
+    assert "workspace = self._distributed_workspaces.get(name)" in source
+    assert "self._distributed_workspaces[name] = workspace" in source
     assert "local_buffers, local_accum = self._local_buffers(flat_tokens, len(self._local_streams))" in local_section
     assert "stream.wait_stream(current)" in local_section
     assert "local_out = local_buffers[slot]" in local_section
@@ -6456,6 +6460,24 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
     assert "torch.zeros_like(flat_tokens)" not in local_section
     assert "partials: list[torch.Tensor]" not in local_section
     assert "sum(partials)" not in local_section
+    for name in ("recv_buf", "recv_ids", "recv_pos", "local_out", "recv_back_buf", "recv_back_pos", "out"):
+        assert f'"{name}"' in distributed_section
+    assert "recv_buf = self._distributed_workspace(" in distributed_section
+    assert "recv_ids = self._distributed_workspace(" in distributed_section
+    assert "recv_pos = self._distributed_workspace(" in distributed_section
+    assert "local_out = self._distributed_workspace(" in distributed_section
+    assert "recv_back_buf = self._distributed_workspace(" in distributed_section
+    assert "recv_back_pos = self._distributed_workspace(" in distributed_section
+    assert "out = self._distributed_workspace(" in distributed_section
+    assert "local_out.zero_()" in distributed_section
+    assert "out.zero_()" in distributed_section
+    assert "recv_buf = torch.empty(" not in distributed_section
+    assert "recv_ids = torch.empty(" not in distributed_section
+    assert "recv_pos = torch.empty(" not in distributed_section
+    assert "recv_back_buf = torch.empty(" not in distributed_section
+    assert "recv_back_pos = torch.empty(" not in distributed_section
+    assert "local_out = torch.zeros_like(recv_buf)" not in distributed_section
+    assert "out = torch.zeros_like(flat_tokens)" not in distributed_section
     assert "unique_expert_ids = [int(eid) for eid in torch.unique(expert_ids).detach().cpu().tolist()]" in local_section
     assert "for eid_int in [int(eid) for eid in torch.unique(recv_ids).detach().cpu().tolist()]" in distributed_section
 
