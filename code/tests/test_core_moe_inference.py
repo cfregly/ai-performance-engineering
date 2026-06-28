@@ -88,6 +88,12 @@ def test_sorted_dispatch_inference_reuses_route_workspaces() -> None:
     assert "expert_input = sorted_flat.narrow(0, segment_start, count)" in forward_source
     assert "weighted_out = self._scaled_expert_output(expert_out, segment_weights)" in forward_source
     assert "weighted_out = expert_out * segment_weights" not in forward_source
+    source = inspect.getsource(MoEFeedForward)
+    assert "def _topk_route_scores(" in source
+    assert "self._topk_scores: Optional[torch.Tensor] = None" in source
+    assert "self._topk_indices: Optional[torch.Tensor] = None" in source
+    assert "torch.topk(probs, k=self.top_k, dim=-1, out=(self._topk_scores, self._topk_indices))" in source
+    assert "self._topk_route_scores(probs, reusable=not collect_router_stats)" in forward_source
 
     torch.manual_seed(123)
     baseline = MoEFeedForward(
@@ -112,6 +118,8 @@ def test_sorted_dispatch_inference_reuses_route_workspaces() -> None:
     with torch.inference_mode():
         expected = baseline(x)
         actual1 = sorted_dispatch(x)
+        topk_score_ptr = sorted_dispatch._topk_scores.data_ptr()
+        topk_index_ptr = sorted_dispatch._topk_indices.data_ptr()
         token_ptr = sorted_dispatch._sorted_token_ids_workspace.data_ptr()
         weight_ptr = sorted_dispatch._sorted_weights_workspace.data_ptr()
         flat_ptr = sorted_dispatch._sorted_flat_workspace.data_ptr()
@@ -119,6 +127,8 @@ def test_sorted_dispatch_inference_reuses_route_workspaces() -> None:
 
     torch.testing.assert_close(actual1, expected)
     torch.testing.assert_close(actual2, expected)
+    assert sorted_dispatch._topk_scores.data_ptr() == topk_score_ptr
+    assert sorted_dispatch._topk_indices.data_ptr() == topk_index_ptr
     assert sorted_dispatch._sorted_token_ids_workspace.data_ptr() == token_ptr
     assert sorted_dispatch._sorted_weights_workspace.data_ptr() == weight_ptr
     assert sorted_dispatch._sorted_flat_workspace.data_ptr() == flat_ptr
