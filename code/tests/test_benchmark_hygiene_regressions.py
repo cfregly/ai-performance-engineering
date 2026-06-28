@@ -7883,7 +7883,14 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "self._latency_total_ms += elapsed_ms" in benchmark_section
     assert "self._latency_count += 1" in benchmark_section
     assert "torch.tensor(" not in benchmark_section
-    assert "self._output_values = [float(served), float(rejects), float(offloaded)]" in benchmark_section
+    assert "self._output_values: list[float] = [0.0, 0.0, 0.0]" in source
+    assert "self._output_values_ready = False" in source
+    assert "self._output_values = [float(served), float(rejects), float(offloaded)]" not in benchmark_section
+    assert "self._output_values[0] = float(served)" in benchmark_section
+    assert "self._output_values[1] = float(rejects)" in benchmark_section
+    assert "self._output_values[2] = float(offloaded)" in benchmark_section
+    assert "self._output_values_ready = True" in benchmark_section
+    assert "if not self._output_values_ready:" in capture_section
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
@@ -7967,10 +7974,11 @@ def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
     assert ".item()" not in vectorized_timed_section
     assert "self._count_values[0].copy_(" not in post_timing_section
     assert "self._count_values[1].copy_(" not in post_timing_section
-    assert "rejects_value, offloaded_value = self._count_values.tolist()" in post_timing_section
+    assert ".tolist()" not in benchmark_section
+    assert "count_values = self._count_values" in post_timing_section
+    assert "rejects = int(count_values[0])" in post_timing_section
+    assert "offloaded = int(count_values[1])" in post_timing_section
     assert "torch.stack(" not in benchmark_section
-    assert "rejects = int(rejects_value)" in post_timing_section
-    assert "offloaded = int(offloaded_value)" in post_timing_section
     assert "rejects_tensor.item()" not in post_timing_section
     assert "offloaded_tensor.item()" not in post_timing_section
 
