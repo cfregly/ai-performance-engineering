@@ -145,7 +145,7 @@ class BaselineTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self._comm_block is None or self._aux_block is None or self._input is None:
             raise RuntimeError("setup() must run before benchmark_fn()")
-        with torch.no_grad():
+        with torch.inference_mode():
             comm_out = self._comm_block(self._input)
             aux_out = self._aux_block(self._input)
             self._output = comm_out + aux_out

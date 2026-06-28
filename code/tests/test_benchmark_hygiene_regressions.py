@@ -243,6 +243,8 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "with torch.inference_mode():" in worker_section
         assert "torch.no_grad()" not in worker_section
+        assert "with torch.inference_mode():" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
         assert "param_count = sum(" not in capture_section
         assert "sum(p.numel()" not in capture_section
         if Path(relative).name.startswith("optimized_"):
