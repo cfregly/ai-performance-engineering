@@ -26,6 +26,8 @@ class OptimizedGb200LocalityBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.device_buf: Optional[torch.Tensor] = None
         self.device_template: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_probe: Optional[torch.Tensor] = None
+        self._output_view: Optional[torch.Tensor] = None
         # Memory copy benchmark - jitter check not applicable
         tokens = float(self.numel)
         self._workload = WorkloadMetadata(tokens_per_iteration=tokens, requests_per_iteration=1.0)
@@ -36,22 +38,25 @@ class OptimizedGb200LocalityBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         self.device_template = torch.ones(self.numel, device=self.device, dtype=torch.float32)
         self.device_buf = torch.empty_like(self.device_template)
+        self._verify_probe = self.device_template[: 256 * 256].view(256, 256)
+        self._output_view = self.device_buf[: 256 * 256].view(256, 256)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
         assert self.device_buf is not None and self.device_template is not None
+        assert self._output_view is not None
         with self._nvtx_range("device_only_compute"):
             # Reset from a device-resident template to avoid host traffic while keeping outputs identical
             self.device_buf.copy_(self.device_template)
             self.device_buf.add_(1.0)
         _ = self.device_buf.sum()
-        self.output = self.device_buf[: 256 * 256].detach()
+        self.output = self._output_view.detach()
 
     def capture_verification_payload(self) -> None:
-        if self.device_template is None or self.output is None:
+        if self._verify_probe is None or self.output is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        probe = self.device_template[: 256 * 256].view(256, 256)
-        output = self.output.view(256, 256)
+        probe = self._verify_probe
+        output = self.output
         self._set_verification_payload(
             inputs={"buf": probe},
             output=output,
@@ -69,6 +74,9 @@ class OptimizedGb200LocalityBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.device_buf = None
         self.device_template = None
+        self.output = None
+        self._verify_probe = None
+        self._output_view = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

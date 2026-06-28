@@ -680,6 +680,41 @@ def test_kv_locality_microbench_reuses_copy_stream_and_defers_output_tensor() ->
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_ch04_grace_blackwell_locality_reuses_verification_views() -> None:
+    for relative, source_buffer in (
+        ("ch04/baseline_grace_blackwell_locality.py", "self.host_buf"),
+        ("ch04/optimized_grace_blackwell_locality.py", "self.device_template"),
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_probe: Optional[torch.Tensor] = None" in source
+        assert "self._output_view: Optional[torch.Tensor] = None" in source
+        assert f"self._verify_probe = {source_buffer}[: 256 * 256].view(256, 256)" in setup_section
+        assert "self._output_view = self.device_buf[: 256 * 256].view(256, 256)" in setup_section
+        assert "self.output = self._output_view.detach()" in benchmark_section
+        assert "self.device_buf[: 256 * 256]" not in benchmark_section
+        assert "probe = self._verify_probe" in capture_section
+        assert "output = self.output" in capture_section
+        assert "self._verify_probe = None" in teardown_section
+        assert "self._output_view = None" in teardown_section
+
+
 def test_cluster_all_reduce_tool_reuses_bandwidth_scalar_buffer() -> None:
     source = (REPO_ROOT / "cluster" / "tools" / "all_reduce_bench.py").read_text(
         encoding="utf-8"
