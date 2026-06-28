@@ -306,13 +306,14 @@ class SpeculativeDecoder:
                     torch.sum(matches, dim=None, out=match_summary[0])
                     torch.all(matches, out=all_matches_tensor)
                     match_summary[1].copy_(all_matches_tensor)
-                    match_count, all_matches = match_summary.tolist()
-                    self.accepted_tokens += int(match_count)
                     self.total_tokens += matches.numel()
                     tokens = self._selection_workspace(candidate)
                     torch.where(matches, candidate, target_next, out=tokens)
 
-                    torch.cuda.synchronize()
+                    # This host read is required for control flow; keep it after token selection
+                    # so it also accounts for the queued decode work used by the timing sample.
+                    match_count, all_matches = match_summary.tolist()
+                    self.accepted_tokens += int(match_count)
                     per_token_times[emitted] = (time.perf_counter() - start) * 1000.0
                     emitted += 1
 

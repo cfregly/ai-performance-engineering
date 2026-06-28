@@ -4958,6 +4958,9 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "torch.sum(matches, dim=None, out=match_summary[0])" in decode_section
     assert "torch.all(matches, out=all_matches_tensor)" in decode_section
     assert "match_summary[1].copy_(all_matches_tensor)" in decode_section
+    assert decode_section.index(
+        "torch.where(matches, candidate, target_next, out=tokens)"
+    ) < decode_section.index("match_count, all_matches = match_summary.tolist()")
     assert "if len(self._per_token_times) < total_tokens:" in decode_section
     assert "self._per_token_times = [0.0] * total_tokens" in decode_section
     assert "per_token_times = self._per_token_times" in decode_section
@@ -4971,6 +4974,7 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "torch.argmax(draft_logits" not in decode_section
     assert "torch.argmax(target_logits" not in decode_section
     assert "tokens = torch.where(matches" not in decode_section
+    assert "torch.cuda.synchronize()" not in decode_section
     assert "matches.sum().item()" not in decode_section
     assert "if not matches.all()" not in decode_section
 
