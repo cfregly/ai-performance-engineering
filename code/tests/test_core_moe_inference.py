@@ -103,6 +103,37 @@ def test_sorted_dispatch_top1_uses_write_once_output_path() -> None:
     torch.testing.assert_close(sorted_dispatch(x), baseline(x))
 
 
+def test_no_host_sync_top1_uses_write_once_output_path() -> None:
+    forward_source = inspect.getsource(MoEFeedForwardNoHostSync.forward)
+
+    assert "single_route = self.top_k == 1" in forward_source
+    assert "torch.empty_like(flat) if single_route else torch.zeros_like(flat)" in forward_source
+    assert "combined.index_copy_(0, indices, weighted_out)" in forward_source
+    assert "combined.index_add_(0, indices, weighted_out)" in forward_source
+
+    torch.manual_seed(123)
+    baseline = MoEFeedForward(
+        hidden=8,
+        ffn=16,
+        num_experts=4,
+        top_k=1,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    no_host_sync = MoEFeedForwardNoHostSync(
+        hidden=8,
+        ffn=16,
+        num_experts=4,
+        top_k=1,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    no_host_sync.load_state_dict(baseline.state_dict(), strict=True)
+    x = torch.randn(2, 3, 8)
+
+    torch.testing.assert_close(no_host_sync(x), baseline(x))
+
+
 def test_moe_capacity_mask_avoids_float_mask_materialization() -> None:
     source = inspect.getsource(moe_inference)
     assert "(~drop_mask).float()" not in source

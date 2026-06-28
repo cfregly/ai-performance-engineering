@@ -262,7 +262,8 @@ class MoEFeedForwardNoHostSync(MoEFeedForward):
             top_scores.masked_fill_(drop_mask, 0.0)
             overflow_mask = drop_mask.any(dim=-1)
 
-        combined = torch.zeros_like(flat)
+        single_route = self.top_k == 1
+        combined = torch.empty_like(flat) if single_route else torch.zeros_like(flat)
 
         for k in range(self.top_k):
             expert_ids = top_indices[:, k]
@@ -279,7 +280,11 @@ class MoEFeedForwardNoHostSync(MoEFeedForward):
                 if selected_weights.dim() == 1:
                     selected_weights = selected_weights.unsqueeze(-1)
                 selected_weights = selected_weights.to(expert_out.dtype)
-                combined.index_add_(0, indices, expert_out * selected_weights)
+                weighted_out = expert_out * selected_weights
+                if single_route:
+                    combined.index_copy_(0, indices, weighted_out)
+                else:
+                    combined.index_add_(0, indices, weighted_out)
 
         combined = combined.view(batch, seq, hidden)
         if collect_router_stats:
