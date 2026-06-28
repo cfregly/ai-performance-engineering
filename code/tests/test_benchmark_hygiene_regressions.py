@@ -7733,6 +7733,27 @@ def test_moe_level6_full_stack_weights_expert_outputs_in_place() -> None:
     assert "(out * expert_weights.unsqueeze(-1)).sum(dim=1)" not in experts_forward
 
 
+def test_moe_level4_and_level6_defer_verification_slices_after_timing() -> None:
+    for filename in ("level4_triton.py", "level6_full_stack.py"):
+        source = (
+            REPO_ROOT / "labs" / "moe_optimization_journey" / filename
+        ).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def finalize_iteration_metrics",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+
+        assert "end_event.record()\n        self.output = logits" in benchmark_section
+        assert "self.output = logits[:, :1, : min(8, logits.shape[-1])]" not in benchmark_section
+        assert ".detach()" not in benchmark_section
+        assert "output_slice = self.output[:, :1, : min(8, self.output.shape[-1])]" in capture_section
+        assert "output=output_slice.detach().float().clone()" in capture_section
+
+
 def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
     source = (
         REPO_ROOT / "labs" / "moe_optimization_journey" / "optimized_moe_pad_quant.py"

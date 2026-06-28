@@ -262,9 +262,8 @@ class Level6FullStack(VerificationPayloadMixin, BaseBenchmark):
             # torch.compile with reduce-overhead handles graph replay internally
             with torch.inference_mode():
                 logits = self.compiled_model(self.static_input)
-        self.output = logits[:, :1, : min(8, logits.shape[-1])].detach()
-        
         end_event.record()
+        self.output = logits
         self._pending_events = events
         if self.static_input is None or self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
@@ -283,9 +282,12 @@ class Level6FullStack(VerificationPayloadMixin, BaseBenchmark):
         }
 
     def capture_verification_payload(self) -> None:
+        if self.static_input is None or self.output is None:
+            raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+        output_slice = self.output[:, :1, : min(8, self.output.shape[-1])]
         self._set_verification_payload(
             inputs={"input_ids": self.static_input.detach()},
-            output=self.output.float().clone(),
+            output=output_slice.detach().float().clone(),
             batch_size=self.config.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={"bf16": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
