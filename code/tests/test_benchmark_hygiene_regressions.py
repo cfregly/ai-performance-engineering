@@ -1269,6 +1269,18 @@ def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
             "def main",
             maxsplit=1,
         )[0]
+        run_iteration_section = worker_section.split("def _run_iteration", maxsplit=1)[1].split(
+            "with torch.inference_mode():",
+            maxsplit=1,
+        )[0]
+        assert "recv_micro_batch: Optional[torch.Tensor] = None" in worker_section
+        assert "recv_micro_batch = torch.empty(" in worker_section
+        assert "recv_grad: Optional[torch.Tensor] = None" in worker_section
+        assert "recv_grad = torch.empty(" in worker_section
+        assert "micro_batch = recv_micro_batch" in run_iteration_section
+        assert "grad_in = recv_grad" in run_iteration_section
+        assert "micro_batch = torch.empty(" not in run_iteration_section
+        assert "grad_in = torch.empty_like(activation)" not in run_iteration_section
         assert "with torch.inference_mode():" in worker_section
         assert "torch.no_grad()" not in worker_section
 

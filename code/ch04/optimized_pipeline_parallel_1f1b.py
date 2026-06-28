@@ -142,6 +142,24 @@ def _run_worker(
         inputs = torch.randn(batch_size, seq_length, hidden, device=device, dtype=torch.bfloat16)
     else:
         inputs = None
+    recv_micro_batch: Optional[torch.Tensor] = None
+    if rank > 0:
+        recv_micro_batch = torch.empty(
+            micro_batch_size,
+            seq_length,
+            hidden,
+            device=device,
+            dtype=torch.bfloat16,
+        )
+    recv_grad: Optional[torch.Tensor] = None
+    if rank < world_size - 1:
+        recv_grad = torch.empty(
+            micro_batch_size,
+            seq_length,
+            hidden,
+            device=device,
+            dtype=torch.bfloat16,
+        )
 
     def _forward(micro_batch: torch.Tensor) -> torch.Tensor:
         x = micro_batch
@@ -161,13 +179,9 @@ def _run_worker(
                 end_idx = start_idx + micro_batch_size
                 micro_batch = inputs[start_idx:end_idx]
             else:
-                micro_batch = torch.empty(
-                    micro_batch_size,
-                    seq_length,
-                    hidden,
-                    device=device,
-                    dtype=torch.bfloat16,
-                )
+                if recv_micro_batch is None:
+                    raise RuntimeError("recv microbatch buffer missing")
+                micro_batch = recv_micro_batch
                 dist.recv(micro_batch, src=rank - 1)
 
             out = _forward(micro_batch)
@@ -178,7 +192,9 @@ def _run_worker(
         for micro_idx in range(warmup_steps, num_micro_batches):
             activation = activations.popleft()
             if rank < world_size - 1:
-                grad_in = torch.empty_like(activation)
+                if recv_grad is None:
+                    raise RuntimeError("recv grad buffer missing")
+                grad_in = recv_grad
                 dist.recv(grad_in, src=rank + 1)
             else:
                 grad_in = activation
@@ -192,13 +208,9 @@ def _run_worker(
                 end_idx = start_idx + micro_batch_size
                 micro_batch = inputs[start_idx:end_idx]
             else:
-                micro_batch = torch.empty(
-                    micro_batch_size,
-                    seq_length,
-                    hidden,
-                    device=device,
-                    dtype=torch.bfloat16,
-                )
+                if recv_micro_batch is None:
+                    raise RuntimeError("recv microbatch buffer missing")
+                micro_batch = recv_micro_batch
                 dist.recv(micro_batch, src=rank - 1)
 
             out = _forward(micro_batch)
@@ -209,7 +221,9 @@ def _run_worker(
         while activations:
             activation = activations.popleft()
             if rank < world_size - 1:
-                grad_in = torch.empty_like(activation)
+                if recv_grad is None:
+                    raise RuntimeError("recv grad buffer missing")
+                grad_in = recv_grad
                 dist.recv(grad_in, src=rank + 1)
             else:
                 grad_in = activation
