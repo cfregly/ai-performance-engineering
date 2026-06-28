@@ -23,6 +23,13 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.sin: Optional[torch.Tensor] = None
         self.cache: Optional[torch.Tensor] = None
         self.rope_scratch: Optional[torch.Tensor] = None
+        self.q_buffer: Optional[torch.Tensor] = None
+        self.q_heads: Optional[torch.Tensor] = None
+        self._input_step_views: list[torch.Tensor] = []
+        self._cache_step_views: list[torch.Tensor] = []
+        self._cos_step_views: list[torch.Tensor] = []
+        self._sin_step_views: list[torch.Tensor] = []
+        self._output_view: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.batch_size),
@@ -72,6 +79,24 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
+        self.q_buffer = torch.empty(
+            self.cfg.batch_size,
+            self.cfg.hidden_size,
+            device=self.device,
+            dtype=self.cfg.dtype,
+        )
+        self.q_heads = self.q_buffer.view(self.cfg.batch_size, self.cfg.heads, self.cfg.head_dim)
+        self._input_step_views = list(self.inputs.unbind(0))
+        self._cache_step_views = [self.cache[:, :, step, :] for step in range(self.cfg.steps)]
+        self._cos_step_views = [
+            self.cos[step].view(1, 1, self.cfg.head_dim)
+            for step in range(self.cfg.steps)
+        ]
+        self._sin_step_views = [
+            self.sin[step].view(1, 1, self.cfg.head_dim)
+            for step in range(self.cfg.steps)
+        ]
+        self._output_view = self._cache_step_views[self.cfg.steps - 1]
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -82,18 +107,27 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.sin is None
             or self.cache is None
             or self.rope_scratch is None
+            or self.q_buffer is None
+            or self.q_heads is None
+            or self._output_view is None
+            or len(self._input_step_views) != self.cfg.steps
+            or len(self._cache_step_views) != self.cfg.steps
+            or len(self._cos_step_views) != self.cfg.steps
+            or len(self._sin_step_views) != self.cfg.steps
         ):
             raise RuntimeError("Benchmark not initialized")
         with torch.inference_mode():
-            for step in range(self.cfg.steps):
-                x = self.inputs[step]
-                q = x @ self.q_weight
-                q = q.view(self.cfg.batch_size, self.cfg.heads, self.cfg.head_dim)
-                cos_t = self.cos[step].view(1, 1, self.cfg.head_dim)
-                sin_t = self.sin[step].view(1, 1, self.cfg.head_dim)
-                q = apply_rope_inplace(q, cos_t, sin_t, self.rope_scratch)
-                self.cache[:, :, step, :] = q
-            self.output = self.cache[:, :, self.cfg.steps - 1, :]
+            for x, cache_step, cos_t, sin_t in zip(
+                self._input_step_views,
+                self._cache_step_views,
+                self._cos_step_views,
+                self._sin_step_views,
+                strict=True,
+            ):
+                torch.mm(x, self.q_weight, out=self.q_buffer)
+                q = apply_rope_inplace(self.q_heads, cos_t, sin_t, self.rope_scratch)
+                cache_step.copy_(q)
+            self.output = self._output_view
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -113,6 +147,23 @@ class OptimizedRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             },
             output_tolerance=(5e-2, 5e-1),
         )
+
+    def teardown(self) -> None:
+        self.inputs = None
+        self.q_weight = None
+        self.cos = None
+        self.sin = None
+        self.cache = None
+        self.rope_scratch = None
+        self.q_buffer = None
+        self.q_heads = None
+        self._input_step_views = []
+        self._cache_step_views = []
+        self._cos_step_views = []
+        self._sin_step_views = []
+        self._output_view = None
+        self.output = None
+        torch.cuda.empty_cache()
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload

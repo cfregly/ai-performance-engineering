@@ -4613,14 +4613,35 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_workload_metadata",
+        maxsplit=1,
+    )[0]
 
     assert "self.cache = torch.empty(" in baseline_setup
     assert "self.cache = torch.zeros(" not in baseline_setup
     assert "self.cache = torch.empty(" in setup_section
     assert "self.cache = torch.zeros(" not in setup_section
     assert "self.rope_scratch = torch.empty(" in setup_section
-    assert "apply_rope_inplace(q, cos_t, sin_t, self.rope_scratch)" in benchmark_section
+    assert "self.q_buffer: Optional[torch.Tensor] = None" in source
+    assert "self.q_heads: Optional[torch.Tensor] = None" in source
+    assert "self._input_step_views: list[torch.Tensor] = []" in source
+    assert "self._cache_step_views: list[torch.Tensor] = []" in source
+    assert "self._cos_step_views: list[torch.Tensor] = []" in source
+    assert "self._sin_step_views: list[torch.Tensor] = []" in source
+    assert "self.q_buffer = torch.empty(" in setup_section
+    assert "self.q_heads = self.q_buffer.view(" in setup_section
+    assert "self._input_step_views = list(self.inputs.unbind(0))" in setup_section
+    assert "self._cache_step_views = [self.cache[:, :, step, :] for step in range(self.cfg.steps)]" in setup_section
+    assert "self._output_view = self._cache_step_views[self.cfg.steps - 1]" in setup_section
+    assert "torch.mm(x, self.q_weight, out=self.q_buffer)" in benchmark_section
+    assert "apply_rope_inplace(self.q_heads, cos_t, sin_t, self.rope_scratch)" in benchmark_section
     assert "apply_rope(q, cos_t, sin_t)" not in benchmark_section
+    assert "q = x @ self.q_weight" not in benchmark_section
+    assert "self.cache[:, :, step, :] = q" not in benchmark_section
+    assert "self.output = self.cache[:, :, self.cfg.steps - 1, :]" not in benchmark_section
+    assert "self._input_step_views = []" in teardown_section
+    assert "self._cache_step_views = []" in teardown_section
 
     q = torch.randn(2, 3, 8, dtype=torch.float32)
     cos = torch.randn(1, 1, 8, dtype=torch.float32)
