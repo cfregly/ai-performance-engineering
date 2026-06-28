@@ -22,9 +22,18 @@ def test_optimized_streams_compute_reuses_preallocated_result_buffers() -> None:
 
     assert "self._scratch0: Optional[torch.Tensor] = None" in source
     assert "self._scratch1: Optional[torch.Tensor] = None" in source
+    assert "self._chunk_triplets: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
     assert "self._scratch0 = torch.empty(self.N, dtype=torch.float32, device=self.device)" in source
     assert "self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)" in source
-    assert "self._compute(self.device_data[i], self.results[i])" in benchmark_section
+    assert "self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))" in source
+    assert "chunks = self._chunk_triplets" in benchmark_section
+    assert "first_device.copy_(first_host, non_blocking=True)" in benchmark_section
+    assert "for i, (_, device_chunk, result_chunk) in enumerate(chunks):" in benchmark_section
+    assert "next_device.copy_(next_host, non_blocking=True)" in benchmark_section
+    assert "self._compute(device_chunk, result_chunk)" in benchmark_section
+    assert "self.device_data[i]" not in benchmark_section
+    assert "self.host_data[i]" not in benchmark_section
+    assert "self.results[i]" not in benchmark_section
     assert "self.results[i] = self._compute" not in benchmark_section
     assert "torch.sin(result, out=scratch0)" in compute_section
     assert "torch.cos(result, out=scratch1)" in compute_section
@@ -61,9 +70,16 @@ def test_baseline_streams_compute_reuses_preallocated_result_buffers() -> None:
 
     assert "self._scratch0: Optional[torch.Tensor] = None" in source
     assert "self._scratch1: Optional[torch.Tensor] = None" in source
+    assert "self._chunk_triplets: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
     assert "self._scratch0 = torch.empty(self.N, dtype=torch.float32, device=self.device)" in source
     assert "self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)" in source
-    assert "self._compute(self.device_data[i], self.results[i])" in benchmark_section
+    assert "self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))" in source
+    assert "for host_chunk, device_chunk, result_chunk in self._chunk_triplets:" in benchmark_section
+    assert "device_chunk.copy_(host_chunk)" in benchmark_section
+    assert "self._compute(device_chunk, result_chunk)" in benchmark_section
+    assert "self.device_data[i]" not in benchmark_section
+    assert "self.host_data[i]" not in benchmark_section
+    assert "self.results[i]" not in benchmark_section
     assert "self.results[i] = self._compute" not in benchmark_section
     assert "torch.sin(result, out=scratch0)" in compute_section
     assert "torch.cos(result, out=scratch1)" in compute_section

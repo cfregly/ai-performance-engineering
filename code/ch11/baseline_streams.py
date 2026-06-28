@@ -32,6 +32,7 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.results: Optional[List[torch.Tensor]] = None
         self._scratch0: Optional[torch.Tensor] = None
         self._scratch1: Optional[torch.Tensor] = None
+        self._chunk_triplets: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self.N = 5_000_000  # Elements per chunk - balanced for H2D/compute overlap
         self.num_chunks = 20  # More chunks to amortize pipeline startup
         # Stream benchmark - fixed dimensions for overlap measurement
@@ -66,6 +67,7 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._scratch0 = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)
+        self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))
         
         self._synchronize()
         processed = float(self.N * self.num_chunks)
@@ -105,13 +107,15 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         - GPU compute units are idle during H2D transfers
         - Memory controller is idle during compute
         """
+        if not self._chunk_triplets:
+            raise RuntimeError("setup() must initialize chunk views")
         with self._nvtx_range("baseline_streams_sequential"):
-            for i in range(self.num_chunks):
+            for host_chunk, device_chunk, result_chunk in self._chunk_triplets:
                 # Transfer data from host to device (blocking)
-                self.device_data[i].copy_(self.host_data[i])
+                device_chunk.copy_(host_chunk)
                 
                 # Compute on device
-                self._compute(self.device_data[i], self.results[i])
+                self._compute(device_chunk, result_chunk)
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
@@ -120,6 +124,7 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.results = None
         self._scratch0 = None
         self._scratch1 = None
+        self._chunk_triplets = []
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
@@ -168,4 +173,3 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaselineStreamsBenchmark:
     """Factory function for benchmark discovery."""
     return BaselineStreamsBenchmark()
-

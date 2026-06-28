@@ -45,6 +45,7 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.stream_compute: Optional[torch.cuda.Stream] = None
         self._scratch0: Optional[torch.Tensor] = None
         self._scratch1: Optional[torch.Tensor] = None
+        self._chunk_triplets: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self.N = 5_000_000  # Elements per chunk - balanced for H2D/compute overlap
         self.num_chunks = 20  # More chunks to amortize pipeline startup
         # Stream benchmark - fixed dimensions for overlap measurement
@@ -83,6 +84,7 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._scratch0 = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)
+        self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))
         
         self._synchronize()
         processed = float(self.N * self.num_chunks)
@@ -127,25 +129,29 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
            - Compute on current chunk
         3. Synchronize all streams
         """
+        if not self._chunk_triplets:
+            raise RuntimeError("setup() must initialize chunk views")
+        chunks = self._chunk_triplets
         with self._nvtx_range("streams_pipelined"):
             # Stage 0: Kick off first transfer
+            first_host, first_device, _ = chunks[0]
             with torch.cuda.stream(self.stream_h2d):
-                self.device_data[0].copy_(self.host_data[0], non_blocking=True)
+                first_device.copy_(first_host, non_blocking=True)
             
-            for i in range(self.num_chunks):
+            for i, (_, device_chunk, result_chunk) in enumerate(chunks):
                 # Ensure this chunk's transfer is complete before computing
                 self.stream_compute.wait_stream(self.stream_h2d)
                 
                 # Start next transfer while we compute (double buffering)
-                if i + 1 < self.num_chunks:
+                next_idx = i + 1
+                if next_idx < len(chunks):
+                    next_host, next_device, _ = chunks[next_idx]
                     with torch.cuda.stream(self.stream_h2d):
-                        self.device_data[i + 1].copy_(
-                            self.host_data[i + 1], non_blocking=True
-                        )
+                        next_device.copy_(next_host, non_blocking=True)
                 
                 # Compute on current chunk
                 with torch.cuda.stream(self.stream_compute):
-                    self._compute(self.device_data[i], self.results[i])
+                    self._compute(device_chunk, result_chunk)
             
             current = torch.cuda.current_stream(device=self.device)
             current.wait_stream(self.stream_compute)
@@ -160,6 +166,7 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.stream_compute = None
         self._scratch0 = None
         self._scratch1 = None
+        self._chunk_triplets = []
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
