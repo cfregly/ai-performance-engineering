@@ -146,7 +146,8 @@ def test_ch06_optimized_adaptive_uses_chunk_plan_without_extra_staging_buffers()
     assert "self._output_buffer = torch.empty_like(self.input)" in optimized_text
     assert "for start, end in self.chunk_plan:" in optimized_text
     assert "window = self.input[start:end]" in optimized_text
-    assert "self._output_buffer[start:end].copy_(transformed)" in optimized_text
+    assert "self._transform(window, self._output_buffer[start:end])" in optimized_text
+    assert "self._output_buffer[start:end].copy_(transformed)" not in optimized_text
 
     for forbidden in ("host_buffer", "device_buffer", "pin_memory", "torch.cuda.Stream"):
         assert forbidden not in optimized_text

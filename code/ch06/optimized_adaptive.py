@@ -50,10 +50,11 @@ class OptimizedAdaptiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             start = end
         self._synchronize()
 
-    def _transform(self, tensor: torch.Tensor) -> torch.Tensor:
-        out = tensor.mul(1.75)
-        out = out.add(0.1)
-        return F.silu(out)
+    def _transform(self, tensor: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+        torch.mul(tensor, 1.75, out=out)
+        out.add_(0.1)
+        F.silu(out, inplace=True)
+        return out
     
     def benchmark_fn(self) -> None:
         """Benchmark: Adaptive optimization operations."""
@@ -63,8 +64,7 @@ class OptimizedAdaptiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with self._nvtx_range("optimized_adaptive"):
             for start, end in self.chunk_plan:
                 window = self.input[start:end]
-                transformed = self._transform(window)
-                self._output_buffer[start:end].copy_(transformed)
+                self._transform(window, self._output_buffer[start:end])
             self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:

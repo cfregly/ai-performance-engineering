@@ -44,6 +44,31 @@ def test_optimized_autotuning_writes_transform_into_reused_buffers() -> None:
     torch.testing.assert_close(actual, expected)
 
 
+def test_optimized_adaptive_writes_transform_into_reused_buffer() -> None:
+    source = inspect.getsource(OptimizedAdaptiveBenchmark)
+    transform_section = source.split("def _transform", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+
+    assert "def _transform(self, tensor: torch.Tensor, out: torch.Tensor)" in source
+    assert "torch.mul(tensor, 1.75, out=out)" in transform_section
+    assert "out.add_(0.1)" in transform_section
+    assert "F.silu(out, inplace=True)" in transform_section
+    assert "transformed = self._transform" not in source
+    assert ".copy_(transformed)" not in source
+    assert "self._transform(window, self._output_buffer[start:end])" in source
+
+    bench = OptimizedAdaptiveBenchmark()
+    x = torch.randn(16, dtype=torch.float32)
+    out = torch.empty_like(x)
+    actual = bench._transform(x, out)
+    expected = torch.nn.functional.silu(x * 1.75 + 0.1)
+
+    assert actual.data_ptr() == out.data_ptr()
+    torch.testing.assert_close(actual, expected)
+
+
 @CUDA_REQUIRED
 @pytest.mark.parametrize(
     "benchmark_cls",
