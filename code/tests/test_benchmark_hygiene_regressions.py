@@ -1294,7 +1294,12 @@ def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
         "ch19/optimized_memory_double_buffering.py",
     ):
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
-        if relative in {"ch04/optimized_nccl.py", "ch04/optimized_cpu_reduction.py"}:
+        if relative in {
+            "ch04/optimized_nccl.py",
+            "ch04/optimized_cpu_reduction.py",
+            "ch04/optimized_disaggregated.py",
+            "ch04/optimized_disaggregated_multigpu.py",
+        }:
             source += (REPO_ROOT / "ch04" / "reduction_common.py").read_text(encoding="utf-8")
 
         assert "ReLU(inplace=True)" in source
@@ -1509,16 +1514,27 @@ def test_ch04_eval_reduction_and_disagg_paths_use_inference_mode() -> None:
 
 
 def test_ch04_optimized_disaggregated_normalizes_allreduce_in_place() -> None:
+    common_source = (REPO_ROOT / "ch04" / "reduction_common.py").read_text(encoding="utf-8")
+    assert "prefix = tuple(x.shape[:-1])" in common_source
+    assert "torch.matmul(x, self.fc1.weight.t(), out=fc1_out)" in common_source
+    assert "torch.matmul(fc1_out, self.fc2.weight.t(), out=fc2_out)" in common_source
+
     for relative in (
         "ch04/optimized_disaggregated.py",
         "ch04/optimized_disaggregated_multigpu.py",
     ):
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
 
+        assert "base_model = ReusableReductionMlp(self.hidden_dim, self.hidden_dim * 2)" in setup_section
+        assert "nn.Sequential(" not in setup_section
         assert "dist.all_reduce(prefill_output, op=dist.ReduceOp.SUM)" in benchmark_section
         assert "prefill_output.div_(self.world_size)" in benchmark_section
         assert "prefill_output = prefill_output / self.world_size" not in benchmark_section
@@ -1629,8 +1645,8 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     assert "self._fc1_buffer: Optional[torch.Tensor] = None" in common_source
     assert "self._fc2_buffer: Optional[torch.Tensor] = None" in common_source
     assert "if torch.is_grad_enabled():" in common_source
-    assert "torch.mm(x, self.fc1.weight.t(), out=fc1_out)" in common_source
-    assert "torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)" in common_source
+    assert "torch.matmul(x, self.fc1.weight.t(), out=fc1_out)" in common_source
+    assert "torch.matmul(fc1_out, self.fc2.weight.t(), out=fc2_out)" in common_source
 
 
 def test_ch01_fp16_and_ch04_nvls_cache_nvtx_enablement() -> None:

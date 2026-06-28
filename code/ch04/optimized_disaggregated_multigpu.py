@@ -16,6 +16,7 @@ import torch.distributed as dist
 import copy
 
 from core.benchmark.gpu_requirements import skip_if_insufficient_gpus
+from ch04.reduction_common import ReusableReductionMlp
 from core.common.device_utils import resolve_local_rank
 
 from typing import Optional
@@ -84,11 +85,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Decode: Autoregressive, latency-sensitive, dedicated GPU resources
         
         # Prefill model (optimized for parallel processing)
-        base_model = nn.Sequential(
-            nn.Linear(256, 512),
-            nn.ReLU(inplace=True),
-            nn.Linear(512, 256),
-        ).to(self.device).eval()
+        base_model = ReusableReductionMlp(self.hidden_dim, self.hidden_dim * 2).to(self.device).eval()
         self.prefill_model = base_model
         # Decode model uses identical weights; disaggregation changes placement/scheduling, not math.
         self.decode_model = copy.deepcopy(base_model)

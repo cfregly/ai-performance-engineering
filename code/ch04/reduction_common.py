@@ -1,4 +1,4 @@
-"""Shared helpers for ch04 reduction benchmarks."""
+"""Shared helpers for ch04 inference-style MLP benchmarks."""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ class ReusableReductionMlp(nn.Module):
         self._fc2_buffer: Optional[torch.Tensor] = None
 
     def _ensure_forward_buffers(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        rows = x.shape[0]
-        fc1_shape = (rows, self.fc1.out_features)
-        fc2_shape = (rows, self.fc2.out_features)
+        prefix = tuple(x.shape[:-1])
+        fc1_shape = (*prefix, self.fc1.out_features)
+        fc2_shape = (*prefix, self.fc2.out_features)
         if (
             self._fc1_buffer is None
             or self._fc1_buffer.shape != fc1_shape
@@ -45,11 +45,11 @@ class ReusableReductionMlp(nn.Module):
             return self.fc2(x)
 
         fc1_out, fc2_out = self._ensure_forward_buffers(x)
-        torch.mm(x, self.fc1.weight.t(), out=fc1_out)
+        torch.matmul(x, self.fc1.weight.t(), out=fc1_out)
         if self.fc1.bias is not None:
             fc1_out.add_(self.fc1.bias)
         self.relu(fc1_out)
-        torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)
+        torch.matmul(fc1_out, self.fc2.weight.t(), out=fc2_out)
         if self.fc2.bias is not None:
             fc2_out.add_(self.fc2.bias)
         return fc2_out
