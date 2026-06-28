@@ -252,6 +252,7 @@ class OptimizedVLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._last_metrics: Optional[DecodeMetrics] = None
         self.output: Optional[torch.Tensor] = None
         self._output_values: Optional[list[float]] = None
+        self._payload_output_values = [float(len(self._trace)), float(sum(self._trace))]
         self._verification_payload = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
@@ -270,8 +271,7 @@ class OptimizedVLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark
         if self._driver is None:
             raise RuntimeError("FAIL FAST: optimized decode driver not initialized")
         self._last_metrics = self._driver.run()
-        total_tokens = float(sum(self._trace))
-        self._output_values = [float(len(self._trace)), total_tokens]
+        self._output_values = self._payload_output_values
 
     def capture_verification_payload(self) -> None:
         if self._output_values is None:

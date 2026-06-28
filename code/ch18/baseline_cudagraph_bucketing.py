@@ -92,8 +92,11 @@ class BaselineCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._last = None
         self.output: Optional[torch.Tensor] = None
         self._output_values: Optional[list[float]] = None
+        self._payload_traffic: list[Tuple[int, int]] = []
+        self._payload_output_values: list[float] = []
         self._verification_payload = None
         self.register_workload_metadata(requests_per_iteration=1.0)
+        self._refresh_payload_metadata()
 
     def _resolve_device(self) -> torch.device:
         # Simulator is CPU-only.
@@ -108,6 +111,13 @@ class BaselineCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchmar
         except SystemExit:
             # Ignore parse errors in override path.
             pass
+        self._refresh_payload_metadata()
+
+    def _refresh_payload_metadata(self) -> None:
+        traffic = demo_traffic()
+        total_tokens = sum(batch * seqlen for batch, seqlen in traffic)
+        self._payload_traffic = traffic
+        self._payload_output_values = [float(len(traffic)), float(total_tokens)]
 
     def benchmark_fn(self) -> None:
         runner = BaselineCUDAGraphBucketing(
@@ -116,10 +126,7 @@ class BaselineCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchmar
         )
         sim = runner.run()
         self._last = sim
-        traffic = getattr(runner, "traffic", demo_traffic())
-        total_tokens = sum(batch * seqlen for batch, seqlen in traffic)
-        self._output_values = [float(len(traffic)), float(total_tokens)]
-        self._payload_traffic = traffic
+        self._output_values = self._payload_output_values
 
     def capture_verification_payload(self) -> None:
         traffic = self._payload_traffic

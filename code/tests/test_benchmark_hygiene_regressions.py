@@ -3018,8 +3018,20 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
         )[0]
 
         assert "torch.tensor(" not in benchmark_section
-        assert "self._output_values =" in benchmark_section
+        if relative.endswith("scheduling_vllm_sglang.py"):
+            assert "self._output_values =" in benchmark_section
+        else:
+            assert "self._output_values = self._payload_output_values" in benchmark_section
         assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
+        if relative.endswith(("baseline_vllm_decode_graphs.py", "optimized_vllm_decode_graphs.py")):
+            assert "self._payload_output_values = [float(len(self._trace)), float(sum(self._trace))]" in source
+            assert "sum(self._trace)" not in benchmark_section
+            assert "[float(len(self._trace))" not in benchmark_section
+        if relative.endswith(("baseline_cudagraph_bucketing.py", "optimized_cudagraph_bucketing.py")):
+            assert "def _refresh_payload_metadata" in source
+            assert "traffic = getattr(" not in benchmark_section
+            assert "sum(batch * seqlen for batch, seqlen in traffic)" not in benchmark_section
+            assert "traffic = self._payload_traffic" in capture_section
         if relative.endswith("scheduling_vllm_sglang.py"):
             setup_section = source.split("def setup", maxsplit=1)[1].split(
                 "def _enqueue_requests", maxsplit=1

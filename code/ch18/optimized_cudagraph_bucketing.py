@@ -370,10 +370,13 @@ class OptimizedCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchma
         self._graph_bucketing: Optional[CUDAGraphBucketing] = None
         self._graph_stats: Optional[Dict[str, int]] = None
         self._output_values: Optional[list[float]] = None
+        self._payload_traffic: list[Tuple[int, int]] = []
+        self._payload_output_values: list[float] = []
         self._verification_payload = None
         
         # Simulator-only workload metadata (one traffic replay per iteration).
         self._workload = WorkloadMetadata(requests_per_iteration=1.0)
+        self._refresh_payload_metadata()
 
     def _resolve_device(self) -> torch.device:
         # Simulator is CPU-only.
@@ -389,6 +392,13 @@ class OptimizedCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchma
             self.model_label = args.model_label
         except SystemExit:
             pass
+        self._refresh_payload_metadata()
+
+    def _refresh_payload_metadata(self) -> None:
+        traffic = demo_traffic()
+        total_tokens = sum(batch * seqlen for batch, seqlen in traffic)
+        self._payload_traffic = traffic
+        self._payload_output_values = [float(len(traffic)), float(total_tokens)]
 
     def setup(self) -> None:
         """No setup needed for simulator-only benchmark."""
@@ -400,18 +410,15 @@ class OptimizedCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchma
         # validation and GPU graph demos belong in standalone scripts, not the
         # timed harness hot path.
         optimized = OptimizedCUDAGraphBucketing(
-            traffic=demo_traffic(),
+            traffic=self._payload_traffic,
             vllm_model=self.vllm_model,
             use_vllm_bins=self.use_vllm_bins,
             region=self.region,
             model_label=self.model_label,
         )
-        traffic = getattr(optimized, "traffic", demo_traffic())
-        total_tokens = sum(batch * seqlen for batch, seqlen in traffic)
         sim = optimized.run()
         self._last_sim = sim
-        self._output_values = [float(len(traffic)), float(total_tokens)]
-        self._payload_traffic = traffic
+        self._output_values = self._payload_output_values
 
     def capture_verification_payload(self) -> None:
         traffic = self._payload_traffic
