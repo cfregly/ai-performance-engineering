@@ -4894,8 +4894,9 @@ def test_ch18_paged_vllm_cache_reset_is_metadata_only() -> None:
 
 
 def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
-    from ch18.rope_q_cache_common import apply_rope, apply_rope_inplace
+    from ch18.rope_q_cache_common import apply_rope, apply_rope_inplace, build_rope_tables
 
+    common_source = (REPO_ROOT / "ch18" / "rope_q_cache_common.py").read_text(encoding="utf-8")
     baseline_source = (REPO_ROOT / "ch18" / "baseline_rope_q_cache.py").read_text(encoding="utf-8")
     baseline_setup = baseline_source.split("def benchmark_fn", maxsplit=1)[0]
     source = (REPO_ROOT / "ch18" / "optimized_rope_q_cache.py").read_text(encoding="utf-8")
@@ -4910,6 +4911,9 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
 
     assert "self.cache = torch.empty(" in baseline_setup
     assert "self.cache = torch.zeros(" not in baseline_setup
+    assert "emb = torch.cat([freqs, freqs], dim=-1)" not in common_source
+    assert "cos[:, :half].copy_(cos_half)" in common_source
+    assert "sin[:, half:].copy_(sin_half)" in common_source
     assert "self.cache = torch.empty(" in setup_section
     assert "self.cache = torch.zeros(" not in setup_section
     assert "self.rope_scratch = torch.empty(" in setup_section
@@ -4944,6 +4948,19 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
 
     assert actual is actual_input
     torch.testing.assert_close(actual, expected)
+
+    cos_table, sin_table = build_rope_tables(
+        max_seq_len=6,
+        head_dim=8,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    inv_freq = 1.0 / (10000 ** (torch.arange(0, 8, 2, dtype=torch.float32) / 8))
+    positions = torch.arange(6, dtype=torch.float32)
+    freqs = torch.einsum("i,j->ij", positions, inv_freq)
+    legacy_emb = torch.cat([freqs, freqs], dim=-1)
+    torch.testing.assert_close(cos_table, torch.cos(legacy_emb))
+    torch.testing.assert_close(sin_table, torch.sin(legacy_emb))
 
 
 def test_dynamic_router_wrappers_defer_metric_tensors_outside_hot_loop() -> None:

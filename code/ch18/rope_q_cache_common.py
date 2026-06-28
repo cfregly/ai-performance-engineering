@@ -37,9 +37,15 @@ def build_rope_tables(
     inv_freq = 1.0 / (10000 ** (torch.arange(0, head_dim, 2, device=device, dtype=dtype) / head_dim))
     positions = torch.arange(max_seq_len, device=device, dtype=dtype)
     freqs = torch.einsum("i,j->ij", positions, inv_freq)
-    emb = torch.cat([freqs, freqs], dim=-1)
-    cos = torch.cos(emb)
-    sin = torch.sin(emb)
+    cos_half = torch.cos(freqs)
+    sin_half = torch.sin(freqs)
+    half = head_dim // 2
+    cos = torch.empty(max_seq_len, head_dim, device=device, dtype=dtype)
+    sin = torch.empty_like(cos)
+    cos[:, :half].copy_(cos_half)
+    cos[:, half:].copy_(cos_half)
+    sin[:, :half].copy_(sin_half)
+    sin[:, half:].copy_(sin_half)
     return cos, sin
 
 
