@@ -40,7 +40,9 @@ class FP4PerTensorLinear(nn.Module):
         weight_q = torch.clamp(self.weight / weight_scale, -self.fp4_max, self.fp4_max).round()
 
         output_q = torch.nn.functional.linear(x_q, weight_q, bias=None)
-        output = output_q * input_scale * weight_scale
+        output = output_q
+        output.mul_(input_scale)
+        output.mul_(weight_scale)
 
         if self.bias is not None:
             output.add_(self.bias)

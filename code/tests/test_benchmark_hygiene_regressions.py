@@ -7641,6 +7641,65 @@ def test_ch13_optimized_quantized_linears_add_bias_in_place() -> None:
         assert "output = output + self.bias" not in forward_section
 
 
+def test_ch13_quantized_linears_scale_outputs_in_place() -> None:
+    cases = (
+        (
+            "baseline_fp4_perchannel.py",
+            "class NaiveFP4MLP",
+            ("output = output_q", "output.mul_(input_scale)", "output.mul_(weight_scale)"),
+            ("output_q * input_scale * weight_scale",),
+        ),
+        (
+            "baseline_fp8_perchannel.py",
+            "class BaselineFP8PerChannelBenchmark",
+            ("output = output_q", "output.mul_(input_scale)", "output.mul_(weight_scale)"),
+            ("output_q * input_scale * weight_scale",),
+        ),
+        (
+            "optimized_quantization.py",
+            "class Int8MLP",
+            ("output = out_int32.float()", "output.mul_(input_scale * self.weight_scale)"),
+            ("out_int32.float() * (input_scale * self.weight_scale)",),
+        ),
+        (
+            "optimized_fp4_perchannel.py",
+            "class OptimizedFP4PerChannelBenchmark",
+            ("x.mul_(self.fc1_scale)", "x.mul_(self.fc2_scale)"),
+            ("x = x * self.fc1_scale", "x = x * self.fc2_scale"),
+        ),
+        (
+            "fp8_perchannel_demo.py",
+            "# Update amax history",
+            (
+                "output.mul_(input_scale)",
+                "output.mul_(weight_scale)",
+            ),
+            ("output_q * combined_scale", "output_q * input_scale * weight_scale"),
+        ),
+    )
+
+    for filename, end_marker, expected_patterns, forbidden_patterns in cases:
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[
+            1
+        ].split(end_marker, maxsplit=1)[0]
+
+        for expected_pattern in expected_patterns:
+            assert expected_pattern in forward_section
+        for forbidden_pattern in forbidden_patterns:
+            assert forbidden_pattern not in forward_section
+
+    demo_source = (REPO_ROOT / "ch13" / "fp8_perchannel_demo.py").read_text(
+        encoding="utf-8"
+    )
+    dequantize_section = demo_source.split(
+        "def _dequantize_per_channel",
+        maxsplit=1,
+    )[1].split("def forward", maxsplit=1)[0]
+    assert "output_q.mul_(input_scale * weight_scale)" in dequantize_section
+    assert "combined_scale" not in dequantize_section
+
+
 def test_ch13_optimized_fp8_perchannel_input_scale_cache_invalidates() -> None:
     if not hasattr(torch, "float8_e4m3fn"):
         pytest.skip("torch.float8_e4m3fn is required by FP8PerChannelLinear buffers")

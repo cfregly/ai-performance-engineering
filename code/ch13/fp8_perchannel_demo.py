@@ -202,15 +202,9 @@ class FP8PerChannelLinear(nn.Module):
         Returns:
             Dequantized output tensor
         """
-        # Combined scale: input_scale (scalar) * weight_scale [out_features]
-        # Broadcast weight_scale across batch dimensions
-        combined_scale = input_scale * weight_scale  # [out_features]
-        
-        # Dequantize: output = output_q * combined_scale
-        # combined_scale broadcasts across leading dimensions
-        output = output_q * combined_scale
-        
-        return output.to(output_dtype)
+        output_q.mul_(input_scale * weight_scale)
+
+        return output_q.to(output_dtype)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass with per-channel FP8 quantization.
@@ -256,7 +250,10 @@ class FP8PerChannelLinear(nn.Module):
             weight_q = torch.clamp(self.weight / weight_scale, -self.fp8_max, self.fp8_max).round()
             
             output_q = torch.nn.functional.linear(x_q, weight_q, bias=None)
-            output = (output_q * input_scale * weight_scale).to(original_dtype)
+            output = output_q
+            output.mul_(input_scale)
+            output.mul_(weight_scale)
+            output = output.to(original_dtype)
             
         else:
             # No quantization fallback

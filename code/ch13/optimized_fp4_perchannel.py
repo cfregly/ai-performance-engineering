@@ -87,10 +87,10 @@ class FP4PerChannelMLP(nn.Module):
         if self.fc1_scale is None or self.fc2_scale is None:
             raise RuntimeError("Per-channel scales not initialized")
         x = self.fc1(x)
-        x = x * self.fc1_scale
+        x.mul_(self.fc1_scale)
         x = self.activation(x)
         x = self.fc2(x)
-        x = x * self.fc2_scale
+        x.mul_(self.fc2_scale)
         return x
 
 

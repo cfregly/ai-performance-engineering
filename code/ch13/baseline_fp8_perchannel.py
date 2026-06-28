@@ -54,7 +54,10 @@ class FP8PerTensorLinear(nn.Module):
         
         # Simulated FP8 GEMM
         output_q = torch.nn.functional.linear(x_q, weight_q, bias=None)
-        output = (output_q * input_scale * weight_scale).to(x.dtype)
+        output = output_q
+        output.mul_(input_scale)
+        output.mul_(weight_scale)
+        output = output.to(x.dtype)
         
         if self.bias is not None:
             output.add_(self.bias)

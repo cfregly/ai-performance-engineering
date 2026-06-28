@@ -45,7 +45,8 @@ class Int8Linear(nn.Module):
         input_scale = torch.clamp(x.abs().amax() / INT8_MAX, min=1e-8)
         x_q = torch.clamp((x / input_scale).round(), -INT8_MAX, INT8_MAX).to(torch.int8)
         out_int32 = torch._int_mm(x_q, self.weight_int8_t)
-        output = out_int32.float() * (input_scale * self.weight_scale)
+        output = out_int32.float()
+        output.mul_(input_scale * self.weight_scale)
         if self.bias is not None:
             output.add_(self.bias)
         return output
