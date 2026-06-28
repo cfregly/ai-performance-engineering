@@ -7,7 +7,6 @@ from typing import Optional
 
 import torch
 
-from ch04.baseline_bandwidth_benchmark_suite_multigpu import measure_peer_bandwidth
 from core.benchmark.cuda_event_timing import max_elapsed_ms
 from core.benchmark.gpu_requirements import require_min_gpus
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -60,6 +59,8 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         self.streams: list[torch.cuda.Stream] = []
         self._timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._stream_chunk_pairs: list[tuple[torch.cuda.Stream, list[tuple[torch.Tensor, torch.Tensor]]]] = []
+        self._stream_timing_pairs: list[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
@@ -73,6 +74,8 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         self.chunk_pairs = []
         self.streams = []
         self._timing_pairs = []
+        self._stream_chunk_pairs = []
+        self._stream_timing_pairs = []
         src_buffers = [
             torch.randn(numel, device=f"cuda:{idx}", dtype=torch.float32)
             for idx in range(device_count)
@@ -92,6 +95,8 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             )
             for _ in self.streams
         ]
+        self._stream_chunk_pairs = list(zip(self.streams, self.chunk_pairs, strict=True))
+        self._stream_timing_pairs = list(zip(self.streams, self._timing_pairs, strict=True))
         self.register_workload_metadata(
             requests_per_iteration=1.0,
             bytes_per_iteration=float(bytes_per_iter * self.inner_iterations * len(self.pairs)),
@@ -100,19 +105,18 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if not self.chunk_pairs:
             raise RuntimeError("Benchmark not initialized")
-        if len(self._timing_pairs) < len(self.streams):
+        if not self._stream_timing_pairs or len(self._stream_timing_pairs) != len(self.streams):
             raise RuntimeError("Timing events not initialized")
-        self._pending_timing_pairs = self._timing_pairs[: len(self.streams)]
-        for stream, (start_event, _) in zip(self.streams, self._pending_timing_pairs):
+        self._pending_timing_pairs = self._timing_pairs
+        for stream, (start_event, _) in self._stream_timing_pairs:
             with torch.cuda.stream(stream):
                 start_event.record()
         for _ in range(self.inner_iterations):
-            for idx, chunk_list in enumerate(self.chunk_pairs):
-                stream = self.streams[idx]
+            for stream, chunk_list in self._stream_chunk_pairs:
                 with torch.cuda.stream(stream):
                     for src_chunk, dst_chunk in chunk_list:
                         dst_chunk.copy_(src_chunk, non_blocking=True)
-        for stream, (_, end_event) in zip(self.streams, self._pending_timing_pairs):
+        for stream, (_, end_event) in self._stream_timing_pairs:
             with torch.cuda.stream(stream):
                 end_event.record()
 
@@ -177,4 +181,3 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedBandwidthSuiteMultiGPU()
-

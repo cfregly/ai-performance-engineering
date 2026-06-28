@@ -8091,8 +8091,17 @@ def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() 
     )[0]
 
     assert "torch.cuda.Event(enable_timing=True)" in setup_section
+    assert "self._stream_chunk_pairs: list[tuple[torch.cuda.Stream, list[tuple[torch.Tensor, torch.Tensor]]]] = []" in setup_section
+    assert "self._stream_timing_pairs: list[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []" in setup_section
+    assert "self._stream_chunk_pairs = list(zip(self.streams, self.chunk_pairs, strict=True))" in setup_section
+    assert "self._stream_timing_pairs = list(zip(self.streams, self._timing_pairs, strict=True))" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
-    assert "self._pending_timing_pairs = self._timing_pairs[: len(self.streams)]" in benchmark_section
+    assert "self._pending_timing_pairs = self._timing_pairs" in benchmark_section
+    assert "self._timing_pairs[: len(self.streams)]" not in benchmark_section
+    assert "for stream, (start_event, _) in self._stream_timing_pairs:" in benchmark_section
+    assert "for stream, chunk_list in self._stream_chunk_pairs:" in benchmark_section
+    assert "for stream, (_, end_event) in self._stream_timing_pairs:" in benchmark_section
+    assert "stream = self.streams[idx]" not in benchmark_section
     assert "Timing events not initialized" in benchmark_section
 
 
