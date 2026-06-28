@@ -452,6 +452,23 @@ def _run_torchrun_worker(
             warm_cache_store[plan.global_request_idx] = prefix_cache
         _sync_and_barrier(device)
 
+    recv_chunk_buffers: Dict[int, torch.Tensor] = {}
+    recv_seed_buffer = torch.empty(0, device=device, dtype=cfg.dtype)
+    if rank >= prefill_ranks:
+        recv_chunk_buffers = {
+            chunk_idx: torch.empty(
+                (cfg.batch_size, _chunk_length(cfg, chunk_idx), cfg.hidden_size),
+                device=device,
+                dtype=cfg.dtype,
+            )
+            for chunk_idx in range(cfg.num_chunks)
+        }
+        recv_seed_buffer = torch.empty(
+            (cfg.batch_size, cfg.hidden_size),
+            device=device,
+            dtype=cfg.dtype,
+        )
+
     def run_iteration() -> tuple[Dict[str, float], float, float, int]:
         active_caches: Dict[int, torch.Tensor] = {}
         kv_buffers: Dict[int, torch.Tensor] = {}
@@ -511,11 +528,7 @@ def _run_torchrun_worker(
                     dist.send(chunk_kv.contiguous(), dst=target_rank)
                     local_metrics["kv_transfer_bytes"] += _tensor_nbytes(chunk_kv)
                 elif rank == target_rank:
-                    recv_chunk = torch.empty(
-                        (cfg.batch_size, _chunk_length(cfg, chunk_idx), cfg.hidden_size),
-                        device=device,
-                        dtype=cfg.dtype,
-                    )
+                    recv_chunk = recv_chunk_buffers[chunk_idx]
                     dist.recv(recv_chunk, src=plan.prefill_rank)
                     base = active_caches.get(plan.global_request_idx)
                     if base is None:
@@ -563,11 +576,7 @@ def _run_torchrun_worker(
                     raise RuntimeError(f"Request {plan.global_request_idx} has no decode seed")
                 dist.send(seed.contiguous(), dst=decode_rank)
             elif rank == decode_rank:
-                recv_seed = torch.empty(
-                    (cfg.batch_size, cfg.hidden_size),
-                    device=device,
-                    dtype=cfg.dtype,
-                )
+                recv_seed = recv_seed_buffer
                 dist.recv(recv_seed, src=plan.prefill_rank)
                 cache = active_caches[plan.global_request_idx]
                 _ = model.decode(recv_seed, cache, cfg.decode_tokens)

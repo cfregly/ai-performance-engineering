@@ -3991,6 +3991,12 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "prefix_cache = torch.empty(" in worker_setup_section
     assert "prefix_cache[:, offset:next_offset].copy_(chunk_kv)" in worker_setup_section
     assert "torch.cat(prefix_parts" not in worker_setup_section
+    assert "recv_chunk_buffers: Dict[int, torch.Tensor] = {}" in worker_setup_section
+    assert "recv_seed_buffer = torch.empty(" in worker_setup_section
+    assert "recv_chunk = recv_chunk_buffers[chunk_idx]" in run_iteration_section
+    assert "recv_seed = recv_seed_buffer" in run_iteration_section
+    assert "recv_chunk = torch.empty(" not in run_iteration_section
+    assert "recv_seed = torch.empty(" not in run_iteration_section
     assert "torch.cat((base, recv_chunk), dim=1)" not in run_iteration_section
     assert "torch.cat((cache, chunk_kv), dim=1)" not in benchmark_section
     assert "chunk_kv = chunk_kv.to(" not in benchmark_section
