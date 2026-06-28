@@ -2771,6 +2771,22 @@ def test_ch19_optimized_fp4_fp8_bridge_reuses_activation_and_scale_buffers() -> 
     assert "torch.ones(1, device=x.device, dtype=torch.float32)" not in forward_fp8_section
 
 
+def test_ch19_fp4_unpack_writes_directly_to_long_buffer() -> None:
+    for filename in (
+        "optimized_fp4_weight_quantization.py",
+        "native_fp4_quantization.py",
+    ):
+        source = (REPO_ROOT / "ch19" / filename).read_text(encoding="utf-8")
+        unpack_section = source.split("def _unpack_fp4_codes", maxsplit=1)[1].split(
+            "\n\ndef ",
+            maxsplit=1,
+        )[0]
+
+        assert "dtype=torch.long" in unpack_section
+        assert "return unpacked" in unpack_section
+        assert "return unpacked.long()" not in unpack_section
+
+
 def test_ch19_native_fp4_caches_lookup_values_per_device() -> None:
     source = (REPO_ROOT / "ch19" / "native_fp4_quantization.py").read_text(
         encoding="utf-8"

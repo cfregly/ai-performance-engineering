@@ -67,10 +67,10 @@ def _fp4_signed_values_for(device: torch.device) -> torch.Tensor:
 
 
 def _unpack_fp4_codes(packed_data: torch.Tensor) -> torch.Tensor:
-    unpacked = torch.empty(packed_data.numel() * 2, device=packed_data.device, dtype=torch.uint8)
+    unpacked = torch.empty(packed_data.numel() * 2, device=packed_data.device, dtype=torch.long)
     torch.bitwise_right_shift(packed_data, 4, out=unpacked[0::2])
     torch.bitwise_and(packed_data, 0x0F, out=unpacked[1::2])
-    return unpacked.long()
+    return unpacked
 
 
 def is_blackwell() -> bool:
