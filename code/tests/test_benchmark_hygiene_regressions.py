@@ -173,6 +173,53 @@ def test_ch02_cublas_benchmarks_reuse_output_buffer() -> None:
         assert "self.C = torch.matmul(self.A, self.B)" not in benchmark_section
 
 
+def test_ch02_memory_transfer_verification_reuses_digest_buffer() -> None:
+    for name in ("baseline_memory_transfer.py", "optimized_memory_transfer.py"):
+        source = (REPO_ROOT / "ch02" / name).read_text(encoding="utf-8")
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
+
+        assert "from ch02.memory_transfer_common import compute_transfer_digest" in source
+        assert "self._digest_buffer: Optional[torch.Tensor] = None" in source
+        assert "digest, self._digest_buffer = compute_transfer_digest(self.device_data, self._digest_buffer)" in capture_section
+        assert "self.output = digest.detach()" in capture_section
+        assert "blocks = []" not in capture_section
+        assert "blocks.append(" not in capture_section
+        assert "torch.stack(blocks)" not in capture_section
+        assert "digest.detach().clone()" not in capture_section
+        assert "self._digest_buffer = None" in teardown_section
+
+
+def test_ch02_memory_transfer_digest_helper_reuses_tail_buffer() -> None:
+    from ch02.memory_transfer_common import compute_transfer_digest
+
+    data = torch.arange(10, dtype=torch.float32)
+    expected_bits = data.view(torch.int32)
+    digest, buffer = compute_transfer_digest(data, None, block_elems=4)
+    ptr = buffer.data_ptr()
+
+    torch.testing.assert_close(
+        digest,
+        torch.tensor(
+            [
+                int(expected_bits[:4].sum()),
+                int(expected_bits[4:8].sum()),
+                int(expected_bits[8:].sum()),
+            ],
+            dtype=torch.int64,
+        ),
+    )
+
+    digest_again, buffer_again = compute_transfer_digest(data, buffer, block_elems=4)
+    assert buffer_again.data_ptr() == ptr
+    assert digest_again.data_ptr() == ptr
+    torch.testing.assert_close(digest_again, digest)
+
+
 def test_ch04_optimized_dataparallel_reuses_gradient_staging_buffers() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_dataparallel_multigpu.py").read_text(
         encoding="utf-8"

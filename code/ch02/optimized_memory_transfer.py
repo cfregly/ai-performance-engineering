@@ -6,6 +6,7 @@ from typing import Optional
 
 import torch
 
+from ch02.memory_transfer_common import compute_transfer_digest
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
@@ -17,6 +18,7 @@ class OptimizedMemoryTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.host_data: Optional[torch.Tensor] = None
         self.device_data: Optional[torch.Tensor] = None
+        self._digest_buffer: Optional[torch.Tensor] = None
         # Match baseline (workload must be identical).
         self.N = 50_000_000
         self._last_elapsed_ms: Optional[float] = None
@@ -52,20 +54,8 @@ class OptimizedMemoryTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         # Verification: compute a deterministic digest over ALL transferred elements (post-timing).
         self._synchronize()
-        data_bits = self.device_data.view(torch.int32)
-        block_elems = 1_000_000
-        numel = int(data_bits.numel())
-        if numel <= 0:
-            raise RuntimeError("device_data must be non-empty for verification")
-        if numel % block_elems == 0:
-            digest = data_bits.view(-1, block_elems).sum(dim=1, dtype=torch.int64)
-        else:
-            blocks = []
-            for start in range(0, numel, block_elems):
-                end = min(start + block_elems, numel)
-                blocks.append(data_bits[start:end].sum(dtype=torch.int64))
-            digest = torch.stack(blocks)
-        self.output = digest.detach().clone()
+        digest, self._digest_buffer = compute_transfer_digest(self.device_data, self._digest_buffer)
+        self.output = digest.detach()
         self._set_verification_payload(
             inputs={"host_data": self.host_data},
             output=self.output.detach().clone(),
@@ -84,6 +74,7 @@ class OptimizedMemoryTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.host_data = None
         self.device_data = None
+        self._digest_buffer = None
         self._last_elapsed_ms = None
         torch.cuda.empty_cache()
     
