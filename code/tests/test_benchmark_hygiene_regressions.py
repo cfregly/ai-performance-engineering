@@ -7138,15 +7138,54 @@ def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
     )[0]
 
     assert 'self.register_buffer("_scale_a_buffer", torch.empty(0), persistent=False)' in source
+    assert 'self.register_buffer("_input_scale_buffer", torch.empty(0), persistent=False)' in source
     assert 'self.register_buffer("_input_scaled_buffer", torch.empty(0), persistent=False)' in source
     assert '"_input_fp8_buffer"' in source
     assert "def _activation_buffers(self, x_2d: torch.Tensor)" in source
+    assert "def _cacheable_input_key(self, x_2d: torch.Tensor) -> tuple | None" in source
+    assert "def _input_scale_for(self, x_2d: torch.Tensor) -> torch.Tensor" in source
+    assert "cache_key = self._cacheable_input_key(x_2d)" in source
+    assert "x_2d.data_ptr()" in source
+    assert "x_2d._version" in source
+    assert "input_scale = self._input_scale_for(x_2d)" in forward_section
+    assert "input_amax = x_2d.abs().max()" not in forward_section
     assert "scale_a = self._scale_a_buffer" in forward_section
     assert "scale_a.copy_(input_scale)" in forward_section
     assert "torch.div(x_2d, input_scale, out=input_scaled)" in forward_section
     assert "x_fp8.copy_(input_scaled)" in forward_section
     assert "(x_2d / input_scale).to(torch.float8_e4m3fn)" not in forward_section
     assert ".expand(x_fp8.size(0), 1).contiguous()" not in forward_section
+
+
+def test_ch13_optimized_fp8_perchannel_input_scale_cache_invalidates() -> None:
+    if not hasattr(torch, "float8_e4m3fn"):
+        pytest.skip("torch.float8_e4m3fn is required by FP8PerChannelLinear buffers")
+
+    from ch13.optimized_fp8_perchannel import FP8PerChannelLinear
+
+    layer = FP8PerChannelLinear(3, 2)
+    x_2d = torch.tensor(
+        [[1.0, -2.0, 3.0], [-4.0, 5.0, -6.0]],
+        dtype=torch.float32,
+    )
+
+    first = layer._input_scale_for(x_2d)
+    first_ptr = first.data_ptr()
+    first_value = float(first)
+
+    second = layer._input_scale_for(x_2d)
+    assert second.data_ptr() == first_ptr
+    assert float(second) == pytest.approx(first_value)
+
+    x_2d.mul_(2.0)
+    third = layer._input_scale_for(x_2d)
+    expected = torch.clamp(x_2d.abs().max() / layer.fp8_max, min=1e-12).to(
+        torch.float32
+    )
+
+    assert third.data_ptr() == first_ptr
+    assert float(third) == pytest.approx(float(expected))
+    assert float(third) != pytest.approx(first_value)
 
 
 def test_ch13_fp8_perchannel_bench_caches_weight_quantization() -> None:

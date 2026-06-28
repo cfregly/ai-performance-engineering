@@ -35,12 +35,14 @@ class FP8PerChannelLinear(nn.Module):
         self._scale_b = None
         self._bias_bf16 = None
         self.register_buffer("_scale_a_buffer", torch.empty(0), persistent=False)
+        self.register_buffer("_input_scale_buffer", torch.empty(0), persistent=False)
         self.register_buffer("_input_scaled_buffer", torch.empty(0), persistent=False)
         self.register_buffer(
             "_input_fp8_buffer",
             torch.empty(0, dtype=torch.float8_e4m3fn),
             persistent=False,
         )
+        self._input_scale_key: tuple | None = None
         
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         if bias:
@@ -92,6 +94,52 @@ class FP8PerChannelLinear(nn.Module):
 
         return input_scaled, input_fp8
 
+    def _cacheable_input_key(self, x_2d: torch.Tensor) -> tuple | None:
+        try:
+            version = x_2d._version
+        except RuntimeError:
+            return None
+        return (
+            x_2d.data_ptr(),
+            tuple(x_2d.shape),
+            tuple(x_2d.stride()),
+            x_2d.storage_offset(),
+            x_2d.dtype,
+            x_2d.device.type,
+            x_2d.device.index,
+            version,
+        )
+
+    def _input_scale_for(self, x_2d: torch.Tensor) -> torch.Tensor:
+        cache_key = self._cacheable_input_key(x_2d)
+        input_scale = self._input_scale_buffer
+        if (
+            cache_key is not None
+            and self._input_scale_key == cache_key
+            and input_scale.device == x_2d.device
+            and input_scale.dtype == torch.float32
+            and tuple(input_scale.shape) == ()
+        ):
+            return input_scale
+
+        input_amax = x_2d.abs().max()
+        computed_scale = torch.clamp(input_amax / self.fp8_max, min=1e-12).to(
+            torch.float32
+        )
+        if cache_key is None:
+            return computed_scale
+
+        if (
+            input_scale.device != x_2d.device
+            or input_scale.dtype != torch.float32
+            or tuple(input_scale.shape) != ()
+        ):
+            input_scale = torch.empty((), device=x_2d.device, dtype=torch.float32)
+            self._input_scale_buffer = input_scale
+        input_scale.copy_(computed_scale)
+        self._input_scale_key = cache_key
+        return input_scale
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Per-channel FP8 quantized forward pass.
         
@@ -110,8 +158,7 @@ class FP8PerChannelLinear(nn.Module):
         batch_size, seq_len, hidden = x.shape
         x_2d = x.reshape(-1, hidden)
 
-        input_amax = x_2d.abs().max()
-        input_scale = torch.clamp(input_amax / self.fp8_max, min=1e-12).to(torch.float32)
+        input_scale = self._input_scale_for(x_2d)
         input_scaled, x_fp8 = self._activation_buffers(x_2d)
         torch.div(x_2d, input_scale, out=input_scaled)
         x_fp8.copy_(input_scaled)
