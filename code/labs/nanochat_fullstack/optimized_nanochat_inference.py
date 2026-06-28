@@ -33,6 +33,7 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.kv_cache: Optional[KVCache] = None
         self.prompt: Optional[torch.Tensor] = None
         self.decode_tokens: Optional[torch.Tensor] = None
+        self.decode_token_steps: tuple[torch.Tensor, ...] = ()
         self.output: Optional[torch.Tensor] = None
 
         self.register_workload_metadata(
@@ -97,6 +98,10 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
             device=self.device,
             dtype=torch.long,
         )
+        self.decode_token_steps = tuple(
+            self.decode_tokens[:, t : t + 1]
+            for t in range(self.decode_len)
+        )
 
         head_dim = cfg.n_embd // cfg.n_head
         self.kv_cache = KVCache(
@@ -113,20 +118,24 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.kv_cache.reset()
         with torch.inference_mode():
             _ = self.model(self.prompt, kv_cache=self.kv_cache)
-            for t in range(min(4, self.decode_len)):
-                step_ids = self.decode_tokens[:, t : t + 1]
+            for step_ids in self.decode_token_steps[: min(4, self.decode_len)]:
                 _ = self.model(step_ids, kv_cache=self.kv_cache)
 
     def benchmark_fn(self) -> None:
-        if self.model is None or self.kv_cache is None or self.prompt is None or self.decode_tokens is None:
+        if (
+            self.model is None
+            or self.kv_cache is None
+            or self.prompt is None
+            or self.decode_tokens is None
+            or not self.decode_token_steps
+        ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         self.kv_cache.reset()
         with torch.inference_mode():
             self.model(self.prompt, kv_cache=self.kv_cache)
             logits = None
-            for t in range(self.decode_len):
-                step_ids = self.decode_tokens[:, t : t + 1]
+            for step_ids in self.decode_token_steps:
                 logits = self.model(step_ids, kv_cache=self.kv_cache)
             if logits is None:
                 raise RuntimeError("decode loop did not execute")
@@ -170,4 +179,3 @@ class OptimizedNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmar
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedNanochatInferenceBenchmark()
-
