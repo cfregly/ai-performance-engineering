@@ -164,6 +164,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._custom_metrics: Dict[str, float] = {}
         self._empty_kv_template: Optional[torch.Tensor] = None
         self._last_outputs: List[torch.Tensor] = []
+        self._output_stack: Optional[torch.Tensor] = None
         self._outputs_ready = False
         self._request_event_pool: List[tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]] = []
         self._request_event_triplets: List[tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]] = []
@@ -281,6 +282,14 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.output = None
         self._last_outputs = [torch.empty(0) for _ in self.request_plans]
+        self._output_stack = torch.empty(
+            len(self.request_plans),
+            self.cfg.batch_size,
+            self.cfg.decode_tokens,
+            self.cfg.hidden_size,
+            device=self.device,
+            dtype=self.cfg.dtype,
+        )
         self._outputs_ready = False
         self._timing_history = {"ttft": [], "tpot": []}
         self._custom_metrics = {}
@@ -465,7 +474,10 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.prompts is None or not self._outputs_ready:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         if self.output is None:
-            self.output = torch.stack(self._last_outputs, dim=0)
+            if self._output_stack is None:
+                raise RuntimeError("Output stack buffer not initialized")
+            torch.stack(self._last_outputs, dim=0, out=self._output_stack)
+            self.output = self._output_stack
         request_ttft = [elapsed_ms((start, prefill_end)) for start, prefill_end, _ in self._request_event_triplets]
         request_tpot: List[float] = []
         for start, prefill_end, decode_end in self._request_event_triplets:
@@ -534,6 +546,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.shared_seed_store = {}
         self.output = None
         self._last_outputs = []
+        self._output_stack = None
         self._outputs_ready = False
         self._empty_kv_template = None
         self._request_event_pool = []

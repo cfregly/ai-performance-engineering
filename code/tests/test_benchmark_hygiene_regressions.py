@@ -3866,9 +3866,11 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "outputs[output_idx] = output" in benchmark_section
     assert "output_idx += 1" in benchmark_section
     assert "self._last_outputs = outputs" in benchmark_section
+    assert "self._output_stack = torch.empty(" in setup_section
     assert "self._outputs_ready = True" in benchmark_section
     assert "if self.prompts is None or not self._outputs_ready:" in capture_section
-    assert "self.output = torch.stack(self._last_outputs, dim=0)" in capture_section
+    assert "torch.stack(self._last_outputs, dim=0, out=self._output_stack)" in capture_section
+    assert "self.output = self._output_stack" in capture_section
 
 
 def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
