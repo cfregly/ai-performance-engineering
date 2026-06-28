@@ -124,6 +124,7 @@ def decode_host_policy_baseline(
     current_len = prompt_len
     next_token = torch.empty((batch_size, 1), device=device, dtype=prompt.dtype)
     next_token_values: torch.Tensor | None = None
+    host_logits_buffer: torch.Tensor | None = None
     for _ in range(max_steps):
         active_tokens = generated[:, :current_len]
         logits = model(input_ids=active_tokens)
@@ -131,9 +132,23 @@ def decode_host_policy_baseline(
             logits = logits.logits
         last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
         # Deliberately conservative baseline: move confidence analysis to host.
+        if (
+            host_logits_buffer is None
+            or tuple(host_logits_buffer.shape) != tuple(last_step_logits.shape)
+        ):
+            host_logits_buffer = torch.empty(
+                tuple(last_step_logits.shape),
+                device="cpu",
+                dtype=torch.float32,
+                pin_memory=device.type == "cuda" and torch.cuda.is_available(),
+            )
+        host_logits_buffer.copy_(
+            last_step_logits,
+            non_blocking=host_logits_buffer.is_pinned(),
+        )
         if device.type == "cuda":
             torch.cuda.synchronize(device)
-        host_logits = last_step_logits.to(torch.float32).cpu()
+        host_logits = host_logits_buffer
         policy_metrics = torch.stack(
             (
                 compute_entropy(host_logits).mean(),

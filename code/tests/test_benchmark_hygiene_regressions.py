@@ -2971,6 +2971,11 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     )[0]
 
     assert "policy_metrics = torch.stack(" in host_policy_section
+    assert "host_logits_buffer: torch.Tensor | None = None" in host_policy_section
+    assert "host_logits_buffer = torch.empty(" in host_policy_section
+    assert "host_logits_buffer.copy_(" in host_policy_section
+    assert "host_logits = host_logits_buffer" in host_policy_section
+    assert "last_step_logits.to(torch.float32).cpu()" not in host_policy_section
     assert "compute_entropy(host_logits).mean().item()" not in host_policy_section
     assert "values.mean().item()" not in host_policy_section
     assert "log_probs = torch.log_softmax(logits, dim=-1)" in decision_section

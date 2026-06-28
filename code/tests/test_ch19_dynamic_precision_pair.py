@@ -14,6 +14,7 @@ from ch19.dynamic_precision_benchmark_common import (
     build_prompt,
     decode_dynamic_precision,
     decode_fixed_precision,
+    decode_host_policy_baseline,
 )
 from ch19.dynamic_precision_switching import decode_with_dynamic_precision, should_use_low_precision
 from ch19.optimized_dynamic_precision import OptimizedDynamicPrecisionBenchmark
@@ -68,6 +69,24 @@ def test_dynamic_precision_decode_matches_fixed_precision_on_cpu() -> None:
     assert torch.equal(baseline_tokens, optimized_tokens)
     assert stats is not None
     assert stats.total_tokens > 0
+
+
+def test_host_policy_baseline_matches_fixed_precision_on_cpu() -> None:
+    cfg = DynamicPrecisionBenchmarkConfig(batch_size=2, prompt_len=8, max_steps=4, vocab_size=64, hidden_dim=64)
+    device = torch.device("cpu")
+    prompt = build_prompt(cfg, device)
+    fixed_model = build_model(cfg, device, dtype=torch.float32)
+    host_policy_model = build_model(cfg, device, dtype=torch.float32)
+
+    fixed_tokens = decode_fixed_precision(fixed_model, prompt, max_steps=cfg.max_steps, device=device)
+    host_policy_tokens = decode_host_policy_baseline(
+        host_policy_model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+    )
+
+    assert torch.equal(fixed_tokens, host_policy_tokens)
 
 
 def test_low_precision_policy_handles_confident_and_flat_logits() -> None:
