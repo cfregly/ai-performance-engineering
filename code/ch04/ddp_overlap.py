@@ -68,6 +68,8 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.initialized = False
         self.batch_size = 128
         self.hidden_size = 1024
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
         tokens = self.batch_size * self.hidden_size
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -104,7 +106,10 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         else:
             self.model = model
         
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.optimizer = optim.SGD(self.model.parameters(), lr=0.01)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
         self.data = torch.randn(self.batch_size, self.hidden_size, device=self.device)
         self.target = torch.randn(self.batch_size, 1, device=self.device)
@@ -112,10 +117,7 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark a step that overlaps gradient synchronization with backward."""
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-        with nvtx_range("overlap_ddp", enable=enable_nvtx):
+        with nvtx_range("overlap_ddp", enable=self._enable_nvtx):
             output = self.model(self.data)
             loss = nn.functional.mse_loss(output, self.target)
             loss.backward()
@@ -126,12 +128,11 @@ class OptimizedOverlapDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.data is None or self.target is None or self.output is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        param_count = sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0
         self._set_verification_payload(
             inputs={"data": self.data, "target": self.target},
             output=self.output,
             batch_size=int(self.batch_size),
-            parameter_count=param_count,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

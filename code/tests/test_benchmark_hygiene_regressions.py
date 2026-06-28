@@ -1209,15 +1209,88 @@ def test_ch01_fp16_and_ch04_nvls_cache_nvtx_enablement() -> None:
 
 def test_ch04_optimized_gpu_reduction_uses_single_gpu_sum_kernel() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_cpu_reduction.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
 
+    assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
+    assert "get_config()" not in benchmark_section
+    assert "get_nvtx_enabled(" not in benchmark_section
+    assert "enable=self._enable_nvtx" in benchmark_section
     assert "torch.chunk(" not in benchmark_section
     assert "for shard in" not in benchmark_section
     assert "torch.sum(shard_view, dim=0, out=self._reduction_buffer)" in benchmark_section
     assert "self._reduction_buffer.zero_()" not in benchmark_section
+    assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "sum(p.numel()" not in capture_section
+
+
+def test_ch04_distributed_benchmarks_cache_nvtx_and_parameter_counts() -> None:
+    for relative, label, parameter_expr in (
+        ("ch04/ddp_no_overlap.py", "no_overlap", "self.model.parameters()"),
+        ("ch04/ddp_overlap.py", "overlap_ddp", "self.model.parameters()"),
+        ("ch04/baseline_disaggregated.py", "baseline_disaggregated", "self.model.parameters()) * 2"),
+        (
+            "ch04/baseline_disaggregated_multigpu.py",
+            "baseline_disaggregated_multigpu",
+            "self.model.parameters()) * 2",
+        ),
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+        assert (
+            f"self._payload_parameter_count = sum(p.numel() for p in {parameter_expr}"
+            in setup_section
+        )
+        assert "get_config()" not in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert f'with nvtx_range("{label}", enable=self._enable_nvtx):' in benchmark_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "sum(p.numel()" not in capture_section
+
+
+def test_ch04_reinit_comm_caches_nvtx_enablement() -> None:
+    for relative in (
+        "ch04/optimized_reinit_comm.py",
+        "ch04/optimized_reinit_comm_multigpu.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+        assert "get_config()" not in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert 'with nvtx_range("reinit_comm", enable=self._enable_nvtx):' in benchmark_section
 
 
 def test_moe_cuda_naive_backend_skips_redundant_mask_any_sync() -> None:

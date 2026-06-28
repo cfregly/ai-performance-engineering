@@ -31,6 +31,7 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input_tensor = None
         self.tensor = None
         self.initialized = False
+        self._enable_nvtx = False
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             bytes_per_iteration=4.0,  # single float all-reduce
@@ -59,6 +60,8 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input_tensor = torch.randn(1, 1, device=self.device, dtype=torch.float32)
         self.tensor = torch.empty_like(self.input_tensor)
         torch.cuda.synchronize(self.device)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.register_workload_metadata(
             requests_per_iteration=float(self._workload.requests_per_iteration or 1.0),
             bytes_per_iteration=float(self._workload.bytes_per_iteration or 0.0),
@@ -69,11 +72,7 @@ class OptimizedReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.tensor is None or self.input_tensor is None:
             raise RuntimeError("Tensor not initialized")
 
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-        with nvtx_range("reinit_comm", enable=enable_nvtx):
+        with nvtx_range("reinit_comm", enable=self._enable_nvtx):
             # Good pattern: reuse existing NCCL communicator
             self.tensor.copy_(self.input_tensor)
             dist.all_reduce(self.tensor)
