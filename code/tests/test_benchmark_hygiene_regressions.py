@@ -2601,6 +2601,10 @@ def test_ch18_dynamic_flex_attention_mask_avoids_scalar_tensor_allocation() -> N
 
 def test_ch18_flexattention_fallback_builds_sliding_window_mask_vectorized() -> None:
     source = (REPO_ROOT / "ch18" / "flexattention_sliding_window.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def run",
+        maxsplit=1,
+    )[0]
     fallback_section = source.split("if not FLEX_ATTENTION_AVAILABLE:", maxsplit=1)[1].split(
         "scores.masked_fill_",
         maxsplit=1,
@@ -2608,7 +2612,9 @@ def test_ch18_flexattention_fallback_builds_sliding_window_mask_vectorized() -> 
 
     assert "torch.ones(" not in fallback_section
     assert "for i in range(self.seq_length)" not in fallback_section
-    assert "pos = torch.arange(self.seq_length, device=self.device)" in fallback_section
+    assert "self._fallback_positions = torch.arange(self.seq_length, device=self.device)" in setup_section
+    assert "pos = self._fallback_positions" in fallback_section
+    assert "torch.arange(self.seq_length, device=self.device)" not in fallback_section
     assert "q_pos = pos.unsqueeze(1)" in fallback_section
     assert "kv_pos = pos.unsqueeze(0)" in fallback_section
     assert "mask = (kv_pos < q_pos - half_window) | (kv_pos > q_pos + half_window)" in fallback_section

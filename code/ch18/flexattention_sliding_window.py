@@ -61,6 +61,7 @@ class SlidingWindowFlexAttention:
         self.head_dim = head_dim
         self.window_size = window_size
         self.use_compile = use_compile
+        self._fallback_positions = None
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
@@ -132,6 +133,7 @@ class SlidingWindowFlexAttention:
             
             logger.info("FlexAttention setup complete")
         else:
+            self._fallback_positions = torch.arange(self.seq_length, device=self.device)
             logger.info("Using fallback (FlexAttention not available)")
     
     def run(self) -> float:
@@ -144,7 +146,9 @@ class SlidingWindowFlexAttention:
 
                 # Apply window mask manually
                 half_window = self.window_size // 2
-                pos = torch.arange(self.seq_length, device=self.device)
+                pos = self._fallback_positions
+                if pos is None:
+                    raise RuntimeError("setup() must run before fallback attention")
                 q_pos = pos.unsqueeze(1)
                 kv_pos = pos.unsqueeze(0)
                 mask = (kv_pos < q_pos - half_window) | (kv_pos > q_pos + half_window)
@@ -175,6 +179,7 @@ class SlidingWindowFlexAttention:
         del self.q, self.k, self.v
         if hasattr(self, 'block_mask'):
             del self.block_mask
+        self._fallback_positions = None
         torch.cuda.empty_cache()
 
 
