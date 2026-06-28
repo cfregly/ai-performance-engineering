@@ -156,8 +156,8 @@ class OptimizedMoeOverlapSharedExpertBenchmark(VerificationPayloadMixin, BaseBen
                     out=self._routed_out_flat,
                     sort_idx=self._dispatch_order,
                 )
-                combined = self._routed_out_flat + shared_out
-                self.output = combined.view(self.batch, self.seq, self.hidden_size)
+                shared_out.add_(self._routed_out_flat)
+                self.output = shared_out.view(self.batch, self.seq, self.hidden_size)
 
 
     def capture_verification_payload(self) -> None:

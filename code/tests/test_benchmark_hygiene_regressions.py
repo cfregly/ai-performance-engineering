@@ -7230,6 +7230,16 @@ def test_ch15_moe_overlap_and_routing_use_inference_mode() -> None:
             assert "param_count = sum(" not in capture_section
             assert "parameter_count=self._payload_parameter_count" in capture_section
 
+    optimized_source = (REPO_ROOT / "ch15" / "optimized_moe_overlap_shared_expert.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    assert "shared_out.add_(self._routed_out_flat)" in optimized_benchmark
+    assert "combined = self._routed_out_flat + shared_out" not in optimized_benchmark
+
 
 def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
     source = (REPO_ROOT / "ch15" / "moe_comm_exchange_benchmarks.py").read_text(
