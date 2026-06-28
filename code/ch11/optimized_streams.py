@@ -43,6 +43,8 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.results: Optional[List[torch.Tensor]] = None
         self.stream_h2d: Optional[torch.cuda.Stream] = None
         self.stream_compute: Optional[torch.cuda.Stream] = None
+        self._scratch0: Optional[torch.Tensor] = None
+        self._scratch1: Optional[torch.Tensor] = None
         self.N = 5_000_000  # Elements per chunk - balanced for H2D/compute overlap
         self.num_chunks = 20  # More chunks to amortize pipeline startup
         # Stream benchmark - fixed dimensions for overlap measurement
@@ -79,6 +81,8 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.empty(self.N, dtype=torch.float32, device=self.device)
             for _ in range(self.num_chunks)
         ]
+        self._scratch0 = torch.empty(self.N, dtype=torch.float32, device=self.device)
+        self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)
         
         self._synchronize()
         processed = float(self.N * self.num_chunks)
@@ -87,17 +91,27 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.num_chunks),
         )
     
-    def _compute(self, data: torch.Tensor) -> torch.Tensor:
+    def _compute(self, data: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
         """Compute-intensive operation on GPU data.
         
         Multiple trig operations to ensure compute time is meaningful
         relative to H2D transfer time for proper overlap demonstration.
         """
+        if self._scratch0 is None or self._scratch1 is None:
+            raise RuntimeError("setup() must initialize compute scratch buffers")
+        scratch0 = self._scratch0[: data.numel()].view_as(data)
+        scratch1 = self._scratch1[: data.numel()].view_as(data)
         result = data
         for _ in range(3):  # Multiple passes to increase compute time
-            result = torch.sin(result) * torch.cos(result) + result * 0.1
-            result = torch.tanh(result) + torch.sigmoid(result) * 0.5
-        return result
+            torch.sin(result, out=scratch0)
+            torch.cos(result, out=scratch1)
+            scratch0.mul_(scratch1)
+            scratch0.add_(result, alpha=0.1)
+            torch.tanh(scratch0, out=out)
+            torch.sigmoid(scratch0, out=scratch1)
+            out.add_(scratch1, alpha=0.5)
+            result = out
+        return out
     
     def benchmark_fn(self) -> None:
         """Benchmark: Pipelined H2D transfer overlapping with compute.
@@ -131,7 +145,7 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 
                 # Compute on current chunk
                 with torch.cuda.stream(self.stream_compute):
-                    self.results[i] = self._compute(self.device_data[i])
+                    self._compute(self.device_data[i], self.results[i])
             
             current = torch.cuda.current_stream(device=self.device)
             current.wait_stream(self.stream_compute)
@@ -144,6 +158,8 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.results = None
         self.stream_h2d = None
         self.stream_compute = None
+        self._scratch0 = None
+        self._scratch1 = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
@@ -208,4 +224,3 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> OptimizedStreamsBenchmark:
     """Factory function for benchmark discovery."""
     return OptimizedStreamsBenchmark()
-
