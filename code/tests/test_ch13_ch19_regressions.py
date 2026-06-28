@@ -350,6 +350,15 @@ def test_fp4_dequantization_decodes_signed_lookup_without_where() -> None:
         assert "dtype=torch.long" in source
         assert "return unpacked.long()" not in source
 
+    for module, function_name in (
+        (optimized_fp4, "dequantize_fp4_optimized"),
+        (native_fp4, "dequantize_from_fp4_packed"),
+    ):
+        source = inspect.getsource(getattr(module, function_name))
+        assert "blocks.mul_(scales.unsqueeze(-1))" in source
+        assert "flat = blocks.flatten()[:n_orig]" in source
+        assert "dequantized = blocks * scales.unsqueeze(-1)" not in source
+
     packed = torch.tensor([(0 << 4) | 9, (2 << 4) | 15], dtype=torch.uint8)
     expected = torch.tensor([0.0, -0.5, 1.0, -6.0], dtype=torch.float32)
     unpacked_expected = torch.tensor([0, 9, 2, 15], dtype=torch.long)

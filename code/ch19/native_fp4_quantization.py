@@ -199,11 +199,11 @@ def dequantize_from_fp4_packed(
     n_blocks = len(scales)
     n_elements = n_blocks * block_size
     blocks = values[:n_elements].reshape(n_blocks, block_size)
-    dequantized = blocks * scales.unsqueeze(-1)
+    blocks.mul_(scales.unsqueeze(-1))
     
     # Reshape to original
     n_orig = math.prod(original_shape)
-    flat = dequantized.flatten()[:n_orig]
+    flat = blocks.flatten()[:n_orig]
     return flat.reshape(original_shape).to(dtype)
 
 
