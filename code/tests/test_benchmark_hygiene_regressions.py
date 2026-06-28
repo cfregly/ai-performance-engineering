@@ -5322,8 +5322,18 @@ def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
 def test_ch18_optimized_flexdecoding_reuses_sdpa_backend_list() -> None:
     source = (REPO_ROOT / "ch18" / "optimized_flexdecoding.py").read_text(encoding="utf-8")
     init_section = source.split("def __init__", maxsplit=1)[1].split("def setup", maxsplit=1)[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _cache_window_views_for_position",
+        maxsplit=1,
+    )[0]
+    window_view_section = source.split("def _cache_window_views_for_position", maxsplit=1)[
+        1
+    ].split(
+        "def _decode_step",
+        maxsplit=1,
+    )[0]
     projected_step_section = source.split("def _decode_projected_step", maxsplit=1)[1].split(
-        "def benchmark_fn",
+        "def teardown",
         maxsplit=1,
     )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
@@ -5332,9 +5342,20 @@ def test_ch18_optimized_flexdecoding_reuses_sdpa_backend_list() -> None:
     decode_range = benchmark_section.split('with self._nvtx_range("flex_decode"):', maxsplit=1)[1]
 
     assert "self._flash_attention_backends = [SDPBackend.FLASH_ATTENTION]" in init_section
+    assert "self._decode_k_window_views: List[torch.Tensor] = []" in init_section
+    assert "self._decode_v_window_views: List[torch.Tensor] = []" in init_section
+    assert "self._decode_base_position = self.prefill_tokens.size(1)" in setup_section
+    assert "self._decode_k_window_views.append(self.model.k_cache[:, start:end])" in setup_section
+    assert "self._decode_v_window_views.append(self.model.v_cache[:, start:end])" in setup_section
+    assert "view_idx = position - self._decode_base_position" in window_view_section
+    assert (
+        "return self._decode_k_window_views[view_idx], self._decode_v_window_views[view_idx]"
+        in window_view_section
+    )
     assert "with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):" not in benchmark_section
     assert "with sdpa_kernel(self._flash_attention_backends):" in benchmark_section
     assert "self.model._update_cache(k, v, position)" in projected_step_section
+    assert "k_slice, v_slice = self._cache_window_views_for_position(position)" in projected_step_section
     assert "decode_q, decode_k, decode_v = self.model._project_token(self.decode_token)" in benchmark_section
     assert "decode_out = self._decode_projected_step(" in decode_range
     assert "self.model._project_token(self.decode_token)" not in decode_range

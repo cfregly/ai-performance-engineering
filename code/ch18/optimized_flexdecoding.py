@@ -39,12 +39,43 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
             compile_enabled=True,
         )
         self._flash_attention_backends = [SDPBackend.FLASH_ATTENTION]
+        self._decode_base_position = 0
+        self._decode_k_window_views: List[torch.Tensor] = []
+        self._decode_v_window_views: List[torch.Tensor] = []
 
     def setup(self) -> None:
         super().setup()
         window = self.config.window
         if window <= 0:
             raise RuntimeError("Sliding-window size must be positive")
+        if self.model is None or self.prefill_tokens is None:
+            raise RuntimeError("Windowed decode setup did not initialize model/tokens")
+        self._decode_base_position = self.prefill_tokens.size(1)
+        self._decode_k_window_views = []
+        self._decode_v_window_views = []
+        for pos in range(self.decode_tokens):
+            position = self._decode_base_position + pos
+            start = position - window
+            if start < 0:
+                raise RuntimeError("Windowed decode expects position >= window size")
+            end = position + 1
+            self._decode_k_window_views.append(self.model.k_cache[:, start:end])
+            self._decode_v_window_views.append(self.model.v_cache[:, start:end])
+
+    def _cache_window_views_for_position(self, position: int) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.model is None:
+            raise RuntimeError("Windowed decode not initialized")
+        view_idx = position - self._decode_base_position
+        if 0 <= view_idx < len(self._decode_k_window_views):
+            return self._decode_k_window_views[view_idx], self._decode_v_window_views[view_idx]
+        window = self.config.window
+        start = position - window
+        if start < 0:
+            raise RuntimeError("Windowed decode expects position >= window size")
+        end = position + 1
+        k_slice = self.model.k_cache[:, start:end]
+        v_slice = self.model.v_cache[:, start:end]
+        return k_slice, v_slice
 
     def _decode_step(self, token: torch.Tensor, position: int) -> torch.Tensor:
         if self.model is None:
@@ -61,15 +92,9 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
     ) -> torch.Tensor:
         if self.model is None:
             raise RuntimeError("Windowed decode not initialized")
-        window = self.config.window
-        start = position - window
-        if start < 0:
-            raise RuntimeError("Windowed decode expects position >= window size")
-        end = position + 1
         self.model._update_cache(k, v, position)
         self.model._set_offset(position)
-        k_slice = self.model.k_cache[:, start:end]
-        v_slice = self.model.v_cache[:, start:end]
+        k_slice, v_slice = self._cache_window_views_for_position(position)
         out = F.scaled_dot_product_attention(
             q.transpose(1, 2),
             k_slice.transpose(1, 2),
@@ -79,6 +104,12 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
             is_causal=False,
         )
         return self.model.o_proj(out.transpose(1, 2).reshape(q.shape[0], 1, self.config.dim))
+
+    def teardown(self) -> None:
+        self._decode_base_position = 0
+        self._decode_k_window_views = []
+        self._decode_v_window_views = []
+        super().teardown()
 
     def benchmark_fn(self) -> Optional[Dict[str, List[float]]]:
         if self.model is None or self.prefill_tokens is None or self.decode_token is None:
