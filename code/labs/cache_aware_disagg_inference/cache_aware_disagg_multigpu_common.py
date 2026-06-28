@@ -736,6 +736,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._decode_seed_buffers: Dict[int, torch.Tensor] = {}
         self._active_caches: Dict[int, Dict[int, torch.Tensor]] = {}
         self._kv_buffer_pools: Dict[int, Dict[int, torch.Tensor]] = {}
+        self._sync_devices: List[torch.device] = []
         self._verify_output = torch.zeros(1, dtype=torch.float32)
         self._register_workload_metadata(
             world_size=_world_size_hint(),
@@ -758,13 +759,8 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         return world_size, prefill_ranks, decode_ranks
 
     def _sync_local_devices(self) -> None:
-        seen: set[str] = set()
-        for model in [*self._prefill_models.values(), *self._decode_models.values()]:
-            device = str(next(model.parameters()).device)
-            if device in seen:
-                continue
-            seen.add(device)
-            torch.cuda.synchronize(torch.device(device))
+        for device in self._sync_devices:
+            torch.cuda.synchronize(device)
 
     def _decode_device_for_rank(self, rank: int) -> torch.device:
         return next(self._decode_models[rank].parameters()).device
@@ -855,6 +851,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._decode_seed_buffers = {}
         self._active_caches = {}
         self._kv_buffer_pools = {}
+        self._sync_devices = []
         total_params = 0
 
         for rank in range(prefill_ranks, world_size):
@@ -908,6 +905,9 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 )
             total_params += sum(p.numel() for p in model.parameters())
 
+        self._sync_devices = [
+            torch.device(f"cuda:{rank}") for rank in range(world_size)
+        ]
         self._active_caches = {rank: {} for rank in self._decode_models}
         self._kv_buffer_pools = {rank: {} for rank in self._decode_models}
 
@@ -1145,6 +1145,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._decode_seed_buffers = {}
         self._active_caches = {}
         self._kv_buffer_pools = {}
+        self._sync_devices = []
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 

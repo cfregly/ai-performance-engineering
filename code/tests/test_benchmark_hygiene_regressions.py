@@ -5226,6 +5226,10 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
         "plans = _build_request_plans",
         maxsplit=1,
     )[0]
+    sync_section = source.split("def _sync_local_devices", maxsplit=1)[1].split(
+        "def _decode_device_for_rank",
+        maxsplit=1,
+    )[0]
     worker_setup_section = source.split(
         "warm_cache_store: Dict[int, torch.Tensor] = {}",
         maxsplit=1,
@@ -5286,7 +5290,15 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._active_caches = {rank: {} for rank in self._decode_models}" in setup_section
     assert "self._kv_buffer_pools = {rank: {} for rank in self._decode_models}" in setup_section
     assert "self._prompt_chunks: Dict[tuple[int, int], Sequence[torch.Tensor]] = {}" in source
+    assert "self._sync_devices: List[torch.device] = []" in source
     assert "self._prompt_chunks = {}" in setup_section
+    assert "self._sync_devices = []" in setup_section
+    assert "self._sync_devices = [\n            torch.device(f\"cuda:{rank}\") for rank in range(world_size)\n        ]" in setup_section
+    assert "for device in self._sync_devices:" in sync_section
+    assert "torch.cuda.synchronize(device)" in sync_section
+    assert "next(model.parameters()).device" not in sync_section
+    assert "self._prefill_models.values()" not in sync_section
+    assert "self._decode_models.values()" not in sync_section
     assert "self._prompt_chunks[(rank, request_idx)] = _split_prompt(" in setup_section
     assert "chunks = self._prompt_chunks[(plan.prefill_rank, plan.local_request_idx)]" in setup_section
     assert "chunks = self._prompt_chunks[(plan.prefill_rank, plan.local_request_idx)]" in benchmark_section
@@ -5316,6 +5328,7 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._outputs_ready = True" in benchmark_section
     assert "if not self._outputs_ready or self._verify_prompt is None:" in capture_section
     assert "self._prompt_chunks = {}" in teardown_section
+    assert "self._sync_devices = []" in teardown_section
     assert "reduced_values = reduced.detach().cpu().tolist()" in reduced_metrics_section
     assert ".item()" not in reduced_metrics_section
 
