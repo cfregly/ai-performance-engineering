@@ -130,6 +130,9 @@ class MoEExperts(nn.Module):
         self._grouped_reduced: Optional[torch.Tensor] = None
         self._bmm_flat_token_ids_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}
         self._bmm_position_ids_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
+        self._bmm_padded_token_index_view_cache: Dict[Tuple[int, int, int, torch.device], torch.Tensor] = {}
+        self._bmm_padded_column_index_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}
+        self._bmm_sorted_weight_column_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}
 
     @staticmethod
     def _is_torch_compiling() -> bool:
@@ -204,6 +207,33 @@ class MoEExperts(nn.Module):
         if cached is None:
             cached = torch.arange(length, device=device, dtype=torch.int64)
             self._bmm_position_ids_cache[key] = cached
+        return cached
+
+    def _padded_token_index_view(self, padded_indices: torch.Tensor, width: int) -> torch.Tensor:
+        key = (int(padded_indices.data_ptr()), int(padded_indices.numel()), int(width), padded_indices.device)
+        cached = self._bmm_padded_token_index_view_cache.get(key)
+        expected_shape = (int(padded_indices.numel()), int(width))
+        if cached is None or cached.device != padded_indices.device or tuple(cached.shape) != expected_shape:
+            cached = padded_indices.unsqueeze(1).expand(-1, width)
+            self._bmm_padded_token_index_view_cache[key] = cached
+        return cached
+
+    def _padded_column_index(self, padded_indices: torch.Tensor) -> torch.Tensor:
+        key = (int(padded_indices.data_ptr()), int(padded_indices.numel()), padded_indices.device)
+        cached = self._bmm_padded_column_index_cache.get(key)
+        expected_shape = (int(padded_indices.numel()), 1)
+        if cached is None or cached.device != padded_indices.device or tuple(cached.shape) != expected_shape:
+            cached = padded_indices.unsqueeze(1)
+            self._bmm_padded_column_index_cache[key] = cached
+        return cached
+
+    def _sorted_weight_column(self, sorted_weights: torch.Tensor) -> torch.Tensor:
+        key = (int(sorted_weights.data_ptr()), int(sorted_weights.numel()), sorted_weights.device)
+        cached = self._bmm_sorted_weight_column_cache.get(key)
+        expected_shape = (int(sorted_weights.numel()), 1)
+        if cached is None or cached.device != sorted_weights.device or tuple(cached.shape) != expected_shape:
+            cached = sorted_weights.unsqueeze(1)
+            self._bmm_sorted_weight_column_cache[key] = cached
         return cached
 
     def _reset_cuda_graph_cache(self) -> None:
@@ -615,7 +645,8 @@ class MoEExperts(nn.Module):
             dtype=x.dtype,
         )
         # Only rows addressed by padded_indices are gathered after the BMM.
-        padded_tokens.scatter_(0, padded_indices.unsqueeze(1).expand(-1, self.hidden_size), sorted_tokens)
+        padded_token_index = self._padded_token_index_view(padded_indices, self.hidden_size)
+        padded_tokens.scatter_(0, padded_token_index, sorted_tokens)
         padded_tokens = padded_tokens.view(self.num_experts, max_count, self.hidden_size)
         
         # SINGLE BMM for all experts!
@@ -632,7 +663,9 @@ class MoEExperts(nn.Module):
             dtype=x.dtype,
         )
         # Padding rows are ignored by the gather, so clearing the workspace is unnecessary.
-        padded_weights.scatter_(0, padded_indices.unsqueeze(1), sorted_weights.unsqueeze(1))
+        padded_weight_index = self._padded_column_index(padded_indices)
+        sorted_weight_column = self._sorted_weight_column(sorted_weights)
+        padded_weights.scatter_(0, padded_weight_index, sorted_weight_column)
         padded_weights = padded_weights.view(self.num_experts, max_count, 1)
         out.mul_(padded_weights)
         

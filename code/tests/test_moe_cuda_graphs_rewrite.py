@@ -70,6 +70,9 @@ def test_graphable_bmm_fused_path_matches_dynamic_bmm_path() -> None:
         index_workspace_ptr = experts._bmm_padded_indices.data_ptr()
         unsort_workspace_ptr = experts._bmm_unsort.data_ptr()
         reduced_workspace_ptr = experts._bmm_reduced.data_ptr()
+        padded_token_index_view = next(iter(experts._bmm_padded_token_index_view_cache.values()))
+        padded_weight_index_view = next(iter(experts._bmm_padded_column_index_cache.values()))
+        sorted_weight_column_view = next(iter(experts._bmm_sorted_weight_column_cache.values()))
         flat_token_ids_ptr = experts._bmm_flat_token_ids_cache[(4, 1, torch.device("cpu"))].data_ptr()
         position_ids_ptr = experts._bmm_position_ids_cache[(4, torch.device("cpu"))].data_ptr()
         dynamic_again = experts.forward_bmm_fused(x, expert_indices, expert_weights)
@@ -81,6 +84,12 @@ def test_graphable_bmm_fused_path_matches_dynamic_bmm_path() -> None:
     assert experts._bmm_unsort.data_ptr() == unsort_workspace_ptr
     assert experts._bmm_reduced.data_ptr() == reduced_workspace_ptr
     assert dynamic_again.data_ptr() == reduced_workspace_ptr
+    assert next(iter(experts._bmm_padded_token_index_view_cache.values())) is padded_token_index_view
+    assert next(iter(experts._bmm_padded_column_index_cache.values())) is padded_weight_index_view
+    assert next(iter(experts._bmm_sorted_weight_column_cache.values())) is sorted_weight_column_view
+    torch.testing.assert_close(padded_token_index_view[:, 0], experts._bmm_padded_indices)
+    torch.testing.assert_close(padded_weight_index_view[:, 0], experts._bmm_padded_indices)
+    torch.testing.assert_close(sorted_weight_column_view[:, 0], experts._bmm_sorted_weights)
     assert experts._bmm_flat_token_ids_cache[(4, 1, torch.device("cpu"))].data_ptr() == flat_token_ids_ptr
     assert experts._bmm_position_ids_cache[(4, torch.device("cpu"))].data_ptr() == position_ids_ptr
     torch.testing.assert_close(dynamic_again, dynamic)
@@ -153,8 +162,14 @@ def test_level5_bmm_path_reuses_padding_workspaces() -> None:
     assert "self._bmm_reduced: Optional[torch.Tensor] = None" in text
     assert "self._bmm_flat_token_ids_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}" in text
     assert "self._bmm_position_ids_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}" in text
+    assert "self._bmm_padded_token_index_view_cache: Dict[Tuple[int, int, int, torch.device], torch.Tensor] = {}" in text
+    assert "self._bmm_padded_column_index_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}" in text
+    assert "self._bmm_sorted_weight_column_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}" in text
     assert "def _flat_topk_token_ids_for(self, num_tokens: int, top_k: int, device: torch.device)" in text
     assert "def _position_ids_for(self, length: int, device: torch.device)" in text
+    assert "def _padded_token_index_view(self, padded_indices: torch.Tensor, width: int)" in text
+    assert "def _padded_column_index(self, padded_indices: torch.Tensor)" in text
+    assert "def _sorted_weight_column(self, sorted_weights: torch.Tensor)" in text
     assert "flat_token_ids = self._flat_topk_token_ids_for(batch_seq, top_k, device)" in bmm_section
     assert "torch.index_select(flat_token_ids, 0, sorted_order, out=sorted_token_ids)" in bmm_section
     assert "torch.index_select(x, 0, sorted_token_ids, out=sorted_tokens)" in bmm_section
@@ -182,6 +197,13 @@ def test_level5_bmm_path_reuses_padding_workspaces() -> None:
     assert '"_bmm_padded_tokens",' in bmm_section
     assert 'padded_weights = self._bmm_workspace(' in bmm_section
     assert '"_bmm_padded_weights",' in bmm_section
+    assert "padded_token_index = self._padded_token_index_view(padded_indices, self.hidden_size)" in bmm_section
+    assert "padded_tokens.scatter_(0, padded_token_index, sorted_tokens)" in bmm_section
+    assert "padded_weight_index = self._padded_column_index(padded_indices)" in bmm_section
+    assert "sorted_weight_column = self._sorted_weight_column(sorted_weights)" in bmm_section
+    assert "padded_weights.scatter_(0, padded_weight_index, sorted_weight_column)" in bmm_section
+    assert "padded_indices.unsqueeze(1).expand(-1, self.hidden_size)" not in bmm_section
+    assert "padded_indices.unsqueeze(1), sorted_weights.unsqueeze(1)" not in bmm_section
     assert "padded_tokens.zero_()" not in bmm_section
     assert "padded_weights.zero_()" not in bmm_section
     assert "padded_tokens.scatter_(" in bmm_section
