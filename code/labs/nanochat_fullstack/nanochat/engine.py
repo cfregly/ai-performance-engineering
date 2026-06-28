@@ -388,6 +388,7 @@ class Engine:
         self._sample_topk_probs_buffer = None
         self._prompt_lengths_host = None
         self._prompt_ids_host = None
+        self._prompt_ids_device = None
         self._pd_runner = PersistentDecodeRunner() if self.use_persistent_decode_kernel else None
         self._persistent_decode_kernel = (
             resolve_persistent_decode_kernel(
@@ -667,6 +668,24 @@ class Engine:
         ids_view.fill_(pad_id)
         return lengths_host[:batch_size], ids_view
 
+    def _single_prompt_ids(self, tokens, device):
+        token_count = len(tokens)
+        pin_memory = device.type == "cuda"
+        lengths_host, ids_host = self._prompt_pack_buffers(1, token_count, 0, pin_memory)
+        lengths_host[0] = token_count
+        row = ids_host[0]
+        for idx, token in enumerate(tokens):
+            row[idx] = int(token)
+        if (
+            self._prompt_ids_device is None
+            or self._prompt_ids_device.device != device
+            or self._prompt_ids_device.size(1) < token_count
+        ):
+            self._prompt_ids_device = torch.empty((1, token_count), dtype=torch.long, device=device)
+        prompt_ids = self._prompt_ids_device[:, :token_count]
+        prompt_ids.copy_(ids_host, non_blocking=pin_memory)
+        return prompt_ids
+
     def _active_mask_buffer(self, count, device):
         if (
             self._active_mask_device is None
@@ -929,7 +948,7 @@ class Engine:
 
         # 1) Run a batch 1 prefill of the prompt tokens
         kv_cache_prefill = KVCache(**self._kv_cache_params(batch_size=1, seq_len=len(tokens)))
-        ids = torch.tensor([tokens], dtype=torch.long, device=device)
+        ids = self._single_prompt_ids(tokens, device)
         logits = self.model.forward(ids, kv_cache=kv_cache_prefill)
         logits = logits[:, -1, :]
         next_ids = sample_next_token(
