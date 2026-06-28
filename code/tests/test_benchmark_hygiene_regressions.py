@@ -2035,6 +2035,28 @@ def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
         assert "with torch.inference_mode():" in worker_section
         assert "torch.no_grad()" not in worker_section
 
+    for relative in (
+        "ch04/optimized_pipeline_parallel_1f1b.py",
+        "ch04/optimized_pipeline_parallel_multigpu_1f1b.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        worker_section = source.split("def _run_worker", maxsplit=1)[1].split(
+            "def main",
+            maxsplit=1,
+        )[0]
+        run_iteration_section = worker_section.split("def _run_iteration", maxsplit=1)[1].split(
+            "with torch.inference_mode():",
+            maxsplit=1,
+        )[0]
+
+        assert "from collections import deque" not in source
+        assert "activation_slots: list[Optional[torch.Tensor]] = [None] * warmup_steps" in worker_section
+        assert "activation_count = 0" in run_iteration_section
+        assert "activation_slots[(activation_head + activation_count) % warmup_steps] = out" in run_iteration_section
+        assert "activation_slots[activation_head] = None" in run_iteration_section
+        assert "activations.append(" not in run_iteration_section
+        assert "activations.popleft(" not in run_iteration_section
+
 
 def test_ch04_pipeline_wrappers_cache_micro_batch_views() -> None:
     for relative in (

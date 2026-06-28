@@ -14,7 +14,6 @@ import os
 
 from core.common.device_utils import resolve_local_rank
 import time
-from collections import deque
 from typing import Optional
 
 import torch
@@ -169,9 +168,12 @@ def _run_worker(
         x = grad_in
         return _run_stage_inplace(bwd_layers[0], x)
 
+    warmup_steps = min(world_size, num_micro_batches)
+    activation_slots: list[Optional[torch.Tensor]] = [None] * warmup_steps
+
     def _run_iteration() -> None:
-        activations: deque[torch.Tensor] = deque()
-        warmup_steps = min(world_size, num_micro_batches)
+        activation_head = 0
+        activation_count = 0
 
         for micro_idx in range(warmup_steps):
             if rank == 0:
@@ -185,12 +187,18 @@ def _run_worker(
                 dist.recv(micro_batch, src=rank - 1)
 
             out = _forward(micro_batch)
-            activations.append(out)
+            activation_slots[(activation_head + activation_count) % warmup_steps] = out
+            activation_count += 1
             if rank < world_size - 1:
                 dist.send(out, dst=rank + 1)
 
         for micro_idx in range(warmup_steps, num_micro_batches):
-            activation = activations.popleft()
+            activation = activation_slots[activation_head]
+            if activation is None:
+                raise RuntimeError("activation slot missing")
+            activation_slots[activation_head] = None
+            activation_head = (activation_head + 1) % warmup_steps
+            activation_count -= 1
             if rank < world_size - 1:
                 if recv_grad is None:
                     raise RuntimeError("recv grad buffer missing")
@@ -214,12 +222,18 @@ def _run_worker(
                 dist.recv(micro_batch, src=rank - 1)
 
             out = _forward(micro_batch)
-            activations.append(out)
+            activation_slots[(activation_head + activation_count) % warmup_steps] = out
+            activation_count += 1
             if rank < world_size - 1:
                 dist.send(out, dst=rank + 1)
 
-        while activations:
-            activation = activations.popleft()
+        while activation_count:
+            activation = activation_slots[activation_head]
+            if activation is None:
+                raise RuntimeError("activation slot missing")
+            activation_slots[activation_head] = None
+            activation_head = (activation_head + 1) % warmup_steps
+            activation_count -= 1
             if rank < world_size - 1:
                 if recv_grad is None:
                     raise RuntimeError("recv grad buffer missing")
