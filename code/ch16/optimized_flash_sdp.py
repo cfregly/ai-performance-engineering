@@ -36,6 +36,7 @@ class FlashAttentionModule(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_heads = num_heads
         self.qkv = nn.Linear(hidden_dim, hidden_dim * 3, bias=False)
+        self._flash_backends = [SDPBackend.FLASH_ATTENTION]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, T, _ = x.shape
@@ -43,7 +44,7 @@ class FlashAttentionModule(nn.Module):
         qkv = qkv.view(B, T, 3, self.num_heads, self.hidden_dim // self.num_heads)
         qkv = qkv.permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
-        with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):
+        with sdpa_kernel(self._flash_backends):
             out = F.scaled_dot_product_attention(q, k, v, is_causal=False)
         out = out.transpose(1, 2).reshape(B, T, self.hidden_dim)
         return out
@@ -66,6 +67,8 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.output = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
         self.register_workload_metadata(
             requests_per_iteration=float(self.batch),
             tokens_per_iteration=float(tokens),
@@ -76,12 +79,15 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         # Optimized: Flash SDP with fused kernel
         self.model = FlashAttentionModule(hidden_dim=self.hidden, num_heads=8).to(
             self.device, dtype=torch.float16
         )
         self.inputs = torch.randn(self.batch, self.seq_len, self.hidden, device=self.device, dtype=torch.float16)
         self._verify_input = self.inputs.detach().clone()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         # Warmup
         with torch.inference_mode():
             for _ in range(3):
@@ -91,9 +97,7 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self.model is None or self.inputs is None:
             raise RuntimeError("Model not initialized")
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("flash_sdp_optimized", enable=enable_nvtx):
+        with nvtx_range("flash_sdp_optimized", enable=self._enable_nvtx):
             with torch.inference_mode():
                 self.output = self.model(self.inputs)
         if self._verify_input is None:
@@ -104,7 +108,7 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"input": self._verify_input},
             output=self.output.detach().clone(),
             batch_size=self._verify_input.shape[0],
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": True,
                 "bf16": False,

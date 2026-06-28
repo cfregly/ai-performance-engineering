@@ -1402,12 +1402,39 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
 
     for filename in ("baseline_flash_sdp.py", "optimized_flash_sdp.py"):
         flash_source = (REPO_ROOT / "ch16" / filename).read_text(encoding="utf-8")
+        flash_setup = flash_source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
         flash_benchmark = flash_source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        flash_capture = flash_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in flash_setup
+        assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in flash_setup
         assert "with torch.inference_mode():" in flash_benchmark
         assert "self.output = self.model(self.inputs)" in flash_benchmark
+        assert "get_config()" not in flash_benchmark
+        assert "get_nvtx_enabled(" not in flash_benchmark
+        assert "enable=self._enable_nvtx" in flash_benchmark
+        assert "sum(p.numel()" not in flash_benchmark
+        assert "parameter_count=self._payload_parameter_count" in flash_capture
+        assert "sum(p.numel()" not in flash_capture
+
+    optimized_flash_source = (REPO_ROOT / "ch16" / "optimized_flash_sdp.py").read_text(
+        encoding="utf-8"
+    )
+    flash_module_section = optimized_flash_source.split("class FlashAttentionModule", maxsplit=1)[1].split(
+        "class OptimizedFlashSDPBenchmark",
+        maxsplit=1,
+    )[0]
+    assert "self._flash_backends = [SDPBackend.FLASH_ATTENTION]" in flash_module_section
+    assert "with sdpa_kernel(self._flash_backends):" in flash_module_section
+    assert "with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):" not in flash_module_section
 
     baseline_flash_setup = (REPO_ROOT / "ch16" / "baseline_flash_sdp.py").read_text(
         encoding="utf-8"
