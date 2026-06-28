@@ -31,6 +31,7 @@ class HighConfidenceDecoder(nn.Module):
         self.proj_in = nn.Linear(hidden_dim, hidden_dim * 2, device=device, dtype=dtype)
         self.proj_out = nn.Linear(hidden_dim * 2, vocab_size, device=device, dtype=dtype)
         self.register_buffer("_target_boost", torch.tensor(16.0, device=device), persistent=False)
+        self._target_boost_views: dict[tuple[int, torch.device], torch.Tensor] = {}
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
         x = self.embed(input_ids)
@@ -39,7 +40,12 @@ class HighConfidenceDecoder(nn.Module):
         logits = self.proj_out(x).to(torch.float32)
         next_id = (input_ids[:, -1] + 1) % self.vocab_size
         logits.add_(-4.0)
-        logits.scatter_add_(1, next_id.unsqueeze(-1), self._target_boost.expand(next_id.size(0), 1))
+        boost_key = (int(next_id.size(0)), logits.device)
+        target_boost = self._target_boost_views.get(boost_key)
+        if target_boost is None:
+            target_boost = self._target_boost.expand(next_id.size(0), 1)
+            self._target_boost_views[boost_key] = target_boost
+        logits.scatter_add_(1, next_id.unsqueeze(-1), target_boost)
         return logits
 
 

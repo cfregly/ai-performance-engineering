@@ -20,12 +20,16 @@ from ch19.optimized_dynamic_precision import OptimizedDynamicPrecisionBenchmark
 
 
 def test_high_confidence_decoder_applies_target_bias_without_full_tensor() -> None:
+    class_source = inspect.getsource(HighConfidenceDecoder)
     source = inspect.getsource(HighConfidenceDecoder.forward)
 
     assert "torch.full_like" not in source
     assert "bias.scatter_" not in source
+    assert "self._target_boost_views: dict[tuple[int, torch.device], torch.Tensor] = {}" in class_source
     assert "logits.add_(-4.0)" in source
     assert "logits.scatter_add_(" in source
+    assert "target_boost = self._target_boost_views.get(boost_key)" in source
+    assert "self._target_boost_views[boost_key] = target_boost" in source
     assert "self._target_boost.expand(next_id.size(0), 1)" in source
 
     device = torch.device("cpu")
@@ -41,9 +45,14 @@ def test_high_confidence_decoder_applies_target_bias_without_full_tensor() -> No
         expected.add_(-4.0)
         expected[torch.arange(input_ids.size(0)), next_id] += 16.0
 
+        assert model._target_boost_views == {}
         actual = model(input_ids=input_ids)
+        cached_boost = model._target_boost_views[(input_ids.size(0), device)]
+        actual_again = model(input_ids=input_ids)
 
     torch.testing.assert_close(actual, expected)
+    torch.testing.assert_close(actual_again, expected)
+    assert model._target_boost_views[(input_ids.size(0), device)] is cached_boost
 
 
 def test_dynamic_precision_decode_matches_fixed_precision_on_cpu() -> None:
