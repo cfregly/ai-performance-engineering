@@ -16,6 +16,7 @@ code/cluster/results/structured/mcp_cluster_smoke_test*
 .venv/
 .pytest_cache/
 manuscript_diffs/
+.torch_inductor/
 .torch_extensions/
 update_log.md
 perf_review_findings.md

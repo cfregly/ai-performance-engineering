@@ -24,6 +24,8 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.target_model: Optional[TokenMLP] = None
         self.input_ids: Optional[torch.Tensor] = None
         self._output_ids: Optional[torch.Tensor] = None
+        self._output_step_views: list[torch.Tensor] = []
+        self._output_token_views: list[torch.Tensor] = []
         self._next_token_values: Optional[torch.Tensor] = None
         self._next_token_ids: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
@@ -53,6 +55,12 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
 
         self.input_ids = torch.randint(0, wl.vocab_size, (1, 1), device=self.device, dtype=torch.int64)
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
+        self._output_step_views = [
+            self._output_ids[:, token_idx : token_idx + 1] for token_idx in range(wl.total_tokens + 1)
+        ]
+        self._output_token_views = [
+            self._output_ids[:, token_idx] for token_idx in range(wl.total_tokens + 1)
+        ]
         self._next_token_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
         self._next_token_ids = torch.empty((1,), device=self.device, dtype=torch.long)
         self.output = None
@@ -65,18 +73,20 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             or self._output_ids is None
             or self._next_token_values is None
             or self._next_token_ids is None
+            or len(self._output_step_views) != self.workload.total_tokens + 1
+            or len(self._output_token_views) != self.workload.total_tokens + 1
         ):
             raise RuntimeError("Benchmark not initialized")
 
         wl = self.workload
         out = self._output_ids
-        out[:, 0] = self.input_ids[:, 0]
+        self._output_token_views[0].copy_(self.input_ids[:, 0])
 
         with torch.inference_mode():
             for t in range(wl.total_tokens):
-                logits = self.target_model(out[:, t : t + 1])
+                logits = self.target_model(self._output_step_views[t])
                 torch.max(logits[:, 0, :], dim=-1, out=(self._next_token_values, self._next_token_ids))
-                out[:, t + 1].copy_(self._next_token_ids)
+                self._output_token_views[t + 1].copy_(self._next_token_ids)
 
         self.output = out
 
@@ -96,6 +106,8 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.target_model = None
         self.input_ids = None
         self._output_ids = None
+        self._output_step_views = []
+        self._output_token_views = []
         self._next_token_values = None
         self._next_token_ids = None
         self.output = None

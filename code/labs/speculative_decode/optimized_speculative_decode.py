@@ -42,12 +42,17 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.draft_model: Optional[TokenMLP] = None
         self.input_ids: Optional[torch.Tensor] = None
         self._output_ids: Optional[torch.Tensor] = None
+        self._output_step_views: list[torch.Tensor] = []
+        self._output_token_views: list[torch.Tensor] = []
+        self._output_write_views: list[list[torch.Tensor]] = []
         self._draft_ids: Optional[torch.Tensor] = None
         self._verify_prev: Optional[torch.Tensor] = None
+        self._verify_prev_first: Optional[torch.Tensor] = None
         self._accept_prefix: Optional[torch.Tensor] = None
         self._accept_count: Optional[torch.Tensor] = None
         self._draft_next_values: Optional[torch.Tensor] = None
         self._draft_next_tokens: Optional[torch.Tensor] = None
+        self._draft_next_token_view: Optional[torch.Tensor] = None
         self._target_next_values: Optional[torch.Tensor] = None
         self._target_next_tokens: Optional[torch.Tensor] = None
         self._matches: Optional[torch.Tensor] = None
@@ -58,6 +63,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._target_logits_views: list[torch.Tensor] = []
         self._target_value_views: list[torch.Tensor] = []
         self._target_token_views: list[torch.Tensor] = []
+        self._target_token_column_views: list[torch.Tensor] = []
         self._match_views: list[torch.Tensor] = []
         self._draft_id_views: list[torch.Tensor] = []
         self._accept_prefix_views: list[torch.Tensor] = []
@@ -93,12 +99,27 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.input_ids = torch.randint(0, wl.vocab_size, (1, 1), device=self.device, dtype=torch.int64)
 
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
+        self._output_step_views = [
+            self._output_ids[:, token_idx : token_idx + 1] for token_idx in range(wl.total_tokens + 1)
+        ]
+        self._output_token_views = [
+            self._output_ids[:, token_idx] for token_idx in range(wl.total_tokens + 1)
+        ]
+        self._output_write_views = [
+            [
+                self._output_ids[:, start + 1 : start + length + 1]
+                for start in range(wl.total_tokens - length + 1)
+            ]
+            for length in range(1, wl.speculative_k + 1)
+        ]
         self._draft_ids = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
         self._verify_prev = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
+        self._verify_prev_first = self._verify_prev[:, 0]
         self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)
         self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)
         self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
         self._draft_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
+        self._draft_next_token_view = self._draft_next_tokens.view(1, 1)
         self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)
         self._target_next_tokens = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.long)
         self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)
@@ -109,6 +130,9 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._target_logits_views = [self._target_logits[:, :k] for k in range(1, wl.speculative_k + 1)]
         self._target_value_views = [self._target_next_values[:, :k] for k in range(1, wl.speculative_k + 1)]
         self._target_token_views = [self._target_next_tokens[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._target_token_column_views = [
+            self._target_next_tokens[:, token_idx] for token_idx in range(wl.speculative_k)
+        ]
         self._match_views = [self._matches[:, :k] for k in range(1, wl.speculative_k + 1)]
         self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]
         self._accept_prefix_views = [self._accept_prefix[:k] for k in range(1, wl.speculative_k + 1)]
@@ -124,22 +148,28 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             or self.draft_model is None
             or self.input_ids is None
             or self._output_ids is None
+            or self._verify_prev_first is None
             or self._draft_ids is None
             or self._verify_prev is None
             or self._accept_prefix is None
             or self._accept_count is None
             or self._draft_next_values is None
             or self._draft_next_tokens is None
+            or self._draft_next_token_view is None
             or self._target_next_values is None
             or self._target_next_tokens is None
             or self._matches is None
             or self._draft_logits is None
             or self._target_logits is None
+            or len(self._output_step_views) != self.workload.total_tokens + 1
+            or len(self._output_token_views) != self.workload.total_tokens + 1
+            or len(self._output_write_views) != self.workload.speculative_k
             or len(self._verify_prev_views) != self.workload.speculative_k
             or len(self._verify_prev_tail_views) != max(0, self.workload.speculative_k - 1)
             or len(self._target_logits_views) != self.workload.speculative_k
             or len(self._target_value_views) != self.workload.speculative_k
             or len(self._target_token_views) != self.workload.speculative_k
+            or len(self._target_token_column_views) != self.workload.speculative_k
             or len(self._match_views) != self.workload.speculative_k
             or len(self._draft_id_views) != self.workload.speculative_k
             or len(self._accept_prefix_views) != self.workload.speculative_k
@@ -148,7 +178,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
 
         wl = self.workload
         out = self._output_ids
-        out[:, 0] = self.input_ids[:, 0]
+        self._output_token_views[0].copy_(self.input_ids[:, 0])
 
         draft_tokens = 0
         accepted_draft = 0
@@ -162,18 +192,17 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 k = wl.speculative_k if remaining >= wl.speculative_k else remaining
 
                 # Draft: propose k tokens sequentially.
-                prev = out[:, pos : pos + 1]
+                prev = self._output_step_views[pos]
                 for j in range(k):
                     logits_d = self.draft_model.forward_into(prev, self._draft_logits)
                     torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))
                     self._draft_ids[:, j].copy_(self._draft_next_tokens)
-                    next_d = self._draft_next_tokens
-                    prev = next_d.view(1, 1)
+                    prev = self._draft_next_token_view
 
                 draft_tokens += int(k)
 
                 # Verify: compute target predictions for the k steps in one call.
-                self._verify_prev[:, 0] = out[:, pos]
+                self._verify_prev_first.copy_(self._output_token_views[pos])
                 if k > 1:
                     self._verify_prev_tail_views[k - 2].copy_(self._draft_id_views[k - 2])
 
@@ -195,14 +224,16 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 accept_k = int(self._accept_count.item())
 
                 if accept_k == k:
-                    out[:, pos + 1 : pos + k + 1] = draft_window
+                    self._output_write_views[view_idx][pos].copy_(draft_window)
                     accepted_draft += int(k)
                     pos += k
                 else:
                     if accept_k > 0:
-                        out[:, pos + 1 : pos + accept_k + 1] = self._draft_id_views[accept_k - 1]
+                        self._output_write_views[accept_k - 1][pos].copy_(self._draft_id_views[accept_k - 1])
                         accepted_draft += int(accept_k)
-                    out[:, pos + accept_k + 1] = target_next[:, accept_k]
+                    self._output_token_views[pos + accept_k + 1].copy_(
+                        self._target_token_column_views[accept_k]
+                    )
                     pos += accept_k + 1
 
         self.output = out
@@ -230,12 +261,17 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.draft_model = None
         self.input_ids = None
         self._output_ids = None
+        self._output_step_views = []
+        self._output_token_views = []
+        self._output_write_views = []
         self._draft_ids = None
         self._verify_prev = None
+        self._verify_prev_first = None
         self._accept_prefix = None
         self._accept_count = None
         self._draft_next_values = None
         self._draft_next_tokens = None
+        self._draft_next_token_view = None
         self._target_next_values = None
         self._target_next_tokens = None
         self._matches = None
@@ -246,6 +282,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._target_logits_views = []
         self._target_value_views = []
         self._target_token_views = []
+        self._target_token_column_views = []
         self._match_views = []
         self._draft_id_views = []
         self._accept_prefix_views = []
