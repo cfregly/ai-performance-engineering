@@ -22,10 +22,13 @@ def test_optimized_streams_compute_reuses_preallocated_result_buffers() -> None:
 
     assert "self._scratch0: Optional[torch.Tensor] = None" in source
     assert "self._scratch1: Optional[torch.Tensor] = None" in source
+    assert "self._scratch_pair: Optional[tuple[torch.Tensor, torch.Tensor]] = None" in source
     assert "self._chunk_triplets: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
     assert "self._scratch0 = torch.empty(self.N, dtype=torch.float32, device=self.device)" in source
     assert "self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)" in source
+    assert "self._scratch_pair = (self._scratch0, self._scratch1)" in source
     assert "self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))" in source
+    assert "with torch.inference_mode(), self._nvtx_range(\"streams_pipelined\"):" in benchmark_section
     assert "chunks = self._chunk_triplets" in benchmark_section
     assert "first_device.copy_(first_host, non_blocking=True)" in benchmark_section
     assert "for i, (_, device_chunk, result_chunk) in enumerate(chunks):" in benchmark_section
@@ -35,6 +38,8 @@ def test_optimized_streams_compute_reuses_preallocated_result_buffers() -> None:
     assert "self.host_data[i]" not in benchmark_section
     assert "self.results[i]" not in benchmark_section
     assert "self.results[i] = self._compute" not in benchmark_section
+    assert "scratch0, scratch1 = self._scratch_pair" in compute_section
+    assert ".view_as(data)" not in compute_section
     assert "torch.sin(result, out=scratch0)" in compute_section
     assert "torch.cos(result, out=scratch1)" in compute_section
     assert "torch.tanh(scratch0, out=out)" in compute_section
@@ -45,6 +50,7 @@ def test_optimized_streams_compute_reuses_preallocated_result_buffers() -> None:
     out = torch.empty_like(data)
     bench._scratch0 = torch.empty_like(data)
     bench._scratch1 = torch.empty_like(data)
+    bench._scratch_pair = (bench._scratch0, bench._scratch1)
 
     expected = data
     for _ in range(3):
@@ -70,10 +76,13 @@ def test_baseline_streams_compute_reuses_preallocated_result_buffers() -> None:
 
     assert "self._scratch0: Optional[torch.Tensor] = None" in source
     assert "self._scratch1: Optional[torch.Tensor] = None" in source
+    assert "self._scratch_pair: Optional[tuple[torch.Tensor, torch.Tensor]] = None" in source
     assert "self._chunk_triplets: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
     assert "self._scratch0 = torch.empty(self.N, dtype=torch.float32, device=self.device)" in source
     assert "self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)" in source
+    assert "self._scratch_pair = (self._scratch0, self._scratch1)" in source
     assert "self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))" in source
+    assert "with torch.inference_mode(), self._nvtx_range(\"baseline_streams_sequential\"):" in benchmark_section
     assert "for host_chunk, device_chunk, result_chunk in self._chunk_triplets:" in benchmark_section
     assert "device_chunk.copy_(host_chunk)" in benchmark_section
     assert "self._compute(device_chunk, result_chunk)" in benchmark_section
@@ -81,6 +90,8 @@ def test_baseline_streams_compute_reuses_preallocated_result_buffers() -> None:
     assert "self.host_data[i]" not in benchmark_section
     assert "self.results[i]" not in benchmark_section
     assert "self.results[i] = self._compute" not in benchmark_section
+    assert "scratch0, scratch1 = self._scratch_pair" in compute_section
+    assert ".view_as(data)" not in compute_section
     assert "torch.sin(result, out=scratch0)" in compute_section
     assert "torch.cos(result, out=scratch1)" in compute_section
     assert "torch.tanh(scratch0, out=out)" in compute_section
@@ -91,6 +102,7 @@ def test_baseline_streams_compute_reuses_preallocated_result_buffers() -> None:
     out = torch.empty_like(data)
     bench._scratch0 = torch.empty_like(data)
     bench._scratch1 = torch.empty_like(data)
+    bench._scratch_pair = (bench._scratch0, bench._scratch1)
 
     expected = data
     for _ in range(3):

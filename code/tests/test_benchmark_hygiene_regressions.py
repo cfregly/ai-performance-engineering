@@ -8062,18 +8062,32 @@ def test_ch13_optimized_kv_cache_variants_precompute_request_views() -> None:
 
         assert "self._request_ids: list[str] = []" in source
         assert "self._input_token_views: list[list[torch.Tensor]] = []" in source
+        assert "self._layer_groups: list[tuple[int, nn.Module]] = []" in source
         assert "self._request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
         assert "list(x.split(1, dim=1))" in setup_section
+        assert "self._layer_groups = list(enumerate(" in setup_section
         assert "if len(self._request_ids) != len(self.inputs):" in benchmark_section
         assert "if len(self._input_token_views) != len(self.inputs):" in benchmark_section
-        assert "for request_id, token_views in zip(self._request_ids, self._input_token_views):" in benchmark_section
         if filename == "optimized_kv_cache_naive.py":
-            assert "seq_len = len(token_views)" in benchmark_section
+            assert "self._request_token_groups: list[tuple[str, int, list[torch.Tensor]]] = []" in source
+            assert "(request_id, len(token_views), token_views)" in setup_section
+            assert "for request_id, seq_len, token_views in self._request_token_groups:" in benchmark_section
+            assert "seq_len = len(token_views)" not in benchmark_section
+        else:
+            assert "self._request_token_groups: list[tuple[str, list[torch.Tensor]]] = []" in source
+            assert "self._request_token_groups = list(zip(self._request_ids, self._input_token_views, strict=True))" in setup_section
+            assert "for request_id, token_views in self._request_token_groups:" in benchmark_section
         assert "for pos, token_view in enumerate(token_views):" in benchmark_section
+        assert "for layer_idx, layer in self._layer_groups:" in benchmark_section
+        assert "enumerate(self.layers)" not in benchmark_section
+        assert "enumerate(self.model)" not in benchmark_section
+        assert "zip(self._request_ids, self._input_token_views)" not in benchmark_section
         assert "x[:, pos:pos + 1, :]" not in benchmark_section
         assert "x[:, pos:pos+1, :]" not in benchmark_section
         assert "request_id = f\"req_{seq_idx}\"" not in benchmark_section
         assert "self._input_token_views = []" in teardown_section
+        assert "self._request_token_groups = []" in teardown_section
+        assert "self._layer_groups = []" in teardown_section
 
     source = (
         REPO_ROOT / "ch13" / "optimized_kv_cache_naive_flash_blockwise.py"
@@ -10127,7 +10141,10 @@ def test_ch10_tcgen05_baseline_epilogue_adds_bias_in_place() -> None:
     )[0]
 
     assert "C.add_(self.bias)" in benchmark_section
+    assert "F.silu(C, inplace=True)" in benchmark_section
+    assert "self.output.copy_(C)" in benchmark_section
     assert "C = C + self.bias" not in benchmark_section
+    assert "self.output = F.silu(C).to(dtype=torch.float16)" not in benchmark_section
 
 
 def test_ch10_tcgen05_warp_specialized_kernel_uses_direct_epilogue_copy() -> None:

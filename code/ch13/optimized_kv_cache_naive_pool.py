@@ -141,6 +141,8 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.inputs: Optional[list[torch.Tensor]] = None
         self._request_ids: list[str] = []
         self._input_token_views: list[list[torch.Tensor]] = []
+        self._request_token_groups: list[tuple[str, list[torch.Tensor]]] = []
+        self._layer_groups: list[tuple[int, nn.Module]] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
         self.workload = WORKLOAD
@@ -173,6 +175,7 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
                 for _ in range(self.num_layers)
             ]
         ).to(self.device).eval()
+        self._layer_groups = list(enumerate(self.model))
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.kv_cache = OptimizedKVCache(
@@ -194,6 +197,7 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
             list(x.split(1, dim=1))
             for x in self.inputs
         ]
+        self._request_token_groups = list(zip(self._request_ids, self._input_token_views, strict=True))
         if self.inputs:
             self._verify_input = self.inputs[0].detach().clone()
         
@@ -206,14 +210,18 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
             raise RuntimeError("Request IDs not initialized")
         if len(self._input_token_views) != len(self.inputs):
             raise RuntimeError("Input token views not initialized")
+        if len(self._request_token_groups) != len(self.inputs):
+            raise RuntimeError("Request token groups not initialized")
+        if not self._layer_groups:
+            raise RuntimeError("Layer groups not initialized")
 
         with self._nvtx_range("kv_cache_naive_pool"):
-            for request_id, token_views in zip(self._request_ids, self._input_token_views):
+            for request_id, token_views in self._request_token_groups:
                 self.kv_cache.allocate(request_id)
 
                 for pos, token_view in enumerate(token_views):
                     hidden = token_view
-                    for layer_idx, layer in enumerate(self.model):
+                    for layer_idx, layer in self._layer_groups:
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
                 self.kv_cache.free(request_id)
@@ -243,6 +251,8 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.inputs = None
         self._request_ids = []
         self._input_token_views = []
+        self._request_token_groups = []
+        self._layer_groups = []
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:

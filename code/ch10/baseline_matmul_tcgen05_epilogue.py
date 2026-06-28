@@ -57,12 +57,19 @@ class BaselineMatmulTCGen05EpilogueBenchmark(VerificationPayloadMixin, BaseBench
         self.B = torch.randn(self.N, self.K, device=self.device, dtype=torch.float16)
         # Match the tcgen05 fused epilogue: bias is promoted to FP32 before activation.
         self.bias = torch.randn(self.N, device=self.device, dtype=torch.float32)
+        self.output = torch.empty(self.M, self.N, device=self.device, dtype=torch.float16)
         self._synchronize()
 
     def benchmark_fn(self) -> None:
         if not self._tcgen05_available:
             raise RuntimeError(self._skip_reason)
-        assert self.A is not None and self.B is not None and self.bias is not None and self.module is not None
+        assert (
+            self.A is not None
+            and self.B is not None
+            and self.bias is not None
+            and self.output is not None
+            and self.module is not None
+        )
         with self._nvtx_range("baseline_matmul_tcgen05_bias_silu"):
             with torch.inference_mode():
                 # Use the same tcgen05 GEMM kernel as optimized; keep bias+SiLU separate.
@@ -70,7 +77,8 @@ class BaselineMatmulTCGen05EpilogueBenchmark(VerificationPayloadMixin, BaseBench
                 # Step 2: Add bias (separate kernel launch)
                 C.add_(self.bias)
                 # Step 3: SiLU activation (separate kernel launch)
-                self.output = F.silu(C).to(dtype=torch.float16)
+                F.silu(C, inplace=True)
+                self.output.copy_(C)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -92,6 +100,7 @@ class BaselineMatmulTCGen05EpilogueBenchmark(VerificationPayloadMixin, BaseBench
         self.A = None
         self.B = None
         self.bias = None
+        self.output = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

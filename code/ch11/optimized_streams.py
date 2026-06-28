@@ -45,6 +45,7 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.stream_compute: Optional[torch.cuda.Stream] = None
         self._scratch0: Optional[torch.Tensor] = None
         self._scratch1: Optional[torch.Tensor] = None
+        self._scratch_pair: Optional[tuple[torch.Tensor, torch.Tensor]] = None
         self._chunk_triplets: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self.N = 5_000_000  # Elements per chunk - balanced for H2D/compute overlap
         self.num_chunks = 20  # More chunks to amortize pipeline startup
@@ -84,6 +85,7 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._scratch0 = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)
+        self._scratch_pair = (self._scratch0, self._scratch1)
         self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))
         
         self._synchronize()
@@ -99,10 +101,9 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         Multiple trig operations to ensure compute time is meaningful
         relative to H2D transfer time for proper overlap demonstration.
         """
-        if self._scratch0 is None or self._scratch1 is None:
+        if self._scratch_pair is None:
             raise RuntimeError("setup() must initialize compute scratch buffers")
-        scratch0 = self._scratch0[: data.numel()].view_as(data)
-        scratch1 = self._scratch1[: data.numel()].view_as(data)
+        scratch0, scratch1 = self._scratch_pair
         result = data
         for _ in range(3):  # Multiple passes to increase compute time
             torch.sin(result, out=scratch0)
@@ -132,7 +133,7 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not self._chunk_triplets:
             raise RuntimeError("setup() must initialize chunk views")
         chunks = self._chunk_triplets
-        with self._nvtx_range("streams_pipelined"):
+        with torch.inference_mode(), self._nvtx_range("streams_pipelined"):
             # Stage 0: Kick off first transfer
             first_host, first_device, _ = chunks[0]
             with torch.cuda.stream(self.stream_h2d):
@@ -166,6 +167,7 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.stream_compute = None
         self._scratch0 = None
         self._scratch1 = None
+        self._scratch_pair = None
         self._chunk_triplets = []
         super().teardown()
     

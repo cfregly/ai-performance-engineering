@@ -32,6 +32,7 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.results: Optional[List[torch.Tensor]] = None
         self._scratch0: Optional[torch.Tensor] = None
         self._scratch1: Optional[torch.Tensor] = None
+        self._scratch_pair: Optional[tuple[torch.Tensor, torch.Tensor]] = None
         self._chunk_triplets: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self.N = 5_000_000  # Elements per chunk - balanced for H2D/compute overlap
         self.num_chunks = 20  # More chunks to amortize pipeline startup
@@ -67,6 +68,7 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._scratch0 = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)
+        self._scratch_pair = (self._scratch0, self._scratch1)
         self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))
         
         self._synchronize()
@@ -82,10 +84,9 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         Multiple trig operations to ensure compute time is meaningful
         relative to H2D transfer time for proper overlap demonstration.
         """
-        if self._scratch0 is None or self._scratch1 is None:
+        if self._scratch_pair is None:
             raise RuntimeError("setup() must initialize compute scratch buffers")
-        scratch0 = self._scratch0[: data.numel()].view_as(data)
-        scratch1 = self._scratch1[: data.numel()].view_as(data)
+        scratch0, scratch1 = self._scratch_pair
         result = data
         for _ in range(3):  # Multiple passes to increase compute time
             torch.sin(result, out=scratch0)
@@ -109,7 +110,7 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """
         if not self._chunk_triplets:
             raise RuntimeError("setup() must initialize chunk views")
-        with self._nvtx_range("baseline_streams_sequential"):
+        with torch.inference_mode(), self._nvtx_range("baseline_streams_sequential"):
             for host_chunk, device_chunk, result_chunk in self._chunk_triplets:
                 # Transfer data from host to device (blocking)
                 device_chunk.copy_(host_chunk)
@@ -124,6 +125,7 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.results = None
         self._scratch0 = None
         self._scratch1 = None
+        self._scratch_pair = None
         self._chunk_triplets = []
         super().teardown()
     
