@@ -7488,6 +7488,16 @@ def test_ch13_optimized_quantized_linears_add_bias_in_place() -> None:
             "class OptimizedFP8PerChannelBenchmark",
             "output.add_(self.bias)",
         ),
+        (
+            "fp8_perchannel_demo.py",
+            "# Update amax history",
+            "output.add_(self.bias)",
+        ),
+        (
+            "fp8_static_demo.py",
+            "output = output.to(original_dtype)",
+            "output.add_(self.bias)",
+        ),
     )
     for filename, end_marker, inplace_bias in cases:
         source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")

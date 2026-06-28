@@ -255,7 +255,7 @@ class StaticFP8Linear(nn.Module):
             output = self._dequantize(output_q, self.input_scale, self.weight_scale)
             
             if self.bias is not None:
-                output = output + self.bias
+                output.add_(self.bias)
                 
             output = output.to(original_dtype)
             

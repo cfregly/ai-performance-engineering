@@ -264,7 +264,7 @@ class FP8PerChannelLinear(nn.Module):
         
         # Add bias if present
         if self.bias is not None:
-            output = output + self.bias
+            output.add_(self.bias)
         
         # Update amax history for delayed scaling
         if self.training:
