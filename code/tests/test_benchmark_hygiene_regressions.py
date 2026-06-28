@@ -1258,6 +1258,20 @@ def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
         assert "torch.relu(" not in source
         assert "nn.ReLU()" not in source
 
+    for relative in (
+        "ch04/baseline_pipeline_parallel.py",
+        "ch04/optimized_pipeline_parallel_1f1b.py",
+        "ch04/baseline_pipeline_parallel_multigpu.py",
+        "ch04/optimized_pipeline_parallel_multigpu_1f1b.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        worker_section = source.split("def _run_worker", maxsplit=1)[1].split(
+            "def main",
+            maxsplit=1,
+        )[0]
+        assert "with torch.inference_mode():" in worker_section
+        assert "torch.no_grad()" not in worker_section
+
 
 def test_ch04_eval_reduction_and_disagg_paths_use_inference_mode() -> None:
     for relative in (

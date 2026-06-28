@@ -184,14 +184,15 @@ def _run_worker(
             # Mirror the forward-path sync to keep the baseline fully serialized.
             dist.barrier()
 
-    for _ in range(max(warmup, 0)):
-        _run_iteration()
-    torch.cuda.synchronize(device)
+    with torch.inference_mode():
+        for _ in range(max(warmup, 0)):
+            _run_iteration()
+        torch.cuda.synchronize(device)
 
-    start = time.perf_counter()
-    for _ in range(max(iters, 1)):
-        _run_iteration()
-    torch.cuda.synchronize(device)
+        start = time.perf_counter()
+        for _ in range(max(iters, 1)):
+            _run_iteration()
+        torch.cuda.synchronize(device)
     elapsed = time.perf_counter() - start
 
     if rank == 0:

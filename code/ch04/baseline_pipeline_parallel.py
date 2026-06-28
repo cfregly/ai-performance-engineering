@@ -219,14 +219,15 @@ def _run_worker(
             if rank > 0:
                 dist.send(grad, dst=rank - 1)
 
-    for _ in range(max(warmup, 0)):
-        _run_iteration()
-    torch.cuda.synchronize(device)
+    with torch.inference_mode():
+        for _ in range(max(warmup, 0)):
+            _run_iteration()
+        torch.cuda.synchronize(device)
 
-    start = time.perf_counter()
-    for _ in range(max(iters, 1)):
-        _run_iteration()
-    torch.cuda.synchronize(device)
+        start = time.perf_counter()
+        for _ in range(max(iters, 1)):
+            _run_iteration()
+        torch.cuda.synchronize(device)
     elapsed = time.perf_counter() - start
 
     if rank == 0:
