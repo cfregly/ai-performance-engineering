@@ -7239,6 +7239,16 @@ def test_ch16_ch19_quantized_linears_add_bias_in_place() -> None:
             "class OptimizedFP8CalibrationFree",
             "output.add_(self.bias)",
         ),
+        (
+            "ch19/native_fp4_quantization.py",
+            "class FP4MLP",
+            "output.add_(self.bias)",
+        ),
+        (
+            "ch19/optimized_fp4_weight_quantization.py",
+            "class OptimizedFP4MLP",
+            "output.add_(self.bias)",
+        ),
     )
     for path, end_marker, inplace_bias in cases:
         source = (REPO_ROOT / path).read_text(encoding="utf-8")

@@ -364,7 +364,7 @@ class FP4Linear(nn.Module):
         
         output = result.reshape(*batch_shape, -1)
         if self.bias is not None:
-            output = output + self.bias
+            output.add_(self.bias)
         return output
     
     @property
