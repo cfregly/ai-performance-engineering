@@ -2946,6 +2946,12 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "tokens.unsqueeze(1).expand" not in base_forward_section
     assert "output = self._scatter_output_for(tokens)" in base_forward_section
     assert "output = torch.empty_like(tokens" not in base_forward_section
+    assert "hidden = torch.bmm(flat_tokens.unsqueeze(1), w1).squeeze(1)" in base_forward_section
+    assert "hidden.add_(b1)" in base_forward_section
+    assert "expert_out = torch.bmm(hidden.unsqueeze(1), w2).squeeze(1)" in base_forward_section
+    assert "expert_out.add_(b2)" in base_forward_section
+    assert "torch.bmm(flat_tokens.unsqueeze(1), w1).squeeze(1) + b1" not in base_forward_section
+    assert "torch.bmm(hidden.unsqueeze(1), w2).squeeze(1) + b2" not in base_forward_section
     assert "expert_out.mul_(flat_probs)" in base_forward_section
     assert "weighted = expert_out * flat_probs" not in base_forward_section
     assert "return self._flat_token_indices_for(batch, tokens.device)" in source
