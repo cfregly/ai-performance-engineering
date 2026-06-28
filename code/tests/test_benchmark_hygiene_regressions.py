@@ -5059,6 +5059,21 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
     assert "is_calibrated, input_scale, weight_scale = torch.stack(" not in info_section
 
 
+def test_ch13_optimized_static_fp8_reuses_activation_quant_buffers() -> None:
+    source = (REPO_ROOT / "ch13" / "optimized_fp8_static.py").read_text(encoding="utf-8")
+    forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1].split(
+        "#============================================================================",
+        maxsplit=1,
+    )[0]
+
+    assert '"_input_scaled_buffer"' in source
+    assert '"_input_fp8_buffer"' in source
+    assert "def _activation_buffers(self, x_2d: torch.Tensor)" in source
+    assert "torch.div(x_2d, self.input_scale, out=input_scaled)" in forward_section
+    assert "x_fp8.copy_(input_scaled)" in forward_section
+    assert "(x_2d / self.input_scale).to(torch.float8_e4m3fn)" not in forward_section
+
+
 def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_loop() -> None:
     precision_targets = {
         "baseline_precisionmixed.py": "output=self.output.detach().clone()",

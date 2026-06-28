@@ -117,6 +117,16 @@ class StaticFP8Linear(nn.Module):
         self.register_buffer('weight_scale', torch.tensor(1.0, dtype=torch.float32, device=device))
         self.register_buffer('is_calibrated', torch.tensor(False))
         self.register_buffer('weight_fp8', torch.empty(0, device=device, dtype=torch.float8_e4m3fn))
+        self.register_buffer(
+            "_input_scaled_buffer",
+            torch.empty(0, device=device, dtype=dtype),
+            persistent=False,
+        )
+        self.register_buffer(
+            "_input_fp8_buffer",
+            torch.empty(0, device=device, dtype=torch.float8_e4m3fn),
+            persistent=False,
+        )
         
         self._calibrating = False
         self._input_stats = CalibrationStats()
@@ -148,6 +158,27 @@ class StaticFP8Linear(nn.Module):
         
         return {"input_scale": input_scale, "weight_scale": weight_scale,
                 "calibration_samples": self._input_stats.num_samples}
+
+    def _activation_buffers(self, x_2d: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        input_scaled = self._input_scaled_buffer
+        if (
+            input_scaled.shape != x_2d.shape
+            or input_scaled.device != x_2d.device
+            or input_scaled.dtype != x_2d.dtype
+        ):
+            input_scaled = torch.empty_like(x_2d)
+            self._input_scaled_buffer = input_scaled
+
+        input_fp8 = self._input_fp8_buffer
+        if input_fp8.shape != x_2d.shape or input_fp8.device != x_2d.device:
+            input_fp8 = torch.empty(
+                x_2d.shape,
+                device=x_2d.device,
+                dtype=torch.float8_e4m3fn,
+            )
+            self._input_fp8_buffer = input_fp8
+
+        return input_scaled, input_fp8
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         original_dtype = x.dtype
@@ -167,7 +198,9 @@ class StaticFP8Linear(nn.Module):
 
             batch_shape = x.shape[:-1]
             x_2d = x.reshape(-1, x.shape[-1])
-            x_fp8 = (x_2d / self.input_scale).to(torch.float8_e4m3fn)
+            input_scaled, x_fp8 = self._activation_buffers(x_2d)
+            torch.div(x_2d, self.input_scale, out=input_scaled)
+            x_fp8.copy_(input_scaled)
 
             output_2d = torch._scaled_mm(
                 x_fp8,
