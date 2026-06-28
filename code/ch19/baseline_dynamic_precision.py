@@ -23,6 +23,7 @@ class BaselineDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.model = None
         self.prompt = None
         self.output: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.batch_size),
             tokens_per_iteration=float(self.cfg.batch_size * self.cfg.max_steps),
@@ -33,6 +34,7 @@ class BaselineDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark)
             raise RuntimeError("SKIPPED: dynamic_precision requires CUDA")
         self.prompt = build_prompt(self.cfg, self.device)
         self.model = build_model(self.cfg, self.device, dtype=torch.float32)
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.prompt is None:
@@ -51,7 +53,7 @@ class BaselineDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark)
             inputs={"prompt": self.prompt.detach().cpu()},
             output=self.output.detach().cpu(),
             batch_size=self.cfg.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": True,

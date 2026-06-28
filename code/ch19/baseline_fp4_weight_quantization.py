@@ -269,6 +269,7 @@ class BaselineFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBench
         self.d_ff = 8192
         
         self.input: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -300,6 +301,7 @@ class BaselineFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBench
         # Quantize weights to FP4
         self.model.quantize()
         self.model.eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.input = torch.randn(
             self.batch_size, self.seq_len, self.d_model,
@@ -329,7 +331,7 @@ class BaselineFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBench
             inputs={"input": self.input},
             output=self.output.float(),
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(0.5, 5.0),
             precision_flags={
                 "fp16": dtype == torch.float16,

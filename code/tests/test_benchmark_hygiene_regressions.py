@@ -1733,6 +1733,29 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "compute_entropy(low_conf_logits).item()" not in demo_entropy_section
 
 
+def test_ch19_dynamic_precision_benchmarks_cache_parameter_count() -> None:
+    for filename in (
+        "baseline_dynamic_precision.py",
+        "optimized_dynamic_precision.py",
+    ):
+        source = (REPO_ROOT / "ch19" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def get_workload_metadata",
+            maxsplit=1,
+        )[0]
+
+        assert "self._payload_parameter_count = 0" in source
+        assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "sum(p.numel()" not in capture_section
+
+
 def test_ch19_native_fp4_batches_accuracy_metric_reads() -> None:
     source = (REPO_ROOT / "ch19" / "native_fp4_quantization.py").read_text(
         encoding="utf-8"
@@ -1893,6 +1916,29 @@ def test_ch19_fp4_weight_quantization_uses_inference_mode() -> None:
     assert "with torch.no_grad():" not in benchmark_section
     assert "with torch.inference_mode():" in validate_section
     assert "with torch.no_grad():" not in validate_section
+
+
+def test_ch19_fp4_weight_quantization_caches_parameter_count() -> None:
+    for filename in (
+        "baseline_fp4_weight_quantization.py",
+        "optimized_fp4_weight_quantization.py",
+    ):
+        source = (REPO_ROOT / "ch19" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+
+        assert "self._payload_parameter_count = 0" in source
+        assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "sum(p.numel()" not in capture_section
 
 
 def test_ch19_optimized_fp4_fp8_bridge_reuses_activation_and_scale_buffers() -> None:

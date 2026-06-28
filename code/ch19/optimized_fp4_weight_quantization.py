@@ -400,6 +400,7 @@ class OptimizedFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBenc
         self.mode = "storage"
         
         self.input: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -435,6 +436,7 @@ class OptimizedFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBenc
         # inference rather than cached FP16 execution.
         self.model.quantize()
         self.model.eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.input = torch.randn(
             self.batch_size, self.seq_len, self.d_model,
@@ -471,7 +473,7 @@ class OptimizedFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBenc
             inputs={"input": self.input},
             output=self.output.float() if self.output is not None else None,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0,
+            parameter_count=self._payload_parameter_count,
             output_tolerance=(1.0, 10.0),
             precision_flags=precision_flags,
         )
