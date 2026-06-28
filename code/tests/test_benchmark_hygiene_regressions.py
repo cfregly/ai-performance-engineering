@@ -7454,6 +7454,9 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._draft_block_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
+    assert "self._greedy_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._draft_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._target_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "time.perf_counter" not in benchmark_section
@@ -7464,6 +7467,8 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "torch.arange(k" not in seed_section
     assert "torch.add(prev.expand(-1, k), head_offsets, out=seed_tokens)" in seed_section
     assert "seed_tokens.remainder_(self.workload.vocab_size)" in seed_section
+    assert "self.draft_model.forward_into(draft_seed, self._draft_logits[:, :k])" in benchmark_section
+    assert "self.target_model.forward_into(self._verify_prev[:, :k], self._target_logits[:, :k])" in benchmark_section
     assert "torch.max(logits_d, dim=-1, out=(draft_values, draft_block))" in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
     assert "torch.eq(target_next, self._draft_ids[:, :k], out=matches)" in benchmark_section
@@ -7618,6 +7623,11 @@ def test_ch15_speculative_decode_common_uses_inference_mode_for_setup_mutations(
         encoding="utf-8"
     )
 
+    assert "def forward_into(self, token_ids: torch.Tensor, logits_out: torch.Tensor)" in source
+    assert "torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)" in source
+    assert "torch.matmul(current, module.weight.t(), out=alternate)" in source
+    assert "F.gelu(current, approximate=\"tanh\", out=current)" in source
+    assert "torch.matmul(current, self.out.weight.t(), out=flat_logits)" in source
     assert source.count("with torch.inference_mode():") >= 2
     assert "with torch.no_grad():" not in source
 
