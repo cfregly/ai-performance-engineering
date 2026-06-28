@@ -8014,13 +8014,19 @@ def test_continuous_batching_reuses_state_buffers() -> None:
     )[0]
 
     assert "self.state_buffers: List[torch.Tensor] = []" in source
+    assert "self.dynamic_batch_buffers: List[torch.Tensor] = []" in source
     assert "self.group_ranges: List[List[tuple[int, int]]] = []" in source
     assert "self.group_active_masks: List[List[torch.Tensor]] = []" in source
     assert "self.state_buffers.append(torch.empty_like(samples))" in setup_section
+    assert "self.dynamic_batch_buffers.append(" in setup_section
     assert "self.outputs = list(self.state_buffers)" in setup_section
     assert "state = samples.clone()" not in benchmark_section
     assert "state = self.state_buffers[idx]" in benchmark_section
+    assert "dynamic_batch_buffer = self.dynamic_batch_buffers[idx]" in benchmark_section
     assert "state.copy_(samples)" in benchmark_section
+    assert "batch_state = dynamic_batch_buffer[: active_idx.numel()]" in benchmark_section
+    assert "torch.index_select(state, 0, active_idx, out=batch_state)" in benchmark_section
+    assert "batch_state = state.index_select(0, active_idx)" not in benchmark_section
     assert "group_state = state[group_start:group_end]" in benchmark_section
     assert "torch.where(" in benchmark_section
     assert "out=group_state" in benchmark_section

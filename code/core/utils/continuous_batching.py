@@ -44,6 +44,7 @@ class ContinuousBatchingBase(BaseBenchmark):
         self.models: List[nn.Module] = []
         self.samples: List[torch.Tensor] = []
         self.state_buffers: List[torch.Tensor] = []
+        self.dynamic_batch_buffers: List[torch.Tensor] = []
         self.lengths: List[List[int]] = []
         self.lengths_tensor: List[torch.Tensor] = []
         self.group_indices: List[List[torch.Tensor]] = []
@@ -105,6 +106,7 @@ class ContinuousBatchingBase(BaseBenchmark):
         self.models = []
         self.samples = []
         self.state_buffers = []
+        self.dynamic_batch_buffers = []
         self.lengths = []
         self.lengths_tensor = []
         self.group_indices = []
@@ -133,6 +135,14 @@ class ContinuousBatchingBase(BaseBenchmark):
             )
             self.samples.append(samples)
             self.state_buffers.append(torch.empty_like(samples))
+            self.dynamic_batch_buffers.append(
+                torch.empty(
+                    self.max_batch_size,
+                    self.hidden_dim,
+                    device=device,
+                    dtype=self.dtype,
+                )
+            )
 
             rng = random.Random(123 + device_id)
             lengths = [
@@ -202,6 +212,7 @@ class ContinuousBatchingBase(BaseBenchmark):
                     model = self.models[idx]
                     samples = self.samples[idx]
                     state = self.state_buffers[idx]
+                    dynamic_batch_buffer = self.dynamic_batch_buffers[idx]
                     schedule = self.schedules[idx]
                     group_ranges = self.group_ranges[idx]
                     group_max_steps = self.group_max_steps[idx]
@@ -210,7 +221,8 @@ class ContinuousBatchingBase(BaseBenchmark):
                         state.copy_(samples)
                         if self.dynamic:
                             for active_idx in schedule:
-                                batch_state = state.index_select(0, active_idx)
+                                batch_state = dynamic_batch_buffer[: active_idx.numel()]
+                                torch.index_select(state, 0, active_idx, out=batch_state)
                                 y = model(batch_state)
                                 state.index_copy_(0, active_idx, y)
                         else:
@@ -263,6 +275,7 @@ class ContinuousBatchingBase(BaseBenchmark):
         self.models = []
         self.samples = []
         self.state_buffers = []
+        self.dynamic_batch_buffers = []
         self.lengths = []
         self.lengths_tensor = []
         self.group_indices = []
