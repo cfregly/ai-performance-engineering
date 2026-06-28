@@ -28,6 +28,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._output_token_views: list[torch.Tensor] = []
         self._next_token_values: Optional[torch.Tensor] = None
         self._next_token_ids: Optional[torch.Tensor] = None
+        self._target_logits: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
@@ -63,6 +64,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         ]
         self._next_token_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
         self._next_token_ids = torch.empty((1,), device=self.device, dtype=torch.long)
+        self._target_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)
         self.output = None
         self._synchronize()
 
@@ -73,6 +75,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             or self._output_ids is None
             or self._next_token_values is None
             or self._next_token_ids is None
+            or self._target_logits is None
             or len(self._output_step_views) != self.workload.total_tokens + 1
             or len(self._output_token_views) != self.workload.total_tokens + 1
         ):
@@ -84,7 +87,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
 
         with torch.inference_mode():
             for t in range(wl.total_tokens):
-                logits = self.target_model(self._output_step_views[t])
+                logits = self.target_model.forward_into(self._output_step_views[t], self._target_logits)
                 torch.max(logits[:, 0, :], dim=-1, out=(self._next_token_values, self._next_token_ids))
                 self._output_token_views[t + 1].copy_(self._next_token_ids)
 
@@ -110,6 +113,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._output_token_views = []
         self._next_token_values = None
         self._next_token_ids = None
+        self._target_logits = None
         self.output = None
         torch.cuda.empty_cache()
 

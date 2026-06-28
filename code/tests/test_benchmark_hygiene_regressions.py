@@ -8894,11 +8894,13 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
 
     assert "self._next_token_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._next_token_ids = torch.empty((1,), device=self.device, dtype=torch.long)" in setup_section
+    assert "self._target_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._output_step_views = [" in setup_section
     assert "self._output_token_views = [" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
-    assert "logits = self.target_model(self._output_step_views[t])" in benchmark_section
+    assert "logits = self.target_model.forward_into(self._output_step_views[t], self._target_logits)" in benchmark_section
+    assert "logits = self.target_model(self._output_step_views[t])" not in benchmark_section
     assert "self._output_token_views[t + 1].copy_(self._next_token_ids)" in benchmark_section
     assert "out[:, t : t + 1]" not in benchmark_section
     assert "out[:, t + 1]" not in benchmark_section
@@ -8906,6 +8908,7 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     assert ".argmax(" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
+    assert "self._target_logits = None" in source
 
 
 def test_ch15_speculative_decode_common_uses_inference_mode_for_setup_mutations() -> None:
