@@ -7,7 +7,7 @@ GPU over NVLink; updated weights are multicast back.
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -27,6 +27,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self.momentum: List[torch.Tensor] = []
         self.grad_root_buffers: List[torch.Tensor] = []
         self.inputs: List[torch.Tensor] = []
+        self._update_groups: List[Tuple[nn.Linear, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self.batch_size = 8
         self.hidden = 512
         self.root_device = torch.device("cuda:0")
@@ -69,6 +70,9 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
             self.momentum.append(master_m)
             self.grad_root_buffers.append(torch.empty_like(master_w, device=self.root_device))
             self.inputs.append(torch.randn(self.batch_size, self.hidden, device=device, dtype=torch.float32))
+        self._update_groups = list(
+            zip(self.models, self.master_weights, self.momentum, self.grad_root_buffers, self.inputs, strict=True)
+        )
         self._payload_parameter_count = sum(p.numel() for model in self.models for p in model.parameters())
         self._synchronize()
 
@@ -80,14 +84,10 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
             == len(self.grad_root_buffers)
             == len(self.inputs)
         )
+        if not self._update_groups:
+            raise RuntimeError("setup() must initialize optimizer update groups")
         with self._nvtx_range("optimized_optimizer_central_nvlink"):
-            for model, master_w, mom, grad_root_buf, x in zip(
-                self.models,
-                self.master_weights,
-                self.momentum,
-                self.grad_root_buffers,
-                self.inputs,
-            ):
+            for model, master_w, mom, grad_root_buf, x in self._update_groups:
                 y = model(x)
                 loss = y.pow(2).mean()
                 loss.backward()
@@ -135,6 +135,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self.momentum.clear()
         self.grad_root_buffers.clear()
         self.inputs.clear()
+        self._update_groups = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

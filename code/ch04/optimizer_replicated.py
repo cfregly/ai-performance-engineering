@@ -7,7 +7,7 @@ which inflates memory and increases communication later.
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -25,6 +25,7 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
         self.models: List[nn.Linear] = []
         self.momentum: List[torch.Tensor] = []
         self.inputs: List[torch.Tensor] = []
+        self._update_groups: List[Tuple[nn.Linear, torch.Tensor, torch.Tensor]] = []
         self.batch_size = 8
         self.hidden = 512
         self._payload_parameter_count = 0
@@ -46,13 +47,16 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
             self.models.append(model)
             self.momentum.append(buf)
             self.inputs.append(torch.randn(self.batch_size, self.hidden, device=device, dtype=torch.float32))
+        self._update_groups = list(zip(self.models, self.momentum, self.inputs, strict=True))
         self._payload_parameter_count = sum(p.numel() for model in self.models for p in model.parameters())
         self._synchronize()
 
     def benchmark_fn(self) -> None:
         assert len(self.models) == len(self.momentum) == len(self.inputs)
+        if not self._update_groups:
+            raise RuntimeError("setup() must initialize optimizer update groups")
         with self._nvtx_range("baseline_optimizer_replicated"):
-            for model, mom, x in zip(self.models, self.momentum, self.inputs):
+            for model, mom, x in self._update_groups:
                 y = model(x)
                 loss = y.pow(2).mean()
                 loss.backward()
@@ -87,6 +91,7 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
         self.models.clear()
         self.momentum.clear()
         self.inputs.clear()
+        self._update_groups = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -124,4 +129,3 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineOptimizerReplicatedBenchmark()
-

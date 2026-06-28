@@ -394,6 +394,43 @@ def test_ch04_optimizer_central_nvlink_uses_direct_copy_staging() -> None:
     assert "model.weight.data.copy_(master_w, non_blocking=True)" in benchmark_section
 
 
+def test_ch04_optimizer_variants_reuse_update_groups() -> None:
+    for relative, group_type, setup_zip, loop in (
+        (
+            "ch04/optimizer_replicated.py",
+            "self._update_groups: List[Tuple[nn.Linear, torch.Tensor, torch.Tensor]] = []",
+            "self._update_groups = list(zip(self.models, self.momentum, self.inputs, strict=True))",
+            "for model, mom, x in self._update_groups:",
+        ),
+        (
+            "ch04/optimizer_central_nvlink.py",
+            "self._update_groups: List[Tuple[nn.Linear, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []",
+            "zip(self.models, self.master_weights, self.momentum, self.grad_root_buffers, self.inputs, strict=True)",
+            "for model, master_w, mom, grad_root_buf, x in self._update_groups:",
+        ),
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert group_type in source
+        assert setup_zip in setup_section
+        assert loop in benchmark_section
+        assert "zip(" not in benchmark_section
+        assert "setup() must initialize optimizer update groups" in benchmark_section
+        assert "self._update_groups = []" in teardown_section
+
+
 def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     naive_source = (REPO_ROOT / "ch04" / "ddp_nvlink_naive.py").read_text(encoding="utf-8")
     source = (REPO_ROOT / "ch04" / "ddp_nvlink_overlap.py").read_text(encoding="utf-8")
