@@ -1530,6 +1530,37 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert "module.weight.data = quantized_weights" not in quantization_manager
 
 
+def test_ch16_runtime_schedulers_cache_nvtx_and_verification_dummy() -> None:
+    for filename, label in (
+        ("baseline_runtime_scheduler.py", "runtime_scheduler_baseline"),
+        ("optimized_runtime_scheduler.py", "runtime_scheduler_optimized"),
+    ):
+        source = (REPO_ROOT / "ch16" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _run_scenario",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def get_custom_metrics",
+            maxsplit=1,
+        )[0]
+
+        assert "self._enable_nvtx = False" in source
+        assert "self._verification_dummy: Optional[torch.Tensor] = None" in source
+        assert 'config = getattr(self, "_config", None) or self.get_config()' in setup_section
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+        assert "self._verification_dummy = torch.zeros(1, device=self.device)" in setup_section
+        assert f'with nvtx_range("{label}", enable=self._enable_nvtx):' in benchmark_section
+        assert "get_config()" not in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert 'inputs={"dummy": self._verification_dummy}' in capture_section
+        assert "torch.zeros(1, device=self.device)" not in capture_section
+
+
 def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
     source = (REPO_ROOT / "ch19" / "token_precision_switching.py").read_text(
         encoding="utf-8"

@@ -27,6 +27,8 @@ class OptimizedRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.workload: Optional[RuntimeSchedulerWorkload] = None
         self.scenarios: Tuple[SchedulerScenario, ...] = ()
         self._custom_metrics: Dict[str, float] = {}
+        self._enable_nvtx = False
+        self._verification_dummy: Optional[torch.Tensor] = None
 
         self.scenarios = (
             SchedulerScenario(
@@ -62,6 +64,9 @@ class OptimizedRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark
             torch.cuda.manual_seed_all(42)
         torch.set_num_threads(1)
         self.workload = RuntimeSchedulerWorkload(self.device, self.scenarios)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
+        self._verification_dummy = torch.zeros(1, device=self.device)
         if torch.cuda.is_available():
             torch.cuda.synchronize(self.device)
 
@@ -93,19 +98,17 @@ class OptimizedRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark
         return elapsed
 
     def benchmark_fn(self) -> None:
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("runtime_scheduler_optimized", enable=enable_nvtx):
+        with nvtx_range("runtime_scheduler_optimized", enable=self._enable_nvtx):
             for scenario in self.scenarios:
                 self._run_scenario_async(scenario)
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.output is None:
+        if self.output is None or self._verification_dummy is None:
             raise RuntimeError("benchmark_fn() did not produce output")
         self._set_verification_payload(
-            inputs={"dummy": torch.zeros(1, device=self.device)},
+            inputs={"dummy": self._verification_dummy},
             output=self.output.detach().clone(),
             batch_size=1,
             parameter_count=0,
