@@ -203,6 +203,84 @@ def test_naive_moe_path_seeds_output_from_first_route() -> None:
     assert "mask.any()" not in naive_section
 
 
+def test_moe_expert_paths_weight_outputs_in_place_when_grad_disabled() -> None:
+    source = Path(__file__).resolve().parents[1] / "labs" / "moe_optimization_journey" / "moe_model.py"
+    text = source.read_text(encoding="utf-8")
+
+    assert "def _weight_routes_in_place_if_safe" in text
+    assert "if torch.is_grad_enabled() and out.requires_grad:" in text
+    assert "return out * weights" in text
+    assert "out.mul_(weights)" in text
+
+    naive_section = text.split("def forward_naive", maxsplit=1)[1].split(
+        "def forward_batched",
+        maxsplit=1,
+    )[0]
+    batched_section = text.split("def forward_batched", maxsplit=1)[1].split(
+        "def forward_fused",
+        maxsplit=1,
+    )[0]
+    fused_section = text.split("def forward_fused", maxsplit=1)[1].split(
+        "def forward_mem_efficient",
+        maxsplit=1,
+    )[0]
+    mem_section = text.split("def forward_mem_efficient", maxsplit=1)[1].split(
+        "def forward_grouped",
+        maxsplit=1,
+    )[0]
+    grouped_section = text.split("def forward_grouped", maxsplit=1)[1].split(
+        "def forward_bmm_fused",
+        maxsplit=1,
+    )[0]
+    graphable_section = text.split("def _forward_bmm_fused_graphable", maxsplit=1)[1].split(
+        "def forward_cuda_graphs",
+        maxsplit=1,
+    )[0]
+
+    assert "weighted_output = _weight_routes_in_place_if_safe(expert_output, weights)" in naive_section
+    for section in (batched_section, fused_section, mem_section):
+        assert "out = _weight_routes_in_place_if_safe(out, expert_weights.unsqueeze(-1))" in section
+        assert "(out * expert_weights.unsqueeze(-1)).sum(dim=1)" not in section
+    assert "weighted_out = _weight_routes_in_place_if_safe(expert_out, weights_e)" in grouped_section
+    assert "expert_out * weights_e" not in grouped_section
+    assert "out = _weight_routes_in_place_if_safe(out, expert_mask.unsqueeze(-1))" in graphable_section
+    assert "out = _weight_routes_in_place_if_safe(out, flat_weights)" in graphable_section
+    assert "out = out * expert_mask.unsqueeze(-1) * flat_weights" not in graphable_section
+
+
+def test_moe_inplace_weighted_paths_match_naive_reference() -> None:
+    torch.manual_seed(0)
+    opts = MoEOptimizations(
+        use_batched=True,
+        use_fused=True,
+        use_mem_efficient=True,
+        use_grouped=True,
+        use_bmm_fused=True,
+        use_cuda_graphs=True,
+    )
+    experts = MoEExperts(num_experts=3, hidden_size=4, intermediate_size=8, opts=opts)
+    x = torch.randn(5, 4)
+    expert_indices = torch.tensor(
+        [[0, 1], [2, 0], [1, 2], [0, 2], [1, 0]],
+        dtype=torch.long,
+    )
+    expert_weights = torch.tensor(
+        [[0.7, 0.3], [0.4, 0.6], [0.5, 0.5], [0.8, 0.2], [0.25, 0.75]],
+        dtype=torch.float32,
+    )
+
+    with torch.inference_mode():
+        expected = experts.forward_naive(x, expert_indices, expert_weights, num_experts_per_tok=2)
+        actuals = (
+            experts.forward_batched(x, expert_indices, expert_weights),
+            experts.forward_grouped(x, expert_indices, expert_weights),
+            experts._forward_bmm_fused_graphable(x, expert_indices, expert_weights),
+        )
+
+    for actual in actuals:
+        torch.testing.assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+
+
 def test_graphable_moe_path_matches_level5_bmm_fused_outputs() -> None:
     experts = _make_experts(use_cuda_graphs=True)
     x = torch.randn(3, 4)

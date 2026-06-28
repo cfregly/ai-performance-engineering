@@ -44,6 +44,13 @@ def _flat_topk_token_ids(num_tokens: int, top_k: int, device: torch.device) -> t
     return token_ids
 
 
+def _weight_routes_in_place_if_safe(out: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    if torch.is_grad_enabled() and out.requires_grad:
+        return out * weights
+    out.mul_(weights)
+    return out
+
+
 @dataclass
 class MoEOptimizations:
     """Optimization flags for MoE model."""
@@ -258,7 +265,7 @@ class MoEExperts(nn.Module):
                 up = expert['w3'](expert_input)
                 expert_output = expert['w2'](gate * up)
                 weights = expert_weights[token_ids, k].unsqueeze(-1)
-                weighted_output = weights * expert_output
+                weighted_output = _weight_routes_in_place_if_safe(expert_output, weights)
                 if k == 0:
                     output[token_ids] = weighted_output
                 else:
@@ -300,7 +307,8 @@ class MoEExperts(nn.Module):
         out = torch.bmm(hidden.unsqueeze(1), w2_flat).squeeze(1)
         out = out.view(batch_seq, top_k, self.hidden_size)
 
-        return (out * expert_weights.unsqueeze(-1)).sum(dim=1)
+        out = _weight_routes_in_place_if_safe(out, expert_weights.unsqueeze(-1))
+        return out.sum(dim=1)
     
     def forward_fused(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
@@ -330,7 +338,8 @@ class MoEExperts(nn.Module):
         hidden = fused_silu_mul(gate, up)
         
         out = torch.einsum('bki,bkih->bkh', hidden, w2_sel)
-        return (out * expert_weights.unsqueeze(-1)).sum(dim=1)
+        out = _weight_routes_in_place_if_safe(out, expert_weights.unsqueeze(-1))
+        return out.sum(dim=1)
     
     def forward_mem_efficient(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
@@ -369,7 +378,8 @@ class MoEExperts(nn.Module):
         out = torch.bmm(hidden.unsqueeze(1), w2_sel).squeeze(1)
         out = out.view(batch_seq, top_k, -1)
         
-        return (out * expert_weights.unsqueeze(-1)).sum(dim=1)
+        out = _weight_routes_in_place_if_safe(out, expert_weights.unsqueeze(-1))
+        return out.sum(dim=1)
     
     def forward_grouped(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
@@ -430,7 +440,8 @@ class MoEExperts(nn.Module):
             up = tokens_e @ self.w3_stacked[expert_id]
             expert_out = (gate * up) @ self.w2_stacked[expert_id]
             
-            output[offset:offset+count] = expert_out * weights_e
+            weighted_out = _weight_routes_in_place_if_safe(expert_out, weights_e)
+            output[offset:offset+count] = weighted_out
             offset += count
         
         # Restore order
@@ -632,7 +643,8 @@ class MoEExperts(nn.Module):
         up = torch.bmm(padded_tokens, self.w3_stacked)
         hidden = gate * up
         out = torch.bmm(hidden, self.w2_stacked)
-        out = out * expert_mask.unsqueeze(-1) * flat_weights
+        out = _weight_routes_in_place_if_safe(out, expert_mask.unsqueeze(-1))
+        out = _weight_routes_in_place_if_safe(out, flat_weights)
 
         combined = out.sum(dim=0)
         restored = combined.view(batch_seq, top_k, self.hidden_size)
