@@ -109,9 +109,35 @@ class SlidingWindowCausalAttention(nn.Module):
         
         self.qkv_proj = nn.Linear(embed_dim, 3 * embed_dim, bias=False)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        self._qkv_buffer: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         
         self._compiled_flex = torch.compile(flex_attention) if HAS_FLEX_ATTENTION else None
         self._block_mask_cache = {}
+
+    def _ensure_projection_buffers(
+        self,
+        x: torch.Tensor,
+        batch_size: int,
+        seq_len: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        qkv_shape = (batch_size, seq_len, 3 * self.embed_dim)
+        output_shape = (batch_size, seq_len, self.embed_dim)
+        if (
+            self._qkv_buffer is None
+            or self._qkv_buffer.shape != qkv_shape
+            or self._qkv_buffer.device != x.device
+            or self._qkv_buffer.dtype != x.dtype
+        ):
+            self._qkv_buffer = torch.empty(qkv_shape, device=x.device, dtype=x.dtype)
+        if (
+            self._output_buffer is None
+            or self._output_buffer.shape != output_shape
+            or self._output_buffer.device != x.device
+            or self._output_buffer.dtype != x.dtype
+        ):
+            self._output_buffer = torch.empty(output_shape, device=x.device, dtype=x.dtype)
+        return self._qkv_buffer, self._output_buffer
     
     def _get_block_mask(self, batch_size: int, seq_len: int, device: torch.device):
         """Get or create cached block mask."""
@@ -136,7 +162,12 @@ class SlidingWindowCausalAttention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len, _ = x.shape
         
-        qkv = self.qkv_proj(x)
+        if torch.is_grad_enabled():
+            qkv = self.qkv_proj(x)
+            output_buffer = None
+        else:
+            qkv_buffer, output_buffer = self._ensure_projection_buffers(x, batch_size, seq_len)
+            qkv = torch.matmul(x, self.qkv_proj.weight.t(), out=qkv_buffer)
         qkv = qkv.view(batch_size, seq_len, 3, self.num_heads, self.head_dim)
         qkv = qkv.permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
@@ -156,6 +187,8 @@ class SlidingWindowCausalAttention(nn.Module):
             ) from exc
         
         output = output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.embed_dim)
+        if output_buffer is not None:
+            return torch.matmul(output, self.out_proj.weight.t(), out=output_buffer)
         return self.out_proj(output)
 
 

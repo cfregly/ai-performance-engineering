@@ -1030,6 +1030,28 @@ def test_ch14_benchmarks_do_not_force_output_sum_syncs() -> None:
         assert "float(self.output.detach().sum())" not in benchmark_section
 
 
+def test_ch14_optimized_attention_modules_reuse_projection_buffers() -> None:
+    for filename in (
+        "optimized_sliding_window.py",
+        "optimized_flex_attention_sparse.py",
+    ):
+        source = (REPO_ROOT / "ch14" / filename).read_text(encoding="utf-8")
+        forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1].split(
+            "\n\nclass ",
+            maxsplit=1,
+        )[0]
+
+        assert "self._qkv_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+        assert "def _ensure_projection_buffers(" in source
+        assert "if torch.is_grad_enabled():" in forward_section
+        assert "qkv = torch.matmul(x, self.qkv_proj.weight.t(), out=qkv_buffer)" in forward_section
+        assert (
+            "return torch.matmul(output, self.out_proj.weight.t(), out=output_buffer)"
+            in forward_section
+        )
+
+
 def test_ch14_triton_persistent_demo_batches_correctness_error_reads() -> None:
     source = (REPO_ROOT / "ch14" / "triton_persistent_demo.py").read_text(
         encoding="utf-8"
