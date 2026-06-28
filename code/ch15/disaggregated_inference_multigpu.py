@@ -300,12 +300,13 @@ class PrefillKernel(nn.Module):
 
     @torch.inference_mode()
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...], Tuple[torch.Tensor, ...]]:
-        key_states: List[torch.Tensor] = []
-        value_states: List[torch.Tensor] = []
-        for attn, ffn in zip(self.attention_layers, self.ffn_layers):
+        layer_count = min(len(self.attention_layers), len(self.ffn_layers))
+        key_states: List[torch.Tensor] = [x] * layer_count
+        value_states: List[torch.Tensor] = [x] * layer_count
+        for idx, (attn, ffn) in enumerate(zip(self.attention_layers, self.ffn_layers)):
             attn_out, key_state, value_state = _run_attn(attn, x)
-            key_states.append(key_state)
-            value_states.append(value_state)
+            key_states[idx] = key_state
+            value_states[idx] = value_state
             x = _run_ffn(ffn, attn_out)
         return x, tuple(key_states), tuple(value_states)
 
@@ -325,14 +326,15 @@ class DecodeKernel(nn.Module):
         x: torch.Tensor,
         kv_state: Tuple[Tuple[torch.Tensor, torch.Tensor], ...],
     ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...], Tuple[torch.Tensor, ...]]:
-        key_states: List[torch.Tensor] = []
-        value_states: List[torch.Tensor] = []
+        layer_count = min(len(self.attention_layers), len(self.ffn_layers))
+        key_states: List[torch.Tensor] = [x] * layer_count
+        value_states: List[torch.Tensor] = [x] * layer_count
 
         for idx, (attn, ffn) in enumerate(zip(self.attention_layers, self.ffn_layers)):
             past_state = kv_state[idx] if kv_state and idx < len(kv_state) else None
             attn_out, key_state, value_state = _run_attn(attn, x, kv_state=past_state)
-            key_states.append(key_state)
-            value_states.append(value_state)
+            key_states[idx] = key_state
+            value_states[idx] = value_state
             x = _run_ffn(ffn, attn_out)
 
         logits = self.lm_head(x[:, -1, :])
@@ -847,7 +849,6 @@ class ParallelismManager:
         
         # Each GPU handles different stages
         stages_per_gpu = 1
-        total_stages = self.config.num_gpus * stages_per_gpu
         
         for gpu_id in range(self.config.num_gpus):
             stage_start = gpu_id * stages_per_gpu

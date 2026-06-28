@@ -6295,6 +6295,29 @@ def test_ch15_sdpa_attention_reuses_kv_concat_buffers() -> None:
     assert "torch.cat([past_v, v]" not in attention_section
 
 
+def test_ch15_disaggregated_kernels_preallocate_kv_state_slots() -> None:
+    source = (REPO_ROOT / "ch15" / "disaggregated_inference_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    prefill_section = source.split("class PrefillKernel", maxsplit=1)[1].split(
+        "class DecodeKernel",
+        maxsplit=1,
+    )[0]
+    decode_section = source.split("class DecodeKernel", maxsplit=1)[1].split(
+        "class WorkerRole",
+        maxsplit=1,
+    )[0]
+
+    for section in (prefill_section, decode_section):
+        assert "layer_count = min(len(self.attention_layers), len(self.ffn_layers))" in section
+        assert "key_states: List[torch.Tensor] = [x] * layer_count" in section
+        assert "value_states: List[torch.Tensor] = [x] * layer_count" in section
+        assert "key_states[idx] = key_state" in section
+        assert "value_states[idx] = value_state" in section
+        assert "key_states.append(" not in section
+        assert "value_states.append(" not in section
+
+
 def test_ch15_decode_worker_reuses_sampling_buffers() -> None:
     source = (REPO_ROOT / "ch15" / "disaggregated_inference_multigpu.py").read_text(
         encoding="utf-8"
