@@ -609,9 +609,41 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     prepare_section = source.split("def _prepare_quantized_sources", maxsplit=1)[1].split(
         "def _non_adaptive_cache_update", maxsplit=1
     )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _get_timing_pair",
+        maxsplit=1,
+    )[0]
+    finalize_section = source.split("def _finalize_quantized_output", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
     assert "self._quant_scratch.to(torch.int8)" not in prepare_section
     assert "self._quantized_int8_src.copy_(self._quant_scratch)" in prepare_section
+    assert "self._packed_dst_bytes_cpu: Optional[torch.Tensor] = None" in source
+    assert "self._last_scale_cpu: Optional[torch.Tensor] = None" in source
+    assert "self._dequantized_cpu: Optional[torch.Tensor] = None" in source
+    assert "self._packed_dst_bytes_cpu = torch.empty(" in setup_section
+    assert "self._last_scale_cpu = torch.empty(" in setup_section
+    assert "self._dequantized_cpu = torch.empty_like(self._reference_cache_cpu)" in setup_section
+    assert "dequantized = self._dequantized_cpu" in finalize_section
+    assert "scale_cpu.copy_(self._last_scale" in finalize_section
+    assert "packed_view = packed_cpu" in finalize_section
+    assert "packed_view.copy_(self._packed_dst_bytes" in finalize_section
+    assert "packed_view = packed_cpu[..., :_FP6_PACKED_LAST_DIM]" in finalize_section
+    assert "self._packed_dst_bytes[..., :_FP6_PACKED_LAST_DIM]" in finalize_section
+    assert "packed_view = packed_cpu[..., :_FP4_PACKED_LAST_DIM]" in finalize_section
+    assert "self._packed_dst_bytes[..., :_FP4_PACKED_LAST_DIM]" in finalize_section
+    assert "dequantized.copy_(packed_cpu.view(torch.int8))" in finalize_section
+    assert "torch.empty_like(self._reference_cache_cpu)" not in finalize_section
+    assert ".cpu()" not in finalize_section
+    assert "self._packed_dst_bytes_cpu = None" in teardown_section
+    assert "self._last_scale_cpu = None" in teardown_section
+    assert "self._dequantized_cpu = None" in teardown_section
 
 
 def test_ch07_and_ch08_sources_do_not_ship_artificial_baseline_penalties() -> None:

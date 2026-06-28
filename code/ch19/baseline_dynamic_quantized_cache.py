@@ -111,6 +111,9 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scale6_src: Optional[torch.Tensor] = None
         self._scale4_src: Optional[torch.Tensor] = None
         self._packed_dst_bytes: Optional[torch.Tensor] = None
+        self._packed_dst_bytes_cpu: Optional[torch.Tensor] = None
+        self._last_scale_cpu: Optional[torch.Tensor] = None
+        self._dequantized_cpu: Optional[torch.Tensor] = None
         self._last_scale: Optional[torch.Tensor] = None
         self._history: Dict[str, List[float]] = {"latency_ms": [], "error": []}
         total_tokens = len(schedule_bits) * _CACHE_ROWS
@@ -155,6 +158,20 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._packed_dst_bytes = torch.empty_like(self._reference_cache, dtype=torch.uint8)
             self._prepare_quantized_sources()
             self._reference_cache = None
+            pin_cpu_output = self.device.type == "cuda" and torch.cuda.is_available()
+            self._packed_dst_bytes_cpu = torch.empty(
+                _CACHE_SHAPE,
+                device="cpu",
+                dtype=torch.uint8,
+                pin_memory=pin_cpu_output,
+            )
+            self._last_scale_cpu = torch.empty(
+                _CACHE_SHAPE[:-1] + (1,),
+                device="cpu",
+                dtype=torch.float32,
+                pin_memory=pin_cpu_output,
+            )
+            self._dequantized_cpu = torch.empty_like(self._reference_cache_cpu)
         self._quant_scratch = None
         self.output = None
         self._timing_pair = (
@@ -246,23 +263,41 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._reference_cache_cpu is None
             or self._packed_dst_bytes is None
             or self._last_scale is None
+            or self._packed_dst_bytes_cpu is None
+            or self._last_scale_cpu is None
+            or self._dequantized_cpu is None
         ):
             return
         last_bits = self._last_bits
-        dequantized = torch.empty_like(self._reference_cache_cpu)
+        packed_cpu = self._packed_dst_bytes_cpu
+        scale_cpu = self._last_scale_cpu
+        dequantized = self._dequantized_cpu
+        scale_cpu.copy_(self._last_scale, non_blocking=scale_cpu.is_pinned())
         if last_bits == 8:
-            dequantized.copy_(self._packed_dst_bytes.view(torch.int8).cpu().to(torch.float32))
-            dequantized.mul_(self._last_scale.cpu())
+            packed_view = packed_cpu
+            packed_view.copy_(self._packed_dst_bytes, non_blocking=packed_cpu.is_pinned())
+            dequantized.copy_(packed_cpu.view(torch.int8))
+            dequantized.mul_(scale_cpu)
         elif last_bits == 6:
+            packed_view = packed_cpu[..., :_FP6_PACKED_LAST_DIM]
+            packed_view.copy_(
+                self._packed_dst_bytes[..., :_FP6_PACKED_LAST_DIM],
+                non_blocking=packed_cpu.is_pinned(),
+            )
             _unpack_int6_to_float(
-                self._packed_dst_bytes[..., :_FP6_PACKED_LAST_DIM].cpu(),
-                self._last_scale.cpu(),
+                packed_view,
+                scale_cpu,
                 dequantized,
             )
         elif last_bits == 4:
+            packed_view = packed_cpu[..., :_FP4_PACKED_LAST_DIM]
+            packed_view.copy_(
+                self._packed_dst_bytes[..., :_FP4_PACKED_LAST_DIM],
+                non_blocking=packed_cpu.is_pinned(),
+            )
             _unpack_int4_to_float(
-                self._packed_dst_bytes[..., :_FP4_PACKED_LAST_DIM].cpu(),
-                self._last_scale.cpu(),
+                packed_view,
+                scale_cpu,
                 dequantized,
             )
         else:
@@ -327,6 +362,9 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scale6_src = None
         self._scale4_src = None
         self._packed_dst_bytes = None
+        self._packed_dst_bytes_cpu = None
+        self._last_scale_cpu = None
+        self._dequantized_cpu = None
         self._last_scale = None
         self._timing_pair = None
         self._pending_timing_pair = None
