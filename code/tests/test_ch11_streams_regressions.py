@@ -113,3 +113,34 @@ def test_baseline_streams_compute_reuses_preallocated_result_buffers() -> None:
 
     assert actual.data_ptr() == out.data_ptr()
     torch.testing.assert_close(actual, expected)
+
+
+def test_streams_verification_reuses_sample_output_buffer() -> None:
+    for filename in ("baseline_streams.py", "optimized_streams.py"):
+        source = (REPO_ROOT / "ch11" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _compute",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def get_benchmark",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output: Optional[torch.Tensor] = None" in source
+        assert "self._verify_indices: tuple[int, int, int] = ()" in source
+        assert "self._verify_slice_len = 0" in source
+        assert "self._verify_slice_len = min(256, self.N)" in setup_section
+        assert "self._verify_indices = (0, self.num_chunks // 2, self.num_chunks - 1)" in setup_section
+        assert "self._verify_output = torch.empty(" in setup_section
+        assert "torch.cat(" not in capture_section
+        assert "[self.results[i][:256].detach() for i in indices]" not in capture_section
+        assert "for slot, result_idx in enumerate(self._verify_indices):" in capture_section
+        assert "self._verify_output[start : start + slice_len].copy_(self.results[result_idx][:slice_len])" in capture_section
+        assert "output=self._verify_output" in capture_section
+        assert "self._verify_output = None" in teardown_section
+        assert "self._verify_indices = ()" in teardown_section

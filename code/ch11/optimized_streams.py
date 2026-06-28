@@ -47,6 +47,9 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scratch1: Optional[torch.Tensor] = None
         self._scratch_pair: Optional[tuple[torch.Tensor, torch.Tensor]] = None
         self._chunk_triplets: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
+        self._verify_output: Optional[torch.Tensor] = None
+        self._verify_indices: tuple[int, int, int] = ()
+        self._verify_slice_len = 0
         self.N = 5_000_000  # Elements per chunk - balanced for H2D/compute overlap
         self.num_chunks = 20  # More chunks to amortize pipeline startup
         # Stream benchmark - fixed dimensions for overlap measurement
@@ -87,6 +90,13 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._scratch_pair = (self._scratch0, self._scratch1)
         self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))
+        self._verify_slice_len = min(256, self.N)
+        self._verify_indices = (0, self.num_chunks // 2, self.num_chunks - 1)
+        self._verify_output = torch.empty(
+            self._verify_slice_len * len(self._verify_indices),
+            dtype=torch.float32,
+            device=self.device,
+        )
         
         self._synchronize()
         processed = float(self.N * self.num_chunks)
@@ -169,6 +179,9 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scratch1 = None
         self._scratch_pair = None
         self._chunk_triplets = []
+        self._verify_output = None
+        self._verify_indices = ()
+        self._verify_slice_len = 0
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
@@ -210,14 +223,17 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return [self.stream_h2d, self.stream_compute]
 
     def capture_verification_payload(self) -> None:
-        if self.host_data is None or self.results is None:
+        if self.host_data is None or self.results is None or self._verify_output is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        sample = self.host_data[0][:256]
-        indices = [0, self.num_chunks // 2, self.num_chunks - 1]
-        verify_output = torch.cat([self.results[i][:256].detach() for i in indices], dim=0)
+        slice_len = self._verify_slice_len
+        sample = self.host_data[0][:slice_len]
+        with torch.no_grad():
+            for slot, result_idx in enumerate(self._verify_indices):
+                start = slot * slice_len
+                self._verify_output[start : start + slice_len].copy_(self.results[result_idx][:slice_len])
         self._set_verification_payload(
             inputs={"host_data": sample},
-            output=verify_output,
+            output=self._verify_output,
             batch_size=int(self.num_chunks),
             parameter_count=int(self.N * self.num_chunks),
             precision_flags={
