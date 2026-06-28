@@ -241,6 +241,27 @@ def test_native_fp4_fp6_demo_timing_uses_cuda_events() -> None:
     assert "time.time()" not in fp6_demo
 
 
+def test_native_fp4_fp8_bridge_reuses_weight_activation_and_scale_buffers() -> None:
+    source = inspect.getsource(native_fp4.FP4Linear)
+    forward_fp8_source = inspect.getsource(native_fp4.FP4Linear._forward_fp8)
+
+    assert "self.register_buffer('_weight_fp8_cache', None)" in source
+    assert "self.register_buffer('_input_fp8_buffer'" in source
+    assert "self.register_buffer('_fp8_scale_a'" in source
+    assert "self.register_buffer('_fp8_scale_b'" in source
+    assert "def _get_weight_fp8(self) -> torch.Tensor:" in source
+    assert "def _activation_fp8_buffer(self, x_2d: torch.Tensor)" in source
+    assert "def _fp8_scale_buffers(self, device: torch.device)" in source
+    assert "self._weight_fp8_cache = None" in inspect.getsource(native_fp4.FP4Linear.quantize)
+    assert "self._weight_fp8_cache = None" in inspect.getsource(native_fp4.FP4Linear.clear_cache)
+    assert "weight_fp8 = self._get_weight_fp8()" in forward_fp8_source
+    assert "x_fp8 = self._activation_fp8_buffer(x_2d)" in forward_fp8_source
+    assert "x_fp8.copy_(x_2d)" in forward_fp8_source
+    assert "scale_a, scale_b = self._fp8_scale_buffers(x.device)" in forward_fp8_source
+    assert ".to(torch.float8_e4m3fn)" not in forward_fp8_source
+    assert "torch.ones(1, device=x.device, dtype=torch.float32)" not in forward_fp8_source
+
+
 def test_fp4_dequantization_decodes_signed_lookup_without_where() -> None:
     for module, function_name in (
         (baseline_fp4, "dequantize_fp4_baseline"),

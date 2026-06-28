@@ -249,6 +249,11 @@ class FP4Linear(nn.Module):
         self.register_buffer('weight_packed', None)
         self.register_buffer('weight_scales', None)
         self.register_buffer('_weight_cache', None)  # Cached dequantized weights
+        self.register_buffer('_weight_fp8_cache', None)
+        fp8_dtype = getattr(torch, "float8_e4m3fn", torch.uint8)
+        self.register_buffer('_input_fp8_buffer', torch.empty(0, dtype=fp8_dtype), persistent=False)
+        self.register_buffer('_fp8_scale_a', torch.ones(1, dtype=torch.float32), persistent=False)
+        self.register_buffer('_fp8_scale_b', torch.ones(1, dtype=torch.float32), persistent=False)
         self._quantized = False
         
         if bias:
@@ -267,6 +272,7 @@ class FP4Linear(nn.Module):
             self.weight_scales = scales
             self._weight_fp16 = None
             self._weight_cache = None
+            self._weight_fp8_cache = None
             self._quantized = True
     
     def _get_weight(self) -> torch.Tensor:
@@ -296,6 +302,37 @@ class FP4Linear(nn.Module):
     def clear_cache(self) -> None:
         """Clear weight cache to free memory."""
         self._weight_cache = None
+        self._weight_fp8_cache = None
+
+    def _get_weight_fp8(self) -> torch.Tensor:
+        if self._weight_fp8_cache is not None:
+            return self._weight_fp8_cache
+        weight = self._get_weight()
+        weight_fp8 = weight.to(torch.float8_e4m3fn).contiguous()
+        self._weight_fp8_cache = weight_fp8
+        return weight_fp8
+
+    def _activation_fp8_buffer(self, x_2d: torch.Tensor) -> torch.Tensor:
+        input_fp8 = self._input_fp8_buffer
+        if (
+            input_fp8.shape != x_2d.shape
+            or input_fp8.device != x_2d.device
+            or input_fp8.dtype != torch.float8_e4m3fn
+        ):
+            input_fp8 = torch.empty(
+                x_2d.shape,
+                device=x_2d.device,
+                dtype=torch.float8_e4m3fn,
+            )
+            self._input_fp8_buffer = input_fp8
+        return input_fp8
+
+    def _fp8_scale_buffers(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+        if self._fp8_scale_a.device != device or self._fp8_scale_a.dtype != torch.float32:
+            self._fp8_scale_a = torch.ones(1, device=device, dtype=torch.float32)
+        if self._fp8_scale_b.device != device or self._fp8_scale_b.dtype != torch.float32:
+            self._fp8_scale_b = torch.ones(1, device=device, dtype=torch.float32)
+        return self._fp8_scale_a, self._fp8_scale_b
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass using FP4 weights."""
@@ -307,22 +344,20 @@ class FP4Linear(nn.Module):
     
     def _forward_fp8(self, x: torch.Tensor) -> torch.Tensor:
         """Forward using FP8 tensor cores for acceleration."""
-        weight = self._get_weight()
-        
-        # Convert to FP8 for tensor core acceleration
-        weight_fp8 = weight.to(torch.float8_e4m3fn)
+        weight_fp8 = self._get_weight_fp8()
         
         # Reshape for matmul
         batch_shape = x.shape[:-1]
-        x_2d = x.reshape(-1, x.shape[-1]).to(torch.float8_e4m3fn)
+        x_2d = x.reshape(-1, x.shape[-1])
+        x_fp8 = self._activation_fp8_buffer(x_2d)
+        x_fp8.copy_(x_2d)
         
         # Scales for _scaled_mm
-        scale_a = torch.ones(1, device=x.device, dtype=torch.float32)
-        scale_b = torch.ones(1, device=x.device, dtype=torch.float32)
+        scale_a, scale_b = self._fp8_scale_buffers(x.device)
         
         # _scaled_mm: (M, K) @ (N, K).T -> (M, N)
         result = torch._scaled_mm(
-            x_2d, weight_fp8.T,
+            x_fp8, weight_fp8.T,
             scale_a, scale_b,
             out_dtype=self.dtype
         )
