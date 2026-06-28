@@ -96,10 +96,11 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
                         reduceOp="avg",
                         group=dist.group.WORLD,
                     )
-                torch.cuda.current_stream().wait_stream(comm_stream)
             else:
                 reduced = comm_out
             aux_out = aux_block(inputs)
+            if world_size > 1:
+                torch.cuda.current_stream().wait_stream(comm_stream)
             _ = reduced + aux_out
 
     for _ in range(max(warmup, 0)):

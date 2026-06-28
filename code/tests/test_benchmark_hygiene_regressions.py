@@ -268,6 +268,20 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
         assert "sum(p.numel()" not in capture_section
 
 
+def test_ch04_optimized_torchcomms_overlaps_aux_compute_before_comm_wait() -> None:
+    source = (REPO_ROOT / "ch04" / "optimized_torchcomms.py").read_text(encoding="utf-8")
+    step_section = source.split("def _step", maxsplit=1)[1].split(
+        "for _ in range(max(warmup",
+        maxsplit=1,
+    )[0]
+    post_launch_section = step_section.split("with torch.cuda.stream(comm_stream):", maxsplit=1)[1]
+
+    assert post_launch_section.index("aux_out = aux_block(inputs)") < post_launch_section.index(
+        "torch.cuda.current_stream().wait_stream(comm_stream)"
+    )
+    assert "_ = reduced + aux_out" in post_launch_section
+
+
 def test_ch04_optimizer_central_nvlink_uses_direct_copy_staging() -> None:
     source = (REPO_ROOT / "ch04" / "optimizer_central_nvlink.py").read_text(
         encoding="utf-8"
