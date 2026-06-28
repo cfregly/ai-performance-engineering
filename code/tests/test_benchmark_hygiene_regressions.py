@@ -6183,6 +6183,14 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "[torch.cuda.Event() for _ in range(cfg.requests_per_rank)]" in torchrun_worker
     assert "ready = ready_events[req_idx]" in torchrun_worker
     assert "ready = torch.cuda.Event()" not in torchrun_worker
+    assert "prefill_pending_slots: List[Optional[List[dist.Work]]]" in torchrun_worker
+    assert "recv_pending_slots: List[Optional[List[dist.Work]]]" in torchrun_worker
+    assert "pending = prefill_pending_slots" in torchrun_worker
+    assert "pending[pending_write_idx] = handles" in torchrun_worker
+    assert "pending.append(handles)" not in torchrun_worker
+    assert "_wait_handles(pending.pop(0))" not in torchrun_worker
+    assert "pending = recv_pending_slots" in torchrun_worker
+    assert "pending: List[Optional[List[dist.Work]]] = [None] * cfg.requests_per_rank" not in torchrun_worker
     assert "request_kv_cache = kv_cache" in decode_helper
     assert "request_kv_cache = allocate_kv_cache(" in decode_helper
     assert "request_kv_cache[:, : cfg.context_window].copy_(kv_prompt)" in decode_helper
@@ -6190,6 +6198,8 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "outputs[output_idx] = tokens" in decode_helper
     assert "decode_kv_cache = allocate_kv_cache(" in torchrun_worker
     assert "decode_outputs = [torch.empty(0) for _ in range(cfg.requests_per_rank)]" in torchrun_worker
+    assert "                outputs = [torch.empty(0) for _ in range(cfg.requests_per_rank)]" not in torchrun_worker
+    assert "raise RuntimeError(\"Decode output slots not initialized\")" in torchrun_worker
     assert "outputs[req_idx] = tokens" in torchrun_worker
     assert "outputs.append(" not in torchrun_worker
     assert "decode_kv_cache = allocate_kv_cache(" in setup_section

@@ -270,6 +270,13 @@ def _run_torchrun_worker(
         if is_prefill and overlap
         else []
     )
+    max_inflight = max(1, min(8, cfg.requests_per_rank))
+    prefill_pending_slots: List[Optional[List[dist.Work]]] = (
+        [None] * max_inflight if is_prefill and overlap else []
+    )
+    recv_pending_slots: List[Optional[List[dist.Work]]] = (
+        [None] * cfg.requests_per_rank if (not is_prefill and overlap) else []
+    )
     decode_kv_cache: Optional[torch.Tensor] = None
     decode_outputs: List[torch.Tensor] = []
     if not is_prefill:
@@ -301,8 +308,10 @@ def _run_torchrun_worker(
     def run_iteration() -> List[torch.Tensor]:
         if is_prefill:
             if overlap:
-                pending: List[List[dist.Work]] = []
-                max_inflight = min(8, cfg.requests_per_rank)
+                pending = prefill_pending_slots
+                pending_count = 0
+                pending_read_idx = 0
+                pending_write_idx = 0
                 with torch.inference_mode():
                     for req_idx in range(cfg.requests_per_rank):
                         request_prompt = prompts[req_idx]
@@ -315,11 +324,24 @@ def _run_torchrun_worker(
                             seed_tokens.contiguous(),
                             ready_event=ready,
                         )
-                        pending.append(handles)
-                        if len(pending) >= max_inflight:
-                            _wait_handles(pending.pop(0))
-                for handles in pending:
+                        pending[pending_write_idx] = handles
+                        pending_write_idx = (pending_write_idx + 1) % max_inflight
+                        pending_count += 1
+                        if pending_count >= max_inflight:
+                            oldest = pending[pending_read_idx]
+                            if oldest is None:
+                                raise RuntimeError("Missing pending send handle")
+                            _wait_handles(oldest)
+                            pending[pending_read_idx] = None
+                            pending_read_idx = (pending_read_idx + 1) % max_inflight
+                            pending_count -= 1
+                for _ in range(pending_count):
+                    handles = pending[pending_read_idx]
+                    if handles is None:
+                        raise RuntimeError("Missing pending send handle")
                     _wait_handles(handles)
+                    pending[pending_read_idx] = None
+                    pending_read_idx = (pending_read_idx + 1) % max_inflight
             else:
                 kv_chunks, seed_chunks = _run_prefill(cfg, model, prompts)
                 for kv_prompt, seed_tokens in zip(kv_chunks, seed_chunks):
@@ -334,8 +356,8 @@ def _run_torchrun_worker(
                 raise RuntimeError("Overlap buffers not initialized")
             outputs = decode_outputs
             if len(outputs) != cfg.requests_per_rank:
-                outputs = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
-            pending: List[Optional[List[dist.Work]]] = [None] * cfg.requests_per_rank
+                raise RuntimeError("Decode output slots not initialized")
+            pending = recv_pending_slots
             pending[0] = _batch_irecv(recv_kv_bufs[0], recv_seed_bufs[0])
             with torch.inference_mode():
                 for req_idx in range(cfg.requests_per_rank):
@@ -349,6 +371,7 @@ def _run_torchrun_worker(
                     if handles is None:
                         raise RuntimeError("Missing receive handle in overlap pipeline")
                     _wait_handles(handles)
+                    pending[req_idx] = None
                     decode_kv_cache[:, : cfg.context_window].copy_(recv_kv_bufs[req_idx])
                     tokens = recv_seed_bufs[req_idx]
                     for step in range(cfg.decode_tokens):
