@@ -406,7 +406,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "warm_requests_served_local": 0.0,
         }
         request_events = self._request_event_pool
-        if len(request_events) < len(self.request_plans):
+        if len(request_events) != len(self.request_plans):
             raise RuntimeError("Request timing events not initialized")
 
         with torch.inference_mode():
@@ -428,7 +428,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 if plan.is_warm and owners.get(plan.request_idx) == current_worker:
                     metrics["warm_requests_served_local"] += 1.0
 
-                for chunk_idx, chunk in enumerate(chunks[plan.warm_chunks :], start=plan.warm_chunks):
+                for chunk_idx in range(plan.warm_chunks, plan.total_chunks):
+                    chunk = chunks[chunk_idx]
                     current_worker = self._choose_worker(
                         plan.request_idx,
                         chunk_idx,
@@ -475,7 +476,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._last_outputs = outputs
         self._outputs_ready = True
         self.output = None
-        self._request_event_triplets = request_events[: len(self.request_plans)]
+        self._request_event_triplets = request_events
         self._pending_metrics = metrics
 
     def capture_verification_payload(self) -> None:

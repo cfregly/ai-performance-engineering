@@ -9480,8 +9480,13 @@ def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:
     assert "prompt_chunks = self._prompt_chunks" in benchmark_section
     assert "Prompt chunk views not initialized" in benchmark_section
     assert "chunks = prompt_chunks[plan.request_idx]" in benchmark_section
+    assert "for chunk_idx in range(plan.warm_chunks, plan.total_chunks):" in benchmark_section
+    assert "chunk = chunks[chunk_idx]" in benchmark_section
     assert '"warm_requests": float(self._warm_request_count)' in benchmark_section
     assert "_split_prompt(" not in benchmark_section
+    assert "chunks[plan.warm_chunks :]" not in benchmark_section
+    assert "request_events[: len(self.request_plans)]" not in benchmark_section
+    assert "self._request_event_triplets = request_events" in benchmark_section
     assert "sum(1 for plan in self.request_plans if plan.is_warm)" not in benchmark_section
     assert "self._prompt_chunks = []" in teardown_section
 
