@@ -2129,6 +2129,43 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch14_demo_source
 
 
+def test_ch16_optimized_dense_attention_flash_reuses_projection_buffers() -> None:
+    for filename in (
+        "optimized_dense_attention_flash.py",
+        "optimized_dense_attention_flash_blackwell_variant.py",
+    ):
+        source = (REPO_ROOT / "ch16" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _forward_flash",
+            maxsplit=1,
+        )[0]
+        forward_section = source.split("def _forward_flash", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_",
+            maxsplit=1,
+        )[0]
+
+        assert "self._qkv_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._qkv_buffer = torch.empty(" in setup_section
+        assert "self._output_buffer = torch.empty(" in setup_section
+        assert (
+            "qkv = torch.matmul(self.inputs, self.qkv_proj.weight.t(), out=self._qkv_buffer)"
+            in forward_section
+        )
+        assert (
+            "return torch.matmul(output, self.out_proj.weight.t(), out=self._output_buffer)"
+            in forward_section
+        )
+        assert "self.qkv_proj(self.inputs)" not in forward_section
+        assert "return self.out_proj(output)" not in forward_section
+        assert "self._qkv_buffer = None" in teardown_section
+        assert "self._output_buffer = None" in teardown_section
+
+
 def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     quick_source = (REPO_ROOT / "ch16" / "gpt_quick_test.py").read_text(encoding="utf-8")
     fp8_test_source = (REPO_ROOT / "ch16" / "test_fp8_quantization_real.py").read_text(encoding="utf-8")

@@ -40,6 +40,8 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         self.qkv_proj: Optional[nn.Linear] = None
         self.out_proj: Optional[nn.Linear] = None
         self.inputs: Optional[torch.Tensor] = None
+        self._qkv_buffer: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self.batch_size = 4
         self.max_seq_len = 4096  # Same as baseline
         self.hidden_dim = 1024
@@ -87,6 +89,20 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
             dtype=self.dtype,
         )
         self._verify_input = self.inputs.detach().clone()
+        self._qkv_buffer = torch.empty(
+            self.batch_size,
+            self.max_seq_len,
+            self.hidden_dim * 3,
+            device=self.device,
+            dtype=self.dtype,
+        )
+        self._output_buffer = torch.empty(
+            self.batch_size,
+            self.max_seq_len,
+            self.hidden_dim,
+            device=self.device,
+            dtype=self.dtype,
+        )
         self._payload_parameter_count = sum(p.numel() for p in self.qkv_proj.parameters()) + sum(
             p.numel() for p in self.out_proj.parameters()
         )
@@ -102,7 +118,16 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
 
     def _forward_flash(self):
         """Flash Attention via SDPA - O(n) memory, fused kernel."""
-        qkv = self.qkv_proj(self.inputs)
+        if (
+            self.inputs is None
+            or self.qkv_proj is None
+            or self.out_proj is None
+            or self._qkv_buffer is None
+            or self._output_buffer is None
+        ):
+            raise RuntimeError("Benchmark not configured")
+
+        qkv = torch.matmul(self.inputs, self.qkv_proj.weight.t(), out=self._qkv_buffer)
         q, k, v = torch.chunk(qkv, 3, dim=-1)
         
         # Reshape for attention
@@ -120,7 +145,7 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         
         # Output projection
         output = output.transpose(1, 2).contiguous().view(B, S, self.hidden_dim)
-        return self.out_proj(output)
+        return torch.matmul(output, self.out_proj.weight.t(), out=self._output_buffer)
     
     def benchmark_fn(self) -> None:
         """Benchmark: Flash Attention."""
@@ -152,6 +177,8 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         self.qkv_proj = None
         self.out_proj = None
         self.inputs = None
+        self._qkv_buffer = None
+        self._output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

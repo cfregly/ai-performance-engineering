@@ -40,6 +40,8 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
         self.qkv_proj: Optional[nn.Linear] = None
         self.out_proj: Optional[nn.Linear] = None
         self.inputs: Optional[torch.Tensor] = None
+        self._qkv_buffer: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.batch_size = 4
         self.seq_length = 4096
@@ -91,6 +93,20 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
             dtype=self.dtype,
         )
         self._verify_input = self.inputs.detach().clone()
+        self._qkv_buffer = torch.empty(
+            self.batch_size,
+            self.seq_length,
+            self.hidden_dim * 3,
+            device=device,
+            dtype=self.dtype,
+        )
+        self._output_buffer = torch.empty(
+            self.batch_size,
+            self.seq_length,
+            self.hidden_dim,
+            device=device,
+            dtype=self.dtype,
+        )
         self._payload_parameter_count = sum(p.numel() for p in self.qkv_proj.parameters()) + sum(
             p.numel() for p in self.out_proj.parameters()
         )
@@ -102,7 +118,16 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
     
     def _forward_flash(self):
         """Flash Attention via SDPA."""
-        qkv = self.qkv_proj(self.inputs)
+        if (
+            self.inputs is None
+            or self.qkv_proj is None
+            or self.out_proj is None
+            or self._qkv_buffer is None
+            or self._output_buffer is None
+        ):
+            raise RuntimeError("Benchmark not configured")
+
+        qkv = torch.matmul(self.inputs, self.qkv_proj.weight.t(), out=self._qkv_buffer)
         q, k, v = torch.chunk(qkv, 3, dim=-1)
         
         B, S, _ = q.shape
@@ -118,7 +143,7 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
         )
         
         output = output.transpose(1, 2).contiguous().view(B, S, self.hidden_dim)
-        return self.out_proj(output)
+        return torch.matmul(output, self.out_proj.weight.t(), out=self._output_buffer)
     
     def benchmark_fn(self) -> None:
         """Benchmark the Flash SDPA forward path for the Blackwell variant."""
@@ -148,6 +173,8 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
         self.qkv_proj = None
         self.out_proj = None
         self.inputs = None
+        self._qkv_buffer = None
+        self._output_buffer = None
         torch.cuda.empty_cache()
 
     def get_custom_metrics(self) -> Optional[dict]:
