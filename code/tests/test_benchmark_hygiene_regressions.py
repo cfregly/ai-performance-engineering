@@ -1538,6 +1538,10 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        dense_capture = dense_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
         assert "with torch.inference_mode():" in dense_setup
         assert "with torch.inference_mode():" in dense_benchmark
         assert "with torch.no_grad():" not in dense_setup
@@ -1550,6 +1554,8 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         assert "sum(p.numel()" not in dense_benchmark
         assert "parameter_count += " not in dense_benchmark
         assert "self._payload_parameter_count = parameter_count" not in dense_benchmark
+        assert "parameter_count = self._payload_parameter_count" not in dense_capture
+        assert "parameter_count=self._payload_parameter_count" in dense_capture
 
     for filename in ("baseline_flash_sdp.py", "optimized_flash_sdp.py"):
         flash_source = (REPO_ROOT / "ch16" / filename).read_text(encoding="utf-8")

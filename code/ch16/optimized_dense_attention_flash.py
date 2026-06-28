@@ -131,14 +131,13 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
             raise RuntimeError("Verification input missing")
 
     def capture_verification_payload(self) -> None:
-        parameter_count = self._payload_parameter_count
         if self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
             inputs={"input": self._verify_input},
             output=self.output.detach().clone(),
             batch_size=self._verify_input.shape[0],
-            parameter_count=parameter_count,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": True,
                 "bf16": False,
