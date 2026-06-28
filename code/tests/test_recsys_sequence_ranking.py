@@ -183,6 +183,8 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
         workload.batch_size * workload.num_candidates,
         workload.embedding_dim,
     )
+    assert workspace.candidate_embedding_f32 is None
+    assert workspace.user_vec_f32 is None
     assert ".expand(workload.batch_size, -1).clone()" not in build_workspace_source
     assert "out=sequence_embedding_flat" in sequence_source
     assert "out=context_embedding_flat" in context_source
@@ -217,8 +219,41 @@ def test_torch_candidate_scoring_reuses_workspace_output_on_cpu() -> None:
     assert "out=out.unsqueeze(2)" in source
     assert "torch.index_select(" in source
     assert "out=candidate_buffer_view" in source
+    assert "candidate_f32_view.copy_(candidate_emb.view(candidate_rows, embedding_dim))" in source
+    assert "user_vec_f32_view.copy_(user_vec)" in source
     assert workspace_scores.data_ptr() == workspace.score_output.data_ptr()
     torch.testing.assert_close(workspace_scores, fallback_scores, rtol=1e-6, atol=1e-6)
+
+    reduced_workload = SequenceRankingWorkload(**{**workload.__dict__, "dtype": torch.float16})
+    reduced_inputs = build_inputs(reduced_workload, torch.device("cpu"))
+    reduced_state = build_model_state(reduced_workload, torch.device("cpu"))
+    reduced_workspace = build_workspace(reduced_workload, torch.device("cpu"))
+    reduced_user_vec = torch.randn(
+        reduced_workload.batch_size,
+        reduced_workload.embedding_dim,
+        dtype=reduced_workload.dtype,
+    )
+
+    assert reduced_workspace.candidate_embedding_f32 is not None
+    assert reduced_workspace.user_vec_f32 is not None
+    reduced_fallback = candidate_scores_torch(reduced_user_vec, reduced_inputs, reduced_state)
+    reduced_workspace_scores = candidate_scores_torch(
+        reduced_user_vec,
+        reduced_inputs,
+        reduced_state,
+        reduced_workspace.score_output,
+        reduced_workspace.candidate_embedding_flat,
+        reduced_workspace.candidate_embedding_f32,
+        reduced_workspace.user_vec_f32,
+    )
+
+    assert reduced_workspace_scores.data_ptr() == reduced_workspace.score_output.data_ptr()
+    torch.testing.assert_close(
+        reduced_workspace_scores,
+        reduced_fallback,
+        rtol=1e-6,
+        atol=1e-6,
+    )
 
 
 def test_triton_candidate_scoring_avoids_materialized_candidate_embeddings() -> None:

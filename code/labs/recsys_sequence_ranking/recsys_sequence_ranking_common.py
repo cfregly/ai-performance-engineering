@@ -83,6 +83,8 @@ class RankingWorkspace:
     sequence_length_recip: torch.Tensor
     context_table_index: torch.Tensor
     context_flat_ids: torch.Tensor
+    candidate_embedding_f32: torch.Tensor | None = None
+    user_vec_f32: torch.Tensor | None = None
     sequence_metadata_key: tuple[int, int] | None = None
 
 
@@ -315,6 +317,7 @@ def build_workspace(workload: SequenceRankingWorkload, device: torch.device) -> 
 
     context_table_index = torch.arange(workload.num_tables, device=device, dtype=torch.int64)
     context_table_index = context_table_index.view(1, workload.num_tables)
+    needs_score_cast_workspace = workload.dtype != torch.float32
     return RankingWorkspace(
         sequence_accum=torch.empty(
             workload.batch_size,
@@ -371,6 +374,26 @@ def build_workspace(workload: SequenceRankingWorkload, device: torch.device) -> 
             workload.num_tables,
             device=device,
             dtype=torch.int64,
+        ),
+        candidate_embedding_f32=(
+            torch.empty(
+                workload.batch_size * workload.num_candidates,
+                workload.embedding_dim,
+                device=device,
+                dtype=torch.float32,
+            )
+            if needs_score_cast_workspace
+            else None
+        ),
+        user_vec_f32=(
+            torch.empty(
+                workload.batch_size,
+                workload.embedding_dim,
+                device=device,
+                dtype=torch.float32,
+            )
+            if needs_score_cast_workspace
+            else None
         ),
     )
 
@@ -522,6 +545,8 @@ def candidate_scores_torch(
     state: RankingModelState,
     out: torch.Tensor | None = None,
     candidate_buffer: torch.Tensor | None = None,
+    candidate_f32_buffer: torch.Tensor | None = None,
+    user_vec_f32_buffer: torch.Tensor | None = None,
 ) -> torch.Tensor:
     flat_candidate_ids = inputs.candidate_ids.reshape(-1)
     candidate_rows = int(flat_candidate_ids.numel())
@@ -550,8 +575,45 @@ def candidate_scores_torch(
         )
     else:
         candidate_emb = F.embedding(inputs.candidate_ids, state.item_embeddings)
-    candidate_emb_f32 = candidate_emb.to(torch.float32)
-    user_vec_f32 = user_vec.to(torch.float32).unsqueeze(2)
+    can_reuse_candidate_f32_buffer = (
+        candidate_f32_buffer is not None
+        and candidate_f32_buffer.dim() == 2
+        and candidate_f32_buffer.device == candidate_emb.device
+        and candidate_f32_buffer.dtype == torch.float32
+        and candidate_f32_buffer.size(0) >= candidate_rows
+        and candidate_f32_buffer.size(1) == embedding_dim
+        and not (torch.is_grad_enabled() and candidate_emb.requires_grad)
+    )
+    if candidate_emb.dtype == torch.float32:
+        candidate_emb_f32 = candidate_emb
+    elif can_reuse_candidate_f32_buffer:
+        candidate_f32_view = candidate_f32_buffer[:candidate_rows]
+        candidate_f32_view.copy_(candidate_emb.view(candidate_rows, embedding_dim))
+        candidate_emb_f32 = candidate_f32_view.view(
+            inputs.candidate_ids.shape[0],
+            inputs.candidate_ids.shape[1],
+            embedding_dim,
+        )
+    else:
+        candidate_emb_f32 = candidate_emb.to(torch.float32)
+
+    can_reuse_user_f32_buffer = (
+        user_vec_f32_buffer is not None
+        and user_vec_f32_buffer.dim() == 2
+        and user_vec_f32_buffer.device == user_vec.device
+        and user_vec_f32_buffer.dtype == torch.float32
+        and user_vec_f32_buffer.size(0) >= user_vec.size(0)
+        and user_vec_f32_buffer.size(1) == user_vec.size(1)
+        and not (torch.is_grad_enabled() and user_vec.requires_grad)
+    )
+    if user_vec.dtype == torch.float32:
+        user_vec_f32 = user_vec.unsqueeze(2)
+    elif can_reuse_user_f32_buffer:
+        user_vec_f32_view = user_vec_f32_buffer[: user_vec.size(0), : user_vec.size(1)]
+        user_vec_f32_view.copy_(user_vec)
+        user_vec_f32 = user_vec_f32_view.unsqueeze(2)
+    else:
+        user_vec_f32 = user_vec.to(torch.float32).unsqueeze(2)
     if out is None or (
         torch.is_grad_enabled() and (candidate_emb_f32.requires_grad or user_vec_f32.requires_grad)
     ):
@@ -705,6 +767,8 @@ def optimized_forward(
         state,
         workspace.score_output,
         workspace.candidate_embedding_flat,
+        workspace.candidate_embedding_f32,
+        workspace.user_vec_f32,
     )
 
 
@@ -755,6 +819,8 @@ def warm_optimized_path(
                 state,
                 workspace.score_output,
                 workspace.candidate_embedding_flat,
+                workspace.candidate_embedding_f32,
+                workspace.user_vec_f32,
             )
     if torch.cuda.is_available():
         torch.cuda.synchronize()
