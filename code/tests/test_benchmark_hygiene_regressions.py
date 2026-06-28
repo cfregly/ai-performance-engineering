@@ -1022,6 +1022,23 @@ def test_ch09_compute_bound_baseline_uses_inference_mode_and_cached_nvtx() -> No
     assert "from core.profiling.nvtx_helper" not in source
 
 
+def test_ch09_memory_and_triton_baselines_use_cached_nvtx() -> None:
+    for filename, label in (
+        ("baseline_memory_bound.py", "baseline_memory_bound"),
+        ("baseline_triton.py", "baseline_triton"),
+    ):
+        source = (REPO_ROOT / "ch09" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert f'with self._nvtx_range("{label}"):' in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert "with nvtx_range(" not in benchmark_section
+        assert "from core.profiling.nvtx_helper" not in source
+
+
 def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
     for relative in (
         "ch04/baseline_pipeline_parallel.py",

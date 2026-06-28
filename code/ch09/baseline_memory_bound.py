@@ -12,7 +12,6 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
 
 
 class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -37,9 +36,7 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.tensor = torch.randn(self.N, device=self.device, dtype=torch.float32)
 
     def benchmark_fn(self) -> None:
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("baseline_memory_bound", enable=enable_nvtx):
+        with self._nvtx_range("baseline_memory_bound"):
             t = self.tensor
             for _ in range(self.repeats):
                 t = t * 1.0001 + 0.0001

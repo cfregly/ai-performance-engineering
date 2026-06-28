@@ -12,7 +12,6 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
 try:
     import triton  # noqa: F401
     TRITON_AVAILABLE = True
@@ -52,9 +51,7 @@ class BaselineTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("baseline_triton", enable=enable_nvtx):
+        with self._nvtx_range("baseline_triton"):
             if self._output_buffer is None:
                 raise RuntimeError("setup() must initialize _output_buffer")
             baseline_elementwise(self.input, self._output_buffer)
@@ -110,5 +107,4 @@ class BaselineTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineTritonBenchmark()
-
 
