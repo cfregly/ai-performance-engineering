@@ -21,6 +21,7 @@ class BaselineQuantizationILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self.workload = WORKLOAD
         self.N = self.workload.quantization_elements
         self._workload = WorkloadMetadata(
@@ -35,13 +36,16 @@ class BaselineQuantizationILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32)
+        self._output_buffer = torch.empty_like(self.input)
         self.output = None
     
     def benchmark_fn(self) -> None:
         """Benchmark: Full precision ILP operations."""
-        assert self.input is not None
+        assert self.input is not None and self._output_buffer is not None
         with self._nvtx_range("baseline_quantization_ilp"):
-            self.output = self.input * 2.0 + 1.0
+            torch.mul(self.input, 2.0, out=self._output_buffer)
+            self._output_buffer.add_(1.0)
+            self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
         if self.output is None:
@@ -59,6 +63,7 @@ class BaselineQuantizationILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.input = None
         self.output = None
+        self._output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

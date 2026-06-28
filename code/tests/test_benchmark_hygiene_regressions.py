@@ -1382,6 +1382,28 @@ def test_ch06_ch12_cuda_output_buffers_skip_setup_zero_fill() -> None:
     assert "output[idx] = sum;" in work_queue_kernels
 
 
+def test_ch06_quantization_ilp_reuses_output_buffers() -> None:
+    targets = (
+        ("baseline_quantization_ilp.py", "self._output_buffer = torch.empty_like(self.input)"),
+        ("optimized_quantization_ilp.py", "self._output_fp16_buffer = torch.empty_like(self.input_fp16)"),
+    )
+    for filename, allocation in targets:
+        source = (REPO_ROOT / "ch06" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert allocation in setup_section
+        assert "torch.mul(self.input" in benchmark_section
+        assert ".add_(1.0)" in benchmark_section
+        assert "* 2.0 + 1.0" not in benchmark_section
+
+
 def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_nccl.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(

@@ -31,6 +31,7 @@ class OptimizedQuantizationILPBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.input_fp16: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.output_fp16: Optional[torch.Tensor] = None
+        self._output_fp16_buffer: Optional[torch.Tensor] = None
         self.workload = WORKLOAD
         self.N = self.workload.quantization_elements
         self._workload = WorkloadMetadata(
@@ -47,15 +48,18 @@ class OptimizedQuantizationILPBenchmark(VerificationPayloadMixin, BaseBenchmark)
         # outside the timed region to model reduced bandwidth in the hot path.
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32).contiguous()
         self.input_fp16 = self.input.to(dtype=torch.float16)
+        self._output_fp16_buffer = torch.empty_like(self.input_fp16)
         self.output = None
         self.output_fp16 = None
     
     def benchmark_fn(self) -> None:
         """Benchmark: FP16 element-wise operations (2x less memory traffic)."""
-        assert self.input_fp16 is not None
+        assert self.input_fp16 is not None and self._output_fp16_buffer is not None
         with self._nvtx_range("optimized_quantization_ilp"):
             # Simple multiply-add in FP16 - half the memory bandwidth
-            self.output_fp16 = self.input_fp16 * 2.0 + 1.0
+            torch.mul(self.input_fp16, 2.0, out=self._output_fp16_buffer)
+            self._output_fp16_buffer.add_(1.0)
+            self.output_fp16 = self._output_fp16_buffer
             self.output = self.output_fp16
 
     def capture_verification_payload(self) -> None:
@@ -76,6 +80,7 @@ class OptimizedQuantizationILPBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.input_fp16 = None
         self.output = None
         self.output_fp16 = None
+        self._output_fp16_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
