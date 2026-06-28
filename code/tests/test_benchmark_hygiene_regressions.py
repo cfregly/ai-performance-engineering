@@ -9916,6 +9916,7 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
         REPO_ROOT / "labs" / "persistent_decode" / "optimized_persistent_decode_triton.py",
         REPO_ROOT / "labs" / "persistent_decode" / "baseline_tma_prefill_decode.py",
         REPO_ROOT / "labs" / "persistent_decode" / "optimized_tma_prefill_decode.py",
+        REPO_ROOT / "labs" / "persistent_decode" / "optimized_native_tma_prefill_decode.py",
     ]
 
     for path in targets:
@@ -9928,13 +9929,17 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
             "optimized_persistent_decode_cuda.py",
             "optimized_persistent_decode_graphs.py",
             "optimized_persistent_decode_triton.py",
+            "optimized_tma_prefill_decode.py",
+            "optimized_native_tma_prefill_decode.py",
         }:
             setup_section = text.split("def setup", maxsplit=1)[1].split(
-                "def benchmark_fn" if path.name != "optimized_persistent_decode_graphs.py" else "def _capture_graphs",
+                "def _capture_graphs" if path.name == "optimized_persistent_decode_graphs.py" else "def benchmark_fn",
                 maxsplit=1,
             )[0]
             hot_section = text.split("def benchmark_fn", maxsplit=1)[1].split(
-                "def finalize_iteration_metrics" if path.name == "optimized_persistent_decode_graphs.py" else "def capture_verification_payload",
+                "def finalize_iteration_metrics"
+                if path.name in {"optimized_persistent_decode_graphs.py", "optimized_tma_prefill_decode.py"}
+                else "def capture_verification_payload",
                 maxsplit=1,
             )[0]
             teardown_section = text.split("def teardown", maxsplit=1)[1].split(

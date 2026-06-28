@@ -51,12 +51,14 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
         self._tma_ext = None
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
         self.output: Optional[torch.Tensor] = None
+        self._output_view: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         torch.manual_seed(42)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
+        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
         self.prefill_src = torch.randn(
             self.prefill_chunks, self.prefill_chunk_elems, device=self.device
         )
@@ -112,7 +114,7 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
             self.inputs.out.copy_(self.graph_out)
 
     def benchmark_fn(self) -> None:
-        if self.inputs is None:
+        if self.inputs is None or self._output_view is None:
             raise RuntimeError("Inputs not initialized")
 
         with self._nvtx_range("prefill_native_shaped_low_pri"):
@@ -124,7 +126,7 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
                 torch.cuda.current_stream().wait_event(evt)
         torch.cuda.current_stream().wait_stream(self.decode_stream)
         if self.inputs is not None:
-            self.output = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])].detach()
+            self.output = self._output_view.detach()
         if self.inputs is None or self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -150,6 +152,7 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
         torch.cuda.empty_cache()
         self.inputs = None
         self.output = None
+        self._output_view = None
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(

@@ -305,6 +305,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._prefill_events: list[torch.cuda.Event] = []
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
         self.output: torch.Tensor | None = None
+        self._output_view: torch.Tensor | None = None
 
     def setup(self) -> None:
         ensure_blackwell_tma_supported("optimized_tma_prefill_decode")
@@ -312,6 +313,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
+        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
         # Skip on GPUs without TMA support to avoid false regressions.
         supported, reason = tma_support_status()
         if not supported:
@@ -416,7 +418,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             self.inputs.out.copy_(self.graph_out)
 
     def benchmark_fn(self) -> None:
-        if self.inputs is None:
+        if self.inputs is None or self._output_view is None:
             raise RuntimeError("Inputs not initialized")
 
         use_full = (
@@ -440,7 +442,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
                 "decode_end": end,
             }
             if self.inputs is not None:
-                self.output = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+                self.output = self._output_view
             else:
                 raise RuntimeError("Inputs not initialized for verification")
             return
@@ -472,7 +474,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             "decode_end": end_decode,
         }
         if self.inputs is not None:
-            self.output = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+            self.output = self._output_view
         else:
             raise RuntimeError("Inputs not initialized for verification")
 
@@ -529,6 +531,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.inputs = None
         self.full_graph = None
         self.output = None
+        self._output_view = None
         self._prefill_events = []
 
     def get_config(self) -> BenchmarkConfig:
