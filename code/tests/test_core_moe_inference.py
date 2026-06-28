@@ -34,7 +34,11 @@ def test_simple_moe_block_reuses_attention_norm_once() -> None:
 def test_sorted_dispatch_reuses_flat_token_id_cache_on_cpu() -> None:
     source = inspect.getsource(MoEFeedForwardSortedDispatch)
     forward_source = inspect.getsource(MoEFeedForwardSortedDispatch.forward)
+    base_source = inspect.getsource(MoEFeedForward)
 
+    assert "def _scaled_expert_output(" in base_source
+    assert "expert_out.mul_(weights)" in base_source
+    assert "return expert_out * weights" in base_source
     assert "def _expert_metadata_lists(" in source
     assert "def _route_workspaces(" in source
     assert "metadata_slice[0].copy_(unique_experts)" in source
@@ -82,6 +86,8 @@ def test_sorted_dispatch_inference_reuses_route_workspaces() -> None:
     assert "torch.index_select(weights, 0, perm, out=sorted_weights)" in forward_source
     assert "torch.index_select(flat, 0, sorted_token_ids, out=sorted_flat)" in forward_source
     assert "expert_input = sorted_flat.narrow(0, segment_start, count)" in forward_source
+    assert "weighted_out = self._scaled_expert_output(expert_out, segment_weights)" in forward_source
+    assert "weighted_out = expert_out * segment_weights" not in forward_source
 
     torch.manual_seed(123)
     baseline = MoEFeedForward(
@@ -154,6 +160,7 @@ def test_no_host_sync_top1_uses_write_once_output_path() -> None:
 
     assert "single_route = self.top_k == 1" in forward_source
     assert "torch.empty_like(flat) if single_route else torch.zeros_like(flat)" in forward_source
+    assert "weighted_out = self._scaled_expert_output(expert_out, selected_weights)" in forward_source
     assert "combined.index_copy_(0, indices, weighted_out)" in forward_source
     assert "combined.index_add_(0, indices, weighted_out)" in forward_source
 

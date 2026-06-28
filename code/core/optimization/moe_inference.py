@@ -171,6 +171,14 @@ class MoEFeedForward(nn.Module):
         self.capacity_factor = capacity_factor
         self.num_experts = num_experts
 
+    @staticmethod
+    def _scaled_expert_output(expert_out: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+        weights = weights.to(expert_out.dtype)
+        if torch.is_grad_enabled() and expert_out.requires_grad:
+            return expert_out * weights
+        expert_out.mul_(weights)
+        return expert_out
+
     def forward(self, x: torch.Tensor, *, collect_router_stats: bool = False) -> torch.Tensor | Tuple[torch.Tensor, Optional[dict]]:
         batch, seq, hidden = x.shape
         flat = x.reshape(batch * seq, hidden)
@@ -209,8 +217,7 @@ class MoEFeedForward(nn.Module):
                     selected_weights = weights.index_select(0, indices)
                     if selected_weights.dim() == 1:
                         selected_weights = selected_weights.unsqueeze(-1)
-                    selected_weights = selected_weights.to(expert_out.dtype)
-                    combined.index_add_(0, indices, expert_out * selected_weights)
+                    combined.index_add_(0, indices, self._scaled_expert_output(expert_out, selected_weights))
         combined = combined.view(batch, seq, hidden)
         if collect_router_stats:
             stats = {
@@ -279,8 +286,7 @@ class MoEFeedForwardNoHostSync(MoEFeedForward):
                 selected_weights = weights.index_select(0, indices)
                 if selected_weights.dim() == 1:
                     selected_weights = selected_weights.unsqueeze(-1)
-                selected_weights = selected_weights.to(expert_out.dtype)
-                weighted_out = expert_out * selected_weights
+                weighted_out = self._scaled_expert_output(expert_out, selected_weights)
                 if single_route:
                     combined.index_copy_(0, indices, weighted_out)
                 else:
@@ -452,8 +458,7 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
             else:
                 expert_input = sorted_flat.narrow(0, segment_start, count)
             expert_out = self.experts[int(expert_id)](expert_input)
-            segment_weights = segment_weights.to(expert_out.dtype)
-            weighted_out = expert_out * segment_weights
+            weighted_out = self._scaled_expert_output(expert_out, segment_weights)
             if single_route:
                 combined.index_copy_(0, segment_tokens, weighted_out)
             else:
