@@ -125,7 +125,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     with torch.cuda.stream(self.decode_stream):
                         token_start.record(self.decode_stream)
                         self.decode_stream.wait_event(self._prefill_done)
-                        token_output = self.model.decode(token_output[:, -1:, :], num_tokens=1)
+                        token_output = self.model.decode(token_output, num_tokens=1)
                         token_end.record()
 
                 self.output = token_output

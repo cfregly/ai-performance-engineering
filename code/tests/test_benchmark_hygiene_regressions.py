@@ -10236,6 +10236,21 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "sum(p.numel()" not in capture_section
 
 
+def test_ch17_single_token_prefill_decode_skips_redundant_tail_views() -> None:
+    for relative in (
+        "ch17/baseline_prefill_decode_disagg.py",
+        "ch17/optimized_prefill_decode_disagg.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def finalize_iteration_metrics",
+            maxsplit=1,
+        )[0]
+
+        assert "token_output = self.model.decode(token_output, num_tokens=1)" in benchmark_section
+        assert "token_output[:, -1:, :]" not in benchmark_section
+
+
 def test_ch17_monolithic_decode_fast_paths_single_token() -> None:
     source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_monolithic_common.py").read_text(
         encoding="utf-8"
