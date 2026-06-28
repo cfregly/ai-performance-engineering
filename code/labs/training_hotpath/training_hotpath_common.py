@@ -154,13 +154,25 @@ def scalar_metric_reduction(
     return result
 
 
-def vectorized_metric_reduction(preds: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+def vectorized_metric_reduction(
+    preds: torch.Tensor,
+    targets: torch.Tensor,
+    out: torch.Tensor | None = None,
+) -> torch.Tensor:
     pred_flat = preds.reshape(-1, preds.shape[-1])
     target_flat = targets.reshape(-1, targets.shape[-1])
-    pred_sq = (pred_flat * pred_flat).sum(dim=0)
-    target_sq = (target_flat * target_flat).sum(dim=0)
-    covar = (pred_flat * target_flat).sum(dim=0)
-    return torch.cat((pred_sq, target_sq, covar), dim=0)
+    if torch.is_grad_enabled() and (preds.requires_grad or targets.requires_grad):
+        pred_sq = (pred_flat * pred_flat).sum(dim=0)
+        target_sq = (target_flat * target_flat).sum(dim=0)
+        covar = (pred_flat * target_flat).sum(dim=0)
+        return torch.cat((pred_sq, target_sq, covar), dim=0)
+
+    responders = preds.shape[-1]
+    result = out if out is not None else preds.new_empty(responders * 3)
+    torch.sum(pred_flat * pred_flat, dim=0, out=result[:responders])
+    torch.sum(target_flat * target_flat, dim=0, out=result[responders : 2 * responders])
+    torch.sum(pred_flat * target_flat, dim=0, out=result[2 * responders :])
+    return result
 
 
 def build_gradient_inputs(

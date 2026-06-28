@@ -23,6 +23,7 @@ from labs.training_hotpath.training_hotpath_common import (
     build_padding_inputs,
     build_segment_metadata,
     scalar_metric_reduction,
+    vectorized_metric_reduction,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -176,6 +177,30 @@ def test_scalar_metric_reduction_reuses_output_buffer_on_cpu() -> None:
     assert "result = out if out is not None else preds.new_empty(responders * 3)" in helper_source
     assert "torch.stack(" not in helper_source
     assert "torch.cat(" not in helper_source
+
+
+def test_vectorized_metric_reduction_reuses_output_buffer_on_cpu() -> None:
+    preds = torch.tensor([[[1.0, 2.0], [3.0, 4.0]]], dtype=torch.float32)
+    targets = torch.tensor([[[5.0, 6.0], [7.0, 8.0]]], dtype=torch.float32)
+    out = torch.empty(6, dtype=torch.float32)
+
+    result = vectorized_metric_reduction(preds, targets, out)
+
+    assert result.data_ptr() == out.data_ptr()
+    torch.testing.assert_close(
+        result,
+        torch.tensor([10.0, 20.0, 74.0, 100.0, 26.0, 44.0], dtype=torch.float32),
+    )
+
+    source = (LAB_DIR / "training_hotpath_common.py").read_text(encoding="utf-8")
+    helper_source = source.split("def vectorized_metric_reduction", maxsplit=1)[1].split(
+        "def build_gradient_inputs",
+        maxsplit=1,
+    )[0]
+    assert "result = out if out is not None else preds.new_empty(responders * 3)" in helper_source
+    assert "torch.sum(pred_flat * pred_flat, dim=0, out=result[:responders])" in helper_source
+    assert "if torch.is_grad_enabled() and (preds.requires_grad or targets.requires_grad):" in helper_source
+    assert "return torch.cat" in helper_source
 
 
 def test_padding_inputs_return_mask_and_host_active_token_count() -> None:
