@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -122,8 +122,6 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph_stream: Optional[torch.cuda.Stream] = None
         self.decode_graph: Optional[torch.cuda.CUDAGraph] = None
         self.graph_includes_prefill: bool = False
-        self.graph_logits: Optional[torch.Tensor] = None
-        self.graph_next_token: Optional[torch.Tensor] = None
         self._decode_next_token_values: Optional[torch.Tensor] = None
         self._decode_next_token: Optional[torch.Tensor] = None
         self._custom_metrics: Dict[str, float] = {}
@@ -486,9 +484,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for _ in range(2):
                 if self.cfg.graph_full_iteration:
                     _prime_decode_state()
-                _, next_state, next_token = self.decode_fn(
-                    self.current_tokens, self.state_buffer
-                )
+                next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                 self.state_buffer.copy_(next_state)
                 self.current_tokens.copy_(next_token)
         torch.cuda.synchronize()
@@ -501,9 +497,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if self.cfg.graph_full_iteration:
                 _prime_decode_state()
             for _ in range(self.cfg.decode_tokens):
-                _, next_state, next_token = self.decode_fn(
-                    self.current_tokens, self.state_buffer
-                )
+                next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                 self.state_buffer.copy_(next_state)
                 self.current_tokens.copy_(next_token)
         torch.cuda.synchronize()
@@ -522,7 +516,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _decode_step(
         self, tokens: torch.Tensor, state: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Single decode step - fp8_autocast managed externally."""
         with torch.inference_mode(), self.sdpa_ctx_factory():
             token_hidden = self.embedding(tokens)
@@ -544,7 +538,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ):
             self._decode_next_token = torch.empty(token_shape, device=logits.device, dtype=torch.long)
         torch.max(logits, dim=-1, out=(self._decode_next_token_values, self._decode_next_token))
-        return logits, hidden, self._decode_next_token
+        return hidden, self._decode_next_token
 
     def _get_fp8_context(self):
         """Return fp8_autocast context if FP8 is enabled, else nullcontext."""
@@ -609,7 +603,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.state_buffer.copy_(prefill_state)
             self.current_tokens.copy_(prompt[:, -1])
             for _ in range(self.cfg.decode_tokens):
-                _, next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
+                next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                 self.state_buffer.copy_(next_state)
                 self.current_tokens.copy_(next_token)
 
@@ -722,9 +716,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             else:
                 with torch.cuda.stream(self.compute_stream or torch.cuda.current_stream()):
                     for _ in range(self.cfg.decode_tokens):
-                        logits, next_state, next_token = self.decode_fn(
-                            self.current_tokens, self.state_buffer
-                        )
+                        next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                         self.state_buffer.copy_(next_state)
                         self.current_tokens.copy_(next_token)
                 if self.compute_stream is not None:
@@ -921,8 +913,6 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "_decode_next_token_values",
             "_decode_next_token",
             "next_token_out",
-            "graph_logits",
-            "graph_next_token",
             "_copy_done_events",
             "_timing_events",
             "_timing_event_tuple",

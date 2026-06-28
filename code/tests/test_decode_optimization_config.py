@@ -52,6 +52,8 @@ def test_decode_graph_capture_avoids_unused_full_vocab_output_copy() -> None:
         "def _prefill", maxsplit=1
     )[0]
 
+    assert "self.graph_logits" not in source
+    assert "self.graph_next_token" not in source
     assert "self.graph_logits = torch.empty" not in graph_section
     assert "self.graph_next_token = torch.empty" not in graph_section
     assert "self.graph_logits.copy_" not in graph_section
@@ -104,6 +106,25 @@ def test_decode_step_reuses_next_token_buffer() -> None:
     assert "self._decode_next_token = torch.empty((bsz,), device=self.device, dtype=torch.long)" in init_section
     assert "torch.max(logits, dim=-1, out=(self._decode_next_token_values, self._decode_next_token))" in decode_step_section
     assert "torch.argmax(logits, dim=-1)" not in decode_step_section
+    assert "return hidden, self._decode_next_token" in decode_step_section
+    assert "return logits, hidden, self._decode_next_token" not in decode_step_section
+
+
+def test_decode_hot_loops_do_not_bind_unused_logits() -> None:
+    common_source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    baseline_warp_source = (
+        REPO_ROOT / "labs" / "decode_optimization" / "baseline_decode_warp_specialized.py"
+    ).read_text(encoding="utf-8")
+    optimized_warp_source = (
+        REPO_ROOT / "labs" / "decode_optimization" / "optimized_decode_warp_specialized.py"
+    ).read_text(encoding="utf-8")
+
+    for source in (common_source, baseline_warp_source, optimized_warp_source):
+        assert "_, next_state, next_token = self.decode_fn" not in source
+        assert "logits, next_state, next_token = self.decode_fn" not in source
+        assert "next_state, next_token = self.decode_fn" in source
 
 
 def test_decode_common_inference_paths_skip_autograd_bookkeeping() -> None:

@@ -47,7 +47,7 @@ class CUDAGraphPersistentDecodeBenchmark(DecodeBenchmark):
             self.current_tokens.copy_(self._prefilled_tokens)
             for _ in range(2):
                 for _ in range(self.cfg.decode_tokens):
-                    _, next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
+                    next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                     self.state_buffer.copy_(next_state)
                     self.current_tokens.copy_(next_token)
         torch.cuda.synchronize()
@@ -59,7 +59,7 @@ class CUDAGraphPersistentDecodeBenchmark(DecodeBenchmark):
 
         with torch.cuda.graph(self._decode_graph, stream=self._graph_stream):
             for _ in range(self.cfg.decode_tokens):
-                _, next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
+                next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                 self.state_buffer.copy_(next_state)
                 self.current_tokens.copy_(next_token)
         torch.cuda.synchronize()
@@ -97,5 +97,4 @@ def get_benchmark() -> DecodeBenchmark:
         label="optimized_decode_warp_specialized",
     )
     return attach_benchmark_metadata(CUDAGraphPersistentDecodeBenchmark(cfg), __file__)
-
 
