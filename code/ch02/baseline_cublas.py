@@ -47,7 +47,7 @@ class BaselineCublasBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float32)
         self.B = torch.randn(self.k, self.n, device=self.device, dtype=torch.float32)
-        self.C = None
+        self.C = torch.empty(self.m, self.n, device=self.device, dtype=torch.float32)
 
         # Mirror the optimized setup warmup so both paths hit cuBLAS/Lt
         # heuristics with the same pre-timed launch history.
@@ -56,9 +56,9 @@ class BaselineCublasBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         """Plain cuBLAS FP32 matmul."""
-        assert self.A is not None and self.B is not None
+        assert self.A is not None and self.B is not None and self.C is not None
         with self._nvtx_range("baseline_cublas_fp32"):
-            self.C = torch.matmul(self.A, self.B)
+            torch.mm(self.A, self.B, out=self.C)
 
         if self.C is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
