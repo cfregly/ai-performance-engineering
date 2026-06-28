@@ -4404,6 +4404,36 @@ def test_ch04_optimized_nvlink_topology_reuses_chunk_views() -> None:
     assert "self._src_chunks = []" in teardown_section
 
 
+def test_ch04_baseline_nvlink_topology_reuses_blocking_chunk_views() -> None:
+    source = (REPO_ROOT / "ch04" / "baseline_nvlink_topology_aware.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._src_chunks: list[torch.Tensor] = []" in source
+    assert "self._dst_chunks: list[torch.Tensor] = []" in source
+    assert "self._host_chunks: list[torch.Tensor] = []" in source
+    assert "self._src_chunks = list(self.src.split(self.chunk_elems))" in setup_section
+    assert "self._dst_chunks = list(self.dst.split(self.chunk_elems))" in setup_section
+    assert "self._host_chunks = list(self.host_buffer.split(self.chunk_elems))" in setup_section
+    assert "for host_chunk, src_chunk, dst_chunk in zip(" in benchmark_section
+    assert "strict=True" in benchmark_section
+    assert "host_chunk.copy_(src_chunk, non_blocking=False)" in benchmark_section
+    assert "dst_chunk.copy_(host_chunk, non_blocking=False)" in benchmark_section
+    assert "start:end" not in benchmark_section
+    assert "range(0, self.numel, self.chunk_elems)" not in benchmark_section
+    assert "self._src_chunks = []" in teardown_section
+
+
 def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch17" / "optimized_pipeline_parallelism.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
