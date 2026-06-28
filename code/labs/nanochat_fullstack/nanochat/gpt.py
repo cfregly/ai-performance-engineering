@@ -607,10 +607,12 @@ class GPT(nn.Module):
         if attention_mask is not None:
             if not self.config.use_padded_attention:
                 raise ValueError("attention_mask provided but config.use_padded_attention=False")
-            attention_mask = attention_mask.to(device=idx.device, dtype=torch.bool)
+            if attention_mask.device != idx.device or attention_mask.dtype != torch.bool:
+                attention_mask = attention_mask.to(device=idx.device, dtype=torch.bool)
             assert attention_mask.size(0) == B, f"attention_mask batch mismatch: {attention_mask.size(0)} != {B}"
         if token_mask is not None:
-            token_mask = token_mask.to(device=idx.device, dtype=torch.bool)
+            if token_mask.device != idx.device or token_mask.dtype != torch.bool:
+                token_mask = token_mask.to(device=idx.device, dtype=torch.bool)
         elif attention_mask is not None and attention_mask.shape[-1] == T:
             # Default to using the attention mask for KV cache insertion when shapes match
             token_mask = attention_mask

@@ -606,6 +606,23 @@ def test_kv_cache_reuses_token_mask_row_sums():
     assert "t1_source =" not in insert_section
 
 
+def test_gpt_forward_skips_matching_mask_casts():
+    source = Path(__file__).resolve().parents[1] / "nanochat" / "gpt.py"
+    forward_prefix = source.read_text(encoding="utf-8").split(
+        "def forward(self, idx, targets=None, kv_cache=None",
+        maxsplit=1,
+    )[1].split(
+        "# Grab the rotary embeddings",
+        maxsplit=1,
+    )[0]
+
+    assert "if attention_mask.device != idx.device or attention_mask.dtype != torch.bool:" in forward_prefix
+    assert "attention_mask = attention_mask.to(device=idx.device, dtype=torch.bool)" in forward_prefix
+    assert "if token_mask.device != idx.device or token_mask.dtype != torch.bool:" in forward_prefix
+    assert "token_mask = token_mask.to(device=idx.device, dtype=torch.bool)" in forward_prefix
+    assert forward_prefix.count(".to(device=idx.device, dtype=torch.bool)") == 2
+
+
 def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     source = Path(__file__).resolve().parents[1] / "nanochat" / "engine.py"
     text = source.read_text(encoding="utf-8")
