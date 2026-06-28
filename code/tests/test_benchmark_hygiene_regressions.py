@@ -7103,6 +7103,23 @@ def test_ch12_llm_kernel_fusion_variants_cache_nvtx_enablement() -> None:
         assert 'with nvtx_range("kernel_fusion", enable=self._enable_nvtx):' in benchmark_section
 
 
+def test_ch13_dtensor_mesh_caches_nvtx_enablement() -> None:
+    source = (REPO_ROOT / "ch13" / "dtensor_mesh_tool.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+    assert "get_config()" not in benchmark_section
+    assert "get_nvtx_enabled(" not in benchmark_section
+    assert 'with nvtx_range("dtensor_mesh", enable=self._enable_nvtx):' in benchmark_section
+
+
 def test_ch11_ch12_standalone_timing_tools_use_inference_mode() -> None:
     paths = (
         "ch11/memory_async_demo.py",

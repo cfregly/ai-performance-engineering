@@ -23,6 +23,7 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.mesh = None
         self.tensor: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         try:
@@ -37,13 +38,14 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.mesh = DeviceMesh("cuda", devices)
         local = torch.randn(4, 4, device=f"cuda:{devices[0]}")
         self.tensor = distribute_tensor(local, placements=[Replicate()], device_mesh=self.mesh)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
     def benchmark_fn(self) -> Optional[dict]:
         if self.mesh is None or self.tensor is None:
             raise RuntimeError("SKIPPED: DTensor mesh not initialized")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("dtensor_mesh", enable=enable_nvtx):
+        with nvtx_range("dtensor_mesh", enable=self._enable_nvtx):
             self.output = (self.tensor * 2).redistribute(self.mesh, placements=self.tensor.placements)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
