@@ -1796,22 +1796,30 @@ def test_ch04_cpu_staged_reduction_baselines_reuse_buffered_mlp_and_outputs() ->
 
         assert "from ch04.reduction_common import ReusableReductionMlp" in source
         assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._cpu_shard_buffers: list[torch.Tensor] = []" in source
         assert "self._reduced_rows = 0" in source
         assert "self.model = ReusableReductionMlp(self.hidden_dim, self.inner_dim).to(self.device).eval()" in setup_section
         assert "nn.Sequential(" not in setup_section
         assert "self._output_buffer = torch.empty((self._reduced_rows, self.hidden_dim), device=self.device)" in setup_section
+        assert "use_pinned_host = self.input.device.type == \"cuda\" and torch.cuda.is_available()" in setup_section
+        assert "self._cpu_shard_buffers = [" in setup_section
+        assert "pin_memory=use_pinned_host" in setup_section
         assert "self._bytes_transferred = float(" in setup_section
         assert "shards = output.view(self.num_shards, self._reduced_rows, self.hidden_dim)" in benchmark_section
-        assert "cpu_shards = [shards[idx].cpu() for idx in range(self.num_shards)]" in benchmark_section
-        assert "for shard in cpu_shards[1:]:" in benchmark_section
+        assert "for idx, shard in enumerate(self._cpu_shard_buffers):" in benchmark_section
+        assert "shard.copy_(shards[idx], non_blocking=False)" in benchmark_section
+        assert "reduced = self._cpu_shard_buffers[0]" in benchmark_section
+        assert "for shard in self._cpu_shard_buffers[1:]:" in benchmark_section
         assert "reduced.add_(shard)" in benchmark_section
         assert "reduced.div_(float(self.num_shards))" in benchmark_section
         assert "self._output_buffer.copy_(reduced, non_blocking=False)" in benchmark_section
         assert "self.output = self._output_buffer" in benchmark_section
         assert "torch.chunk(" not in benchmark_section
         assert "sum(cpu_shards)" not in benchmark_section
+        assert ".cpu()" not in benchmark_section
         assert "reduced.to(self.device)" not in benchmark_section
         assert "self._output_buffer = None" in teardown_section
+        assert "self._cpu_shard_buffers = []" in teardown_section
         assert "self._reduced_rows = 0" in teardown_section
 
 

@@ -40,6 +40,7 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._cpu_shard_buffers: list[torch.Tensor] = []
         self._reduced_rows = 0
         self._bytes_transferred: float = 0.0
         self._payload_parameter_count = 0
@@ -64,6 +65,16 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._reduced_rows = self.batch_size // self.num_shards
         self.output = None
         self._output_buffer = torch.empty((self._reduced_rows, self.hidden_dim), device=self.device)
+        use_pinned_host = self.input.device.type == "cuda" and torch.cuda.is_available()
+        self._cpu_shard_buffers = [
+            torch.empty(
+                (self._reduced_rows, self.hidden_dim),
+                dtype=self.input.dtype,
+                device="cpu",
+                pin_memory=use_pinned_host,
+            )
+            for _ in range(self.num_shards)
+        ]
         element_size = self.input.element_size()
         self._bytes_transferred = float(
             (self.batch_size * self.hidden_dim + self._reduced_rows * self.hidden_dim)
@@ -75,6 +86,7 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: CPU round-trip reduction (anti-pattern)."""
         assert self.input is not None and self.model is not None
         assert self._output_buffer is not None
+        assert len(self._cpu_shard_buffers) == self.num_shards
 
         with self._nvtx_range("baseline_cpu_reduction"):
             with torch.inference_mode():
@@ -83,9 +95,10 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 # Naively copy each shard to CPU to aggregate (slow!)
                 shards = output.view(self.num_shards, self._reduced_rows, self.hidden_dim)
                 # This is the bottleneck: multiple GPU->CPU copies + CPU addition
-                cpu_shards = [shards[idx].cpu() for idx in range(self.num_shards)]
-                reduced = cpu_shards[0]
-                for shard in cpu_shards[1:]:
+                for idx, shard in enumerate(self._cpu_shard_buffers):
+                    shard.copy_(shards[idx], non_blocking=False)
+                reduced = self._cpu_shard_buffers[0]
+                for shard in self._cpu_shard_buffers[1:]:
                     reduced.add_(shard)
                 reduced.div_(float(self.num_shards))
                 # Copy result back to GPU
@@ -115,6 +128,7 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input = None
         self.output = None
         self._output_buffer = None
+        self._cpu_shard_buffers = []
         self._reduced_rows = 0
         torch.cuda.empty_cache()
     
