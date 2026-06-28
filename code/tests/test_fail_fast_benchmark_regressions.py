@@ -31,6 +31,18 @@ def test_ch18_paged_attention_sparse_path_fails_fast_on_compile_errors() -> None
 
 def test_ch18_nvfp4_trtllm_tool_no_longer_uses_placeholder_outputs_or_eager_fallback() -> None:
     source = _read("ch18/nvfp4_trtllm_tool.py")
+    setup_section = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
     assert "torch.tensor([float(len(outputs))]" not in source
     assert "FAIL FAST: TRT-LLM generate returned an unsupported output payload" in source
     assert "FAIL FAST: Transformer Engine FP8 path failed in nvfp4_trtllm_tool" in source
+    assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+    assert "get_nvtx_enabled(" not in benchmark_section
+    assert "self.get_config()" not in benchmark_section
+    assert "torch.as_tensor(" not in benchmark_section
+    assert 'first = outputs.get("output_ids")' in benchmark_section
+    assert 'raise TypeError(f"expected Tensor output, got {type(first).__name__}")' in benchmark_section

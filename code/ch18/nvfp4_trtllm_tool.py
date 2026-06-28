@@ -30,8 +30,12 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph = None
         self._trt_runner = None
         self._verification_payload = None
+        self._enable_nvtx = False
 
     def setup(self) -> None:
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
+
         # TensorRT-LLM path first, with optional CUDA Graph capture.
         engine_path = os.getenv("TRT_LLM_ENGINE")
         trt_exc: Optional[Exception] = None
@@ -71,15 +75,18 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not self._stack_available:
             raise RuntimeError("SKIPPED: NVFP4 stack not available")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-
         # TensorRT-LLM path if runner exists.
         if hasattr(self, "_trt_runner") and self.inputs is not None:
-            with nvtx_range("nvfp4_trtllm_engine", enable=enable_nvtx):
+            with nvtx_range("nvfp4_trtllm_engine", enable=self._enable_nvtx):
                 outputs = self._trt_runner.generate(self.inputs)  # type: ignore[attr-defined]
                 try:
-                    first = outputs[0] if isinstance(outputs, (list, tuple)) else outputs
-                    self.output = first if isinstance(first, torch.Tensor) else torch.as_tensor(first, device=self.device)
+                    if isinstance(outputs, dict):
+                        first = outputs.get("output_ids")
+                    else:
+                        first = outputs[0] if isinstance(outputs, (list, tuple)) else outputs
+                    if not isinstance(first, torch.Tensor):
+                        raise TypeError(f"expected Tensor output, got {type(first).__name__}")
+                    self.output = first
                 except Exception as exc:
                     raise RuntimeError(
                         f"FAIL FAST: TRT-LLM generate returned an unsupported output payload "
@@ -92,7 +99,7 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.linear is None or self.inputs is None:
             raise RuntimeError("SKIPPED: NVFP4 linear model not initialized")
 
-        with nvtx_range("nvfp4_te_fp8", enable=enable_nvtx):
+        with nvtx_range("nvfp4_te_fp8", enable=self._enable_nvtx):
             try:
                 from transformer_engine.pytorch import fp8_autocast  # type: ignore
                 with fp8_autocast():
