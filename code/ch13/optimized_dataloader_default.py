@@ -29,11 +29,16 @@ class SyntheticDataset(Dataset):
     
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         sample = self.data[idx]
-        enriched = sample
+        enriched = sample.clone()
+        scratch = torch.empty_like(enriched)
         for _ in range(self.preprocess_steps):
-            enriched = torch.tanh(enriched * 1.1) + torch.sin(enriched * 0.5)
-        normalized = enriched - enriched.mean()
-        return normalized, self.labels[idx]
+            torch.mul(enriched, 0.5, out=scratch)
+            torch.sin(scratch, out=scratch)
+            enriched.mul_(1.1)
+            torch.tanh(enriched, out=enriched)
+            enriched.add_(scratch)
+        enriched.sub_(enriched.mean())
+        return enriched, self.labels[idx]
 
 
 class SimpleModel(nn.Module):

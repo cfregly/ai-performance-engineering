@@ -6185,6 +6185,27 @@ def test_ch13_mlp_benchmarks_use_inplace_relu_modules() -> None:
     assert "torch.relu(x)" not in int8_forward
 
 
+def test_ch13_optimized_dataloader_reuses_preprocessing_scratch() -> None:
+    source = (REPO_ROOT / "ch13" / "optimized_dataloader_default.py").read_text(
+        encoding="utf-8"
+    )
+    getitem_section = source.split("def __getitem__", maxsplit=1)[1].split(
+        "class SimpleModel",
+        maxsplit=1,
+    )[0]
+
+    assert "enriched = sample.clone()" in getitem_section
+    assert "scratch = torch.empty_like(enriched)" in getitem_section
+    assert "torch.mul(enriched, 0.5, out=scratch)" in getitem_section
+    assert "torch.sin(scratch, out=scratch)" in getitem_section
+    assert "enriched.mul_(1.1)" in getitem_section
+    assert "torch.tanh(enriched, out=enriched)" in getitem_section
+    assert "enriched.add_(scratch)" in getitem_section
+    assert "enriched.sub_(enriched.mean())" in getitem_section
+    assert "torch.tanh(enriched * 1.1) + torch.sin(enriched * 0.5)" not in getitem_section
+    assert "normalized = enriched - enriched.mean()" not in getitem_section
+
+
 def test_ch13_fsdp_example_defers_train_step_loss_sync_to_logging() -> None:
     source = (REPO_ROOT / "ch13" / "fsdp_example.py").read_text(encoding="utf-8")
     train_step_section = source.split("def train_step", maxsplit=1)[1].split(
