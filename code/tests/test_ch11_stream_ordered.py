@@ -1,8 +1,12 @@
+from pathlib import Path
+
 import torch
 
 from ch11.baseline_stream_ordered import BaselineStreamOrderedBenchmark
 from ch11.optimized_stream_ordered import OptimizedStreamOrderedBenchmark
 from core.harness.benchmark_harness import BenchmarkConfig, ReadOnlyBenchmarkConfigView
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class _FakeStreamOrderedModule:
@@ -66,3 +70,20 @@ def test_stream_ordered_benchmark_fn_defers_payload_tensor_allocation(monkeypatc
     assert optimized_inputs["elements"].item() == optimized.elements
     assert baseline_inputs["inner_iterations"].item() == baseline.inner_iterations
     assert optimized_inputs["inner_iterations"].item() == optimized.inner_iterations
+
+
+def test_stream_ordered_benchmark_fn_uses_setup_cached_iteration_count() -> None:
+    for relative in (
+        "ch11/baseline_stream_ordered.py",
+        "ch11/optimized_stream_ordered.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+
+        assert "self._active_inner_iterations_count = self._active_inner_iterations()" in setup_section
+        assert "inner_iterations = self._active_inner_iterations_count" in benchmark_section
+        assert "_active_inner_iterations()" not in benchmark_section
+        assert "getattr(self, \"_config\"" not in benchmark_section

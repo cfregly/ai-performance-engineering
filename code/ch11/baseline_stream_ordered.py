@@ -32,6 +32,7 @@ class BaselineStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.num_streams = 8
         self.output: Optional[torch.Tensor] = None
         self._last_inner_iterations = self.inner_iterations
+        self._active_inner_iterations_count = self.inner_iterations
         self._module: Optional[ModuleType] = None
         # Application replay is not stable for this allocator-heavy profile on NCU.
         self.preferred_ncu_replay_mode = "kernel"
@@ -53,6 +54,7 @@ class BaselineStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        self._active_inner_iterations_count = self._active_inner_iterations()
         # Compile + warm the extension outside the timed region.
         self._module = load_stream_ordered_module()
         _ = self._module.run_standard_allocator_capture(1024, 1)
@@ -61,7 +63,7 @@ class BaselineStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self._module is None:
             raise RuntimeError("Stream-ordered allocator module not initialized")
-        inner_iterations = self._active_inner_iterations()
+        inner_iterations = self._active_inner_iterations_count
         with self._nvtx_range("stream_ordered_baseline"):
             self.output = self._module.run_standard_allocator_capture(self.elements, inner_iterations)
         if self.output is None:
@@ -105,4 +107,3 @@ class BaselineStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineStreamOrderedBenchmark()
-
