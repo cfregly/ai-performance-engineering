@@ -10748,6 +10748,21 @@ def test_ch17_optimized_disaggregated_waits_once_before_decode_loop() -> None:
     assert decode_stream_pos < wait_pos < loop_pos
 
 
+def test_ch17_optimized_disaggregated_uses_prebuilt_timing_events() -> None:
+    source = (REPO_ROOT / "ch17" / "optimized_prefill_decode_disagg.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+
+    assert "or self._ttft_events is None" in benchmark_section
+    assert "or len(self._tpot_events) != self.decode_seq" in benchmark_section
+    assert "ttft_events = self._ttft_events" in benchmark_section
+    assert "token_event_pairs = self._tpot_events" in benchmark_section
+    assert "self._get_ttft_events()" not in benchmark_section
+    assert "self._get_tpot_events(" not in benchmark_section
+
+
 def test_ch17_monolithic_decode_fast_paths_single_token() -> None:
     source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_monolithic_common.py").read_text(
         encoding="utf-8"

@@ -65,6 +65,17 @@ def test_ch17_disaggregated_prefill_decode_reuses_timing_events() -> None:
     bench.prefill_stream = torch.cuda.Stream(device=bench.device)
     bench.decode_stream = torch.cuda.Stream(device=bench.device)
     bench._prefill_done = torch.cuda.Event()
+    bench._ttft_events = (
+        torch.cuda.Event(enable_timing=True),
+        torch.cuda.Event(enable_timing=True),
+    )
+    bench._tpot_events = [
+        (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
+        for _ in range(bench.decode_seq)
+    ]
 
     bench.benchmark_fn()
     torch.cuda.synchronize(bench.device)

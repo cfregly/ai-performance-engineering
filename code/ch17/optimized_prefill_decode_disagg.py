@@ -104,12 +104,20 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._tpot_events
 
     def benchmark_fn(self) -> Dict[str, list[float]]:
-        if self.model is None or self.prompt is None or self.prefill_stream is None or self.decode_stream is None or self._prefill_done is None:
+        if (
+            self.model is None
+            or self.prompt is None
+            or self.prefill_stream is None
+            or self.decode_stream is None
+            or self._prefill_done is None
+            or self._ttft_events is None
+            or len(self._tpot_events) != self.decode_seq
+        ):
             raise RuntimeError("Model/inputs/streams not initialized")
 
         with nvtx_range("optimized_disaggregated_multigpu.prefill_decode", enable=self._enable_nvtx):
             with torch.inference_mode():
-                ttft_events = self._get_ttft_events()
+                ttft_events = self._ttft_events
                 request_start, prefill_end = ttft_events
                 request_start.record()
                 default_stream = torch.cuda.current_stream(device=self.device)
@@ -120,7 +128,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     prefill_end.record()
 
                 token_output = kv_cache
-                token_event_pairs = self._get_tpot_events(self.decode_seq)
+                token_event_pairs = self._tpot_events
                 with torch.cuda.stream(self.decode_stream):
                     self.decode_stream.wait_event(self._prefill_done)
                     for token_start, token_end in token_event_pairs:
