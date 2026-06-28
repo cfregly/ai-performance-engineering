@@ -949,6 +949,27 @@ def test_ch03_ch05_accumulator_buffers_skip_setup_zero_fill() -> None:
         assert reset in benchmark_section
 
 
+def test_ch05_optimized_vectorization_reuses_reduction_output_buffer() -> None:
+    source = (REPO_ROOT / "ch05" / "optimized_vectorization.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._output_buffer = torch.empty(1, device=self.device)" in setup_section
+    assert "with torch.inference_mode(), self._nvtx_range(\"optimized_vectorization\"):" in benchmark_section
+    assert "torch.sum(self.data, dim=0, keepdim=True, out=self._output_buffer)" in benchmark_section
+    assert "self.data.sum().unsqueeze(0)" not in benchmark_section
+    assert "torch.empty(" not in benchmark_section
+
+
 def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
     for relative in (
         "ch03/baseline_pinned_prefetch_mlp.py",

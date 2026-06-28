@@ -17,6 +17,7 @@ class OptimizedVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.data: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self.N = 1_000_000
         # Computation benchmark - jitter check not applicable
         tokens = self.N
@@ -29,14 +30,17 @@ class OptimizedVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Setup: Initialize data."""
         torch.manual_seed(42)
         self.data = torch.randn(self.N, device=self.device)
+        self._output_buffer = torch.empty(1, device=self.device)
     
     def benchmark_fn(self) -> None:
         """Benchmark: Fully vectorized reduction over the full tensor."""
         assert self.data is not None
-        with self._nvtx_range("optimized_vectorization"):
+        if self._output_buffer is None:
+            raise RuntimeError("Output buffer not initialized")
+        with torch.inference_mode(), self._nvtx_range("optimized_vectorization"):
             # Vectorized sum over the full tensor (single kernel)
-            result = self.data.sum().unsqueeze(0)
-        self.output = result
+            torch.sum(self.data, dim=0, keepdim=True, out=self._output_buffer)
+        self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
@@ -56,6 +60,7 @@ class OptimizedVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         self.data = None
+        self._output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
