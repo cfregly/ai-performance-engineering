@@ -272,9 +272,12 @@ def decode_with_dynamic_precision(
                 next_token_values is None
                 or next_token_values.device != last_step_logits.device
                 or next_token_values.dtype != last_step_logits.dtype
-                or tuple(next_token_values.shape) != (batch_size, 1)
             ):
-                next_token_values = torch.empty_like(last_step_logits[:, :1])
+                next_token_values = torch.empty(
+                    (batch_size, 1),
+                    device=last_step_logits.device,
+                    dtype=last_step_logits.dtype,
+                )
             torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))
             tokens[:, current_len : current_len + 1].copy_(next_token)
             current_len += 1

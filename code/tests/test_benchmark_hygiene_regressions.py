@@ -1591,13 +1591,13 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
         assert "torch.cat([generated, next_token]" not in source
         assert "torch.cat([tokens, next_token]" not in source
         assert "torch.cat([tokens, next_token.unsqueeze(0)]" not in source
+        assert "torch.empty_like(last_step_logits[:, :1])" not in source
+        assert "tuple(next_token_values.shape)" not in source
 
     common_source = (REPO_ROOT / "ch19" / "dynamic_precision_benchmark_common.py").read_text(
         encoding="utf-8"
     )
     assert common_source.count("next_token_values = torch.empty(\n                (batch_size, 1),") == 2
-    assert "torch.empty_like(last_step_logits[:, :1])" not in common_source
-    assert "tuple(next_token_values.shape)" not in common_source
     assert "next_token_values.device != last_step_logits.device" not in common_source
 
     token_precision_source = (REPO_ROOT / "ch19" / "token_precision_switching.py").read_text(
