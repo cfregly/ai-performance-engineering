@@ -125,12 +125,15 @@ def _vectorized_forward_grouped(
     padded.index_copy_(0, slots, rep_x)
     padded = padded.view(self.num_experts, cap, self.hidden_size)
 
-    gate = F.silu(torch.bmm(padded, self.w1_stacked))
+    gate = torch.bmm(padded, self.w1_stacked)
+    F.silu(gate, inplace=True)
     up = torch.bmm(padded, self.w3_stacked)
-    out = torch.bmm(gate * up, self.w2_stacked)
+    gate.mul_(up)
+    out = torch.bmm(gate, self.w2_stacked)
 
     flat_out = out.reshape(self.num_experts * cap, self.hidden_size)
-    gathered = flat_out.index_select(0, slots) * flat_w.unsqueeze(1)
+    gathered = flat_out.index_select(0, slots)
+    gathered.mul_(flat_w.unsqueeze(1))
     return gathered.view(batch_seq, top_k, self.hidden_size).sum(dim=1)
 
 
