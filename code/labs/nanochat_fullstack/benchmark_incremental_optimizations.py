@@ -108,6 +108,10 @@ class IncrementalBenchmark:
                               device=self.device, dtype=torch.long)
         decode_tokens = torch.randint(0, self.vocab_size, (self.batch_size, self.decode_len),
                                      device=self.device, dtype=torch.long)
+        decode_token_steps = tuple(
+            decode_tokens[:, t:t + 1]
+            for t in range(self.decode_len)
+        )
         
         # Setup KV cache
         head_dim = cfg.n_embd // cfg.n_head
@@ -126,8 +130,7 @@ class IncrementalBenchmark:
             kv_cache.reset()
             with torch.inference_mode():
                 _ = model(prompt, kv_cache=kv_cache)
-                for t in range(min(8, self.decode_len)):
-                    step_ids = decode_tokens[:, t:t+1]
+                for step_ids in decode_token_steps[: min(8, self.decode_len)]:
                     _ = model(step_ids, kv_cache=kv_cache)
         
         if self.device.type == "cuda":
@@ -152,8 +155,7 @@ class IncrementalBenchmark:
 
         def _run_decode() -> None:
             with torch.inference_mode():
-                for t in range(self.decode_len):
-                    step_ids = decode_tokens[:, t:t+1]
+                for step_ids in decode_token_steps:
                     _ = model(step_ids, kv_cache=kv_cache)
 
         for _ in range(self.iterations):

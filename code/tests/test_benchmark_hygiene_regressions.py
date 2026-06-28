@@ -3165,6 +3165,12 @@ def test_nanochat_incremental_benchmark_uses_cuda_event_timing() -> None:
     assert "start.record()" in helper_section
     assert "end.record()" in helper_section
     assert "start.elapsed_time(end) / 1000.0" in helper_section
+    assert "decode_token_steps = tuple(" in benchmark_section
+    assert "decode_tokens[:, t:t + 1]" in benchmark_section
+    assert "for step_ids in decode_token_steps[: min(8, self.decode_len)]:" in benchmark_section
+    assert "for step_ids in decode_token_steps:" in timed_section
+    assert "decode_tokens[:, t:t+1]" not in timed_section
+    assert "decode_tokens[:, t:t + 1]" not in timed_section
     assert timed_section.count("self._time_region_seconds(") == 2
     assert "torch.cuda.synchronize()" not in timed_section
     assert "time.time()" not in timed_section
