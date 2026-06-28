@@ -132,8 +132,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         requests = self._cached_requests
         rejects = 0
         offloaded = 0
-        rejects_tensor: Optional[torch.Tensor] = None
-        offloaded_tensor: Optional[torch.Tensor] = None
+        count_values_ready = False
         start = self._record_start()
         queue_lengths: Optional[torch.Tensor] = None
         queue_lengths_host: Optional[list[int]] = None
@@ -157,6 +156,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 or self._offload_mask is None
                 or self._admit_mask is None
                 or self._served_offload_mask is None
+                or self._count_values is None
             ):
                 raise RuntimeError("Vectorized routing buffers not initialized")
             self._queue_lengths.copy_(queue_lengths)
@@ -184,9 +184,11 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             else:
                 self._admit_mask.fill_(True)
 
-            rejects_tensor = self.batch_size - self._admit_mask.sum()
+            torch.sum(self._admit_mask, dim=(), dtype=torch.int64, out=self._count_values[0])
+            self._count_values[0].neg_().add_(self.batch_size)
             torch.logical_and(self._admit_mask, self._offload_mask, out=self._served_offload_mask)
-            offloaded_tensor = self._served_offload_mask.sum()
+            torch.sum(self._served_offload_mask, dim=(), dtype=torch.int64, out=self._count_values[1])
+            count_values_ready = True
         else:
             # Python loop-based routing (sequential, one-at-a-time)
             for idx, req in enumerate(requests):
@@ -203,11 +205,9 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     offloaded += 1
 
         elapsed_ms = self._record_stop(start)
-        if rejects_tensor is not None and offloaded_tensor is not None:
+        if count_values_ready:
             if self._count_values is None:
                 raise RuntimeError("Vectorized count buffer not initialized")
-            self._count_values[0].copy_(rejects_tensor)
-            self._count_values[1].copy_(offloaded_tensor)
             rejects_value, offloaded_value = self._count_values.tolist()
             rejects = int(rejects_value)
             offloaded = int(offloaded_value)

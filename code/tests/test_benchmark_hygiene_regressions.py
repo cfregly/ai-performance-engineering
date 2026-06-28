@@ -4719,11 +4719,15 @@ def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
         maxsplit=1,
     )[0]
     post_timing_section = benchmark_section.split("elapsed_ms = self._record_stop(start)", maxsplit=1)[1]
-    assert "rejects_tensor = self.batch_size - self._admit_mask.sum()" in vectorized_timed_section
-    assert "offloaded_tensor = self._served_offload_mask.sum()" in vectorized_timed_section
+    assert "rejects_tensor =" not in benchmark_section
+    assert "offloaded_tensor =" not in benchmark_section
+    assert "torch.sum(self._admit_mask, dim=(), dtype=torch.int64, out=self._count_values[0])" in vectorized_timed_section
+    assert "self._count_values[0].neg_().add_(self.batch_size)" in vectorized_timed_section
+    assert "torch.sum(self._served_offload_mask, dim=(), dtype=torch.int64, out=self._count_values[1])" in vectorized_timed_section
+    assert "count_values_ready = True" in vectorized_timed_section
     assert ".item()" not in vectorized_timed_section
-    assert "self._count_values[0].copy_(rejects_tensor)" in post_timing_section
-    assert "self._count_values[1].copy_(offloaded_tensor)" in post_timing_section
+    assert "self._count_values[0].copy_(" not in post_timing_section
+    assert "self._count_values[1].copy_(" not in post_timing_section
     assert "rejects_value, offloaded_value = self._count_values.tolist()" in post_timing_section
     assert "torch.stack(" not in benchmark_section
     assert "rejects = int(rejects_value)" in post_timing_section
