@@ -7960,6 +7960,44 @@ def test_ch13_matmul_and_regional_compile_keep_precision_fixed_across_pairs() ->
     assert "dtype=torch.bfloat16" in optimized_regional
 
 
+def test_ch13_matmul_pair_reuses_output_buffers_without_collapsing_epilogue_contrast() -> None:
+    baseline_source = (REPO_ROOT / "ch13" / "baseline_matmul_pytorch.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_source = (REPO_ROOT / "ch13" / "optimized_matmul_pytorch.py").read_text(
+        encoding="utf-8"
+    )
+    baseline_helper = baseline_source.split("def baseline_matmul", maxsplit=1)[1].split(
+        "class BaselineMatmulPyTorchBenchmark", maxsplit=1
+    )[0]
+    optimized_helper = optimized_source.split("def optimized_matmul", maxsplit=1)[1].split(
+        "class OptimizedMatmulPyTorchBenchmark", maxsplit=1
+    )[0]
+
+    assert "torch.mm(A, B, out=out)" in baseline_helper
+    assert "torch.addmm(" not in baseline_helper
+    assert "out.add_(bias)" in baseline_helper
+    assert "torch.relu_(out)" in baseline_helper
+    assert "out.add_(residual)" in baseline_helper
+    assert "out.mul_(scale)" in baseline_helper
+    assert "torch.matmul(self.A, self.B)" not in baseline_source
+    assert "torch.relu(out + self.bias)" not in baseline_source
+    assert "torch.addmm(bias, A, B, out=out)" in optimized_helper
+
+
+def test_ch10_tcgen05_baseline_epilogue_adds_bias_in_place() -> None:
+    source = (REPO_ROOT / "ch10" / "baseline_matmul_tcgen05_epilogue.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "C.add_(self.bias)" in benchmark_section
+    assert "C = C + self.bias" not in benchmark_section
+
+
 def test_ch10_tcgen05_warp_specialized_kernel_uses_direct_epilogue_copy() -> None:
     optimized_wrapper = (REPO_ROOT / "ch10" / "optimized_tcgen05_warp_specialization.py").read_text(
         encoding="utf-8"

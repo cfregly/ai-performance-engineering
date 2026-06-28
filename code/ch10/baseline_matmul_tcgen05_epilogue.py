@@ -68,7 +68,7 @@ class BaselineMatmulTCGen05EpilogueBenchmark(VerificationPayloadMixin, BaseBench
                 # Use the same tcgen05 GEMM kernel as optimized; keep bias+SiLU separate.
                 C = self.module.matmul_tcgen05(self.A, self.B).float()
                 # Step 2: Add bias (separate kernel launch)
-                C = C + self.bias
+                C.add_(self.bias)
                 # Step 3: SiLU activation (separate kernel launch)
                 self.output = F.silu(C).to(dtype=torch.float16)
         if self.output is None:

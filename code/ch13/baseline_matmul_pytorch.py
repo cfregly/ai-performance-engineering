@@ -25,6 +25,23 @@ from core.harness.benchmark_harness import (
 resolve_device = partial(require_cuda_device, "CUDA required for ch13")
 
 
+def baseline_matmul(
+    A: torch.Tensor,
+    B: torch.Tensor,
+    bias: torch.Tensor,
+    residual: torch.Tensor,
+    out: torch.Tensor,
+    scale: float,
+) -> torch.Tensor:
+    """Keep the baseline epilogue unfused while reusing the preallocated output."""
+    torch.mm(A, B, out=out)
+    out.add_(bias)
+    torch.relu_(out)
+    out.add_(residual)
+    out.mul_(scale)
+    return out
+
+
 class BaselineMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """PyTorch matmul baseline - sequential unfused operations."""
 
@@ -68,19 +85,22 @@ class BaselineMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.residual = torch.randn(self.m, self.n, device=self.device, dtype=torch.float16)
         
         # Warmup
-        out = torch.matmul(self.A, self.B)
-        out = torch.relu(out + self.bias)
-        out = (out + self.residual) * self.scale
+        baseline_matmul(self.A, self.B, self.bias, self.residual, self.C, self.scale)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - PyTorch matmul."""
-        assert self.A is not None and self.B is not None and self.bias is not None and self.residual is not None
+        assert self.A is not None and self.B is not None and self.bias is not None and self.residual is not None and self.C is not None
         with self._nvtx_range("baseline_matmul_pytorch"):
             # Standard PyTorch matrix multiplication
-            out = torch.matmul(self.A, self.B)
-            out = torch.relu(out + self.bias)
-            self.C = (out + self.residual) * self.scale
+            self.C = baseline_matmul(
+                self.A,
+                self.B,
+                self.bias,
+                self.residual,
+                self.C,
+                self.scale,
+            )
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
