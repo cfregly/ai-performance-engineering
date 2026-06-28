@@ -1370,6 +1370,33 @@ def test_ch09_compute_bound_baseline_uses_inference_mode_and_cached_nvtx() -> No
     assert "from core.profiling.nvtx_helper" not in source
 
 
+def test_ch09_optimized_compute_bound_reuses_graph_mlp_buffers() -> None:
+    source = (REPO_ROOT / "ch09" / "optimized_compute_bound.py").read_text(encoding="utf-8")
+    model_section = source.split("class BufferedVectorMlp", maxsplit=1)[1].split(
+        "class OptimizedComputeBoundBenchmark",
+        maxsplit=1,
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    graph_capture_section = setup_section.split("with torch.cuda.graph(graph):", maxsplit=1)[1]
+
+    assert "self._fc1_buffer: Optional[torch.Tensor] = None" in model_section
+    assert "self._fc2_buffer: Optional[torch.Tensor] = None" in model_section
+    assert "def _ensure_forward_buffers(" in model_section
+    assert "if torch.is_grad_enabled():" in model_section
+    assert "torch.mv(self.fc1.weight, x, out=fc1_out)" in model_section
+    assert "fc1_out.add_(self.fc1.bias)" in model_section
+    assert "self.relu(fc1_out)" in model_section
+    assert "torch.mv(self.fc2.weight, fc1_out, out=fc2_out)" in model_section
+    assert "fc2_out.add_(self.fc2.bias)" in model_section
+    assert "self.model = BufferedVectorMlp(self.N, self.N * 2)" in setup_section
+    assert "nn.Sequential(" not in setup_section
+    assert "for _ in range(self.repeats):" in graph_capture_section
+    assert "out = self.model(out)" in graph_capture_section
+
+
 def test_ch09_memory_and_triton_baselines_use_cached_nvtx() -> None:
     for filename, label in (
         ("baseline_memory_bound.py", "baseline_memory_bound"),
