@@ -78,10 +78,13 @@ class BaselineRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchma
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         n_layers = self.choice["n_layers"]
         d_model = self.choice["d_model"]
         d_ff = self.choice["d_ff"]
@@ -118,9 +121,7 @@ class BaselineRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchma
     def benchmark_fn(self) -> None:
         if self.model is None or self.inputs is None:
             raise RuntimeError("Model/inputs not initialized")
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("baseline_regional_compilation", enable=enable_nvtx):
+        with nvtx_range("baseline_regional_compilation", enable=self._enable_nvtx):
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 self.output = self.model(self.inputs)
         if self._verify_input is None:

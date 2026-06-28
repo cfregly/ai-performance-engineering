@@ -1626,6 +1626,42 @@ def test_ch16_runtime_schedulers_cache_nvtx_and_verification_dummy() -> None:
         assert "torch.zeros(1, device=self.device)" not in capture_section
 
 
+def test_ch16_piece_and_regional_graphs_cache_nvtx_outside_hot_loop() -> None:
+    direct_nvtx_files = (
+        "baseline_piece_graphs.py",
+        "optimized_piece_graphs.py",
+        "baseline_regional_compilation.py",
+    )
+    for filename in direct_nvtx_files:
+        source = (REPO_ROOT / "ch16" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+        assert "get_config()" not in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert "enable=self._enable_nvtx" in benchmark_section
+
+    optimized_source = (REPO_ROOT / "ch16" / "optimized_regional_compilation.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def get_workload_metadata", maxsplit=1
+    )[0]
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+
+    assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in optimized_setup
+    assert "get_config()" not in optimized_benchmark
+    assert "get_nvtx_enabled(" not in optimized_benchmark
+    assert "self._run_with_cuda_graph(seq_len, self._enable_nvtx)" in optimized_benchmark
+
+
 def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
     source = (REPO_ROOT / "ch19" / "token_precision_switching.py").read_text(
         encoding="utf-8"

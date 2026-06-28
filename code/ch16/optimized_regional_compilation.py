@@ -67,6 +67,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         self.capture_ms: float = 0.0
         self._verify_input: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
+        self._enable_nvtx = False
         tokens = self.max_seq_len * self.d_model
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -80,6 +81,8 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         # Use the larger preset so region capture speedups have room to show.
         candidate = self.choice
         self.d_model = candidate["d_model"]
@@ -152,9 +155,6 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         self.capture_ms = float(capture_start.elapsed_time(capture_stop))
 
     def benchmark_fn(self) -> None:
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
         if self.model is None:
             raise RuntimeError("Optimized model not initialized")
         if self._verify_input is None:
@@ -162,7 +162,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
 
         seq_len = self.sequence_schedule[self._iteration % len(self.sequence_schedule)]
         self._iteration += 1
-        ran_graph = self._run_with_cuda_graph(seq_len, enable_nvtx)
+        ran_graph = self._run_with_cuda_graph(seq_len, self._enable_nvtx)
         if not ran_graph:
             raise RuntimeError("CUDA graph replay missing for expected sequence length bucket")
 
