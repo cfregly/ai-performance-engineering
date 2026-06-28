@@ -363,6 +363,7 @@ def launch_grouped_gemm_standard(
     counts: torch.Tensor,
     out: torch.Tensor,
     schedule: KernelSchedule,
+    route_weight_factors: torch.Tensor | None = None,
 ) -> torch.Tensor:
     _validate_grouped_inputs(packed_tokens, expert_weights, route_weights, counts, out)
     out.zero_()
@@ -402,7 +403,9 @@ def launch_grouped_gemm_standard(
         num_stages=schedule.num_stages,
     )
     if not schedule.fused_weights:
-        out.mul_(route_weights.unsqueeze(-1).to(out.dtype))
+        if route_weight_factors is None:
+            route_weight_factors = route_weights.unsqueeze(-1).to(out.dtype)
+        out.mul_(route_weight_factors)
     return out
 
 

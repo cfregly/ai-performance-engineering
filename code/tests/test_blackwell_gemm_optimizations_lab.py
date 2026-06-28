@@ -124,6 +124,7 @@ def test_blackwell_grouped_gemm_padding_row_is_preallocated() -> None:
 
 def test_blackwell_grouped_gemm_reuses_packed_token_view() -> None:
     source = (LAB_DIR / "blackwell_grouped_gemm_common.py").read_text(encoding="utf-8")
+    kernel_source = (LAB_DIR / "blackwell_grouped_gemm_kernel.py").read_text(encoding="utf-8")
     gather_section = source.split("def _gather_packed_tokens", maxsplit=1)[1].split(
         "def run_variant",
         maxsplit=1,
@@ -146,6 +147,12 @@ def test_blackwell_grouped_gemm_reuses_packed_token_view() -> None:
     assert "return out_view" in gather_section
     assert "packed_tokens_view: torch.Tensor | None = None" in run_section
     assert "_gather_packed_tokens(state, packed_tokens_flat, packed_tokens_view)" in run_section
+    assert "padded_route_weight_factors: torch.Tensor" in source
+    assert "padded_route_weight_factors = padded_route_weights.unsqueeze(-1).to(workload.dtype)" in source
+    assert "state.padded_route_weight_factors" in run_section
+    assert "route_weight_factors: torch.Tensor | None = None" in kernel_source
+    assert "route_weight_factors = route_weights.unsqueeze(-1).to(out.dtype)" in kernel_source
+    assert "out.mul_(route_weight_factors)" in kernel_source
     assert "self._packed_tokens_view = self._flat_packed_tokens.view(" in setup_section
     assert "packed_tokens_view=self._packed_tokens_view" in benchmark_section
 
@@ -208,8 +215,10 @@ def test_blackwell_grouped_gemm_build_state_packs_routes_on_cpu(
 
         padded_tail = padded_indices[expert_id, count:]
         route_tail = state.padded_route_weights[expert_id, count:]
+        factor_tail = state.padded_route_weight_factors[expert_id, count:]
         assert torch.all(padded_tail == workload.num_tokens)
         assert torch.count_nonzero(route_tail).item() == 0
+        assert torch.count_nonzero(factor_tail).item() == 0
 
     gathered = torch.index_select(
         state.x_with_padding,
@@ -224,6 +233,11 @@ def test_blackwell_grouped_gemm_build_state_packs_routes_on_cpu(
     reference *= state.padded_route_weights.unsqueeze(-1)
     reference = reference.to(workload.dtype)
     torch.testing.assert_close(reference.float(), state.reference_output.float())
+    assert state.padded_route_weight_factors.shape == (*state.padded_route_weights.shape, 1)
+    torch.testing.assert_close(
+        state.padded_route_weight_factors[..., 0],
+        state.padded_route_weights.to(workload.dtype),
+    )
 
 
 @pytest.mark.skipif(

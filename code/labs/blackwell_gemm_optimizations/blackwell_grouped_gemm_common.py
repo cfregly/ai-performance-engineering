@@ -66,6 +66,7 @@ class GroupedGemmState:
     expert_weights: torch.Tensor
     flat_padded_indices: torch.Tensor
     padded_route_weights: torch.Tensor
+    padded_route_weight_factors: torch.Tensor
     counts: torch.Tensor
     counts_cpu: tuple[int, ...]
     max_count: int
@@ -262,6 +263,7 @@ def build_state(
         gathered.to(torch.float32),
         expert_weights.to(torch.float32),
     )
+    padded_route_weight_factors = padded_route_weights.unsqueeze(-1).to(workload.dtype)
     reference *= padded_route_weights.unsqueeze(-1)
     reference = reference.to(workload.dtype).contiguous()
 
@@ -271,6 +273,7 @@ def build_state(
         expert_weights=expert_weights,
         flat_padded_indices=flat_padded_indices,
         padded_route_weights=padded_route_weights.contiguous(),
+        padded_route_weight_factors=padded_route_weight_factors.contiguous(),
         counts=counts.contiguous(),
         counts_cpu=counts_cpu,
         max_count=max_count,
@@ -341,6 +344,7 @@ def run_variant(
             state.counts,
             output_buffer,
             schedule,
+            state.padded_route_weight_factors,
         )
     return VariantResult(output=output, schedule=schedule)
 
