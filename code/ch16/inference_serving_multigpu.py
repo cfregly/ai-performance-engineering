@@ -223,8 +223,9 @@ class DemoCausalLM(nn.Module):
                 raise ValueError("input_lengths size must match batch size")
             current_lengths = input_lengths
 
-        local_keys: List[torch.Tensor] = []
-        local_values: List[torch.Tensor] = []
+        layer_count = len(self.layers)
+        local_keys: List[torch.Tensor] = [hidden] * layer_count
+        local_values: List[torch.Tensor] = [hidden] * layer_count
 
         for layer_idx, layer in enumerate(self.layers):
             layer_cache = None
@@ -236,8 +237,8 @@ class DemoCausalLM(nn.Module):
                     raise ValueError("past_kv layer cache length must match batch size")
 
             hidden, key_local, value_local = layer(hidden, layer_cache, input_lengths=current_lengths)
-            local_keys.append(key_local)
-            local_values.append(value_local)
+            local_keys[layer_idx] = key_local
+            local_values[layer_idx] = value_local
 
         key_stack = self._stack_layer_outputs(local_keys, "_key_stack_buffer")
         value_stack = self._stack_layer_outputs(local_values, "_value_stack_buffer")
@@ -1582,9 +1583,7 @@ class InferenceServerMultiGPU:
                 continue
             
             # Generate next token for each request in batch
-            start_gen = time.time()
             self.generate_batch(batch, num_tokens=1)
-            gen_time = time.time() - start_gen
             
             # Update completions
             self.scheduler.update_completions(batch, self.kv_cache, self._on_request_complete)
