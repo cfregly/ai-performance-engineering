@@ -68,8 +68,10 @@ class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         self.query = None
         self.key = None
+        self._key_t = None
         self.value = None
         self.output = None
+        self._scale = 0.0
         
         # SDPA benchmark - fixed dimensions for attention comparison
         
@@ -89,6 +91,8 @@ class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.query = torch.randn(shape, device=self.device, dtype=torch.float16)
         self.key = torch.randn(shape, device=self.device, dtype=torch.float16)
         self.value = torch.randn(shape, device=self.device, dtype=torch.float16)
+        self._key_t = self.key.transpose(-2, -1)
+        self._scale = 1.0 / (self.head_dim ** 0.5)
         
         torch.cuda.synchronize(self.device)
 
@@ -100,12 +104,11 @@ class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 # Shape: [B, H, S, D] @ [B, H, D, S] -> [B, H, S, S]
                 attn_scores = torch.matmul(
                     self.query, 
-                    self.key.transpose(-2, -1)
+                    self._key_t
                 )
                 
                 # Scale (fused with matmul in optimized version)
-                scale = 1.0 / (self.head_dim ** 0.5)
-                attn_scores = attn_scores * scale
+                attn_scores.mul_(self._scale)
                 
                 # Kernel 2: Softmax (reads attn_scores from HBM, writes back)
                 attn_weights = F.softmax(attn_scores, dim=-1)
@@ -139,6 +142,7 @@ class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.query = None
         self.key = None
+        self._key_t = None
         self.value = None
         super().teardown()
 

@@ -2603,6 +2603,87 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch14_demo_source
 
 
+def test_dense_attention_baselines_cache_key_transpose_and_scale() -> None:
+    cases = (
+        (
+            "ch09/baseline_sdpa_attention.py",
+            "self._key_t = self.key.transpose(-2, -1)",
+            "self._scale = 1.0 / (self.head_dim ** 0.5)",
+            "self._key_t",
+            "attn_scores.mul_(self._scale)",
+        ),
+        (
+            "ch10/baseline_attention.py",
+            "self._key_t = self.key.transpose(-2, -1)",
+            "self.scale = 1.0 / (self.head_dim ** 0.5)",
+            "torch.matmul(self.query, self._key_t)",
+            "attn_scores.mul_(self.scale)",
+        ),
+        (
+            "ch13/baseline_attention_standard.py",
+            "self._k_t = self.k.transpose(-2, -1)",
+            "self._scale = 1.0 / (self.head_dim ** 0.5)",
+            "scores = torch.matmul(self.q, self._k_t)",
+            "scores.mul_(self._scale)",
+        ),
+        (
+            "ch13/baseline_long_context_attention.py",
+            "self._k_t = self.k.transpose(-2, -1)",
+            "self._scale = 1.0 / (self.head_dim ** 0.5)",
+            "scores = torch.matmul(self.q, self._k_t)",
+            "scores.mul_(self._scale)",
+        ),
+        (
+            "core/benchmark/flexattention_sliding_window.py",
+            "self._k_t = self.k.transpose(-2, -1)",
+            "self.scale = 1.0 / math.sqrt(float(self.cfg.head_dim))",
+            "scores = torch.matmul(self.q, self._k_t)",
+            "scores.mul_(self.scale)",
+        ),
+    )
+    for relative_path, cached_transpose, cached_scale, matmul_expr, scale_expr in cases:
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert cached_transpose in setup_section
+        assert cached_scale in setup_section
+        assert matmul_expr in benchmark_section
+        assert scale_expr in benchmark_section
+        assert "transpose(-2, -1)" not in benchmark_section
+        assert " / (self.head_dim ** 0.5)" not in benchmark_section
+        assert " * self.scale" not in benchmark_section
+        if relative_path == "core/benchmark/flexattention_sliding_window.py":
+            assert "self._mask_fill_value = float(torch.finfo(self.cfg.dtype).min)" in setup_section
+            assert "scores = scores.masked_fill(~self.mask, self._mask_fill_value)" in benchmark_section
+            assert "-1e9" not in benchmark_section
+
+    gluon_source = (
+        REPO_ROOT / "labs" / "flashattention_gluon" / "baseline_flashattention_gluon.py"
+    ).read_text(encoding="utf-8")
+    gluon_setup = gluon_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    gluon_benchmark = gluon_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._k_t = self.inputs.k.transpose(-1, -2)" in gluon_setup
+    assert "self._scale = self.head_dim ** -0.5" in gluon_setup
+    assert "scores = torch.matmul(q, self._k_t)" in gluon_benchmark
+    assert "scores.mul_(self._scale)" in gluon_benchmark
+    assert "k.transpose(-1, -2)" not in gluon_benchmark
+    assert " * scale" not in gluon_benchmark
+
+
 def test_ch10_optimized_batch_reuses_mlp_buffers() -> None:
     source = (REPO_ROOT / "ch10" / "optimized_batch.py").read_text(encoding="utf-8")
     model_section = source.split("class BufferedBatchMlp", maxsplit=1)[1].split(

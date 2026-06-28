@@ -27,6 +27,8 @@ class BaselineFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchma
         self.hidden_dim = self.heads * self.head_dim
         self.dtype = torch.float16
         self.inputs: Optional[FlashAttentionInputs] = None
+        self._k_t: Optional[torch.Tensor] = None
+        self._scale = 0.0
         self.output: Optional[torch.Tensor] = None
         tokens = self.batch * self.seq_len
         self._workload = WorkloadMetadata(
@@ -46,6 +48,8 @@ class BaselineFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchma
             dtype=self.dtype,
             device=self.device,
         )
+        self._k_t = self.inputs.k.transpose(-1, -2)
+        self._scale = self.head_dim ** -0.5
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -57,8 +61,10 @@ class BaselineFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchma
                 q = self.inputs.q
                 k = self.inputs.k
                 v = self.inputs.v
-                scale = (self.head_dim) ** -0.5
-                scores = torch.matmul(q, k.transpose(-1, -2)) * scale
+                if self._k_t is None:
+                    raise RuntimeError("FlashAttention key transpose is not initialized")
+                scores = torch.matmul(q, self._k_t)
+                scores.mul_(self._scale)
                 probs = torch.softmax(scores, dim=-1)
                 result = torch.matmul(probs, v)
                 self.output = result.detach()
@@ -83,6 +89,7 @@ class BaselineFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchma
 
     def teardown(self) -> None:
         self.inputs = None
+        self._k_t = None
         self.output = None
         super().teardown()
 

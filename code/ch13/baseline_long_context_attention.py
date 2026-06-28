@@ -28,9 +28,11 @@ class BaselineLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBenchm
         )
         self.q: Optional[torch.Tensor] = None
         self.k: Optional[torch.Tensor] = None
+        self._k_t: Optional[torch.Tensor] = None
         self.v: Optional[torch.Tensor] = None
         self._mask: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._scale = 0.0
         self.register_workload_metadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
@@ -49,16 +51,19 @@ class BaselineLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBenchm
         )
         self.k = torch.randn_like(self.q)
         self.v = torch.randn_like(self.q)
+        self._k_t = self.k.transpose(-2, -1)
+        self._scale = 1.0 / (self.head_dim ** 0.5)
         pos = torch.arange(self.seq_len, device=self.device)
         mask = pos.unsqueeze(0) > pos.unsqueeze(1)
         self._mask = mask.view(1, 1, self.seq_len, self.seq_len)
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        if self.q is None or self.k is None or self.v is None or self._mask is None:
+        if self.q is None or self.k is None or self._k_t is None or self.v is None or self._mask is None:
             raise RuntimeError("Benchmark not configured")
         with torch.inference_mode():
-            scores = torch.matmul(self.q, self.k.transpose(-2, -1)) / (self.head_dim ** 0.5)
+            scores = torch.matmul(self.q, self._k_t)
+            scores.mul_(self._scale)
             scores = scores.masked_fill(self._mask, float("-inf"))
             attn = torch.softmax(scores, dim=-1)
             self.output = torch.matmul(attn, self.v)
@@ -79,6 +84,7 @@ class BaselineLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBenchm
     def teardown(self) -> None:
         self.q = None
         self.k = None
+        self._k_t = None
         self.v = None
         self._mask = None
         self.output = None

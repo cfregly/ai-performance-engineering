@@ -28,6 +28,7 @@ class BaselineAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.query: Optional[torch.Tensor] = None
         self.key: Optional[torch.Tensor] = None
+        self._key_t: Optional[torch.Tensor] = None
         self.value: Optional[torch.Tensor] = None
         # Larger sizes to show optimization benefits
         self.batch_size = 16
@@ -58,6 +59,8 @@ class BaselineAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.batch_size, self.num_heads, self.seq_len, self.head_dim,
             device=self.device, dtype=torch.float16
         )
+        self._key_t = self.key.transpose(-2, -1)
+        self.scale = 1.0 / (self.head_dim ** 0.5)
         
         self._synchronize()
         tokens = float(self.batch_size * self.seq_len)
@@ -84,8 +87,8 @@ class BaselineAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.inference_mode():
                 # Naive: Explicit matrix multiplications
                 # Q @ K^T -> (batch, heads, seq, seq) attention matrix
-                attn_scores = torch.matmul(self.query, self.key.transpose(-2, -1))
-                attn_scores = attn_scores * self.scale
+                attn_scores = torch.matmul(self.query, self._key_t)
+                attn_scores.mul_(self.scale)
                 
                 # Softmax over last dimension (materializes full attention matrix).
                 # Keep the compute dtype aligned with the optimized SDPA path.
@@ -118,6 +121,7 @@ class BaselineAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.query = None
         self.key = None
+        self._key_t = None
         self.value = None
         super().teardown()
 

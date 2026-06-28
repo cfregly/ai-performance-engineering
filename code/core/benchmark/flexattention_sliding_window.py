@@ -43,11 +43,13 @@ class SlidingWindowAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cfg = cfg or SlidingWindowConfig()
         self.q: Optional[torch.Tensor] = None
         self.k: Optional[torch.Tensor] = None
+        self._k_t: Optional[torch.Tensor] = None
         self.v: Optional[torch.Tensor] = None
         self.mask: Optional[torch.Tensor] = None
         self.block_mask = None
         self.output: Optional[torch.Tensor] = None
         self.scale = 1.0 / math.sqrt(float(self.cfg.head_dim))
+        self._mask_fill_value = 0.0
         self._compiled_flex = None
 
     def setup(self) -> None:
@@ -69,6 +71,9 @@ class SlidingWindowAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.k = torch.randn_like(self.q)
         self.v = torch.randn_like(self.q)
+        self._k_t = self.k.transpose(-2, -1)
+        self.scale = 1.0 / math.sqrt(float(self.cfg.head_dim))
+        self._mask_fill_value = float(torch.finfo(self.cfg.dtype).min)
 
         positions = torch.arange(self.cfg.seq_len, device=self.device)
         q_pos = positions[:, None]
@@ -103,11 +108,12 @@ class SlidingWindowAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.output = self._compiled_flex(self.q, self.k, self.v)
             return
 
-        if self.mask is None:
+        if self.mask is None or self._k_t is None:
             raise RuntimeError("Mask not initialized")
         with torch.inference_mode():
-            scores = torch.matmul(self.q, self.k.transpose(-2, -1)) * self.scale
-            scores = scores.masked_fill(~self.mask, -1e9)
+            scores = torch.matmul(self.q, self._k_t)
+            scores.mul_(self.scale)
+            scores = scores.masked_fill(~self.mask, self._mask_fill_value)
             attn = torch.softmax(scores, dim=-1)
             self.output = torch.matmul(attn, self.v)
 

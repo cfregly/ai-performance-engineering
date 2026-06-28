@@ -42,6 +42,7 @@ class BaselineAttentionStandardBenchmark(VerificationPayloadMixin, BaseBenchmark
         super().__init__()
         self.q = None
         self.k = None
+        self._k_t = None
         self.v = None
         self.batch_size = 2
         self.seq_len = 8192
@@ -54,6 +55,7 @@ class BaselineAttentionStandardBenchmark(VerificationPayloadMixin, BaseBenchmark
             tokens_per_iteration=float(tokens),
         )
         self.output = None
+        self._scale = 0.0
         self.register_workload_metadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
@@ -71,14 +73,17 @@ class BaselineAttentionStandardBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
         self.k = torch.randn_like(self.q)
         self.v = torch.randn_like(self.q)
+        self._k_t = self.k.transpose(-2, -1)
+        self._scale = 1.0 / (self.head_dim ** 0.5)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
-        if self.q is None or self.k is None or self.v is None:
+        if self.q is None or self.k is None or self._k_t is None or self.v is None:
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_attention_standard"):
             with torch.inference_mode():
-                scores = torch.matmul(self.q, self.k.transpose(-2, -1)) / (self.head_dim ** 0.5)
+                scores = torch.matmul(self.q, self._k_t)
+                scores.mul_(self._scale)
                 attn = torch.softmax(scores, dim=-1)
                 self.output = torch.matmul(attn, self.v)
         if self.output is None:
@@ -101,6 +106,7 @@ class BaselineAttentionStandardBenchmark(VerificationPayloadMixin, BaseBenchmark
     def teardown(self) -> None:
         self.q = None
         self.k = None
+        self._k_t = None
         self.v = None
         super().teardown()
     
