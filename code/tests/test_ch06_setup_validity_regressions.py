@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import pytest
 import torch
 
@@ -14,6 +16,32 @@ from ch06.optimized_bank_conflicts import OptimizedBankConflictsBenchmark
 
 
 CUDA_REQUIRED = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+
+
+def test_optimized_autotuning_writes_transform_into_reused_buffers() -> None:
+    source = inspect.getsource(OptimizedAutotuningBenchmark)
+    transform_section = source.split("def _transform", maxsplit=1)[1].split(
+        "def _autotune_chunk_size",
+        maxsplit=1,
+    )[0]
+
+    assert "def _transform(self, tensor: torch.Tensor, out: torch.Tensor)" in source
+    assert "torch.mul(tensor, 1.75, out=out)" in transform_section
+    assert "out.add_(0.1)" in transform_section
+    assert "F.silu(out, inplace=True)" in transform_section
+    assert "transformed = self._transform" not in source
+    assert ".copy_(transformed)" not in source
+    assert "self._transform(window, scratch[offset : offset + span])" in source
+    assert "self._transform(window, self._output_buffer[offset : offset + span])" in source
+
+    bench = OptimizedAutotuningBenchmark()
+    x = torch.randn(16, dtype=torch.float32)
+    out = torch.empty_like(x)
+    actual = bench._transform(x, out)
+    expected = torch.nn.functional.silu(x * 1.75 + 0.1)
+
+    assert actual.data_ptr() == out.data_ptr()
+    torch.testing.assert_close(actual, expected)
 
 
 @CUDA_REQUIRED

@@ -46,10 +46,11 @@ class OptimizedAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimal_chunk = self._autotune_chunk_size(scratch)
         self._synchronize()
 
-    def _transform(self, tensor: torch.Tensor) -> torch.Tensor:
-        out = tensor.mul(1.75)
-        out = out.add(0.1)
-        return F.silu(out)
+    def _transform(self, tensor: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+        torch.mul(tensor, 1.75, out=out)
+        out.add_(0.1)
+        F.silu(out, inplace=True)
+        return out
 
     def _autotune_chunk_size(self, scratch: torch.Tensor) -> int:
         """Benchmark several staging chunk sizes using baseline timers."""
@@ -63,8 +64,7 @@ class OptimizedAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 for offset in range(0, self.N, chunk):
                     span = min(chunk, self.N - offset)
                     window = self.input[offset : offset + span]
-                    transformed = self._transform(window)
-                    scratch[offset : offset + span].copy_(transformed)
+                    self._transform(window, scratch[offset : offset + span])
                 self._synchronize()
                 total_ms += self._record_stop(start)
             avg_ms = total_ms / trials
@@ -84,8 +84,7 @@ class OptimizedAutotuningBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for offset in range(0, self.N, chunk):
                 span = min(chunk, self.N - offset)
                 window = self.input[offset : offset + span]
-                transformed = self._transform(window)
-                self._output_buffer[offset : offset + span].copy_(transformed)
+                self._transform(window, self._output_buffer[offset : offset + span])
             self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
