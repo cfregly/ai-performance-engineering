@@ -735,9 +735,45 @@ def test_apply_rotary_emb_inference_matches_reference():
     expected = torch.cat([x1 * cos + x2 * sin, x1 * (-sin) + x2 * cos], 3).to(x.dtype)
 
     with torch.inference_mode():
-        actual = apply_rotary_emb(x, cos, sin)
+        out = torch.empty_like(x)
+        actual = apply_rotary_emb(x, cos, sin, out=out)
 
+    assert actual is out
     torch.testing.assert_close(actual, expected)
+
+
+def test_attention_reuses_rotary_buffers_for_inference():
+    config = GPTConfig(
+        sequence_len=8,
+        vocab_size=32,
+        n_layer=1,
+        n_head=2,
+        n_kv_head=2,
+        n_embd=8,
+        use_flash3=False,
+    )
+    attn = CausalSelfAttention(config, layer_idx=0)
+    q = torch.empty(1, 2, 2, 4)
+    k = torch.empty(1, 2, 2, 4)
+
+    q_buf = attn._rotary_buffer("_rotary_q_cache", q)
+    k_buf = attn._rotary_buffer("_rotary_k_cache", k)
+
+    assert attn._rotary_buffer("_rotary_q_cache", q).data_ptr() == q_buf.data_ptr()
+    assert attn._rotary_buffer("_rotary_k_cache", k).data_ptr() == k_buf.data_ptr()
+
+    source = Path(__file__).resolve().parents[1] / "nanochat" / "gpt.py"
+    gpt_source = source.read_text(encoding="utf-8")
+    forward_section = gpt_source.split("def forward(self, x, cos_sin", maxsplit=1)[1].split(
+        "# Apply KV cache",
+        maxsplit=1,
+    )[0]
+
+    assert "self._rotary_q_cache = None" in gpt_source
+    assert "self._rotary_k_cache = None" in gpt_source
+    assert "def _rotary_buffer(self, name, tensor)" in gpt_source
+    assert "out=self._rotary_buffer(\"_rotary_q_cache\", q)" in forward_section
+    assert "out=self._rotary_buffer(\"_rotary_k_cache\", k)" in forward_section
 
 
 def test_apply_rotary_emb_training_path_keeps_gradients():

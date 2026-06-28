@@ -81,12 +81,13 @@ def norm(x):
     return F.rms_norm(x, (x.size(-1),))
 
 
-def apply_rotary_emb(x, cos, sin):
+def apply_rotary_emb(x, cos, sin, out=None):
     assert x.ndim == 4  # multihead attention
     d = x.shape[3] // 2
     x1, x2 = x[..., :d], x[..., d:] # split up last time into two halves
     if not torch.is_grad_enabled() or not x.requires_grad:
-        out = torch.empty_like(x)
+        if out is None:
+            out = torch.empty_like(x)
         torch.mul(x1, cos, out=out[..., :d])
         out[..., :d].addcmul_(x2, sin)
         torch.mul(x2, cos, out=out[..., d:])
@@ -161,6 +162,8 @@ class CausalSelfAttention(nn.Module):
         self._causal_mask_cache = None
         self._prefix_causal_mask_cache = None
         self._padded_attn_mask_cache = None
+        self._rotary_q_cache = None
+        self._rotary_k_cache = None
         if self.use_flash3:
             self._init_flash3()
 
@@ -248,6 +251,18 @@ class CausalSelfAttention(nn.Module):
         torch.logical_and(key_mask, causal, out=attn_mask)
         return attn_mask
 
+    def _rotary_buffer(self, name, tensor):
+        buffer = getattr(self, name)
+        if (
+            buffer is None
+            or buffer.device != tensor.device
+            or buffer.dtype != tensor.dtype
+            or tuple(buffer.shape) != tuple(tensor.shape)
+        ):
+            buffer = torch.empty_like(tensor)
+            setattr(self, name, buffer)
+        return buffer
+
     def _flash3_attention(self, q, k, v, kv_cache, enable_gqa, use_clustering=False):
         """Varlen FlashAttention-3 path (no masks). Returns None on fallback."""
         Tq, Tk = q.size(2), k.size(2)
@@ -312,7 +327,11 @@ class CausalSelfAttention(nn.Module):
 
         # Apply Rotary Embeddings to queries and keys to get relative positional encoding
         cos, sin = cos_sin
-        q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin) # QK rotary embedding
+        if not torch.is_grad_enabled() or not q.requires_grad:
+            q = apply_rotary_emb(q, cos, sin, out=self._rotary_buffer("_rotary_q_cache", q))
+            k = apply_rotary_emb(k, cos, sin, out=self._rotary_buffer("_rotary_k_cache", k))
+        else:
+            q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin) # QK rotary embedding
         q, k = norm(q), norm(k) # QK norm
         q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2) # make head be batch dim, i.e. (B, T, H, D) -> (B, H, T, D)
 
