@@ -6051,7 +6051,7 @@ def test_ch19_quantization_validator_reuses_timing_events() -> None:
         maxsplit=1,
     )[0]
     timing_section = benchmark_section.split(
-        'with nvtx.range(standardize_nvtx_label(f"compute_math:{self.name}_{precision}")):',
+        "with nvtx.range(compute_label):",
         maxsplit=1,
     )[1]
     cuda_timing_section = timing_section.split("if cuda_available:", maxsplit=1)[
@@ -6066,6 +6066,12 @@ def test_ch19_quantization_validator_reuses_timing_events() -> None:
         maxsplit=1,
     )[1]
 
+    assert 'warmup_label = standardize_nvtx_label(f"warmup:{self.name}_{precision}")' in benchmark_section
+    assert 'compute_label = standardize_nvtx_label(f"compute_math:{self.name}_{precision}")' in benchmark_section
+    assert "iteration_labels = [" in benchmark_section
+    assert 'standardize_nvtx_label(f"iteration:{self.name}_{precision}_{i}")' in benchmark_section
+    assert "with nvtx.range(warmup_label):" in warmup_section
+    assert "standardize_nvtx_label(" not in warmup_section
     assert "torch.cuda.synchronize()" not in warmup_section.split(
         "for _ in range(warmup_iters):", maxsplit=1
     )[1].split("if cuda_available:", maxsplit=1)[0]
@@ -6076,6 +6082,8 @@ def test_ch19_quantization_validator_reuses_timing_events() -> None:
     assert "end_event.record()" in sample_loop
     assert "end_event.synchronize()" in sample_loop
     assert "times.append(start_event.elapsed_time(end_event))" in sample_loop
+    assert "with nvtx.range(iteration_labels[i]):" in sample_loop
+    assert "standardize_nvtx_label(" not in sample_loop
 
 
 def test_ch19_nvfp4_training_defers_verification_forward_outside_hot_loop() -> None:

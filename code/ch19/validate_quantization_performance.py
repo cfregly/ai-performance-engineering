@@ -131,8 +131,15 @@ class ProfiledBenchmark:
             gpu_name = "CPU"
             compute_capability = "N/A"
 
+        warmup_label = standardize_nvtx_label(f"warmup:{self.name}_{precision}")
+        compute_label = standardize_nvtx_label(f"compute_math:{self.name}_{precision}")
+        iteration_labels = [
+            standardize_nvtx_label(f"iteration:{self.name}_{precision}_{i}")
+            for i in range(benchmark_iters)
+        ]
+
         # Warmup
-        with nvtx.range(standardize_nvtx_label(f"warmup:{self.name}_{precision}")):
+        with nvtx.range(warmup_label):
             for _ in range(warmup_iters):
                 _ = func(*args)
         if cuda_available:
@@ -145,13 +152,13 @@ class ProfiledBenchmark:
 
         # Benchmark
         times: List[float] = []
-        with nvtx.range(standardize_nvtx_label(f"compute_math:{self.name}_{precision}")):
+        with nvtx.range(compute_label):
             if cuda_available:
                 start_event = torch.cuda.Event(enable_timing=True)
                 end_event = torch.cuda.Event(enable_timing=True)
                 for i in range(benchmark_iters):
                     start_event.record()
-                    with nvtx.range(standardize_nvtx_label(f"iteration:{self.name}_{precision}_{i}")):
+                    with nvtx.range(iteration_labels[i]):
                         _ = func(*args)
                     end_event.record()
                     end_event.synchronize()
@@ -159,7 +166,7 @@ class ProfiledBenchmark:
             else:
                 for i in range(benchmark_iters):
                     start = time.time()
-                    with nvtx.range(standardize_nvtx_label(f"iteration:{self.name}_{precision}_{i}")):
+                    with nvtx.range(iteration_labels[i]):
                         _ = func(*args)
                     elapsed_ms = (time.time() - start) * 1000
                     times.append(elapsed_ms)
