@@ -5998,8 +5998,14 @@ def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
     )[0]
 
     assert 'self.register_buffer("_scale_a_buffer", torch.empty(0), persistent=False)' in source
+    assert 'self.register_buffer("_input_scaled_buffer", torch.empty(0), persistent=False)' in source
+    assert '"_input_fp8_buffer"' in source
+    assert "def _activation_buffers(self, x_2d: torch.Tensor)" in source
     assert "scale_a = self._scale_a_buffer" in forward_section
     assert "scale_a.copy_(input_scale)" in forward_section
+    assert "torch.div(x_2d, input_scale, out=input_scaled)" in forward_section
+    assert "x_fp8.copy_(input_scaled)" in forward_section
+    assert "(x_2d / input_scale).to(torch.float8_e4m3fn)" not in forward_section
     assert ".expand(x_fp8.size(0), 1).contiguous()" not in forward_section
 
 

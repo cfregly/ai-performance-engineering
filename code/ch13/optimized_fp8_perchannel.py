@@ -35,6 +35,12 @@ class FP8PerChannelLinear(nn.Module):
         self._scale_b = None
         self._bias_bf16 = None
         self.register_buffer("_scale_a_buffer", torch.empty(0), persistent=False)
+        self.register_buffer("_input_scaled_buffer", torch.empty(0), persistent=False)
+        self.register_buffer(
+            "_input_fp8_buffer",
+            torch.empty(0, dtype=torch.float8_e4m3fn),
+            persistent=False,
+        )
         
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         if bias:
@@ -65,6 +71,27 @@ class FP8PerChannelLinear(nn.Module):
             if self.bias is not None:
                 self._bias_bf16 = self.bias.to(torch.bfloat16).contiguous()
 
+    def _activation_buffers(self, x_2d: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        input_scaled = self._input_scaled_buffer
+        if (
+            input_scaled.shape != x_2d.shape
+            or input_scaled.device != x_2d.device
+            or input_scaled.dtype != x_2d.dtype
+        ):
+            input_scaled = torch.empty_like(x_2d)
+            self._input_scaled_buffer = input_scaled
+
+        input_fp8 = self._input_fp8_buffer
+        if input_fp8.shape != x_2d.shape or input_fp8.device != x_2d.device:
+            input_fp8 = torch.empty(
+                x_2d.shape,
+                device=x_2d.device,
+                dtype=torch.float8_e4m3fn,
+            )
+            self._input_fp8_buffer = input_fp8
+
+        return input_scaled, input_fp8
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Per-channel FP8 quantized forward pass.
         
@@ -85,7 +112,9 @@ class FP8PerChannelLinear(nn.Module):
 
         input_amax = x_2d.abs().max()
         input_scale = torch.clamp(input_amax / self.fp8_max, min=1e-12).to(torch.float32)
-        x_fp8 = (x_2d / input_scale).to(torch.float8_e4m3fn)
+        input_scaled, x_fp8 = self._activation_buffers(x_2d)
+        torch.div(x_2d, input_scale, out=input_scaled)
+        x_fp8.copy_(input_scaled)
         scale_a_shape = (x_fp8.size(0), 1)
         if (
             self._scale_a_buffer.device != x_fp8.device
