@@ -67,6 +67,17 @@ def test_kv_standard_cache_allocation_avoids_zero_fill() -> None:
         assert "self.kv_cache = torch.zeros(" not in cache_allocation
 
 
+def test_baseline_append_kv_vectorizes_full_batch_writes() -> None:
+    append_source = inspect.getsource(BaselineKVStandard.append_kv)
+
+    assert "torch.arange(self.batch_size" not in append_source
+    assert "for i, batch_idx in enumerate(batch_indices)" not in append_source
+    assert "self.kv_cache[:, layer_idx, 0, :, pos, :].copy_(k)" in append_source
+    assert "self.kv_cache[:, layer_idx, 1, :, pos, :].copy_(v)" in append_source
+    assert "self.kv_cache[batch_indices, layer_idx, 0, :, pos, :].copy_(k)" in append_source
+    assert "self.kv_cache[batch_indices, layer_idx, 1, :, pos, :].copy_(v)" in append_source
+
+
 def test_fp8_append_paths_reuse_quantization_buffers() -> None:
     setup_source = inspect.getsource(OptimizedKVFP8Compressed.setup)
     quantize_source = inspect.getsource(OptimizedKVFP8Compressed._quantize_step_into)

@@ -135,14 +135,15 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         batch_indices: Optional[torch.Tensor] = None
     ):
         """Append K/V to cache."""
-        if batch_indices is None:
-            batch_indices = torch.arange(self.batch_size, device=self.device)
         if pos >= self.max_seq_length:
             raise RuntimeError("KV cache overflow in baseline append")
 
-        for i, batch_idx in enumerate(batch_indices):
-            self.kv_cache[batch_idx, layer_idx, 0, :, pos] = k[i]
-            self.kv_cache[batch_idx, layer_idx, 1, :, pos] = v[i]
+        if batch_indices is None:
+            self.kv_cache[:, layer_idx, 0, :, pos, :].copy_(k)
+            self.kv_cache[:, layer_idx, 1, :, pos, :].copy_(v)
+        else:
+            self.kv_cache[batch_indices, layer_idx, 0, :, pos, :].copy_(k)
+            self.kv_cache[batch_indices, layer_idx, 1, :, pos, :].copy_(v)
 
     def append_active_layers(self, k: torch.Tensor, v: torch.Tensor, pos: int) -> None:
         """Append the same decode-step K/V tensors across all active layers."""
