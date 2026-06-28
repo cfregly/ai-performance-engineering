@@ -3661,14 +3661,18 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "with torch.inference_mode():" in run_iteration_section
     assert "expected_outputs = len(self._pairs) * self.cfg.requests_per_rank" in setup_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(expected_outputs)]" in setup_section
-    assert "transfer_kv_chunks=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in setup_section
-    assert "transfer_seed_chunks=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in setup_section
+    assert "transfer_kv_chunks=[" in setup_section
+    assert "self.cfg.context_window" in setup_section
+    assert "transfer_seed_chunks=[" in setup_section
+    assert "device=decode_device" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.stack(" not in benchmark_section
     assert ".detach().cpu()" not in benchmark_section
     assert "outputs = self._pending_outputs" in benchmark_section
     assert "output_idx = 0" in benchmark_section
-    assert "outputs[output_idx] = pair.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)" in benchmark_section
+    assert "outputs[output_idx] = pair.decode_model.decode(" in benchmark_section
+    assert "transfer_seed," in benchmark_section
+    assert "transfer_kv," in benchmark_section
     assert "for decoded_output in decoded:" in benchmark_section
     assert "outputs[output_idx] = decoded_output" in benchmark_section
     assert "output_idx += 1" in benchmark_section
@@ -3676,8 +3680,13 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "outputs: List[torch.Tensor] = []" not in benchmark_section
     assert "kv_chunks = [kv.to(pair.decode_device) for kv in kv_chunks]" not in benchmark_section
     assert "seed_chunks = [seed.to(pair.decode_device) for seed in seed_chunks]" not in benchmark_section
-    assert "pair.transfer_kv_chunks[req_idx] = kv_chunks[req_idx].to(pair.decode_device)" in benchmark_section
-    assert "pair.transfer_seed_chunks[req_idx] = seed_chunks[req_idx].to(pair.decode_device)" in benchmark_section
+    assert "kv_cache = kv_cache.to(pair.decode_device" not in benchmark_section
+    assert "seed = seed.to(pair.decode_device" not in benchmark_section
+    assert "transfer_kv.copy_(kv_cache, non_blocking=True)" in benchmark_section
+    assert "transfer_seed.copy_(seed, non_blocking=True)" in benchmark_section
+    assert "pair.transfer_kv_chunks[req_idx].copy_(" in benchmark_section
+    assert "pair.transfer_seed_chunks[req_idx].copy_(" in benchmark_section
+    assert ".to(pair.decode_device)" not in benchmark_section
     assert "outputs.append(" not in benchmark_section
     assert "outputs.extend(" not in benchmark_section
     assert "self._output = torch.stack(" in capture_section
