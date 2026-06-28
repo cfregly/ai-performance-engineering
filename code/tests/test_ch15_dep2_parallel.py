@@ -13,6 +13,9 @@ def test_dep2_vectorized_flattens_replicas_without_stack() -> None:
     assert "tokens = self.x.reshape(-1, self.cfg.hidden_size)" in source
     assert "torch.relu_(h)" in moe_source
     assert "torch.relu(h)" not in moe_source
+    assert "weighted = _weight_outputs_in_place_if_safe(y, weights.unsqueeze(-1))" in moe_source
+    assert "return weighted.sum(dim=1)" in moe_source
+    assert "(y * weights.unsqueeze(-1)).sum(dim=1)" not in moe_source
     assert "torch.stack(" not in source
     assert "for replica in range" not in source
 
@@ -52,9 +55,12 @@ def test_dep2_naive_moe_seeds_output_from_first_route() -> None:
     assert "for slot in range(self.cfg.top_k):" in source
     assert "token_ids = (expert_ids == expert).nonzero(as_tuple=True)[0]" in source
     assert "if token_ids.numel() == 0:" in source
+    assert "weight_factors = weights[token_ids, slot].unsqueeze(-1)" in source
+    assert "weighted = _weight_outputs_in_place_if_safe(y, weight_factors)" in source
     assert "if slot == 0:" in source
     assert "out[token_ids] = weighted" in source
     assert "out[token_ids] += weighted" in source
+    assert "weighted = y * weights[token_ids, slot].unsqueeze(-1)" not in source
     assert "torch.any(mask)" not in source
     assert "mask.nonzero" not in source
 

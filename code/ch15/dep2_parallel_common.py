@@ -31,6 +31,13 @@ def _topk_gating(x: torch.Tensor, gate_weight: torch.Tensor, top_k: int) -> Tupl
     return idx, weights
 
 
+def _weight_outputs_in_place_if_safe(out: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    if torch.is_grad_enabled() and (out.requires_grad or weights.requires_grad):
+        return out * weights
+    out.mul_(weights)
+    return out
+
+
 class Dep2Workload:
     def __init__(self, cfg: Dep2Config, device: torch.device) -> None:
         self.cfg = cfg
@@ -78,7 +85,8 @@ class Dep2Workload:
                 h = x_e @ self.w1[expert]
                 h = torch.relu_(h)
                 y = h @ self.w2[expert]
-                weighted = y * weights[token_ids, slot].unsqueeze(-1)
+                weight_factors = weights[token_ids, slot].unsqueeze(-1)
+                weighted = _weight_outputs_in_place_if_safe(y, weight_factors)
                 if slot == 0:
                     out[token_ids] = weighted
                 else:
@@ -93,7 +101,8 @@ class Dep2Workload:
         h = torch.einsum("tki,tkij->tkj", x_exp, w1_sel)
         h = torch.relu_(h)
         y = torch.einsum("tkj,tkjh->tkh", h, w2_sel)
-        return (y * weights.unsqueeze(-1)).sum(dim=1)
+        weighted = _weight_outputs_in_place_if_safe(y, weights.unsqueeze(-1))
+        return weighted.sum(dim=1)
 
     def forward_naive(self) -> torch.Tensor:
         output = self._naive_output_buffer()
