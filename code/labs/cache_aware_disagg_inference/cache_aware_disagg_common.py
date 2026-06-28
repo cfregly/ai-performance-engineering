@@ -172,6 +172,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._kv_buffers: Dict[int, torch.Tensor] = {}
         self._worker_caches: List[Dict[int, torch.Tensor]] = []
         self._owners: Dict[int, int] = {}
+        self._prompt_chunks: List[Sequence[torch.Tensor]] = []
+        self._warm_request_count = 0
 
     def _build_request_plans(self) -> List[RequestPlan]:
         warm_requests = int(round(self.cfg.requests_per_iteration * self.cfg.warm_request_ratio))
@@ -205,6 +207,11 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
+        self._prompt_chunks = [
+            _split_prompt(self.prompts[request_idx], self.cfg.chunk_size)
+            for request_idx in range(self.cfg.requests_per_iteration)
+        ]
+        self._warm_request_count = sum(1 for plan in self.request_plans if plan.is_warm)
 
         reference = TinyPrefillDecode(
             self.cfg.hidden_size,
@@ -255,8 +262,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with torch.inference_mode():
             assert self.prompts is not None
             for plan in self.request_plans:
-                prompt = self.prompts[plan.request_idx]
-                chunks = _split_prompt(prompt, self.cfg.chunk_size)
+                chunks = self._prompt_chunks[plan.request_idx]
                 if plan.warm_chunks <= 0:
                     self.shared_prefix_store[plan.request_idx] = self._empty_kv()
                     continue
@@ -385,6 +391,9 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         outputs = self._last_outputs
         if len(outputs) != len(self.request_plans):
             raise RuntimeError("Decode output slots not initialized")
+        prompt_chunks = self._prompt_chunks
+        if len(prompt_chunks) != len(self.request_plans):
+            raise RuntimeError("Prompt chunk views not initialized")
         output_idx = 0
         metrics = {
             "cache_hits": 0.0,
@@ -393,7 +402,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "peer_reloads": 0.0,
             "worker_switches": 0.0,
             "kv_transfer_bytes": 0.0,
-            "warm_requests": float(sum(1 for plan in self.request_plans if plan.is_warm)),
+            "warm_requests": float(self._warm_request_count),
             "warm_requests_served_local": 0.0,
         }
         request_events = self._request_event_pool
@@ -405,8 +414,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 request_start, prefill_end, decode_end = request_events[event_idx]
                 request_start.record()
 
-                prompt = self.prompts[plan.request_idx]
-                chunks = _split_prompt(prompt, self.cfg.chunk_size)
+                chunks = prompt_chunks[plan.request_idx]
                 seed = self.shared_seed_store.get(plan.request_idx)
                 owner = owners.get(plan.request_idx)
                 current_worker = self._choose_worker(plan.request_idx, 0, owner)
@@ -555,6 +563,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._kv_buffers = {}
         self._worker_caches = []
         self._owners = {}
+        self._prompt_chunks = []
+        self._warm_request_count = 0
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

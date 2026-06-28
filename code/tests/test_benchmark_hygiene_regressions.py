@@ -4207,13 +4207,23 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
 def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     source = (REPO_ROOT / "ch18" / "run_vllm_decoder.py").read_text(encoding="utf-8")
     benchmark_section = source.split("class VLLMMoEInferenceBenchmark", maxsplit=1)[1]
+    setup_section = benchmark_section.split("def setup", maxsplit=1)[1].split(
+        "def _refresh_router_metrics",
+        maxsplit=1,
+    )[0]
     eager_section = benchmark_section.split("def _run_eager_path", maxsplit=1)[1].split(
         "# --------------------------------------------------------------- benchmark_fn",
+        maxsplit=1,
+    )[0]
+    hot_section = benchmark_section.split("# --------------------------------------------------------------- benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
         maxsplit=1,
     )[0]
 
     assert "self._prefill_next_values: Optional[torch.Tensor] = None" in benchmark_section
     assert "self._prefill_next_tokens: Optional[torch.Tensor] = None" in benchmark_section
+    assert "self._router_prompt_stub: List[int] = []" in benchmark_section
+    assert "self._router_prompt_stub = [0] * cfg.context_window" in setup_section
     assert "def _prefill_next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor" in benchmark_section
     assert (
         "torch.max(last_logits, dim=-1, keepdim=True, out=(self._prefill_next_values, self._prefill_next_tokens))"
@@ -4223,6 +4233,9 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "torch.argmax(logits[:, -1, :]" not in benchmark_section
     assert 'with torch.inference_mode(), self._nvtx_range("prefill_dualpipe"):' in eager_section
     assert 'with torch.inference_mode(), self._nvtx_range("speculative_decode"):' in eager_section
+    assert "prompt_stub = self._router_prompt_stub" in hot_section
+    assert "setup() must initialize router prompt stub" in hot_section
+    assert "prompt_stub = [0] * cfg.context_window" not in hot_section
     assert "torch.no_grad()" not in eager_section
 
 
@@ -9441,6 +9454,36 @@ def test_decode_handoff_benchmarks_do_not_allocate_placeholder_outputs_in_hot_pa
         )[0]
         assert "torch.empty(0)" not in benchmark_section
         assert "not initialized" in benchmark_section
+
+
+def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:
+    source = (
+        REPO_ROOT / "labs" / "cache_aware_disagg_inference" / "cache_aware_disagg_common.py"
+    ).read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _empty_kv", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._prompt_chunks: List[Sequence[torch.Tensor]] = []" in source
+    assert "self._warm_request_count = 0" in source
+    assert "self._prompt_chunks = [" in setup_section
+    assert "_split_prompt(self.prompts[request_idx], self.cfg.chunk_size)" in setup_section
+    assert "self._warm_request_count = sum(1 for plan in self.request_plans if plan.is_warm)" in setup_section
+    assert "prompt_chunks = self._prompt_chunks" in benchmark_section
+    assert "Prompt chunk views not initialized" in benchmark_section
+    assert "chunks = prompt_chunks[plan.request_idx]" in benchmark_section
+    assert '"warm_requests": float(self._warm_request_count)' in benchmark_section
+    assert "_split_prompt(" not in benchmark_section
+    assert "sum(1 for plan in self.request_plans if plan.is_warm)" not in benchmark_section
+    assert "self._prompt_chunks = []" in teardown_section
 
 
 def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events() -> None:
