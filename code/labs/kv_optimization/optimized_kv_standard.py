@@ -62,9 +62,12 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._pending_timing_pair: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._generated_k_steps: Optional[torch.Tensor] = None
         self._generated_v_steps: Optional[torch.Tensor] = None
+        self._generated_step_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._k_quantized_step: Optional[torch.Tensor] = None
         self._v_quantized_step: Optional[torch.Tensor] = None
+        self._output_view: Optional[torch.Tensor] = None
         self._seq_lengths_host: list[int] = [0] * batch_size
+        self._active_layer_slice = slice(0, active_layers)
         self.register_workload_metadata(requests_per_iteration=1.0)
 
         # Determine precision (fail fast if requested dtype is unavailable).
@@ -123,6 +126,9 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.bfloat16,
         )
         self._generated_v_steps = torch.randn_like(self._generated_k_steps)
+        self._generated_step_pairs = list(
+            zip(self._generated_k_steps, self._generated_v_steps, strict=True)
+        )
         self._k_quantized_step = torch.empty(
             self.batch_size,
             self.num_heads,
@@ -131,6 +137,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             dtype=self.cache_dtype,
         )
         self._v_quantized_step = torch.empty_like(self._k_quantized_step)
+        self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]
 
         logger.debug(f"Optimized KV Cache ({self.cache_dtype})")
         logger.debug(f"  Compression: {self._compression_ratio}x")
@@ -206,7 +213,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)
         v_quantized = self._quantize_step_into(v, v_scale, self._v_quantized_step)
 
-        active = slice(0, self.active_layers)
+        active = self._active_layer_slice
         self.k_scales[active, pos] = k_scale
         self.v_scales[active, pos] = v_scale
         self.kv_cache[:, active, 0, :, pos, :].copy_(k_quantized.unsqueeze(1))
@@ -241,6 +248,8 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark compressed KV cache."""
         if self._generated_k_steps is None or self._generated_v_steps is None:
             raise RuntimeError("setup() must precompute decode-step inputs before benchmarking")
+        if len(self._generated_step_pairs) != self.num_decode_steps or self._output_view is None:
+            raise RuntimeError("setup() must precompute decode-step views before benchmarking")
         num_decode_steps = self.num_decode_steps
         self._set_host_seq_lengths(0)
 
@@ -248,9 +257,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         start_event, end_event = timing_pair
         start_event.record()
 
-        for pos in range(num_decode_steps):
-            new_k = self._generated_k_steps[pos]
-            new_v = self._generated_v_steps[pos]
+        for pos, (new_k, new_v) in enumerate(self._generated_step_pairs):
             self.append_active_layers(new_k, new_v, pos=pos)
 
         end_event.record()
@@ -258,8 +265,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._set_host_seq_lengths(num_decode_steps)
         self._pending_timing_pair = timing_pair
 
-        head_window = min(8, self.head_dim)
-        self.output = self.kv_cache[:1, :1, :, :, :1, :head_window].detach()
+        self.output = self._output_view.detach()
 
     def _build_verification_output(self) -> torch.Tensor:
         if self.output is None:
@@ -333,8 +339,10 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         del self.kv_cache
         self._generated_k_steps = None
         self._generated_v_steps = None
+        self._generated_step_pairs = []
         self._k_quantized_step = None
         self._v_quantized_step = None
+        self._output_view = None
         self.output = None
         self._seq_lengths_host = [0] * self.batch_size
         self._timing_pair = None

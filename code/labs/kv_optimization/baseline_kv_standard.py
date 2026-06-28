@@ -59,10 +59,12 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._pending_timing_pair: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._generated_k_steps: Optional[torch.Tensor] = None
         self._generated_v_steps: Optional[torch.Tensor] = None
+        self._generated_step_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
+        self._output_view: Optional[torch.Tensor] = None
         self._seq_lengths_host: list[int] = [0] * batch_size
+        self._active_layer_slice = slice(0, active_layers)
         self.register_workload_metadata(requests_per_iteration=1.0)
 
-        hidden_size = num_heads * head_dim
         memory_per_token = num_layers * 2 * num_heads * head_dim * 2  # 2 for K/V, 2 bytes for BF16
         total_memory_gb = (batch_size * max_seq_length * memory_per_token) / (1024**3)
 
@@ -98,6 +100,10 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.bfloat16,
         )
         self._generated_v_steps = torch.randn_like(self._generated_k_steps)
+        self._generated_step_pairs = list(
+            zip(self._generated_k_steps, self._generated_v_steps, strict=True)
+        )
+        self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]
 
         logger.debug("Baseline KV Cache (BF16)")
         logger.debug(f"  Estimated memory: {self._estimated_memory_gb:.2f} GB")
@@ -138,7 +144,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         if pos >= self.max_seq_length:
             raise RuntimeError("KV cache overflow in baseline append")
 
-        active = slice(0, self.active_layers)
+        active = self._active_layer_slice
         self.kv_cache[:, active, 0, :, pos, :].copy_(k.unsqueeze(1))
         self.kv_cache[:, active, 1, :, pos, :].copy_(v.unsqueeze(1))
 
@@ -163,6 +169,8 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark KV cache operations."""
         if self._generated_k_steps is None or self._generated_v_steps is None:
             raise RuntimeError("setup() must precompute decode-step inputs before benchmarking")
+        if len(self._generated_step_pairs) != self.num_decode_steps or self._output_view is None:
+            raise RuntimeError("setup() must precompute decode-step views before benchmarking")
         # Simulate decoding
         num_decode_steps = self.num_decode_steps
         self._set_host_seq_lengths(0)
@@ -171,9 +179,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         start_event, end_event = timing_pair
         start_event.record()
 
-        for pos in range(num_decode_steps):
-            new_k = self._generated_k_steps[pos]
-            new_v = self._generated_v_steps[pos]
+        for pos, (new_k, new_v) in enumerate(self._generated_step_pairs):
             self.append_active_layers(new_k, new_v, pos=pos)
 
         end_event.record()
@@ -181,9 +187,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._set_host_seq_lengths(num_decode_steps)
         self._pending_timing_pair = timing_pair
 
-        # Capture a slice of KV cache for verification (layer 0, first token/head window)
-        view = self.kv_cache[:1, :1, :, :, : min(1, self.kv_cache.shape[4]), : min(8, self.kv_cache.shape[5])]
-        self.output = view.detach()
+        self.output = self._output_view.detach()
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
@@ -238,6 +242,8 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         del self.kv_cache
         self._generated_k_steps = None
         self._generated_v_steps = None
+        self._generated_step_pairs = []
+        self._output_view = None
         self.output = None
         self._seq_lengths_host = [0] * self.batch_size
         self._timing_pair = None

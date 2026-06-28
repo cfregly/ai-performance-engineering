@@ -17,18 +17,34 @@ FP8_REQUIRED = pytest.mark.skipif(
 
 def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
     for benchmark_cls in (BaselineKVStandard, OptimizedKVFP8Compressed):
+        init_source = inspect.getsource(benchmark_cls.__init__)
+        setup_source = inspect.getsource(benchmark_cls.setup)
         get_kv_source = inspect.getsource(benchmark_cls.get_kv)
         benchmark_source = inspect.getsource(benchmark_cls.benchmark_fn)
+        teardown_source = inspect.getsource(benchmark_cls.teardown)
 
+        assert "self._generated_step_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in init_source
+        assert "self._output_view: Optional[torch.Tensor] = None" in init_source
+        assert "self._active_layer_slice = slice(0, active_layers)" in init_source
+        assert "self._generated_step_pairs = list(" in setup_source
+        assert "zip(self._generated_k_steps, self._generated_v_steps, strict=True)" in setup_source
+        assert "self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]" in setup_source
         assert "seq_len = self._seq_lengths_host[batch_idx]" in get_kv_source
         assert ".item()" not in get_kv_source
         assert "self.seq_lengths += 1" not in benchmark_source
         assert "self.seq_lengths.zero_()" not in benchmark_source
+        assert "for pos, (new_k, new_v) in enumerate(self._generated_step_pairs):" in benchmark_source
         assert "self.seq_lengths.fill_(num_decode_steps)" in benchmark_source
         assert "self._set_host_seq_lengths(0)" in benchmark_source
         assert "self._set_host_seq_lengths(num_decode_steps)" in benchmark_source
+        assert "self.output = self._output_view.detach()" in benchmark_source
+        assert "new_k = self._generated_k_steps[pos]" not in benchmark_source
+        assert "new_v = self._generated_v_steps[pos]" not in benchmark_source
+        assert "self.kv_cache[:1, :1" not in benchmark_source
         assert "self._seq_lengths_host = [0] * self.batch_size" not in benchmark_source
         assert "self._seq_lengths_host = [num_decode_steps] * self.batch_size" not in benchmark_source
+        assert "self._generated_step_pairs = []" in teardown_source
+        assert "self._output_view = None" in teardown_source
 
 
 def test_kv_standard_cache_allocation_avoids_zero_fill() -> None:
