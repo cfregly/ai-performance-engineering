@@ -38,6 +38,7 @@ class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
         self.host_in_chunks = None
         self.host_out_chunks = None
         self.device_chunks = None
+        self.chunk_triplets = None
         # Stream benchmark - fixed dimensions for overlap measurement
         bytes_transferred = float(num_elements * 4 * 2)  # H2D + D2H
         self.register_workload_metadata(bytes_per_iteration=bytes_transferred)
@@ -54,6 +55,7 @@ class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
         self.host_in_chunks = list(torch.chunk(self.host_input, self.num_segments))
         self.host_out_chunks = list(torch.chunk(self.host_output, self.num_segments))
         self.device_chunks = [torch.empty_like(chunk, device=self.device) for chunk in self.host_in_chunks]
+        self.chunk_triplets = list(zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks, strict=True))
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
@@ -61,8 +63,9 @@ class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
             assert self.host_in_chunks is not None
             assert self.host_out_chunks is not None
             assert self.device_chunks is not None
+            assert self.chunk_triplets is not None
             with torch.inference_mode():
-                for h_in, h_out, d_buf in zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks):
+                for h_in, h_out, d_buf in self.chunk_triplets:
                     with torch.cuda.stream(self.stream):
                         d_buf.copy_(h_in, non_blocking=True)
                         d_buf.mul_(2.0)
@@ -97,6 +100,7 @@ class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
         self.host_in_chunks = None
         self.host_out_chunks = None
         self.device_chunks = None
+        self.chunk_triplets = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -174,6 +178,7 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
         self.host_in_chunks: List[torch.Tensor] | None = None
         self.host_out_chunks: List[torch.Tensor] | None = None
         self.device_chunks: List[torch.Tensor] | None = None
+        self.stream_chunk_groups: List[tuple[torch.cuda.Stream, torch.Tensor, torch.Tensor, torch.Tensor]] | None = None
         # Stream benchmark - fixed dimensions for overlap measurement
         element_size = float(torch.finfo(self.dtype).bits // 8)
         bytes_transferred = float(num_elements * element_size * 2)  # H2D + D2H
@@ -201,6 +206,12 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
         self.host_out_chunks = list(torch.chunk(self.host_output, len(self.host_in_chunks)))
         self.device_chunks = [torch.empty_like(chunk, device=self.device) for chunk in self.host_in_chunks]
         self.streams = [torch.cuda.Stream() for _ in range(self.num_streams)]
+        self.stream_chunk_groups = [
+            (self.streams[idx % self.num_streams], h_in, h_out, d_buf)
+            for idx, (h_in, h_out, d_buf) in enumerate(
+                zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks, strict=True)
+            )
+        ]
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
@@ -209,13 +220,11 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
             assert self.host_in_chunks is not None
             assert self.host_out_chunks is not None
             assert self.device_chunks is not None
+            assert self.stream_chunk_groups is not None
             with torch.inference_mode():
-                for idx, (h_in, h_out, d_buf) in enumerate(
-                    zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks)
-                ):
+                for stream, h_in, h_out, d_buf in self.stream_chunk_groups:
                     if h_in.numel() == 0:
                         continue
-                    stream = self.streams[idx % self.num_streams]
                     with torch.cuda.stream(stream):
                         d_buf.copy_(h_in, non_blocking=True)
                         d_buf.mul_(2.0)
@@ -254,6 +263,7 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
         self.host_in_chunks = None
         self.host_out_chunks = None
         self.device_chunks = None
+        self.stream_chunk_groups = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

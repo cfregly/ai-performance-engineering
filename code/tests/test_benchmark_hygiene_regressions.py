@@ -9465,6 +9465,36 @@ def test_ch11_stream_benchmarks_use_cached_nvtx_range() -> None:
         assert "with nvtx_range(" not in source
 
 
+def test_ch11_stream_overlap_base_reuses_chunk_groups() -> None:
+    source = (REPO_ROOT / "ch11" / "stream_overlap_base.py").read_text(encoding="utf-8")
+    baseline_setup = source.split("class StridedStreamBaseline", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    baseline_benchmark = source.split("class StridedStreamBaseline", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[1].split("def capture_verification_payload", maxsplit=1)[0]
+    optimized_setup = source.split("class ConcurrentStreamOptimized", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    optimized_benchmark = source.split("class ConcurrentStreamOptimized", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[1].split("def capture_verification_payload", maxsplit=1)[0]
+
+    assert "self.chunk_triplets = list(zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks, strict=True))" in baseline_setup
+    assert "for h_in, h_out, d_buf in self.chunk_triplets:" in baseline_benchmark
+    assert "zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks)" not in baseline_benchmark
+    assert "self.stream_chunk_groups: List[tuple[torch.cuda.Stream, torch.Tensor, torch.Tensor, torch.Tensor]] | None = None" in source
+    assert "self.stream_chunk_groups = [" in optimized_setup
+    assert "zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks, strict=True)" in optimized_setup
+    assert "for stream, h_in, h_out, d_buf in self.stream_chunk_groups:" in optimized_benchmark
+    assert "idx % self.num_streams" not in optimized_benchmark
+    assert "zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks)" not in optimized_benchmark
+
+
 def test_ch12_core_benchmarks_use_cached_nvtx_range() -> None:
     expected_labels = {
         "baseline_kernel_launches.py": "kernel_launches",
