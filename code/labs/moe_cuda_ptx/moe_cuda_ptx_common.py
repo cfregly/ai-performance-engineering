@@ -425,6 +425,13 @@ def _silu_mul_in_place_if_safe(gate: torch.Tensor, up: torch.Tensor) -> torch.Te
     return gate
 
 
+def _weight_routes_in_place_if_safe(out: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    if torch.is_grad_enabled() and (out.requires_grad or weights.requires_grad):
+        return out * weights
+    out.mul_(weights)
+    return out
+
+
 def grouped_ffn_cuda(
     packed_tokens: torch.Tensor,
     packed: PackedRoutes,
@@ -509,7 +516,9 @@ def run_layer_baseline(
             up = tokens_e @ state.up_proj[expert_idx]
             hidden = _silu_mul_in_place_if_safe(gate, up)
             expert_out = hidden @ state.down_proj[expert_idx]
-            output[token_ids] += expert_out * state.expert_weights[token_ids, slot_idx].unsqueeze(-1)
+            route_weights = state.expert_weights[token_ids, slot_idx].unsqueeze(-1)
+            expert_out = _weight_routes_in_place_if_safe(expert_out, route_weights)
+            output[token_ids] += expert_out
     return output
 
 

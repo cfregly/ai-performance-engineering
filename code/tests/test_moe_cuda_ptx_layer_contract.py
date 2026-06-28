@@ -275,6 +275,8 @@ def test_moe_cuda_ptx_swiglu_paths_use_grad_safe_inplace_helper() -> None:
     assert "return F.silu(gate) * up" in module_source
     assert "F.silu(gate, inplace=True)" in module_source
     assert "gate.mul_(up)" in module_source
+    assert "def _weight_routes_in_place_if_safe" in module_source
+    assert "if torch.is_grad_enabled() and (out.requires_grad or weights.requires_grad):" in module_source
 
     for source in (reference_source, cuda_source, baseline_source):
         assert "hidden = _silu_mul_in_place_if_safe(gate, up)" in source
@@ -401,6 +403,9 @@ def test_moe_cuda_ptx_baseline_skips_redundant_mask_any_sync() -> None:
     assert "token_ids = (state.expert_indices[:, slot_idx] == expert_idx).nonzero(as_tuple=True)[0]" in source
     assert "if token_ids.numel() == 0:" in source
     assert "state.x[token_ids]" in source
-    assert "state.expert_weights[token_ids, slot_idx]" in source
+    assert "route_weights = state.expert_weights[token_ids, slot_idx].unsqueeze(-1)" in source
+    assert "expert_out = _weight_routes_in_place_if_safe(expert_out, route_weights)" in source
+    assert "output[token_ids] += expert_out" in source
+    assert "expert_out * state.expert_weights[token_ids, slot_idx].unsqueeze(-1)" not in source
     assert "torch.any(mask)" not in source
     assert "mask]" not in source
