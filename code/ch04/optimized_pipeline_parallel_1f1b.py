@@ -297,6 +297,7 @@ class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._fwd_layers: Optional[nn.ModuleList] = None
         self._bwd_layers: Optional[nn.ModuleList] = None
         self._input: Optional[torch.Tensor] = None
+        self._micro_batch: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
         self._world_size = 1
         self._num_layers = _DEFAULT_LAYERS
@@ -325,12 +326,17 @@ class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._micro_batch = self._input.narrow(0, 0, self._batch_size // self._micro_batches)
 
     def benchmark_fn(self) -> None:
-        if self._input is None or self._fwd_layers is None or self._bwd_layers is None:
+        if (
+            self._input is None
+            or self._micro_batch is None
+            or self._fwd_layers is None
+            or self._bwd_layers is None
+        ):
             raise RuntimeError("setup() must run before benchmark_fn()")
-        micro_batch_size = self._batch_size // self._micro_batches
-        x = self._input[:micro_batch_size]
+        x = self._micro_batch
         for _ in range(self._world_size):
             for layer in self._fwd_layers:
                 x = layer(x)
@@ -380,6 +386,7 @@ class OptimizedPipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._fwd_layers = None
         self._bwd_layers = None
         self._input = None
+        self._micro_batch = None
         self._output = None
         torch.cuda.empty_cache()
 

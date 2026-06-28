@@ -1816,6 +1816,34 @@ def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
         assert "torch.no_grad()" not in worker_section
 
 
+def test_ch04_pipeline_wrappers_cache_micro_batch_views() -> None:
+    for relative in (
+        "ch04/baseline_pipeline_parallel_multigpu.py",
+        "ch04/optimized_pipeline_parallel_1f1b.py",
+        "ch04/optimized_pipeline_parallel_multigpu_1f1b.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def validate_result",
+            maxsplit=1,
+        )[0]
+
+        assert "self._micro_batch: Optional[torch.Tensor] = None" in source
+        assert "self._micro_batch = self._input.narrow(" in setup_section
+        assert "x = self._micro_batch" in benchmark_section
+        assert "micro_batch_size = self._batch_size // self._micro_batches" not in benchmark_section
+        assert "self._input[:micro_batch_size]" not in benchmark_section
+        assert "self._micro_batch = None" in teardown_section
+
+
 def test_ch04_eval_reduction_and_disagg_paths_use_inference_mode() -> None:
     for relative in (
         "ch04/baseline_nccl.py",
