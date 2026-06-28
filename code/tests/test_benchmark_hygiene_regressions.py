@@ -644,6 +644,8 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
 
         assert "self._full_out: Optional[torch.Tensor] = None" in source
         assert "self._full_out = torch.empty(" in source
+        assert "with torch.inference_mode():" in worker_section
+        assert "torch.no_grad()" not in worker_section
         assert "self._payload_parameter_count = 0" in source
         if filename in {"baseline_tensor_parallel.py", "optimized_tensor_parallel_async.py"}:
             assert (

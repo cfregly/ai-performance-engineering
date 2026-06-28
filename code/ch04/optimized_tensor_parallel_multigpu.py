@@ -142,14 +142,15 @@ def _run_worker(
             proj_out = proj_layers[layer_idx](full_out)
             x = proj_out + aux_out
 
-    for _ in range(max(warmup, 0)):
-        _step()
-    torch.cuda.synchronize(device)
+    with torch.inference_mode():
+        for _ in range(max(warmup, 0)):
+            _step()
+        torch.cuda.synchronize(device)
 
-    start = time.perf_counter()
-    for _ in range(max(iters, 1)):
-        _step()
-    torch.cuda.synchronize(device)
+        start = time.perf_counter()
+        for _ in range(max(iters, 1)):
+            _step()
+        torch.cuda.synchronize(device)
     elapsed = time.perf_counter() - start
 
     tokens_per_iter = batch * seq_length
