@@ -44,7 +44,6 @@ class PersistentPrefillBaselineBenchmark(DecodeBenchmark):
                 self.current_tokens.copy_(next_token)
         if self.compute_stream is not None:
             torch.cuda.current_stream().wait_stream(stream)
-        self._finalize_output()
 
 
 def get_benchmark() -> DecodeBenchmark:
@@ -63,4 +62,3 @@ def get_benchmark() -> DecodeBenchmark:
         label="baseline_decode_warp_specialized",
     )
     return attach_benchmark_metadata(PersistentPrefillBaselineBenchmark(cfg), __file__)
-

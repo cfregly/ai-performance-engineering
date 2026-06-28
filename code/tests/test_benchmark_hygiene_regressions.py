@@ -8127,6 +8127,8 @@ def test_ch13_memory_profiling_pair_keeps_compute_dtype_fixed_and_direct_output_
     assert ".detach().clone()" not in optimized_benchmark
     assert "self.output = outputs.detach()" in baseline_benchmark
     assert "self.output = outputs.detach()" in optimized_benchmark
+    assert "use_reentrant=False" in optimized_source
+    assert "self.model.zero_grad(set_to_none=True)" in optimized_benchmark
     assert "output=self.output.detach().float().clone()" in baseline_source
     assert "output=self.output.detach().float().clone()" in optimized_source
     assert "self.output_buffer" not in optimized_source
@@ -8549,6 +8551,40 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
         benchmark_section = text.split("def capture_verification_payload", maxsplit=1)[0]
         assert ".float().clone()" not in benchmark_section
         assert ".detach().clone()" not in benchmark_section
+
+
+def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path() -> None:
+    common_source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    init_buffers_section = common_source.split("def _init_buffers", maxsplit=1)[1].split(
+        "# Compiled / graphed helpers",
+        maxsplit=1,
+    )[0]
+    finalize_section = common_source.split("def _finalize_output", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    capture_section = common_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def _signature_parameter_count",
+        maxsplit=1,
+    )[0]
+
+    assert "self._summary_buffer: Optional[torch.Tensor] = None" in common_source
+    assert "self._summary_buffer = torch.empty(" in init_buffers_section
+    assert "self._summary_buffer.copy_(self.state_buffer[:1, : self._summary_buffer.shape[1]])" in finalize_section
+    assert "self.output = self._summary_buffer.detach()" in finalize_section
+    assert ".float()" not in finalize_section
+    assert ".clone()" not in finalize_section
+    assert "self._finalize_output()" in capture_section
+
+    for name in ("baseline_decode_warp_specialized.py", "optimized_decode_warp_specialized.py"):
+        source = (REPO_ROOT / "labs" / "decode_optimization" / name).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def teardown" if name.startswith("optimized") else "def get_benchmark",
+            maxsplit=1,
+        )[0]
+        assert "self._finalize_output()" not in benchmark_section
 
 
 def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> None:

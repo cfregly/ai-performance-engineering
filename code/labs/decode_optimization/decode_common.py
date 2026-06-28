@@ -148,6 +148,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.gpu_payloads: list[torch.Tensor] = []
         self.host_payload: Optional[torch.Tensor] = None
         self.gpu_payload: Optional[torch.Tensor] = None
+        self._summary_buffer: Optional[torch.Tensor] = None
         self._copy_done_events: list[torch.cuda.Event] = []
         self._timing_events: dict[str, torch.cuda.Event] = {}
         self._nvtx = None
@@ -455,6 +456,11 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.current_tokens = torch.empty((bsz,), device=self.device, dtype=torch.long)
         self._decode_next_token_values = torch.empty((bsz,), device=self.device, dtype=self.dtype)
         self._decode_next_token = torch.empty((bsz,), device=self.device, dtype=torch.long)
+        self._summary_buffer = torch.empty(
+            (1, min(8, self.cfg.hidden_size)),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
     # Compiled / graphed helpers
     def _maybe_compile(self) -> None:
@@ -788,9 +794,14 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _finalize_output(self) -> None:
         """Capture a slice of model state for verification."""
-        hidden_slice = self.state_buffer[:1, : min(8, self.state_buffer.shape[1])].float()
-        summary_tensor = hidden_slice.reshape(1, -1)
-        self.output = summary_tensor.detach().clone()
+        if self._summary_buffer is None:
+            self._summary_buffer = torch.empty(
+                (1, min(8, self.state_buffer.shape[1])),
+                device=self.state_buffer.device,
+                dtype=torch.float32,
+            )
+        self._summary_buffer.copy_(self.state_buffer[:1, : self._summary_buffer.shape[1]])
+        self.output = self._summary_buffer.detach()
 
     def capture_verification_payload(self) -> None:
         if any(
@@ -912,6 +923,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "current_tokens",
             "_decode_next_token_values",
             "_decode_next_token",
+            "_summary_buffer",
             "next_token_out",
             "_copy_done_events",
             "_timing_events",

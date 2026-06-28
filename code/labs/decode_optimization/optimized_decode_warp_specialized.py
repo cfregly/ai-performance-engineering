@@ -72,7 +72,6 @@ class CUDAGraphPersistentDecodeBenchmark(DecodeBenchmark):
         with torch.cuda.stream(self._graph_stream):
             self._decode_graph.replay()
         torch.cuda.current_stream().wait_stream(self._graph_stream)
-        self._finalize_output()
 
     def teardown(self) -> None:
         for attr in ("_decode_graph", "_graph_stream", "_prefilled_state", "_prefilled_tokens"):
@@ -97,4 +96,3 @@ def get_benchmark() -> DecodeBenchmark:
         label="optimized_decode_warp_specialized",
     )
     return attach_benchmark_metadata(CUDAGraphPersistentDecodeBenchmark(cfg), __file__)
-

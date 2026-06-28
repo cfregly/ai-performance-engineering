@@ -22,7 +22,12 @@ class OptimizedModel(nn.Module):
         self.relu = nn.ReLU(inplace=True)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = checkpoint(self._fc1_relu, x, preserve_rng_state=False)
+        x = checkpoint(
+            self._fc1_relu,
+            x,
+            preserve_rng_state=False,
+            use_reentrant=False,
+        )
         x = self.fc2(x)
         return x
     
@@ -76,6 +81,7 @@ class OptimizedMemoryProfilingBenchmark(VerificationPayloadMixin, BaseBenchmark)
             raise RuntimeError("Benchmark not configured")
 
         with self._nvtx_range("optimized_memory_profiling"):
+            self.model.zero_grad(set_to_none=True)
             outputs = self.model(self.inputs)
             loss = self.criterion(outputs, self.targets)
             loss.backward()
