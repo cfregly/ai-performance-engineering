@@ -193,7 +193,7 @@ class GroupedMoEExperts(nn.Module):
             output[start:end] = expert_out
         
         # Apply weights
-        output = output * sorted_weights.unsqueeze(-1)
+        output.mul_(sorted_weights.unsqueeze(-1))
         
         # Unsort back to original order
         unsort_indices = torch.argsort(sorted_indices)

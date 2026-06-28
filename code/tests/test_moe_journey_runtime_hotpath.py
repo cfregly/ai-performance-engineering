@@ -67,9 +67,15 @@ def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
         "# Apply weights",
         maxsplit=1,
     )[0]
+    apply_weights_section = grouped_section.split("# Apply weights", maxsplit=1)[1].split(
+        "# Unsort back to original order",
+        maxsplit=1,
+    )[0]
 
     assert "output = torch.empty_like(sorted_x)" in expert_loop_section
     assert "torch.zeros_like(sorted_x)" not in expert_loop_section
+    assert "output.mul_(sorted_weights.unsqueeze(-1))" in apply_weights_section
+    assert "output = output * sorted_weights.unsqueeze(-1)" not in grouped_section
 
 
 def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
