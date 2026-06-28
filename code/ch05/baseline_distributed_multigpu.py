@@ -20,9 +20,12 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def __init__(self):
         super().__init__()
         self.data: List[torch.Tensor] = []
+        self.local_sums: List[torch.Tensor] = []
+        self.host_sums: List[torch.Tensor] = []
         self.device_ids: List[int] = []
         self.output: Optional[torch.Tensor] = None
         self._cpu_total: Optional[float] = None
+        self._host_total: Optional[torch.Tensor] = None
         self.num_elements = 200_000_000
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -39,6 +42,12 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.randn(self.num_elements, device=f"cuda:{device_id}")
             for device_id in self.device_ids
         ]
+        self.local_sums = [torch.empty(1, device=t.device, dtype=torch.float32) for t in self.data]
+        self.host_sums = [
+            torch.empty(1, dtype=torch.float32, pin_memory=True)
+            for _ in self.data
+        ]
+        self._host_total = torch.empty(1, dtype=torch.float32, pin_memory=True)
         total_tokens = self.num_elements * len(self.device_ids)
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(len(self.device_ids)),
@@ -51,11 +60,17 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        with self._nvtx_range("baseline_distributed_multigpu"):
-            cpu_total = 0.0
-            for tensor in self.data:
-                cpu_total += float(tensor.sum().cpu())
-            self._cpu_total = cpu_total
+        with torch.inference_mode(), self._nvtx_range("baseline_distributed_multigpu"):
+            if not self.data:
+                raise RuntimeError("setup() must be called before benchmark_fn()")
+            if not self.local_sums or not self.host_sums or self._host_total is None:
+                raise RuntimeError("Reduction staging buffers not initialized")
+            self._host_total.zero_()
+            for idx, tensor in enumerate(self.data):
+                torch.sum(tensor, dim=0, keepdim=True, out=self.local_sums[idx])
+                self.host_sums[idx].copy_(self.local_sums[idx], non_blocking=False)
+                self._host_total.add_(self.host_sums[idx])
+            self._cpu_total = float(self._host_total[0])
 
     def capture_verification_payload(self) -> None:
         if self._cpu_total is None or not self.data:
@@ -82,8 +97,11 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         self.data = []
+        self.local_sums = []
+        self.host_sums = []
         self.output = None
         self._cpu_total = None
+        self._host_total = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

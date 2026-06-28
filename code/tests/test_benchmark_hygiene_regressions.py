@@ -5351,6 +5351,9 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -5359,7 +5362,17 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     )[0]
 
     assert "torch.tensor(" not in baseline_benchmark
-    assert "self._cpu_total = cpu_total" in baseline_benchmark
+    assert "self.local_sums = [torch.empty(1, device=t.device, dtype=torch.float32) for t in self.data]" in baseline_setup
+    assert "self.host_sums = [" in baseline_setup
+    assert "torch.empty(1, dtype=torch.float32, pin_memory=True)" in baseline_setup
+    assert "self._host_total = torch.empty(1, dtype=torch.float32, pin_memory=True)" in baseline_setup
+    assert "with torch.inference_mode(), self._nvtx_range(\"baseline_distributed_multigpu\"):" in baseline_benchmark
+    assert "torch.sum(tensor, dim=0, keepdim=True, out=self.local_sums[idx])" in baseline_benchmark
+    assert "self.host_sums[idx].copy_(self.local_sums[idx], non_blocking=False)" in baseline_benchmark
+    assert "self._host_total.add_(self.host_sums[idx])" in baseline_benchmark
+    assert "self._cpu_total = float(self._host_total[0])" in baseline_benchmark
+    assert "tensor.sum().cpu()" not in baseline_benchmark
+    assert "cpu_total = 0.0" not in baseline_benchmark
     assert "self.output = torch.tensor(" in baseline_capture
     assert "[self._cpu_total]," in baseline_capture
     assert "self.local_sums = [torch.empty(1, device=t.device, dtype=torch.float32) for t in self.data]" in optimized_setup
