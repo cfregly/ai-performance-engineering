@@ -94,6 +94,9 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
 
     assert "self._host_staging = {}" in setup_section
     assert "self._handoff_staging = {}" in setup_section
+    assert "self._request_groups = []" in setup_section
+    assert "self._request_groups.extend(" in setup_section
+    assert "batch_slice[idx : idx + 1]" in setup_section
     assert "self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]" in setup_section
     assert "self._handoff_staging[staging_key] = torch.empty(" in setup_section
     assert "prefill_out.cpu()" not in handoff_section
@@ -103,8 +106,13 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "decode_buf.copy_(prefill_out, non_blocking=True)" in handoff_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "outputs = self._output_shards" in benchmark_section
-    assert "output_idx = 0" in benchmark_section
+    assert "enumerate(" in benchmark_section
+    assert "self._request_groups" in benchmark_section
+    assert "prefill_out = prefill_model(request)" in benchmark_section
     assert "outputs[output_idx] = token_state.squeeze(0).squeeze(0)" in benchmark_section
-    assert "output_idx += 1" in benchmark_section
+    assert "output_idx += 1" not in benchmark_section
+    assert "zip(" not in benchmark_section
+    assert "for idx in range(batch.shape[0])" not in benchmark_section
+    assert "batch[idx : idx + 1]" not in benchmark_section
     assert "outputs: list[torch.Tensor] = []" not in benchmark_section
     assert "outputs.append(" not in benchmark_section
