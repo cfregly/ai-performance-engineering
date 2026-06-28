@@ -9029,23 +9029,46 @@ def test_ch15_optimized_kv_cache_management_projects_into_cache_buffers() -> Non
     assert "self._tokens_2d: Optional[torch.Tensor] = None" in source
     assert "self._k_cache_2d: Optional[torch.Tensor] = None" in source
     assert "self._v_cache_2d: Optional[torch.Tensor] = None" in source
+    assert "self._q_proj_weight_t: Optional[torch.Tensor] = None" in source
+    assert "self._k_proj_weight_t: Optional[torch.Tensor] = None" in source
+    assert "self._v_proj_weight_t: Optional[torch.Tensor] = None" in source
+    assert "self._out_proj_weight_t: Optional[torch.Tensor] = None" in source
+    assert "self._q_attn_view: Optional[torch.Tensor] = None" in source
     assert "self._token_step_views: list[torch.Tensor] = []" in source
     assert "self._k_prefix_views: list[torch.Tensor] = []" in source
     assert "self._v_prefix_views: list[torch.Tensor] = []" in source
+    assert "self._k_attn_views: list[torch.Tensor] = []" in source
+    assert "self._v_attn_views: list[torch.Tensor] = []" in source
     assert "self._output_step_views: list[torch.Tensor] = []" in source
+    assert "self._decode_step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._q_proj_weight_t = self.q_proj.weight.t()" in setup_section
+    assert "self._k_proj_weight_t = self.k_proj.weight.t()" in setup_section
+    assert "self._v_proj_weight_t = self.v_proj.weight.t()" in setup_section
+    assert "self._out_proj_weight_t = self.out_proj.weight.t()" in setup_section
     assert "self._tokens_2d = self.tokens.reshape(" in setup_section
     assert "self._k_cache_2d = self.k_cache.reshape(" in setup_section
     assert "self._v_cache_2d = self.v_cache.reshape(" in setup_section
     assert "self._q_buffer = torch.empty(" in setup_section
+    assert "self._q_attn_view = self._q_buffer.view(" in setup_section
     assert "self._token_step_views = [self.tokens[:, t, :] for t in range(self.steps)]" in setup_section
     assert "self._k_prefix_views = [self.k_cache[:, : t + 1, :] for t in range(self.steps)]" in setup_section
     assert "self._v_prefix_views = [self.v_cache[:, : t + 1, :] for t in range(self.steps)]" in setup_section
+    assert "self._k_attn_views = [" in setup_section
+    assert "for prefix in self._k_prefix_views" in setup_section
+    assert "self._v_attn_views = [" in setup_section
+    assert "for prefix in self._v_prefix_views" in setup_section
     assert "self._output_step_views = [self._output_buffer[:, t, :] for t in range(self.steps)]" in setup_section
-    assert "torch.mm(self._tokens_2d, self.k_proj.weight.t(), out=self._k_cache_2d)" in benchmark_section
-    assert "torch.mm(self._tokens_2d, self.v_proj.weight.t(), out=self._v_cache_2d)" in benchmark_section
-    assert "torch.mm(query, self.q_proj.weight.t(), out=self._q_buffer)" in benchmark_section
-    assert "for query, k_prefix, v_prefix, output_step in zip(" in benchmark_section
-    assert "torch.mm(attn, self.out_proj.weight.t(), out=output_step)" in benchmark_section
+    assert "self._decode_step_groups = list(" in setup_section
+    assert "torch.mm(self._tokens_2d, self._k_proj_weight_t, out=self._k_cache_2d)" in benchmark_section
+    assert "torch.mm(self._tokens_2d, self._v_proj_weight_t, out=self._v_cache_2d)" in benchmark_section
+    assert "q = self._q_attn_view" in benchmark_section
+    assert "for query, k, v, output_step in self._decode_step_groups:" in benchmark_section
+    assert "torch.mm(query, self._q_proj_weight_t, out=self._q_buffer)" in benchmark_section
+    assert "torch.mm(attn, self._out_proj_weight_t, out=output_step)" in benchmark_section
+    assert ".weight.t()" not in benchmark_section
+    assert "for query, k_prefix, v_prefix, output_step in zip(" not in benchmark_section
+    assert "k_prefix.reshape(" not in benchmark_section
+    assert "v_prefix.reshape(" not in benchmark_section
     assert "query = self.tokens[:, t, :]" not in benchmark_section
     assert "self.k_cache[:, : t + 1, :]" not in benchmark_section
     assert "self.v_cache[:, : t + 1, :]" not in benchmark_section
