@@ -407,6 +407,42 @@ def test_full_active_mask_reuses_device_buffer():
     torch.testing.assert_close(grown, torch.ones(5, dtype=torch.bool))
 
 
+def test_prompt_pack_buffers_reuse_host_storage():
+    engine = Engine(_TinyForwardModel(), _TinyTokenizer())
+
+    lengths, ids = engine._prompt_pack_buffers(
+        batch_size=3,
+        max_prompt_len=5,
+        pad_id=0,
+        pin_memory=False,
+    )
+    lengths_ptr = lengths.data_ptr()
+    ids_ptr = ids.data_ptr()
+    ids.fill_(7)
+
+    shorter_lengths, shorter_ids = engine._prompt_pack_buffers(
+        batch_size=2,
+        max_prompt_len=4,
+        pad_id=1,
+        pin_memory=False,
+    )
+
+    assert shorter_lengths.data_ptr() == lengths_ptr
+    assert shorter_ids.data_ptr() == ids_ptr
+    torch.testing.assert_close(shorter_ids, torch.ones((2, 4), dtype=torch.long))
+
+    grown_lengths, grown_ids = engine._prompt_pack_buffers(
+        batch_size=4,
+        max_prompt_len=6,
+        pad_id=2,
+        pin_memory=False,
+    )
+
+    assert grown_lengths.numel() >= 4
+    assert grown_ids.shape == (4, 6)
+    torch.testing.assert_close(grown_ids, torch.full((4, 6), 2, dtype=torch.long))
+
+
 def test_decode_step_helpers_reuse_token_and_active_mask_buffers():
     engine = Engine(_TinyForwardModel(), _TinyTokenizer())
     ids_buf = torch.empty((3, 1), dtype=torch.long)
@@ -529,8 +565,12 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
         "attention_mask = self._build_attention_mask", maxsplit=1,
     )[0]
 
-    assert "lengths_host = torch.empty(" in prompt_pack_section
-    assert "ids_host = torch.full(" in prompt_pack_section
+    assert "self._prompt_lengths_host = None" in text
+    assert "self._prompt_ids_host = None" in text
+    assert "def _prompt_pack_buffers(self, batch_size, max_prompt_len, pad_id, pin_memory)" in text
+    assert "lengths_host, ids_host = self._prompt_pack_buffers(" in prompt_pack_section
+    assert "lengths_host = torch.empty(" not in prompt_pack_section
+    assert "ids_host = torch.full(" not in prompt_pack_section
     assert "ids_host.to(device=device, non_blocking=use_pinned_transfer)" in prompt_pack_section
     assert "lengths.max().item()" not in prompt_pack_section
     assert "torch.tensor(seq, dtype=torch.long, device=device)" not in prompt_pack_section

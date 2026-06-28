@@ -370,6 +370,8 @@ class Engine:
         self._sample_topk_values_buffer = None
         self._sample_topk_indices_buffer = None
         self._sample_topk_probs_buffer = None
+        self._prompt_lengths_host = None
+        self._prompt_ids_host = None
         self._pd_runner = PersistentDecodeRunner() if self.use_persistent_decode_kernel else None
         self._persistent_decode_kernel = (
             resolve_persistent_decode_kernel(
@@ -606,6 +608,34 @@ class Engine:
         if self._active_mask_host is None or self._active_mask_host.numel() < count:
             self._active_mask_host = torch.empty(count, dtype=torch.bool, device="cpu")
         return self._active_mask_host[:count]
+
+    def _prompt_pack_buffers(self, batch_size, max_prompt_len, pad_id, pin_memory):
+        lengths_host = self._prompt_lengths_host
+        if (
+            lengths_host is None
+            or lengths_host.numel() < batch_size
+            or lengths_host.is_pinned() != pin_memory
+        ):
+            lengths_host = torch.empty(batch_size, dtype=torch.long, pin_memory=pin_memory)
+            self._prompt_lengths_host = lengths_host
+
+        ids_host = self._prompt_ids_host
+        if (
+            ids_host is None
+            or ids_host.size(0) < batch_size
+            or ids_host.size(1) < max_prompt_len
+            or ids_host.is_pinned() != pin_memory
+        ):
+            ids_host = torch.empty(
+                (batch_size, max_prompt_len),
+                dtype=torch.long,
+                pin_memory=pin_memory,
+            )
+            self._prompt_ids_host = ids_host
+
+        ids_view = ids_host[:batch_size, :max_prompt_len]
+        ids_view.fill_(pad_id)
+        return lengths_host[:batch_size], ids_view
 
     def _active_mask_buffer(self, count, device):
         if (
@@ -927,24 +957,21 @@ class Engine:
         generated_counts = [0] * batch_size
 
         use_pinned_transfer = device.type == "cuda"
-        lengths_host = torch.empty(batch_size, dtype=torch.long, pin_memory=use_pinned_transfer)
-        max_prompt_len = 0
+        max_prompt_len = max(len(seq) for seq in prompt_tokens_batch)
+        if max_prompt_len == 0:
+            raise ValueError("prompt batch must contain at least one token")
+        lengths_host, ids_host = self._prompt_pack_buffers(
+            batch_size,
+            max_prompt_len,
+            pad_id,
+            use_pinned_transfer,
+        )
         for i, seq in enumerate(prompt_tokens_batch):
             seq_len = len(seq)
             lengths_host[i] = seq_len
-            max_prompt_len = max(max_prompt_len, seq_len)
-        if max_prompt_len == 0:
-            raise ValueError("prompt batch must contain at least one token")
-        ids_host = torch.full(
-            (batch_size, max_prompt_len),
-            pad_id,
-            dtype=torch.long,
-            pin_memory=use_pinned_transfer,
-        )
-        for i, seq in enumerate(prompt_tokens_batch):
-            if len(seq) == 0:
+            if seq_len == 0:
                 continue
-            ids_host[i, :len(seq)] = torch.as_tensor(seq, dtype=torch.long)
+            ids_host[i, :seq_len] = torch.as_tensor(seq, dtype=torch.long)
         lengths = lengths_host.to(device=device, non_blocking=use_pinned_transfer)
         ids = ids_host.to(device=device, non_blocking=use_pinned_transfer)
 
