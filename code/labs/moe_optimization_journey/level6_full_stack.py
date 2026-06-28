@@ -61,13 +61,14 @@ class CUDAGraphMoEExperts(nn.Module):
         
         # Batched matmul - all done in BF16
         gate = torch.einsum('bkh,bkhi->bki', x_exp, w1_sel)
-        gate = F.silu(gate)
+        F.silu(gate, inplace=True)
         up = torch.einsum('bkh,bkhi->bki', x_exp, w3_sel)
-        hidden = gate * up
-        out = torch.einsum('bki,bkih->bkh', hidden, w2_sel)
+        gate.mul_(up)
+        out = torch.einsum('bki,bkih->bkh', gate, w2_sel)
         
         # Weight and sum
-        return (out * expert_weights.unsqueeze(-1)).sum(dim=1)
+        out.mul_(expert_weights.unsqueeze(-1))
+        return out.sum(dim=1)
 
 
 class CUDAGraphMoELayer(nn.Module):

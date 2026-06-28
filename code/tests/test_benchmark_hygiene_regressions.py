@@ -6287,6 +6287,25 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "output=self.output.detach().float().clone()" in moe_capture
 
 
+def test_moe_level6_full_stack_weights_expert_outputs_in_place() -> None:
+    source = (
+        REPO_ROOT / "labs" / "moe_optimization_journey" / "level6_full_stack.py"
+    ).read_text(encoding="utf-8")
+    experts_forward = source.split("class CUDAGraphMoEExperts", maxsplit=1)[1].split(
+        "class CUDAGraphMoELayer",
+        maxsplit=1,
+    )[0]
+
+    assert "F.silu(gate, inplace=True)" in experts_forward
+    assert "gate.mul_(up)" in experts_forward
+    assert "torch.einsum('bki,bkih->bkh', gate, w2_sel)" in experts_forward
+    assert "out.mul_(expert_weights.unsqueeze(-1))" in experts_forward
+    assert "return out.sum(dim=1)" in experts_forward
+    assert "gate = F.silu(gate)" not in experts_forward
+    assert "hidden = gate * up" not in experts_forward
+    assert "(out * expert_weights.unsqueeze(-1)).sum(dim=1)" not in experts_forward
+
+
 def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
     source = (
         REPO_ROOT / "labs" / "moe_optimization_journey" / "optimized_moe_pad_quant.py"
