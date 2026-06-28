@@ -355,6 +355,34 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
         expert_list, count_list = host_slice.tolist()
         return [int(expert) for expert in expert_list], [int(count_value) for count_value in count_list]
 
+    def _route_workspaces(
+        self,
+        routes: int,
+        hidden: int,
+        device: torch.device,
+        token_dtype: torch.dtype,
+        weight_dtype: torch.dtype,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        cache_key = (
+            int(routes),
+            int(hidden),
+            device.type,
+            device.index,
+            token_dtype,
+            weight_dtype,
+        )
+        cached = getattr(self, "_route_workspace_key", None)
+        if cached != cache_key:
+            self._sorted_token_ids_workspace = torch.empty(routes, dtype=torch.long, device=device)
+            self._sorted_weights_workspace = torch.empty(routes, 1, dtype=weight_dtype, device=device)
+            self._sorted_flat_workspace = torch.empty(routes, hidden, dtype=token_dtype, device=device)
+            self._route_workspace_key = cache_key
+        return (
+            self._sorted_token_ids_workspace,
+            self._sorted_weights_workspace,
+            self._sorted_flat_workspace,
+        )
+
     def forward(self, x: torch.Tensor, *, collect_router_stats: bool = False):  # type: ignore[override]
         batch, seq, hidden = x.shape
         flat = x.reshape(batch * seq, hidden)
@@ -389,8 +417,22 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
         weights = top_scores.reshape(-1).unsqueeze(-1)
 
         sorted_expert_ids, perm = torch.sort(expert_ids)
-        sorted_token_ids = token_ids.index_select(0, perm)
-        sorted_weights = weights.index_select(0, perm)
+        if torch.is_grad_enabled():
+            sorted_token_ids = token_ids.index_select(0, perm)
+            sorted_weights = weights.index_select(0, perm)
+            sorted_flat = None
+        else:
+            routes = int(expert_ids.numel())
+            sorted_token_ids, sorted_weights, sorted_flat = self._route_workspaces(
+                routes,
+                hidden,
+                flat.device,
+                flat.dtype,
+                weights.dtype,
+            )
+            torch.index_select(token_ids, 0, perm, out=sorted_token_ids)
+            torch.index_select(weights, 0, perm, out=sorted_weights)
+            torch.index_select(flat, 0, sorted_token_ids, out=sorted_flat)
 
         unique_experts, counts = torch.unique_consecutive(sorted_expert_ids, return_counts=True)
         # Convert small metadata to CPU for efficient Python looping.
@@ -400,11 +442,15 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
         for expert_id, count in zip(expert_list, count_list):
             if count <= 0:
                 continue
-            segment_tokens = sorted_token_ids.narrow(0, offset, count)
-            segment_weights = sorted_weights.narrow(0, offset, count)
+            segment_start = offset
+            segment_tokens = sorted_token_ids.narrow(0, segment_start, count)
+            segment_weights = sorted_weights.narrow(0, segment_start, count)
             offset += count
 
-            expert_input = flat.index_select(0, segment_tokens)
+            if sorted_flat is None:
+                expert_input = flat.index_select(0, segment_tokens)
+            else:
+                expert_input = sorted_flat.narrow(0, segment_start, count)
             expert_out = self.experts[int(expert_id)](expert_input)
             segment_weights = segment_weights.to(expert_out.dtype)
             weighted_out = expert_out * segment_weights

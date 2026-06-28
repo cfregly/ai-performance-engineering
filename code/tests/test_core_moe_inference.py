@@ -36,6 +36,7 @@ def test_sorted_dispatch_reuses_flat_token_id_cache_on_cpu() -> None:
     forward_source = inspect.getsource(MoEFeedForwardSortedDispatch.forward)
 
     assert "def _expert_metadata_lists(" in source
+    assert "def _route_workspaces(" in source
     assert "metadata_slice[0].copy_(unique_experts)" in source
     assert "metadata_slice[1].copy_(counts)" in source
     assert "host_slice.copy_(metadata_slice)" in source
@@ -70,6 +71,51 @@ def test_sorted_dispatch_reuses_flat_token_id_cache_on_cpu() -> None:
 
     assert layer._token_ids_cache.numel() == 4
     assert layer._token_ids_cache.data_ptr() != cache1.data_ptr()
+
+
+def test_sorted_dispatch_inference_reuses_route_workspaces() -> None:
+    forward_source = inspect.getsource(MoEFeedForwardSortedDispatch.forward)
+
+    assert "if torch.is_grad_enabled():" in forward_source
+    assert "self._route_workspaces(" in forward_source
+    assert "torch.index_select(token_ids, 0, perm, out=sorted_token_ids)" in forward_source
+    assert "torch.index_select(weights, 0, perm, out=sorted_weights)" in forward_source
+    assert "torch.index_select(flat, 0, sorted_token_ids, out=sorted_flat)" in forward_source
+    assert "expert_input = sorted_flat.narrow(0, segment_start, count)" in forward_source
+
+    torch.manual_seed(123)
+    baseline = MoEFeedForward(
+        hidden=8,
+        ffn=16,
+        num_experts=4,
+        top_k=2,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    sorted_dispatch = MoEFeedForwardSortedDispatch(
+        hidden=8,
+        ffn=16,
+        num_experts=4,
+        top_k=2,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    sorted_dispatch.load_state_dict(baseline.state_dict(), strict=True)
+    x = torch.randn(2, 3, 8)
+
+    with torch.inference_mode():
+        expected = baseline(x)
+        actual1 = sorted_dispatch(x)
+        token_ptr = sorted_dispatch._sorted_token_ids_workspace.data_ptr()
+        weight_ptr = sorted_dispatch._sorted_weights_workspace.data_ptr()
+        flat_ptr = sorted_dispatch._sorted_flat_workspace.data_ptr()
+        actual2 = sorted_dispatch(x)
+
+    torch.testing.assert_close(actual1, expected)
+    torch.testing.assert_close(actual2, expected)
+    assert sorted_dispatch._sorted_token_ids_workspace.data_ptr() == token_ptr
+    assert sorted_dispatch._sorted_weights_workspace.data_ptr() == weight_ptr
+    assert sorted_dispatch._sorted_flat_workspace.data_ptr() == flat_ptr
 
 
 def test_sorted_dispatch_top1_uses_write_once_output_path() -> None:
