@@ -4975,6 +4975,12 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._prefill_next_values: Optional[torch.Tensor] = None" in benchmark_section
     assert "self._prefill_next_tokens: Optional[torch.Tensor] = None" in benchmark_section
     assert "self._router_prompt_stub: List[int] = []" in benchmark_section
+    assert "self._ttft_total_ms: float = 0.0" in benchmark_section
+    assert "self._ttft_count: int = 0" in benchmark_section
+    assert "self._tpot_total_ms: float = 0.0" in benchmark_section
+    assert "self._tpot_count: int = 0" in benchmark_section
+    assert "self._throughput_total: float = 0.0" in benchmark_section
+    assert "self._throughput_count: int = 0" in benchmark_section
     assert "MoEFeedForwardSortedDispatch" in source
     assert "def _replace_moe_dispatch(self, model: SimpleMoEGPT, cfg: MoeInferenceConfig) -> int" in benchmark_section
     assert "replacement = MoEFeedForwardSortedDispatch(" in benchmark_section
@@ -5002,6 +5008,11 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "decode_assignments += 1" in hot_section
     assert 'self._history["graph_path"].append(graph_path)' not in hot_section
     assert '"graph_path": []' not in benchmark_section
+    assert "self._history" not in benchmark_section
+    assert "statistics.mean(" not in benchmark_section
+    assert ".extend(ttft_times)" not in hot_section
+    assert ".extend(tpot_times)" not in hot_section
+    assert ".append(throughput)" not in hot_section
     assert "torch.no_grad()" not in eager_section
 
 

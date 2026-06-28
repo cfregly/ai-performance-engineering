@@ -7,7 +7,6 @@ import contextlib
 import json
 import math
 import os
-import statistics
 import time
 from enum import Enum
 from pathlib import Path
@@ -379,19 +378,28 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(self.config.tokens_per_iteration),
         )
         self.output = None
-        self._history: Dict[str, List[float]] = {
-            "ttft": [],
-            "tpot": [],
-            "throughput": [],
-            "spec_accept": [],
-            "spec_chunk": [],
-            "nvlink": [],
-            "nvlink_measured": [],
-            "prefill_share": [],
-            "paged_hit": [],
-            "page_faults": [],
-            "memory_gb": [],
-        }
+        self._ttft_total_ms: float = 0.0
+        self._ttft_count: int = 0
+        self._tpot_total_ms: float = 0.0
+        self._tpot_count: int = 0
+        self._throughput_total: float = 0.0
+        self._throughput_count: int = 0
+        self._spec_accept_total: float = 0.0
+        self._spec_accept_count: int = 0
+        self._spec_chunk_total: float = 0.0
+        self._spec_chunk_count: int = 0
+        self._nvlink_total_gbps: float = 0.0
+        self._nvlink_count: int = 0
+        self._nvlink_measured_total_gbps: float = 0.0
+        self._nvlink_measured_count: int = 0
+        self._prefill_share_total: float = 0.0
+        self._prefill_share_count: int = 0
+        self._paged_hit_total: float = 0.0
+        self._paged_hit_count: int = 0
+        self._page_faults_total: float = 0.0
+        self._page_faults_count: int = 0
+        self._memory_total_gb: float = 0.0
+        self._memory_count: int = 0
         self._iteration = 0
         self._router_prefix_cache_lengths: List[int] = []
         self._router_prompt_stub: List[int] = []
@@ -821,7 +829,9 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         telemetry_after = query_gpu_telemetry(logical_index)
 
-        total_time_s = (sum(ttft_times) + sum(tpot_times)) / 1000.0
+        ttft_total_ms = sum(ttft_times)
+        tpot_total_ms = sum(tpot_times)
+        total_time_s = (ttft_total_ms + tpot_total_ms) / 1000.0
         throughput = cfg.tokens_per_iteration / max(total_time_s, 1e-6)
         prefill_bytes = cfg.batch_size * cfg.context_window * cfg.hidden_size * self._dtype_bytes
         nvlink_gbps = 0.0
@@ -830,29 +840,44 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         measured_nvlink = self._compute_nvlink_delta(telemetry_before, telemetry_after, total_time_s)
         self._nvlink_status = telemetry_after.get("nvlink_status", "unknown")
 
-        self._history["ttft"].extend(ttft_times)
-        self._history["tpot"].extend(tpot_times)
-        self._history["throughput"].append(throughput)
+        ttft_count = len(ttft_times)
+        if ttft_count:
+            self._ttft_total_ms += ttft_total_ms
+            self._ttft_count += ttft_count
+        tpot_count = len(tpot_times)
+        if tpot_count:
+            self._tpot_total_ms += tpot_total_ms
+            self._tpot_count += tpot_count
+        self._throughput_total += throughput
+        self._throughput_count += 1
         if spec_accept_used is None:
             spec_accept_used = spec.acceptance_rate()
         if spec_chunk_used is None:
             spec_chunk_used = spec.current_chunk_size()
-        self._history["spec_accept"].append(spec_accept_used)
-        self._history["spec_chunk"].append(spec_chunk_used)
-        self._history["nvlink"].append(nvlink_gbps)
+        self._spec_accept_total += spec_accept_used
+        self._spec_accept_count += 1
+        self._spec_chunk_total += spec_chunk_used
+        self._spec_chunk_count += 1
+        self._nvlink_total_gbps += nvlink_gbps
+        self._nvlink_count += 1
         if measured_nvlink is not None:
-            self._history["nvlink_measured"].append(measured_nvlink)
+            self._nvlink_measured_total_gbps += measured_nvlink
+            self._nvlink_measured_count += 1
         else:
             if not self._nvlink_warned:
                 self._nvlink_warned = True
         routed_requests = max(prefill_assignments + decode_assignments, 1)
-        self._history["prefill_share"].append(prefill_assignments / routed_requests)
-        self._history["paged_hit"].append(paged_cache.occupancy_ratio)
-        self._history["page_faults"].append(float(paged_cache.page_faults))
+        self._prefill_share_total += prefill_assignments / routed_requests
+        self._prefill_share_count += 1
+        self._paged_hit_total += paged_cache.occupancy_ratio
+        self._paged_hit_count += 1
+        self._page_faults_total += float(paged_cache.page_faults)
+        self._page_faults_count += 1
         if torch.cuda.is_available():
             peak_bytes = torch.cuda.max_memory_allocated(self.device)  # type: ignore[arg-type]
             if peak_bytes:
-                self._history["memory_gb"].append(peak_bytes / (1024 ** 3))
+                self._memory_total_gb += peak_bytes / (1024 ** 3)
+                self._memory_count += 1
 
         if tokens is not None:
             self.output = tokens.detach()
@@ -928,22 +953,25 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._workload_metadata
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
-        if not self._history["throughput"]:
+        if not self._throughput_count:
             return None
+        def mean(total: float, count: int) -> float:
+            return float(total / count) if count else 0.0
+
         metrics = {
-            "optimized_moe.throughput_tok_s": float(statistics.mean(self._history["throughput"])),
-            "optimized_moe.ttft_mean_ms": float(statistics.mean(self._history["ttft"])),
-            "optimized_moe.tpot_mean_ms": float(statistics.mean(self._history["tpot"])),
-            "optimized_moe.spec_accept_rate": float(statistics.mean(self._history["spec_accept"])),
-            "optimized_moe.spec_chunk_size": float(statistics.mean(self._history["spec_chunk"])),
-            "optimized_moe.nvlink_reported_gbps": float(statistics.mean(self._history["nvlink"])),
-            "optimized_moe.prefill_share": float(statistics.mean(self._history["prefill_share"])),
-            "optimized_moe.paged_cache_occupancy": float(statistics.mean(self._history["paged_hit"])),
-            "optimized_moe.page_faults": float(statistics.mean(self._history["page_faults"])),
+            "optimized_moe.throughput_tok_s": mean(self._throughput_total, self._throughput_count),
+            "optimized_moe.ttft_mean_ms": mean(self._ttft_total_ms, self._ttft_count),
+            "optimized_moe.tpot_mean_ms": mean(self._tpot_total_ms, self._tpot_count),
+            "optimized_moe.spec_accept_rate": mean(self._spec_accept_total, self._spec_accept_count),
+            "optimized_moe.spec_chunk_size": mean(self._spec_chunk_total, self._spec_chunk_count),
+            "optimized_moe.nvlink_reported_gbps": mean(self._nvlink_total_gbps, self._nvlink_count),
+            "optimized_moe.prefill_share": mean(self._prefill_share_total, self._prefill_share_count),
+            "optimized_moe.paged_cache_occupancy": mean(self._paged_hit_total, self._paged_hit_count),
+            "optimized_moe.page_faults": mean(self._page_faults_total, self._page_faults_count),
         }
-        if self._history["nvlink_measured"]:
+        if self._nvlink_measured_count:
             metrics["optimized_moe.nvlink_measured_gbps"] = float(
-                statistics.mean(self._history["nvlink_measured"])
+                self._nvlink_measured_total_gbps / self._nvlink_measured_count
             )
         else:
             code = {
@@ -953,16 +981,16 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "nvml_unavailable": 3.0,
             }.get(self._nvlink_status, 4.0)
             metrics["optimized_moe.nvlink_status_code"] = code
-        if self._history["memory_gb"]:
-            metrics["optimized_moe.peak_memory_gb"] = float(statistics.mean(self._history["memory_gb"]))
+        if self._memory_count:
+            metrics["optimized_moe.peak_memory_gb"] = float(self._memory_total_gb / self._memory_count)
         if self.paged_cache is not None:
             metrics["optimized_moe.kv_cache_gb"] = self.paged_cache.memory_gb
         return metrics
 
     def validate_result(self) -> Optional[str]:
-        if not self._history["ttft"]:
+        if not self._ttft_count:
             return "No TTFT samples captured"
-        if not self._history["tpot"]:
+        if not self._tpot_count:
             return "No decode tokens captured"
         return None
 
