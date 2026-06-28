@@ -122,6 +122,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph_stream: Optional[torch.cuda.Stream] = None
         self.decode_graph: Optional[torch.cuda.CUDAGraph] = None
         self.graph_includes_prefill: bool = False
+        self._decode_combined: Optional[torch.Tensor] = None
         self._decode_next_token_values: Optional[torch.Tensor] = None
         self._decode_next_token: Optional[torch.Tensor] = None
         self._custom_metrics: Dict[str, float] = {}
@@ -453,6 +454,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.state_buffer = torch.empty(
             (bsz, self.cfg.hidden_size), device=self.device, dtype=self.dtype
         )
+        self._decode_combined = torch.empty_like(self.state_buffer)
         self.current_tokens = torch.empty((bsz,), device=self.device, dtype=torch.long)
         self._decode_next_token_values = torch.empty((bsz,), device=self.device, dtype=self.dtype)
         self._decode_next_token = torch.empty((bsz,), device=self.device, dtype=torch.long)
@@ -526,8 +528,15 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Single decode step - fp8_autocast managed externally."""
         with torch.inference_mode(), self.sdpa_ctx_factory():
             token_hidden = self.embedding(tokens)
-            combined = token_hidden + state
-            hidden = self.decode_mlp(combined)
+            if (
+                self._decode_combined is None
+                or self._decode_combined.device != token_hidden.device
+                or self._decode_combined.dtype != token_hidden.dtype
+                or tuple(self._decode_combined.shape) != tuple(token_hidden.shape)
+            ):
+                self._decode_combined = torch.empty_like(token_hidden)
+            torch.add(token_hidden, state, out=self._decode_combined)
+            hidden = self.decode_mlp(self._decode_combined)
             logits = self.lm_head(hidden)
         token_shape = logits.shape[:-1]
         if (
@@ -920,6 +929,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "host_payloads",
             "gpu_payloads",
             "state_buffer",
+            "_decode_combined",
             "current_tokens",
             "_decode_next_token_values",
             "_decode_next_token",

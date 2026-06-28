@@ -102,8 +102,13 @@ def test_decode_step_reuses_next_token_buffer() -> None:
 
     assert "self._decode_next_token_values: Optional[torch.Tensor] = None" in source
     assert "self._decode_next_token: Optional[torch.Tensor] = None" in source
+    assert "self._decode_combined: Optional[torch.Tensor] = None" in source
+    assert "self._decode_combined = torch.empty_like(self.state_buffer)" in init_section
     assert "self._decode_next_token_values = torch.empty((bsz,), device=self.device, dtype=self.dtype)" in init_section
     assert "self._decode_next_token = torch.empty((bsz,), device=self.device, dtype=torch.long)" in init_section
+    assert "torch.add(token_hidden, state, out=self._decode_combined)" in decode_step_section
+    assert "hidden = self.decode_mlp(self._decode_combined)" in decode_step_section
+    assert "combined = token_hidden + state" not in decode_step_section
     assert "torch.max(logits, dim=-1, out=(self._decode_next_token_values, self._decode_next_token))" in decode_step_section
     assert "torch.argmax(logits, dim=-1)" not in decode_step_section
     assert "return hidden, self._decode_next_token" in decode_step_section
