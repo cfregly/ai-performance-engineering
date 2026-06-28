@@ -9071,6 +9071,37 @@ def test_ch13_paged_kv_cache_releases_slabs_without_zero_fill() -> None:
     torch.testing.assert_close(actual_v, new_v)
 
 
+def test_ch13_paged_kv_cache_appends_directly_into_sequence_slot() -> None:
+    source = (REPO_ROOT / "ch13" / "optimized_kv_cache_naive.py").read_text(encoding="utf-8")
+    append_section = source.split("def append(", maxsplit=1)[1].split(
+        "def append_block",
+        maxsplit=1,
+    )[0]
+
+    assert "buffer_k[pos].copy_(k)" in append_section
+    assert "buffer_v[pos].copy_(v)" in append_section
+    assert "buffer_k[pos:pos+1].copy_(k.unsqueeze(0))" not in append_section
+    assert "buffer_v[pos:pos+1].copy_(v.unsqueeze(0))" not in append_section
+
+    from ch13.optimized_kv_cache_naive import PagedKVCache
+
+    cache = PagedKVCache(
+        page_size=4,
+        batch_size=1,
+        num_layers=1,
+        num_heads=2,
+        head_dim=2,
+        dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    k = torch.tensor([[[1.0, 2.0], [3.0, 4.0]]])
+    v = k + 10.0
+    cache.append("req", 0, k, v, 0)
+    actual_k, actual_v = cache.get("req", 0, 0, 1)
+    torch.testing.assert_close(actual_k, k.unsqueeze(0))
+    torch.testing.assert_close(actual_v, v.unsqueeze(0))
+
+
 def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
     source = (REPO_ROOT / "ch16" / "radix_attention_example.py").read_text(encoding="utf-8")
     forward_section = source.split("def forward(self, token: int", maxsplit=1)[1].split(
