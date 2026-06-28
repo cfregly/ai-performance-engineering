@@ -6193,6 +6193,19 @@ def test_ch13_training_models_reuse_position_id_buffers() -> None:
         assert "pos_ids = self._position_ids[:, :seq_len].expand(batch_size, -1)" in forward_section
 
 
+def test_ch13_optimized_training_accumulates_position_embeddings_in_place() -> None:
+    source = (REPO_ROOT / "ch13" / "optimized_training_standard.py").read_text(
+        encoding="utf-8"
+    )
+    forward_section = source.split("def forward", maxsplit=1)[1].split(
+        "# Apply transformer layers",
+        maxsplit=1,
+    )[0]
+
+    assert "x = self.embedding(input_ids)\n        x.add_(self.pos_embedding(pos_ids))" in forward_section
+    assert "self.embedding(input_ids) + self.pos_embedding(pos_ids)" not in forward_section
+
+
 def test_ch04_multi_node_transformer_reuses_position_id_buffer() -> None:
     source = (REPO_ROOT / "ch04" / "multi_node_blackwell.py").read_text(
         encoding="utf-8"

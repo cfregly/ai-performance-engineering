@@ -75,7 +75,8 @@ class CheckpointedTransformerModel(nn.Module):
         
         # Embeddings (not checkpointed - small memory footprint)
         pos_ids = self._position_ids[:, :seq_len].expand(batch_size, -1)
-        x = self.embedding(input_ids) + self.pos_embedding(pos_ids)
+        x = self.embedding(input_ids)
+        x.add_(self.pos_embedding(pos_ids))
         
         # Apply transformer layers with checkpointing on a fixed interval.
         # This discards activations after forward, recomputes them in backward.
