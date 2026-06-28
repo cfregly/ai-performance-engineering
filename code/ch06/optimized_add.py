@@ -32,13 +32,13 @@ class OptimizedAddParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         self.A = torch.arange(self.N, dtype=torch.float32, device=self.device)
         self.B = 2 * self.A
-        self.C = None  # Will be allocated in benchmark_fn
+        self.C = torch.empty_like(self.A)
     
     def benchmark_fn(self) -> None:
         """Vectorized operation - single kernel launch."""
-        assert self.A is not None and self.B is not None
+        assert self.A is not None and self.B is not None and self.C is not None
         with self._nvtx_range("add_vectorized"):
-            self.C = self.A + self.B
+            torch.add(self.A, self.B, out=self.C)
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
