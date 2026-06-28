@@ -1009,6 +1009,19 @@ def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
         assert "torch.nn.ReLU()" not in source
 
 
+def test_ch09_compute_bound_baseline_uses_inference_mode_and_cached_nvtx() -> None:
+    source = (REPO_ROOT / "ch09" / "baseline_compute_bound.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert 'with torch.inference_mode(), self._nvtx_range("baseline_compute_bound"):' in benchmark_section
+    assert "get_nvtx_enabled(" not in benchmark_section
+    assert "with nvtx_range(" not in benchmark_section
+    assert "from core.profiling.nvtx_helper" not in source
+
+
 def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
     for relative in (
         "ch04/baseline_pipeline_parallel.py",

@@ -13,7 +13,6 @@ from core.harness.benchmark_harness import (  # noqa: E402
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
 
 
 class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -45,9 +44,7 @@ class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float16)
 
     def benchmark_fn(self) -> None:
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("baseline_compute_bound", enable=enable_nvtx):
+        with torch.inference_mode(), self._nvtx_range("baseline_compute_bound"):
             out = self.input
             for _ in range(self.repeats):
                 out = self.model(out)
