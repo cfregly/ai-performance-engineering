@@ -49,6 +49,8 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
         self.head_dim = self.hidden_dim // self.num_heads
         self.dtype = torch.float16
         self._verify_input: Optional[torch.Tensor] = None
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
         self.register_workload_metadata(
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(self.batch_size * self.seq_length),
@@ -62,6 +64,8 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
         torch.manual_seed(42)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         
         device = torch.device("cuda")
         
@@ -87,6 +91,9 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
             dtype=self.dtype,
         )
         self._verify_input = self.inputs.detach().clone()
+        self._payload_parameter_count = sum(p.numel() for p in self.qkv_proj.parameters()) + sum(
+            p.numel() for p in self.out_proj.parameters()
+        )
         
         # Proper warmup
         for _ in range(5):
@@ -115,19 +122,11 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
     
     def benchmark_fn(self) -> None:
         """Benchmark the Flash SDPA forward path for the Blackwell variant."""
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("optimized_dense_attention_flash_blackwell_variant", enable=enable_nvtx):
+        with nvtx_range("optimized_dense_attention_flash_blackwell_variant", enable=self._enable_nvtx):
             with torch.inference_mode():
                 self.output = self._forward_flash()
         if self._verify_input is None:
             raise RuntimeError("Verification input missing")
-        parameter_count = 0
-        if self.qkv_proj is not None:
-            parameter_count += sum(p.numel() for p in self.qkv_proj.parameters())
-        if self.out_proj is not None:
-            parameter_count += sum(p.numel() for p in self.out_proj.parameters())
-        self._payload_parameter_count = parameter_count
 
     def capture_verification_payload(self) -> None:
         parameter_count = self._payload_parameter_count

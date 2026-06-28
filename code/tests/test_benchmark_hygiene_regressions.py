@@ -1391,6 +1391,14 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         assert "with torch.inference_mode():" in dense_benchmark
         assert "with torch.no_grad():" not in dense_setup
         assert "with torch.no_grad():" not in dense_benchmark
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in dense_setup
+        assert "self._payload_parameter_count = sum(p.numel() for p in self.qkv_proj.parameters())" in dense_setup
+        assert "get_config()" not in dense_benchmark
+        assert "get_nvtx_enabled(" not in dense_benchmark
+        assert "enable=self._enable_nvtx" in dense_benchmark
+        assert "sum(p.numel()" not in dense_benchmark
+        assert "parameter_count += " not in dense_benchmark
+        assert "self._payload_parameter_count = parameter_count" not in dense_benchmark
 
     for filename in ("baseline_flash_sdp.py", "optimized_flash_sdp.py"):
         flash_source = (REPO_ROOT / "ch16" / filename).read_text(encoding="utf-8")

@@ -47,6 +47,8 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         self.head_dim = self.hidden_dim // self.num_heads
         self.dtype = torch.float16
         self._verify_input: Optional[torch.Tensor] = None
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
         
         tokens = self.batch_size * self.max_seq_len
         self._workload = WorkloadMetadata(
@@ -60,6 +62,8 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         torch.manual_seed(42)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         
         self.qkv_proj = nn.Linear(
             self.hidden_dim,
@@ -83,6 +87,9 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
             dtype=self.dtype,
         )
         self._verify_input = self.inputs.detach().clone()
+        self._payload_parameter_count = sum(p.numel() for p in self.qkv_proj.parameters()) + sum(
+            p.numel() for p in self.out_proj.parameters()
+        )
         
         # Proper warmup
         for _ in range(5):
@@ -117,20 +124,11 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
     
     def benchmark_fn(self) -> None:
         """Benchmark: Flash Attention."""
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-        with nvtx_range("optimized_dense_attention_flash", enable=enable_nvtx):
+        with nvtx_range("optimized_dense_attention_flash", enable=self._enable_nvtx):
             with torch.inference_mode():
                 self.output = self._forward_flash()
         if self._verify_input is None:
             raise RuntimeError("Verification input missing")
-        parameter_count = 0
-        if self.qkv_proj is not None:
-            parameter_count += sum(p.numel() for p in self.qkv_proj.parameters())
-        if self.out_proj is not None:
-            parameter_count += sum(p.numel() for p in self.out_proj.parameters())
-        self._payload_parameter_count = parameter_count
 
     def capture_verification_payload(self) -> None:
         parameter_count = self._payload_parameter_count
