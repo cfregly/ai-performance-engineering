@@ -80,6 +80,7 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.device_buffers[slot].copy_(self.host_buffers[slot], non_blocking=False)
             return
         with torch.cuda.stream(self.copy_stream):
+            self.copy_stream.wait_stream(torch.cuda.current_stream())
             self.device_buffers[slot].copy_(self.host_buffers[slot], non_blocking=True)
 
     def _wait_for_copy(self) -> None:
@@ -100,11 +101,11 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     next_slot = current ^ 1
                     self._wait_for_copy()
                     current_input = self.device_buffers[current]
-                    out = self.block(current_input)
-                    last_input = current_input
                     if step + 1 < self.num_blocks:
                         self._stage_to_host(next_slot, step + 1)
                         self._enqueue_copy(next_slot)
+                    out = self.block(current_input)
+                    last_input = current_input
         if out is None or last_input is None:
             raise RuntimeError("benchmark_fn() must produce output")
         self._last_input = last_input

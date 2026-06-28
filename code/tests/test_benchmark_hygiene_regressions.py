@@ -1153,6 +1153,24 @@ def test_ch05_optimized_vectorization_reuses_reduction_output_buffer() -> None:
     assert "torch.empty(" not in benchmark_section
 
 
+def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
+    source = (REPO_ROOT / "ch05" / "optimized_ai.py").read_text(encoding="utf-8")
+    enqueue_section = source.split("def _enqueue_copy", maxsplit=1)[1].split(
+        "def _wait_for_copy",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self.copy_stream.wait_stream(torch.cuda.current_stream())" in enqueue_section
+    assert benchmark_section.index("self._enqueue_copy(next_slot)") < benchmark_section.index(
+        "out = self.block(current_input)"
+    )
+    assert "last_input = current_input" in benchmark_section
+
+
 def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
     for relative in (
         "ch03/baseline_pinned_prefetch_mlp.py",
