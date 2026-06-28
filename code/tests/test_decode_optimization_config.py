@@ -170,6 +170,37 @@ def test_decode_nvtx_import_is_cached_outside_iteration_hot_paths() -> None:
     assert 'nvtx.range_push(self._nvtx_labels["decode"])' in benchmark_section
 
 
+def test_decode_iteration_metrics_reuse_tuple_event_state() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "# Model + buffer init",
+        maxsplit=1,
+    )[0]
+    prefetch_section = source.split("def _benchmark_prefetch_batches", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+    finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def _finalize_output",
+        maxsplit=1,
+    )[0]
+
+    assert "self._timing_event_tuple = (" in setup_section
+    assert "iter_start, batch0_end, _, iter_end = self._timing_event_tuple" in prefetch_section
+    assert "prefill_start, prefill_end, decode_start, decode_end = self._timing_event_tuple" in benchmark_section
+    assert "self._pending_iteration_events = (iter_start, batch0_end, batch0_end, iter_end)" in prefetch_section
+    assert "self._pending_iteration_events = (prefill_start, prefill_end, decode_start, decode_end)" in benchmark_section
+    assert "prefill_start, prefill_end, decode_start, decode_end = self._pending_iteration_events" in finalize_section
+    assert "self._pending_iteration_events = {" not in source
+    assert 'self._pending_iteration_events["' not in source
+
+
 def test_decode_pinned_pair_uses_transfer_heavy_workload_with_only_pin_state_changed() -> None:
     baseline = get_baseline_decode_pinned()
     optimized = get_optimized_decode_pinned()
@@ -202,6 +233,8 @@ def test_decode_benchmark_reuses_timing_events() -> None:
     bench.setup()
     try:
         event_ids = {name: id(event) for name, event in bench._timing_events.items()}
+        assert bench._timing_event_tuple is not None
+        tuple_ids = tuple(id(event) for event in bench._timing_event_tuple)
 
         bench.benchmark_fn()
         bench.finalize_iteration_metrics()
@@ -210,5 +243,7 @@ def test_decode_benchmark_reuses_timing_events() -> None:
 
         assert set(event_ids) == {"prefill_start", "prefill_end", "decode_start", "decode_end"}
         assert {name: id(event) for name, event in bench._timing_events.items()} == event_ids
+        assert bench._timing_event_tuple is not None
+        assert tuple(id(event) for event in bench._timing_event_tuple) == tuple_ids
     finally:
         bench.teardown()

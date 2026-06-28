@@ -127,7 +127,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._decode_next_token_values: Optional[torch.Tensor] = None
         self._decode_next_token: Optional[torch.Tensor] = None
         self._custom_metrics: Dict[str, float] = {}
-        self._pending_iteration_events: Optional[Dict[str, torch.cuda.Event]] = None
+        self._timing_event_tuple: Optional[
+            tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]
+        ] = None
+        self._pending_iteration_events: Optional[
+            tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]
+        ] = None
         self._fp8_enabled: bool = False
         self._fp4_enabled: bool = False
         self._graph_error: Optional[str] = None
@@ -270,6 +275,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 name: torch.cuda.Event(enable_timing=True)
                 for name in ("prefill_start", "prefill_end", "decode_start", "decode_end")
             }
+            self._timing_event_tuple = (
+                self._timing_events["prefill_start"],
+                self._timing_events["prefill_end"],
+                self._timing_events["decode_start"],
+                self._timing_events["decode_end"],
+            )
             self._nvtx = _cuda_nvtx()
             self._nvtx_labels = {
                 "prefill": standardize_nvtx_label("compute_math:prefill"),
@@ -605,9 +616,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("prefetch_batches > 1 cannot run with CUDA graphs")
 
         # Timers via CUDA events
-        iter_start = self._timing_event("prefill_start")
-        batch0_end = self._timing_event("prefill_end")
-        iter_end = self._timing_event("decode_end")
+        if self._timing_event_tuple is None:
+            raise RuntimeError("Decode timing events were not initialized")
+        iter_start, batch0_end, _, iter_end = self._timing_event_tuple
 
         # Streams for copy/compute
         prefill_stream = self.compute_stream or torch.cuda.current_stream()
@@ -649,22 +660,16 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.gpu_payload = self.gpu_payloads[1]
             self.host_payload = self.host_payloads[1]
 
-        self._pending_iteration_events = {
-            "prefill_start": iter_start,
-            "prefill_end": batch0_end,
-            "decode_start": batch0_end,
-            "decode_end": iter_end,
-        }
+        self._pending_iteration_events = (iter_start, batch0_end, batch0_end, iter_end)
 
     def benchmark_fn(self) -> None:
         if self.cfg.prefetch_batches > 1:
             self._benchmark_prefetch_batches()
             return
         # Timers via CUDA events
-        prefill_start = self._timing_event("prefill_start")
-        prefill_end = self._timing_event("prefill_end")
-        decode_start = self._timing_event("decode_start")
-        decode_end = self._timing_event("decode_end")
+        if self._timing_event_tuple is None:
+            raise RuntimeError("Decode timing events were not initialized")
+        prefill_start, prefill_end, decode_start, decode_end = self._timing_event_tuple
 
         # Choose streams for work/timing
         prefill_stream = self.compute_stream or torch.cuda.current_stream()
@@ -719,21 +724,13 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         if nvtx:
             nvtx.range_pop()
-        self._pending_iteration_events = {
-            "prefill_start": prefill_start,
-            "prefill_end": prefill_end,
-            "decode_start": decode_start,
-            "decode_end": decode_end,
-        }
+        self._pending_iteration_events = (prefill_start, prefill_end, decode_start, decode_end)
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, list[float]]]:
         if not self._pending_iteration_events:
             return None
 
-        prefill_start = self._pending_iteration_events["prefill_start"]
-        prefill_end = self._pending_iteration_events["prefill_end"]
-        decode_start = self._pending_iteration_events["decode_start"]
-        decode_end = self._pending_iteration_events["decode_end"]
+        prefill_start, prefill_end, decode_start, decode_end = self._pending_iteration_events
         self._pending_iteration_events = None
 
         ttft_ms = prefill_start.elapsed_time(prefill_end) if prefill_end.query() else 0.0
@@ -919,6 +916,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "graph_next_token",
             "_copy_done_events",
             "_timing_events",
+            "_timing_event_tuple",
         ):
             if hasattr(self, attr):
                 setattr(self, attr, None)
