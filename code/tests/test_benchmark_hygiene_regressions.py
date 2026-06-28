@@ -403,6 +403,36 @@ def test_ch05_optimized_storage_cpu_opens_mmap_outside_hot_loop() -> None:
     assert "self._output_buffer = None" in teardown_section
 
 
+def test_ch03_pageable_copy_reuses_reduction_output_buffer() -> None:
+    for relative, label in (
+        ("ch03/baseline_pageable_copy.py", "baseline_pageable_copy"),
+        ("ch03/optimized_pageable_copy.py", "optimized_pageable_copy"),
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
+
+        assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+        assert (
+            "self._output_buffer = torch.empty(1, device=self.device, dtype=torch.float32)"
+            in setup_section
+        )
+        assert f'with self._nvtx_range("{label}"):' in benchmark_section
+        assert (
+            "torch.sum(self.device_buffer, dim=0, keepdim=True, out=self._output_buffer)"
+            in benchmark_section
+        )
+        assert "torch.sum(self.device_buffer).unsqueeze(0)" not in benchmark_section
+        assert "self._output_buffer = None" in teardown_section
+
+
 def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     source = (REPO_ROOT / "ch19" / "baseline_dynamic_quantized_cache.py").read_text(
         encoding="utf-8"

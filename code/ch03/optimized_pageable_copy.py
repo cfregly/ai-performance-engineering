@@ -29,6 +29,7 @@ class OptimizedPageableCopyBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_tensor: Optional[torch.Tensor] = None
         self.device_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         # Memory copy benchmark - jitter check not applicable
         bytes_per_iter = 128_000_000 * 4  # float32 bytes (same as baseline)
         # Register workload metadata in __init__ for compliance checks
@@ -44,14 +45,20 @@ class OptimizedPageableCopyBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # non-blocking while still being fully measured on the benchmark stream.
         self.host_tensor = torch.randn(128_000_000, dtype=torch.float32, pin_memory=True)
         self.device_buffer = torch.empty_like(self.host_tensor, device=self.device)
+        self._output_buffer = torch.empty(1, device=self.device, dtype=torch.float32)
         self._synchronize()
 
     def benchmark_fn(self) -> None:
         """Copy data and compute sum using a pinned async H2D transfer."""
-        assert self.host_tensor is not None and self.device_buffer is not None
+        assert (
+            self.host_tensor is not None
+            and self.device_buffer is not None
+            and self._output_buffer is not None
+        )
         with self._nvtx_range("optimized_pageable_copy"):
             self.device_buffer.copy_(self.host_tensor, non_blocking=True)
-            self.output = torch.sum(self.device_buffer).unsqueeze(0)
+            torch.sum(self.device_buffer, dim=0, keepdim=True, out=self._output_buffer)
+            self.output = self._output_buffer
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -77,6 +84,7 @@ class OptimizedPageableCopyBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_tensor = None
         self.device_buffer = None
         self.output = None
+        self._output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
