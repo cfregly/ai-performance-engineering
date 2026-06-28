@@ -10572,6 +10572,9 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
         "def benchmark_fn", maxsplit=1
     )[0]
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
     optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
@@ -10582,8 +10585,9 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     assert "with torch.inference_mode():" in optimized_source
     assert "for token_idx in range(num_tokens):" in optimized_source
     assert "buffer[:, token_idx : token_idx + 1, :] = current" in optimized_source
-    assert "self._compiled_decode = torch.compile(_full_decode, mode=\"reduce-overhead\")" in optimized_source
-    assert "self.output = self._compiled_decode(kv_cache)" in optimized_source
+    assert "self._compiled_inference = torch.compile(_full_inference, mode=\"reduce-overhead\")" in optimized_setup
+    assert "self.output = self._compiled_inference(self.prompt)" in optimized_benchmark
+    assert "self.model.prefill(self.prompt)" not in optimized_benchmark
     assert "self.output = self.model.decode(kv_cache, num_tokens=self.num_tokens)" not in optimized_source
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in optimized_setup
     assert "parameter_count=self._payload_parameter_count" in optimized_capture

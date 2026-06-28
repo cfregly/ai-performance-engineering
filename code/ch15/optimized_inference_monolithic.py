@@ -3,8 +3,8 @@
 Pairs with: baseline_inference_monolithic.py
 
 This variant keeps the same prefill+autoregressive decode workload as the
-baseline, but routes decode through a shared helper that reuses an output
-buffer and avoids the baseline's repeated list growth inside the hot path.
+baseline, but routes the full request through a compiled graph and avoids the
+baseline's repeated list growth inside the hot path.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
         self.model: Optional[SimpleLLM] = None
         self.prompt: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
-        self._compiled_decode = None
+        self._compiled_inference = None
         self._payload_parameter_count = 0
 
         self.batch_size = 1
@@ -44,14 +44,14 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.prompt = (torch.arange(self.prefill_seq, device=self.device, dtype=torch.int64) % 10000).unsqueeze(0)
         self.output = None
-        # The batch=1 autoregressive decode (num_tokens steps x num_layers tiny Linears) is
-        # launch-overhead bound. Compile the whole decode loop with reduce-overhead so inductor
-        # cudagraphs it: kv_cache is the stable graph input (no per-step cudagraph re-record),
-        # collapsing ~2048 tiny kernel launches into one graph replay (~7x vs the eager loop).
+        # The batch=1 request is launch-overhead bound: prefill is one narrow prompt pass,
+        # then decode runs num_tokens x num_layers tiny Linears. Compile the whole request
+        # with reduce-overhead so inductor cudagraphs the launch train into one replay.
         num_tokens = self.num_tokens
         model = self.model
 
-        def _full_decode(kv_cache: torch.Tensor) -> torch.Tensor:
+        def _full_inference(prompt: torch.Tensor) -> torch.Tensor:
+            kv_cache = model.prefill(prompt)
             current = kv_cache
             buffer = kv_cache.new_empty((kv_cache.shape[0], num_tokens, kv_cache.shape[-1]))
             for token_idx in range(num_tokens):
@@ -59,20 +59,19 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
                 buffer[:, token_idx : token_idx + 1, :] = current
             return buffer
 
-        self._compiled_decode = torch.compile(_full_decode, mode="reduce-overhead")
+        self._compiled_inference = torch.compile(_full_inference, mode="reduce-overhead")
         with torch.inference_mode():
             for _ in range(5):
-                _ = self._compiled_decode(self.model.prefill(self.prompt))
+                _ = self._compiled_inference(self.prompt)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        if self.model is None or self.prompt is None or self._compiled_decode is None:
+        if self.model is None or self.prompt is None or self._compiled_inference is None:
             raise RuntimeError("Model or prompt not initialized")
 
         with self._nvtx_range("inference_monolithic_optimized"):
             with torch.inference_mode():
-                kv_cache = self.model.prefill(self.prompt)
-                self.output = self._compiled_decode(kv_cache)
+                self.output = self._compiled_inference(self.prompt)
 
     def capture_verification_payload(self) -> None:
         if self.model is None or self.prompt is None or self.output is None:
@@ -95,7 +94,7 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
         self.model = None
         self.prompt = None
         self.output = None
-        self._compiled_decode = None
+        self._compiled_inference = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
