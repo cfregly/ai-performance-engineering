@@ -829,7 +829,7 @@ class Engine:
                 **self._sample_workspace(row_logits, top_k, temp),
             )
             sampled_device[sample_idx].copy_(next_id[0, 0])
-        sampled_host.copy_(sampled_device)
+        sampled_host.copy_(sampled_device, non_blocking=sampled_device.device.type == "cuda")
         for idx, token in zip(active_rows, sampled_host.tolist()):
             sampled_tokens[idx] = int(token)
         return sampled_tokens
