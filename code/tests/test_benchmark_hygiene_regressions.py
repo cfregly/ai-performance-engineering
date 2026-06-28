@@ -4928,6 +4928,7 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "self._target_next_values: Optional[torch.Tensor] = None" in decoder_section
     assert "self._matches_workspace: Optional[torch.Tensor] = None" in decoder_section
     assert "self._selected_tokens: Optional[torch.Tensor] = None" in decoder_section
+    assert "self._per_token_times: List[float] = []" in decoder_section
     assert "def _match_workspaces(self, device: torch.device)" in decoder_section
     assert "def prepare_workspaces(self, batch_size: int, dtype: torch.dtype, device: torch.device)" in decoder_section
     assert "torch.max(last_logits, dim=-1, keepdim=True, out=(values, token_ids))" in decoder_section
@@ -4938,6 +4939,12 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "torch.sum(matches, dim=None, out=match_summary[0])" in decode_section
     assert "torch.all(matches, out=all_matches_tensor)" in decode_section
     assert "match_summary[1].copy_(all_matches_tensor)" in decode_section
+    assert "if len(self._per_token_times) < total_tokens:" in decode_section
+    assert "self._per_token_times = [0.0] * total_tokens" in decode_section
+    assert "per_token_times = self._per_token_times" in decode_section
+    assert "per_token_times[emitted] =" in decode_section
+    assert "per_token_times.append(" not in decode_section
+    assert "return tokens, per_token_times, emitted" in decode_section
     assert "match_count, all_matches = match_summary.tolist()" in decode_section
     assert "self.accepted_tokens += int(match_count)" in decode_section
     assert "if not all_matches:" in decode_section

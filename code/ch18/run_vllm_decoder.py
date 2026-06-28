@@ -193,6 +193,7 @@ class SpeculativeDecoder:
         self._target_next_tokens: Optional[torch.Tensor] = None
         self._matches_workspace: Optional[torch.Tensor] = None
         self._selected_tokens: Optional[torch.Tensor] = None
+        self._per_token_times: List[float] = []
 
     def reset(self) -> None:
         self.accepted_tokens = 0
@@ -267,10 +268,12 @@ class SpeculativeDecoder:
         total_tokens: int,
         paged_cache: PagedKVCache,
         base_position: int,
-    ) -> Tuple[torch.Tensor, List[float]]:
+    ) -> Tuple[torch.Tensor, List[float], int]:
         tokens = seed_tokens
         emitted = 0
-        per_token_times: List[float] = []
+        if len(self._per_token_times) < total_tokens:
+            self._per_token_times = [0.0] * total_tokens
+        per_token_times = self._per_token_times
 
         with torch.inference_mode():
             while emitted < total_tokens:
@@ -311,13 +314,13 @@ class SpeculativeDecoder:
                     torch.where(matches, candidate, target_next, out=tokens)
 
                     torch.cuda.synchronize()
-                    per_token_times.append((time.perf_counter() - start) * 1000.0)
+                    per_token_times[emitted] = (time.perf_counter() - start) * 1000.0
                     emitted += 1
 
                     if not all_matches:
                         break
         self._maybe_adjust_chunk()
-        return tokens, per_token_times
+        return tokens, per_token_times, emitted
 
     def _maybe_adjust_chunk(self) -> None:
         if self._fallback_chunk is None:
@@ -606,7 +609,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._prefill_next_token_from_logits(logits)
             if self._full_prefill_done is not None:
                 self._full_prefill_done.record()
-            _tokens, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
+            _tokens, _, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
                 self._prefill_next_tokens,
                 cfg.decode_tokens,
                 self.paged_cache,  # type: ignore[arg-type]
@@ -645,7 +648,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         # Decode graph: reuse prefetched tokens and capture decode path.
         with torch.cuda.graph(self._piecewise_decode_graph):
-            _tokens, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
+            _tokens, _, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
                 self._prefill_next_tokens,
                 cfg.decode_tokens,
                 self.paged_cache,  # type: ignore[arg-type]
@@ -734,13 +737,13 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         next_tokens = self._prefill_next_token_from_logits(logits)
         with torch.inference_mode(), self._nvtx_range("speculative_decode"):
             chunk_used = spec.current_chunk_size()
-            tokens, decode_times = spec.decode(
+            tokens, decode_times, decode_count = spec.decode(
                 next_tokens,
                 cfg.decode_tokens,
                 paged_cache,
                 base_position=cfg.context_window,
             )
-            tpot_times.extend(decode_times)
+            tpot_times.extend(decode_times[:decode_count])
         return ttft_times, tpot_times, "eager", spec.acceptance_rate(), float(chunk_used), tokens
 
     # --------------------------------------------------------------- benchmark_fn
