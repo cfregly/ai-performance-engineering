@@ -6584,6 +6584,11 @@ def test_ch15_moe_overlap_and_routing_use_inference_mode() -> None:
             assert "param_count = 0" not in capture_section
             assert "sum(p.numel()" not in capture_section
             assert "parameter_count=self._payload_parameter_count" in capture_section
+        if relative.endswith("moe_routing_benchmark_common.py"):
+            assert "self._payload_parameter_count = 0" in source
+            assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
+            assert "param_count = sum(" not in capture_section
+            assert "parameter_count=self._payload_parameter_count" in capture_section
 
 
 def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
@@ -6606,6 +6611,10 @@ def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
 
     assert "self._baseline_perm = torch.cat(baseline_perm_parts, dim=0)" in setup_section
     assert "self._baseline_packed = torch.empty_like(flat)" in setup_section
@@ -6615,6 +6624,10 @@ def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
     assert "torch.cumsum(group_counts, dim=0, out=self._group_offsets[1:])" in setup_section
     assert "with torch.inference_mode():" in setup_section
     assert "with torch.no_grad():" not in setup_section
+    assert "self._payload_parameter_count = 0" in source
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
+    assert "param_count = sum(" not in capture_section
+    assert "parameter_count=self._payload_parameter_count" in capture_section
     for run_section in (baseline_section, overlap_section, hierarchical_section):
         assert "with torch.inference_mode():" in run_section
         assert "with torch.no_grad():" not in run_section
