@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from numbers import Number
 from typing import Dict, Optional
 
@@ -24,6 +23,7 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._metric_values: Optional[list[float]] = None
         self._topology = None
+        self._summary_ready = False
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
@@ -38,15 +38,16 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             topology_snapshot=self._topology,
             cli_args=vllm_runner._CLI_ARGS,
         )
+        self._summary_ready = True
+
+    def capture_verification_payload(self) -> None:
+        if not self._summary_ready:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         metric_values = [float(v) for v in self._summary.values() if isinstance(v, Number)]
         if not metric_values:
             metric_values = [0.0]
         self._metric_values = metric_values
-
-    def capture_verification_payload(self) -> None:
-        if self._metric_values is None:
-            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self.output = torch.tensor(self._metric_values, dtype=torch.float32).unsqueeze(0)
+        self.output = torch.tensor(metric_values, dtype=torch.float32).unsqueeze(0)
         self._set_verification_payload(
             inputs={
                 "mode": torch.tensor([0], dtype=torch.int64),
@@ -62,6 +63,7 @@ class BaselineDualPoolVllmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._metric_values = None
         self._topology = None
+        self._summary_ready = False
         super().teardown()
 
     def get_config(self) -> Optional[BenchmarkConfig]:

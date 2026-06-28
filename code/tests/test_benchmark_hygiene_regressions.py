@@ -4363,8 +4363,15 @@ def test_dynamic_router_wrappers_defer_metric_tensors_outside_hot_loop() -> None
 
         assert "torch.tensor(" not in benchmark_section
         assert "from labs.dynamic_router import vllm_runner" not in benchmark_section
-        assert "self._metric_values = metric_values" in benchmark_section
-        assert "self.output = torch.tensor(self._metric_values, dtype=torch.float32).unsqueeze(0)" in capture_section
+        assert "metric_values = [" not in benchmark_section
+        assert "self._metric_values = metric_values" in capture_section
+        assert "self.output = torch.tensor(metric_values, dtype=torch.float32).unsqueeze(0)" in capture_section
+        if relative.endswith("topology_probe.py"):
+            assert "self.snapshot = topo" in benchmark_section
+            assert "if self.snapshot is None:" in capture_section
+        else:
+            assert "self._summary_ready = True" in benchmark_section
+            assert "if not self._summary_ready:" in capture_section
 
 
 def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> None:

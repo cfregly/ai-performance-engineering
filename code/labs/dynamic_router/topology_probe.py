@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from numbers import Number
 from pathlib import Path
 from typing import Dict, Optional
@@ -37,16 +36,16 @@ class TopologyProbeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         topo = detect_topology()
         self.output_path = write_topology(topo)
         self.snapshot = topo
+
+    def capture_verification_payload(self) -> None:
+        if self.snapshot is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         metrics_dict = self.get_custom_metrics() or {}
         metric_values = [float(v) for v in metrics_dict.values() if isinstance(v, Number)]
         if not metric_values:
             metric_values = [0.0]
         self._metric_values = metric_values
-
-    def capture_verification_payload(self) -> None:
-        if self._metric_values is None:
-            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self.output = torch.tensor(self._metric_values, dtype=torch.float32).unsqueeze(0)
+        self.output = torch.tensor(metric_values, dtype=torch.float32).unsqueeze(0)
         self._set_verification_payload(
             inputs={
                 "num_gpus": torch.tensor([len(self.snapshot.gpu_numa) if self.snapshot else 0], dtype=torch.int64),
@@ -85,4 +84,3 @@ class TopologyProbeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return TopologyProbeBenchmark()
-
