@@ -8537,6 +8537,8 @@ def test_ch15_kv_cache_math_preconcats_static_inputs() -> None:
     assert "with torch.inference_mode():" in benchmark_section
     assert "queries = self._sequence_inputs" in benchmark_section
     assert "k_cache = self._sequence_inputs" in benchmark_section
+    assert "self.output = self.out_proj(attn)" in benchmark_section
+    assert "self.output[:, -1, :].sum()" not in benchmark_section
 
 
 def test_ch15_optimized_kv_cache_management_projects_into_cache_buffers() -> None:

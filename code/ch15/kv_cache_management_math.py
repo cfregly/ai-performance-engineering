@@ -114,7 +114,6 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 
                 # Update cache with the newest token block without reallocation.
                 self.cache_buffer.copy_(k_cache)
-                _ = self.output[:, -1, :].sum()
 
     def capture_verification_payload(self) -> None:
         if self.output is None or self._verify_input is None:
