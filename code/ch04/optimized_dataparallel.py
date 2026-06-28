@@ -65,6 +65,7 @@ class OptimizedDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_state: Optional[dict] = None
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_target: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
         # Training benchmarks don't support jitter check
         tokens = self.batch_size * self.input_size
         self._workload = WorkloadMetadata(
@@ -80,6 +81,7 @@ class OptimizedDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Direct model on GPU - no DataParallel wrapper
         # Use same precision as baseline (float32) for fair verification comparison
         self.model = SimpleNet(self.input_size).to(self.device)
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.optimizer = optim.SGD(self.model.parameters(), lr=0.01)
         self._verify_state = {k: v.detach().cpu().clone() for k, v in self.model.state_dict().items()}
 
@@ -124,12 +126,11 @@ class OptimizedDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
             verify_input = self._verify_input.to(self.device)
             verify_target = self._verify_target.to(self.device)
             output = verify_model(verify_input)
-        param_count = sum(p.numel() for p in verify_model.parameters())
         self._set_verification_payload(
             inputs={"data": verify_input, "target": verify_target},
             output=output,
             batch_size=int(self.batch_size),
-            parameter_count=param_count,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,
@@ -178,4 +179,3 @@ class OptimizedDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedDdpBenchmark()
-

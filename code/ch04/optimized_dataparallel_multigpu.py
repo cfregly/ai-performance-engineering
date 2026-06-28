@@ -51,6 +51,7 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
         self._verify_state: Optional[dict] = None
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_target: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
         tokens = self.batch_size * self.input_size
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -82,6 +83,7 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
             )
 
         base_model = SimpleNet(self.input_size).to(torch.device(f"cuda:{self.device_ids[0]}"))
+        self._payload_parameter_count = sum(p.numel() for p in base_model.parameters())
         self._verify_state = {k: v.detach().cpu().clone() for k, v in base_model.state_dict().items()}
         base_state = base_model.state_dict()
 
@@ -195,12 +197,11 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
             verify_input = self._verify_input.to(verify_device)
             verify_target = self._verify_target.to(verify_device)
             output = verify_model(verify_input)
-        param_count = sum(p.numel() for p in verify_model.parameters())
         self._set_verification_payload(
             inputs={"data": verify_input, "target": verify_target},
             output=output,
             batch_size=int(self.batch_size),
-            parameter_count=param_count,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

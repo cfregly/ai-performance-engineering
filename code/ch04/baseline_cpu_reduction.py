@@ -39,6 +39,7 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
         
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
@@ -56,6 +57,7 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             nn.ReLU(inplace=True),
             nn.Linear(self.inner_dim, self.hidden_dim),
         ).to(self.device).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.input = torch.randn(self.batch_size, self.hidden_dim, device=self.device)
         reduced_rows = self.batch_size // self.num_shards
@@ -83,12 +85,11 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.input is None or self.output is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        param_count = sum(p.numel() for p in self.model.parameters()) if self.model is not None else 0
         self._set_verification_payload(
             inputs={"input": self.input},
             output=self.output,
             batch_size=int(self.batch_size),
-            parameter_count=param_count,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

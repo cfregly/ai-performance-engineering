@@ -151,6 +151,35 @@ def test_ch04_optimized_dataparallel_reuses_gradient_staging_buffers() -> None:
     assert "master_grad = param_group[0].grad" in benchmark_section
 
 
+def test_ch04_dataparallel_and_reduction_payloads_cache_parameter_counts() -> None:
+    for relative, parameter_expr in (
+        ("ch04/baseline_cpu_reduction.py", "self.model.parameters()"),
+        ("ch04/baseline_nccl.py", "self.model.parameters()"),
+        ("ch04/baseline_dataparallel.py", "model.parameters()"),
+        ("ch04/baseline_dataparallel_multigpu.py", "model.parameters()"),
+        ("ch04/optimized_dataparallel.py", "self.model.parameters()"),
+        ("ch04/optimized_dataparallel_multigpu.py", "base_model.parameters()"),
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+
+        assert "self._payload_parameter_count = 0" in source
+        assert (
+            f"self._payload_parameter_count = sum(p.numel() for p in {parameter_expr})"
+            in setup_section
+        )
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "param_count = sum(" not in capture_section
+        assert "sum(p.numel()" not in capture_section
+
+
 def test_ch04_optimizer_central_nvlink_uses_direct_copy_staging() -> None:
     source = (REPO_ROOT / "ch04" / "optimizer_central_nvlink.py").read_text(
         encoding="utf-8"
