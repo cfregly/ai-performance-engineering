@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import math
 import os
 
 from core.common.device_utils import resolve_local_rank
@@ -11,7 +10,6 @@ from time import perf_counter
 from contextlib import nullcontext
 
 import torch
-import torch.nn.functional as F
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from pathlib import Path
@@ -150,9 +148,10 @@ def main():
         total_tokens += batch["input_ids"].numel()
 
         if step % 10 == 0 and is_main:
+            loss_value = float(loss.detach())
             print(
                 f"[optimized-ddp] step {step}/{num_steps} "
-                f"loss={loss.item():.4f} "
+                f"loss={loss_value:.4f} "
                 f"tokens/step={batch['input_ids'].numel():,}"
             )
 

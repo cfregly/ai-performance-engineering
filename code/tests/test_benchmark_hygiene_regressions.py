@@ -5382,6 +5382,28 @@ def test_train_distributed_optimized_fsdp_defers_loss_sync_until_logging() -> No
         assert "loss_value = float(loss.detach()) * args.grad_accum" in logging_section
 
 
+def test_train_distributed_optimized_wrappers_log_detached_loss_values() -> None:
+    for relative in (
+        "optimized_ddp.py",
+        "optimized_ddp_multigpu.py",
+        "optimized_ddp_flash.py",
+        "optimized_ddp_flash_multigpu.py",
+        "optimized_zero1.py",
+        "optimized_zero1_multigpu.py",
+        "optimized_zero2.py",
+        "optimized_zero2_multigpu.py",
+        "optimized_zero3.py",
+        "optimized_zero3_multigpu.py",
+    ):
+        source = (REPO_ROOT / "labs" / "train_distributed" / relative).read_text(
+            encoding="utf-8"
+        )
+
+        assert "loss.item()" not in source
+        assert "loss_value = float(loss.detach())" in source
+        assert "loss={loss_value:.4f}" in source
+
+
 def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
     source = (
         REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_sft.py"

@@ -131,9 +131,10 @@ def main():
         total_tokens += batch["input_ids"].numel()
 
         if step % 10 == 0 and is_main:
+            loss_value = float(loss.detach())
             print(
                 f"[optimized-ddp] step {step}/{num_steps} "
-                f"loss={loss.item():.4f} "
+                f"loss={loss_value:.4f} "
                 f"tokens/step={batch['input_ids'].numel():,}"
             )
 

@@ -122,9 +122,10 @@ def main():
         if rank == 0 and step % 10 == 0:
             elapsed = perf_counter() - start
             toks_per_sec = total_tokens / elapsed if elapsed > 0 else 0.0
+            loss_value = float(loss.detach())
             print(
                 f"[optimized-zero2] step {step}/{args.steps} "
-                f"loss={loss.item():.4f} "
+                f"loss={loss_value:.4f} "
                 f"tokens/s per rank={toks_per_sec:,.0f}"
             )
 

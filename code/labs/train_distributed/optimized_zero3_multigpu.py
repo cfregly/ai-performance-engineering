@@ -15,7 +15,6 @@ from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
     ShardingStrategy,
 )
-from torch.distributed.fsdp.wrap import lambda_auto_wrap_policy
 
 from core.benchmark.gpu_requirements import require_min_gpus
 from labs.train_distributed.training_utils.memory import print_memory_stats
@@ -116,9 +115,10 @@ def main():
         if rank == 0 and step % 10 == 0:
             elapsed = perf_counter() - start
             toks_per_sec = total_tokens / elapsed if elapsed > 0 else 0.0
+            loss_value = float(loss.detach())
             print(
                 f"[optimized-zero3] step {step}/{args.steps} "
-                f"loss={loss.item():.4f} tokens/s per rank={toks_per_sec:,.0f}"
+                f"loss={loss_value:.4f} tokens/s per rank={toks_per_sec:,.0f}"
             )
 
     torch.cuda.synchronize(device)
