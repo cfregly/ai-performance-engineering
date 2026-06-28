@@ -62,6 +62,8 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._pending_timing_pair: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._generated_k_steps: Optional[torch.Tensor] = None
         self._generated_v_steps: Optional[torch.Tensor] = None
+        self._k_quantized_step: Optional[torch.Tensor] = None
+        self._v_quantized_step: Optional[torch.Tensor] = None
         self._seq_lengths_host: list[int] = [0] * batch_size
         self.register_workload_metadata(requests_per_iteration=1.0)
 
@@ -121,6 +123,14 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.bfloat16,
         )
         self._generated_v_steps = torch.randn_like(self._generated_k_steps)
+        self._k_quantized_step = torch.empty(
+            self.batch_size,
+            self.num_heads,
+            self.head_dim,
+            device=self.device,
+            dtype=self.cache_dtype,
+        )
+        self._v_quantized_step = torch.empty_like(self._k_quantized_step)
 
         logger.debug(f"Optimized KV Cache ({self.cache_dtype})")
         logger.debug(f"  Compression: {self._compression_ratio}x")
@@ -150,6 +160,12 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             max_val = 448.0  # FP8 E4M3 range
         
         return max_val / (absmax + 1e-12)
+
+    def _quantize_step_into(self, x: torch.Tensor, scale: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+        if self.use_fp8:
+            torch.mul(x, scale, out=out)
+            return out
+        return (x * scale).to(self.cache_dtype)
     
     def append_kv(
         self,
@@ -168,8 +184,10 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         # Quantize and store
         k_scale = self._compute_scale(k)
         v_scale = self._compute_scale(v)
-        k_quantized = (k * k_scale).to(self.cache_dtype)
-        v_quantized = (v * v_scale).to(self.cache_dtype)
+        if self._k_quantized_step is None or self._v_quantized_step is None:
+            raise RuntimeError("Quantization buffers not initialized")
+        k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)
+        v_quantized = self._quantize_step_into(v, v_scale, self._v_quantized_step)
 
         self.k_scales[layer_idx, pos] = k_scale
         self.v_scales[layer_idx, pos] = v_scale
@@ -183,8 +201,10 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
 
         k_scale = self._compute_scale(k)
         v_scale = self._compute_scale(v)
-        k_quantized = (k * k_scale).to(self.cache_dtype)
-        v_quantized = (v * v_scale).to(self.cache_dtype)
+        if self._k_quantized_step is None or self._v_quantized_step is None:
+            raise RuntimeError("Quantization buffers not initialized")
+        k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)
+        v_quantized = self._quantize_step_into(v, v_scale, self._v_quantized_step)
 
         active = slice(0, self.active_layers)
         self.k_scales[active, pos] = k_scale
@@ -313,6 +333,8 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         del self.kv_cache
         self._generated_k_steps = None
         self._generated_v_steps = None
+        self._k_quantized_step = None
+        self._v_quantized_step = None
         self.output = None
         self._seq_lengths_host = [0] * self.batch_size
         self._timing_pair = None

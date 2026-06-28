@@ -40,6 +40,25 @@ def test_kv_standard_cache_allocation_avoids_zero_fill() -> None:
         assert "self.kv_cache = torch.zeros(" not in cache_allocation
 
 
+def test_fp8_append_paths_reuse_quantization_buffers() -> None:
+    setup_source = inspect.getsource(OptimizedKVFP8Compressed.setup)
+    quantize_source = inspect.getsource(OptimizedKVFP8Compressed._quantize_step_into)
+    append_source = inspect.getsource(OptimizedKVFP8Compressed.append_kv)
+    append_active_source = inspect.getsource(OptimizedKVFP8Compressed.append_active_layers)
+
+    assert "self._k_quantized_step = torch.empty(" in setup_source
+    assert "self._v_quantized_step = torch.empty_like(self._k_quantized_step)" in setup_source
+    assert "torch.mul(x, scale, out=out)" in quantize_source
+    assert "k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)" in append_source
+    assert "v_quantized = self._quantize_step_into(v, v_scale, self._v_quantized_step)" in append_source
+    assert "k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)" in append_active_source
+    assert "v_quantized = self._quantize_step_into(v, v_scale, self._v_quantized_step)" in append_active_source
+    assert "(k * k_scale).to(self.cache_dtype)" not in append_source
+    assert "(v * v_scale).to(self.cache_dtype)" not in append_source
+    assert "(k * k_scale).to(self.cache_dtype)" not in append_active_source
+    assert "(v * v_scale).to(self.cache_dtype)" not in append_active_source
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for KV append parity")
 def test_baseline_active_layer_append_matches_per_layer_append() -> None:
     bench = BaselineKVStandard(
