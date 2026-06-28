@@ -279,6 +279,14 @@ def test_moe_expert_paths_weight_outputs_in_place_when_grad_disabled() -> None:
     assert "out = _weight_routes_in_place_if_safe(out, expert_mask.unsqueeze(-1))" in graphable_section
     assert "out = _weight_routes_in_place_if_safe(out, flat_weights)" in graphable_section
     assert "out = out * expert_mask.unsqueeze(-1) * flat_weights" not in graphable_section
+    assert "self._mem_out_buffer: Optional[torch.Tensor] = None" in text
+    assert "self._mem_reduced_buffer: Optional[torch.Tensor] = None" in text
+    assert 'out_flat = self._bmm_workspace(\n            "_mem_out_buffer",' in mem_section
+    assert "torch.bmm(hidden.unsqueeze(1), w2_sel, out=out_flat.unsqueeze(1))" in mem_section
+    assert 'reduced = self._bmm_workspace(\n            "_mem_reduced_buffer",' in mem_section
+    assert "torch.sum(out, dim=1, out=reduced)" in mem_section
+    assert "out = torch.bmm(hidden.unsqueeze(1), w2_sel).squeeze(1)" not in mem_section
+    assert "return out.sum(dim=1)" not in mem_section
 
 
 def test_moe_expert_paths_fuse_swiglu_in_place_when_grad_disabled() -> None:
@@ -303,6 +311,10 @@ def test_moe_expert_paths_fuse_swiglu_in_place_when_grad_disabled() -> None:
         "def forward_bmm_fused",
         maxsplit=1,
     )[0]
+    mem_section = text.split("def forward_mem_efficient", maxsplit=1)[1].split(
+        "def forward_grouped",
+        maxsplit=1,
+    )[0]
     bmm_section = text.split("def forward_bmm_fused", maxsplit=1)[1].split(
         "def _forward_bmm_fused_graphable",
         maxsplit=1,
@@ -318,9 +330,43 @@ def test_moe_expert_paths_fuse_swiglu_in_place_when_grad_disabled() -> None:
     for section in (batched_section, bmm_section, graphable_section):
         assert "hidden = _silu_mul_in_place_if_safe(gate, up)" in section
         assert "hidden = gate * up" not in section
+    assert "hidden = _silu_mul_in_place_if_safe(gate_buffer, up_buffer)" in mem_section
+    assert "hidden = fused_silu_mul(self._gate_buffer, self._up_buffer)" not in mem_section
     assert "hidden = _silu_mul_in_place_if_safe(gate, up)" in grouped_section
     assert "expert_out = hidden @ self.w2_stacked[expert_id]" in grouped_section
     assert "expert_out = (gate * up) @ self.w2_stacked[expert_id]" not in grouped_section
+
+
+def test_mem_efficient_moe_path_reuses_workspaces() -> None:
+    torch.manual_seed(0)
+    opts = MoEOptimizations(use_mem_efficient=True)
+    experts = MoEExperts(num_experts=3, hidden_size=4, intermediate_size=8, opts=opts)
+    x = torch.randn(5, 4)
+    expert_indices = torch.tensor(
+        [[0, 1], [2, 0], [1, 2], [0, 2], [1, 0]],
+        dtype=torch.long,
+    )
+    expert_weights = torch.tensor(
+        [[0.7, 0.3], [0.4, 0.6], [0.5, 0.5], [0.8, 0.2], [0.25, 0.75]],
+        dtype=torch.float32,
+    )
+
+    with torch.inference_mode():
+        expected = experts.forward_naive(x, expert_indices, expert_weights, num_experts_per_tok=2)
+        actual = experts.forward_mem_efficient(x, expert_indices, expert_weights)
+        gate_ptr = experts._gate_buffer.data_ptr()
+        up_ptr = experts._up_buffer.data_ptr()
+        out_ptr = experts._mem_out_buffer.data_ptr()
+        reduced_ptr = experts._mem_reduced_buffer.data_ptr()
+        actual_reused = experts.forward_mem_efficient(x, expert_indices, expert_weights)
+
+    torch.testing.assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(actual_reused, expected, atol=1e-5, rtol=1e-5)
+    assert experts._gate_buffer.data_ptr() == gate_ptr
+    assert experts._up_buffer.data_ptr() == up_ptr
+    assert experts._mem_out_buffer.data_ptr() == out_ptr
+    assert experts._mem_reduced_buffer.data_ptr() == reduced_ptr
+    assert actual_reused.data_ptr() == reduced_ptr
 
 
 def test_moe_inplace_weighted_paths_match_naive_reference() -> None:

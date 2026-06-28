@@ -106,6 +106,8 @@ class MoEExperts(nn.Module):
         self._naive_output: Optional[torch.Tensor] = None
         self._gate_buffer: Optional[torch.Tensor] = None
         self._up_buffer: Optional[torch.Tensor] = None
+        self._mem_out_buffer: Optional[torch.Tensor] = None
+        self._mem_reduced_buffer: Optional[torch.Tensor] = None
         self._cuda_graph = None
         self._cuda_graph_stream: Optional[torch.cuda.Stream] = None
         self._cuda_graph_signature: Optional[Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...], str, str, str, int]] = None
@@ -377,12 +379,18 @@ class MoEExperts(nn.Module):
         batch_seq, top_k = expert_indices.shape
         total_tokens = batch_seq * top_k
         
-        # Reuse pre-allocated buffers
-        if self._gate_buffer is None or self._gate_buffer.shape[0] != total_tokens:
-            self._gate_buffer = torch.empty(total_tokens, self.intermediate_size, 
-                                           device=x.device, dtype=x.dtype)
-            self._up_buffer = torch.empty(total_tokens, self.intermediate_size,
-                                         device=x.device, dtype=x.dtype)
+        gate_buffer = self._bmm_workspace(
+            "_gate_buffer",
+            (total_tokens, self.intermediate_size),
+            device=x.device,
+            dtype=x.dtype,
+        )
+        up_buffer = self._bmm_workspace(
+            "_up_buffer",
+            (total_tokens, self.intermediate_size),
+            device=x.device,
+            dtype=x.dtype,
+        )
         
         w1_sel = self.w1_stacked[expert_indices].view(total_tokens, self.hidden_size, -1)
         w3_sel = self.w3_stacked[expert_indices].view(total_tokens, self.hidden_size, -1)
@@ -391,18 +399,31 @@ class MoEExperts(nn.Module):
         x_flat = x.unsqueeze(1).expand(-1, top_k, -1).reshape(total_tokens, self.hidden_size)
         
         # Compute into pre-allocated buffers
-        torch.bmm(x_flat.unsqueeze(1), w1_sel, out=self._gate_buffer.unsqueeze(1))
-        torch.bmm(x_flat.unsqueeze(1), w3_sel, out=self._up_buffer.unsqueeze(1))
+        torch.bmm(x_flat.unsqueeze(1), w1_sel, out=gate_buffer.unsqueeze(1))
+        torch.bmm(x_flat.unsqueeze(1), w3_sel, out=up_buffer.unsqueeze(1))
         
-        # Fused activation
-        hidden = fused_silu_mul(self._gate_buffer, self._up_buffer)
+        # Reuse the gate buffer as the activated hidden state.
+        hidden = _silu_mul_in_place_if_safe(gate_buffer, up_buffer)
         
         # Final projection
-        out = torch.bmm(hidden.unsqueeze(1), w2_sel).squeeze(1)
-        out = out.view(batch_seq, top_k, -1)
+        out_flat = self._bmm_workspace(
+            "_mem_out_buffer",
+            (total_tokens, self.hidden_size),
+            device=x.device,
+            dtype=x.dtype,
+        )
+        torch.bmm(hidden.unsqueeze(1), w2_sel, out=out_flat.unsqueeze(1))
+        out = out_flat.view(batch_seq, top_k, self.hidden_size)
         
         out = _weight_routes_in_place_if_safe(out, expert_weights.unsqueeze(-1))
-        return out.sum(dim=1)
+        reduced = self._bmm_workspace(
+            "_mem_reduced_buffer",
+            (batch_seq, self.hidden_size),
+            device=x.device,
+            dtype=x.dtype,
+        )
+        torch.sum(out, dim=1, out=reduced)
+        return reduced
     
     def forward_grouped(
         self, x: torch.Tensor, expert_indices: torch.Tensor, expert_weights: torch.Tensor,
