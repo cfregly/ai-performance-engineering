@@ -30,10 +30,35 @@ class Int8Linear(nn.Module):
 
         self.register_buffer("weight_scale", weight_scale.detach())
         self.register_buffer("weight_int8_t", weight_int8_t)
+        self.register_buffer("_input_scaled_buffer", torch.empty(0), persistent=False)
+        self.register_buffer("_input_int8_buffer", torch.empty(0, dtype=torch.int8), persistent=False)
+        self.register_buffer("_output_float_buffer", torch.empty(0), persistent=False)
         if bias is not None:
             self.register_buffer("bias", bias.detach().clone())
         else:
             self.bias = None
+
+    def prepare_buffers(self, batch_size: int, device: torch.device) -> None:
+        in_features = int(self.weight_int8_t.shape[0])
+        out_features = int(self.weight_int8_t.shape[1])
+        self._input_scaled_buffer = torch.empty(
+            batch_size,
+            in_features,
+            device=device,
+            dtype=torch.float32,
+        )
+        self._input_int8_buffer = torch.empty(
+            batch_size,
+            in_features,
+            device=device,
+            dtype=torch.int8,
+        )
+        self._output_float_buffer = torch.empty(
+            batch_size,
+            out_features,
+            device=device,
+            dtype=torch.float32,
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() != 2:
@@ -42,10 +67,20 @@ class Int8Linear(nn.Module):
             raise RuntimeError("torch._int_mm requires M > 16")
         if x.size(1) % 8 != 0 or self.weight_int8_t.size(0) % 8 != 0:
             raise RuntimeError("torch._int_mm requires K and N to be multiples of 8")
-        input_scale = torch.clamp(x.abs().amax() / INT8_MAX, min=1e-8)
-        x_q = torch.clamp((x / input_scale).round(), -INT8_MAX, INT8_MAX).to(torch.int8)
-        out_int32 = torch._int_mm(x_q, self.weight_int8_t)
-        output = out_int32.float()
+        if (
+            self._input_scaled_buffer.shape != x.shape
+            or self._input_scaled_buffer.device != x.device
+        ):
+            self.prepare_buffers(x.shape[0], x.device)
+        torch.abs(x, out=self._input_scaled_buffer)
+        input_scale = torch.clamp(self._input_scaled_buffer.amax() / INT8_MAX, min=1e-8)
+        torch.div(x, input_scale, out=self._input_scaled_buffer)
+        torch.round(self._input_scaled_buffer, out=self._input_scaled_buffer)
+        torch.clamp(self._input_scaled_buffer, -INT8_MAX, INT8_MAX, out=self._input_scaled_buffer)
+        self._input_int8_buffer.copy_(self._input_scaled_buffer)
+        out_int32 = torch._int_mm(self._input_int8_buffer, self.weight_int8_t)
+        output = self._output_float_buffer
+        output.copy_(out_int32)
         output.mul_(input_scale * self.weight_scale)
         if self.bias is not None:
             output.add_(self.bias)
@@ -65,6 +100,10 @@ class Int8MLP(nn.Module):
         super().__init__()
         self.fc1 = Int8Linear(weight1, bias1)
         self.fc2 = Int8Linear(weight2, bias2)
+
+    def prepare_buffers(self, batch_size: int, device: torch.device) -> None:
+        self.fc1.prepare_buffers(batch_size, device)
+        self.fc2.prepare_buffers(batch_size, device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.fc1(x)
@@ -131,6 +170,7 @@ class OptimizedQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.model[2].weight,
             self.model[2].bias,
         ).to(self.device)
+        self.int8_model.prepare_buffers(self.batch_size, self.device)
         self.compiled_model = torch.compile(self.int8_model, mode="max-autotune")
         for _ in range(2):
             with torch.inference_mode():

@@ -7963,8 +7963,19 @@ def test_ch13_quantized_linears_scale_outputs_in_place() -> None:
         (
             "optimized_quantization.py",
             "class Int8MLP",
-            ("output = out_int32.float()", "output.mul_(input_scale * self.weight_scale)"),
-            ("out_int32.float() * (input_scale * self.weight_scale)",),
+            (
+                "torch.abs(x, out=self._input_scaled_buffer)",
+                "torch.div(x, input_scale, out=self._input_scaled_buffer)",
+                "self._input_int8_buffer.copy_(self._input_scaled_buffer)",
+                "output = self._output_float_buffer",
+                "output.copy_(out_int32)",
+                "output.mul_(input_scale * self.weight_scale)",
+            ),
+            (
+                "out_int32.float() * (input_scale * self.weight_scale)",
+                "output = out_int32.float()",
+                "torch.clamp((x / input_scale).round(), -INT8_MAX, INT8_MAX).to(torch.int8)",
+            ),
         ),
         (
             "optimized_fp4_perchannel.py",
@@ -8003,6 +8014,22 @@ def test_ch13_quantized_linears_scale_outputs_in_place() -> None:
     )[1].split("def forward", maxsplit=1)[0]
     assert "output_q.mul_(input_scale * weight_scale)" in dequantize_section
     assert "combined_scale" not in dequantize_section
+
+
+def test_ch13_optimized_int8_linear_preallocates_activation_buffers() -> None:
+    source = (REPO_ROOT / "ch13" / "optimized_quantization.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "self.compiled_model = torch.compile",
+        maxsplit=1,
+    )[0]
+
+    assert 'self.register_buffer("_input_scaled_buffer", torch.empty(0), persistent=False)' in source
+    assert 'self.register_buffer("_input_int8_buffer", torch.empty(0, dtype=torch.int8), persistent=False)' in source
+    assert 'self.register_buffer("_output_float_buffer", torch.empty(0), persistent=False)' in source
+    assert "def prepare_buffers(self, batch_size: int, device: torch.device) -> None:" in source
+    assert "self.fc1.prepare_buffers(batch_size, device)" in source
+    assert "self.fc2.prepare_buffers(batch_size, device)" in source
+    assert "self.int8_model.prepare_buffers(self.batch_size, self.device)" in setup_section
 
 
 def test_ch13_optimized_fp8_perchannel_input_scale_cache_invalidates() -> None:
