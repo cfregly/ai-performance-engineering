@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 from core.discovery import discover_benchmarks
 from core.harness.benchmark_harness import BaseBenchmark
@@ -18,6 +19,7 @@ from labs.training_hotpath.training_hotpath_common import (
     MetricReductionVectorizedBenchmark,
     PaddingAwareTransformerBenchmark,
     PaddingAwareWorkload,
+    _silu_mul_in_place_if_safe,
     active_mask_and_rows,
     baseline_segment_abs_mean,
     build_padding_inputs,
@@ -110,6 +112,51 @@ def test_padding_aware_transformer_is_memory_goal_with_memory_tracking_enabled()
     assert optimized.get_optimization_goal() == "memory"
     assert baseline.get_config().enable_memory_tracking is True
     assert optimized.get_config().enable_memory_tracking is True
+
+
+def test_padding_aware_transformer_forward_uses_inference_swiglu_fast_path() -> None:
+    common_source = (LAB_DIR / "training_hotpath_common.py").read_text(encoding="utf-8")
+    helper_source = common_source.split("def _silu_mul_in_place_if_safe", maxsplit=1)[1].split(
+        "class DenseLinear",
+        maxsplit=1,
+    )[0]
+    benchmark_source = common_source.split("class PaddingAwareTransformerBenchmark", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "if torch.is_grad_enabled() and up.requires_grad:" in helper_source
+    assert "F.silu(up, inplace=True)" in helper_source
+    assert "up.mul_(gate)" in helper_source
+    assert "with torch.inference_mode():" in benchmark_source
+    assert "y = _silu_mul_in_place_if_safe(up, gate)" in common_source
+
+
+def test_swiglu_helper_reuses_buffer_without_grad_and_preserves_backward() -> None:
+    up_fast = torch.randn(2, 3, dtype=torch.float32)
+    gate_fast = torch.randn(2, 3, dtype=torch.float32)
+    expected_fast = F.silu(up_fast) * gate_fast
+
+    with torch.no_grad():
+        result_fast = _silu_mul_in_place_if_safe(up_fast, gate_fast)
+
+    assert result_fast.data_ptr() == up_fast.data_ptr()
+    torch.testing.assert_close(result_fast, expected_fast)
+
+    up_ref = torch.randn(2, 3, dtype=torch.float32, requires_grad=True)
+    gate_ref = torch.randn(2, 3, dtype=torch.float32, requires_grad=True)
+    up_test = up_ref.detach().clone().requires_grad_()
+    gate_test = gate_ref.detach().clone().requires_grad_()
+
+    expected = F.silu(up_ref) * gate_ref
+    actual = _silu_mul_in_place_if_safe(up_test, gate_test)
+    expected.sum().backward()
+    actual.sum().backward()
+
+    assert actual.data_ptr() != up_test.data_ptr()
+    torch.testing.assert_close(actual, expected.detach())
+    torch.testing.assert_close(up_test.grad, up_ref.grad)
+    torch.testing.assert_close(gate_test.grad, gate_ref.grad)
 
 
 def test_padding_aware_transformer_expectation_entry_is_memory_goal() -> None:

@@ -236,6 +236,14 @@ def active_mask_and_rows(
     return active_mask, active_rows
 
 
+def _silu_mul_in_place_if_safe(up: torch.Tensor, gate: torch.Tensor) -> torch.Tensor:
+    if torch.is_grad_enabled() and up.requires_grad:
+        return F.silu(up) * gate
+    F.silu(up, inplace=True)
+    up.mul_(gate)
+    return up
+
+
 class DenseLinear(nn.Module):
     def __init__(self, in_features: int, out_features: int, *, generator: torch.Generator) -> None:
         super().__init__()
@@ -308,7 +316,7 @@ class TransformerBlock(nn.Module):
 
         y = self.ln2(x)
         up, gate = self.up_gate(y, active_rows=active_rows, extension=extension).chunk(2, dim=-1)
-        y = F.silu(up) * gate
+        y = _silu_mul_in_place_if_safe(up, gate)
         x = x + self.down(y, active_rows=active_rows, extension=extension)
         return x * active_mask.unsqueeze(-1)
 
@@ -663,12 +671,13 @@ class PaddingAwareTransformerBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self.inputs is None or self.seq_lens is None or self.active_rows is None or self.model is None:
             raise RuntimeError("Padding-aware benchmark state not initialized")
-        self.output = self.model(
-            self.inputs,
-            active_mask=self._active_mask,
-            active_rows=self.active_rows,
-            extension=self._extension,
-        )
+        with torch.inference_mode():
+            self.output = self.model(
+                self.inputs,
+                active_mask=self._active_mask,
+                active_rows=self.active_rows,
+                extension=self._extension,
+            )
 
     def capture_verification_payload(self) -> None:
         if self.output is None or self.inputs is None or self.seq_lens is None:
