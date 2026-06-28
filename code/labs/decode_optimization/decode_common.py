@@ -557,18 +557,22 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return nullcontext()
 
     # Execution helpers
-    def _copy_prompts_to_device(self) -> None:
+    def _copy_prompts_to_device(
+        self,
+        *,
+        wait_stream: Optional[torch.cuda.Stream] = None,
+    ) -> None:
         non_blocking = bool(self.cfg.use_pinned_host)
-        if self.copy_stream is not None:
-            with torch.cuda.stream(self.copy_stream):
-                self.gpu_prompt.copy_(self.host_prompt, non_blocking=non_blocking)
-                if self.host_payload is not None and self.gpu_payload is not None:
-                    self.gpu_payload.copy_(self.host_payload, non_blocking=non_blocking)
-            torch.cuda.current_stream().wait_stream(self.copy_stream)
-        else:
+        current_stream = torch.cuda.current_stream()
+        active_stream = self.copy_stream or wait_stream or current_stream
+        with torch.cuda.stream(active_stream):
             self.gpu_prompt.copy_(self.host_prompt, non_blocking=non_blocking)
             if self.host_payload is not None and self.gpu_payload is not None:
                 self.gpu_payload.copy_(self.host_payload, non_blocking=non_blocking)
+        if wait_stream is not None and active_stream is not wait_stream:
+            wait_stream.wait_stream(active_stream)
+        elif wait_stream is None and active_stream is not current_stream:
+            current_stream.wait_stream(active_stream)
 
     def _copy_prompt_to_device_idx(
         self,
@@ -679,7 +683,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         nvtx = self._nvtx
 
         prefill_start.record(prefill_stream)
-        self._copy_prompts_to_device()
+        copy_wait_stream = (
+            decode_stream
+            if self.decode_graph is not None and self.graph_includes_prefill
+            else prefill_stream
+        )
+        self._copy_prompts_to_device(wait_stream=copy_wait_stream)
         if nvtx:
             nvtx.range_push(self._nvtx_labels["prefill"])
 

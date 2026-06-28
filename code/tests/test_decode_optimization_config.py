@@ -201,6 +201,28 @@ def test_decode_iteration_metrics_reuse_tuple_event_state() -> None:
     assert 'self._pending_iteration_events["' not in source
 
 
+def test_decode_prompt_copy_waits_on_consumer_stream() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    copy_section = source.split("def _copy_prompts_to_device", maxsplit=1)[1].split(
+        "def _copy_prompt_to_device_idx",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+
+    assert "wait_stream: Optional[torch.cuda.Stream] = None" in copy_section
+    assert "active_stream = self.copy_stream or wait_stream or current_stream" in copy_section
+    assert "wait_stream.wait_stream(active_stream)" in copy_section
+    assert "current_stream.wait_stream(active_stream)" in copy_section
+    assert "torch.cuda.current_stream().wait_stream(self.copy_stream)" not in copy_section
+    assert "copy_wait_stream = (" in benchmark_section
+    assert "self._copy_prompts_to_device(wait_stream=copy_wait_stream)" in benchmark_section
+
+
 def test_decode_pinned_pair_uses_transfer_heavy_workload_with_only_pin_state_changed() -> None:
     baseline = get_baseline_decode_pinned()
     optimized = get_optimized_decode_pinned()
