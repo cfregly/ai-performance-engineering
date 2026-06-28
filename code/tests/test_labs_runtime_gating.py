@@ -62,6 +62,10 @@ def test_kv_cache_compression_benchmarks_overwrite_without_full_cache_reset() ->
         assert "reset_cache(self.cache)" not in benchmark_source
         assert "torch.inference_mode()" in benchmark_source
         assert "torch.no_grad()" not in benchmark_source
+        assert "for prefill, offset in self._prefill_groups:" in benchmark_source
+        assert "for decode, offset in self._decode_groups:" in benchmark_source
+        assert "offset += prefill.shape[1]" not in benchmark_source
+        assert "offset += decode.shape[1]" not in benchmark_source
 
     for method in (
         BaselineKVCacheBenchmark._calibrate_fp8,
@@ -71,6 +75,19 @@ def test_kv_cache_compression_benchmarks_overwrite_without_full_cache_reset() ->
         assert "reset_cache(self.cache)" not in source
         assert "torch.inference_mode()" in source
         assert "torch.no_grad()" not in source
+        assert "for prefill, offset in self._prefill_groups:" in source
+        assert "for decode, offset in self._decode_groups:" in source
+        assert "offset += prefill.shape[1]" not in source
+        assert "offset += decode.shape[1]" not in source
+
+    setup_source = inspect.getsource(BaselineKVCacheBenchmark._setup_with_recipe)
+    teardown_source = inspect.getsource(BaselineKVCacheBenchmark.teardown)
+    assert "self._prefill_groups = []" in setup_source
+    assert "self._decode_groups = []" in setup_source
+    assert "self._prefill_groups.append((prefill, offset))" in setup_source
+    assert "self._decode_groups.append((decode, offset))" in setup_source
+    assert "self._prefill_groups = []" in teardown_source
+    assert "self._decode_groups = []" in teardown_source
 
 
 @pytest.mark.parametrize(

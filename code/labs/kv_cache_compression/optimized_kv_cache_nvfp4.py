@@ -47,19 +47,16 @@ class OptimizedKVCacheNVFP4Benchmark(BaselineKVCacheBenchmark):
         return super().validate_result()
 
     def benchmark_fn(self) -> None:
-        if self.model is None or self.cache is None:
+        if self.model is None or self.cache is None or not self._prefill_groups or not self._decode_groups:
             raise RuntimeError("Benchmark not initialized")
-        offset = 0
         recipe = self.runtime_recipe
         if recipe is None:
             raise RuntimeError("No NVFP4 recipe available for benchmark")
         with torch.inference_mode(), te_autocast(enabled=True, recipe=recipe):
-            for prefill in self.prefill_inputs:
+            for prefill, offset in self._prefill_groups:
                 _ = self.model(prefill, self.cache, offset)
-                offset += prefill.shape[1]
-            for decode in self.decode_inputs:
+            for decode, offset in self._decode_groups:
                 _ = self.model(decode, self.cache, offset)
-                offset += decode.shape[1]
         self._mark_cache_output_ready()
 
     def capture_verification_payload(self) -> None:

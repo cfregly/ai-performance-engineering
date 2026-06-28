@@ -84,6 +84,8 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._cache_output_ready = False
         self._payload_parameter_count = 0
+        self._prefill_groups: list[tuple[torch.Tensor, int]] = []
+        self._decode_groups: list[tuple[torch.Tensor, int]] = []
 
     def _resolve_device(self) -> torch.device:
         return resolve_device()
@@ -117,6 +119,15 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.tensor_dtype,
         )
+        offset = 0
+        self._prefill_groups = []
+        for prefill in self.prefill_inputs:
+            self._prefill_groups.append((prefill, offset))
+            offset += prefill.shape[1]
+        self._decode_groups = []
+        for decode in self.decode_inputs:
+            self._decode_groups.append((decode, offset))
+            offset += decode.shape[1]
         total_tokens = self.prefill_seq + self.decode_seq * self.decode_steps
         tokens_per_iteration = self.batch_size * total_tokens
         self.cache = allocate_kv_cache(
@@ -138,38 +149,35 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.model is None or self.cache is None or recipe is None:
             return
         with torch.inference_mode(), te_autocast(enabled=True, recipe=recipe, calibrating=True):
-            offset = 0
-            for prefill in self.prefill_inputs:
+            for prefill, offset in self._prefill_groups:
                 _ = self.model(prefill, self.cache, offset)
-                offset += prefill.shape[1]
-            for decode in self.decode_inputs:
+            for decode, offset in self._decode_groups:
                 _ = self.model(decode, self.cache, offset)
-                offset += decode.shape[1]
 
     def _warmup_runtime(self, recipe) -> None:
         if self.model is None or self.cache is None or recipe is None:
             return
         with torch.inference_mode(), te_autocast(enabled=True, recipe=recipe):
-            offset = 0
-            for prefill in self.prefill_inputs:
+            for prefill, offset in self._prefill_groups:
                 _ = self.model(prefill, self.cache, offset)
-                offset += prefill.shape[1]
-            for decode in self.decode_inputs:
+            for decode, offset in self._decode_groups:
                 _ = self.model(decode, self.cache, offset)
-                offset += decode.shape[1]
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        if self.model is None or self.cache is None or self.runtime_recipe is None:
+        if (
+            self.model is None
+            or self.cache is None
+            or self.runtime_recipe is None
+            or not self._prefill_groups
+            or not self._decode_groups
+        ):
             raise RuntimeError("Benchmark not initialized")
-        offset = 0
         with torch.inference_mode(), te_autocast(enabled=True, recipe=self.runtime_recipe):
-            for prefill in self.prefill_inputs:
+            for prefill, offset in self._prefill_groups:
                 _ = self.model(prefill, self.cache, offset)
-                offset += prefill.shape[1]
-            for decode in self.decode_inputs:
+            for decode, offset in self._decode_groups:
                 _ = self.model(decode, self.cache, offset)
-                offset += decode.shape[1]
         self._mark_cache_output_ready()
 
     def _mark_cache_output_ready(self) -> None:
@@ -217,6 +225,8 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.prefill_inputs = []
         self.decode_inputs = []
+        self._prefill_groups = []
+        self._decode_groups = []
         self.cache = None
         self.model = None
         self.output = None
