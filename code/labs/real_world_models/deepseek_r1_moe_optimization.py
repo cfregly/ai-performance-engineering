@@ -297,7 +297,8 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
             self._pending_timing_events = None
 
         # Forward pass
-        output, metrics = self.moe_layer(self.input)
+        with torch.inference_mode():
+            output, metrics = self.moe_layer(self.input)
         self.output = output[:1, : min(4, output.shape[1]), : min(8, output.shape[2])]
         self._last_aux_metrics.clear()
         for key, value in metrics.items():

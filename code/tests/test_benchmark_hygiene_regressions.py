@@ -3776,6 +3776,7 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "output_flat.index_add_(0, token_indices, expert_output * weights)" in moe_forward
     assert "torch.cuda.Event(" not in benchmark_section
     assert "start_event, end_event = self._timing_events" in benchmark_section
+    assert "with torch.inference_mode():" in benchmark_section
     assert ".detach().float().clone()" not in benchmark_section
     assert "self._last_aux_metrics.clear()" in benchmark_section
     assert "self._last_aux_metrics[key] = value.detach()" in benchmark_section
