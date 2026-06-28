@@ -88,6 +88,18 @@ class RingAttention(nn.Module):
         self.v_proj = nn.Linear(hidden_size, hidden_size, bias=False)
         self.o_proj = nn.Linear(hidden_size, hidden_size, bias=False)
         self.scale = 1.0 / math.sqrt(self.head_dim)
+        self._position_view_cache: dict[tuple[int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
+
+    def _position_views_for(self, seq_shard: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+        key = (int(seq_shard), torch.device(device))
+        cached = self._position_view_cache.get(key)
+        if cached is None:
+            local_positions = torch.arange(seq_shard, device=device)
+            global_q = (self.rank * seq_shard + local_positions).view(1, 1, seq_shard, 1)
+            k_indices = local_positions.view(1, 1, 1, seq_shard)
+            cached = (global_q, k_indices)
+            self._position_view_cache[key] = cached
+        return cached
 
     def _ring_pass(
         self,
@@ -104,9 +116,7 @@ class RingAttention(nn.Module):
         global_max: Optional[torch.Tensor] = None
         global_sum: Optional[torch.Tensor] = None
 
-        global_q = (self.rank * seq_shard) + torch.arange(seq_shard, device=q.device)
-        global_q = global_q.view(1, 1, seq_shard, 1)
-        k_indices = torch.arange(seq_shard, device=q.device).view(1, 1, 1, seq_shard)
+        global_q, k_indices = self._position_views_for(seq_shard, q.device)
 
         for step in range(self.world_size):
             target_rank = (self.rank - step) % self.world_size

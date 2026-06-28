@@ -7930,6 +7930,32 @@ def test_ch13_training_models_reuse_position_id_buffers() -> None:
         assert "pos_ids = self._position_ids[:, :seq_len].expand(batch_size, -1)" in forward_section
 
 
+def test_ch13_context_parallel_ring_attention_caches_position_views() -> None:
+    source = (REPO_ROOT / "ch13" / "context_parallelism.py").read_text(encoding="utf-8")
+    ring_section = source.split("class RingAttention", maxsplit=1)[1].split(
+        "def forward",
+        maxsplit=1,
+    )[0]
+
+    assert "self._position_view_cache: dict[tuple[int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}" in ring_section
+    assert "def _position_views_for(self, seq_shard: int, device: torch.device)" in ring_section
+    assert "local_positions = torch.arange(seq_shard, device=device)" in ring_section
+    assert "global_q, k_indices = self._position_views_for(seq_shard, q.device)" in ring_section
+    assert "(self.rank * seq_shard) + torch.arange(seq_shard, device=q.device)" not in ring_section
+    assert "torch.arange(seq_shard, device=q.device).view(1, 1, 1, seq_shard)" not in ring_section
+
+    from ch13.context_parallelism import RingAttention
+
+    module = RingAttention(8, 2, process_group=None, rank=1, world_size=1)
+    first_q, first_k = module._position_views_for(4, torch.device("cpu"))
+    second_q, second_k = module._position_views_for(4, torch.device("cpu"))
+
+    assert second_q.data_ptr() == first_q.data_ptr()
+    assert second_k.data_ptr() == first_k.data_ptr()
+    torch.testing.assert_close(first_q[:, :, :, 0], torch.tensor([[[4, 5, 6, 7]]]))
+    torch.testing.assert_close(first_k[0, 0, 0], torch.tensor([0, 1, 2, 3]))
+
+
 def test_ch13_optimized_training_accumulates_position_embeddings_in_place() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_training_standard.py").read_text(
         encoding="utf-8"
