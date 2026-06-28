@@ -40,6 +40,7 @@ class BaselineTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.pad_token_id: int = 0
         self._generated_output_ids: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
         tokens = float(self.prompt_len + self.max_new_tokens)
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -114,12 +115,11 @@ class BaselineTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )[:, : verification_token_prefix_length(self.max_new_tokens)].detach().cpu().clone()
         # Keep signature fields backend-agnostic so baseline Transformers and optimized
         # TRT-LLM engine runs compare on equivalent workload semantics.
-        parameter_count = 0
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids},
             output=verify_output.detach().clone(),
             batch_size=int(self.batch_size),
-            parameter_count=parameter_count,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": True,
                 "bf16": False,

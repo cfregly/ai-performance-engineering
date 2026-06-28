@@ -35,6 +35,7 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self.out_proj: Optional[nn.Linear] = None
         self.output: Optional[torch.Tensor] = None
         self.sparsity_ratio = 0.0
+        self._payload_parameter_count = 0
         tokens = float(self.seq_len)
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -65,6 +66,7 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         )
         _, _, self.sparsity_ratio = build_bsr_from_block_mask(block_mask, device=self.device)
         self.out_proj = nn.Linear(self.hidden_size, self.hidden_size, bias=False).to(self.device, dtype=torch.float16)
+        self._payload_parameter_count = self.out_proj.weight.numel()
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -92,12 +94,11 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         if self.q is None or self.k is None or self.v is None or self.output is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         verify_output = self.output[:128, :128]
-        parameter_count = self.out_proj.weight.numel() if self.out_proj is not None else 0
         self._set_verification_payload(
             inputs={"q": self.q, "k": self.k, "v": self.v},
             output=verify_output.detach().clone(),
             batch_size=self.seq_len,
-            parameter_count=parameter_count,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": True,
                 "bf16": False,
@@ -137,4 +138,3 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineFlashInferAttentionLab()
-

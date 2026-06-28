@@ -1696,8 +1696,31 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
         assert "with torch.inference_mode():" in benchmark_section
         assert "self.output = self.out_proj(proj_in)" in benchmark_section
+        assert "self._payload_parameter_count = 0" in source
+        assert "self._payload_parameter_count = self.out_proj.weight.numel()" in setup_section
+        assert "parameter_count = self.out_proj.weight.numel()" not in capture_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+
+    trtllm_source = (
+        REPO_ROOT / "labs" / "trtllm_phi_3_5_moe" / "baseline_trtllm_phi_3_5_moe.py"
+    ).read_text(encoding="utf-8")
+    trtllm_capture = trtllm_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    assert "self._payload_parameter_count = 0" in trtllm_source
+    assert "parameter_count = 0" not in trtllm_capture
+    assert "parameter_count=self._payload_parameter_count" in trtllm_capture
 
     ch20_source = (REPO_ROOT / "ch20" / "ai_kernel_generator.py").read_text(
         encoding="utf-8"
