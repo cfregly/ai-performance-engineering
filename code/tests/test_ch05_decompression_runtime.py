@@ -31,9 +31,16 @@ def _assert_decompression_clone_deferred(bench) -> None:
 
 def test_cpu_decompression_defers_full_output_clone_to_capture() -> None:
     source = (REPO_ROOT / "ch05" / "baseline_decompression.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
 
     assert "counts_i64" not in source
     assert "torch.repeat_interleave(self.values, self.counts)" in source
+    assert 'with self._nvtx_range("cpu_decompress"):' in benchmark_section
+    assert "get_nvtx_enabled(" not in benchmark_section
+    assert "with nvtx_range(" not in benchmark_section
+    assert "from core.profiling.nvtx_helper" not in source
 
     _assert_decompression_clone_deferred(CPUDecompressionBenchmark())
 
@@ -53,6 +60,10 @@ def test_gpu_decompression_reuses_preallocated_broadcast_output() -> None:
     assert "torch.repeat_interleave" not in benchmark_section
     assert "self._output_matrix.copy_(self.values.unsqueeze(1))" in benchmark_section
     assert "out = self._output_flat" in benchmark_section
+    assert 'with self._nvtx_range("gpu_decompress_rle"):' in benchmark_section
+    assert "get_nvtx_enabled(" not in benchmark_section
+    assert "with nvtx_range(" not in benchmark_section
+    assert "from core.profiling.nvtx_helper" not in source
     assert "self.counts[0].item()" not in source
     assert "run_length = self._run_len if run_count > 0 else 0" in source
 

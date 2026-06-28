@@ -12,7 +12,6 @@ import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin  # noqa: E402
 from core.harness.benchmark_harness import BaseBenchmark, WorkloadMetadata  # noqa: E402
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range  # noqa: E402
 
 
 class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -47,9 +46,8 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.counts is None or self.values is None or self._output_matrix is None or self._output_flat is None:
             raise RuntimeError("SKIPPED: missing encoded RLE buffers")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
         start = self._record_start()
-        with nvtx_range("gpu_decompress_rle", enable=enable_nvtx):
+        with self._nvtx_range("gpu_decompress_rle"):
             self._output_matrix.copy_(self.values.unsqueeze(1))
             out = self._output_flat
         latency_ms = self._record_stop(start)
