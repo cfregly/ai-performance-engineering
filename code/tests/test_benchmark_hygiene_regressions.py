@@ -2703,6 +2703,7 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
         "class GroupedTopKMoE",
         maxsplit=1,
     )[0]
+    base_forward_section = base_section.split("def forward(self, tokens: torch.Tensor)", maxsplit=1)[1]
     forward_section = source.split("def forward(self, tokens: torch.Tensor)", maxsplit=2)[2].split(
         "class VectorizedRouterBenchmark", maxsplit=1
     )[0]
@@ -2714,7 +2715,11 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "def _flat_token_indices" in source
     assert "self._flat_token_index_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}" in base_section
     assert "def _flat_token_indices_for(self, batch: int, device: torch.device | str)" in base_section
+    assert "self._scatter_output_buffer: Optional[torch.Tensor] = None" in base_section
+    assert "def _scatter_output_for(self, tokens: torch.Tensor)" in base_section
     assert "token_indices = self._flat_token_indices_for(tokens.shape[0], tokens.device)" in base_section
+    assert "output = self._scatter_output_for(tokens)" in base_forward_section
+    assert "output = torch.empty_like(tokens" not in base_forward_section
     assert "return self._flat_token_indices_for(batch, tokens.device)" in source
     assert "repeat_interleave(self.top_k)" not in source
     assert 'token_indices.div_(top_k, rounding_mode="floor")' in source
@@ -2765,6 +2770,14 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
         base_indices_again,
         torch.tensor([0, 0, 1, 1, 2, 2], dtype=torch.int64),
     )
+    x_base = torch.randn(3, 8)
+    with torch.inference_mode():
+        base_output = base_model(x_base)
+        output_ptr = base_output.data_ptr()
+        base_output_snapshot = base_output.clone()
+        base_output_again = base_model(x_base)
+    assert base_output_again.data_ptr() == output_ptr
+    torch.testing.assert_close(base_output_again, base_output_snapshot)
 
     model = GroupedTopKMoE(hidden_size=8, num_experts=4, top_k=2, expansion=1)
     model.capacity = 64

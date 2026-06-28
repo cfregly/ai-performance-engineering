@@ -145,6 +145,7 @@ class VectorizedTopKMoE(nn.Module):
         nn.init.kaiming_uniform_(self.w1, a=math.sqrt(5))
         nn.init.kaiming_uniform_(self.w2, a=math.sqrt(5))
         self._flat_token_index_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}
+        self._scatter_output_buffer: Optional[torch.Tensor] = None
 
     def _flat_token_indices_for(self, batch: int, device: torch.device | str) -> torch.Tensor:
         device = torch.device(device)
@@ -155,6 +156,18 @@ class VectorizedTopKMoE(nn.Module):
             token_indices = _flat_token_indices(int(batch), self.top_k, device)
             self._flat_token_index_cache[key] = token_indices
         return token_indices
+
+    def _scatter_output_for(self, tokens: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled():
+            return torch.empty_like(tokens, dtype=tokens.dtype)
+        if (
+            self._scatter_output_buffer is None
+            or self._scatter_output_buffer.device != tokens.device
+            or self._scatter_output_buffer.dtype != tokens.dtype
+            or tuple(self._scatter_output_buffer.shape) != tuple(tokens.shape)
+        ):
+            self._scatter_output_buffer = torch.empty_like(tokens, dtype=tokens.dtype)
+        return self._scatter_output_buffer
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:  # pragma: no cover - benchmarked
         logits = self.router(tokens)
@@ -177,7 +190,7 @@ class VectorizedTopKMoE(nn.Module):
         weighted = expert_out * flat_probs
 
         token_indices = self._flat_token_indices_for(tokens.shape[0], tokens.device)
-        output = torch.empty_like(tokens, dtype=tokens.dtype)
+        output = self._scatter_output_for(tokens)
         combine_index = token_indices.unsqueeze(-1).expand_as(weighted)
         output.scatter_reduce_(0, combine_index, weighted, reduce="sum", include_self=False)
         return output
