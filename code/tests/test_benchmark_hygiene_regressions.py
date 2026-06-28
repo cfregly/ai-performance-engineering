@@ -6460,8 +6460,25 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
     assert "torch.zeros_like(flat_tokens)" not in local_section
     assert "partials: list[torch.Tensor]" not in local_section
     assert "sum(partials)" not in local_section
-    for name in ("recv_buf", "recv_ids", "recv_pos", "local_out", "recv_back_buf", "recv_back_pos", "out"):
+    for name in (
+        "send_buf",
+        "send_ids",
+        "send_pos",
+        "recv_buf",
+        "recv_ids",
+        "recv_pos",
+        "local_out",
+        "recv_back_buf",
+        "recv_back_pos",
+        "out",
+    ):
         assert f'"{name}"' in distributed_section
+    assert "send_buf = self._distributed_workspace(" in distributed_section
+    assert "send_ids = self._distributed_workspace(" in distributed_section
+    assert "send_pos = self._distributed_workspace(" in distributed_section
+    assert "torch.index_select(flat_tokens, 0, send_indices, out=send_buf[send_offset:end])" in distributed_section
+    assert "torch.index_select(top1, 0, send_indices, out=send_ids[send_offset:end])" in distributed_section
+    assert "send_pos[send_offset:end].copy_(send_indices)" in distributed_section
     assert "recv_buf = self._distributed_workspace(" in distributed_section
     assert "recv_ids = self._distributed_workspace(" in distributed_section
     assert "recv_pos = self._distributed_workspace(" in distributed_section
@@ -6478,6 +6495,12 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
     assert "recv_back_pos = torch.empty(" not in distributed_section
     assert "local_out = torch.zeros_like(recv_buf)" not in distributed_section
     assert "out = torch.zeros_like(flat_tokens)" not in distributed_section
+    assert "send_tokens: list[torch.Tensor]" not in distributed_section
+    assert "send_tokens.append(" not in distributed_section
+    assert "send_expert_ids.append(" not in distributed_section
+    assert "torch.cat(send_tokens" not in distributed_section
+    assert "torch.cat(send_expert_ids" not in distributed_section
+    assert "torch.cat(send_indices" not in distributed_section
     assert "unique_expert_ids = [int(eid) for eid in torch.unique(expert_ids).detach().cpu().tolist()]" in local_section
     assert "for eid_int in [int(eid) for eid in torch.unique(recv_ids).detach().cpu().tolist()]" in distributed_section
 

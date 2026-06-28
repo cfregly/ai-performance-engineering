@@ -190,27 +190,41 @@ class Top2MoE(nn.Module):
         top1 = flat_idx[:, 0]
         dest_ranks = top1 // experts_per_rank
 
-        send_tokens: list[torch.Tensor] = []
-        send_indices: list[torch.Tensor] = []
-        send_expert_ids: list[torch.Tensor] = []
+        total_send = flat_tokens.shape[0]
+        send_buf = self._distributed_workspace(
+            "send_buf",
+            (total_send, hidden),
+            device=tokens.device,
+            dtype=flat_tokens.dtype,
+        )
+        send_ids = self._distributed_workspace(
+            "send_ids",
+            (total_send,),
+            device=tokens.device,
+            dtype=torch.int64,
+        )
+        send_pos = self._distributed_workspace(
+            "send_pos",
+            (total_send,),
+            device=tokens.device,
+            dtype=torch.int64,
+        )
+        send_splits: list[int] = []
+        send_offset = 0
         for r in range(world_size):
             mask = dest_ranks == r
-            send_tokens.append(flat_tokens[mask])
-            send_indices.append(torch.nonzero(mask, as_tuple=False).view(-1))
-            send_expert_ids.append(top1[mask])
-
-        send_splits = [int(t.size(0)) for t in send_tokens]
+            send_indices = torch.nonzero(mask, as_tuple=False).view(-1)
+            count = int(send_indices.numel())
+            send_splits.append(count)
+            if count:
+                end = send_offset + count
+                torch.index_select(flat_tokens, 0, send_indices, out=send_buf[send_offset:end])
+                torch.index_select(top1, 0, send_indices, out=send_ids[send_offset:end])
+                send_pos[send_offset:end].copy_(send_indices)
+                send_offset = end
         splits_all: list[list[int]] = [None for _ in range(world_size)]  # type: ignore[list-item]
         dist.all_gather_object(splits_all, send_splits)
         recv_splits = [splits_all[r][rank] for r in range(world_size)]
-
-        send_buf = torch.cat(send_tokens, dim=0) if send_tokens else flat_tokens[:0]
-        send_ids = torch.cat(send_expert_ids, dim=0) if send_expert_ids else top1[:0]
-        send_pos = (
-            torch.cat(send_indices, dim=0)
-            if send_indices
-            else torch.empty(0, device=tokens.device, dtype=torch.int64)
-        )
 
         total_recv = int(sum(recv_splits))
         recv_buf = self._distributed_workspace(
