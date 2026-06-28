@@ -30,6 +30,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self.batch_size = 8
         self.hidden = 512
         self.root_device = torch.device("cuda:0")
+        self._payload_parameter_count = 0
         tokens = self.batch_size * self.hidden
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -68,6 +69,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
             self.momentum.append(master_m)
             self.grad_root_buffers.append(torch.empty_like(master_w, device=self.root_device))
             self.inputs.append(torch.randn(self.batch_size, self.hidden, device=device, dtype=torch.float32))
+        self._payload_parameter_count = sum(p.numel() for model in self.models for p in model.parameters())
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -117,7 +119,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
             inputs={"x": x0},
             output=output,
             batch_size=int(self.batch_size),
-            parameter_count=sum(p.numel() for m in self.models for p in m.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

@@ -180,6 +180,88 @@ def test_ch04_dataparallel_and_reduction_payloads_cache_parameter_counts() -> No
         assert "sum(p.numel()" not in capture_section
 
 
+def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
+    torchcomms_files = (
+        "ch04/baseline_torchcomms.py",
+        "ch04/optimized_torchcomms.py",
+        "ch04/baseline_torchcomms_multigpu.py",
+        "ch04/optimized_torchcomms_multigpu.py",
+    )
+    replicated_files = {
+        "ch04/ddp_nvlink_naive.py": "def _simulate_allreduce",
+        "ch04/ddp_nvlink_overlap.py": "def _async_reduce_to_root",
+        "ch04/optimizer_replicated.py": "def benchmark_fn",
+        "ch04/optimizer_central_nvlink.py": "def benchmark_fn",
+    }
+    disaggregated_files = (
+        "ch04/optimized_disaggregated.py",
+        "ch04/optimized_disaggregated_multigpu.py",
+    )
+
+    for relative in torchcomms_files:
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def _prepare_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self._payload_parameter_count = 0" in source
+        assert (
+            "self._payload_parameter_count = sum(p.numel() for p in self._comm_block.parameters())"
+            in setup_section
+        )
+        assert (
+            "self._payload_parameter_count += sum(p.numel() for p in self._aux_block.parameters())"
+            in setup_section
+        )
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "param_count = sum(" not in capture_section
+        assert "sum(p.numel()" not in capture_section
+
+    for relative, setup_end in replicated_files.items():
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            setup_end,
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+
+        assert "self._payload_parameter_count = 0" in source
+        assert (
+            "self._payload_parameter_count = sum(p.numel() for model in self.models for p in model.parameters())"
+            in setup_section
+        )
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "parameter_count=sum(" not in capture_section
+        assert "param_count = sum(" not in capture_section
+        assert "sum(p.numel()" not in capture_section
+
+    for relative in disaggregated_files:
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+
+        assert "self._payload_parameter_count = 0" in source
+        assert "model_param_count = sum(p.numel() for p in base_model.parameters())" in setup_section
+        assert "self._payload_parameter_count = model_param_count * 2" in setup_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "total_params =" not in capture_section
+        assert "sum(p.numel()" not in capture_section
+
+
 def test_ch04_optimizer_central_nvlink_uses_direct_copy_staging() -> None:
     source = (REPO_ROOT / "ch04" / "optimizer_central_nvlink.py").read_text(
         encoding="utf-8"

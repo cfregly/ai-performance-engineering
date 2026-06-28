@@ -50,6 +50,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.batch_size = 2
         self.prefill_len = 512
         self.hidden_dim = 256
+        self._payload_parameter_count = 0
         tokens = self.batch_size * (self.prefill_len + 1)  # include decode token
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -92,6 +93,8 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefill_model = base_model
         # Decode model uses identical weights; disaggregation changes placement/scheduling, not math.
         self.decode_model = copy.deepcopy(base_model)
+        model_param_count = sum(p.numel() for p in base_model.parameters())
+        self._payload_parameter_count = model_param_count * 2
         
         if self.is_distributed:
             # In disaggregated setup, prefill and decode can use different GPU groups.
@@ -133,16 +136,11 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.prefill_input is None or self.decode_input is None or self.output is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        total_params = 0
-        if self.prefill_model is not None:
-            total_params += sum(p.numel() for p in self.prefill_model.parameters())
-        if self.decode_model is not None:
-            total_params += sum(p.numel() for p in self.decode_model.parameters())
         self._set_verification_payload(
             inputs={"prefill": self.prefill_input, "decode": self.decode_input},
             output=self.output.to(dtype=torch.float32),
             batch_size=int(self.batch_size),
-            parameter_count=total_params,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

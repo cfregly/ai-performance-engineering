@@ -49,6 +49,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.batch_size = 8
         self.hidden = 512
         self.root_device = torch.device("cuda:0")
+        self._payload_parameter_count = 0
         self._reduce_buffers: List[torch.Tensor] = []
         self._root_grad_staging: List[List[torch.Tensor]] = []
         self._grad_ready_events: List[List[torch.cuda.Event]] = []
@@ -74,6 +75,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         for rank in range(num):
             device = f"cuda:{rank}"
             self.models.append(nn.Linear(self.hidden, self.hidden).to(device))
+        self._payload_parameter_count = sum(p.numel() for model in self.models for p in model.parameters())
         self._grad_slots = [
             torch.empty(0, device=model.weight.device)
             for model in self.models
@@ -194,13 +196,12 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         if self.output is None or not self._inputs:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
         x_probe = self._inputs[0][0]
-        param_count = sum(p.numel() for m in self.models for p in m.parameters())
         weight_slice = self.output[:8, :8].to(dtype=torch.float32).clone()
         self._set_verification_payload(
             inputs={"x": x_probe},
             output=weight_slice,
             batch_size=int(x_probe.shape[0]),
-            parameter_count=param_count,
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

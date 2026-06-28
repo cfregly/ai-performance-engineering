@@ -135,6 +135,7 @@ class BaselineTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._input: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
         self._world_size = 1
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         require_min_gpus(2, "baseline_torchcomms_multigpu.py")
@@ -143,6 +144,8 @@ class BaselineTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         self._comm_block = _build_block(_DEFAULT_HIDDEN, self.device)
         self._aux_block = _build_block(_DEFAULT_HIDDEN, self.device)
+        self._payload_parameter_count = sum(p.numel() for p in self._comm_block.parameters())
+        self._payload_parameter_count += sum(p.numel() for p in self._aux_block.parameters())
         self._input = torch.randn(
             _DEFAULT_BATCH,
             _DEFAULT_HIDDEN,
@@ -163,13 +166,11 @@ class BaselineTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self._output is None or self._input is None or self._comm_block is None or self._aux_block is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        param_count = sum(p.numel() for p in self._comm_block.parameters())
-        param_count += sum(p.numel() for p in self._aux_block.parameters())
         self._set_verification_payload(
             inputs={"input": self._input},
             output=self._output,
             batch_size=_DEFAULT_BATCH,
-            parameter_count=int(param_count),
+            parameter_count=self._payload_parameter_count,
             precision_flags=PrecisionFlags(tf32=False),
             output_tolerance=(1e-5, 1e-5),
             signature_overrides={
@@ -229,4 +230,3 @@ class BaselineTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineTorchcommsBenchmark()
-

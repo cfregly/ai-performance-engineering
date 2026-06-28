@@ -27,6 +27,7 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
         self.inputs: List[torch.Tensor] = []
         self.batch_size = 8
         self.hidden = 512
+        self._payload_parameter_count = 0
         tokens = self.batch_size * self.hidden
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -45,6 +46,7 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
             self.models.append(model)
             self.momentum.append(buf)
             self.inputs.append(torch.randn(self.batch_size, self.hidden, device=device, dtype=torch.float32))
+        self._payload_parameter_count = sum(p.numel() for model in self.models for p in model.parameters())
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -71,7 +73,7 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
             inputs={"x": x0},
             output=output,
             batch_size=int(self.batch_size),
-            parameter_count=sum(p.numel() for m in self.models for p in m.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,
@@ -122,5 +124,4 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineOptimizerReplicatedBenchmark()
-
 
