@@ -99,6 +99,7 @@ class KVCache:
         self.row_pos = None # optional per-row positions when using padded variable-length inputs
         self.cache_gen = 0  # incremented when storage grows
         self._batch_idx = None
+        self._row_position_idx = None
 
     def _round_seq_len(self, seq_len):
         """Round sequence length to block/page boundaries to align with TMA paging."""
@@ -218,6 +219,13 @@ class KVCache:
             self._batch_idx = batch_idx
         return batch_idx[:batch_size]
 
+    def _row_position_buffer(self, batch_size, device):
+        positions = self._row_position_idx
+        if positions is None or positions.device != device or positions.numel() < batch_size:
+            positions = torch.empty(batch_size, device=device, dtype=torch.long)
+            self._row_position_idx = positions
+        return positions[:batch_size]
+
     def insert_kv(self, layer_idx, k, v, token_mask=None):
         # Lazy initialize the cache here because we need to know the dtype/device
         if self.kv_cache is None:
@@ -236,18 +244,20 @@ class KVCache:
             # ensure we have enough capacity for the maximum position that will be written
             base_row_pos = self.row_pos
             if token_mask is None:
-                next_row_pos = base_row_pos + T_add
+                dense_positions = self._row_position_buffer(B, k.device)
+                dense_positions.copy_(base_row_pos)
+                max_needed = int(dense_positions.max().item()) + T_add
             else:
                 token_increments = token_mask.sum(dim=1)
                 next_row_pos = base_row_pos + token_increments
-            max_needed = int(next_row_pos.max().item())
+                max_needed = int(next_row_pos.max().item())
             self._maybe_grow_cache(max_needed, k.dtype, k.device)
             batch_idx = self._batch_index_buffer(B, k.device)
             if token_mask is None:
                 for t in range(T_add):
-                    positions = base_row_pos + t
-                    self.kv_cache[layer_idx, 0, batch_idx, :, positions] = k[:, :, t, :]
-                    self.kv_cache[layer_idx, 1, batch_idx, :, positions] = v[:, :, t, :]
+                    self.kv_cache[layer_idx, 0, batch_idx, :, dense_positions] = k[:, :, t, :]
+                    self.kv_cache[layer_idx, 1, batch_idx, :, dense_positions] = v[:, :, t, :]
+                    dense_positions.add_(1)
             else:
                 for t in range(T_add):
                     active = token_mask[:, t]
@@ -258,7 +268,10 @@ class KVCache:
                     self.kv_cache[layer_idx, 0, rows, :, positions] = k[rows, :, t, :]
                     self.kv_cache[layer_idx, 1, rows, :, positions] = v[rows, :, t, :]
             if layer_idx == self.kv_cache.size(0) - 1:
-                self.row_pos = next_row_pos
+                if token_mask is None:
+                    self.row_pos.copy_(dense_positions)
+                else:
+                    self.row_pos = next_row_pos
             t1 = max_needed
         else:
             t0, t1 = self.pos, self.pos + T_add

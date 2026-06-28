@@ -112,11 +112,14 @@ def test_kv_cache_dense_row_pos_insert_skips_materialized_true_mask():
 
     kv_cache.insert_kv(0, prefill_k, prefill_v, token_mask=token_mask)
     torch.testing.assert_close(kv_cache.row_pos, torch.tensor([1, 0]))
+    row_pos_ptr = kv_cache.row_pos.data_ptr()
 
     decode_k = torch.tensor([[[[10.0], [11.0]]], [[[20.0], [21.0]]]])
     decode_v = decode_k + 100
     kv_cache.insert_kv(0, decode_k, decode_v)
 
+    assert kv_cache.row_pos.data_ptr() == row_pos_ptr
+    assert kv_cache._row_position_idx is not None
     torch.testing.assert_close(kv_cache.row_pos, torch.tensor([3, 2]))
     torch.testing.assert_close(kv_cache.kv_cache[0, 0, 0, 0, :3, 0], torch.tensor([1.0, 10.0, 11.0]))
     torch.testing.assert_close(kv_cache.kv_cache[0, 0, 1, 0, :2, 0], torch.tensor([20.0, 21.0]))
@@ -596,14 +599,21 @@ def test_kv_cache_reuses_token_mask_row_sums():
     assert "token_mask = token_mask.to(device=k.device, dtype=torch.bool)" in insert_section
     assert insert_section.count("token_mask.sum(dim=1)") == 1
     assert "token_mask = torch.ones((B, T_add)" not in insert_section
-    assert "if token_mask is None:\n                next_row_pos = base_row_pos + T_add" in insert_section
-    assert "self.kv_cache[layer_idx, 0, batch_idx, :, positions] = k[:, :, t, :]" in insert_section
+    assert "self._row_position_idx = None" in text
+    assert "def _row_position_buffer(self, batch_size, device)" in text
+    assert "dense_positions = self._row_position_buffer(B, k.device)" in insert_section
+    assert "dense_positions.copy_(base_row_pos)" in insert_section
+    assert "dense_positions.add_(1)" in insert_section
+    assert "self.row_pos.copy_(dense_positions)" in insert_section
+    assert "if token_mask is None:\n                next_row_pos = base_row_pos + T_add" not in insert_section
+    assert "positions = base_row_pos + t" not in insert_section
+    assert "self.kv_cache[layer_idx, 0, batch_idx, :, dense_positions] = k[:, :, t, :]" in insert_section
     assert "batch_idx = self._batch_index_buffer(B, k.device)" in insert_section
     assert "rows = batch_idx[active]" in insert_section
     assert "if rows.numel() == 0:" in insert_section
     assert "torch.any(active)" not in insert_section
     assert "def get_pos(self):\n        return self.pos" in text
-    assert insert_section.count(".max().item()") == 1
+    assert insert_section.count(".max().item()") == 2
     assert "self.pos = int(self.row_pos.max().item())" not in insert_section
     assert "t1_source =" not in insert_section
 
