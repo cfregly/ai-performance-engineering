@@ -5693,12 +5693,17 @@ def test_ch15_guided_decoding_reuses_mask_and_slice_buffers() -> None:
 
     assert "self.masked_logits_buffer = torch.empty_like(self.logits)" in source
     assert "self.output_buffer = torch.empty(" in source
+    assert "self.allowed_slice_cpu: Optional[torch.Tensor] = None" in source
     assert "self.allowed_mask" not in source
     assert "self.disallowed_mask_buffer = torch.logical_not(mask)" not in setup_section
+    assert "self.allowed_slice_cpu = self.allowed_token_ids[: self.output_slice]" in setup_section
     assert "disallowed = torch.ones(self.vocab_size, dtype=torch.bool, device=self.device)" in setup_section
     assert "disallowed[self.allowed_token_ids.to(self.device)] = False" in setup_section
+    assert "self.slice_ids = self.allowed_slice_cpu.to(self.device)" in setup_section
     assert "masked = logits.masked_fill" not in benchmark_section
     assert ".index_select(1, self.slice_ids)" not in benchmark_section
+    assert "allowed[: self.output_slice]" not in benchmark_section
+    assert "self.slice_ids_buffer.copy_(allowed_slice, non_blocking=False)" in benchmark_section
     assert "masked_logits.masked_fill_(self.disallowed_mask_buffer, float(\"-inf\"))" in benchmark_section
     assert "torch.index_select(masked_logits, 1, self.slice_ids, out=output)" in benchmark_section
     assert "torch.index_select(masked_logits, 1, self.slice_ids_buffer, out=output)" in benchmark_section

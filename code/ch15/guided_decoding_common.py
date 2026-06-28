@@ -55,6 +55,7 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.logits: Optional[torch.Tensor] = None
         self.allowed_token_ids: Optional[torch.Tensor] = None
+        self.allowed_slice_cpu: Optional[torch.Tensor] = None
         self.slice_ids: Optional[torch.Tensor] = None
         self.cpu_mask_buffer: Optional[torch.Tensor] = None
         self.gpu_mask_buffer: Optional[torch.Tensor] = None
@@ -79,12 +80,13 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device="cpu",
             dtype=torch.int64,
         )[: self.allowed_count]
+        self.allowed_slice_cpu = self.allowed_token_ids[: self.output_slice]
 
         if self.reuse_gpu_mask:
             disallowed = torch.ones(self.vocab_size, dtype=torch.bool, device=self.device)
             disallowed[self.allowed_token_ids.to(self.device)] = False
             self.disallowed_mask_buffer = disallowed
-            self.slice_ids = self.allowed_token_ids[: self.output_slice].to(self.device)
+            self.slice_ids = self.allowed_slice_cpu.to(self.device)
             self.cpu_mask_buffer = None
             self.gpu_mask_buffer = None
             self.slice_ids_buffer = None
@@ -111,6 +113,7 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         logits = self.logits
         allowed = self.allowed_token_ids
+        allowed_slice = self.allowed_slice_cpu
         masked_logits = self.masked_logits_buffer
         output = self.output_buffer
 
@@ -130,6 +133,7 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     or self.gpu_mask_buffer is None
                     or self.disallowed_mask_buffer is None
                     or self.slice_ids_buffer is None
+                    or allowed_slice is None
                 ):
                     raise RuntimeError("CPU/GPU mask buffers not initialized")
                 mask_cpu = self.cpu_mask_buffer
@@ -137,7 +141,7 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 mask_cpu[allowed] = True
                 self.gpu_mask_buffer.copy_(mask_cpu, non_blocking=False)
                 torch.logical_not(self.gpu_mask_buffer, out=self.disallowed_mask_buffer)
-                self.slice_ids_buffer.copy_(allowed[: self.output_slice], non_blocking=False)
+                self.slice_ids_buffer.copy_(allowed_slice, non_blocking=False)
                 masked_logits.copy_(logits)
                 masked_logits.masked_fill_(self.disallowed_mask_buffer, float("-inf"))
                 torch.index_select(masked_logits, 1, self.slice_ids_buffer, out=output)
@@ -169,6 +173,7 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.logits = None
         self.allowed_token_ids = None
+        self.allowed_slice_cpu = None
         self.slice_ids = None
         self.cpu_mask_buffer = None
         self.gpu_mask_buffer = None
