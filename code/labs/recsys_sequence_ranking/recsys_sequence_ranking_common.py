@@ -364,20 +364,24 @@ def sequence_mean_baseline(
     inputs: RankingInputs,
     state: RankingModelState,
     out: torch.Tensor,
+    workspace: RankingWorkspace,
 ) -> torch.Tensor:
     """Conservative sequence pooling using one embedding lookup per time step."""
 
-    mask = inputs.sequence_mask.to(dtype=state.item_embeddings.dtype)
+    if workspace.sequence_metadata_key != _sequence_metadata_key(inputs):
+        prepare_workspace_for_inputs(inputs, workspace)
+    mask = workspace.sequence_mask_float.squeeze(-1)
     if inputs.sequence_ids.shape[1] == 0:
         out.zero_()
         return out
     token_vec = state.item_embeddings[inputs.sequence_ids[:, 0]]
-    out.copy_(token_vec * mask[:, 0:1])
+    out.copy_(token_vec)
+    out.mul_(mask[:, 0:1])
     for t in range(1, inputs.sequence_ids.shape[1]):
         token_vec = state.item_embeddings[inputs.sequence_ids[:, t]]
-        out.add_(token_vec * mask[:, t : t + 1])
-    lengths = inputs.sequence_lengths.to(dtype=state.item_embeddings.dtype).clamp_min(1)
-    out.div_(lengths.unsqueeze(1))
+        token_vec.mul_(mask[:, t : t + 1])
+        out.add_(token_vec)
+    out.mul_(workspace.sequence_length_recip)
     return out
 
 
@@ -393,7 +397,7 @@ def context_sum_baseline(
         return out
     out.copy_(state.context_embeddings[0, inputs.context_ids[:, 0]])
     for table_idx in range(1, inputs.context_ids.shape[1]):
-        out += state.context_embeddings[table_idx, inputs.context_ids[:, table_idx]]
+        out.add_(state.context_embeddings[table_idx, inputs.context_ids[:, table_idx]])
     return out
 
 
@@ -580,7 +584,7 @@ def baseline_forward(
 ) -> torch.Tensor:
     """Execute the conservative sparse-ranking path."""
 
-    seq_vec = sequence_mean_baseline(inputs, state, workspace.sequence_accum)
+    seq_vec = sequence_mean_baseline(inputs, state, workspace.sequence_accum, workspace)
     context_vec = context_sum_baseline(inputs, state, workspace.context_accum)
     user_vec = state.tower(seq_vec + context_vec)
     return candidate_scores_baseline(user_vec, inputs, state, workspace.score_output)

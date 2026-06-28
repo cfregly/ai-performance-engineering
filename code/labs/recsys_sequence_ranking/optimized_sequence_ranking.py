@@ -19,6 +19,7 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     build_workspace,
     default_workload,
     optimized_forward,
+    prepare_workspace_for_inputs,
     ranking_metrics,
     requests_per_iteration,
     resolve_score_backend,
@@ -43,6 +44,7 @@ class OptimizedSequenceRankingBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.score_backend = resolve_score_backend(self.workload.score_backend)
         self.compile_enabled = False
         self._custom_metrics: dict[str, float] = {}
+        self._verification_sequence_mask: Optional[torch.Tensor] = None
         self._refresh_workload_metadata()
 
     def _refresh_workload_metadata(self) -> None:
@@ -65,6 +67,8 @@ class OptimizedSequenceRankingBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.inputs = build_inputs(self.workload, self.device)
         self.state = build_model_state(self.workload, self.device)
         self.workspace = build_workspace(self.workload, self.device)
+        prepare_workspace_for_inputs(self.inputs, self.workspace)
+        self._verification_sequence_mask = self.inputs.sequence_mask.to(torch.int32)
         self.output = None
 
         self.score_backend = resolve_score_backend(self.workload.score_backend)
@@ -107,12 +111,17 @@ class OptimizedSequenceRankingBenchmark(VerificationPayloadMixin, BaseBenchmark)
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.inputs is None or self.output is None or self.state is None:
+        if (
+            self.inputs is None
+            or self.output is None
+            or self.state is None
+            or self._verification_sequence_mask is None
+        ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
             inputs={
                 "sequence_ids": self.inputs.sequence_ids,
-                "sequence_mask": self.inputs.sequence_mask.to(torch.int32),
+                "sequence_mask": self._verification_sequence_mask,
                 "sequence_lengths": self.inputs.sequence_lengths,
                 "context_ids": self.inputs.context_ids,
                 "candidate_ids": self.inputs.candidate_ids,
@@ -130,6 +139,7 @@ class OptimizedSequenceRankingBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.workspace = None
         self.compiled_tower = None
         self.output = None
+        self._verification_sequence_mask = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

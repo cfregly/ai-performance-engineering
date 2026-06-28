@@ -127,10 +127,31 @@ def test_baseline_poolers_seed_reusable_outputs_before_accumulating() -> None:
     sequence_source = inspect.getsource(sequence_mean_baseline)
     context_source = inspect.getsource(context_sum_baseline)
 
-    assert "out.copy_(token_vec * mask[:, 0:1])" in sequence_source
+    assert "prepare_workspace_for_inputs(inputs, workspace)" in sequence_source
+    assert "mask = workspace.sequence_mask_float.squeeze(-1)" in sequence_source
+    assert "out.copy_(token_vec)" in sequence_source
+    assert "out.mul_(mask[:, 0:1])" in sequence_source
+    assert "token_vec.mul_(mask[:, t : t + 1])" in sequence_source
+    assert "out.mul_(workspace.sequence_length_recip)" in sequence_source
+    assert ".to(dtype=state.item_embeddings.dtype)" not in sequence_source
+    assert "inputs.sequence_lengths.to" not in sequence_source
     assert "for t in range(1, inputs.sequence_ids.shape[1]):" in sequence_source
     assert "out.copy_(state.context_embeddings[0, inputs.context_ids[:, 0]])" in context_source
+    assert "out.add_(state.context_embeddings[table_idx, inputs.context_ids[:, table_idx]])" in context_source
     assert "for table_idx in range(1, inputs.context_ids.shape[1]):" in context_source
+
+
+def test_benchmark_wrappers_prepare_sequence_metadata_once() -> None:
+    for benchmark_cls in (BaselineSequenceRankingBenchmark, OptimizedSequenceRankingBenchmark):
+        setup_source = inspect.getsource(benchmark_cls.setup)
+        capture_source = inspect.getsource(benchmark_cls.capture_verification_payload)
+        teardown_source = inspect.getsource(benchmark_cls.teardown)
+
+        assert "prepare_workspace_for_inputs(self.inputs, self.workspace)" in setup_source
+        assert "self._verification_sequence_mask = self.inputs.sequence_mask.to(torch.int32)" in setup_source
+        assert '"sequence_mask": self._verification_sequence_mask' in capture_source
+        assert "sequence_mask.to(torch.int32)" not in capture_source
+        assert "self._verification_sequence_mask = None" in teardown_source
 
 
 def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
