@@ -110,7 +110,7 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         assert self.model is not None
         assert self._query_steps is not None and self._key_steps is not None and self._value_steps is not None
         assert self._k_gather_buffer is not None and self._v_gather_buffer is not None
-        with self._nvtx_range("optimized_kv_cache_nvlink_pool_multigpu"):
+        with torch.inference_mode(), self._nvtx_range("optimized_kv_cache_nvlink_pool_multigpu"):
             if (
                 len(self._cache_key_slots) != self.seq_len
                 or len(self._cache_value_slots) != self.seq_len

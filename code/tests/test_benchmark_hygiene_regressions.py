@@ -3703,6 +3703,7 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert ".to(self.device" not in benchmark_section
         assert ".append(" not in benchmark_section
         assert ".pop(0)" not in benchmark_section
+        assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
         assert "self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(" in benchmark_section
         assert "k_all = self._k_gather_buffer[:, :gather_idx, :]" in benchmark_section
         assert "v_all = self._v_gather_buffer[:, :gather_idx, :]" in benchmark_section
@@ -3729,6 +3730,7 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert "torch.cat(" not in benchmark_section
         assert ".to(self.device" not in benchmark_section
         assert ".append(" not in benchmark_section
+        assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
         assert "self._gather_kv_into_buffers(cache_k, cache_v, tiers, step + 1)" in benchmark_section
 
     from ch15.optimized_kv_cache_nvlink_pool import (
