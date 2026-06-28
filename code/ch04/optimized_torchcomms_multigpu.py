@@ -94,7 +94,7 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
             work.wait()
             payload_work.wait()
             torch.cuda.current_stream().wait_stream(comm_stream)
-            _ = comm_out + aux_out
+            comm_out.add_(aux_out)
 
     for _ in range(max(warmup, 0)):
         _step()
@@ -166,7 +166,8 @@ class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             aux_out = self._input
             for _ in range(_AUX_PASSES):
                 aux_out = self._aux_block(aux_out)
-            self._output = comm_out + aux_out
+            comm_out.add_(aux_out)
+            self._output = comm_out
 
     def capture_verification_payload(self) -> None:
         if self._output is None or self._input is None or self._comm_block is None or self._aux_block is None:

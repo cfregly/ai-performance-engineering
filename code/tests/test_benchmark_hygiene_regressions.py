@@ -208,6 +208,10 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
             "def benchmark_fn",
             maxsplit=1,
         )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def _prepare_verification_payload",
             maxsplit=1,
@@ -227,6 +231,13 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
         assert "torch.no_grad()" not in worker_section
         assert "param_count = sum(" not in capture_section
         assert "sum(p.numel()" not in capture_section
+        if Path(relative).name.startswith("optimized_"):
+            assert ".add_(aux_out)" in worker_section
+            assert "comm_out.add_(aux_out)" in benchmark_section
+            assert "self._output = comm_out" in benchmark_section
+            assert "self._output = comm_out + aux_out" not in benchmark_section
+        else:
+            assert "self._output = comm_out + aux_out" in benchmark_section
 
     for relative, setup_end in replicated_files.items():
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
@@ -279,7 +290,8 @@ def test_ch04_optimized_torchcomms_overlaps_aux_compute_before_comm_wait() -> No
     assert post_launch_section.index("aux_out = aux_block(inputs)") < post_launch_section.index(
         "torch.cuda.current_stream().wait_stream(comm_stream)"
     )
-    assert "_ = reduced + aux_out" in post_launch_section
+    assert "reduced.add_(aux_out)" in post_launch_section
+    assert "_ = reduced + aux_out" not in post_launch_section
 
 
 def test_ch04_optimizer_central_nvlink_uses_direct_copy_staging() -> None:
