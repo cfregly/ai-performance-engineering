@@ -391,6 +391,22 @@ def test_batch_row_index_buffer_reuses_arange_storage():
     torch.testing.assert_close(grown, torch.tensor([0, 1, 2, 3, 4]))
 
 
+def test_full_active_mask_reuses_device_buffer():
+    engine = Engine(_TinyForwardModel(), _TinyTokenizer())
+
+    first = engine._full_active_mask(3, torch.device("cpu"))
+    first_ptr = first.data_ptr()
+    first[1] = False
+
+    shorter = engine._full_active_mask(2, torch.device("cpu"))
+    grown = engine._full_active_mask(5, torch.device("cpu"))
+
+    assert shorter.data_ptr() == first_ptr
+    torch.testing.assert_close(shorter, torch.tensor([True, True]))
+    assert grown.numel() == 5
+    torch.testing.assert_close(grown, torch.ones(5, dtype=torch.bool))
+
+
 def test_decode_step_helpers_reuse_token_and_active_mask_buffers():
     engine = Engine(_TinyForwardModel(), _TinyTokenizer())
     ids_buf = torch.empty((3, 1), dtype=torch.long)
@@ -521,6 +537,8 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     assert "self._batch_row_indices = None" in text
     assert "batch_rows = self._batch_row_index_buffer(batch_size, device)" in generate_batched
     assert "torch.arange(batch_size, device=device)" not in generate_batched
+    assert "active_mask = self._full_active_mask(batch_size, device)" in generate_batched
+    assert "torch.ones(batch_size, dtype=torch.bool, device=device)" not in generate_batched
 
 
 def test_attention_reuses_cu_seqlens_buffers():

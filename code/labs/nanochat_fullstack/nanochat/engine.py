@@ -607,6 +607,20 @@ class Engine:
             self._active_mask_host = torch.empty(count, dtype=torch.bool, device="cpu")
         return self._active_mask_host[:count]
 
+    def _active_mask_buffer(self, count, device):
+        if (
+            self._active_mask_device is None
+            or self._active_mask_device.device != device
+            or self._active_mask_device.numel() < count
+        ):
+            self._active_mask_device = torch.empty(count, dtype=torch.bool, device=device)
+        return self._active_mask_device[:count]
+
+    def _full_active_mask(self, count, device):
+        active_mask = self._active_mask_buffer(count, device)
+        active_mask.fill_(True)
+        return active_mask
+
     def _fill_ids_buffer_from_tokens(self, ids_buf, token_column):
         count = len(token_column)
         target = ids_buf[:count, 0]
@@ -624,13 +638,7 @@ class Engine:
         self, row_states, generated_counts, row_max_tokens, device, return_active_rows=False,
     ):
         count = len(row_states)
-        if (
-            self._active_mask_device is None
-            or self._active_mask_device.device != device
-            or self._active_mask_device.numel() < count
-        ):
-            self._active_mask_device = torch.empty(count, dtype=torch.bool, device=device)
-        active_mask = self._active_mask_device[:count]
+        active_mask = self._active_mask_buffer(count, device)
         active_rows = [] if return_active_rows else None
         if active_mask.device.type == "cpu":
             for idx, state in enumerate(row_states):
@@ -950,7 +958,7 @@ class Engine:
         batch_rows = self._batch_row_index_buffer(batch_size, device)
         logits = logits[batch_rows, last_indices, :]
 
-        active_mask = torch.ones(batch_size, dtype=torch.bool, device=device)
+        active_mask = self._full_active_mask(batch_size, device)
         sampled_tokens = self._sample_batch_tokens(
             logits,
             rng,
