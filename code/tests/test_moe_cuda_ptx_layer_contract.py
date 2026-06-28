@@ -120,6 +120,8 @@ def test_combine_weighted_outputs_can_consume_sorted_outputs() -> None:
     assert "combined.zero_()" not in source
     assert "combined = torch.zeros(" not in source
     assert "combined.index_add_(" not in source
+    assert 'weights = getattr(packed, "packed_weight_column", None)' in source
+    assert 'combine_index = getattr(packed, "combine_index", None)' in source
     assert 'combined.scatter_reduce_(0, combine_index, weighted_outputs, reduce="sum", include_self=False)' in source
     assert "sorted_outputs * packed.packed_weights.unsqueeze(-1)" not in source
 
@@ -149,6 +151,19 @@ def test_combine_weighted_outputs_can_consume_sorted_outputs() -> None:
     )
     assert combined_reused.data_ptr() == output_buffer.data_ptr()
     torch.testing.assert_close(combined_reused, torch.tensor([[2.75, 5.5], [2.5, 5.0]]))
+
+    precomputed_packed = SimpleNamespace(
+        token_indices=packed.token_indices,
+        packed_weights=packed.packed_weights,
+        packed_weight_column=packed.packed_weights.unsqueeze(-1),
+        combine_index=packed.token_indices.unsqueeze(-1).expand_as(original),
+    )
+    combined_precomputed = moe_common.combine_weighted_outputs(
+        original,
+        precomputed_packed,
+        num_tokens=2,
+    )
+    torch.testing.assert_close(combined_precomputed, torch.tensor([[2.75, 5.5], [2.5, 5.0]]))
 
 
 def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
@@ -201,6 +216,10 @@ def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
         packed.token_indices.cpu(),
         torch.tensor([0, 2, 4, 0, 1, 3, 4, 1, 2, 3], dtype=torch.long),
     )
+    assert packed.packed_weight_column.shape == (packed.packed_weights.numel(), 1)
+    assert packed.combine_index.shape == (packed.token_indices.numel(), x.shape[1])
+    torch.testing.assert_close(packed.packed_weight_column[:, 0], packed.packed_weights)
+    torch.testing.assert_close(packed.combine_index[:, 0].cpu(), packed.token_indices.cpu())
 
 
 def test_grouped_ffn_cuda_does_not_clear_discarded_padding_rows() -> None:

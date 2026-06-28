@@ -92,7 +92,9 @@ class MoELabState:
 class PackedRoutes:
     packed_tokens: torch.Tensor
     packed_weights: torch.Tensor
+    packed_weight_column: torch.Tensor
     token_indices: torch.Tensor
+    combine_index: torch.Tensor
     expert_indices: torch.Tensor
     counts: torch.Tensor
     starts: torch.Tensor
@@ -371,10 +373,15 @@ def pack_topk_routes(
     uniform_count = counts_cpu[0] if counts_cpu and all(count == counts_cpu[0] for count in counts_cpu) else 0
     padded_indices = sorted_expert_ids * max_count + positions
 
+    packed_weights = sorted_weights.contiguous()
+    token_indices = sorted_token_ids.contiguous()
+
     return PackedRoutes(
         packed_tokens=packed_tokens,
-        packed_weights=sorted_weights.contiguous(),
-        token_indices=sorted_token_ids.contiguous(),
+        packed_weights=packed_weights,
+        packed_weight_column=packed_weights.unsqueeze(-1),
+        token_indices=token_indices,
+        combine_index=token_indices.unsqueeze(-1).expand(-1, x.shape[1]),
         expert_indices=sorted_expert_ids.contiguous(),
         counts=counts.contiguous(),
         starts=starts.contiguous(),
@@ -470,12 +477,16 @@ def combine_weighted_outputs(
     if combined is None or tuple(combined.shape) != (num_tokens, sorted_outputs.shape[1]):
         combined = torch.empty(num_tokens, sorted_outputs.shape[1], device=sorted_outputs.device, dtype=sorted_outputs.dtype)
     weighted_outputs = sorted_outputs
-    weights = packed.packed_weights.unsqueeze(-1)
+    weights = getattr(packed, "packed_weight_column", None)
+    if weights is None:
+        weights = packed.packed_weights.unsqueeze(-1)
     if consume_sorted_outputs:
         weighted_outputs.mul_(weights)
     else:
         weighted_outputs = sorted_outputs * weights
-    combine_index = packed.token_indices.unsqueeze(-1).expand_as(weighted_outputs)
+    combine_index = getattr(packed, "combine_index", None)
+    if combine_index is None or tuple(combine_index.shape) != tuple(weighted_outputs.shape):
+        combine_index = packed.token_indices.unsqueeze(-1).expand_as(weighted_outputs)
     combined.scatter_reduce_(0, combine_index, weighted_outputs, reduce="sum", include_self=False)
     return combined
 
