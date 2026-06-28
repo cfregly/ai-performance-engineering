@@ -6726,8 +6726,12 @@ def test_ch13_optimized_dataloader_reuses_preprocessing_scratch() -> None:
         maxsplit=1,
     )[0]
 
+    assert "self._scratch_buffer: Optional[torch.Tensor] = None" in source
+    assert "def _scratch_like(self, sample: torch.Tensor) -> torch.Tensor:" in source
+    assert "scratch = torch.empty_like(sample)" in source
     assert "enriched = sample.clone()" in getitem_section
-    assert "scratch = torch.empty_like(enriched)" in getitem_section
+    assert "scratch = self._scratch_like(sample)" in getitem_section
+    assert "scratch = torch.empty_like(enriched)" not in getitem_section
     assert "torch.mul(enriched, 0.5, out=scratch)" in getitem_section
     assert "torch.sin(scratch, out=scratch)" in getitem_section
     assert "enriched.mul_(1.1)" in getitem_section
@@ -6736,6 +6740,17 @@ def test_ch13_optimized_dataloader_reuses_preprocessing_scratch() -> None:
     assert "enriched.sub_(enriched.mean())" in getitem_section
     assert "torch.tanh(enriched * 1.1) + torch.sin(enriched * 0.5)" not in getitem_section
     assert "normalized = enriched - enriched.mean()" not in getitem_section
+
+    from ch13.optimized_dataloader_default import SyntheticDataset
+
+    dataset = SyntheticDataset(num_samples=4, feature_dim=8, preprocess_steps=2)
+    first, _ = dataset[0]
+    assert dataset._scratch_buffer is not None
+    scratch_ptr = dataset._scratch_buffer.data_ptr()
+    second, _ = dataset[1]
+
+    assert dataset._scratch_buffer.data_ptr() == scratch_ptr
+    assert first.data_ptr() != second.data_ptr()
 
 
 def test_ch13_fsdp_example_defers_train_step_loss_sync_to_logging() -> None:

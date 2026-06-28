@@ -23,6 +23,19 @@ class SyntheticDataset(Dataset):
         self.preprocess_steps = preprocess_steps
         self.data = torch.randn(num_samples, feature_dim)
         self.labels = torch.randint(0, 10, (num_samples,))
+        self._scratch_buffer: Optional[torch.Tensor] = None
+
+    def _scratch_like(self, sample: torch.Tensor) -> torch.Tensor:
+        scratch = self._scratch_buffer
+        if (
+            scratch is None
+            or scratch.shape != sample.shape
+            or scratch.device != sample.device
+            or scratch.dtype != sample.dtype
+        ):
+            scratch = torch.empty_like(sample)
+            self._scratch_buffer = scratch
+        return scratch
     
     def __len__(self) -> int:
         return self.num_samples
@@ -30,7 +43,7 @@ class SyntheticDataset(Dataset):
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         sample = self.data[idx]
         enriched = sample.clone()
-        scratch = torch.empty_like(enriched)
+        scratch = self._scratch_like(sample)
         for _ in range(self.preprocess_steps):
             torch.mul(enriched, 0.5, out=scratch)
             torch.sin(scratch, out=scratch)
