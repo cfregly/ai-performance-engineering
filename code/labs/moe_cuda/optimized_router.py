@@ -13,6 +13,14 @@ from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 from labs.moe_cuda.optimized_router_vectorized import GroupedTopKMoE
 
 
+def _weighted_topk_sum_in_place_if_safe(fc2_out: torch.Tensor, gate_probs: torch.Tensor) -> torch.Tensor:
+    weights = gate_probs.unsqueeze(-1)
+    if torch.is_grad_enabled() and (fc2_out.requires_grad or gate_probs.requires_grad):
+        return (fc2_out * weights).sum(dim=1)
+    fc2_out.mul_(weights)
+    return fc2_out.sum(dim=1)
+
+
 class AdaptiveTopKMoE(nn.Module):
     """Optimized sparse-routing MoE using batched expert computation.
     
@@ -78,7 +86,7 @@ class AdaptiveTopKMoE(nn.Module):
         fc2_out = fc2_out.view(batch, self.top_k, self.hidden_size)
         
         # Weighted sum by gate probabilities
-        output = (fc2_out * gate_probs.unsqueeze(-1)).sum(dim=1)
+        output = _weighted_topk_sum_in_place_if_safe(fc2_out, gate_probs)
         
         return output
 

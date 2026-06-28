@@ -3971,6 +3971,35 @@ def test_moe_cuda_topk_router_configures_static_dispatch_once() -> None:
     assert "configure_static_dispatch_buffers" not in benchmark_section
 
 
+def test_moe_cuda_adaptive_router_weights_outputs_in_place_without_grad() -> None:
+    source = (REPO_ROOT / "labs" / "moe_cuda" / "optimized_router.py").read_text(encoding="utf-8")
+    helper_section = source.split("def _weighted_topk_sum_in_place_if_safe", maxsplit=1)[1].split(
+        "class AdaptiveTopKMoE",
+        maxsplit=1,
+    )[0]
+
+    assert "weights = gate_probs.unsqueeze(-1)" in helper_section
+    assert "if torch.is_grad_enabled() and (fc2_out.requires_grad or gate_probs.requires_grad):" in helper_section
+    assert "return (fc2_out * weights).sum(dim=1)" in helper_section
+    assert "fc2_out.mul_(weights)" in helper_section
+    assert "return fc2_out.sum(dim=1)" in helper_section
+    assert "(fc2_out * gate_probs.unsqueeze(-1)).sum(dim=1)" not in source
+
+
+def test_moe_cuda_adaptive_router_keeps_training_path_differentiable() -> None:
+    from labs.moe_cuda.optimized_router import AdaptiveTopKMoE
+
+    torch.manual_seed(0)
+    model = AdaptiveTopKMoE(hidden_size=4, num_experts=3, top_k=2)
+    tokens = torch.randn(5, 4, requires_grad=True)
+
+    output = model(tokens)
+    output.sum().backward()
+
+    assert tokens.grad is not None
+    assert torch.isfinite(tokens.grad).all()
+
+
 def test_moe_cuda_router_wrappers_cache_nvtx_and_parameter_count() -> None:
     for name in (
         "baseline_router.py",
