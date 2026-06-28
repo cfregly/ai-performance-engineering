@@ -387,7 +387,7 @@ def train_step(model, batch, optimizer, criterion):
     # Optimizer step
     optimizer.step()
     
-    return loss.item()
+    return loss.detach()
 
 def main(tp_size: int = 1, model_size: str = "demo"):
     """Main training function."""
@@ -439,7 +439,8 @@ def main(tp_size: int = 1, model_size: str = "demo"):
             loss = train_step(fsdp_model, (input_ids, labels), optimizer, criterion)
             
             if rank == 0:
-                print(f"Step {step}: Loss = {loss:.4f}")
+                loss_value = float(loss)
+                print(f"Step {step}: Loss = {loss_value:.4f}")
                 
                 if torch.cuda.is_available():
                     print(f"  Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")

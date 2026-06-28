@@ -5776,6 +5776,23 @@ def test_ch13_mlp_benchmarks_use_inplace_relu_modules() -> None:
     assert "torch.relu(x)" not in int8_forward
 
 
+def test_ch13_fsdp_example_defers_train_step_loss_sync_to_logging() -> None:
+    source = (REPO_ROOT / "ch13" / "fsdp_example.py").read_text(encoding="utf-8")
+    train_step_section = source.split("def train_step", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+    train_loop_section = source.split("# Training loop", maxsplit=1)[1].split(
+        'print("\\nTraining completed successfully!")',
+        maxsplit=1,
+    )[0]
+
+    assert "return loss.detach()" in train_step_section
+    assert "return loss.item()" not in train_step_section
+    assert "loss_value = float(loss)" in train_loop_section
+    assert "Loss = {loss_value:.4f}" in train_loop_section
+
+
 def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot_loop() -> None:
     for name in (
         "baseline_training_standard.py",
