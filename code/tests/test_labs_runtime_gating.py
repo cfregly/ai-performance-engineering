@@ -385,7 +385,9 @@ def test_optimized_trtllm_teardown_calls_runner_release_hooks_without_local_desc
 
 
 def test_trtllm_generated_token_slice_normalizes_beams_and_padding() -> None:
+    module_source = inspect.getsource(trtllm_common)
     source = inspect.getsource(trtllm_common.slice_generated_token_ids)
+    trtllm_common._TOKEN_OFFSET_CACHE.clear()
     output_ids = torch.tensor(
         [
             [[11, 12, 13, 21, 22], [91, 92, 93, 94, 95]],
@@ -411,6 +413,19 @@ def test_trtllm_generated_token_slice_normalizes_beams_and_padding() -> None:
             dtype=torch.long,
         ),
     )
+    first_offsets = trtllm_common._token_offsets_for(4, output_ids.device)
+    _ = trtllm_common.slice_generated_token_ids(
+        output_ids,
+        prompt_lengths=[3, 2],
+        max_new_tokens=4,
+        pad_token_id=0,
+    )
+    second_offsets = trtllm_common._token_offsets_for(4, output_ids.device)
+    assert second_offsets.data_ptr() == first_offsets.data_ptr()
+    assert "_TOKEN_OFFSET_CACHE" in module_source
+    assert "def _token_offsets_for" in module_source
+    assert "token_offsets = _token_offsets_for(max_new_tokens, output_ids.device)" in source
+    assert "torch.arange(max_new_tokens, device=output_ids.device" not in source
     assert "gather_positions = prompt_offsets.unsqueeze(1) + token_offsets.unsqueeze(0)" in source
     assert "torch.where(valid_positions, gathered" not in source
     assert "torch.full_like(gathered" not in source

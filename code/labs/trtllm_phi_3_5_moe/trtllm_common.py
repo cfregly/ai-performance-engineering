@@ -27,6 +27,7 @@ ENGINE_PATH_ENV = "AISP_PHI35_MOE_ENGINE_PATH"
 PROMPT_TEXT = "Explain GPU kernel fusion in one sentence."
 _ACCELERATE_IMPORT_PATCHED = False
 VERIFICATION_TOKEN_PREFIX = 8
+_TOKEN_OFFSET_CACHE: dict[tuple[int, torch.device], torch.Tensor] = {}
 _OPTIONAL_MODELOPT_PLUGIN_WARNING_PATTERNS: tuple[str, ...] = (
     r"Failed to import vllm plugin due to: .*You may ignore this warning if you do not need this plugin\.",
     r"Failed to import transformer[_ ]engine plugin due to: .*You may ignore this warning if you do not need this plugin\.",
@@ -248,6 +249,15 @@ def slice_logits(logits: torch.Tensor, vocab_slice: int) -> torch.Tensor:
     return logits[:, :vocab_slice]
 
 
+def _token_offsets_for(max_new_tokens: int, device: torch.device) -> torch.Tensor:
+    key = (int(max_new_tokens), device)
+    cached = _TOKEN_OFFSET_CACHE.get(key)
+    if cached is None:
+        cached = torch.arange(max_new_tokens, device=device, dtype=torch.long)
+        _TOKEN_OFFSET_CACHE[key] = cached
+    return cached
+
+
 def slice_generated_token_ids(
     output_ids: torch.Tensor,
     *,
@@ -299,7 +309,7 @@ def slice_generated_token_ids(
         )
 
     prompt_offsets = torch.tensor(prompt_lengths_list, device=output_ids.device, dtype=torch.long)
-    token_offsets = torch.arange(max_new_tokens, device=output_ids.device, dtype=torch.long)
+    token_offsets = _token_offsets_for(max_new_tokens, output_ids.device)
     gather_positions = prompt_offsets.unsqueeze(1) + token_offsets.unsqueeze(0)
     valid_positions = gather_positions < output_ids.size(1)
     gathered = output_ids.gather(1, gather_positions.clamp_max(output_ids.size(1) - 1))
