@@ -32,6 +32,7 @@ class BaselineDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         import gc
@@ -69,6 +70,8 @@ class BaselineDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         # Use CPU randn + to(device) to avoid CUDA RNG graph capture issues
         self.input = torch.randn(
             self.rows,
@@ -86,8 +89,7 @@ class BaselineDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._module is None:
             raise RuntimeError("Baseline decode kernel module not initialized")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("moe_cuda_decode_kernel_baseline", enable=enable_nvtx):
+        with nvtx_range("moe_cuda_decode_kernel_baseline", enable=self._enable_nvtx):
             self._module.run_baseline(self.input, self._output_buffer)
         self.output = self._output_buffer
         if self.output is None:
@@ -139,5 +141,4 @@ class BaselineDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineDecodeKernelBenchmark()
-
 

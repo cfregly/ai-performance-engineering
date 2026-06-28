@@ -39,6 +39,7 @@ class OptimizedDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         import gc
@@ -78,6 +79,8 @@ class OptimizedDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         
         # Allocate contiguous tensors with explicit memory layout
         # TMA requires contiguous tensors with proper alignment
@@ -109,8 +112,7 @@ class OptimizedDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._module is None:
             raise RuntimeError("Optimized decode kernel module not initialized")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("moe_cuda_decode_kernel_optimized", enable=enable_nvtx):
+        with nvtx_range("moe_cuda_decode_kernel_optimized", enable=self._enable_nvtx):
             self._module.run_optimized(self.input, self._output_buffer)
         self.output = self._output_buffer
 

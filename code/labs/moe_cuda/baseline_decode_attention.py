@@ -36,6 +36,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_meta: Optional[torch.Tensor] = None
         self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -43,6 +44,8 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.q = torch.randn(self.batch, self.num_heads, 1, self.head_dim, device=self.device, dtype=torch.float32)
         self.k = torch.randn(
             self.batch,
@@ -77,8 +80,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if any(t is None for t in (self.q, self.k, self.v)):
             raise RuntimeError("Decode tensors missing")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("moe_cuda_decode_naive", enable=enable_nvtx):
+        with nvtx_range("moe_cuda_decode_naive", enable=self._enable_nvtx):
             with torch.inference_mode():
                 timing_pair = self._get_timing_pair()
                 start_event, end_event = timing_pair
@@ -149,4 +151,3 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineDecodeAttentionBenchmark()
-

@@ -2190,7 +2190,14 @@ def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
 
 
 def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
+    baseline_source = (REPO_ROOT / "labs" / "moe_cuda" / "baseline_decode_attention.py").read_text(
+        encoding="utf-8"
+    )
     source = (REPO_ROOT / "labs" / "moe_cuda" / "optimized_decode_attention.py").read_text(encoding="utf-8")
+    baseline_setup = baseline_source.split("def benchmark_fn", maxsplit=1)[0]
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics", maxsplit=1
+    )[0]
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def finalize_iteration_metrics", maxsplit=1
@@ -2203,6 +2210,25 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     assert "q = self._q_bf16" in benchmark_section
     assert "k = self._k_bf16" in benchmark_section
     assert "v = self._v_bf16" in benchmark_section
+    for setup, benchmark in ((baseline_setup, baseline_benchmark), (setup_section, benchmark_section)):
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup
+        assert "get_config()" not in benchmark
+        assert "get_nvtx_enabled(" not in benchmark
+        assert "enable=self._enable_nvtx" in benchmark
+
+
+def test_moe_cuda_decode_kernel_wrappers_cache_nvtx_outside_hot_loop() -> None:
+    for name in ("baseline_decode_kernel.py", "optimized_decode_kernel.py"):
+        source = (REPO_ROOT / "labs" / "moe_cuda" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+        assert "get_config()" not in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert "enable=self._enable_nvtx" in benchmark_section
 
 
 def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> None:
@@ -2228,6 +2254,10 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
         assert "self.workspace = torch.empty_like(self.input_chunks)" in setup_section
         assert "self.kv_dest = torch.empty_like(self.input_chunks)" in setup_section
         assert "torch.zeros_like(self.input_chunks)" not in setup_section
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+        assert "get_config()" not in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert "enable=self._enable_nvtx" in benchmark_section
 
 
 def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
@@ -2326,6 +2356,33 @@ def test_moe_cuda_topk_router_configures_static_dispatch_once() -> None:
     assert "with torch.no_grad():" not in setup_section
     assert "calibrate_capacity" not in benchmark_section
     assert "configure_static_dispatch_buffers" not in benchmark_section
+
+
+def test_moe_cuda_router_wrappers_cache_nvtx_and_parameter_count() -> None:
+    for name in (
+        "baseline_router.py",
+        "optimized_router.py",
+        "optimized_router_vectorized.py",
+    ):
+        source = (REPO_ROOT / "labs" / "moe_cuda" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _check_capacity_overflow" if name == "optimized_router_vectorized.py" else "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+        assert "self._payload_parameter_count = sum(p.numel() for p in model.parameters())" in setup_section
+        assert "get_config()" not in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert "enable=self._enable_nvtx" in benchmark_section
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "sum(p.numel()" not in capture_section
 
 
 def test_ch20_bf16_mlp_preconverts_activation_dtype_outside_hot_loop() -> None:

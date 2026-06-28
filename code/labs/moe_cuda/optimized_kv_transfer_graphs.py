@@ -39,6 +39,7 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.num_chunks),
             tokens_per_iteration=float(tokens),
         )
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -46,6 +47,8 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.input_chunks = torch.randn(
             self.num_chunks,
             self.chunk_size,
@@ -88,8 +91,7 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.graph is None:
             raise RuntimeError("CUDA graph not captured (setup() must run)")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("moe_cuda_kv_overlap_graphed", enable=enable_nvtx):
+        with nvtx_range("moe_cuda_kv_overlap_graphed", enable=self._enable_nvtx):
             self.graph.replay()
         if self.kv_dest is None:
             raise RuntimeError("KV destination missing")

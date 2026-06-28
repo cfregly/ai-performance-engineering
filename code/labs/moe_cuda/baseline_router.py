@@ -29,6 +29,8 @@ class BaselineRouterDenseBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(self.batch_size * self.top_k),
         )
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -69,9 +71,12 @@ class BaselineRouterDenseBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         model = VectorizedTopKMoE(self.hidden_size, self.num_experts, self.top_k, expansion=2)
         model = model.to(self.device, dtype=torch.bfloat16)
         model.eval()
+        self._payload_parameter_count = sum(p.numel() for p in model.parameters())
         self.model = model
 
         # Use CPU randn + to(device) to avoid CUDA RNG graph capture issues
@@ -87,8 +92,7 @@ class BaselineRouterDenseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.model is None or self.inputs is None:
             raise RuntimeError("Model not initialized")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("moe_cuda_dense_router", enable=enable_nvtx):
+        with nvtx_range("moe_cuda_dense_router", enable=self._enable_nvtx):
             with torch.inference_mode():
                 self.output = self.model(self.inputs)
         if self.output is None:
@@ -101,7 +105,7 @@ class BaselineRouterDenseBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"input": self.inputs.detach()},
             output=self.output.detach().float().clone(),
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={"bf16": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
             output_tolerance=(0.1, 1.0),
         )
@@ -143,4 +147,3 @@ class BaselineRouterDenseBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineRouterDenseBenchmark()
-

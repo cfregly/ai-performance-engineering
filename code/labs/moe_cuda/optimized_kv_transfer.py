@@ -39,6 +39,7 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self._payload_meta: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._enable_nvtx = False
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -46,6 +47,8 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.input_chunks = torch.randn(
             self.num_chunks,
             self.chunk_size,
@@ -85,9 +88,7 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if any(t is None for t in (self.input_chunks, self.weight, self.workspace, self.kv_dest)):
             raise RuntimeError("Buffers not initialized")
 
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("moe_cuda_kv_overlap", enable=enable_nvtx):
+        with nvtx_range("moe_cuda_kv_overlap", enable=self._enable_nvtx):
             # Reduce Python overhead by issuing all compute on one stream context
             # and all dependent copies on a second stream context.
             with torch.cuda.stream(self.compute_stream):
