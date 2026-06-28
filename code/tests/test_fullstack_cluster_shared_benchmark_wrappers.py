@@ -329,6 +329,10 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "meta = torch.stack(" not in roundtrip_section
     assert "torch.cuda.Event(enable_timing=True)" not in forward_section
     assert "torch.cuda.Event(enable_timing=True)" not in run_step_section
+    assert "self._loss_host_buffer = torch.empty((), dtype=torch.float32, pin_memory=True)" in source
+    assert "self._loss_host_buffer.copy_(loss.detach(), non_blocking=False)" in run_step_section
+    assert "loss.detach().item()" not in run_step_section
+    assert "loss=float(self._loss_host_buffer)" in run_step_section
     assert '"combined_outputs"' in forward_section
     assert "combined.zero_()" in forward_section
     assert "combined = torch.zeros_like(hidden)" not in forward_section

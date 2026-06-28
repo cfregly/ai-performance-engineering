@@ -1076,6 +1076,7 @@ class HybridEPTrainer:
         }
         self._metric_reduce_buffer: Optional[torch.Tensor] = None
         self._metric_reduce_host_buffer: Optional[torch.Tensor] = None
+        self._loss_host_buffer = torch.empty((), dtype=torch.float32, pin_memory=True)
 
     def _sync_replicated_grads(self) -> None:
         if self.topology.world_size <= 1:
@@ -1119,7 +1120,8 @@ class HybridEPTrainer:
             }
         )
         metrics = self._reduce_metrics(metrics)
-        return StepArtifacts(metrics=metrics, loss=float(loss.detach().item()))
+        self._loss_host_buffer.copy_(loss.detach(), non_blocking=False)
+        return StepArtifacts(metrics=metrics, loss=float(self._loss_host_buffer))
 
     def _reduce_metrics(self, metrics: Dict[str, float]) -> Dict[str, float]:
         if self.topology.world_size <= 1:
