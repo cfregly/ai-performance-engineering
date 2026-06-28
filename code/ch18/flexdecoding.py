@@ -22,10 +22,9 @@ except Exception:
 import math
 import time
 from dataclasses import dataclass
-from typing import Iterable, List, Optional
+from typing import Iterable, List
 
 import torch
-import torch.nn.functional as F
 
 from core.utils.compile_utils import compile_callable
 
@@ -163,6 +162,10 @@ class FlexDecodingModule(torch.nn.Module):
         compile_kwargs = {"mode": self.compile_mode, "dynamic": None}
 
         def configure_sdpa_backend() -> None:
+            position_index = torch.arange(max_kv_len, device=device)
+            q_position_column = position_index.view(max_kv_len, 1)
+            k_position_row = position_index.view(1, max_kv_len)
+
             def sdpa(q, k, v, offset):
                 # Inputs expected as [batch, seq, heads, head_dim]
                 qh = q.transpose(1, 2)
@@ -172,9 +175,8 @@ class FlexDecodingModule(torch.nn.Module):
                 attn = torch.matmul(qh, kh.transpose(-2, -1)) * scale
                 seq_q = attn.size(-2)
                 seq_k = attn.size(-1)
-                q_positions = torch.arange(seq_q, device=attn.device).unsqueeze(-1)
-                q_positions = q_positions + offset
-                k_positions = torch.arange(seq_k, device=attn.device).unsqueeze(0)
+                q_positions = q_position_column[:seq_q] + offset
+                k_positions = k_position_row[:, :seq_k]
                 delta = q_positions - k_positions
                 in_window = (delta >= 0) & (delta <= window)
                 attn = attn.masked_fill(~in_window, -1e9)

@@ -4690,8 +4690,19 @@ def test_ch18_flexattention_demos_use_cuda_event_timing() -> None:
         "def _score_mod_causal",
         maxsplit=1,
     )[0]
+    flexdecoding_sdpa = flexdecoding.split("def configure_sdpa_backend", maxsplit=1)[1].split(
+        "if self.use_flex_attention:",
+        maxsplit=1,
+    )[0]
     assert flexdecoding_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "start.elapsed_time(end) / iters" in flexdecoding_benchmark
+    assert "position_index = torch.arange(max_kv_len, device=device)" in flexdecoding_sdpa
+    assert "q_position_column = position_index.view(max_kv_len, 1)" in flexdecoding_sdpa
+    assert "k_position_row = position_index.view(1, max_kv_len)" in flexdecoding_sdpa
+    assert "q_positions = q_position_column[:seq_q] + offset" in flexdecoding_sdpa
+    assert "k_positions = k_position_row[:, :seq_k]" in flexdecoding_sdpa
+    assert "torch.arange(seq_q" not in flexdecoding_sdpa
+    assert "torch.arange(seq_k" not in flexdecoding_sdpa
 
     for filename in (
         "flexattention_block_sparse.py",
