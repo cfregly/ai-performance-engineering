@@ -301,6 +301,10 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "host_counts.copy_(counts)" in source
     assert ".nonzero(" not in apply_local_section
     assert "bool(mask.any())" not in apply_local_section
+    assert "out_slice = sorted_outputs[offset:next_offset]" in apply_local_section
+    assert "out_slice.copy_(expert_out)" in apply_local_section
+    assert "out_slice.mul_(sorted_weights[offset:next_offset])" in apply_local_section
+    assert "sorted_outputs[offset:next_offset] = expert_out * sorted_weights[offset:next_offset]" not in apply_local_section
     assert "outputs.index_copy_(0, sort_idx, sorted_outputs)" in apply_local_section
     assert "return tensor.clone()" not in all_to_all_list_section
     assert "return tensor.clone()" not in all_to_all_single_section
