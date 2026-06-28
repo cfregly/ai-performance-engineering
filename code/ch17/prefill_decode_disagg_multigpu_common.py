@@ -516,15 +516,16 @@ def _run_torchrun_worker(
     _barrier()
     torch.cuda.synchronize(device)
 
-    for _ in range(max(warmup, 0)):
-        run_iteration()
-    torch.cuda.synchronize(device)
-    _barrier()
+    with torch.inference_mode():
+        for _ in range(max(warmup, 0)):
+            run_iteration()
+        torch.cuda.synchronize(device)
+        _barrier()
 
-    start = time.perf_counter()
-    for _ in range(max(iters, 1)):
-        run_iteration()
-    torch.cuda.synchronize(device)
+        start = time.perf_counter()
+        for _ in range(max(iters, 1)):
+            run_iteration()
+        torch.cuda.synchronize(device)
     _barrier()
     elapsed = time.perf_counter() - start
 

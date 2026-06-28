@@ -4650,6 +4650,8 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "ready = ready_events[group_idx]" in run_iteration_section
     assert "torch.cuda.Event(" not in run_iteration_section
     assert "with torch.inference_mode():" in run_iteration_section
+    assert "with torch.inference_mode():\n        for _ in range(max(warmup, 0)):" in worker_section
+    assert "torch.no_grad()" not in worker_section
     assert "recv_kv_chunks: dict[int, List[torch.Tensor]] = {}" in worker_section
     assert "recv_seed_chunks: dict[int, List[torch.Tensor]] = {}" in worker_section
     assert "recv_kv_chunks[src_rank] = [" in worker_section
