@@ -158,8 +158,16 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
             expanded_inputs = self.inputs
             gating_weights = torch.ones(self.num_tokens, device=self.device, dtype=torch.float16)
         else:
-            expert_matrix = [(base_assign + offset) % self.num_experts for offset in range(top_k)]
-            assignments = torch.stack(expert_matrix, dim=-1).reshape(-1)
+            offsets = torch.arange(top_k, device=self.device, dtype=base_assign.dtype)
+            assignment_matrix = torch.empty(
+                self.num_tokens,
+                top_k,
+                device=self.device,
+                dtype=base_assign.dtype,
+            )
+            torch.add(base_assign.unsqueeze(1), offsets, out=assignment_matrix)
+            torch.remainder(assignment_matrix, self.num_experts, out=assignment_matrix)
+            assignments = assignment_matrix.reshape(-1)
             expanded_inputs = self.inputs.index_select(0, token_ids)
             gating_weights = torch.full(
                 (self.num_tokens * top_k,),

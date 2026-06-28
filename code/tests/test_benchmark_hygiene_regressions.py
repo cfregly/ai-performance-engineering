@@ -2905,6 +2905,24 @@ def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
         assert "enable=self._enable_nvtx" in benchmark
 
 
+def test_ch19_optimized_mxfp8_moe_builds_topk_assignments_without_stack() -> None:
+    source = (REPO_ROOT / "ch19" / "optimized_mxfp8_moe.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "self.assignments = assignments",
+        maxsplit=1,
+    )[0]
+
+    assert "offsets = torch.arange(top_k, device=self.device, dtype=base_assign.dtype)" in setup_section
+    assert "assignment_matrix = torch.empty(" in setup_section
+    assert "torch.add(base_assign.unsqueeze(1), offsets, out=assignment_matrix)" in setup_section
+    assert "torch.remainder(assignment_matrix, self.num_experts, out=assignment_matrix)" in setup_section
+    assert "assignments = assignment_matrix.reshape(-1)" in setup_section
+    assert "expert_matrix = [" not in setup_section
+    assert "torch.stack(expert_matrix" not in setup_section
+
+
 def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     baseline_source = (REPO_ROOT / "labs" / "moe_cuda" / "baseline_decode_attention.py").read_text(
         encoding="utf-8"
