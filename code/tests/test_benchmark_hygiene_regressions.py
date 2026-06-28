@@ -9550,6 +9550,9 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
         "def _quantize_fp8",
         maxsplit=1,
     )[0]
+    forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[
+        1
+    ].split("class OptimizedFP8CalibrationFree", maxsplit=1)[0]
     run_section = source.split("def run(self) -> torch.Tensor", maxsplit=1)[1].split(
         "def cleanup", maxsplit=1
     )[0]
@@ -9568,6 +9571,10 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
     assert "output=self._output.detach().float().clone()" in capture_section
     assert "with torch.inference_mode():" in scale_section
     assert "with torch.no_grad():" not in scale_section
+    assert "if x.dtype != torch.bfloat16:" in forward_section
+    assert "x = x.to(torch.bfloat16)" in forward_section
+    assert "nn.functional.linear(x, self.weight, self.bias)" in forward_section
+    assert "nn.functional.linear(x.to(torch.bfloat16)" not in forward_section
 
 
 def test_ch16_ch19_quantized_linears_add_bias_in_place() -> None:

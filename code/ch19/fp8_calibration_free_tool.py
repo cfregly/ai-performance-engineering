@@ -18,7 +18,6 @@ from core.harness.benchmark_harness import (
     BenchmarkConfig,
     BenchmarkHarness,
     BenchmarkMode,
-    WorkloadMetadata,
 )
 from core.utils.logger import get_logger
 
@@ -117,7 +116,9 @@ class CalibrationFreeFP8Linear(nn.Module):
         """
         if not self.use_fp8 or not hasattr(torch, 'float8_e4m3fn'):
             # Fallback to BF16
-            return nn.functional.linear(x.to(torch.bfloat16), self.weight, self.bias)
+            if x.dtype != torch.bfloat16:
+                x = x.to(torch.bfloat16)
+            return nn.functional.linear(x, self.weight, self.bias)
         
         # Quantize input
         x_fp8, self.input_scale = self._quantize_fp8(x, self.input_scale)
@@ -143,7 +144,9 @@ class CalibrationFreeFP8Linear(nn.Module):
         except Exception as e:
             logger.warning(f"FP8 computation failed: {e}, falling back to BF16")
             self.use_fp8 = False
-            return nn.functional.linear(x.to(torch.bfloat16), self.weight, self.bias)
+            if x.dtype != torch.bfloat16:
+                x = x.to(torch.bfloat16)
+            return nn.functional.linear(x, self.weight, self.bias)
 
 
 class OptimizedFP8CalibrationFree:
