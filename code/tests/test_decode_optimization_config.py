@@ -155,10 +155,19 @@ def test_decode_nvtx_import_is_cached_outside_iteration_hot_paths() -> None:
     )[0]
 
     assert "self._nvtx = _cuda_nvtx()" in setup_section
+    assert "self._nvtx_labels = {" in setup_section
+    assert 'standardize_nvtx_label("compute_math:prefill")' in setup_section
+    assert 'standardize_nvtx_label("compute_math:decode")' in setup_section
     assert "import torch.cuda.nvtx" not in prefetch_section
     assert "import torch.cuda.nvtx" not in benchmark_section
     assert "nvtx = self._nvtx" in prefetch_section
     assert "nvtx = self._nvtx" in benchmark_section
+    assert "standardize_nvtx_label(" not in prefetch_section
+    assert "standardize_nvtx_label(" not in benchmark_section
+    assert 'nvtx.range_push(self._nvtx_labels["prefill_decode_0"])' in prefetch_section
+    assert 'nvtx.range_push(self._nvtx_labels["prefill_decode_1"])' in prefetch_section
+    assert 'nvtx.range_push(self._nvtx_labels["prefill"])' in benchmark_section
+    assert 'nvtx.range_push(self._nvtx_labels["decode"])' in benchmark_section
 
 
 def test_decode_pinned_pair_uses_transfer_heavy_workload_with_only_pin_state_changed() -> None:

@@ -148,6 +148,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._copy_done_events: list[torch.cuda.Event] = []
         self._timing_events: dict[str, torch.cuda.Event] = {}
         self._nvtx = None
+        self._nvtx_labels: dict[str, str] = {}
         self._payload_bytes = 0
 
         if self.cfg.prefetch_batches < 1:
@@ -270,6 +271,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 for name in ("prefill_start", "prefill_end", "decode_start", "decode_end")
             }
             self._nvtx = _cuda_nvtx()
+            self._nvtx_labels = {
+                "prefill": standardize_nvtx_label("compute_math:prefill"),
+                "decode": standardize_nvtx_label("compute_math:decode"),
+                "prefill_decode_0": standardize_nvtx_label("compute_math:prefill_decode_0"),
+                "prefill_decode_1": standardize_nvtx_label("compute_math:prefill_decode_1"),
+            }
         self._cache_te_weight_workspaces()
         # Default to eager helpers; swap in compiled variants below when enabled.
         self.prefill_fn = self._prefill
@@ -616,7 +623,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         with self._get_fp8_context():
             if nvtx:
-                nvtx.range_push(standardize_nvtx_label("compute_math:prefill_decode_0"))
+                nvtx.range_push(self._nvtx_labels["prefill_decode_0"])
             self._run_prefill_decode(self.gpu_prompts[0], prefill_stream)
             if nvtx:
                 nvtx.range_pop()
@@ -627,7 +634,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 prefill_stream.wait_event(event1)
 
             if nvtx:
-                nvtx.range_push(standardize_nvtx_label("compute_math:prefill_decode_1"))
+                nvtx.range_push(self._nvtx_labels["prefill_decode_1"])
             self._run_prefill_decode(self.gpu_prompts[1], prefill_stream)
             if nvtx:
                 nvtx.range_pop()
@@ -669,7 +676,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         prefill_start.record(prefill_stream)
         self._copy_prompts_to_device()
         if nvtx:
-            nvtx.range_push(standardize_nvtx_label("compute_math:prefill"))
+            nvtx.range_push(self._nvtx_labels["prefill"])
 
         # Single FP8 context for entire forward pass to avoid workspace churn
         with self._get_fp8_context():
@@ -686,7 +693,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
             if nvtx:
                 nvtx.range_pop()  # prefill
-                nvtx.range_push(standardize_nvtx_label("compute_math:decode"))
+                nvtx.range_push(self._nvtx_labels["decode"])
 
             # Decode
             decode_start.record(timing_stream)
