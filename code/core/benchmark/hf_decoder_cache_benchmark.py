@@ -130,15 +130,15 @@ class _TinyHFDecoderLM(torch.nn.Module):
             return logits, past_key_values
 
         # Dynamic-cache path: use legacy tuple[(k, v), ...] so we avoid heavyweight model imports.
-        old_cache = list(past_key_values) if past_key_values is not None else []
-        new_cache = []
+        old_cache = past_key_values if past_key_values is not None else ()
+        new_cache = [(hidden, hidden)] * self.num_layers
         for layer_idx in range(self.num_layers):
             key_states, value_states = self._compute_kv(hidden, layer_idx)
             if layer_idx < len(old_cache):
                 prev_key, prev_value = old_cache[layer_idx]
                 key_states = torch.cat((prev_key, key_states), dim=2)
                 value_states = torch.cat((prev_value, value_states), dim=2)
-            new_cache.append((key_states, value_states))
+            new_cache[layer_idx] = (key_states, value_states)
         return logits, tuple(new_cache)
 class HFDecoderCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Harness benchmark for decoder cache strategy and EOS host-sync policies."""

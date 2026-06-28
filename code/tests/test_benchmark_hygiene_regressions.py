@@ -7997,6 +7997,10 @@ def test_hf_decoder_cache_defers_verification_copy_outside_hot_loop() -> None:
         "def teardown",
         maxsplit=1,
     )[0]
+    dynamic_forward_section = source.split("# Dynamic-cache path:", maxsplit=1)[1].split(
+        "class HFDecoderCacheBenchmark",
+        maxsplit=1,
+    )[0]
 
     assert "self._verification_token = torch.empty(" in setup_section
     assert "self._prefill_token_buffer = torch.empty(" in setup_section
@@ -8018,6 +8022,11 @@ def test_hf_decoder_cache_defers_verification_copy_outside_hot_loop() -> None:
     assert "cache_position=self._prompt_pos" in benchmark_section
     assert "self._verification_token.copy_(self.output)" in capture_section
     assert "self.output = self._verification_token" in capture_section
+    assert "old_cache = past_key_values if past_key_values is not None else ()" in dynamic_forward_section
+    assert "new_cache = [(hidden, hidden)] * self.num_layers" in dynamic_forward_section
+    assert "new_cache[layer_idx] = (key_states, value_states)" in dynamic_forward_section
+    assert "old_cache = list(past_key_values)" not in dynamic_forward_section
+    assert "new_cache.append(" not in dynamic_forward_section
     assert 'eos_sync_mode="blocking"' in baseline_source
     assert 'eos_sync_mode="async_streamed"' in optimized_source
 
