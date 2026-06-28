@@ -23,6 +23,7 @@ class BaselineNVLinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.src: List[torch.Tensor] = []
         self.dst: List[torch.Tensor] = []
         self.host_buffers: List[torch.Tensor] = []
+        self._copy_groups: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self.output: Optional[torch.Tensor] = None
         self.numel = 50_000_000
         self._workload = WorkloadMetadata(
@@ -54,6 +55,7 @@ class BaselineNVLinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.empty(self.numel, device="cpu", dtype=torch.float32)
             for _ in self.pairs
         ]
+        self._copy_groups = list(zip(self.host_buffers, self.src, self.dst, strict=True))
         total_tokens = self.numel * len(self.pairs)
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(len(self.pairs)),
@@ -67,7 +69,7 @@ class BaselineNVLinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         with self._nvtx_range("baseline_nvlink_multigpu"):
-            for host_buffer, src, dst in zip(self.host_buffers, self.src, self.dst):
+            for host_buffer, src, dst in self._copy_groups:
                 host_buffer.copy_(src, non_blocking=False)
                 dst.copy_(host_buffer, non_blocking=False)
         self.output = self.dst[0]
@@ -95,6 +97,7 @@ class BaselineNVLinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.src = []
         self.dst = []
         self.host_buffers = []
+        self._copy_groups = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -120,5 +123,4 @@ class BaselineNVLinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineNVLinkBenchmark()
-
 

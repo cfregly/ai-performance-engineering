@@ -4518,6 +4518,32 @@ def test_ch04_optimized_nvlink_multigpu_reuses_stream_groups() -> None:
         assert "self._wait_groups = []" in teardown_section
 
 
+def test_ch04_baseline_nvlink_multigpu_reuses_copy_groups() -> None:
+    for relative in (
+        "ch04/baseline_nvlink_multigpu.py",
+        "ch04/baseline_nvlink_topology_aware_multigpu.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._copy_groups: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
+        assert "self._copy_groups = list(zip(self.host_buffers, self.src, self.dst, strict=True))" in setup_section
+        assert "for host_buffer, src, dst in self._copy_groups:" in benchmark_section
+        assert "zip(self.host_buffers, self.src, self.dst" not in benchmark_section
+        assert "self._copy_groups = []" in teardown_section
+
+
 def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch17" / "optimized_pipeline_parallelism.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
