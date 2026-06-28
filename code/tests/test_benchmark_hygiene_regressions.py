@@ -1709,6 +1709,27 @@ def test_ch19_fp4_weight_quantization_uses_inference_mode() -> None:
     assert "with torch.no_grad():" not in validate_section
 
 
+def test_ch19_optimized_fp4_fp8_bridge_reuses_activation_and_scale_buffers() -> None:
+    source = (REPO_ROOT / "ch19" / "optimized_fp4_weight_quantization.py").read_text(
+        encoding="utf-8"
+    )
+    forward_fp8_section = source.split("def _forward_fp8", maxsplit=1)[1].split(
+        "@property",
+        maxsplit=1,
+    )[0]
+
+    assert "self.register_buffer('_input_fp8_buffer'" in source
+    assert "self.register_buffer('_fp8_scale_a'" in source
+    assert "self.register_buffer('_fp8_scale_b'" in source
+    assert "def _activation_fp8_buffer(self, x_2d: torch.Tensor)" in source
+    assert "def _fp8_scale_buffers(self, device: torch.device)" in source
+    assert "x_fp8 = self._activation_fp8_buffer(x_2d)" in forward_fp8_section
+    assert "x_fp8.copy_(x_2d)" in forward_fp8_section
+    assert "scale_a, scale_b = self._fp8_scale_buffers(x.device)" in forward_fp8_section
+    assert ".to(torch.float8_e4m3fn)" not in forward_fp8_section
+    assert "torch.ones(1, device=x.device, dtype=torch.float32)" not in forward_fp8_section
+
+
 def test_ch19_native_fp4_caches_lookup_values_per_device() -> None:
     source = (REPO_ROOT / "ch19" / "native_fp4_quantization.py").read_text(
         encoding="utf-8"
