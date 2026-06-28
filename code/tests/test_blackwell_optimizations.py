@@ -348,7 +348,8 @@ class TestNumericalCorrectness:
         blackwell = pytest.importorskip("ch16.inference_optimizations_blackwell")
         source = inspect.getsource(blackwell.TensorParallelMultiGPU.forward)
 
-        assert "gathered_outputs = [torch.empty_like(outputs) for _ in range(self.num_gpus)]" in source
+        assert "self._gathered_outputs = [" in source
+        assert "torch.empty_like(outputs)" in source
         assert "torch.zeros_like(outputs)" not in source
 
     def test_blackwell_inference_generate_preallocates_output_tokens(self):
@@ -356,10 +357,14 @@ class TestNumericalCorrectness:
 
         source = inspect.getsource(blackwell.BlackwellInferencePipeline.generate)
         pipeline_source = inspect.getsource(blackwell.BlackwellInferencePipeline)
-        assert "output_ids = torch.empty(" in source
         assert "self._next_token_buffer: Optional[torch.Tensor] = None" in pipeline_source
         assert "def _next_token_from_logits" in pipeline_source
         assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in pipeline_source
+        assert "self._generated_token_buffer: Optional[torch.Tensor] = None" in pipeline_source
+        assert "def _generated_output_buffer" in pipeline_source
+        assert "self._generated_token_buffer = torch.empty(" in pipeline_source
+        assert "output_ids = self._generated_output_buffer(input_ids, seq_len + max_new_tokens)" in source
+        assert "output_ids = torch.empty(" not in source
         assert "output_ids[:, :seq_len].copy_(input_ids)" in source
         assert "output_ids[:, seq_len : seq_len + 1].copy_(next_token)" in source
         assert ".argmax(dim=-1, keepdim=True)" not in source

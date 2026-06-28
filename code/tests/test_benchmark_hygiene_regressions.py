@@ -6049,6 +6049,26 @@ def test_ch16_blackwell_tensor_parallel_reuses_gather_buffers() -> None:
     assert "final_output = torch.cat(gathered_outputs, dim=-1)" not in forward_section
 
 
+def test_ch16_blackwell_generate_reuses_output_token_buffer() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_optimizations_blackwell.py").read_text(
+        encoding="utf-8"
+    )
+    pipeline_section = source.split("class BlackwellInferencePipeline", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+    generate_section = pipeline_section.split("def generate(", maxsplit=1)[1].split(
+        "def benchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "self._generated_token_buffer: Optional[torch.Tensor] = None" in pipeline_section
+    assert "def _generated_output_buffer(" in pipeline_section
+    assert "self._generated_token_buffer = torch.empty(" in pipeline_section
+    assert "output_ids = self._generated_output_buffer(input_ids, seq_len + max_new_tokens)" in generate_section
+    assert "output_ids = torch.empty(" not in generate_section
+
+
 def test_ch16_blackwell_inference_demo_uses_cuda_event_timing() -> None:
     source = (REPO_ROOT / "ch16" / "inference_optimizations_blackwell.py").read_text(
         encoding="utf-8"

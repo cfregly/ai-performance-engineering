@@ -481,6 +481,7 @@ class BlackwellInferencePipeline:
         
         self._next_token_buffer: Optional[torch.Tensor] = None
         self._next_token_values: Optional[torch.Tensor] = None
+        self._generated_token_buffer: Optional[torch.Tensor] = None
         # Compile model with torch.compile (PyTorch 2.10)
         if compile:
             print("Compiling model with torch.compile...")
@@ -521,6 +522,25 @@ class BlackwellInferencePipeline:
             self._next_token_values = torch.empty_like(logits_last[:, :1])
         torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))
         return self._next_token_buffer
+
+    def _generated_output_buffer(
+        self,
+        input_ids: torch.Tensor,
+        total_len: int,
+    ) -> torch.Tensor:
+        output_shape = (input_ids.size(0), total_len)
+        if (
+            self._generated_token_buffer is None
+            or self._generated_token_buffer.device != input_ids.device
+            or self._generated_token_buffer.dtype != input_ids.dtype
+            or tuple(self._generated_token_buffer.shape) != output_shape
+        ):
+            self._generated_token_buffer = torch.empty(
+                output_shape,
+                device=input_ids.device,
+                dtype=input_ids.dtype,
+            )
+        return self._generated_token_buffer
     
     @torch.inference_mode()
     def generate(
@@ -540,18 +560,13 @@ class BlackwellInferencePipeline:
         Returns:
             Generated token IDs [batch, seq_len + max_new_tokens]
         """
-        batch_size, seq_len = input_ids.shape
+        _, seq_len = input_ids.shape
         
         # Clear KV cache
         self.kv_cache.clear()
         if max_new_tokens <= 0:
             return input_ids
-        output_ids = torch.empty(
-            batch_size,
-            seq_len + max_new_tokens,
-            device=input_ids.device,
-            dtype=input_ids.dtype,
-        )
+        output_ids = self._generated_output_buffer(input_ids, seq_len + max_new_tokens)
         output_ids[:, :seq_len].copy_(input_ids)
         
         # Prefill phase (process all input tokens)
