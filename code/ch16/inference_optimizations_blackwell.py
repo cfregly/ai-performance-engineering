@@ -137,6 +137,7 @@ class DynamicQuantizedKVCache:
             pin_memory=torch.device(device).type == "cuda",
         )
         self._seq_lens_host = [0] * max_batch_size
+        self._batch_indices_device_buffer: Optional[torch.Tensor] = None
         self._updated_key_buffer: Optional[torch.Tensor] = None
         self._updated_value_buffer: Optional[torch.Tensor] = None
         
@@ -147,6 +148,19 @@ class DynamicQuantizedKVCache:
         if FP8_AVAILABLE:
             fp16_memory = self.cache.numel() * 2 / 1e9
             print(f"  Savings: {fp16_memory - self.cache.numel() * self.cache.element_size() / 1e9:.2f} GB vs FP16")
+
+    def _batch_indices_buffer(self, count: int) -> torch.Tensor:
+        if (
+            self._batch_indices_device_buffer is None
+            or self._batch_indices_device_buffer.device != self.seq_lens.device
+            or self._batch_indices_device_buffer.numel() < count
+        ):
+            self._batch_indices_device_buffer = torch.empty(
+                count,
+                dtype=torch.long,
+                device=self.seq_lens.device,
+            )
+        return self._batch_indices_device_buffer[:count]
     
     def update(
         self,
@@ -179,20 +193,37 @@ class DynamicQuantizedKVCache:
                 batch_indices = self._batch_index_cache.narrow(0, cache_idx, 1)
             else:
                 batch_index_list = [int(idx) for idx in batch_indices]
-                batch_indices = torch.tensor(
-                    batch_index_list, device=self.seq_lens.device, dtype=torch.long
-                )
+                batch_count = len(batch_index_list)
+                batch_indices = self._batch_indices_buffer(batch_count)
+                if batch_indices.device.type == "cpu":
+                    for local_idx, cache_idx in enumerate(batch_index_list):
+                        batch_indices[local_idx] = cache_idx
+                else:
+                    batch_index_host = self._batch_index_host[:batch_count]
+                    for local_idx, cache_idx in enumerate(batch_index_list):
+                        batch_index_host[local_idx] = cache_idx
+                    batch_indices.copy_(batch_index_host, non_blocking=True)
         else:
             if batch_indices.dim() == 0:
                 batch_indices = batch_indices.unsqueeze(0)
             if batch_indices.device.type == "cpu":
-                batch_index_list = [int(idx) for idx in batch_indices.tolist()]
+                batch_count = batch_indices.numel()
+                batch_index_host = self._batch_index_host[:batch_count]
+                batch_index_host.copy_(batch_indices)
+                batch_index_list = [int(idx) for idx in batch_index_host.tolist()]
+                device_batch_indices = self._batch_indices_buffer(batch_count)
+                device_batch_indices.copy_(
+                    batch_index_host,
+                    non_blocking=self.seq_lens.device.type == "cuda",
+                )
+                batch_indices = device_batch_indices
             else:
                 batch_count = batch_indices.numel()
                 batch_index_host = self._batch_index_host[:batch_count]
                 batch_index_host.copy_(batch_indices)
                 batch_index_list = [int(idx) for idx in batch_index_host.tolist()]
-            batch_indices = batch_indices.to(self.seq_lens.device, dtype=torch.long)
+                if batch_indices.device != self.seq_lens.device or batch_indices.dtype != torch.long:
+                    batch_indices = batch_indices.to(self.seq_lens.device, dtype=torch.long)
         
         assert key.shape[0] == batch_indices.numel(), (
             f"Batch size mismatch: key batch={key.shape[0]}, "
@@ -1056,7 +1087,7 @@ def demo_gb200_cpu_offloading():
         print("ℹ Running on standard GPU (GB200/GB300 features emulated)")
     
     # Create cache with CPU offloading
-    cache = GB200CPUOffloadKVCache(
+    GB200CPUOffloadKVCache(
         num_layers=32,
         max_batch_size=8,
         max_seq_len=128000,  # 128K context

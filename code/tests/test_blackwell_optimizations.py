@@ -212,6 +212,7 @@ class TestNumericalCorrectness:
         assert "self.cache = torch.empty(" in init_source
         assert "self.cache = torch.zeros(" not in init_source
         assert "self._batch_index_cache = torch.arange(max_batch_size" in init_source
+        assert "self._batch_indices_device_buffer: Optional[torch.Tensor] = None" in init_source
         assert "self.cache.zero_()" not in clear_source
         assert "self.cache[:, :, batch_idx].zero_()" not in clear_source
         assert "unique_rows" in source
@@ -226,9 +227,14 @@ class TestNumericalCorrectness:
         assert "batch_index_host.copy_(batch_indices)" in source
         assert "batch_index_list = [int(idx) for idx in batch_index_host.tolist()]" in source
         assert "batch_indices.detach().cpu().tolist()" not in source
+        assert "def _batch_indices_buffer(self, count: int) -> torch.Tensor:" in inspect.getsource(
+            blackwell.DynamicQuantizedKVCache._batch_indices_buffer
+        )
+        assert "batch_indices = self._batch_indices_buffer(batch_count)" in source
+        assert "device_batch_indices = self._batch_indices_buffer(batch_count)" in source
+        assert "batch_indices = torch.tensor(" not in source
         assert "current_lengths = [self._seq_lens_host[idx] for idx in batch_index_list]" in source
         assert "self.seq_lens[cache_idx_int].item()" not in source
-        assert "batch_index_list = [int(idx) for idx in batch_indices.tolist()]" in source
         assert "self.cache[layer_idx, 0, batch_indices, :, current_len:end_pos, :] = k_store" in source
         assert "return_shape = (batch_count, self.num_heads, max_end_pos, self.head_dim)" in source
         assert "updated_keys[local_idx, :, :end_pos, :].copy_(cached_key)" in source
@@ -275,11 +281,17 @@ class TestNumericalCorrectness:
         assert cache._seq_lens_host == [0, 0]
 
         out_k3, out_v3 = cache.update(0, key1, value1, batch_indices=[0, 1])
+        index_buffer_ptr = cache._batch_indices_device_buffer.data_ptr()
 
         torch.testing.assert_close(cache.seq_lens, torch.tensor([2, 2], dtype=torch.long))
         assert cache._seq_lens_host == [2, 2]
         torch.testing.assert_close(out_k3, key1)
         torch.testing.assert_close(out_v3, value1)
+        torch.testing.assert_close(cache._batch_indices_device_buffer[:2], torch.tensor([0, 1]))
+
+        cache.clear()
+        cache.update(0, key1, value1, batch_indices=[0, 1])
+        assert cache._batch_indices_device_buffer.data_ptr() == index_buffer_ptr
 
         cache.clear()
         single_key = key1[:1]
