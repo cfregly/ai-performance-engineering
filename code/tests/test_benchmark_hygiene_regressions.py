@@ -7887,10 +7887,21 @@ def test_continuous_batching_reuses_state_buffers() -> None:
     )[0]
 
     assert "self.state_buffers: List[torch.Tensor] = []" in source
+    assert "self.group_ranges: List[List[tuple[int, int]]] = []" in source
+    assert "self.group_active_masks: List[List[torch.Tensor]] = []" in source
     assert "self.state_buffers.append(torch.empty_like(samples))" in setup_section
+    assert "self.outputs = list(self.state_buffers)" in setup_section
     assert "state = samples.clone()" not in benchmark_section
     assert "state = self.state_buffers[idx]" in benchmark_section
     assert "state.copy_(samples)" in benchmark_section
+    assert "group_state = state[group_start:group_end]" in benchmark_section
+    assert "torch.where(" in benchmark_section
+    assert "out=group_state" in benchmark_section
+    assert "self.outputs = []" not in benchmark_section
+    assert "self.outputs.append(state)" not in benchmark_section
+    assert "state.index_select(0, group_idx)" not in benchmark_section
+    assert "group_lengths = lengths_tensor.index_select" not in benchmark_section
+    assert "state.index_copy_(0, group_idx, group_state)" not in benchmark_section
 
 
 def test_ch06_roofline_ilp_defers_verification_tensors_outside_hot_loop() -> None:
