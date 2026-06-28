@@ -137,6 +137,8 @@ class DynamicQuantizedKVCache:
             pin_memory=torch.device(device).type == "cuda",
         )
         self._seq_lens_host = [0] * max_batch_size
+        self._updated_key_buffer: Optional[torch.Tensor] = None
+        self._updated_value_buffer: Optional[torch.Tensor] = None
         
         print(f"KV Cache initialized:")
         print(f"  Dtype: {self.cache_dtype}")
@@ -235,21 +237,39 @@ class DynamicQuantizedKVCache:
                 cached_value = cached_value.to(torch.float32) * v_scale
             return cached_key, cached_value
         
-        updated_keys = []
-        updated_vals = []
-        
-        for local_idx, cache_idx_int in enumerate(batch_index_list):
-            current_len = self._seq_lens_host[cache_idx_int]
-            k_slice = key[local_idx]
-            v_slice = value[local_idx]
-            new_seq_len = k_slice.shape[1]
-            
+        new_seq_len = key.shape[2]
+        ranges: list[tuple[int, int, int]] = []
+        next_lengths = self._seq_lens_host.copy()
+        max_end_pos = 0
+        for cache_idx_int in batch_index_list:
+            current_len = next_lengths[cache_idx_int]
             end_pos = current_len + new_seq_len
             if end_pos > self.max_seq_len:
                 raise ValueError(
                     f"KV cache overflow: requested {end_pos}, "
                     f"max={self.max_seq_len}"
                 )
+            ranges.append((cache_idx_int, current_len, end_pos))
+            next_lengths[cache_idx_int] = end_pos
+            max_end_pos = max(max_end_pos, end_pos)
+
+        batch_count = len(batch_index_list)
+        return_dtype = torch.float32 if FP8_AVAILABLE else self.cache.dtype
+        return_shape = (batch_count, self.num_heads, max_end_pos, self.head_dim)
+        if (
+            self._updated_key_buffer is None
+            or self._updated_key_buffer.shape != return_shape
+            or self._updated_key_buffer.device != key.device
+            or self._updated_key_buffer.dtype != return_dtype
+        ):
+            self._updated_key_buffer = torch.empty(return_shape, device=key.device, dtype=return_dtype)
+            self._updated_value_buffer = torch.empty(return_shape, device=key.device, dtype=return_dtype)
+        updated_keys = self._updated_key_buffer
+        updated_vals = self._updated_value_buffer
+
+        for local_idx, (cache_idx_int, current_len, end_pos) in enumerate(ranges):
+            k_slice = key[local_idx]
+            v_slice = value[local_idx]
             
             if FP8_AVAILABLE and k_slice.dtype != FP8_E4M3:
                 k_scale = k_slice.abs().max()
@@ -276,10 +296,13 @@ class DynamicQuantizedKVCache:
                 cached_key = cached_key.to(torch.float32) * k_scale
                 cached_value = cached_value.to(torch.float32) * v_scale
             
-            updated_keys.append(cached_key.unsqueeze(0))
-            updated_vals.append(cached_value.unsqueeze(0))
+            updated_keys[local_idx, :, :end_pos, :].copy_(cached_key)
+            updated_vals[local_idx, :, :end_pos, :].copy_(cached_value)
+            if end_pos < max_end_pos:
+                updated_keys[local_idx, :, end_pos:max_end_pos, :].zero_()
+                updated_vals[local_idx, :, end_pos:max_end_pos, :].zero_()
         
-        return torch.cat(updated_keys, dim=0), torch.cat(updated_vals, dim=0)
+        return updated_keys, updated_vals
     
     def clear(self, batch_idx: Optional[int] = None):
         """Clear cache"""

@@ -219,6 +219,8 @@ class TestNumericalCorrectness:
         assert "if isinstance(batch_indices, int)" in source
         assert 'batch_indices.device.type == "cpu"' in source
         assert "self._batch_index_host = torch.empty(" in init_source
+        assert "self._updated_key_buffer: Optional[torch.Tensor] = None" in init_source
+        assert "self._updated_value_buffer: Optional[torch.Tensor] = None" in init_source
         assert 'pin_memory=torch.device(device).type == "cuda"' in init_source
         assert "batch_index_host = self._batch_index_host[:batch_count]" in source
         assert "batch_index_host.copy_(batch_indices)" in source
@@ -228,6 +230,10 @@ class TestNumericalCorrectness:
         assert "self.seq_lens[cache_idx_int].item()" not in source
         assert "batch_index_list = [int(idx) for idx in batch_indices.tolist()]" in source
         assert "self.cache[layer_idx, 0, batch_indices, :, current_len:end_pos, :] = k_store" in source
+        assert "return_shape = (batch_count, self.num_heads, max_end_pos, self.head_dim)" in source
+        assert "updated_keys[local_idx, :, :end_pos, :].copy_(cached_key)" in source
+        assert "updated_keys[local_idx, :, end_pos:max_end_pos, :].zero_()" in source
+        assert "torch.cat(updated_keys" not in source
 
         cache = blackwell.DynamicQuantizedKVCache(
             num_layers=1,
@@ -284,6 +290,59 @@ class TestNumericalCorrectness:
         assert cache._seq_lens_host == [2, 0]
         torch.testing.assert_close(out_k4, single_key)
         torch.testing.assert_close(out_v4, single_value)
+
+    def test_kv_cache_mixed_length_update_reuses_padded_return_buffers(self, monkeypatch):
+        """Mixed-length rows avoid per-row list/torch.cat fallback allocations."""
+        blackwell = pytest.importorskip("ch16.inference_optimizations_blackwell")
+        monkeypatch.setattr(blackwell, "FP8_AVAILABLE", False)
+
+        cache = blackwell.DynamicQuantizedKVCache(
+            num_layers=1,
+            max_batch_size=2,
+            max_seq_len=5,
+            num_heads=1,
+            head_dim=2,
+            device="cpu",
+            dtype=torch.float32,
+        )
+
+        key0 = torch.tensor([[[[1.0, 2.0], [3.0, 4.0]]]])
+        value0 = key0 + 10.0
+        cache.update(0, key0, value0, batch_indices=0)
+
+        key_next = torch.tensor([[[[5.0, 6.0]]], [[[7.0, 8.0]]]])
+        value_next = key_next + 20.0
+        out_k, out_v = cache.update(
+            0,
+            key_next,
+            value_next,
+            batch_indices=torch.tensor([0, 1], dtype=torch.long),
+        )
+        key_ptr = out_k.data_ptr()
+        value_ptr = out_v.data_ptr()
+
+        assert out_k.data_ptr() == cache._updated_key_buffer.data_ptr()
+        assert out_v.data_ptr() == cache._updated_value_buffer.data_ptr()
+        assert out_k.shape == (2, 1, 3, 2)
+        torch.testing.assert_close(out_k[0, :, :2, :], key0[0])
+        torch.testing.assert_close(out_v[0, :, :2, :], value0[0])
+        torch.testing.assert_close(out_k[0, :, 2:, :], key_next[:1, 0])
+        torch.testing.assert_close(out_v[0, :, 2:, :], value_next[:1, 0])
+        torch.testing.assert_close(out_k[1, :, :1, :], key_next[1])
+        torch.testing.assert_close(out_v[1, :, :1, :], value_next[1])
+        torch.testing.assert_close(out_k[1, :, 1:, :], torch.zeros_like(out_k[1, :, 1:, :]))
+        torch.testing.assert_close(out_v[1, :, 1:, :], torch.zeros_like(out_v[1, :, 1:, :]))
+
+        cache.clear()
+        cache.update(0, key0, value0, batch_indices=0)
+        out_k_again, out_v_again = cache.update(
+            0,
+            key_next,
+            value_next,
+            batch_indices=torch.tensor([0, 1], dtype=torch.long),
+        )
+        assert out_k_again.data_ptr() == key_ptr
+        assert out_v_again.data_ptr() == value_ptr
 
     def test_tensor_parallel_all_gather_uses_uninitialized_receive_buffers(self):
         blackwell = pytest.importorskip("ch16.inference_optimizations_blackwell")
