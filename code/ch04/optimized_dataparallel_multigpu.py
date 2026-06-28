@@ -47,6 +47,7 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
         self.targets: List[torch.Tensor] = []
         self.streams: List[torch.cuda.Stream] = []
         self._grad_staging: List[List[torch.Tensor]] = []
+        self._parameter_groups: list[tuple[nn.Parameter, ...]] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_state: Optional[dict] = None
         self._verify_input: Optional[torch.Tensor] = None
@@ -115,10 +116,14 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
             self.targets.append(cpu_target[start:end].to(device))
 
         master_device = next(self.models[0].parameters()).device
+        self._parameter_groups = [
+            tuple(param_group)
+            for param_group in zip(*(model.parameters() for model in self.models), strict=True)
+        ]
         self._grad_staging = [
             [
-                torch.empty_like(param, device=master_device)
-                for param in self.models[0].parameters()
+                torch.empty_like(param_group[0], device=master_device)
+                for param_group in self._parameter_groups
             ]
             for _ in self.models[1:]
         ]
@@ -153,7 +158,7 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
                     torch.cuda.current_stream(device_id).wait_stream(stream)
 
             # Reduce gradients onto GPU0 and update master parameters.
-            for param_idx, param_group in enumerate(zip(*(model.parameters() for model in self.models))):
+            for param_idx, param_group in enumerate(self._parameter_groups):
                 master_grad = param_group[0].grad
                 if master_grad is None:
                     continue
@@ -172,7 +177,7 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
                 opt.zero_grad(set_to_none=True)
 
             # Broadcast updated parameters from GPU0 to all replicas.
-            for param_group in zip(*(model.parameters() for model in self.models)):
+            for param_group in self._parameter_groups:
                 master_param = param_group[0].data
                 for replica_param in param_group[1:]:
                     replica_param.data.copy_(master_param, non_blocking=True)
@@ -218,6 +223,7 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
         self.targets = []
         self.streams = []
         self._grad_staging = []
+        self._parameter_groups = []
         self._verify_state = None
         self._verify_input = None
         self._verify_target = None

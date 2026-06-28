@@ -184,15 +184,23 @@ def test_ch04_optimized_dataparallel_reuses_gradient_staging_buffers() -> None:
     )[0]
 
     assert "self._grad_staging: List[List[torch.Tensor]] = []" in source
+    assert "self._parameter_groups: list[tuple[nn.Parameter, ...]] = []" in source
+    assert "self._parameter_groups = [" in setup_section
+    assert "zip(*(model.parameters() for model in self.models), strict=True)" in setup_section
     assert "self._grad_staging = [" in setup_section
-    assert "torch.empty_like(param, device=master_device)" in setup_section
+    assert "torch.empty_like(param_group[0], device=master_device)" in setup_section
+    assert "for param_group in self._parameter_groups" in setup_section
     assert "grad.to(master_device" not in benchmark_section
+    assert "zip(*(model.parameters() for model in self.models))" not in benchmark_section
+    assert "zip(*(model.parameters() for model in self.models), strict=True)" not in benchmark_section
     assert "staging.copy_(grad, non_blocking=True)" in benchmark_section
     assert "reduced.add_(staging)" in benchmark_section
     assert "outputs: List[torch.Tensor] = []" not in benchmark_section
     assert "outputs.append(" not in benchmark_section
     assert "first_output: Optional[torch.Tensor] = None" in benchmark_section
     assert "grads = [param.grad for param in param_group]" not in benchmark_section
+    assert "for param_idx, param_group in enumerate(self._parameter_groups):" in benchmark_section
+    assert "for param_group in self._parameter_groups:" in benchmark_section
     assert "master_grad = param_group[0].grad" in benchmark_section
 
 
