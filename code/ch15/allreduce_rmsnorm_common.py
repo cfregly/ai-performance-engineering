@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 
@@ -54,3 +53,22 @@ def vectorized_allreduce(shards: torch.Tensor) -> torch.Tensor:
 def fused_allreduce_rmsnorm(shards: torch.Tensor, eps: float) -> torch.Tensor:
     """All-reduce + RMSNorm fused in a single graph."""
     return rms_norm(vectorized_allreduce(shards), eps)
+
+
+def fused_allreduce_rmsnorm_out(
+    shards: torch.Tensor,
+    eps: float,
+    *,
+    reduced: torch.Tensor,
+    squares: torch.Tensor,
+    variance: torch.Tensor,
+    out: torch.Tensor,
+) -> torch.Tensor:
+    """All-reduce + RMSNorm using caller-owned buffers."""
+    torch.sum(shards, dim=0, out=reduced)
+    torch.mul(reduced, reduced, out=squares)
+    torch.mean(squares, dim=-1, keepdim=True, out=variance)
+    variance.add_(eps)
+    torch.rsqrt(variance, out=variance)
+    torch.mul(reduced, variance, out=out)
+    return out

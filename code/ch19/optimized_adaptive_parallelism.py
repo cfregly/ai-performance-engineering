@@ -11,7 +11,7 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, Workl
 from ch19.adaptive_parallelism_benchmark_common import (
     AdaptiveParallelismBenchmarkConfig,
     build_workload,
-    classify_vectorized,
+    classify_vectorized_out,
 )
 
 
@@ -21,6 +21,14 @@ class OptimizedAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self.cfg = cfg or AdaptiveParallelismBenchmarkConfig()
         self.workload: Optional[Dict[str, torch.Tensor]] = None
         self.output: Optional[torch.Tensor] = None
+        self._result_buffer: Optional[torch.Tensor] = None
+        self._steady_decode_mask: Optional[torch.Tensor] = None
+        self._data_mask: Optional[torch.Tensor] = None
+        self._long_prefill_mask: Optional[torch.Tensor] = None
+        self._heavy_context_mask: Optional[torch.Tensor] = None
+        self._pipeline_mask: Optional[torch.Tensor] = None
+        self._hybrid_mask: Optional[torch.Tensor] = None
+        self._doubled_decode_tokens: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.num_requests),
             tokens_per_iteration=float(self.cfg.num_requests),
@@ -32,11 +40,47 @@ class OptimizedAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.workload = build_workload(self.cfg, self.device)
+        self._result_buffer = torch.empty(
+            self.cfg.num_requests,
+            device=self.device,
+            dtype=torch.int64,
+        )
+        self._steady_decode_mask = torch.empty(
+            self.cfg.num_requests,
+            device=self.device,
+            dtype=torch.bool,
+        )
+        self._data_mask = torch.empty_like(self._steady_decode_mask)
+        self._long_prefill_mask = torch.empty_like(self._steady_decode_mask)
+        self._heavy_context_mask = torch.empty_like(self._steady_decode_mask)
+        self._pipeline_mask = torch.empty_like(self._steady_decode_mask)
+        self._hybrid_mask = torch.empty_like(self._steady_decode_mask)
+        self._doubled_decode_tokens = torch.empty_like(self.workload["decode_tokens"])
 
     def benchmark_fn(self) -> None:
-        if self.workload is None:
+        if (
+            self.workload is None
+            or self._result_buffer is None
+            or self._steady_decode_mask is None
+            or self._data_mask is None
+            or self._long_prefill_mask is None
+            or self._heavy_context_mask is None
+            or self._pipeline_mask is None
+            or self._hybrid_mask is None
+            or self._doubled_decode_tokens is None
+        ):
             raise RuntimeError("adaptive_parallelism workload not initialized")
-        self.output = classify_vectorized(self.workload)
+        self.output = classify_vectorized_out(
+            self.workload,
+            result=self._result_buffer,
+            steady_decode=self._steady_decode_mask,
+            data_mask=self._data_mask,
+            long_prefill=self._long_prefill_mask,
+            heavy_context=self._heavy_context_mask,
+            pipeline_mask=self._pipeline_mask,
+            hybrid_mask=self._hybrid_mask,
+            doubled_decode_tokens=self._doubled_decode_tokens,
+        )
 
     def capture_verification_payload(self) -> None:
         if self.workload is None or self.output is None:

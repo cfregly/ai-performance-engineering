@@ -2275,6 +2275,12 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
         "def quantize_kv_cache_on_memory_pressure",
         maxsplit=1,
     )[0]
+    decode_section = switching_source.split("def decode_with_dynamic_precision", maxsplit=1)[
+        1
+    ].split(
+        "class DynamicPrecisionModel",
+        maxsplit=1,
+    )[0]
     demo_entropy_section = switching_source.split("high_conf_logits[0, 42] = 10.0", maxsplit=1)[
         1
     ].split(
@@ -2292,6 +2298,13 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "compute_entropy(logits).mean()" not in decision_section
     assert "compute_entropy(logits).mean().item()" not in decision_section
     assert "probs.max(dim=-1).values.mean().item()" not in decision_section
+    assert "margin_values: Optional[torch.Tensor] = None" in decode_section
+    assert "margin_mean: Optional[torch.Tensor] = None" in decode_section
+    assert "torch.sub(top2_values[:, 0], top2_values[:, 1], out=margin_values)" in decode_section
+    assert "torch.mean(margin_values, out=margin_mean)" in decode_section
+    assert "ema_conf.mul_(1 - alpha).add_(margin_mean, alpha=alpha)" in decode_section
+    assert "margin = (top2_values[:, 0] - top2_values[:, 1]).mean()" not in decode_section
+    assert "ema_conf = (1 - alpha) *" not in decode_section
     assert "high_entropy, low_entropy = torch.stack(" in demo_entropy_section
     assert "compute_entropy(high_conf_logits).item()" not in demo_entropy_section
     assert "compute_entropy(low_conf_logits).item()" not in demo_entropy_section
@@ -4812,6 +4825,66 @@ def test_ch15_allreduce_rmsnorm_naive_accumulates_in_place_without_mutating_inpu
 
     torch.testing.assert_close(out, shards.sum(dim=0))
     torch.testing.assert_close(shards, before)
+
+
+def test_ch15_allreduce_rmsnorm_optimized_reuses_scratch_buffers() -> None:
+    common_source = (REPO_ROOT / "ch15" / "allreduce_rmsnorm_common.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_source = (REPO_ROOT / "ch15" / "optimized_allreduce_rmsnorm.py").read_text(
+        encoding="utf-8"
+    )
+    helper_section = common_source.split(
+        "def fused_allreduce_rmsnorm_out",
+        maxsplit=1,
+    )[1]
+    setup_section = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._reduced_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._squares_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._variance_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._reduced_buffer = torch.empty(" in setup_section
+    assert "self._squares_buffer = torch.empty_like(self._reduced_buffer)" in setup_section
+    assert "self._variance_buffer = torch.empty(" in setup_section
+    assert "self._output_buffer = torch.empty_like(self._reduced_buffer)" in setup_section
+    assert "torch.sum(shards, dim=0, out=reduced)" in helper_section
+    assert "torch.mul(reduced, reduced, out=squares)" in helper_section
+    assert "torch.mean(squares, dim=-1, keepdim=True, out=variance)" in helper_section
+    assert "torch.rsqrt(variance, out=variance)" in helper_section
+    assert "torch.mul(reduced, variance, out=out)" in helper_section
+    assert "self.output = fused_allreduce_rmsnorm_out(" in benchmark_section
+    assert "self.output = fused_allreduce_rmsnorm(" not in benchmark_section
+
+    from ch15.allreduce_rmsnorm_common import (
+        fused_allreduce_rmsnorm,
+        fused_allreduce_rmsnorm_out,
+    )
+
+    shards = torch.arange(24, dtype=torch.float32).reshape(3, 2, 4)
+    reduced = torch.empty(2, 4)
+    squares = torch.empty_like(reduced)
+    variance = torch.empty(2, 1)
+    out = torch.empty_like(reduced)
+
+    result = fused_allreduce_rmsnorm_out(
+        shards,
+        1e-5,
+        reduced=reduced,
+        squares=squares,
+        variance=variance,
+        out=out,
+    )
+
+    assert result is out
+    torch.testing.assert_close(result, fused_allreduce_rmsnorm(shards, 1e-5))
 
 
 def test_ch15_single_disaggregated_optimized_reuses_next_token_buffer() -> None:
