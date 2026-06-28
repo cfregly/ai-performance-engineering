@@ -117,6 +117,8 @@ class FlashSDPLabBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.batch),
             tokens_per_iteration=float(tokens),
         )
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
         self.register_workload_metadata(
             requests_per_iteration=float(self.batch),
             tokens_per_iteration=float(tokens),
@@ -140,19 +142,20 @@ class FlashSDPLabBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.model = SDPAAttentionModule(hidden_dim=self.hidden, num_heads=8, backend=self.backend).to(
             self.device, dtype=torch.float16
         )
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         # Use CPU randn + to(device) to avoid CUDA RNG graph issues
         self.inputs = torch.randn(self.batch, self.seq_len, self.hidden, dtype=torch.float16).to(self.device)
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.inputs is None:
             raise RuntimeError("Model/inputs not initialized")
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
         nvtx_label = f"sdp_{self.backend}_baseline"
-        with nvtx_range(nvtx_label, enable=enable_nvtx):
+        with nvtx_range(nvtx_label, enable=self._enable_nvtx):
             with torch.inference_mode():
                 self.output = self.model(self.inputs)
         if self.output is None:
@@ -163,7 +166,7 @@ class FlashSDPLabBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"input": self.inputs.detach()},
             output=self.output,
             batch_size=self.batch,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={"fp16": True, "bf16": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
             output_tolerance=(0.1, 1.0),
         )
@@ -223,4 +226,3 @@ def _parse_cli_backend(argv: Optional[list[str]] = None) -> Optional[str]:
     )
     args, _ = parser.parse_known_args(argv)
     return args.backend
-

@@ -265,6 +265,7 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.parameter_count: int = 0
         self._verification_payload = None
         self.output = None
+        self._enable_nvtx = False
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -281,6 +282,8 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         
         embed_dim = self.num_heads * self.head_dim
         self.attn = SlidingWindowCausalAttention(
@@ -307,9 +310,7 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         """Benchmark: FlexAttention sliding window forward pass."""
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("optimized_flex_attention_sparse", enable=enable_nvtx):
+        with nvtx_range("optimized_flex_attention_sparse", enable=self._enable_nvtx):
             with torch.inference_mode():
                 self.output = self.model(self.x)
         if self.output is None or self.x is None:

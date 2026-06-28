@@ -42,12 +42,17 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self._last_elapsed_ms: Optional[float] = None
         self._metrics_pending = False
         self._last_decoded_tokens: List[torch.Tensor] = []
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
     
     def setup(self) -> None:
         """Setup: initialize model and data."""
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.model = SimpleLLM(vocab_size=10000, hidden_dim=512, num_layers=8).to(self.device).to(torch.bfloat16).eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.prompt = (torch.arange(self.prefill_seq, device=self.device, dtype=torch.int64) % 10000).unsqueeze(0)
         self.kv_cache = None
         self.output = None
@@ -58,9 +63,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         if self.model is None or self.prompt is None:
             raise RuntimeError("Model or prompt not initialized")
 
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-
-        with nvtx_range("inference_monolithic", enable=enable_nvtx):
+        with nvtx_range("inference_monolithic", enable=self._enable_nvtx):
             with torch.inference_mode():
                 kv_cache = self.model.prefill(self.prompt)
                 decoded_tokens = self._last_decoded_tokens
@@ -117,7 +120,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
             inputs={"prompt": self.prompt},
             output=self.output.float(),
             batch_size=int(self.prompt.shape[0]),
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": True,

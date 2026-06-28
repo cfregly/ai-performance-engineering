@@ -1449,14 +1449,29 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     cudnn_sdpa_source = (
         REPO_ROOT / "labs" / "cudnn_sdpa_bench" / "baseline_flash_sdp.py"
     ).read_text(encoding="utf-8")
+    cudnn_sdpa_setup = cudnn_sdpa_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     cudnn_sdpa_benchmark = cudnn_sdpa_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    cudnn_sdpa_capture = cudnn_sdpa_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
         maxsplit=1,
     )[0]
     assert "with torch.inference_mode(), _sdpa_context(backend):" in cudnn_sdpa_source
     assert "with torch.inference_mode():" in cudnn_sdpa_benchmark
     assert "self.output = self.model(self.inputs)" in cudnn_sdpa_benchmark
     assert "out.detach()" not in cudnn_sdpa_benchmark
+    assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in cudnn_sdpa_setup
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in cudnn_sdpa_setup
+    assert "get_config()" not in cudnn_sdpa_benchmark
+    assert "get_nvtx_enabled(" not in cudnn_sdpa_benchmark
+    assert "enable=self._enable_nvtx" in cudnn_sdpa_benchmark
+    assert "parameter_count=self._payload_parameter_count" in cudnn_sdpa_capture
+    assert "sum(p.numel()" not in cudnn_sdpa_capture
 
     for relative_path in (
         "ch09/baseline_sdpa_attention.py",
@@ -4195,6 +4210,7 @@ def test_ch14_wrappers_cache_nvtx_enabled_outside_hot_loop() -> None:
         "optimized_cublas_vs_cutlass.py",
         "baseline_model_compile_reduced_precision.py",
         "optimized_model_compile_reduced_precision.py",
+        "optimized_flex_attention_sparse.py",
         "baseline_nccl_quantization.py",
         "optimized_nccl_quantization.py",
     ):
@@ -6505,6 +6521,23 @@ def test_ch16_and_lab_forward_benchmarks_use_inference_mode() -> None:
         )[0]
         assert "torch.inference_mode()" in benchmark_section
         assert "torch.no_grad()" not in benchmark_section
+        if path in (
+            "labs/moe_optimization_journey/baseline_moe_pad_quant.py",
+            "labs/moe_optimization_journey/optimized_moe_pad_quant.py",
+        ):
+            setup_section = source.split("def setup", maxsplit=1)[1].split(
+                "def benchmark_fn", maxsplit=1
+            )[0]
+            capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+                "def get_config", maxsplit=1
+            )[0]
+            assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+            assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
+            assert "get_config()" not in benchmark_section
+            assert "get_nvtx_enabled(" not in benchmark_section
+            assert "enable=self._enable_nvtx" in benchmark_section
+            assert "parameter_count=self._payload_parameter_count" in capture_section
+            assert "sum(p.numel()" not in capture_section
 
 
 def test_ch13_memory_profiling_pair_keeps_compute_dtype_fixed_and_direct_output_capture() -> None:
@@ -6927,6 +6960,9 @@ def test_decode_handoff_benchmarks_do_not_allocate_placeholder_outputs_in_hot_pa
 
 def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events() -> None:
     source = (REPO_ROOT / "ch15" / "baseline_inference_monolithic.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def finalize_iteration_metrics", maxsplit=1
     )[0]
@@ -6949,6 +6985,13 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "self._last_elapsed_ms" in source
     assert "finalize_iteration_metrics" in source
     assert "self.model.decode(decode_state, num_tokens=1)" in source
+    assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+    assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
+    assert "get_config()" not in benchmark_section
+    assert "get_nvtx_enabled(" not in benchmark_section
+    assert "enable=self._enable_nvtx" in benchmark_section
+    assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "sum(p.numel()" not in capture_section
 
 
 def test_ch17_monolithic_decode_fast_paths_single_token() -> None:

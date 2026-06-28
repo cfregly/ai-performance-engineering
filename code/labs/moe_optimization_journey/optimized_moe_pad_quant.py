@@ -156,6 +156,8 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.batch),
             tokens_per_iteration=float(tokens),
         )
+        self._enable_nvtx = False
+        self._payload_parameter_count = 0
 
     def _install_vectorized_router(self) -> None:
         """Bind the sync-free grouped dispatch onto this arm's own experts.
@@ -178,6 +180,8 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         model, _ = build_moe_pad_quant_model(
             hidden_size=self.hidden,
             intermediate_size=self.intermediate,
@@ -190,6 +194,7 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.model = model.to(self.device, dtype=torch.bfloat16)
         self.model.eval()
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.inputs = torch.randint(
             0, self.vocab_size, (self.batch, self.seq_len), device=self.device
         )
@@ -220,9 +225,7 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self.compiled is None or self.inputs is None:
             raise RuntimeError("Benchmark not initialized")
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-        with nvtx_range("moe_pad_quant_optimized", enable=enable_nvtx):
+        with nvtx_range("moe_pad_quant_optimized", enable=self._enable_nvtx):
             with torch.inference_mode():
                 self.output = self.compiled(self.inputs)
         if self.output is None:
@@ -235,7 +238,7 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"input_ids": self.inputs.detach()},
             output=self.output.detach().clone(),
             batch_size=self.batch,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": True,
