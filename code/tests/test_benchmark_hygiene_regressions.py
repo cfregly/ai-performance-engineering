@@ -6644,6 +6644,24 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "torch.cuda.Event(blocking=False)" in worker_section
     assert "ready = ready_events[group_idx]" in run_iteration_section
     assert "torch.cuda.Event(" not in run_iteration_section
+    assert "prefill_send_handles = [None] * len(group_slices)" in worker_section
+    assert "prefill_inflight_groups = [None] * len(group_slices)" in worker_section
+    assert "decode_recv_entries = [None] * (len(assigned_prefills) * len(group_slices))" in worker_section
+    assert "decode_outputs = [" in worker_section
+    assert "serial_kv_chunks = [torch.empty(0) for _ in range(len(decode_outputs))]" in worker_section
+    assert "serial_seed_chunks = [torch.empty(0) for _ in range(len(decode_outputs))]" in worker_section
+    assert "prefill_inflight_groups[group_idx] = (kv_group, seed_group)" in run_iteration_section
+    assert "prefill_send_handles[group_idx] = _batch_isend(" in run_iteration_section
+    assert "decode_recv_entries[entry_count] = (handles, kv_group, seed_group, group_len)" in run_iteration_section
+    assert "outputs[output_idx] = decoded_output" in run_iteration_section
+    assert "kv_chunks[chunk_idx] = kv_buf" in run_iteration_section
+    assert "seed_chunks[chunk_idx] = seed_buf" in run_iteration_section
+    assert "handles.extend(" not in run_iteration_section
+    assert "inflight.append(" not in run_iteration_section
+    assert "recv_entries.append(" not in run_iteration_section
+    assert "outputs.extend(" not in run_iteration_section
+    assert "kv_chunks.append(" not in run_iteration_section
+    assert "seed_chunks.append(" not in run_iteration_section
     assert "with torch.inference_mode():" in run_iteration_section
     assert "with torch.inference_mode():\n        for _ in range(max(warmup, 0)):" in worker_section
     assert "torch.no_grad()" not in worker_section

@@ -322,6 +322,12 @@ def _run_torchrun_worker(
     recv_kv_chunks: dict[int, List[torch.Tensor]] = {}
     recv_seed_chunks: dict[int, List[torch.Tensor]] = {}
     decode_batch_buffers: dict[int, List[Tuple[torch.Tensor, torch.Tensor, int]]] = {}
+    decode_outputs: List[torch.Tensor] = []
+    prefill_send_handles: List[Optional[List[dist.Work]]] = []
+    prefill_inflight_groups: List[Optional[Tuple[torch.Tensor, torch.Tensor]]] = []
+    decode_recv_entries: List[Optional[Tuple[List[dist.Work], torch.Tensor, torch.Tensor, int]]] = []
+    serial_kv_chunks: List[torch.Tensor] = []
+    serial_seed_chunks: List[torch.Tensor] = []
     group_size = max(1, min(cfg.transfer_group, cfg.requests_per_rank))
     group_slices = [
         (start, min(group_size, cfg.requests_per_rank - start))
@@ -335,7 +341,12 @@ def _run_torchrun_worker(
 
     if not is_prefill:
         assigned_prefills = _decode_assigned_prefills(rank, prefill_ranks, decode_ranks)
+        decode_outputs = [
+            torch.empty(0)
+            for _ in range(len(assigned_prefills) * cfg.requests_per_rank)
+        ]
         if use_overlap:
+            decode_recv_entries = [None] * (len(assigned_prefills) * len(group_slices))
             for src_rank in assigned_prefills:
                 decode_batch_buffers[src_rank] = []
                 for _, group_len in group_slices:
@@ -380,12 +391,15 @@ def _run_torchrun_worker(
                     )
                     for _ in range(cfg.requests_per_rank)
                 ]
+            serial_kv_chunks = [torch.empty(0) for _ in range(len(decode_outputs))]
+            serial_seed_chunks = [torch.empty(0) for _ in range(len(decode_outputs))]
+    elif use_overlap:
+        prefill_send_handles = [None] * len(group_slices)
+        prefill_inflight_groups = [None] * len(group_slices)
 
     def run_iteration() -> List[torch.Tensor]:
         if is_prefill:
             if use_overlap:
-                handles: List[dist.Work] = []
-                inflight: List[torch.Tensor] = []
                 with torch.inference_mode():
                     for group_idx, (start, group_len) in enumerate(group_slices):
                         group_prompts = prompts[start:start + group_len].reshape(
@@ -401,20 +415,23 @@ def _run_torchrun_worker(
                             cfg.hidden_size,
                         )
                         seed_group = seed.view(group_len, cfg.batch_size, cfg.hidden_size)
-                        inflight.append(kv_group)
-                        inflight.append(seed_group)
+                        prefill_inflight_groups[group_idx] = (kv_group, seed_group)
                         ready = ready_events[group_idx]
                         ready.record()
-                        handles.extend(
-                            _batch_isend(
-                                kv_group,
-                                seed_group,
-                                peer_rank,
-                                pair_groups[rank],
-                                ready_event=ready,
-                            )
+                        prefill_send_handles[group_idx] = _batch_isend(
+                            kv_group,
+                            seed_group,
+                            peer_rank,
+                            pair_groups[rank],
+                            ready_event=ready,
                         )
-                _wait_handles(handles)
+                for group_idx in range(len(group_slices)):
+                    handles = prefill_send_handles[group_idx]
+                    if handles is None:
+                        raise RuntimeError("Missing pending prefill send handles")
+                    _wait_handles(handles)
+                    prefill_send_handles[group_idx] = None
+                    prefill_inflight_groups[group_idx] = None
             elif use_batched:
                 with torch.inference_mode():
                     batch_prompts = prompts.reshape(
@@ -449,9 +466,9 @@ def _run_torchrun_worker(
                         _pair_barrier(pair_groups[rank])
             return []
 
-        outputs: List[torch.Tensor] = []
+        outputs = decode_outputs
         if use_overlap:
-            recv_entries: List[Tuple[List[dist.Work], torch.Tensor, torch.Tensor, int]] = []
+            entry_count = 0
             for src_rank in assigned_prefills:
                 for kv_group, seed_group, group_len in decode_batch_buffers[src_rank]:
                     handles = _batch_irecv(
@@ -460,16 +477,26 @@ def _run_torchrun_worker(
                         src_rank,
                         pair_groups[src_rank],
                     )
-                    recv_entries.append((handles, kv_group, seed_group, group_len))
-            for handles, kv_group, seed_group, group_len in recv_entries:
+                    decode_recv_entries[entry_count] = (handles, kv_group, seed_group, group_len)
+                    entry_count += 1
+            output_idx = 0
+            for entry_idx in range(entry_count):
+                entry = decode_recv_entries[entry_idx]
+                if entry is None:
+                    raise RuntimeError("Missing pending decode receive entry")
+                handles, kv_group, seed_group, group_len = entry
                 _wait_handles(handles)
                 flat_seed = seed_group.reshape(group_len * cfg.batch_size, cfg.hidden_size)
                 flat_kv = kv_group.reshape(group_len * cfg.batch_size, cfg.context_window, cfg.hidden_size)
                 decoded = model.decode(flat_seed, flat_kv, cfg.decode_tokens)
-                outputs.extend(decoded.view(group_len, cfg.batch_size, cfg.hidden_size).unbind(0))
+                for decoded_output in decoded.view(group_len, cfg.batch_size, cfg.hidden_size).unbind(0):
+                    outputs[output_idx] = decoded_output
+                    output_idx += 1
+                decode_recv_entries[entry_idx] = None
             return outputs
 
         if use_batched:
+            output_idx = 0
             for src_rank in assigned_prefills:
                 kv_batch = recv_kv_batches[src_rank]
                 seed_batch = recv_seed_batches[src_rank]
@@ -488,13 +515,18 @@ def _run_torchrun_worker(
                     cfg.hidden_size,
                 )
                 decoded = model.decode(flat_seed, flat_kv, cfg.decode_tokens)
-                outputs.extend(
-                    decoded.view(cfg.requests_per_rank, cfg.batch_size, cfg.hidden_size).unbind(0)
-                )
+                for decoded_output in decoded.view(
+                    cfg.requests_per_rank,
+                    cfg.batch_size,
+                    cfg.hidden_size,
+                ).unbind(0):
+                    outputs[output_idx] = decoded_output
+                    output_idx += 1
             return outputs
 
-        kv_chunks: List[torch.Tensor] = []
-        seed_chunks: List[torch.Tensor] = []
+        kv_chunks = serial_kv_chunks
+        seed_chunks = serial_seed_chunks
+        chunk_idx = 0
         for src_rank in assigned_prefills:
             for req_idx in range(cfg.requests_per_rank):
                 kv_buf = recv_kv_chunks[src_rank][req_idx]
@@ -509,8 +541,9 @@ def _run_torchrun_worker(
                     torch.cuda.synchronize(device)
                 if cfg.barrier_per_request:
                     _pair_barrier(pair_groups[src_rank])
-                kv_chunks.append(kv_buf)
-                seed_chunks.append(seed_buf)
+                kv_chunks[chunk_idx] = kv_buf
+                seed_chunks[chunk_idx] = seed_buf
+                chunk_idx += 1
         return _run_decode(cfg, model, kv_chunks, seed_chunks)
 
     _barrier()
