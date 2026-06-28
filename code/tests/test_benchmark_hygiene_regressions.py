@@ -2187,12 +2187,20 @@ def test_moe_cuda_naive_backend_skips_redundant_mask_any_sync() -> None:
         "def forward_vectorized",
         maxsplit=1,
     )[0]
+    vectorized_section = source.split("def forward_vectorized", maxsplit=1)[1].split(
+        "@torch.inference_mode()",
+        maxsplit=1,
+    )[0]
 
     assert "token_ids, slot_ids = (idx == expert).nonzero(as_tuple=True)" in naive_section
     assert "if token_ids.numel() == 0:" in naive_section
     assert "y.mul_(weights[token_ids, slot_ids].unsqueeze(-1))" in naive_section
     assert "out.index_add_(0, token_ids, y)" in naive_section
     assert "out[token_ids] += y * weights[token_ids, slot_ids].unsqueeze(-1)" not in naive_section
+    assert "def _weight_outputs_in_place_if_safe" in source
+    assert "weighted = _weight_outputs_in_place_if_safe(y, weights.unsqueeze(-1))" in vectorized_section
+    assert "return weighted.sum(dim=1)" in vectorized_section
+    assert "(y * weights.unsqueeze(-1)).sum(dim=1)" not in vectorized_section
     assert "torch.relu_(h)" in source
     assert "torch.relu(h)" not in source
     assert "torch.any(mask)" not in naive_section
