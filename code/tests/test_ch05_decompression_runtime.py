@@ -31,6 +31,9 @@ def _assert_decompression_clone_deferred(bench) -> None:
 
 def test_cpu_decompression_defers_full_output_clone_to_capture() -> None:
     source = (REPO_ROOT / "ch05" / "baseline_decompression.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -41,6 +44,9 @@ def test_cpu_decompression_defers_full_output_clone_to_capture() -> None:
     assert "get_nvtx_enabled(" not in benchmark_section
     assert "with nvtx_range(" not in benchmark_section
     assert "from core.profiling.nvtx_helper" not in source
+    assert "self._run_len = int(run_len)" in setup_section
+    assert "self.counts[0].item()" not in source
+    assert "run_length = self._run_len if run_count > 0 else 0" in source
 
     _assert_decompression_clone_deferred(CPUDecompressionBenchmark())
 

@@ -20,6 +20,7 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.counts: Optional[torch.Tensor] = None
         self.values: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._run_len: int = 0
         self._workload = WorkloadMetadata(bytes_per_iteration=float(1024 * 1024 * 4))
 
     def setup(self) -> None:
@@ -31,6 +32,7 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         num_runs = total_len // run_len
         self.counts = torch.full((num_runs,), run_len, dtype=torch.int32)
         self.values = torch.randn((num_runs,), dtype=torch.float32)
+        self._run_len = int(run_len)
         self.output = None
 
     def benchmark_fn(self) -> Optional[dict]:
@@ -81,7 +83,7 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.counts is None:
             return None
         run_count = int(self.counts.numel())
-        run_length = int(self.counts[0].item()) if run_count > 0 else 0
+        run_length = self._run_len if run_count > 0 else 0
         return compute_decompression_metrics(
             run_count=run_count,
             run_length=run_length,
