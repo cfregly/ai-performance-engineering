@@ -2895,6 +2895,8 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "tokens.unsqueeze(1).expand" not in base_forward_section
     assert "output = self._scatter_output_for(tokens)" in base_forward_section
     assert "output = torch.empty_like(tokens" not in base_forward_section
+    assert "expert_out.mul_(flat_probs)" in base_forward_section
+    assert "weighted = expert_out * flat_probs" not in base_forward_section
     assert "return self._flat_token_indices_for(batch, tokens.device)" in source
     assert "repeat_interleave(self.top_k)" not in source
     assert 'token_indices.div_(top_k, rounding_mode="floor")' in source
@@ -2903,8 +2905,12 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "flat_tokens = tokens.index_select(0, token_indices)" in forward_section
     assert "expert_range = self._expert_range_for(tokens)" in forward_section
     assert "self._overflow_slots_for(slots, num_slots)" in forward_section
+    assert "flat_weights.masked_fill_(~valid.unsqueeze(1), 0)" in forward_section
+    assert "flat_probs * valid.unsqueeze(1).to(tokens.dtype)" not in forward_section
     assert "self._dense_input_for(flat_tokens, num_slots)" in forward_section
     assert "self._output_buffer_for(tokens, batch)" in forward_section
+    assert "gathered.mul_(flat_weights)" in forward_section
+    assert "weighted = gathered * flat_weights" not in forward_section
     assert "@torch.no_grad()\n    def configure_static_dispatch_buffers" in source
     assert "@torch.inference_mode()\n    def configure_static_dispatch_buffers" not in source
     assert "with torch.inference_mode():" in setup_section
@@ -2913,7 +2919,15 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "torch.zeros_like(tokens" not in source
     assert "output.zero_()" not in forward_section
     assert "output.index_add_(0, token_indices, weighted)" not in source
-    assert 'output.scatter_reduce_(0, combine_index, weighted, reduce="sum", include_self=False)' in source
+    assert (
+        'output.scatter_reduce_(0, combine_index, expert_out, reduce="sum", include_self=False)'
+        in base_forward_section
+    )
+    assert (
+        'output.scatter_reduce_(0, combine_index, gathered, reduce="sum", include_self=False)'
+        in forward_section
+    )
+    assert 'output.scatter_reduce_(0, combine_index, weighted, reduce="sum", include_self=False)' not in source
     assert "model.assume_static_no_overflow = True" in setup_section
     assert ".item()) == num_slots" not in source
 

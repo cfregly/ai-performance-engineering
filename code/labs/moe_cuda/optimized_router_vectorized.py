@@ -177,7 +177,7 @@ class VectorizedTopKMoE(nn.Module):
         token_indices = self._flat_token_indices_for(tokens.shape[0], tokens.device)
         flat_tokens = tokens.index_select(0, token_indices)
         flat_expert_ids = expert_ids.reshape(-1)
-        flat_probs = probs.reshape(-1, 1).to(tokens.dtype)
+        flat_probs = probs.reshape(-1, 1)
 
         w1 = self.w1[flat_expert_ids]
         b1 = self.b1[flat_expert_ids]
@@ -188,11 +188,11 @@ class VectorizedTopKMoE(nn.Module):
         w2 = self.w2[flat_expert_ids]
         b2 = self.b2[flat_expert_ids]
         expert_out = torch.bmm(hidden.unsqueeze(1), w2).squeeze(1) + b2
-        weighted = expert_out * flat_probs
+        expert_out.mul_(flat_probs)
 
         output = self._scatter_output_for(tokens)
-        combine_index = token_indices.unsqueeze(-1).expand_as(weighted)
-        output.scatter_reduce_(0, combine_index, weighted, reduce="sum", include_self=False)
+        combine_index = token_indices.unsqueeze(-1).expand_as(expert_out)
+        output.scatter_reduce_(0, combine_index, expert_out, reduce="sum", include_self=False)
         return output
 
 
@@ -354,7 +354,7 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         token_indices = self._token_indices_for(tokens, batch)
         flat_tokens = tokens.index_select(0, token_indices)
         flat_expert_ids = expert_ids.reshape(-1)
-        flat_probs = probs.reshape(-1, 1).to(tokens.dtype)
+        flat_probs = probs.reshape(-1, 1)
 
         # Rank of each assignment within its expert: one-hot cumsum (sortless,
         # static shapes, no nonzero). Layout is [E, N] so the scan runs along
@@ -384,7 +384,8 @@ class GroupedTopKMoE(VectorizedTopKMoE):
                 # checked host-side in setup() and again after the timed reps —
                 # any assignment routed beyond capacity fails the run.
                 self.overflow_total.add_((~valid).sum())
-            flat_weights = flat_probs * valid.unsqueeze(1).to(tokens.dtype)
+            flat_weights = flat_probs
+            flat_weights.masked_fill_(~valid.unsqueeze(1), 0)
 
         x_dense = self._dense_input_for(flat_tokens, num_slots)
         x_dense.zero_()
@@ -418,11 +419,11 @@ class GroupedTopKMoE(VectorizedTopKMoE):
             gathered = out_flat[slots]
         else:
             gathered = out_flat[slots.clamp_max(num_slots - 1)]
-        weighted = gathered * flat_weights
+        gathered.mul_(flat_weights)
 
         output = self._output_buffer_for(tokens, batch)
-        combine_index = token_indices.unsqueeze(-1).expand_as(weighted)
-        output.scatter_reduce_(0, combine_index, weighted, reduce="sum", include_self=False)
+        combine_index = token_indices.unsqueeze(-1).expand_as(gathered)
+        output.scatter_reduce_(0, combine_index, gathered, reduce="sum", include_self=False)
         return output
 
 
