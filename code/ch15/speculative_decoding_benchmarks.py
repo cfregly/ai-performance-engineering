@@ -58,6 +58,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._target_token_column_views: list[torch.Tensor] = []
         self._match_views: list[torch.Tensor] = []
         self._draft_id_views: list[torch.Tensor] = []
+        self._draft_id_column_views: list[torch.Tensor] = []
         self._accept_prefix_views: list[torch.Tensor] = []
         self.output: Optional[torch.Tensor] = None
         self._metrics: Dict[str, float] = {}
@@ -129,6 +130,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._target_token_column_views = []
             self._match_views = []
             self._draft_id_views = []
+            self._draft_id_column_views = []
             self._accept_prefix_views = []
             return
 
@@ -160,6 +162,9 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._match_views = [self._matches[:, :k] for k in range(1, wl.speculative_k + 1)]
         self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._draft_id_column_views = [
+            self._draft_ids[:, token_idx] for token_idx in range(wl.speculative_k)
+        ]
         self._accept_prefix_views = [self._accept_prefix[:k] for k in range(1, wl.speculative_k + 1)]
         if self.target_model is None:
             raise RuntimeError("Target model not initialized")
@@ -240,6 +245,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or len(self._target_token_column_views) != self.workload.speculative_k
             or len(self._match_views) != self.workload.speculative_k
             or len(self._draft_id_views) != self.workload.speculative_k
+            or len(self._draft_id_column_views) != self.workload.speculative_k
             or len(self._accept_prefix_views) != self.workload.speculative_k
         ):
             raise RuntimeError("Benchmark not initialized")
@@ -264,7 +270,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     for j in range(k):
                         logits_d = self.draft_model(self._draft_input)
                         torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))
-                        self._draft_ids[:, j].copy_(self._draft_next_tokens)
+                        self._draft_id_column_views[j].copy_(self._draft_next_tokens)
                         self._draft_input_token.copy_(self._draft_next_tokens)
 
                     draft_tokens += int(k)
@@ -348,6 +354,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._target_token_column_views = []
         self._match_views = []
         self._draft_id_views = []
+        self._draft_id_column_views = []
         self._accept_prefix_views = []
         self.output = None
         if torch.cuda.is_available():

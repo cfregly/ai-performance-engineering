@@ -8596,6 +8596,7 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._target_token_column_views = [" in setup_section
     assert "self._match_views = [self._matches[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._draft_id_column_views = [" in setup_section
     assert "self._accept_prefix_views = [self._accept_prefix[:k] for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "import torch._dynamo as _dynamo" in setup_section
     assert "_dynamo.reset()" in setup_section
@@ -8608,6 +8609,7 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
     assert "torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))" in benchmark_section
+    assert "self._draft_id_column_views[j].copy_(self._draft_next_tokens)" in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
     assert "self._draft_input_token.copy_(self._output_token_views[pos])" in benchmark_section
     assert "logits_d = self.draft_model(self._draft_input)" in benchmark_section
@@ -8630,6 +8632,7 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._output_write_views[accept_k - 1][pos].copy_(self._draft_id_views[accept_k - 1])" in benchmark_section
     assert "self._output_token_views[pos + accept_k + 1].copy_(" in benchmark_section
     assert "out[:, pos" not in benchmark_section
+    assert "self._draft_ids[:, j]" not in benchmark_section
     assert "self._draft_ids[:, :k]" not in benchmark_section
     assert "self._draft_ids[:, : k - 1]" not in benchmark_section
     assert "self._verify_prev[:, :k]" not in benchmark_section
@@ -8678,6 +8681,7 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._target_token_column_views = [" in setup_section
     assert "self._match_views = [self._matches[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._draft_id_column_views = [" in setup_section
     assert "self._accept_prefix_views = [self._accept_prefix[:k] for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._output_step_views = [" in setup_section
     assert "self._output_token_views = [" in setup_section
@@ -8700,6 +8704,7 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "target_next = self._target_token_views[view_idx]" in benchmark_section
     assert "matches = self._match_views[view_idx]" in benchmark_section
     assert "torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))" in benchmark_section
+    assert "self._draft_id_column_views[j].copy_(self._draft_next_tokens)" in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
     assert "torch.eq(target_next, draft_window, out=matches)" in benchmark_section
     assert ".argmax(" not in benchmark_section
@@ -8711,6 +8716,7 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._output_write_views[accept_k - 1][pos].copy_(self._draft_id_views[accept_k - 1])" in benchmark_section
     assert "self._output_token_views[pos + accept_k + 1].copy_(" in benchmark_section
     assert "self.target_model.forward_into(self._verify_prev[:, :k], self._target_logits[:, :k])" not in benchmark_section
+    assert "self._draft_ids[:, j]" not in benchmark_section
     assert "self._draft_ids[:, : k - 1]" not in benchmark_section
     assert "self._draft_ids[:, :k]" not in benchmark_section
     assert "out[:, pos" not in benchmark_section

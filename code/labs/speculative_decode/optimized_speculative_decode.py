@@ -66,6 +66,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._target_token_column_views: list[torch.Tensor] = []
         self._match_views: list[torch.Tensor] = []
         self._draft_id_views: list[torch.Tensor] = []
+        self._draft_id_column_views: list[torch.Tensor] = []
         self._accept_prefix_views: list[torch.Tensor] = []
         self.output: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
@@ -135,6 +136,9 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         ]
         self._match_views = [self._matches[:, :k] for k in range(1, wl.speculative_k + 1)]
         self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]
+        self._draft_id_column_views = [
+            self._draft_ids[:, token_idx] for token_idx in range(wl.speculative_k)
+        ]
         self._accept_prefix_views = [self._accept_prefix[:k] for k in range(1, wl.speculative_k + 1)]
 
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
@@ -172,6 +176,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             or len(self._target_token_column_views) != self.workload.speculative_k
             or len(self._match_views) != self.workload.speculative_k
             or len(self._draft_id_views) != self.workload.speculative_k
+            or len(self._draft_id_column_views) != self.workload.speculative_k
             or len(self._accept_prefix_views) != self.workload.speculative_k
         ):
             raise RuntimeError("Benchmark not initialized")
@@ -196,7 +201,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 for j in range(k):
                     logits_d = self.draft_model.forward_into(prev, self._draft_logits)
                     torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))
-                    self._draft_ids[:, j].copy_(self._draft_next_tokens)
+                    self._draft_id_column_views[j].copy_(self._draft_next_tokens)
                     prev = self._draft_next_token_view
 
                 draft_tokens += int(k)
@@ -285,6 +290,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._target_token_column_views = []
         self._match_views = []
         self._draft_id_views = []
+        self._draft_id_column_views = []
         self._accept_prefix_views = []
         self.output = None
         torch.cuda.empty_cache()
