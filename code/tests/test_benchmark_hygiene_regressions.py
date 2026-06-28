@@ -3167,10 +3167,23 @@ def test_ch18_tiny_gemm_fused_accumulates_split_views_in_place() -> None:
     )[0]
 
     assert "self._proj_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._q_view: Optional[torch.Tensor] = None" in source
+    assert "self._k_view: Optional[torch.Tensor] = None" in source
+    assert "self._v_view: Optional[torch.Tensor] = None" in source
+    assert "self._router_view: Optional[torch.Tensor] = None" in source
     assert "self._proj_buffer = torch.empty(" in setup_section
-    assert "proj = torch.mm(self.x, self.w_fused, out=self._proj_buffer)" in benchmark_section
+    assert "self._q_view = self._proj_buffer.narrow(1, 0, hidden)" in setup_section
+    assert "self._k_view = self._proj_buffer.narrow(1, hidden, hidden)" in setup_section
+    assert "self._v_view = self._proj_buffer.narrow(1, hidden * 2, hidden)" in setup_section
+    assert "self._router_view = self._proj_buffer.narrow(1, hidden * 3, hidden)" in setup_section
+    assert "torch.mm(self.x, self.w_fused, out=self._proj_buffer)" in benchmark_section
     assert "proj = self.x @ self.w_fused" not in benchmark_section
-    assert "q, k, v, router = proj.split(hidden, dim=1)" in benchmark_section
+    assert ".split(" not in benchmark_section
+    assert ".narrow(" not in benchmark_section
+    assert "q = self._q_view" in benchmark_section
+    assert "k = self._k_view" in benchmark_section
+    assert "v = self._v_view" in benchmark_section
+    assert "router = self._router_view" in benchmark_section
     assert "q.add_(k)" in benchmark_section
     assert "q.add_(v)" in benchmark_section
     assert "q.add_(router)" in benchmark_section

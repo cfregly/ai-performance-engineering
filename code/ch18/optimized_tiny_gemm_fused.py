@@ -24,6 +24,10 @@ class OptimizedTinyGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.w_router: Optional[torch.Tensor] = None
         self.w_fused: Optional[torch.Tensor] = None
         self._proj_buffer: Optional[torch.Tensor] = None
+        self._q_view: Optional[torch.Tensor] = None
+        self._k_view: Optional[torch.Tensor] = None
+        self._v_view: Optional[torch.Tensor] = None
+        self._router_view: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.batch_size),
@@ -53,15 +57,30 @@ class OptimizedTinyGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
+        hidden = self.cfg.hidden_size
+        self._q_view = self._proj_buffer.narrow(1, 0, hidden)
+        self._k_view = self._proj_buffer.narrow(1, hidden, hidden)
+        self._v_view = self._proj_buffer.narrow(1, hidden * 2, hidden)
+        self._router_view = self._proj_buffer.narrow(1, hidden * 3, hidden)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        if self.x is None or self.w_fused is None or self._proj_buffer is None:
+        if (
+            self.x is None
+            or self.w_fused is None
+            or self._proj_buffer is None
+            or self._q_view is None
+            or self._k_view is None
+            or self._v_view is None
+            or self._router_view is None
+        ):
             raise RuntimeError("Benchmark not initialized")
         with torch.inference_mode():
-            proj = torch.mm(self.x, self.w_fused, out=self._proj_buffer)
-            hidden = self.cfg.hidden_size
-            q, k, v, router = proj.split(hidden, dim=1)
+            torch.mm(self.x, self.w_fused, out=self._proj_buffer)
+            q = self._q_view
+            k = self._k_view
+            v = self._v_view
+            router = self._router_view
             q.add_(k)
             q.add_(v)
             q.add_(router)
