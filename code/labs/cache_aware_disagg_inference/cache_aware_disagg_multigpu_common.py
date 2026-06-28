@@ -426,14 +426,20 @@ def _run_torchrun_worker(
             assert prompts is not None
             prompt = prompts[plan.local_request_idx]
             chunks = _split_prompt(prompt, cfg.chunk_size)
-            prefix_parts: List[torch.Tensor] = []
+            prefix_cache = torch.empty(
+                (cfg.batch_size, _prefix_length(cfg, plan.warm_chunks), cfg.hidden_size),
+                device=device,
+                dtype=cfg.dtype,
+            )
             seed: Optional[torch.Tensor] = None
+            offset = 0
             for chunk in chunks[: plan.warm_chunks]:
                 chunk_kv, seed = model.prefill(chunk)
-                prefix_parts.append(chunk_kv)
+                next_offset = offset + int(chunk_kv.size(1))
+                prefix_cache[:, offset:next_offset].copy_(chunk_kv)
+                offset = next_offset
             if seed is None:
                 raise RuntimeError(f"Warm request {plan.global_request_idx} did not produce a seed")
-            prefix_cache = torch.cat(prefix_parts, dim=1).contiguous()
             prefill_seed_store[plan.global_request_idx] = seed
             dist.send(prefix_cache, dst=home_rank)
         elif rank == home_rank:

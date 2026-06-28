@@ -3956,6 +3956,13 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     helper_section = source.split("def _extend_cache_buffer", maxsplit=1)[1].split(
         "def _world_size_hint", maxsplit=1
     )[0]
+    worker_setup_section = source.split(
+        "warm_cache_store: Dict[int, torch.Tensor] = {}",
+        maxsplit=1,
+    )[1].split(
+        "def run_iteration",
+        maxsplit=1,
+    )[0]
     run_iteration_section = source.split("def run_iteration", maxsplit=1)[1].split(
         "reduced = torch.tensor", maxsplit=1
     )[0]
@@ -3980,6 +3987,10 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "prefix_buffer = torch.empty(" in setup_section
     assert "prefix_buffer[:, offset:next_offset].copy_(chunk_kv)" in setup_section
     assert "torch.cat(\n                    prefix_parts," not in setup_section
+    assert "prefix_parts" not in worker_setup_section
+    assert "prefix_cache = torch.empty(" in worker_setup_section
+    assert "prefix_cache[:, offset:next_offset].copy_(chunk_kv)" in worker_setup_section
+    assert "torch.cat(prefix_parts" not in worker_setup_section
     assert "torch.cat((base, recv_chunk), dim=1)" not in run_iteration_section
     assert "torch.cat((cache, chunk_kv), dim=1)" not in benchmark_section
     assert "chunk_kv = chunk_kv.to(" not in benchmark_section
