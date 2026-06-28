@@ -76,10 +76,13 @@ class RankingWorkspace:
     sequence_accum: torch.Tensor
     context_accum: torch.Tensor
     score_output: torch.Tensor
+    sequence_embedding_flat: torch.Tensor
+    context_embedding_flat: torch.Tensor
     candidate_embedding_flat: torch.Tensor
     sequence_mask_float: torch.Tensor
     sequence_length_recip: torch.Tensor
     context_table_index: torch.Tensor
+    context_flat_ids: torch.Tensor
     sequence_metadata_key: tuple[int, int] | None = None
 
 
@@ -331,6 +334,18 @@ def build_workspace(workload: SequenceRankingWorkload, device: torch.device) -> 
             device=device,
             dtype=torch.float32,
         ),
+        sequence_embedding_flat=torch.empty(
+            workload.batch_size * workload.seq_len,
+            workload.embedding_dim,
+            device=device,
+            dtype=workload.dtype,
+        ),
+        context_embedding_flat=torch.empty(
+            workload.batch_size * workload.num_tables,
+            workload.embedding_dim,
+            device=device,
+            dtype=workload.dtype,
+        ),
         candidate_embedding_flat=torch.empty(
             workload.batch_size * workload.num_candidates,
             workload.embedding_dim,
@@ -351,6 +366,12 @@ def build_workspace(workload: SequenceRankingWorkload, device: torch.device) -> 
             dtype=workload.dtype,
         ),
         context_table_index=context_table_index,
+        context_flat_ids=torch.empty(
+            workload.batch_size,
+            workload.num_tables,
+            device=device,
+            dtype=torch.int64,
+        ),
     )
 
 
@@ -427,16 +448,33 @@ def sequence_mean_vectorized(
     state: RankingModelState,
     workspace: RankingWorkspace | None = None,
 ) -> torch.Tensor:
-    seq_emb = F.embedding(inputs.sequence_ids, state.item_embeddings)
     if workspace is None:
+        seq_emb = F.embedding(inputs.sequence_ids, state.item_embeddings)
         mask = inputs.sequence_mask.to(dtype=seq_emb.dtype).unsqueeze(-1)
         lengths = inputs.sequence_lengths.to(dtype=seq_emb.dtype).clamp_min_(1).unsqueeze(1)
         return (seq_emb * mask).sum(dim=1) / lengths
 
     if workspace.sequence_metadata_key != _sequence_metadata_key(inputs):
         prepare_workspace_for_inputs(inputs, workspace)
-    if torch.is_grad_enabled() and seq_emb.requires_grad:
+    if torch.is_grad_enabled() and state.item_embeddings.requires_grad:
+        seq_emb = F.embedding(inputs.sequence_ids, state.item_embeddings)
         return (seq_emb * workspace.sequence_mask_float).sum(dim=1) * workspace.sequence_length_recip
+
+    flat_sequence_ids = inputs.sequence_ids.reshape(-1)
+    sequence_rows = int(flat_sequence_ids.numel())
+    embedding_dim = int(state.item_embeddings.shape[1])
+    sequence_embedding_flat = workspace.sequence_embedding_flat[:sequence_rows]
+    torch.index_select(
+        state.item_embeddings,
+        0,
+        flat_sequence_ids,
+        out=sequence_embedding_flat,
+    )
+    seq_emb = sequence_embedding_flat.view(
+        inputs.sequence_ids.shape[0],
+        inputs.sequence_ids.shape[1],
+        embedding_dim,
+    )
     seq_emb.mul_(workspace.sequence_mask_float)
     torch.sum(seq_emb, dim=1, out=workspace.sequence_accum)
     workspace.sequence_accum.mul_(workspace.sequence_length_recip)
@@ -452,11 +490,28 @@ def context_sum_vectorized(
     if workspace is None:
         table_index = torch.arange(num_tables, device=inputs.context_ids.device, dtype=torch.int64)
         table_index = table_index.view(1, num_tables).expand(batch_size, -1)
-    else:
-        table_index = workspace.context_table_index
-    context_vecs = state.context_embeddings[table_index, inputs.context_ids]
-    if workspace is None or (torch.is_grad_enabled() and context_vecs.requires_grad):
+        context_vecs = state.context_embeddings[table_index, inputs.context_ids]
         return context_vecs.sum(dim=1)
+
+    if torch.is_grad_enabled() and state.context_embeddings.requires_grad:
+        context_vecs = state.context_embeddings[workspace.context_table_index, inputs.context_ids]
+        return context_vecs.sum(dim=1)
+
+    context_vocab_size = int(state.context_embeddings.shape[1])
+    embedding_dim = int(state.context_embeddings.shape[2])
+    context_rows = int(inputs.context_ids.numel())
+    workspace.context_flat_ids.copy_(workspace.context_table_index)
+    workspace.context_flat_ids.mul_(context_vocab_size)
+    workspace.context_flat_ids.add_(inputs.context_ids)
+    flat_context_embeddings = state.context_embeddings.view(-1, embedding_dim)
+    context_embedding_flat = workspace.context_embedding_flat[:context_rows]
+    torch.index_select(
+        flat_context_embeddings,
+        0,
+        workspace.context_flat_ids.reshape(-1),
+        out=context_embedding_flat,
+    )
+    context_vecs = context_embedding_flat.view(batch_size, num_tables, embedding_dim)
     torch.sum(context_vecs, dim=1, out=workspace.context_accum)
     return workspace.context_accum
 

@@ -160,6 +160,8 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     state = build_model_state(workload, torch.device("cpu"))
     workspace = build_workspace(workload, torch.device("cpu"))
     build_workspace_source = inspect.getsource(build_workspace)
+    sequence_source = inspect.getsource(sequence_mean_vectorized)
+    context_source = inspect.getsource(context_sum_vectorized)
 
     fallback_sequence = sequence_mean_vectorized(inputs, state)
     workspace_sequence = sequence_mean_vectorized(inputs, state, workspace)
@@ -168,11 +170,23 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
 
     assert workspace.sequence_metadata_key is not None
     assert workspace.context_table_index.shape == (1, workload.num_tables)
+    assert workspace.sequence_embedding_flat.shape == (
+        workload.batch_size * workload.seq_len,
+        workload.embedding_dim,
+    )
+    assert workspace.context_embedding_flat.shape == (
+        workload.batch_size * workload.num_tables,
+        workload.embedding_dim,
+    )
+    assert workspace.context_flat_ids.shape == (workload.batch_size, workload.num_tables)
     assert workspace.candidate_embedding_flat.shape == (
         workload.batch_size * workload.num_candidates,
         workload.embedding_dim,
     )
     assert ".expand(workload.batch_size, -1).clone()" not in build_workspace_source
+    assert "out=sequence_embedding_flat" in sequence_source
+    assert "out=context_embedding_flat" in context_source
+    assert "state.context_embeddings[workspace.context_table_index, inputs.context_ids]" in context_source
     assert workspace_sequence.data_ptr() == workspace.sequence_accum.data_ptr()
     assert workspace_context.data_ptr() == workspace.context_accum.data_ptr()
     torch.testing.assert_close(workspace_sequence, fallback_sequence, rtol=1e-6, atol=1e-6)
