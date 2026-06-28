@@ -51,6 +51,14 @@ def _weight_routes_in_place_if_safe(out: torch.Tensor, weights: torch.Tensor) ->
     return out
 
 
+def _silu_mul_in_place_if_safe(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
+    if torch.is_grad_enabled() and gate.requires_grad:
+        return F.silu(gate) * up
+    F.silu(gate, inplace=True)
+    gate.mul_(up)
+    return gate
+
+
 @dataclass
 class MoEOptimizations:
     """Optimization flags for MoE model."""
@@ -261,9 +269,10 @@ class MoEExperts(nn.Module):
                     continue
                 expert_input = x[token_ids]
                 expert = self.experts[expert_idx]
-                gate = F.silu(expert['w1'](expert_input))
+                gate = expert['w1'](expert_input)
                 up = expert['w3'](expert_input)
-                expert_output = expert['w2'](gate * up)
+                hidden = _silu_mul_in_place_if_safe(gate, up)
+                expert_output = expert['w2'](hidden)
                 weights = expert_weights[token_ids, k].unsqueeze(-1)
                 weighted_output = _weight_routes_in_place_if_safe(expert_output, weights)
                 if k == 0:
@@ -301,9 +310,8 @@ class MoEExperts(nn.Module):
         w2_flat = w2_sel.reshape(total_tokens, self.intermediate_size, self.hidden_size)
 
         gate = torch.bmm(x_flat.unsqueeze(1), w1_flat).squeeze(1)
-        gate = F.silu(gate)
         up = torch.bmm(x_flat.unsqueeze(1), w3_flat).squeeze(1)
-        hidden = gate * up
+        hidden = _silu_mul_in_place_if_safe(gate, up)
         out = torch.bmm(hidden.unsqueeze(1), w2_flat).squeeze(1)
         out = out.view(batch_seq, top_k, self.hidden_size)
 
@@ -436,9 +444,10 @@ class MoEExperts(nn.Module):
             weights_e = sorted_weights[offset:offset+count].unsqueeze(-1)
             
             # Contiguous GEMM for this expert
-            gate = F.silu(tokens_e @ self.w1_stacked[expert_id])
+            gate = tokens_e @ self.w1_stacked[expert_id]
             up = tokens_e @ self.w3_stacked[expert_id]
-            expert_out = (gate * up) @ self.w2_stacked[expert_id]
+            hidden = _silu_mul_in_place_if_safe(gate, up)
+            expert_out = hidden @ self.w2_stacked[expert_id]
             
             weighted_out = _weight_routes_in_place_if_safe(expert_out, weights_e)
             output[offset:offset+count] = weighted_out
@@ -563,9 +572,8 @@ class MoEExperts(nn.Module):
         
         # SINGLE BMM for all experts!
         gate = torch.bmm(padded_tokens, self.w1_stacked)   # [E, max_count, I]
-        gate = F.silu(gate)
         up = torch.bmm(padded_tokens, self.w3_stacked)     # [E, max_count, I]
-        hidden = gate * up
+        hidden = _silu_mul_in_place_if_safe(gate, up)
         out = torch.bmm(hidden, self.w2_stacked)           # [E, max_count, H]
         
         # Scatter weights and apply
@@ -639,9 +647,8 @@ class MoEExperts(nn.Module):
         padded_tokens = expert_mask.unsqueeze(-1) * expanded_x.unsqueeze(0)
 
         gate = torch.bmm(padded_tokens, self.w1_stacked)
-        gate = F.silu(gate)
         up = torch.bmm(padded_tokens, self.w3_stacked)
-        hidden = gate * up
+        hidden = _silu_mul_in_place_if_safe(gate, up)
         out = torch.bmm(hidden, self.w2_stacked)
         out = _weight_routes_in_place_if_safe(out, expert_mask.unsqueeze(-1))
         out = _weight_routes_in_place_if_safe(out, flat_weights)

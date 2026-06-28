@@ -248,6 +248,48 @@ def test_moe_expert_paths_weight_outputs_in_place_when_grad_disabled() -> None:
     assert "out = out * expert_mask.unsqueeze(-1) * flat_weights" not in graphable_section
 
 
+def test_moe_expert_paths_fuse_swiglu_in_place_when_grad_disabled() -> None:
+    source = Path(__file__).resolve().parents[1] / "labs" / "moe_optimization_journey" / "moe_model.py"
+    text = source.read_text(encoding="utf-8")
+
+    assert "def _silu_mul_in_place_if_safe" in text
+    assert "if torch.is_grad_enabled() and gate.requires_grad:" in text
+    assert "return F.silu(gate) * up" in text
+    assert "F.silu(gate, inplace=True)" in text
+    assert "gate.mul_(up)" in text
+
+    naive_section = text.split("def forward_naive", maxsplit=1)[1].split(
+        "def forward_batched",
+        maxsplit=1,
+    )[0]
+    batched_section = text.split("def forward_batched", maxsplit=1)[1].split(
+        "def forward_fused",
+        maxsplit=1,
+    )[0]
+    grouped_section = text.split("def forward_grouped", maxsplit=1)[1].split(
+        "def forward_bmm_fused",
+        maxsplit=1,
+    )[0]
+    bmm_section = text.split("def forward_bmm_fused", maxsplit=1)[1].split(
+        "def _forward_bmm_fused_graphable",
+        maxsplit=1,
+    )[0]
+    graphable_section = text.split("def _forward_bmm_fused_graphable", maxsplit=1)[1].split(
+        "def forward_cuda_graphs",
+        maxsplit=1,
+    )[0]
+
+    assert "hidden = _silu_mul_in_place_if_safe(gate, up)" in naive_section
+    assert "expert_output = expert['w2'](hidden)" in naive_section
+    assert "expert['w2'](gate * up)" not in naive_section
+    for section in (batched_section, bmm_section, graphable_section):
+        assert "hidden = _silu_mul_in_place_if_safe(gate, up)" in section
+        assert "hidden = gate * up" not in section
+    assert "hidden = _silu_mul_in_place_if_safe(gate, up)" in grouped_section
+    assert "expert_out = hidden @ self.w2_stacked[expert_id]" in grouped_section
+    assert "expert_out = (gate * up) @ self.w2_stacked[expert_id]" not in grouped_section
+
+
 def test_moe_inplace_weighted_paths_match_naive_reference() -> None:
     torch.manual_seed(0)
     opts = MoEOptimizations(
