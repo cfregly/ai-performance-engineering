@@ -193,6 +193,10 @@ def test_ch05_host_staged_reduction_keeps_scalar_output_without_hot_path_clone()
 
         assert benchmark.output is not None
         assert benchmark.output.shape == ()
+        output_ptr = benchmark.output.data_ptr()
+        torch.testing.assert_close(benchmark.output, data.sum())
+        benchmark.benchmark_fn()
+        assert benchmark.output.data_ptr() == output_ptr
         torch.testing.assert_close(benchmark.output, data.sum())
 
 

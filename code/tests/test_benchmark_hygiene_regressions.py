@@ -1591,6 +1591,49 @@ def test_ch05_optimized_host_reduction_reuses_scalar_output_buffer() -> None:
     assert "self._output_buffer = None" in teardown_section
 
 
+def test_ch05_baseline_host_reduction_reuses_host_and_scalar_buffers() -> None:
+    source = (REPO_ROOT / "ch05" / "baseline_host_staged_reduction.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _make_host_buffer",
+        maxsplit=1,
+    )[0]
+    helper_section = source.split("def _make_host_buffer", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._host_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._host_sum: Optional[torch.Tensor] = None" in source
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._host_buffer = self._make_host_buffer(self.data)" in setup_section
+    assert "self._host_sum = torch.empty((), dtype=self.data.dtype)" in setup_section
+    assert "self._output_buffer = torch.empty((), device=self.data.device, dtype=self.data.dtype)" in setup_section
+    assert "return torch.empty_like(data, device=\"cpu\", pin_memory=use_pinned_host)" in helper_section
+    assert "host_buffer = self._host_buffer_for_data()" in benchmark_section
+    assert "host_sum = self._host_sum_for_data()" in benchmark_section
+    assert "output_buffer = self._output_for_data()" in benchmark_section
+    assert "host_buffer.copy_(self.data, non_blocking=False)" in benchmark_section
+    assert "torch.sum(host_buffer, dim=0, out=host_sum)" in benchmark_section
+    assert "output_buffer.copy_(host_sum, non_blocking=False)" in benchmark_section
+    assert "self.output = output_buffer" in benchmark_section
+    assert "self.data.cpu().sum()" not in benchmark_section
+    assert "cpu_result.to(self.device)" not in benchmark_section
+    assert "torch.empty(" not in benchmark_section
+    assert "self._host_buffer = None" in teardown_section
+    assert "self._host_sum = None" in teardown_section
+    assert "self._output_buffer = None" in teardown_section
+
+
 def test_ch05_baseline_vectorization_reuses_chunk_views() -> None:
     source = (REPO_ROOT / "ch05" / "baseline_vectorization.py").read_text(
         encoding="utf-8"

@@ -19,6 +19,9 @@ class BaselineHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchma
         super().__init__()
         self.data: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._host_buffer: Optional[torch.Tensor] = None
+        self._host_sum: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self.num_elements = 10_000_000
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -32,16 +35,55 @@ class BaselineHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchma
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.data = torch.randn(self.num_elements, device=self.device)
+        self._host_buffer = self._make_host_buffer(self.data)
+        self._host_sum = torch.empty((), dtype=self.data.dtype)
+        self._output_buffer = torch.empty((), device=self.data.device, dtype=self.data.dtype)
         self._synchronize()
-    
+
+    def _make_host_buffer(self, data: torch.Tensor) -> torch.Tensor:
+        use_pinned_host = data.device.type == "cuda" and torch.cuda.is_available()
+        return torch.empty_like(data, device="cpu", pin_memory=use_pinned_host)
+
+    def _host_buffer_for_data(self) -> torch.Tensor:
+        if self.data is None:
+            raise RuntimeError("Data not initialized")
+        if (
+            self._host_buffer is None
+            or self._host_buffer.shape != self.data.shape
+            or self._host_buffer.dtype != self.data.dtype
+        ):
+            self._host_buffer = self._make_host_buffer(self.data)
+        return self._host_buffer
+
+    def _host_sum_for_data(self) -> torch.Tensor:
+        if self.data is None:
+            raise RuntimeError("Data not initialized")
+        if self._host_sum is None or self._host_sum.dtype != self.data.dtype:
+            self._host_sum = torch.empty((), dtype=self.data.dtype)
+        return self._host_sum
+
+    def _output_for_data(self) -> torch.Tensor:
+        if self.data is None:
+            raise RuntimeError("Data not initialized")
+        if (
+            self._output_buffer is None
+            or self._output_buffer.device != self.data.device
+            or self._output_buffer.dtype != self.data.dtype
+        ):
+            self._output_buffer = torch.empty((), device=self.data.device, dtype=self.data.dtype)
+        return self._output_buffer
+
     def benchmark_fn(self) -> None:
         """Benchmark: Single-node operations."""
         assert self.data is not None
+        host_buffer = self._host_buffer_for_data()
+        host_sum = self._host_sum_for_data()
+        output_buffer = self._output_for_data()
         with self._nvtx_range("baseline_host_staged_reduction"):
-            cpu_result = self.data.cpu().sum()
-            result = cpu_result.to(self.device)
-            _ = result
-        self.output = result
+            host_buffer.copy_(self.data, non_blocking=False)
+            torch.sum(host_buffer, dim=0, out=host_sum)
+            output_buffer.copy_(host_sum, non_blocking=False)
+        self.output = output_buffer
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
@@ -62,6 +104,9 @@ class BaselineHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchma
         """Teardown: Clean up resources."""
         self.data = None
         self.output = None
+        self._host_buffer = None
+        self._host_sum = None
+        self._output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
