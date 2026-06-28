@@ -40,9 +40,14 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
     assert "self._expert_metadata_host: Optional[torch.Tensor] = None" in grouped_section
     assert "self._sorted_output_buffer: Optional[torch.Tensor] = None" in grouped_section
     assert "self._unsorted_output_buffer: Optional[torch.Tensor] = None" in grouped_section
+    assert "self._route_token_cache: Dict[Tuple[int, int, str], torch.Tensor] = {}" in grouped_section
     assert "def _expert_metadata_buffers(self, device: torch.device)" in grouped_section
     assert "def _sorted_output_like(self, sorted_x: torch.Tensor) -> torch.Tensor" in grouped_section
     assert "def _unsorted_output_like(self, output: torch.Tensor) -> torch.Tensor" in grouped_section
+    assert "def _route_token_ids(self, batch_seq: int, top_k: int, device: torch.device)" in grouped_section
+    assert "route_token_ids = self._route_token_ids(batch_seq, top_k, x.device)" in grouped_section
+    assert "sorted_token_ids = route_token_ids.index_select(0, sorted_indices)" in grouped_section
+    assert "sorted_x = x.index_select(0, sorted_token_ids)" in grouped_section
     assert "if torch.is_grad_enabled() and sorted_x.requires_grad:" in grouped_section
     assert "if torch.is_grad_enabled() and output.requires_grad:" in grouped_section
     assert "torch.cumsum(expert_counts, dim=0, out=expert_offsets)" in grouped_section
@@ -56,6 +61,8 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
     assert "expert_offsets = torch.cumsum(expert_counts, dim=0) - expert_counts" not in grouped_section
     assert "expert_offsets[expert_id].item()" not in grouped_section
     assert "expert_counts[expert_id].item()" not in grouped_section
+    assert "x_repeated =" not in grouped_section
+    assert "x.unsqueeze(1).expand" not in grouped_section
 
 
 def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
@@ -114,6 +121,7 @@ def test_level4_grouped_moe_unsort_scatter_matches_reference() -> None:
 
     with torch.inference_mode():
         output = layer(x, expert_indices, expert_weights)
+        route_token_cache = next(iter(layer._route_token_cache.values()))
         first_unsorted_ptr = layer._unsorted_output_buffer.data_ptr()
         output_again = layer(x, expert_indices, expert_weights)
 
@@ -131,6 +139,7 @@ def test_level4_grouped_moe_unsort_scatter_matches_reference() -> None:
     torch.testing.assert_close(output, reference)
     torch.testing.assert_close(output_again, reference)
     assert layer._unsorted_output_buffer.data_ptr() == first_unsorted_ptr
+    assert next(iter(layer._route_token_cache.values())).data_ptr() == route_token_cache.data_ptr()
 
 
 def test_moe_route_weight_normalization_uses_inplace_inference_guard() -> None:

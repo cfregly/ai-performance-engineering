@@ -121,6 +121,7 @@ class GroupedMoEExperts(nn.Module):
         self._expert_metadata_host: Optional[torch.Tensor] = None
         self._sorted_output_buffer: Optional[torch.Tensor] = None
         self._unsorted_output_buffer: Optional[torch.Tensor] = None
+        self._route_token_cache: Dict[Tuple[int, int, str], torch.Tensor] = {}
         
         for w in [self.w1, self.w2, self.w3]:
             nn.init.kaiming_uniform_(w)
@@ -167,6 +168,16 @@ class GroupedMoEExperts(nn.Module):
         ):
             self._unsorted_output_buffer = torch.empty_like(output)
         return self._unsorted_output_buffer
+
+    def _route_token_ids(self, batch_seq: int, top_k: int, device: torch.device) -> torch.Tensor:
+        key = (int(batch_seq), int(top_k), str(device))
+        token_ids = self._route_token_cache.get(key)
+        if token_ids is None or token_ids.device != device:
+            token_ids = torch.arange(batch_seq * top_k, device=device, dtype=torch.int64)
+            if top_k != 1:
+                token_ids.div_(top_k, rounding_mode="floor")
+            self._route_token_cache[key] = token_ids
+        return token_ids
     
     def forward(
         self,
@@ -181,13 +192,12 @@ class GroupedMoEExperts(nn.Module):
         flat_indices = expert_indices.view(-1)  # [batch_seq * top_k]
         flat_weights = expert_weights.view(-1)  # [batch_seq * top_k]
         
-        # Expand input for all selected experts
-        x_repeated = x.unsqueeze(1).expand(-1, top_k, -1).reshape(-1, self.hidden_size)
-        
         # Sort tokens by expert for better memory coalescing
         sorted_indices = torch.argsort(flat_indices)
         sorted_expert_ids = flat_indices[sorted_indices]
-        sorted_x = x_repeated[sorted_indices]
+        route_token_ids = self._route_token_ids(batch_seq, top_k, x.device)
+        sorted_token_ids = route_token_ids.index_select(0, sorted_indices)
+        sorted_x = x.index_select(0, sorted_token_ids)
         sorted_weights = flat_weights[sorted_indices]
         
         # Compute expert boundaries
