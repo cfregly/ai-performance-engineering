@@ -18,7 +18,6 @@ from core.harness.benchmark_harness import (
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 from ch03.grace_blackwell_topology import (
     NICInfo,
@@ -128,9 +127,8 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.norm is not None
         if self.copy_stream is None:
             raise RuntimeError("Copy stream not initialized")
-        enable_nvtx = get_nvtx_enabled(self.get_config())
         torch.cuda.current_stream().wait_stream(self.copy_stream)
-        with nvtx_range("optimized_rack_prep", enable=enable_nvtx):
+        with self._nvtx_range("optimized_rack_prep"):
             self.output = self.norm(self.device_buffers[self.cur_slot])
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

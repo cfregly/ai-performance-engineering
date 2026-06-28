@@ -6529,6 +6529,7 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
     optimized_double_buffer = (REPO_ROOT / "ch19" / "optimized_memory_double_buffering.py").read_text(
         encoding="utf-8"
     )
+    baseline_rack_prep = (REPO_ROOT / "ch03" / "baseline_rack_prep.py").read_text(encoding="utf-8")
     optimized_rack_prep = (REPO_ROOT / "ch03" / "optimized_rack_prep.py").read_text(encoding="utf-8")
 
     for source in (baseline_pipeline, optimized_pipeline, baseline_gluon, optimized_gluon):
@@ -6547,6 +6548,18 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
 
     assert "host_template.pin_memory()" in optimized_rack_prep
     assert "host_template.clone().pin_memory()" in optimized_rack_prep
+    for source, label in (
+        (baseline_rack_prep, "baseline_rack_prep"),
+        (optimized_rack_prep, "optimized_rack_prep"),
+    ):
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert f'with self._nvtx_range("{label}"):' in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert "with nvtx_range(" not in benchmark_section
+        assert "from core.profiling.nvtx_helper" not in source
 
 
 def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:

@@ -14,7 +14,6 @@ from core.harness.benchmark_harness import (
     BenchmarkConfig,
     WorkloadMetadata,
 )
-from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 
 from ch03.grace_blackwell_topology import NICInfo, discover_nics, format_cpulist
 
@@ -50,8 +49,7 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         assert self.host_batch is not None and self.device_batch is not None and self.norm is not None
-        enable_nvtx = get_nvtx_enabled(self.get_config())
-        with nvtx_range("baseline_rack_prep", enable=enable_nvtx):
+        with self._nvtx_range("baseline_rack_prep"):
             self.device_batch.copy_(self.host_batch, non_blocking=False)
             self.output = self.norm(self.device_batch)
         if self.output is None:
