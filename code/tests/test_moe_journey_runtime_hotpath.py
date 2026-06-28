@@ -40,12 +40,26 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
     assert "self._expert_metadata_host: Optional[torch.Tensor] = None" in grouped_section
     assert "self._sorted_output_buffer: Optional[torch.Tensor] = None" in grouped_section
     assert "self._unsorted_output_buffer: Optional[torch.Tensor] = None" in grouped_section
+    assert "self._sorted_token_ids_buffer: Optional[torch.Tensor] = None" in grouped_section
+    assert "self._sorted_expert_ids_buffer: Optional[torch.Tensor] = None" in grouped_section
+    assert "self._sorted_x_buffer: Optional[torch.Tensor] = None" in grouped_section
+    assert "self._sorted_weight_buffer: Optional[torch.Tensor] = None" in grouped_section
     assert "self._route_token_cache: Dict[Tuple[int, int, str], torch.Tensor] = {}" in grouped_section
+    assert "self._sorted_weight_column_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}" in grouped_section
     assert "def _expert_metadata_buffers(self, device: torch.device)" in grouped_section
+    assert "def _workspace(" in grouped_section
     assert "def _sorted_output_like(self, sorted_x: torch.Tensor) -> torch.Tensor" in grouped_section
     assert "def _unsorted_output_like(self, output: torch.Tensor) -> torch.Tensor" in grouped_section
+    assert "def _sorted_weight_column(self, sorted_weights: torch.Tensor)" in grouped_section
     assert "def _route_token_ids(self, batch_seq: int, top_k: int, device: torch.device)" in grouped_section
     assert "route_token_ids = self._route_token_ids(batch_seq, top_k, x.device)" in grouped_section
+    assert 'sorted_token_ids = self._workspace(\n                "_sorted_token_ids_buffer",' in grouped_section
+    assert "torch.index_select(route_token_ids, 0, sorted_indices, out=sorted_token_ids)" in grouped_section
+    assert 'sorted_x = self._workspace(\n                "_sorted_x_buffer",' in grouped_section
+    assert "torch.index_select(x, 0, sorted_token_ids, out=sorted_x)" in grouped_section
+    assert 'sorted_weights = self._workspace(\n                "_sorted_weight_buffer",' in grouped_section
+    assert "torch.index_select(flat_weights, 0, sorted_indices, out=sorted_weights)" in grouped_section
+    assert "use_workspace = not (" in grouped_section
     assert "sorted_token_ids = route_token_ids.index_select(0, sorted_indices)" in grouped_section
     assert "sorted_x = x.index_select(0, sorted_token_ids)" in grouped_section
     assert "if torch.is_grad_enabled() and sorted_x.requires_grad:" in grouped_section
@@ -95,7 +109,11 @@ def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
     assert "F.silu(gate, inplace=True)" in expert_loop_section
     assert "gate.mul_(up)" in expert_loop_section
     assert "hidden = gate * up" not in expert_loop_section
-    assert "output.mul_(sorted_weights.unsqueeze(-1))" in apply_weights_section
+    assert "if use_workspace:" in apply_weights_section
+    assert "sorted_weight_column = self._sorted_weight_column(sorted_weights)" in apply_weights_section
+    assert "sorted_weight_column = sorted_weights.unsqueeze(-1)" in apply_weights_section
+    assert "output.mul_(sorted_weight_column)" in apply_weights_section
+    assert "output.mul_(sorted_weights.unsqueeze(-1))" not in apply_weights_section
     assert "output = output * sorted_weights.unsqueeze(-1)" not in grouped_section
     assert "unsorted_output = self._unsorted_output_like(output)" in unsort_section
     assert "unsorted_output.index_copy_(0, sorted_indices, output)" in unsort_section
@@ -122,6 +140,11 @@ def test_level4_grouped_moe_unsort_scatter_matches_reference() -> None:
     with torch.inference_mode():
         output = layer(x, expert_indices, expert_weights)
         route_token_cache = next(iter(layer._route_token_cache.values()))
+        sorted_token_ids_ptr = layer._sorted_token_ids_buffer.data_ptr()
+        sorted_expert_ids_ptr = layer._sorted_expert_ids_buffer.data_ptr()
+        sorted_x_ptr = layer._sorted_x_buffer.data_ptr()
+        sorted_weight_ptr = layer._sorted_weight_buffer.data_ptr()
+        sorted_weight_column = next(iter(layer._sorted_weight_column_cache.values()))
         first_unsorted_ptr = layer._unsorted_output_buffer.data_ptr()
         output_again = layer(x, expert_indices, expert_weights)
 
@@ -140,6 +163,12 @@ def test_level4_grouped_moe_unsort_scatter_matches_reference() -> None:
     torch.testing.assert_close(output_again, reference)
     assert layer._unsorted_output_buffer.data_ptr() == first_unsorted_ptr
     assert next(iter(layer._route_token_cache.values())).data_ptr() == route_token_cache.data_ptr()
+    assert layer._sorted_token_ids_buffer.data_ptr() == sorted_token_ids_ptr
+    assert layer._sorted_expert_ids_buffer.data_ptr() == sorted_expert_ids_ptr
+    assert layer._sorted_x_buffer.data_ptr() == sorted_x_ptr
+    assert layer._sorted_weight_buffer.data_ptr() == sorted_weight_ptr
+    assert next(iter(layer._sorted_weight_column_cache.values())) is sorted_weight_column
+    torch.testing.assert_close(sorted_weight_column[:, 0], layer._sorted_weight_buffer)
 
 
 def test_moe_route_weight_normalization_uses_inplace_inference_guard() -> None:

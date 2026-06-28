@@ -121,7 +121,12 @@ class GroupedMoEExperts(nn.Module):
         self._expert_metadata_host: Optional[torch.Tensor] = None
         self._sorted_output_buffer: Optional[torch.Tensor] = None
         self._unsorted_output_buffer: Optional[torch.Tensor] = None
+        self._sorted_token_ids_buffer: Optional[torch.Tensor] = None
+        self._sorted_expert_ids_buffer: Optional[torch.Tensor] = None
+        self._sorted_x_buffer: Optional[torch.Tensor] = None
+        self._sorted_weight_buffer: Optional[torch.Tensor] = None
         self._route_token_cache: Dict[Tuple[int, int, str], torch.Tensor] = {}
+        self._sorted_weight_column_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}
         
         for w in [self.w1, self.w2, self.w3]:
             nn.init.kaiming_uniform_(w)
@@ -144,6 +149,26 @@ class GroupedMoEExperts(nn.Module):
             )
         assert self._expert_metadata_host is not None
         return self._expert_metadata_workspace, self._expert_metadata_host
+
+    def _workspace(
+        self,
+        name: str,
+        shape: Tuple[int, ...],
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        cached = getattr(self, name, None)
+        if (
+            isinstance(cached, torch.Tensor)
+            and tuple(cached.shape) == tuple(shape)
+            and cached.device == device
+            and cached.dtype == dtype
+        ):
+            return cached
+        workspace = torch.empty(shape, device=device, dtype=dtype)
+        setattr(self, name, workspace)
+        return workspace
 
     def _sorted_output_like(self, sorted_x: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled() and sorted_x.requires_grad:
@@ -168,6 +193,15 @@ class GroupedMoEExperts(nn.Module):
         ):
             self._unsorted_output_buffer = torch.empty_like(output)
         return self._unsorted_output_buffer
+
+    def _sorted_weight_column(self, sorted_weights: torch.Tensor) -> torch.Tensor:
+        key = (int(sorted_weights.data_ptr()), int(sorted_weights.numel()), sorted_weights.device)
+        cached = self._sorted_weight_column_cache.get(key)
+        expected_shape = (int(sorted_weights.numel()), 1)
+        if cached is None or cached.device != sorted_weights.device or tuple(cached.shape) != expected_shape:
+            cached = sorted_weights.unsqueeze(-1)
+            self._sorted_weight_column_cache[key] = cached
+        return cached
 
     def _route_token_ids(self, batch_seq: int, top_k: int, device: torch.device) -> torch.Tensor:
         key = (int(batch_seq), int(top_k), str(device))
@@ -194,11 +228,45 @@ class GroupedMoEExperts(nn.Module):
         
         # Sort tokens by expert for better memory coalescing
         sorted_indices = torch.argsort(flat_indices)
-        sorted_expert_ids = flat_indices[sorted_indices]
         route_token_ids = self._route_token_ids(batch_seq, top_k, x.device)
-        sorted_token_ids = route_token_ids.index_select(0, sorted_indices)
-        sorted_x = x.index_select(0, sorted_token_ids)
-        sorted_weights = flat_weights[sorted_indices]
+        assignments = flat_indices.numel()
+        use_workspace = not (
+            torch.is_grad_enabled() and (x.requires_grad or expert_weights.requires_grad)
+        )
+        if use_workspace:
+            sorted_expert_ids = self._workspace(
+                "_sorted_expert_ids_buffer",
+                (assignments,),
+                device=flat_indices.device,
+                dtype=flat_indices.dtype,
+            )
+            torch.index_select(flat_indices, 0, sorted_indices, out=sorted_expert_ids)
+            sorted_token_ids = self._workspace(
+                "_sorted_token_ids_buffer",
+                (assignments,),
+                device=route_token_ids.device,
+                dtype=route_token_ids.dtype,
+            )
+            torch.index_select(route_token_ids, 0, sorted_indices, out=sorted_token_ids)
+            sorted_x = self._workspace(
+                "_sorted_x_buffer",
+                (assignments, self.hidden_size),
+                device=x.device,
+                dtype=x.dtype,
+            )
+            torch.index_select(x, 0, sorted_token_ids, out=sorted_x)
+            sorted_weights = self._workspace(
+                "_sorted_weight_buffer",
+                (assignments,),
+                device=flat_weights.device,
+                dtype=flat_weights.dtype,
+            )
+            torch.index_select(flat_weights, 0, sorted_indices, out=sorted_weights)
+        else:
+            sorted_expert_ids = flat_indices[sorted_indices]
+            sorted_token_ids = route_token_ids.index_select(0, sorted_indices)
+            sorted_x = x.index_select(0, sorted_token_ids)
+            sorted_weights = flat_weights[sorted_indices]
         
         # Compute expert boundaries
         expert_counts = torch.bincount(sorted_expert_ids, minlength=self.num_experts)
@@ -230,7 +298,11 @@ class GroupedMoEExperts(nn.Module):
             output[start:end] = expert_out
         
         # Apply weights
-        output.mul_(sorted_weights.unsqueeze(-1))
+        if use_workspace:
+            sorted_weight_column = self._sorted_weight_column(sorted_weights)
+        else:
+            sorted_weight_column = sorted_weights.unsqueeze(-1)
+        output.mul_(sorted_weight_column)
         
         # Unsort back to original order without launching a second argsort.
         unsorted_output = self._unsorted_output_like(output)
