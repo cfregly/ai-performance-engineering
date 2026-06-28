@@ -319,6 +319,8 @@ def _run_torchrun_worker(
 
     recv_kv_batches: dict[int, torch.Tensor] = {}
     recv_seed_batches: dict[int, torch.Tensor] = {}
+    recv_kv_chunks: dict[int, List[torch.Tensor]] = {}
+    recv_seed_chunks: dict[int, List[torch.Tensor]] = {}
     decode_batch_buffers: dict[int, List[Tuple[torch.Tensor, torch.Tensor, int]]] = {}
     group_size = max(1, min(cfg.transfer_group, cfg.requests_per_rank))
     group_slices = [
@@ -360,6 +362,24 @@ def _run_torchrun_worker(
                     device=device,
                     dtype=cfg.dtype,
                 )
+        else:
+            for src_rank in assigned_prefills:
+                recv_kv_chunks[src_rank] = [
+                    torch.empty(
+                        (cfg.batch_size, cfg.context_window, cfg.hidden_size),
+                        device=device,
+                        dtype=cfg.dtype,
+                    )
+                    for _ in range(cfg.requests_per_rank)
+                ]
+                recv_seed_chunks[src_rank] = [
+                    torch.empty(
+                        (cfg.batch_size, cfg.hidden_size),
+                        device=device,
+                        dtype=cfg.dtype,
+                    )
+                    for _ in range(cfg.requests_per_rank)
+                ]
 
     def run_iteration() -> List[torch.Tensor]:
         if is_prefill:
@@ -476,17 +496,9 @@ def _run_torchrun_worker(
         kv_chunks: List[torch.Tensor] = []
         seed_chunks: List[torch.Tensor] = []
         for src_rank in assigned_prefills:
-            for _ in range(cfg.requests_per_rank):
-                kv_buf = torch.empty(
-                    (cfg.batch_size, cfg.context_window, cfg.hidden_size),
-                    device=device,
-                    dtype=cfg.dtype,
-                )
-                seed_buf = torch.empty(
-                    (cfg.batch_size, cfg.hidden_size),
-                    device=device,
-                    dtype=cfg.dtype,
-                )
+            for req_idx in range(cfg.requests_per_rank):
+                kv_buf = recv_kv_chunks[src_rank][req_idx]
+                seed_buf = recv_seed_chunks[src_rank][req_idx]
                 _recv_blocking(
                     kv_buf,
                     seed_buf,

@@ -4631,6 +4631,14 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "ready = ready_events[group_idx]" in run_iteration_section
     assert "torch.cuda.Event(" not in run_iteration_section
     assert "with torch.inference_mode():" in run_iteration_section
+    assert "recv_kv_chunks: dict[int, List[torch.Tensor]] = {}" in worker_section
+    assert "recv_seed_chunks: dict[int, List[torch.Tensor]] = {}" in worker_section
+    assert "recv_kv_chunks[src_rank] = [" in worker_section
+    assert "recv_seed_chunks[src_rank] = [" in worker_section
+    assert "kv_buf = recv_kv_chunks[src_rank][req_idx]" in run_iteration_section
+    assert "seed_buf = recv_seed_chunks[src_rank][req_idx]" in run_iteration_section
+    assert "kv_buf = torch.empty(" not in run_iteration_section
+    assert "seed_buf = torch.empty(" not in run_iteration_section
     assert "expected_outputs = len(self._pairs) * self.cfg.requests_per_rank" in setup_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(expected_outputs)]" in setup_section
     assert "transfer_kv_chunks=[" in setup_section
