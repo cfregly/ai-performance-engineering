@@ -10702,6 +10702,21 @@ def test_ch17_single_token_prefill_decode_skips_redundant_tail_views() -> None:
         assert "token_output[:, -1:, :]" not in benchmark_section
 
 
+def test_ch17_optimized_disaggregated_waits_once_before_decode_loop() -> None:
+    source = (REPO_ROOT / "ch17" / "optimized_prefill_decode_disagg.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+
+    decode_stream_pos = benchmark_section.index("with torch.cuda.stream(self.decode_stream):")
+    wait_pos = benchmark_section.index("self.decode_stream.wait_event(self._prefill_done)")
+    loop_pos = benchmark_section.index("for token_start, token_end in token_event_pairs:")
+    assert benchmark_section.count("with torch.cuda.stream(self.decode_stream):") == 1
+    assert benchmark_section.count("self.decode_stream.wait_event(self._prefill_done)") == 1
+    assert decode_stream_pos < wait_pos < loop_pos
+
+
 def test_ch17_monolithic_decode_fast_paths_single_token() -> None:
     source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_monolithic_common.py").read_text(
         encoding="utf-8"

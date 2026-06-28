@@ -121,10 +121,10 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
                 token_output = kv_cache
                 token_event_pairs = self._get_tpot_events(self.decode_seq)
-                for token_start, token_end in token_event_pairs:
-                    with torch.cuda.stream(self.decode_stream):
+                with torch.cuda.stream(self.decode_stream):
+                    self.decode_stream.wait_event(self._prefill_done)
+                    for token_start, token_end in token_event_pairs:
                         token_start.record(self.decode_stream)
-                        self.decode_stream.wait_event(self._prefill_done)
                         token_output = self.model.decode(token_output, num_tokens=1)
                         token_end.record()
 
