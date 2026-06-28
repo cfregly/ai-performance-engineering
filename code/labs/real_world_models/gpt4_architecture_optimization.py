@@ -110,7 +110,7 @@ class GPT4ArchitectureOptimization:
         self.layers = nn.ModuleList([
             SimplifiedGPT4Layer(test_hidden)
             for _ in range(4)  # Test with 4 layers
-        ]).to(self.device).to(torch.bfloat16)
+        ]).to(self.device).to(torch.bfloat16).eval()
         
         # Create input
         self.input = torch.randn(
@@ -128,6 +128,7 @@ class GPT4ArchitectureOptimization:
         
         logger.info("Simplified GPT-4 model initialized")
     
+    @torch.inference_mode()
     def run(self) -> float:
         """Execute forward pass."""
         if self.device.type == "cuda":

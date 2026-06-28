@@ -3808,11 +3808,14 @@ def test_gpt4_architecture_runner_reuses_cuda_timing_events() -> None:
 
     assert "self._timing_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None" in init_section
     assert setup_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "]).to(self.device).to(torch.bfloat16).eval()" in setup_section
+    assert "@torch.inference_mode()\n    def run" in class_section
     assert "start_event, end_event = self._timing_events" in run_section
     assert "start_event.record()" in run_section
     assert "end_event.record()" in run_section
     assert "end_event.synchronize()" in run_section
     assert "elapsed_ms = start_event.elapsed_time(end_event)" in run_section
+    assert "torch.no_grad()" not in run_section
     assert "torch.cuda.synchronize()" not in run_section
 
 
