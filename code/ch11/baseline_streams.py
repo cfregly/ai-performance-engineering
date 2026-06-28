@@ -30,6 +30,8 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_data: Optional[List[torch.Tensor]] = None
         self.device_data: Optional[List[torch.Tensor]] = None
         self.results: Optional[List[torch.Tensor]] = None
+        self._scratch0: Optional[torch.Tensor] = None
+        self._scratch1: Optional[torch.Tensor] = None
         self.N = 5_000_000  # Elements per chunk - balanced for H2D/compute overlap
         self.num_chunks = 20  # More chunks to amortize pipeline startup
         # Stream benchmark - fixed dimensions for overlap measurement
@@ -62,6 +64,8 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.empty(self.N, dtype=torch.float32, device=self.device)
             for _ in range(self.num_chunks)
         ]
+        self._scratch0 = torch.empty(self.N, dtype=torch.float32, device=self.device)
+        self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)
         
         self._synchronize()
         processed = float(self.N * self.num_chunks)
@@ -70,17 +74,27 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.num_chunks),
         )
     
-    def _compute(self, data: torch.Tensor) -> torch.Tensor:
+    def _compute(self, data: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
         """Compute-intensive operation on GPU data.
         
         Multiple trig operations to ensure compute time is meaningful
         relative to H2D transfer time for proper overlap demonstration.
         """
+        if self._scratch0 is None or self._scratch1 is None:
+            raise RuntimeError("setup() must initialize compute scratch buffers")
+        scratch0 = self._scratch0[: data.numel()].view_as(data)
+        scratch1 = self._scratch1[: data.numel()].view_as(data)
         result = data
         for _ in range(3):  # Multiple passes to increase compute time
-            result = torch.sin(result) * torch.cos(result) + result * 0.1
-            result = torch.tanh(result) + torch.sigmoid(result) * 0.5
-        return result
+            torch.sin(result, out=scratch0)
+            torch.cos(result, out=scratch1)
+            scratch0.mul_(scratch1)
+            scratch0.add_(result, alpha=0.1)
+            torch.tanh(scratch0, out=out)
+            torch.sigmoid(scratch0, out=scratch1)
+            out.add_(scratch1, alpha=0.5)
+            result = out
+        return out
     
     def benchmark_fn(self) -> None:
         """Benchmark: Sequential H2D transfer then compute for each chunk.
@@ -97,13 +111,15 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.device_data[i].copy_(self.host_data[i])
                 
                 # Compute on device
-                self.results[i] = self._compute(self.device_data[i])
+                self._compute(self.device_data[i], self.results[i])
     
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         self.host_data = None
         self.device_data = None
         self.results = None
+        self._scratch0 = None
+        self._scratch1 = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
@@ -152,5 +168,4 @@ class BaselineStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaselineStreamsBenchmark:
     """Factory function for benchmark discovery."""
     return BaselineStreamsBenchmark()
-
 
