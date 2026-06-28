@@ -61,12 +61,14 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         self._piecewise_events: dict[str, torch.cuda.Event] = {}
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
         self.output: torch.Tensor | None = None
+        self._output_view: torch.Tensor | None = None
 
     def setup(self) -> None:
         torch.manual_seed(42)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
+        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
         self.prefill_out = torch.empty((self.batch, self.seq_len), device=self.device, dtype=torch.float32)
         self._full_events = {
             "start": torch.cuda.Event(enable_timing=True),
@@ -142,7 +144,7 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        if self.inputs is None or self.prefill_out is None:
+        if self.inputs is None or self.prefill_out is None or self._output_view is None:
             raise RuntimeError("Inputs not initialized")
 
         use_full = (
@@ -163,7 +165,7 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
                 "decode_start": start,
                 "decode_end": end,
             }
-            self.output = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+            self.output = self._output_view
             return
 
         if self.prefill_graph is None or self.decode_graph is None:
@@ -189,7 +191,7 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
                 "decode_start": start_decode,
                 "decode_end": end_decode,
             }
-        self.output = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+        self.output = self._output_view
 
     def finalize_iteration_metrics(self) -> dict[str, list[float]] | None:
         if not self._pending_iteration:
@@ -244,6 +246,7 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         self._full_events = {}
         self._piecewise_events = {}
         self.output = None
+        self._output_view = None
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(

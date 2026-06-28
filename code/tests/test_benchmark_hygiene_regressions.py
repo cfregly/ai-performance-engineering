@@ -9924,6 +9924,30 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
         assert ".float().clone()" not in benchmark_section
         assert ".detach().clone()" not in benchmark_section
 
+        if path.name in {
+            "optimized_persistent_decode_cuda.py",
+            "optimized_persistent_decode_graphs.py",
+            "optimized_persistent_decode_triton.py",
+        }:
+            setup_section = text.split("def setup", maxsplit=1)[1].split(
+                "def benchmark_fn" if path.name != "optimized_persistent_decode_graphs.py" else "def _capture_graphs",
+                maxsplit=1,
+            )[0]
+            hot_section = text.split("def benchmark_fn", maxsplit=1)[1].split(
+                "def finalize_iteration_metrics" if path.name == "optimized_persistent_decode_graphs.py" else "def capture_verification_payload",
+                maxsplit=1,
+            )[0]
+            teardown_section = text.split("def teardown", maxsplit=1)[1].split(
+                "def get_config",
+                maxsplit=1,
+            )[0]
+
+            assert "_output_view" in text
+            assert "self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" in setup_section
+            assert "self.output = self._output_view" in hot_section
+            assert "self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" not in hot_section
+            assert "self._output_view = None" in teardown_section
+
 
 def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path() -> None:
     common_source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(

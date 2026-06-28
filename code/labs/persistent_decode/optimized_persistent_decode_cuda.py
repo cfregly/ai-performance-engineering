@@ -65,6 +65,7 @@ class OptimizedPersistentDecodeCUDABenchmark(VerificationPayloadMixin, BaseBench
         self.blocks = 8
         self._ext: Optional[object] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_view: Optional[torch.Tensor] = None
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
 
     def setup(self) -> None:
@@ -84,10 +85,11 @@ class OptimizedPersistentDecodeCUDABenchmark(VerificationPayloadMixin, BaseBench
             ) from exc
         
         self.inputs = build_inputs(self.batch, self.seq_len, self.head_dim, self.device)
+        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
 
     def benchmark_fn(self) -> None:
         """Run the persistent decode kernel."""
-        if self._ext is None or self.inputs is None:
+        if self._ext is None or self.inputs is None or self._output_view is None:
             raise RuntimeError("SKIPPED: persistent_decode_ext not initialized")
         
         # Call the extension's forward pass
@@ -100,7 +102,7 @@ class OptimizedPersistentDecodeCUDABenchmark(VerificationPayloadMixin, BaseBench
                 self.blocks,
             )
         # Capture a representative slice of the output
-        self.output = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])].detach()
+        self.output = self._output_view.detach()
         if self.inputs is None or self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -126,6 +128,7 @@ class OptimizedPersistentDecodeCUDABenchmark(VerificationPayloadMixin, BaseBench
         torch.cuda.empty_cache()
         self.inputs = None
         self.output = None
+        self._output_view = None
 
     def get_config(self) -> BenchmarkConfig:
         # NOTE: CUDA binary runs external executable, warmup=5 ensures CUDA driver is initialized
