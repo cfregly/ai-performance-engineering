@@ -5120,15 +5120,37 @@ def test_nvlink_offload_copies_directly_between_preallocated_buffers() -> None:
     source = (REPO_ROOT / "labs" / "persistent_decode" / "nvlink_offload_common.py").read_text(
         encoding="utf-8"
     )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
+    assert "self._chunk_views: list[tuple[torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._output_view: Optional[torch.Tensor] = None" in source
+    assert "for start in range(0, self.cfg.max_seq_len, self.cfg.chunk_tokens):" in setup_section
+    assert "self.cpu_cache[..., start:end, :]" in setup_section
+    assert "self.gpu_cache[..., :slice_len, :]" in setup_section
+    assert "self._output_view = self.gpu_cache[" in setup_section
+    assert "cpu_slice, gpu_slice = self._chunk_views[self._next_chunk_idx]" in benchmark_section
     assert ".to(self.device" not in benchmark_section
     assert '.to("cpu"' not in benchmark_section
-    assert "copy_(cpu_slice, non_blocking=self.cfg.non_blocking)" in benchmark_section
-    assert "target.copy_(self.gpu_cache[..., :slice_len, :], non_blocking=self.cfg.non_blocking)" in benchmark_section
+    assert "gpu_slice.copy_(cpu_slice, non_blocking=self.cfg.non_blocking)" in benchmark_section
+    assert "gpu_slice.mul_(1.0001)" in benchmark_section
+    assert "cpu_slice.copy_(gpu_slice, non_blocking=self.cfg.non_blocking)" in benchmark_section
+    assert "self.output = self._output_view" in benchmark_section
+    assert "self.cpu_cache[..., start:end, :]" not in benchmark_section
+    assert "self.gpu_cache[..., :slice_len, :]" not in benchmark_section
+    assert "target.copy_(" not in benchmark_section
+    assert "self._chunk_views = []" in teardown_section
+    assert "self._output_view = None" in teardown_section
 
 
 def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> None:
