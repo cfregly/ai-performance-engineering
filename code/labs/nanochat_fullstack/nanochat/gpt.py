@@ -112,6 +112,14 @@ def _expand_gqa_kv_heads(x, repeat):
     )
 
 
+def _relu_square_in_place_if_safe(x):
+    if torch.is_grad_enabled() and x.requires_grad:
+        return F.relu(x).square()
+    F.relu(x, inplace=True)
+    x.square_()
+    return x
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, config, layer_idx):
         super().__init__()
@@ -420,7 +428,7 @@ class MLP(nn.Module):
 
     def forward(self, x):
         x = self.c_fc(x)
-        x = F.relu(x).square()
+        x = _relu_square_in_place_if_safe(x)
         x = self.c_proj(x)
         return x
 

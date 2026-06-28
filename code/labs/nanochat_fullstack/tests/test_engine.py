@@ -5,10 +5,18 @@ python -m pytest tests/test_engine.py -v
 """
 
 import torch
+import torch.nn.functional as F
 from pathlib import Path
 from types import SimpleNamespace
 from nanochat.engine import Engine, KVCache, sample_next_token
-from nanochat.gpt import CausalSelfAttention, GPT, GPTConfig, _expand_gqa_kv_heads, apply_rotary_emb
+from nanochat.gpt import (
+    CausalSelfAttention,
+    GPT,
+    GPTConfig,
+    _expand_gqa_kv_heads,
+    _relu_square_in_place_if_safe,
+    apply_rotary_emb,
+)
 
 def test_kv_cache_resize():
     """
@@ -809,3 +817,42 @@ def test_apply_rotary_emb_training_path_keeps_gradients():
 
     assert x.grad is not None
     assert torch.isfinite(x.grad).all()
+
+
+def test_mlp_relu_square_reuses_buffer_without_grad_and_preserves_backward():
+    x_fast = torch.randn(4, 8, dtype=torch.float32)
+    expected_fast = F.relu(x_fast).square()
+
+    with torch.no_grad():
+        actual_fast = _relu_square_in_place_if_safe(x_fast)
+
+    assert actual_fast.data_ptr() == x_fast.data_ptr()
+    torch.testing.assert_close(actual_fast, expected_fast)
+
+    x_ref = torch.randn(4, 8, dtype=torch.float32, requires_grad=True)
+    x_test = x_ref.detach().clone().requires_grad_()
+
+    expected = F.relu(x_ref).square()
+    actual = _relu_square_in_place_if_safe(x_test)
+    expected.sum().backward()
+    actual.sum().backward()
+
+    assert actual.data_ptr() != x_test.data_ptr()
+    torch.testing.assert_close(actual, expected.detach())
+    torch.testing.assert_close(x_test.grad, x_ref.grad)
+
+    source = Path(__file__).resolve().parents[1] / "nanochat" / "gpt.py"
+    gpt_source = source.read_text(encoding="utf-8")
+    helper_source = gpt_source.split("def _relu_square_in_place_if_safe", maxsplit=1)[1].split(
+        "class CausalSelfAttention",
+        maxsplit=1,
+    )[0]
+    mlp_section = gpt_source.split("class MLP", maxsplit=1)[1].split(
+        "class Block",
+        maxsplit=1,
+    )[0]
+
+    assert "if torch.is_grad_enabled() and x.requires_grad:" in helper_source
+    assert "F.relu(x, inplace=True)" in helper_source
+    assert "x.square_()" in helper_source
+    assert "x = _relu_square_in_place_if_safe(x)" in mlp_section
