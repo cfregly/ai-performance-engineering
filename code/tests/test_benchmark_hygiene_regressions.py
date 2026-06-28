@@ -3484,6 +3484,51 @@ def test_ch20_integrated_kv_cache_releases_slabs_without_zero_fill() -> None:
     torch.testing.assert_close(actual_v, new_v)
 
 
+def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -> None:
+    source = (REPO_ROOT / "ch20" / "optimized_integrated_kv_cache.py").read_text(
+        encoding="utf-8"
+    )
+    attention_section = source.split("class AttentionLayer", maxsplit=1)[1].split(
+        "class OptimizedIntegratedKVCacheBenchmark",
+        maxsplit=1,
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self.request_ids: list[str] = []" in source
+    assert "self.request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
+    assert "if len(self.request_ids) != len(self.inputs):" in benchmark_section
+    assert "for request_id, x in zip(self.request_ids, self.inputs):" in benchmark_section
+    assert "request_id = f\"req_{seq_idx}\"" not in benchmark_section
+    assert "k_block = k.permute(0, 2, 1, 3).contiguous()" not in attention_section
+    assert "v_block = v.permute(0, 2, 1, 3).contiguous()" not in attention_section
+    assert "k[batch_idx].transpose(0, 1)" in attention_section
+    assert "v[batch_idx].transpose(0, 1)" in attention_section
+
+    from ch20.optimized_integrated_kv_cache import PagedKVCache
+
+    cache = PagedKVCache(
+        page_size=4,
+        num_layers=1,
+        num_heads=2,
+        head_dim=3,
+        dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    k = torch.arange(12, dtype=torch.float32).view(1, 2, 2, 3)
+    v = k + 20.0
+    cache.append_block("req", 0, k[0].transpose(0, 1), v[0].transpose(0, 1), 0)
+    actual_k, actual_v = cache.get("req", 0, 0, 4)
+    torch.testing.assert_close(actual_k, k.permute(0, 2, 1, 3)[0])
+    torch.testing.assert_close(actual_v, v.permute(0, 2, 1, 3)[0])
+
+
 def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> None:
     baseline_source = (REPO_ROOT / "ch20" / "baseline_pipeline_sequential.py").read_text(encoding="utf-8")
     optimized_source = (REPO_ROOT / "ch20" / "optimized_pipeline_sequential.py").read_text(encoding="utf-8")
@@ -6917,7 +6962,10 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
     ).read_text(encoding="utf-8")
     assert "batch_size=self.batch_size" in flash_source
     assert "for batch_idx in range(batch_size)" not in flash_source
-    assert "k_block = k.permute(2, 0, 1, 3).contiguous()" in flash_source
+    assert "k_block = k.permute(2, 0, 1, 3)" in flash_source
+    assert "v_block = v.permute(2, 0, 1, 3)" in flash_source
+    assert "k.permute(2, 0, 1, 3).contiguous()" not in flash_source
+    assert "v.permute(2, 0, 1, 3).contiguous()" not in flash_source
     assert "kv_cache.append_block(request_id, layer_idx, k_block, v_block, cache_pos)" in flash_source
     assert "torch.cat([cached_k, k]" not in flash_source
     assert "torch.cat([cached_v, v]" not in flash_source

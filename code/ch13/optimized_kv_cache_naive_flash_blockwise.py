@@ -129,8 +129,8 @@ class FlashBlockwiseAttentionLayer(nn.Module):
         k = k.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         v = v.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
 
-        k_block = k.permute(2, 0, 1, 3).contiguous()
-        v_block = v.permute(2, 0, 1, 3).contiguous()
+        k_block = k.permute(2, 0, 1, 3)
+        v_block = v.permute(2, 0, 1, 3)
         kv_cache.append_block(request_id, layer_idx, k_block, v_block, cache_pos)
 
         if cache_pos > 0:

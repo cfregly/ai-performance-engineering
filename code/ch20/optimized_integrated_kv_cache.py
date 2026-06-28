@@ -164,14 +164,12 @@ class AttentionLayer(nn.Module):
         k = k.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         v = v.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         
-        k_block = k.permute(0, 2, 1, 3).contiguous()  # [batch, block, heads, head_dim]
-        v_block = v.permute(0, 2, 1, 3).contiguous()
         for batch_idx in range(batch_size):
             kv_cache.append_block(
                 request_id,
                 layer_idx,
-                k_block[batch_idx],
-                v_block[batch_idx],
+                k[batch_idx].transpose(0, 1),
+                v[batch_idx].transpose(0, 1),
                 cache_pos,
             )
         
@@ -195,6 +193,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
 
         self.kv_cache = None
         self.inputs = None
+        self.request_ids: list[str] = []
         self.page_size = 128
         self.num_layers = 2
         self.num_heads = 2
@@ -236,6 +235,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
         for seq_len in self.sequence_lengths:
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=torch.float16)
             self.inputs.append(x)
+        self.request_ids = [f"req_{seq_idx}" for seq_idx in range(len(self.inputs))]
         self._verify_input = self.inputs[-1] if self.inputs else None
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
@@ -245,8 +245,9 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
     def benchmark_fn(self) -> None:
         """Function to benchmark - integrated KV cache pipeline."""
         with nvtx_range("integrated_kv_cache", enable=self._enable_nvtx):
-            for seq_idx, x in enumerate(self.inputs):
-                request_id = f"req_{seq_idx}"
+            if len(self.request_ids) != len(self.inputs):
+                raise RuntimeError("Request IDs not initialized")
+            for request_id, x in zip(self.request_ids, self.inputs):
                 seq_len = x.size(1)
                 self.kv_cache.allocate(request_id, seq_len)
 
@@ -274,6 +275,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
     def teardown(self) -> None:
         """Cleanup."""
         del self.layers, self.kv_cache, self.inputs
+        self.request_ids = []
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
