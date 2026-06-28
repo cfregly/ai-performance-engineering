@@ -265,6 +265,11 @@ def _run_torchrun_worker(
 
     recv_kv_bufs: List[torch.Tensor] = []
     recv_seed_bufs: List[torch.Tensor] = []
+    ready_events = (
+        [torch.cuda.Event() for _ in range(cfg.requests_per_rank)]
+        if is_prefill and overlap
+        else []
+    )
     decode_kv_cache: Optional[torch.Tensor] = None
     decode_outputs: List[torch.Tensor] = []
     if not is_prefill:
@@ -303,7 +308,7 @@ def _run_torchrun_worker(
                         request_prompt = prompts[req_idx]
                         hidden, logits = model.prefill(request_prompt)
                         seed_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
-                        ready = torch.cuda.Event()
+                        ready = ready_events[req_idx]
                         ready.record()
                         handles = _batch_isend(
                             hidden.contiguous(),

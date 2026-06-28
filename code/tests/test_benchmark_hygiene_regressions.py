@@ -6180,6 +6180,9 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "with torch.inference_mode():" in decode_helper
     assert "with torch.inference_mode():" in torchrun_worker
     assert "with torch.inference_mode():" in benchmark_section
+    assert "[torch.cuda.Event() for _ in range(cfg.requests_per_rank)]" in torchrun_worker
+    assert "ready = ready_events[req_idx]" in torchrun_worker
+    assert "ready = torch.cuda.Event()" not in torchrun_worker
     assert "request_kv_cache = kv_cache" in decode_helper
     assert "request_kv_cache = allocate_kv_cache(" in decode_helper
     assert "request_kv_cache[:, : cfg.context_window].copy_(kv_prompt)" in decode_helper
