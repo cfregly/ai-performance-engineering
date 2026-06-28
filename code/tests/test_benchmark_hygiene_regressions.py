@@ -7474,6 +7474,16 @@ def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
 def test_ch13_optimized_quantized_linears_add_bias_in_place() -> None:
     cases = (
         (
+            "baseline_fp4_perchannel.py",
+            "class NaiveFP4MLP",
+            "output.add_(self.bias)",
+        ),
+        (
+            "baseline_fp8_perchannel.py",
+            "class BaselineFP8PerChannelBenchmark",
+            "output.add_(self.bias)",
+        ),
+        (
             "optimized_quantization.py",
             "class Int8MLP",
             "output.add_(self.bias)",

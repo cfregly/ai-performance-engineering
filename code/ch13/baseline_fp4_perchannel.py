@@ -43,7 +43,7 @@ class FP4PerTensorLinear(nn.Module):
         output = output_q * input_scale * weight_scale
 
         if self.bias is not None:
-            output = output + self.bias
+            output.add_(self.bias)
         return output
 
 

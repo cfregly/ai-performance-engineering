@@ -57,7 +57,7 @@ class FP8PerTensorLinear(nn.Module):
         output = (output_q * input_scale * weight_scale).to(x.dtype)
         
         if self.bias is not None:
-            output = output + self.bias
+            output.add_(self.bias)
         
         return output
 
