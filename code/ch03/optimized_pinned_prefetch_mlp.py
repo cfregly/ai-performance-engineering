@@ -69,6 +69,7 @@ class OptimizedPinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output: Optional[torch.Tensor] = None
         self._payload_inputs: Optional[torch.Tensor] = None
         self._payload_targets: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
         # Training benchmarks don't support jitter check - outputs change due to weight updates
         # Larger transfers to make H2D optimization measurable on high-bandwidth GPUs
         # The prefetcher benefit is proportional to (H2D time / compute time)
@@ -96,6 +97,7 @@ class OptimizedPinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmar
             nn.Linear(self.hidden_dim, self.output_dim),
         ).to(self.device)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-2)
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
         # Use pinned memory for efficient async H2D transfer (the optimization)
         for _ in range(self.num_batches):
@@ -132,7 +134,7 @@ class OptimizedPinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmar
             inputs={"data": self._payload_inputs, "target": self._payload_targets},
             output=self.output,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

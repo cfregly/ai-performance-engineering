@@ -30,6 +30,7 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.norm: Optional[nn.Module] = None
         self.nic_snapshot: List[NICInfo] = []
         self.output: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
         bytes_per_iter = self.seq_len * self.hidden_size * 4  # float32 bytes
         # Register workload metadata in __init__ for compliance checks
         self.register_workload_metadata(
@@ -44,6 +45,7 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_batch = torch.randn(self.seq_len, self.hidden_size, dtype=torch.float32)
         self.device_batch = torch.empty_like(self.host_batch, device=self.device)
         self.norm = nn.LayerNorm(self.hidden_size, device=self.device)
+        self._payload_parameter_count = sum(p.numel() for p in self.norm.parameters())
         
         self._synchronize()
 
@@ -60,7 +62,7 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"host_batch": self.host_batch, "device_batch": self.device_batch},
             output=self.output.detach().clone(),
             batch_size=self.host_batch.shape[0],
-            parameter_count=sum(p.numel() for p in self.norm.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

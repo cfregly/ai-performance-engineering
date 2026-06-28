@@ -32,6 +32,7 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._static_output: Optional[torch.Tensor] = None
         self.repeats = 16
         self.N = 4096
+        self._payload_parameter_count = 0
         tokens = self.N * self.repeats
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repeats),
@@ -48,6 +49,7 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
             nn.Linear(self.N * 2, self.N),
         ).to(self.device, dtype=torch.float16).eval()
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float16)
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA required for compute-bound CUDA graph capture")
@@ -87,7 +89,7 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
             inputs={"input": self.input},
             output=self.output.detach().clone(),
             batch_size=self.input.shape[0],
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": True,
                 "bf16": False,
@@ -141,4 +143,3 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return OptimizedComputeBoundBenchmark()
-

@@ -61,6 +61,7 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.verify_report: Optional[dict] = None
         self.output: Optional[torch.Tensor] = None
         self._last_slot: int = 0
+        self._payload_parameter_count = 0
         bytes_per_iter = self.seq_len * self.hidden_size * 4  # float32 bytes (matches baseline)
         # Register workload metadata in __init__ for compliance checks
         self.register_workload_metadata(
@@ -109,6 +110,7 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.empty_like(self.host_buffers[0], device=self.device),
         ]
         self.norm = nn.LayerNorm(self.hidden_size, device=self.device, dtype=torch.float32)
+        self._payload_parameter_count = sum(p.numel() for p in self.norm.parameters())
         self.copy_stream = torch.cuda.Stream(device=self.device)
         self.cur_slot = 0
         self.next_slot = 1
@@ -144,7 +146,7 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
             },
             output=self.output.detach().clone(),
             batch_size=self.host_buffers[self._last_slot].shape[0],
-            parameter_count=sum(p.numel() for p in self.norm.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

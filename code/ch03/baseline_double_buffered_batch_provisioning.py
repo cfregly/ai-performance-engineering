@@ -29,6 +29,7 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
         self.target_batches: List[torch.Tensor] = []
         self.batch_idx = 0
         self.output: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
         # Training benchmarks don't support jitter check - outputs change due to weight updates
         # Two float32 batches per step: inputs + targets (512x1024 elements each)
         elements = 2 * 512 * 1024
@@ -47,6 +48,7 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
             nn.ReLU(inplace=True),
             nn.Linear(1024, 1024),
         ).to(self.device)
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         
         # Pre-allocate host batches for deterministic verification
         num_batches = 4
@@ -89,7 +91,7 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
             inputs={"data": data, "target": target},
             output=self.output,
             batch_size=data.shape[0],
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

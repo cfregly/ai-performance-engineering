@@ -37,6 +37,7 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.targets: List[torch.Tensor] = []
         self.batch_idx = 0
         self.output: Optional[torch.Tensor] = None
+        self._payload_parameter_count = 0
         # Training benchmarks don't support jitter check - outputs change due to weight updates
         # Register workload metadata in __init__ for compliance checks
         self.register_workload_metadata(
@@ -54,6 +55,7 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
             nn.Linear(self.hidden_dim, self.output_dim),
         ).to(self.device)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-2)
+        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
         for _ in range(self.num_batches):
             self.host_batches.append(torch.randn(self.batch_size, self.input_dim, dtype=torch.float32))
@@ -90,7 +92,7 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
             inputs={"data": x, "target": y},
             output=self.output,
             batch_size=self.batch_size,
-            parameter_count=sum(p.numel() for p in self.model.parameters()),
+            parameter_count=self._payload_parameter_count,
             precision_flags={
                 "fp16": False,
                 "bf16": False,

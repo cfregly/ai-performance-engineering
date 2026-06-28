@@ -1009,6 +1009,44 @@ def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
         assert "torch.nn.ReLU()" not in source
 
 
+def test_ch03_ch09_benchmarks_cache_verification_parameter_count() -> None:
+    for relative, parameters_expr in (
+        ("ch03/baseline_rack_prep.py", "self.norm.parameters()"),
+        ("ch03/optimized_rack_prep.py", "self.norm.parameters()"),
+        ("ch03/baseline_pinned_prefetch_mlp.py", "self.model.parameters()"),
+        ("ch03/optimized_pinned_prefetch_mlp.py", "self.model.parameters()"),
+        (
+            "ch03/baseline_double_buffered_batch_provisioning.py",
+            "self.model.parameters()",
+        ),
+        (
+            "ch03/optimized_double_buffered_batch_provisioning.py",
+            "self.model.parameters()",
+        ),
+        ("ch09/baseline_compute_bound.py", "self.model.parameters()"),
+        ("ch09/optimized_compute_bound.py", "self.model.parameters()"),
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+
+        assert "self._payload_parameter_count = 0" in source
+        assert (
+            f"self._payload_parameter_count = sum(p.numel() for p in {parameters_expr})"
+            in setup_section
+        )
+        assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "sum(p.numel()" not in capture_section
+
+
 def test_ch09_compute_bound_baseline_uses_inference_mode_and_cached_nvtx() -> None:
     source = (REPO_ROOT / "ch09" / "baseline_compute_bound.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
