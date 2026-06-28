@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Optional
 
 import torch
@@ -20,6 +21,13 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 WORKLOAD = get_workload()
+
+
+@dataclass(slots=True)
+class _PagedLayerEntry:
+    pages: int
+    buffer: tuple[torch.Tensor, torch.Tensor]
+    length: int = 0
 
 
 class PagedKVCache:
@@ -43,7 +51,7 @@ class PagedKVCache:
         self.dtype = dtype
         self.device = device
         self.buffer_pool: dict[int, list[tuple[torch.Tensor, torch.Tensor]]] = defaultdict(list)
-        self.allocations: dict[str, list[dict[str, object]]] = {}
+        self.allocations: dict[str, list[_PagedLayerEntry]] = {}
         self._empty = torch.empty(
             0,
             self.batch_size,
@@ -77,41 +85,35 @@ class PagedKVCache:
         if request_id in self.allocations:
             return
         pages = max(1, math.ceil(seq_len / self.page_size))
-        per_layer: list[dict[str, object]] = []
+        per_layer: list[_PagedLayerEntry] = []
         for _ in range(self.num_layers):
-            per_layer.append(
-                {
-                    "pages": pages,
-                    "buffer": self._acquire_buffer(pages),
-                    "length": 0,
-                }
-            )
+            per_layer.append(_PagedLayerEntry(pages=pages, buffer=self._acquire_buffer(pages)))
         self.allocations[request_id] = per_layer
     
-    def _ensure_capacity(self, entry: dict[str, object], target_pos: int) -> None:
-        pages = int(entry["pages"])  # type: ignore[index]
+    def _ensure_capacity(self, entry: _PagedLayerEntry, target_pos: int) -> None:
+        pages = entry.pages
         capacity = pages * self.page_size
         if target_pos < capacity:
             return
         new_pages = max(pages * 2, math.ceil((target_pos + 1) / self.page_size))
         new_buffer = self._acquire_buffer(new_pages)
-        old_buffer = entry["buffer"]  # type: ignore[index]
-        valid = min(int(entry["length"]), capacity)  # type: ignore[index]
+        old_buffer = entry.buffer
+        valid = min(entry.length, capacity)
         new_buffer[0][:valid].copy_(old_buffer[0][:valid])
         new_buffer[1][:valid].copy_(old_buffer[1][:valid])
-        self._release_buffer(pages, old_buffer)  # type: ignore[arg-type]
-        entry["buffer"] = new_buffer
-        entry["pages"] = new_pages
+        self._release_buffer(pages, old_buffer)
+        entry.buffer = new_buffer
+        entry.pages = new_pages
     
     def append(self, request_id: str, layer_idx: int, k: torch.Tensor, v: torch.Tensor, pos: int) -> None:
         if request_id not in self.allocations:
             self.allocate(request_id, pos + self.page_size)
         entry = self.allocations[request_id][layer_idx]
         self._ensure_capacity(entry, pos)
-        buffer_k, buffer_v = entry["buffer"]  # type: ignore[assignment]
+        buffer_k, buffer_v = entry.buffer
         buffer_k[pos].copy_(k)
         buffer_v[pos].copy_(v)
-        entry["length"] = max(int(entry["length"]), pos + 1)  # type: ignore[index]
+        entry.length = max(entry.length, pos + 1)
     
     def append_block(
         self,
@@ -126,26 +128,26 @@ class PagedKVCache:
             self.allocate(request_id, start_pos + block)
         entry = self.allocations[request_id][layer_idx]
         self._ensure_capacity(entry, start_pos + block - 1)
-        buffer_k, buffer_v = entry["buffer"]  # type: ignore[assignment]
+        buffer_k, buffer_v = entry.buffer
         buffer_k[start_pos:start_pos + block].copy_(k_block)
         buffer_v[start_pos:start_pos + block].copy_(v_block)
-        entry["length"] = max(int(entry["length"]), start_pos + block)  # type: ignore[index]
+        entry.length = max(entry.length, start_pos + block)
     
     def get(self, request_id: str, layer_idx: int, start: int, end: int) -> tuple[torch.Tensor, torch.Tensor]:
         if request_id not in self.allocations:
             return self._empty, self._empty
         entry = self.allocations[request_id][layer_idx]
-        valid_end = min(end, int(entry["length"]))  # type: ignore[index]
+        valid_end = min(end, entry.length)
         if start >= valid_end:
             return self._empty, self._empty
-        buffer_k, buffer_v = entry["buffer"]  # type: ignore[assignment]
+        buffer_k, buffer_v = entry.buffer
         return buffer_k[start:valid_end], buffer_v[start:valid_end]
     
     def free(self, request_id: str) -> None:
         if request_id not in self.allocations:
             return
         for entry in self.allocations.pop(request_id):
-            self._release_buffer(entry["pages"], entry["buffer"])  # type: ignore[arg-type]
+            self._release_buffer(entry.pages, entry.buffer)
 
 
 class PagedAttentionLayer(nn.Module):

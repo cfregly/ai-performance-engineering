@@ -9033,6 +9033,11 @@ def test_ch13_paged_kv_cache_releases_slabs_without_zero_fill() -> None:
     assert "torch.zeros(" not in acquire_section
     assert ".zero_()" not in release_section
     assert "self._empty" in source
+    assert "@dataclass(slots=True)" in source
+    assert "self.allocations: dict[str, list[_PagedLayerEntry]]" in source
+    assert 'entry["buffer"]' not in source
+    assert 'entry["length"]' not in source
+    assert 'entry["pages"]' not in source
 
     from ch13.optimized_kv_cache_naive import PagedKVCache
 
@@ -9052,12 +9057,12 @@ def test_ch13_paged_kv_cache_releases_slabs_without_zero_fill() -> None:
     old_k = torch.tensor([[[[1.0, 2.0]]], [[[3.0, 4.0]]]])
     old_v = old_k + 10.0
     cache.append_block("old", 0, old_k, old_v, 0)
-    old_buffer = cache.allocations["old"][0]["buffer"]
+    old_buffer = cache.allocations["old"][0].buffer
     old_ptr = old_buffer[0].data_ptr()
     cache.free("old")
 
     cache.allocate("new", 2)
-    new_buffer = cache.allocations["new"][0]["buffer"]
+    new_buffer = cache.allocations["new"][0].buffer
     assert new_buffer[0].data_ptr() == old_ptr
     empty_k, empty_v = cache.get("new", 0, 0, 4)
     assert empty_k.shape == (0, 1, 1, 2)
