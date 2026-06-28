@@ -4272,16 +4272,21 @@ def test_persistent_decode_tma_buffers_avoid_zero_fill_before_overwrite() -> Non
         assert "self.graph_out.zero_()" not in decode_graph_section
 
 
-def test_optimized_flexdecode_graph_reuses_static_input_without_zero_fill() -> None:
+def test_optimized_flexdecode_graph_preprojects_static_decode_token() -> None:
     source = (REPO_ROOT / "ch18" / "optimized_flexdecoding_graphs.py").read_text(encoding="utf-8")
     setup_section = source.split("def _initialize_and_capture", maxsplit=1)[1].split(
         "def benchmark_fn", maxsplit=1
     )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split("def teardown", maxsplit=1)[0]
 
-    assert "self.static_decode_in = torch.empty_like(self.decode_token)" in setup_section
-    assert "self.static_decode_in = torch.zeros_like(self.decode_token)" not in setup_section
-    assert "self.static_decode_in.copy_(self.decode_token)" in benchmark_section
+    assert "self.static_decode_q = self.model.q_proj(self.decode_token).view(" in setup_section
+    assert "self.static_decode_k = self.model.k_proj(self.decode_token).view(" in setup_section
+    assert "self.static_decode_v = self.model.v_proj(self.decode_token).view(" in setup_section
+    assert "out = self.model.decode_attention(self.static_decode_q)" in setup_section
+    assert "self.static_decode_in" not in source
+    assert "self.model.k_proj(self.decode_token)" not in benchmark_section
+    assert "self.model.v_proj(self.decode_token)" not in benchmark_section
+    assert "self.model._update_cache(self.static_decode_k, self.static_decode_v, self.base_position + pos)" in benchmark_section
 
 
 def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:

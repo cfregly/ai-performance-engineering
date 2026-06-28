@@ -21,7 +21,9 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
         )
         self.graph: torch.cuda.CUDAGraph | None = None
         self.capture_stream: torch.cuda.Stream | None = None
-        self.static_decode_in: torch.Tensor | None = None
+        self.static_decode_q: torch.Tensor | None = None
+        self.static_decode_k: torch.Tensor | None = None
+        self.static_decode_v: torch.Tensor | None = None
         self.static_decode_out: torch.Tensor | None = None
         self.base_position: int = 0
 
@@ -43,7 +45,13 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
             raise RuntimeError("Model/tokens not initialized")
 
         self.base_position = self.prefill_tokens.size(1)
-        self.static_decode_in = torch.empty_like(self.decode_token)
+        batch = self.decode_token.size(0)
+        heads = self.model.cfg.heads
+        head_dim = self.model.head_dim
+        with torch.inference_mode():
+            self.static_decode_q = self.model.q_proj(self.decode_token).view(batch, 1, heads, head_dim)
+            self.static_decode_k = self.model.k_proj(self.decode_token).view(batch, 1, heads, head_dim)
+            self.static_decode_v = self.model.v_proj(self.decode_token).view(batch, 1, heads, head_dim)
         self.static_decode_out = torch.empty_like(self.decode_token)
         self.capture_stream = torch.cuda.Stream(device=self.device)
 
@@ -55,13 +63,9 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
         with torch.cuda.graph(self.graph, stream=self.capture_stream):
             if self.model is None:
                 raise RuntimeError("Model not initialized for capture")
-            q = self.model.q_proj(self.static_decode_in).view(
-                self.static_decode_in.size(0),
-                1,
-                self.model.cfg.heads,
-                self.model.head_dim,
-            )
-            out = self.model.decode_attention(q)
+            if self.static_decode_q is None:
+                raise RuntimeError("Static decode Q not initialized for capture")
+            out = self.model.decode_attention(self.static_decode_q)
             self.static_decode_out.copy_(out)
         torch.cuda.synchronize(self.device)
 
@@ -72,7 +76,8 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
             or self.decode_token is None
             or self.graph is None
             or self.capture_stream is None
-            or self.static_decode_in is None
+            or self.static_decode_k is None
+            or self.static_decode_v is None
             or self.static_decode_out is None
         ):
             raise RuntimeError("Graph path not initialized")
@@ -91,16 +96,11 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
                 prefill_end.record()
 
             with self._nvtx_range("flex_decode_graph"):
-                self.static_decode_in.copy_(self.decode_token)
-                heads = self.model.cfg.heads
-                head_dim = self.model.head_dim
                 default_stream = torch.cuda.current_stream(device=self.device)
                 for pos in range(self.decode_tokens):
                     start_evt, end_evt = self._decode_events[pos]
                     start_evt.record(default_stream)
-                    k = self.model.k_proj(self.decode_token).view(1, 1, heads, head_dim)
-                    v = self.model.v_proj(self.decode_token).view(1, 1, heads, head_dim)
-                    self.model._update_cache(k, v, self.base_position + pos)
+                    self.model._update_cache(self.static_decode_k, self.static_decode_v, self.base_position + pos)
                     self.model._set_offset(self.base_position + pos)
                     with torch.cuda.stream(self.capture_stream):
                         self.capture_stream.wait_stream(default_stream)
@@ -119,7 +119,9 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
         super().teardown()
         self.graph = None
         self.capture_stream = None
-        self.static_decode_in = None
+        self.static_decode_q = None
+        self.static_decode_k = None
+        self.static_decode_v = None
         self.static_decode_out = None
         self.base_position = 0
 
