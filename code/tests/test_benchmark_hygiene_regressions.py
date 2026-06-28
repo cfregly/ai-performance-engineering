@@ -3760,8 +3760,24 @@ def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None
     ch17_capture = ch17_source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
+    ch17_model = ch17_source.split("class BufferedGeluMlp", maxsplit=1)[1].split(
+        "class OptimizedMemoryBenchmark", maxsplit=1
+    )[0]
 
     assert "with torch.inference_mode(), torch.cuda.graph(self.graph):" in ch17_setup
+    assert "self.model = BufferedGeluMlp(self.input_dim, HIDDEN_DIM)" in ch17_setup
+    assert "nn.Sequential(" not in ch17_setup
+    assert "self._fc1_buffer: Optional[torch.Tensor] = None" in ch17_model
+    assert "self._fc2_buffer: Optional[torch.Tensor] = None" in ch17_model
+    assert "self._fc3_buffer: Optional[torch.Tensor] = None" in ch17_model
+    assert "def forward_into(" in ch17_model
+    assert "torch.mm(x, self.fc1.weight.t(), out=fc1_out)" in ch17_model
+    assert "F.gelu(fc1_out, out=fc1_out)" in ch17_model
+    assert "torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)" in ch17_model
+    assert "F.gelu(fc2_out, out=fc2_out)" in ch17_model
+    assert "torch.mm(fc2_out, self.fc3.weight.t(), out=out)" in ch17_model
+    assert "self.model.forward_into(self.transform_buffer, self.graph_output)" in ch17_setup
+    assert "self.graph_output.copy_(self.model(self.transform_buffer))" not in ch17_setup
     assert "with torch.inference_mode():" in ch17_benchmark
     assert "self.output = self.graph_output.clone()" not in ch17_benchmark
     assert "self.output = self.graph_output" in ch17_benchmark

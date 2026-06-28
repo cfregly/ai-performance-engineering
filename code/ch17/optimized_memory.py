@@ -6,6 +6,7 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
@@ -14,6 +15,74 @@ BATCH_SIZE = 1024
 INPUT_DIM = 2048
 HIDDEN_DIM = 2048
 REPETITIONS = 10
+
+
+class BufferedGeluMlp(nn.Module):
+    """Three-layer GELU MLP with reusable inference buffers."""
+
+    def __init__(self, input_dim: int, hidden_dim: int):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, input_dim)
+        self._fc1_buffer: Optional[torch.Tensor] = None
+        self._fc2_buffer: Optional[torch.Tensor] = None
+        self._fc3_buffer: Optional[torch.Tensor] = None
+
+    def _ensure_hidden_buffers(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        rows = x.shape[0]
+        fc1_shape = (rows, self.fc1.out_features)
+        fc2_shape = (rows, self.fc2.out_features)
+        if (
+            self._fc1_buffer is None
+            or self._fc1_buffer.shape != fc1_shape
+            or self._fc1_buffer.device != x.device
+            or self._fc1_buffer.dtype != x.dtype
+        ):
+            self._fc1_buffer = torch.empty(fc1_shape, device=x.device, dtype=x.dtype)
+        if (
+            self._fc2_buffer is None
+            or self._fc2_buffer.shape != fc2_shape
+            or self._fc2_buffer.device != x.device
+            or self._fc2_buffer.dtype != x.dtype
+        ):
+            self._fc2_buffer = torch.empty(fc2_shape, device=x.device, dtype=x.dtype)
+        return self._fc1_buffer, self._fc2_buffer
+
+    def _ensure_output_buffer(self, x: torch.Tensor) -> torch.Tensor:
+        out_shape = (x.shape[0], self.fc3.out_features)
+        if (
+            self._fc3_buffer is None
+            or self._fc3_buffer.shape != out_shape
+            or self._fc3_buffer.device != x.device
+            or self._fc3_buffer.dtype != x.dtype
+        ):
+            self._fc3_buffer = torch.empty(out_shape, device=x.device, dtype=x.dtype)
+        return self._fc3_buffer
+
+    def forward_into(self, x: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+        fc1_out, fc2_out = self._ensure_hidden_buffers(x)
+        torch.mm(x, self.fc1.weight.t(), out=fc1_out)
+        if self.fc1.bias is not None:
+            fc1_out.add_(self.fc1.bias)
+        F.gelu(fc1_out, out=fc1_out)
+
+        torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)
+        if self.fc2.bias is not None:
+            fc2_out.add_(self.fc2.bias)
+        F.gelu(fc2_out, out=fc2_out)
+
+        torch.mm(fc2_out, self.fc3.weight.t(), out=out)
+        if self.fc3.bias is not None:
+            out.add_(self.fc3.bias)
+        return out
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled():
+            x = F.gelu(self.fc1(x))
+            x = F.gelu(self.fc2(x))
+            return self.fc3(x)
+        return self.forward_into(x, self._ensure_output_buffer(x))
 
 
 class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -46,13 +115,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
-        self.model = nn.Sequential(
-            nn.Linear(self.input_dim, HIDDEN_DIM),
-            nn.GELU(),
-            nn.Linear(HIDDEN_DIM, HIDDEN_DIM),
-            nn.GELU(),
-            nn.Linear(HIDDEN_DIM, self.input_dim),
-        ).to(self.device, dtype=torch.float32).eval()
+        self.model = BufferedGeluMlp(self.input_dim, HIDDEN_DIM).to(self.device, dtype=torch.float32).eval()
         
         self.device_buffer = torch.empty(
             self.batch_size,
@@ -80,7 +143,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.transform_buffer.add_(-0.5)
             self.transform_buffer.mul_(2.0)
             self.transform_buffer.tanh_()
-            self.graph_output.copy_(self.model(self.transform_buffer))
+            self.model.forward_into(self.transform_buffer, self.graph_output)
         self._synchronize()
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
     

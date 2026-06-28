@@ -1100,7 +1100,8 @@ def test_ch17_memory_pair_keeps_discrete_input_distribution() -> None:
     assert "torch.randint(" in baseline_memory
     assert "256," in baseline_memory
     assert "dtype=torch.uint8" in baseline_memory
-    assert "random_(0, 256).floor_()" in optimized_memory
+    assert "random_(0, 256)" in optimized_memory
+    assert ".floor_()" not in optimized_memory
     assert "discrete 0..255 population" in optimized_memory
 
 
