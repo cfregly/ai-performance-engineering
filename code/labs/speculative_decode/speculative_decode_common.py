@@ -20,6 +20,7 @@ from typing import List
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,27 @@ class TokenMLP(nn.Module):
             layers.append(nn.GELU(approximate="tanh"))
         self.mlp = nn.Sequential(*layers)
         self.out = nn.Linear(self.hidden_size, self.vocab_size, device=device, dtype=dtype)
+        self._forward_buffers: List[torch.Tensor] = []
+
+    def _ensure_forward_buffers(
+        self,
+        num_tokens: int,
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        buffer_shape = (num_tokens, self.hidden_size)
+        if (
+            len(self._forward_buffers) != 2
+            or self._forward_buffers[0].shape != buffer_shape
+            or self._forward_buffers[0].device != device
+            or self._forward_buffers[0].dtype != dtype
+        ):
+            self._forward_buffers = [
+                torch.empty(buffer_shape, device=device, dtype=dtype),
+                torch.empty(buffer_shape, device=device, dtype=dtype),
+            ]
+        return self._forward_buffers[0], self._forward_buffers[1]
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
         if token_ids.dim() != 2:
@@ -91,6 +113,49 @@ class TokenMLP(nn.Module):
         hidden = self.mlp(hidden)
         logits = self.out(hidden).reshape(batch, seq, self.vocab_size)
         return logits
+
+    def forward_into(self, token_ids: torch.Tensor, logits_out: torch.Tensor) -> torch.Tensor:
+        """Run inference while writing logits into a caller-owned output buffer."""
+        if token_ids.dim() != 2:
+            raise ValueError("token_ids must have shape [batch, seq]")
+        if token_ids.dtype not in (torch.int32, torch.int64):
+            raise ValueError("token_ids must be int32 or int64")
+        batch, seq = token_ids.shape
+        expected_shape = (batch, seq, self.vocab_size)
+        if tuple(logits_out.shape) != expected_shape:
+            raise ValueError(f"logits_out must have shape {expected_shape}")
+
+        if torch.is_grad_enabled():
+            logits_out.copy_(self(token_ids))
+            return logits_out
+
+        dtype = self.embed.weight.dtype
+        if logits_out.dtype != dtype:
+            raise ValueError("logits_out dtype must match model parameters")
+
+        num_tokens = batch * seq
+        hidden, scratch = self._ensure_forward_buffers(num_tokens, device=token_ids.device, dtype=dtype)
+        flat_ids = token_ids.reshape(num_tokens)
+        torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)
+
+        current = hidden
+        alternate = scratch
+        for module in self.mlp:
+            if isinstance(module, nn.Linear):
+                torch.matmul(current, module.weight.t(), out=alternate)
+                if module.bias is not None:
+                    alternate.add_(module.bias)
+                current, alternate = alternate, current
+            elif isinstance(module, nn.GELU):
+                F.gelu(current, approximate="tanh", out=current)
+            else:  # pragma: no cover - TokenMLP only builds Linear/GELU pairs.
+                current = module(current)
+
+        flat_logits = logits_out.view(num_tokens, self.vocab_size)
+        torch.matmul(current, self.out.weight.t(), out=flat_logits)
+        if self.out.bias is not None:
+            flat_logits.add_(self.out.bias)
+        return logits_out
 
 
 def scale_tail_dims_(target: TokenMLP, draft_hidden: int, tail_scale: float) -> None:

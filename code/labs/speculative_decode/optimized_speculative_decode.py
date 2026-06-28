@@ -51,6 +51,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._target_next_values: Optional[torch.Tensor] = None
         self._target_next_tokens: Optional[torch.Tensor] = None
         self._matches: Optional[torch.Tensor] = None
+        self._draft_logits: Optional[torch.Tensor] = None
+        self._target_logits: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
@@ -92,6 +94,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)
         self._target_next_tokens = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.long)
         self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)
+        self._draft_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)
+        self._target_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)
 
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
         self.output = None
@@ -113,6 +117,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             or self._target_next_values is None
             or self._target_next_tokens is None
             or self._matches is None
+            or self._draft_logits is None
+            or self._target_logits is None
         ):
             raise RuntimeError("Benchmark not initialized")
 
@@ -134,7 +140,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 # Draft: propose k tokens sequentially.
                 prev = out[:, pos : pos + 1]
                 for j in range(k):
-                    logits_d = self.draft_model(prev)
+                    logits_d = self.draft_model.forward_into(prev, self._draft_logits)
                     torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))
                     self._draft_ids[:, j].copy_(self._draft_next_tokens)
                     next_d = self._draft_next_tokens
@@ -147,7 +153,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 if k > 1:
                     self._verify_prev[:, 1:k] = self._draft_ids[:, : k - 1]
 
-                logits_t = self.target_model(self._verify_prev[:, :k])
+                logits_t = self.target_model.forward_into(self._verify_prev[:, :k], self._target_logits[:, :k])
                 target_values = self._target_next_values[:, :k]
                 target_next = self._target_next_tokens[:, :k]
                 torch.max(logits_t, dim=-1, out=(target_values, target_next))
@@ -204,6 +210,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._target_next_values = None
         self._target_next_tokens = None
         self._matches = None
+        self._draft_logits = None
+        self._target_logits = None
         self.output = None
         torch.cuda.empty_cache()
 

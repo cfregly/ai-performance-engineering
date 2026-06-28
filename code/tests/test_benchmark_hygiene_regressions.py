@@ -7561,9 +7561,13 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
+    assert "self._draft_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._target_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
+    assert "self.draft_model.forward_into(prev, self._draft_logits)" in benchmark_section
+    assert "self.target_model.forward_into(self._verify_prev[:, :k], self._target_logits[:, :k])" in benchmark_section
     assert "torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))" in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
     assert "torch.eq(target_next, self._draft_ids[:, :k], out=matches)" in benchmark_section
@@ -7573,6 +7577,11 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "accept_k = int(self._accept_count.item())" in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
+    assert "def forward_into(self, token_ids: torch.Tensor, logits_out: torch.Tensor)" in common_source
+    assert "torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)" in common_source
+    assert "torch.matmul(current, module.weight.t(), out=alternate)" in common_source
+    assert "F.gelu(current, approximate=\"tanh\", out=current)" in common_source
+    assert "torch.matmul(current, self.out.weight.t(), out=flat_logits)" in common_source
     assert common_source.count("with torch.inference_mode():") >= 2
     assert "with torch.no_grad():" not in common_source
 
