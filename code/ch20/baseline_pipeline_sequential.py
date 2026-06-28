@@ -55,6 +55,7 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.num_microbatches = 8
         self.register_workload_metadata(requests_per_iteration=float(self.batch_size))
         self._payload_parameter_count = 0
+        self._enable_nvtx = False
     
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         """Describe workload units processed per iteration."""
@@ -88,6 +89,8 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         
         self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float16)
         self.microbatches = [chunk.contiguous() for chunk in self.inputs.chunk(self.num_microbatches, dim=0)]
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
     
     def _run_pipeline_once(self, microbatches: list[torch.Tensor]) -> list[torch.Tensor]:
         assert self.stages is not None
@@ -101,11 +104,9 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def benchmark_fn(self) -> None:
         """Benchmark the GPU-native sequential microbatch pipeline."""
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
         assert self.inputs is not None and self.stages is not None and self.microbatches is not None
 
-        with nvtx_range("baseline_pipeline_sequential", enable=enable_nvtx):
+        with nvtx_range("baseline_pipeline_sequential", enable=self._enable_nvtx):
             with torch.inference_mode():
                 for _ in range(self.repeats):
                     outputs = self._run_pipeline_once(self.microbatches)

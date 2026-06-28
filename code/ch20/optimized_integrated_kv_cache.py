@@ -207,6 +207,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output: Optional[torch.Tensor] = None
         self._verification_payload = None
         self._payload_parameter_count = 0
+        self._enable_nvtx = False
     
     def setup(self) -> None:
         """Setup: Initialize model with integrated KV cache."""
@@ -236,18 +237,14 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=torch.float16)
             self.inputs.append(x)
         self._verify_input = self.inputs[-1] if self.inputs else None
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         
         torch.cuda.synchronize()
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - integrated KV cache pipeline."""
-        # Use conditional NVTX ranges - only enabled when profiling
-
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-        with nvtx_range("integrated_kv_cache", enable=enable_nvtx):
+        with nvtx_range("integrated_kv_cache", enable=self._enable_nvtx):
             for seq_idx, x in enumerate(self.inputs):
                 request_id = f"req_{seq_idx}"
                 seq_len = x.size(1)

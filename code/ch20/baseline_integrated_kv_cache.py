@@ -118,6 +118,7 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.sequence_lengths = [512, 1024, 2048]
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._payload_parameter_count = 0
+        self._enable_nvtx = False
     
     def setup(self) -> None:
         """Setup: Initialize baseline model with naive KV cache."""
@@ -150,19 +151,14 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
             self.kv_cache.allocate(request_id)
         self._verify_input = self.inputs[-1] if self.inputs else None
         self.output = None
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         
         self._synchronize()
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - baseline integrated KV cache."""
-        # Use conditional NVTX ranges - only enabled when profiling
-
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
-        with nvtx_range("baseline_integrated_kv_cache", enable=enable_nvtx):
+        with nvtx_range("baseline_integrated_kv_cache", enable=self._enable_nvtx):
             for request_id, x in zip(self.request_ids, self.inputs):
                 seq_len = x.size(1)
                 

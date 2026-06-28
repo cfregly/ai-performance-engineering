@@ -2766,6 +2766,28 @@ def test_ch20_benchmarks_cache_verification_parameter_count() -> None:
         assert "sum(p.numel()" not in capture_section
 
 
+def test_ch20_integrated_and_pipeline_cache_nvtx_enablement() -> None:
+    for relative, label in (
+        ("ch20/baseline_integrated_kv_cache.py", "baseline_integrated_kv_cache"),
+        ("ch20/optimized_integrated_kv_cache.py", "integrated_kv_cache"),
+        ("ch20/baseline_pipeline_sequential.py", "baseline_pipeline_sequential"),
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def ",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+        assert "get_config()" not in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert f'with nvtx_range("{label}", enable=self._enable_nvtx):' in benchmark_section
+
+
 def test_remaining_benchmark_wrappers_cache_verification_parameter_count() -> None:
     for relative, parameters_expr in (
         ("ch16/awq_gptq_smoothquant_benchmarks.py", "self.reference_model.parameters()"),
