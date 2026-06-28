@@ -48,6 +48,7 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output = None
         self.microbatches: Optional[list[torch.Tensor]] = None
         self._last_outputs: Optional[list[torch.Tensor]] = None
+        self._last_output_count: int = 0
         self.batch_size = 512
         self.hidden_dim = 1536
         self.num_stages = 4
@@ -89,18 +90,24 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         
         self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float16)
         self.microbatches = [chunk.contiguous() for chunk in self.inputs.chunk(self.num_microbatches, dim=0)]
+        self._last_outputs = [
+            torch.empty(0, device=self.device, dtype=torch.float16)
+            for _ in range(self.num_microbatches)
+        ]
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
     
     def _run_pipeline_once(self, microbatches: list[torch.Tensor]) -> list[torch.Tensor]:
-        assert self.stages is not None
-        outputs: list[torch.Tensor] = []
+        assert self.stages is not None and self._last_outputs is not None
+        output_count = 0
         for microbatch in microbatches:
             x = microbatch
             for stage in self.stages:
                 x = stage(x)
-            outputs.append(x)
-        return outputs
+            self._last_outputs[output_count] = x
+            output_count += 1
+        self._last_output_count = output_count
+        return self._last_outputs
 
     def benchmark_fn(self) -> None:
         """Benchmark the GPU-native sequential microbatch pipeline."""
@@ -109,13 +116,14 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         with nvtx_range("baseline_pipeline_sequential", enable=self._enable_nvtx):
             with torch.inference_mode():
                 for _ in range(self.repeats):
-                    outputs = self._run_pipeline_once(self.microbatches)
-                self._last_outputs = outputs
+                    self._run_pipeline_once(self.microbatches)
 
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self._last_outputs is None or self.stages is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        self.output = torch.cat([out.detach() for out in self._last_outputs], dim=0)
+        if self._last_output_count != len(self._last_outputs):
+            raise RuntimeError("Incomplete pipeline outputs before verification capture")
+        self.output = torch.cat(self._last_outputs, dim=0).detach()
         self._set_verification_payload(
             inputs={"inputs": self.inputs},
             output=self.output.float(),
@@ -131,6 +139,7 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output = None
         self.microbatches = None
         self._last_outputs = None
+        self._last_output_count = 0
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

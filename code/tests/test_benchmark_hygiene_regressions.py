@@ -3214,6 +3214,10 @@ def test_ch20_integrated_kv_cache_releases_slabs_without_zero_fill() -> None:
 def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> None:
     baseline_source = (REPO_ROOT / "ch20" / "baseline_pipeline_sequential.py").read_text(encoding="utf-8")
     optimized_source = (REPO_ROOT / "ch20" / "optimized_pipeline_sequential.py").read_text(encoding="utf-8")
+    baseline_setup = baseline_source.split("def _run_pipeline_once", maxsplit=1)[0]
+    baseline_run = baseline_source.split("def _run_pipeline_once", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     optimized_setup = optimized_source.split("def _run_pipelined_once", maxsplit=1)[0]
 
     for source in (baseline_source,):
@@ -3227,8 +3231,15 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
         assert "self.microbatches = [chunk.contiguous() for chunk in self.inputs.chunk" in source
         assert ".chunk(" not in benchmark_section
         assert "torch.cat(" not in benchmark_section
-        assert "self._last_outputs = outputs" in benchmark_section
-        assert "self.output = torch.cat([out.detach() for out in self._last_outputs], dim=0)" in capture_section
+        assert "self._last_outputs = [" in baseline_setup
+        assert "outputs: list[torch.Tensor] = []" not in baseline_run
+        assert "outputs.append" not in baseline_run
+        assert "self._last_outputs[output_count] = x" in baseline_run
+        assert "self._last_output_count = output_count" in baseline_run
+        assert "self._run_pipeline_once(self.microbatches)" in benchmark_section
+        assert "self._last_outputs = outputs" not in benchmark_section
+        assert "torch.cat([out.detach() for out in self._last_outputs], dim=0)" not in capture_section
+        assert "self.output = torch.cat(self._last_outputs, dim=0).detach()" in capture_section
 
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
