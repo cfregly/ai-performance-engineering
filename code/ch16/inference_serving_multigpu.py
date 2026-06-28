@@ -184,6 +184,26 @@ class DemoCausalLM(nn.Module):
             nn.GELU(),
             nn.Linear(d_model, vocab_size),
         )
+        self._key_stack_buffer: Optional[torch.Tensor] = None
+        self._value_stack_buffer: Optional[torch.Tensor] = None
+
+    def _stack_layer_outputs(self, tensors: List[torch.Tensor], buffer_name: str) -> torch.Tensor:
+        if torch.is_grad_enabled() and any(t.requires_grad for t in tensors):
+            return torch.stack(tensors, dim=0)
+
+        first = tensors[0]
+        shape = (len(tensors), *first.shape)
+        buffer = getattr(self, buffer_name)
+        if (
+            buffer is None
+            or buffer.device != first.device
+            or buffer.dtype != first.dtype
+            or tuple(buffer.shape) != shape
+        ):
+            buffer = torch.empty(shape, dtype=first.dtype, device=first.device)
+            setattr(self, buffer_name, buffer)
+        torch.stack(tensors, dim=0, out=buffer)
+        return buffer
 
     def forward(
         self,
@@ -219,8 +239,8 @@ class DemoCausalLM(nn.Module):
             local_keys.append(key_local)
             local_values.append(value_local)
 
-        key_stack = torch.stack(local_keys, dim=0)    # (layers, batch, local_heads, seq, head_dim)
-        value_stack = torch.stack(local_values, dim=0)
+        key_stack = self._stack_layer_outputs(local_keys, "_key_stack_buffer")
+        value_stack = self._stack_layer_outputs(local_values, "_value_stack_buffer")
 
         final_hidden = self.final_norm(hidden)
         logits = self.lm_head(final_hidden[:, -1, :])

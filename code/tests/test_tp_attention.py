@@ -183,6 +183,33 @@ def test_demo_causal_lm_forward_shape():
     expected_shape = (model.num_layers, 2, heads_per_gpu, input_ids.size(1), model.head_dim)
     assert keys.shape == expected_shape
     assert values.shape == expected_shape
+    assert model._key_stack_buffer is None
+    assert model._value_stack_buffer is None
+
+
+def test_demo_causal_lm_reuses_kv_stack_buffers_in_inference():
+    torch.manual_seed(3)
+    model = DemoCausalLM(
+        vocab_size=128,
+        d_model=64,
+        num_layers=2,
+        num_heads=4,
+        num_gpus=1,
+    ).eval()
+    input_ids = torch.randint(0, 128, (2, 6))
+
+    with torch.inference_mode():
+        _logits, keys, values = model(input_ids)
+        key_ptr = keys.data_ptr()
+        value_ptr = values.data_ptr()
+        keys_snapshot = keys.clone()
+        values_snapshot = values.clone()
+        _logits_again, keys_again, values_again = model(input_ids)
+
+    assert keys_again.data_ptr() == key_ptr
+    assert values_again.data_ptr() == value_ptr
+    torch.testing.assert_close(keys_again, keys_snapshot)
+    torch.testing.assert_close(values_again, values_snapshot)
 
 
 def test_demo_causal_lm_invalid_head_dim_propagates():

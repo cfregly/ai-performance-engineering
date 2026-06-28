@@ -5006,6 +5006,26 @@ def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     assert "valid_mask.fill_(False)" in cached_attention_section
 
 
+def test_ch16_demo_causal_lm_reuses_kv_stack_buffers() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    model_section = source.split("class DemoCausalLM", maxsplit=1)[1].split(
+        "class DemoTransformerLayer",
+        maxsplit=1,
+    )[0]
+    forward_section = model_section.split("def forward(", maxsplit=1)[1]
+
+    assert "self._key_stack_buffer: Optional[torch.Tensor] = None" in model_section
+    assert "self._value_stack_buffer: Optional[torch.Tensor] = None" in model_section
+    assert "def _stack_layer_outputs(self, tensors: List[torch.Tensor], buffer_name: str)" in model_section
+    assert "torch.stack(tensors, dim=0, out=buffer)" in model_section
+    assert 'key_stack = self._stack_layer_outputs(local_keys, "_key_stack_buffer")' in forward_section
+    assert 'value_stack = self._stack_layer_outputs(local_values, "_value_stack_buffer")' in forward_section
+    assert "key_stack = torch.stack(local_keys" not in forward_section
+    assert "value_stack = torch.stack(local_values" not in forward_section
+
+
 def test_ch16_inference_serving_tracks_packed_max_tokens_on_host() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"
