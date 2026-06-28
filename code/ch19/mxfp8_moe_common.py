@@ -101,6 +101,7 @@ def restore_bucketed_reduce(
     weighted_out: Optional[torch.Tensor] = None,
     bucket_token_ids_expanded: Optional[torch.Tensor] = None,
     weights_expanded: Optional[torch.Tensor] = None,
+    weight_out_expanded: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Scatter-accumulate bucketed outputs to tokens, handling duplicate assignments."""
     if out.shape != (num_tokens, output.shape[-1]):
@@ -130,6 +131,15 @@ def restore_bucketed_reduce(
             raise ValueError("restore_bucketed_reduce() expanded weights must match output dtype")
         if weights_expanded.device != output.device:
             raise ValueError("restore_bucketed_reduce() expanded weights must live on the output device")
+    if weight_out_expanded is None:
+        weight_out_expanded = weight_out.unsqueeze(-1)
+    else:
+        if weight_out_expanded.shape != (num_tokens, 1):
+            raise ValueError("restore_bucketed_reduce() expanded output weights must have shape [num_tokens, 1]")
+        if weight_out_expanded.dtype != out.dtype:
+            raise ValueError("restore_bucketed_reduce() expanded output weights must match output dtype")
+        if weight_out_expanded.device != output.device:
+            raise ValueError("restore_bucketed_reduce() expanded output weights must live on the output device")
     if weighted_out is None:
         weighted_output = output.to(dtype=out.dtype, copy=True)
         weighted_output.mul_(weights_expanded)
@@ -139,7 +149,7 @@ def restore_bucketed_reduce(
     out.scatter_add_(0, bucket_token_ids_expanded, weighted_output)
     weight_out.scatter_add_(0, bucket_token_ids, weights)
     weight_out.clamp_(min=torch.finfo(out.dtype).eps)
-    out.div_(weight_out.unsqueeze(-1))
+    out.div_(weight_out_expanded)
     return out
 
 
