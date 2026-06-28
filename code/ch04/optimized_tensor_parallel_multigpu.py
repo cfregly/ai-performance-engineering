@@ -269,16 +269,17 @@ class OptimizedTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._proj_out is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
-        x = self._input
-        for layer_idx in range(_DEFAULT_LAYERS):
-            local_out = _linear_no_bias_into(self._shard_layers[layer_idx], x, self._local_out)
-            aux_out = x
-            for _ in range(_AUX_PASSES):
-                aux_out = self._aux_layers[layer_idx](aux_out)
-            _replicate_tensor_parallel_shard(local_out, self._world_size, self._full_out)
-            proj_out = _linear_no_bias_into(self._proj_layers[layer_idx], self._full_out, self._proj_out)
-            proj_out.add_(aux_out)
-            x = proj_out
+        with torch.inference_mode():
+            x = self._input
+            for layer_idx in range(_DEFAULT_LAYERS):
+                local_out = _linear_no_bias_into(self._shard_layers[layer_idx], x, self._local_out)
+                aux_out = x
+                for _ in range(_AUX_PASSES):
+                    aux_out = self._aux_layers[layer_idx](aux_out)
+                _replicate_tensor_parallel_shard(local_out, self._world_size, self._full_out)
+                proj_out = _linear_no_bias_into(self._proj_layers[layer_idx], self._full_out, self._proj_out)
+                proj_out.add_(aux_out)
+                x = proj_out
         self._output = x
 
     def capture_verification_payload(self) -> None:

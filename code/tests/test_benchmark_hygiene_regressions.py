@@ -790,6 +790,7 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
             assert "def _linear_no_bias_into(layer: nn.Linear, x: torch.Tensor, out: torch.Tensor)" in source
             assert "self._local_out: Optional[torch.Tensor] = None" in source
             assert "self._proj_out: Optional[torch.Tensor] = None" in source
+            assert "with torch.inference_mode():" in benchmark_section
             assert "local_out_buffer = torch.empty(" in worker_section
             assert "proj_out_buffer = torch.empty(" in worker_section or "proj_out_buffer = torch.empty_like(" in worker_section
             assert "self._local_out = torch.empty(" in setup_section
