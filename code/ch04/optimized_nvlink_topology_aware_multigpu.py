@@ -26,6 +26,8 @@ class OptimizedNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchm
         self.src: List[torch.Tensor] = []
         self.dst: List[torch.Tensor] = []
         self.streams: List[torch.cuda.Stream] = []
+        self._copy_groups: List[Tuple[torch.cuda.Stream, int, torch.Tensor, torch.Tensor]] = []
+        self._wait_groups: List[Tuple[torch.cuda.Stream, int]] = []
         self.output: Optional[torch.Tensor] = None
         self.numel = 32 * 1024 * 1024  # 64 MB
         self._workload = WorkloadMetadata(
@@ -70,6 +72,14 @@ class OptimizedNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchm
             for _, dst in self.pairs
         ]
         self.streams = [torch.cuda.Stream(device=dst) for _, dst in self.pairs]
+        self._copy_groups = [
+            (stream, dst_id, src, dst)
+            for stream, (_, dst_id), src, dst in zip(self.streams, self.pairs, self.src, self.dst, strict=True)
+        ]
+        self._wait_groups = [
+            (stream, dst_id)
+            for stream, (_, dst_id) in zip(self.streams, self.pairs, strict=True)
+        ]
 
         total_tokens = self.numel * len(self.pairs)
         self._workload = WorkloadMetadata(
@@ -84,10 +94,10 @@ class OptimizedNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchm
 
     def benchmark_fn(self) -> None:
         with self._nvtx_range("optimized_nvlink_topology_aware_multigpu"):
-            for stream, (src_id, dst_id), src, dst in zip(self.streams, self.pairs, self.src, self.dst):
+            for stream, dst_id, src, dst in self._copy_groups:
                 with torch.cuda.device(dst_id), torch.cuda.stream(stream):
                     dst.copy_(src, non_blocking=True)
-            for stream, (_, dst_id) in zip(self.streams, self.pairs):
+            for stream, dst_id in self._wait_groups:
                 with torch.cuda.device(dst_id):
                     torch.cuda.current_stream(dst_id).wait_stream(stream)
         self.output = self.dst[0]
@@ -115,6 +125,8 @@ class OptimizedNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchm
         self.src = []
         self.dst = []
         self.streams = []
+        self._copy_groups = []
+        self._wait_groups = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -152,5 +164,4 @@ class OptimizedNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchm
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedNvlinkTopologyAwareBenchmark()
-
 
