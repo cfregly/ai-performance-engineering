@@ -350,8 +350,14 @@ def test_grouped_moe_path_matches_naive_reference() -> None:
 
     expected = experts.forward_naive(x, expert_indices, expert_weights, num_experts_per_tok=2)
     actual = experts.forward_grouped(x, expert_indices, expert_weights)
+    first_output_ptr = experts._grouped_output.data_ptr()
+    first_restored_ptr = experts._grouped_restored.data_ptr()
+    actual_reused = experts.forward_grouped(x, expert_indices, expert_weights)
 
     torch.testing.assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(actual_reused, expected, atol=1e-5, rtol=1e-5)
+    assert experts._grouped_output.data_ptr() == first_output_ptr
+    assert experts._grouped_restored.data_ptr() == first_restored_ptr
 
 
 def test_grouped_moe_path_uses_shared_bucket_helpers() -> None:
@@ -367,7 +373,12 @@ def test_grouped_moe_path_uses_shared_bucket_helpers() -> None:
     assert "flat_token_ids = self._flat_topk_token_ids_for(batch_seq, top_k, x.device)" in grouped_section
     assert "token_ids=flat_token_ids" in grouped_section
     assert "return_expert_order_list=True" in grouped_section
-    assert "output = torch.empty(" in grouped_section
+    assert "self._grouped_output: Optional[torch.Tensor] = None" in text
+    assert "self._grouped_restored: Optional[torch.Tensor] = None" in text
+    assert 'output = self._bmm_workspace(\n            "_grouped_output",' in grouped_section
+    assert 'restored = self._bmm_workspace(\n            "_grouped_restored",' in grouped_section
+    assert "output = torch.empty(" not in grouped_section
+    assert "restored = torch.empty(" not in grouped_section
     assert "torch.zeros(sorted_tokens.shape[0]" not in grouped_section
     assert "repeat_interleave" not in grouped_section
     assert "for expert_id, count in zip(expert_order_host, counts)" in grouped_section

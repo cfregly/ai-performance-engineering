@@ -121,6 +121,8 @@ class MoEExperts(nn.Module):
         self._bmm_padded_weights: Optional[torch.Tensor] = None
         self._bmm_valid_out: Optional[torch.Tensor] = None
         self._bmm_restored: Optional[torch.Tensor] = None
+        self._grouped_output: Optional[torch.Tensor] = None
+        self._grouped_restored: Optional[torch.Tensor] = None
         self._bmm_flat_token_ids_cache: Dict[Tuple[int, int, torch.device], torch.Tensor] = {}
         self._bmm_position_ids_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
 
@@ -431,9 +433,9 @@ class MoEExperts(nn.Module):
         sorted_weights = expert_weights.view(-1).index_select(0, bucket_indices)
 
         # Per-expert GEMM on contiguous tokens
-        output = torch.empty(
-            sorted_tokens.shape[0],
-            self.hidden_size,
+        output = self._bmm_workspace(
+            "_grouped_output",
+            (sorted_tokens.shape[0], self.hidden_size),
             device=x.device,
             dtype=x.dtype,
         )
@@ -454,9 +456,9 @@ class MoEExperts(nn.Module):
             offset += count
         
         # Restore order
-        restored = torch.empty(
-            batch_seq * top_k,
-            self.hidden_size,
+        restored = self._bmm_workspace(
+            "_grouped_restored",
+            (batch_seq * top_k, self.hidden_size),
             device=x.device,
             dtype=x.dtype,
         )
