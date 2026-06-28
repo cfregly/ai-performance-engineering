@@ -6105,6 +6105,41 @@ def test_ch06_warp_divergence_baseline_reuses_result_buffer() -> None:
     assert "negative = result[~mask]" in benchmark_section
 
 
+def test_ch06_optimized_warp_divergence_reuses_branch_scratch_buffers() -> None:
+    source = (REPO_ROOT / "ch06" / "optimized_warp_divergence_ilp.py").read_text(
+        encoding="utf-8"
+    )
+    kernel_section = source.split("def _fused_branchless_kernel", maxsplit=1)[1].split(
+        "class OptimizedWarpDivergenceILPBenchmark",
+        maxsplit=1,
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+
+    for attr in (
+        "_result_buffer",
+        "_mask_source_buffer",
+        "_positive_buffer",
+        "_negative_buffer",
+        "_scratch_buffer",
+        "_mask_buffer",
+    ):
+        assert f"self.{attr}: Optional[torch.Tensor] = None" in source
+
+    assert "self._result_buffer = torch.empty_like(self.input)" in setup_section
+    assert "self._mask_buffer = torch.empty(self.N, device=self.device, dtype=torch.bool)" in setup_section
+    assert "torch.sigmoid(mask_source, out=positive)" in kernel_section
+    assert "torch.mul(result, 1.11, out=positive)" in kernel_section
+    assert "torch.mul(result, 0.77, out=negative)" in kernel_section
+    assert "torch.where(mask, positive, negative, out=result)" in kernel_section
+    assert "scratch[:shift].copy_(result[-shift:])" in kernel_section
+    assert "scratch[shift:].copy_(result[:-shift])" in kernel_section
+    assert "torch.roll(" not in kernel_section
+    assert "result = torch.where(" not in kernel_section
+
+
 def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_loop() -> None:
     training_pair = (
         "baseline_precisionfp8.py",

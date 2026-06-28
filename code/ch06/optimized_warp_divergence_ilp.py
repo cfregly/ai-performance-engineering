@@ -10,7 +10,7 @@ for branchless selection, compiled once with torch.compile on the full tensor.
 Key optimizations vs baseline:
 - torch.where instead of boolean indexing (no warp divergence)
 - Single compiled kernel on full tensor (no chunking overhead)
-- No per-iteration clones or concatenation
+- Reused branch/scratch buffers (no per-iteration branch or roll allocations)
 """
 
 from __future__ import annotations
@@ -32,30 +32,53 @@ from ch06.workload_config import WORKLOAD
 
 
 def _fused_branchless_kernel(
+    input_tensor: torch.Tensor,
+    mask_input: torch.Tensor,
+    iterations: int,
     result: torch.Tensor,
     mask_source: torch.Tensor,
-    iterations: int,
+    positive: torch.Tensor,
+    negative: torch.Tensor,
+    scratch: torch.Tensor,
+    mask: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Fully fused branchless transform - no warp divergence.
     
     Uses torch.where for predicated selection instead of boolean indexing.
     All threads compute both branches; the result is selected via predicate.
     """
+    result.copy_(input_tensor)
+    mask_source.copy_(mask_input)
     for iteration in range(iterations):
         # Compute mask as float for branchless blending
-        activations = torch.sigmoid(mask_source)
-        mask = activations > 0.5  # Boolean mask for torch.where
+        torch.sigmoid(mask_source, out=positive)
+        torch.gt(positive, 0.5, out=mask)
         
         # Compute BOTH branches for all elements (branchless)
-        positive = torch.tanh(result * 1.11 + 0.25)
-        positive = positive * 1.003 + 0.0005 * positive * positive
+        torch.mul(result, 1.11, out=positive)
+        positive.add_(0.25)
+        torch.tanh(positive, out=positive)
+        torch.mul(positive, positive, out=scratch)
+        positive.mul_(1.003)
+        positive.add_(scratch, alpha=0.0005)
         
-        negative = torch.sin(result * 0.77 - 0.35)
-        negative = negative * 0.997 - 0.0004 * negative * negative
+        torch.mul(result, 0.77, out=negative)
+        negative.add_(-0.35)
+        torch.sin(negative, out=negative)
+        torch.mul(negative, negative, out=scratch)
+        negative.mul_(0.997)
+        negative.add_(scratch, alpha=-0.0004)
         
         # Select result via predicate (no divergence - all threads do same work)
-        result = torch.where(mask, positive, negative)
-        mask_source = 0.92 * mask_source + 0.08 * torch.roll(result, shifts=iteration + 1, dims=0)
+        torch.where(mask, positive, negative, out=result)
+        shift = (iteration + 1) % int(result.numel())
+        if shift == 0:
+            scratch.copy_(result)
+        else:
+            scratch[:shift].copy_(result[-shift:])
+            scratch[shift:].copy_(result[:-shift])
+        mask_source.mul_(0.92)
+        mask_source.add_(scratch, alpha=0.08)
     
     return result, mask_source
 
@@ -73,6 +96,12 @@ class OptimizedWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output: Optional[torch.Tensor] = None
         self._compiled_fn: Optional[Callable[[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]] = None
         self._inductor_state: Optional[InductorCudagraphState] = None
+        self._result_buffer: Optional[torch.Tensor] = None
+        self._mask_source_buffer: Optional[torch.Tensor] = None
+        self._positive_buffer: Optional[torch.Tensor] = None
+        self._negative_buffer: Optional[torch.Tensor] = None
+        self._scratch_buffer: Optional[torch.Tensor] = None
+        self._mask_buffer: Optional[torch.Tensor] = None
         token_count = self.N * self.branch_iterations
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.branch_iterations),
@@ -85,12 +114,46 @@ class OptimizedWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.routing_logits = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.output = None  # Will be set by benchmark_fn
+        self._result_buffer = torch.empty_like(self.input)
+        self._mask_source_buffer = torch.empty_like(self.routing_logits)
+        self._positive_buffer = torch.empty_like(self.input)
+        self._negative_buffer = torch.empty_like(self.input)
+        self._scratch_buffer = torch.empty_like(self.input)
+        self._mask_buffer = torch.empty(self.N, device=self.device, dtype=torch.bool)
         
         # Capture iterations in closure for compilation
         branch_iters = self.branch_iterations
+        result_buffer = self._result_buffer
+        mask_source_buffer = self._mask_source_buffer
+        positive_buffer = self._positive_buffer
+        negative_buffer = self._negative_buffer
+        scratch_buffer = self._scratch_buffer
+        mask_buffer = self._mask_buffer
+        if any(
+            buffer is None
+            for buffer in (
+                result_buffer,
+                mask_source_buffer,
+                positive_buffer,
+                negative_buffer,
+                scratch_buffer,
+                mask_buffer,
+            )
+        ):
+            raise RuntimeError("Scratch buffers not initialized")
         
         def fused_fn(data: torch.Tensor, logits: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-            return _fused_branchless_kernel(data, logits, branch_iters)
+            return _fused_branchless_kernel(
+                data,
+                logits,
+                branch_iters,
+                result_buffer,
+                mask_source_buffer,
+                positive_buffer,
+                negative_buffer,
+                scratch_buffer,
+                mask_buffer,
+            )
         
         # Keep eager branchless execution as default because compile can alter
         # transcendental numerics enough to fail strict output verification.
@@ -135,6 +198,12 @@ class OptimizedWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.input = None
         self.output = None
         self.routing_logits = None
+        self._result_buffer = None
+        self._mask_source_buffer = None
+        self._positive_buffer = None
+        self._negative_buffer = None
+        self._scratch_buffer = None
+        self._mask_buffer = None
         restore_inductor_cudagraph_features(self._inductor_state)
         self._inductor_state = None
         torch.cuda.empty_cache()
