@@ -36,6 +36,10 @@ class AttentionWorkspace:
     recv_v: Optional[torch.Tensor] = None
 
 
+_CAUSAL_MASK_POSITION_CACHE: dict[tuple[int, int, int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
+_RING_POSITION_VIEW_CACHE: dict[tuple[int, int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
+
+
 def dtype_from_name(name: str) -> torch.dtype:
     mapping = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}
     if name not in mapping:
@@ -116,13 +120,42 @@ def _apply_causal_mask(
     seq_shard: int,
     world_size: int,
 ) -> torch.Tensor:
-    seq_total = seq_shard * world_size
-    global_q = (rank * seq_shard) + torch.arange(seq_shard, device=scores.device)
-    global_k = torch.arange(seq_total, device=scores.device)
-    return scores.masked_fill(
-        global_k.view(1, 1, 1, seq_total) > global_q.view(1, 1, seq_shard, 1),
-        float("-inf"),
-    )
+    global_q, global_k = _causal_mask_position_views(rank, seq_shard, world_size, scores.device)
+    return scores.masked_fill(global_k > global_q, float("-inf"))
+
+
+def _causal_mask_position_views(
+    rank: int,
+    seq_shard: int,
+    world_size: int,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    key = (int(rank), int(seq_shard), int(world_size), torch.device(device))
+    cached = _CAUSAL_MASK_POSITION_CACHE.get(key)
+    if cached is None:
+        seq_total = int(seq_shard) * int(world_size)
+        local_positions = torch.arange(seq_shard, device=device)
+        global_q = (int(rank) * int(seq_shard) + local_positions).view(1, 1, seq_shard, 1)
+        global_k = torch.arange(seq_total, device=device).view(1, 1, 1, seq_total)
+        cached = (global_q, global_k)
+        _CAUSAL_MASK_POSITION_CACHE[key] = cached
+    return cached
+
+
+def _ring_position_views(
+    rank: int,
+    seq_shard: int,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    key = (int(rank), int(seq_shard), torch.device(device))
+    cached = _RING_POSITION_VIEW_CACHE.get(key)
+    if cached is None:
+        local_positions = torch.arange(seq_shard, device=device)
+        global_q = (int(rank) * int(seq_shard) + local_positions).view(1, 1, seq_shard, 1)
+        k_indices = local_positions.view(1, 1, 1, seq_shard)
+        cached = (global_q, k_indices)
+        _RING_POSITION_VIEW_CACHE[key] = cached
+    return cached
 
 
 def all_gather_attention(
@@ -198,9 +231,7 @@ def ring_attention(
     global_max: Optional[torch.Tensor] = None
     global_sum: Optional[torch.Tensor] = None
 
-    global_q = (rank * seq_shard) + torch.arange(seq_shard, device=q.device)
-    global_q = global_q.view(1, 1, seq_shard, 1)
-    k_indices = torch.arange(seq_shard, device=q.device).view(1, 1, 1, seq_shard)
+    global_q, k_indices = _ring_position_views(rank, seq_shard, q.device)
 
     for step in range(world_size):
         target_rank = (rank - step) % world_size
