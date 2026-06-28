@@ -145,6 +145,7 @@ class VectorizedTopKMoE(nn.Module):
         nn.init.kaiming_uniform_(self.w1, a=math.sqrt(5))
         nn.init.kaiming_uniform_(self.w2, a=math.sqrt(5))
         self._flat_token_index_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}
+        self._combine_index_cache: dict[tuple[int, int, int, torch.device], torch.Tensor] = {}
         self._scatter_output_buffer: Optional[torch.Tensor] = None
 
     def _flat_token_indices_for(self, batch: int, device: torch.device | str) -> torch.Tensor:
@@ -168,6 +169,19 @@ class VectorizedTopKMoE(nn.Module):
         ):
             self._scatter_output_buffer = torch.empty_like(tokens, dtype=tokens.dtype)
         return self._scatter_output_buffer
+
+    def _combine_index_for(self, token_indices: torch.Tensor, values: torch.Tensor) -> torch.Tensor:
+        key = (
+            int(token_indices.data_ptr()),
+            int(values.shape[0]),
+            int(values.shape[1]),
+            values.device,
+        )
+        combine_index = self._combine_index_cache.get(key)
+        if combine_index is None or combine_index.device != values.device or tuple(combine_index.shape) != tuple(values.shape):
+            combine_index = token_indices.unsqueeze(-1).expand_as(values)
+            self._combine_index_cache[key] = combine_index
+        return combine_index
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:  # pragma: no cover - benchmarked
         logits = self.router(tokens)
@@ -193,7 +207,7 @@ class VectorizedTopKMoE(nn.Module):
         expert_out.mul_(flat_probs)
 
         output = self._scatter_output_for(tokens)
-        combine_index = token_indices.unsqueeze(-1).expand_as(expert_out)
+        combine_index = self._combine_index_for(token_indices, expert_out)
         output.scatter_reduce_(0, combine_index, expert_out, reduce="sum", include_self=False)
         return output
 
@@ -233,6 +247,7 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         self.register_buffer("_static_token_indices", torch.empty(0, dtype=torch.int64), persistent=False)
         self.register_buffer("_static_expert_range", torch.empty(0, dtype=torch.int64), persistent=False)
         self.register_buffer("_static_overflow_slots", torch.empty(0, dtype=torch.int64), persistent=False)
+        self.register_buffer("_static_combine_index", torch.empty(0, dtype=torch.int64), persistent=False)
         self.register_buffer("_static_dense_input", torch.empty(0), persistent=False)
         self.register_buffer("_static_output_buffer", torch.empty(0), persistent=False)
 
@@ -242,7 +257,9 @@ class GroupedTopKMoE(VectorizedTopKMoE):
 
         device = torch.device(device)
         assignments = int(batch_size) * self.top_k
+        self._combine_index_cache.clear()
         self._static_token_indices = _flat_token_indices(int(batch_size), self.top_k, device)
+        self._static_combine_index = self._static_token_indices.unsqueeze(-1).expand(assignments, self.hidden_size)
         self._static_expert_range = torch.arange(
             self.num_experts,
             device=device,
@@ -316,6 +333,14 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         ):
             return self._static_output_buffer
         return torch.empty_like(tokens, dtype=tokens.dtype)
+
+    def _combine_index_for(self, token_indices: torch.Tensor, values: torch.Tensor) -> torch.Tensor:
+        if (
+            self._static_combine_index.device == values.device
+            and tuple(self._static_combine_index.shape) == tuple(values.shape)
+        ):
+            return self._static_combine_index
+        return token_indices.unsqueeze(-1).expand_as(values)
 
     @torch.inference_mode()
     def calibrate_capacity(self, tokens: torch.Tensor) -> int:
@@ -424,7 +449,7 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         gathered.mul_(flat_weights)
 
         output = self._output_buffer_for(tokens, batch)
-        combine_index = token_indices.unsqueeze(-1).expand_as(gathered)
+        combine_index = self._combine_index_for(token_indices, gathered)
         output.scatter_reduce_(0, combine_index, gathered, reduce="sum", include_self=False)
         return output
 
