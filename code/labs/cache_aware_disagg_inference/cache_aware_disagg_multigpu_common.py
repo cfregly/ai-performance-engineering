@@ -404,6 +404,7 @@ def _run_torchrun_worker(
     model = TinyPrefillDecode(cfg.hidden_size, cfg.num_layers, device, cfg.dtype).eval()
 
     prompts: Optional[torch.Tensor] = None
+    prompt_chunks: Dict[int, Sequence[torch.Tensor]] = {}
     if rank < prefill_ranks:
         prompts = torch.randn(
             cfg.requests_per_rank,
@@ -413,6 +414,10 @@ def _run_torchrun_worker(
             device=device,
             dtype=cfg.dtype,
         )
+        prompt_chunks = {
+            request_idx: _split_prompt(prompts[request_idx], cfg.chunk_size)
+            for request_idx in range(cfg.requests_per_rank)
+        }
 
     plans = _build_request_plans(cfg, prefill_ranks=prefill_ranks)
     warm_cache_store: Dict[int, torch.Tensor] = {}
@@ -424,8 +429,7 @@ def _run_torchrun_worker(
         home_rank = _home_decode_rank(plan.global_request_idx, prefill_ranks, decode_ranks)
         if rank == plan.prefill_rank:
             assert prompts is not None
-            prompt = prompts[plan.local_request_idx]
-            chunks = _split_prompt(prompt, cfg.chunk_size)
+            chunks = prompt_chunks[plan.local_request_idx]
             prefix_cache = torch.empty(
                 (cfg.batch_size, _prefix_length(cfg, plan.warm_chunks), cfg.hidden_size),
                 device=device,
@@ -495,7 +499,7 @@ def _run_torchrun_worker(
             chunks: Sequence[torch.Tensor] = ()
             if rank == plan.prefill_rank:
                 assert prompts is not None
-                chunks = _split_prompt(prompts[plan.local_request_idx], cfg.chunk_size)
+                chunks = prompt_chunks[plan.local_request_idx]
                 torch.cuda.synchronize(device)
                 request_start = time.perf_counter()
             else:
@@ -725,6 +729,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._prefill_models: Dict[int, TinyPrefillDecode] = {}
         self._decode_models: Dict[int, TinyPrefillDecode] = {}
         self._prompts: Dict[int, torch.Tensor] = {}
+        self._prompt_chunks: Dict[tuple[int, int], Sequence[torch.Tensor]] = {}
         self._warm_cache_store: Dict[int, Dict[int, torch.Tensor]] = {}
         self._prefill_seed_store: Dict[int, torch.Tensor] = {}
         self._empty_kv_by_device: Dict[str, torch.Tensor] = {}
@@ -836,6 +841,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._prefill_models = {}
         self._decode_models = {}
         self._prompts = {}
+        self._prompt_chunks = {}
         self._request_plans = _build_request_plans(self.cfg, prefill_ranks=prefill_ranks)
         self._warm_cache_store = {
             rank: {} for rank in range(prefill_ranks, world_size)
@@ -895,6 +901,11 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 dtype=self.cfg.dtype,
             )
             self._prompts[rank] = prompts
+            for request_idx in range(self.cfg.requests_per_rank):
+                self._prompt_chunks[(rank, request_idx)] = _split_prompt(
+                    prompts[request_idx],
+                    self.cfg.chunk_size,
+                )
             total_params += sum(p.numel() for p in model.parameters())
 
         self._active_caches = {rank: {} for rank in self._decode_models}
@@ -904,15 +915,14 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             for plan in self._request_plans:
                 if plan.warm_chunks <= 0:
                     continue
-                prompt = self._prompts[plan.prefill_rank][plan.local_request_idx]
-                chunks = _split_prompt(prompt, self.cfg.chunk_size)
+                chunks = self._prompt_chunks[(plan.prefill_rank, plan.local_request_idx)]
                 warm_chunks = chunks[: plan.warm_chunks]
                 prefix_tokens = sum(int(chunk.size(1)) for chunk in warm_chunks)
                 prefix_buffer = torch.empty(
                     self.cfg.batch_size,
                     prefix_tokens,
                     self.cfg.hidden_size,
-                    device=prompt.device,
+                    device=chunks[0].device,
                     dtype=self.cfg.dtype,
                 )
                 seed: Optional[torch.Tensor] = None
@@ -966,8 +976,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
         with torch.inference_mode():
             for plan in self._request_plans:
-                prompt = self._prompts[plan.prefill_rank][plan.local_request_idx]
-                chunks = _split_prompt(prompt, self.cfg.chunk_size)
+                chunks = self._prompt_chunks[(plan.prefill_rank, plan.local_request_idx)]
                 current_owner = (
                     _home_decode_rank(
                         plan.global_request_idx,
@@ -1125,6 +1134,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._prefill_models = {}
         self._decode_models = {}
         self._prompts = {}
+        self._prompt_chunks = {}
         self._warm_cache_store = {}
         self._prefill_seed_store = {}
         self._request_plans = []

@@ -5219,6 +5219,13 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     helper_section = source.split("def _extend_cache_buffer", maxsplit=1)[1].split(
         "def _world_size_hint", maxsplit=1
     )[0]
+    worker_prompt_section = source.split(
+        "prompts: Optional[torch.Tensor] = None",
+        maxsplit=1,
+    )[1].split(
+        "plans = _build_request_plans",
+        maxsplit=1,
+    )[0]
     worker_setup_section = source.split(
         "warm_cache_store: Dict[int, torch.Tensor] = {}",
         maxsplit=1,
@@ -5241,6 +5248,9 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def _prepare_verification_payload", maxsplit=1
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
 
     assert "kv_buffer = torch.empty(" in helper_section
     assert "target_device = cache.device" in helper_section
@@ -5251,11 +5261,17 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "prefix_buffer[:, offset:next_offset].copy_(chunk_kv)" in setup_section
     assert "torch.cat(\n                    prefix_parts," not in setup_section
     assert "prefix_parts" not in worker_setup_section
+    assert "prompt_chunks: Dict[int, Sequence[torch.Tensor]] = {}" in worker_prompt_section
+    assert "prompt_chunks = {" in worker_prompt_section
+    assert "_split_prompt(prompts[request_idx], cfg.chunk_size)" in worker_prompt_section
+    assert "chunks = prompt_chunks[plan.local_request_idx]" in worker_setup_section
     assert "prefix_cache = torch.empty(" in worker_setup_section
     assert "prefix_cache[:, offset:next_offset].copy_(chunk_kv)" in worker_setup_section
     assert "torch.cat(prefix_parts" not in worker_setup_section
     assert "recv_chunk_buffers: Dict[int, torch.Tensor] = {}" in worker_setup_section
     assert "recv_seed_buffer = torch.empty(" in worker_setup_section
+    assert "chunks = prompt_chunks[plan.local_request_idx]" in run_iteration_section
+    assert "_split_prompt(" not in run_iteration_section
     assert "recv_chunk = recv_chunk_buffers[chunk_idx]" in run_iteration_section
     assert "recv_seed = recv_seed_buffer" in run_iteration_section
     assert "recv_chunk = torch.empty(" not in run_iteration_section
@@ -5269,6 +5285,12 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "seed_buffer," in benchmark_section
     assert "self._active_caches = {rank: {} for rank in self._decode_models}" in setup_section
     assert "self._kv_buffer_pools = {rank: {} for rank in self._decode_models}" in setup_section
+    assert "self._prompt_chunks: Dict[tuple[int, int], Sequence[torch.Tensor]] = {}" in source
+    assert "self._prompt_chunks = {}" in setup_section
+    assert "self._prompt_chunks[(rank, request_idx)] = _split_prompt(" in setup_section
+    assert "chunks = self._prompt_chunks[(plan.prefill_rank, plan.local_request_idx)]" in setup_section
+    assert "chunks = self._prompt_chunks[(plan.prefill_rank, plan.local_request_idx)]" in benchmark_section
+    assert "_split_prompt(" not in benchmark_section
     assert "active_caches = self._active_caches" in benchmark_section
     assert "kv_buffers = self._kv_buffer_pools" in benchmark_section
     assert "active_caches = {rank: {} for rank in self._decode_models}" not in benchmark_section
@@ -5293,6 +5315,7 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "output_idx += 1" in benchmark_section
     assert "self._outputs_ready = True" in benchmark_section
     assert "if not self._outputs_ready or self._verify_prompt is None:" in capture_section
+    assert "self._prompt_chunks = {}" in teardown_section
     assert "reduced_values = reduced.detach().cpu().tolist()" in reduced_metrics_section
     assert ".item()" not in reduced_metrics_section
 
