@@ -4901,6 +4901,10 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
         "class ExpertMLP",
         maxsplit=1,
     )[0]
+    expert_forward = source.split("class ExpertMLP", maxsplit=1)[1].split(
+        "class MoELayer",
+        maxsplit=1,
+    )[0]
     moe_forward = source.split("class MoELayer", maxsplit=1)[1].split(
         "class DeepSeekR1MoEOptimization",
         maxsplit=1,
@@ -4917,6 +4921,9 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert 'self.register_buffer(\n            "_gini_index",' in router_forward
     assert "def _gini_index_for" in router_forward
     assert "torch.arange(1, n + 1" not in router_forward
+    assert "F.silu(gate, inplace=True)" in expert_forward
+    assert "gate.mul_(up)" in expert_forward
+    assert "F.silu(self.gate_proj(x)) * self.up_proj(x)" not in expert_forward
     assert "def _route_token_ids" in moe_forward
     assert "repeat_interleave(self.top_k)" not in moe_forward
     assert "self._output_buffer: Optional[torch.Tensor] = None" in moe_forward
