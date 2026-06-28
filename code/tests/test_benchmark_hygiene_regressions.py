@@ -1429,6 +1429,32 @@ def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
         assert "torch.nn.ReLU()" not in source
 
 
+def test_ch10_baseline_batch_reuses_microbatch_views() -> None:
+    source = (REPO_ROOT / "ch10" / "baseline_batch.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._microbatch_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in source
+    assert "output_chunked = self._output_buffer.view(" in setup_section
+    assert "zip(self.inputs_chunked.unbind(0), output_chunked.unbind(0), strict=True)" in setup_section
+    assert "for input_chunk, output_chunk in self._microbatch_pairs:" in benchmark_section
+    assert "output_chunk.copy_(self.model(input_chunk))" in benchmark_section
+    assert "output[start:end]" not in benchmark_section
+    assert "self.inputs_chunked[idx]" not in benchmark_section
+    assert "start = idx * self.micro_batch_size" not in benchmark_section
+    assert "self._microbatch_pairs = []" in teardown_section
+
+
 def test_ch03_ch09_benchmarks_cache_verification_parameter_count() -> None:
     for relative, parameters_expr in (
         ("ch03/baseline_rack_prep.py", "self.norm.parameters()"),
