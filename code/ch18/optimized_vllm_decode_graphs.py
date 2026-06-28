@@ -144,6 +144,7 @@ class OptimizedDecodeDriver:
         self.captured_shapes: set[Tuple[int, int]] = set()
         self._vllm_kernel = self._resolve_vllm_kernel()
         self._seq_lens_profiles: Dict[Tuple[int, int], torch.Tensor] = {}
+        self._prepare_seq_lens_profiles()
 
     def _resolve_vllm_kernel(self):
         if getattr(self.decode_kernel, "backend", None) != "vllm":
@@ -173,6 +174,12 @@ class OptimizedDecodeDriver:
                 profile[batch_size:bucket].zero_()
             self._seq_lens_profiles[key] = profile
         return profile
+
+    def _prepare_seq_lens_profiles(self) -> None:
+        if self._vllm_kernel is None:
+            return
+        for batch_size in sorted(set(self.trace)):
+            self.seq_lens_profile(batch_size, pick_bucket(batch_size))
 
     def run(self) -> DecodeMetrics:
         metrics = DecodeMetrics()

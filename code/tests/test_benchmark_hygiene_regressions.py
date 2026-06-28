@@ -4045,7 +4045,11 @@ def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None
     assert "torch.ones(self.batch, dtype=torch.bool" not in workspace_section
     assert "self.mask.numel()" not in workspace_section
     assert "self._seq_lens_profiles: Dict[Tuple[int, int], torch.Tensor] = {}" in source
+    assert "self._prepare_seq_lens_profiles()" in source
     assert "def seq_lens_profile(self, batch_size: int, bucket: int) -> torch.Tensor:" in source
+    assert "def _prepare_seq_lens_profiles(self) -> None:" in source
+    assert "for batch_size in sorted(set(self.trace)):" in source
+    assert "self.seq_lens_profile(batch_size, pick_bucket(batch_size))" in source
     assert "seq_lens[:bucket].copy_(self.seq_lens_profile(batch_size, bucket))" in source
     run_section = source.split("def run(self) -> DecodeMetrics:", maxsplit=1)[1].split(
         "def parse_args", maxsplit=1
