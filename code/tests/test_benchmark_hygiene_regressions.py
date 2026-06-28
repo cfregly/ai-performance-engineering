@@ -8558,14 +8558,27 @@ def test_ch15_optimized_kv_cache_management_projects_into_cache_buffers() -> Non
     assert "self._tokens_2d: Optional[torch.Tensor] = None" in source
     assert "self._k_cache_2d: Optional[torch.Tensor] = None" in source
     assert "self._v_cache_2d: Optional[torch.Tensor] = None" in source
+    assert "self._token_step_views: list[torch.Tensor] = []" in source
+    assert "self._k_prefix_views: list[torch.Tensor] = []" in source
+    assert "self._v_prefix_views: list[torch.Tensor] = []" in source
+    assert "self._output_step_views: list[torch.Tensor] = []" in source
     assert "self._tokens_2d = self.tokens.reshape(" in setup_section
     assert "self._k_cache_2d = self.k_cache.reshape(" in setup_section
     assert "self._v_cache_2d = self.v_cache.reshape(" in setup_section
     assert "self._q_buffer = torch.empty(" in setup_section
+    assert "self._token_step_views = [self.tokens[:, t, :] for t in range(self.steps)]" in setup_section
+    assert "self._k_prefix_views = [self.k_cache[:, : t + 1, :] for t in range(self.steps)]" in setup_section
+    assert "self._v_prefix_views = [self.v_cache[:, : t + 1, :] for t in range(self.steps)]" in setup_section
+    assert "self._output_step_views = [self._output_buffer[:, t, :] for t in range(self.steps)]" in setup_section
     assert "torch.mm(self._tokens_2d, self.k_proj.weight.t(), out=self._k_cache_2d)" in benchmark_section
     assert "torch.mm(self._tokens_2d, self.v_proj.weight.t(), out=self._v_cache_2d)" in benchmark_section
     assert "torch.mm(query, self.q_proj.weight.t(), out=self._q_buffer)" in benchmark_section
-    assert "torch.mm(attn, self.out_proj.weight.t(), out=outputs[:, t, :])" in benchmark_section
+    assert "for query, k_prefix, v_prefix, output_step in zip(" in benchmark_section
+    assert "torch.mm(attn, self.out_proj.weight.t(), out=output_step)" in benchmark_section
+    assert "query = self.tokens[:, t, :]" not in benchmark_section
+    assert "self.k_cache[:, : t + 1, :]" not in benchmark_section
+    assert "self.v_cache[:, : t + 1, :]" not in benchmark_section
+    assert "outputs[:, t, :]" not in benchmark_section
     assert "k_all = self.k_proj(self.tokens)" not in benchmark_section
     assert "v_all = self.v_proj(self.tokens)" not in benchmark_section
     assert "out = self.out_proj(attn)" not in benchmark_section

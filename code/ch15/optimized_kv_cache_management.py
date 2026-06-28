@@ -42,6 +42,10 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._tokens_2d: Optional[torch.Tensor] = None
         self._k_cache_2d: Optional[torch.Tensor] = None
         self._v_cache_2d: Optional[torch.Tensor] = None
+        self._token_step_views: list[torch.Tensor] = []
+        self._k_prefix_views: list[torch.Tensor] = []
+        self._v_prefix_views: list[torch.Tensor] = []
+        self._output_step_views: list[torch.Tensor] = []
         self._verify_input: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
         self.register_workload_metadata(
@@ -102,6 +106,10 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._token_step_views = [self.tokens[:, t, :] for t in range(self.steps)]
+        self._k_prefix_views = [self.k_cache[:, : t + 1, :] for t in range(self.steps)]
+        self._v_prefix_views = [self.v_cache[:, : t + 1, :] for t in range(self.steps)]
+        self._output_step_views = [self._output_buffer[:, t, :] for t in range(self.steps)]
         self._synchronize()
         self._verify_input = self.tokens.detach()
     
@@ -111,6 +119,10 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
         assert self._output_buffer is not None
         assert self._q_buffer is not None and self._tokens_2d is not None
         assert self._k_cache_2d is not None and self._v_cache_2d is not None
+        assert len(self._token_step_views) == self.steps
+        assert len(self._k_prefix_views) == self.steps
+        assert len(self._v_prefix_views) == self.steps
+        assert len(self._output_step_views) == self.steps
         with self._nvtx_range("optimized_kv_cache_management"):
             with torch.inference_mode():
                 # Model "prefill-produced" KV cache: project the full token buffer once,
@@ -119,23 +131,25 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
                 torch.mm(self._tokens_2d, self.v_proj.weight.t(), out=self._v_cache_2d)
 
                 outputs = self._output_buffer
-                for t in range(self.steps):
-                    query = self.tokens[:, t, :]
+                for query, k_prefix, v_prefix, output_step in zip(
+                    self._token_step_views,
+                    self._k_prefix_views,
+                    self._v_prefix_views,
+                    self._output_step_views,
+                    strict=True,
+                ):
                     torch.mm(query, self.q_proj.weight.t(), out=self._q_buffer)
 
-                    k = self.k_cache[:, : t + 1, :]
-                    v = self.v_cache[:, : t + 1, :]
-
                     q = self._q_buffer.view(self.batch_size, 1, self.num_heads, self.head_dim).transpose(1, 2)
-                    k = k.reshape(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-                    v = v.reshape(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+                    k = k_prefix.reshape(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+                    v = v_prefix.reshape(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
 
                     # q_len=1 and k/v contain only the prefix (no future tokens),
                     # so a causal mask is unnecessary here; is_causal=True would
                     # incorrectly mask all but the first key.
                     attn = F.scaled_dot_product_attention(q, k, v, is_causal=False)
                     attn = attn[:, :, 0, :].reshape(self.batch_size, self.hidden_dim)
-                    torch.mm(attn, self.out_proj.weight.t(), out=outputs[:, t, :])
+                    torch.mm(attn, self.out_proj.weight.t(), out=output_step)
 
                 self.output = outputs
 
@@ -171,6 +185,10 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._tokens_2d = None
         self._k_cache_2d = None
         self._v_cache_2d = None
+        self._token_step_views = []
+        self._k_prefix_views = []
+        self._v_prefix_views = []
+        self._output_step_views = []
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
