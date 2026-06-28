@@ -180,7 +180,11 @@ class PagedAttentionLayer(nn.Module):
         cached_v = cached_v.permute(1, 2, 0, 3)
 
         attn_out = F.scaled_dot_product_attention(q, cached_k, cached_v, dropout_p=0.0, is_causal=False)
-        attn_out = attn_out.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_dim)
+        attn_out = attn_out.transpose(1, 2)
+        if seq_len == 1:
+            attn_out = attn_out.view(batch_size, seq_len, hidden_dim)
+        else:
+            attn_out = attn_out.contiguous().view(batch_size, seq_len, hidden_dim)
         return self.proj(attn_out)
 
 

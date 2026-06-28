@@ -123,7 +123,11 @@ class SimpleAttentionLayer(nn.Module):
         cached_k, cached_v = kv_cache.get(request_id, layer_idx, 0, cache_pos + 1)
 
         out = torch.nn.functional.scaled_dot_product_attention(q, cached_k, cached_v, dropout_p=0.0, is_causal=False)
-        out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_dim)
+        out = out.transpose(1, 2)
+        if seq_len == 1:
+            out = out.view(batch_size, seq_len, hidden_dim)
+        else:
+            out = out.contiguous().view(batch_size, seq_len, hidden_dim)
         return self.proj(out)
 
 

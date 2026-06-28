@@ -6995,6 +6995,31 @@ def test_ch13_optimized_kv_cache_variants_precompute_request_ids() -> None:
         assert "request_id = f\"req_{seq_idx}\"" not in benchmark_section
 
 
+def test_ch13_token_kv_cache_attention_skips_contiguous_for_single_token_decode() -> None:
+    for filename, output_name in (
+        ("optimized_kv_cache_naive.py", "attn_out"),
+        ("optimized_kv_cache_naive_pool.py", "out"),
+    ):
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        forward_section = source.split("def forward", maxsplit=1)[1].split(
+            "class Optimized",
+            maxsplit=1,
+        )[0]
+
+        assert f"{output_name} = {output_name}.transpose(1, 2)" in forward_section
+        assert "if seq_len == 1:" in forward_section
+        assert f"{output_name} = {output_name}.view(batch_size, seq_len, hidden_dim)" in forward_section
+        assert "else:" in forward_section
+        assert f"{output_name} = {output_name}.contiguous().view(batch_size, seq_len, hidden_dim)" in forward_section
+        assert f"{output_name}.transpose(1, 2).contiguous().view" not in forward_section
+
+    x = torch.randn(2, 3, 1, 5)
+    transposed = x.transpose(1, 2)
+    viewed = transposed.view(2, 1, 15)
+    assert viewed.data_ptr() == x.data_ptr()
+    torch.testing.assert_close(viewed, transposed.contiguous().view(2, 1, 15))
+
+
 def test_flash_blockwise_attention_reuses_workspace_for_cached_kv() -> None:
     from ch13.optimized_kv_cache_naive import PagedKVCache
     from ch13.optimized_kv_cache_naive_flash_blockwise import FlashBlockwiseAttentionLayer
