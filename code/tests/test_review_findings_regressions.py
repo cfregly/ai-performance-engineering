@@ -1062,7 +1062,39 @@ def test_parameterized_graph_verification_capture_uses_fixed_request_slot() -> N
     assert "self.host_inputs[slot_idx] = host_input" in build_slots
     assert "self.host_scales[slot_idx] = host_scale" in build_slots
     assert "self.host_outputs[slot_idx] = host_output" in build_slots
+    assert "self._refresh_slot_memcpy_bindings()" in build_slots
     assert ".append(" not in build_slots
+
+
+def test_parameterized_graph_replay_uses_cached_memcpy_bindings() -> None:
+    source = _read("labs/parameterized_cuda_graphs/parameterized_cuda_graphs_common.py")
+    cache_section = source.split("def _refresh_slot_memcpy_bindings", maxsplit=1)[1].split(
+        "def _next_slot",
+        maxsplit=1,
+    )[0]
+    bind_section = source.split("def _bind_memcpy_nodes", maxsplit=1)[1].split(
+        "def _check_cudart",
+        maxsplit=1,
+    )[0]
+    update_section = source.split("def _update_exec_params_for_slot", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+
+    assert "SlotMemcpyBinding = Tuple[int, int, int, int, int, int, int, int, int]" in source
+    assert "self._slot_memcpy_bindings: List[SlotMemcpyBinding] = []" in source
+    assert "self._slot_memcpy_bindings = [" in cache_section
+    assert "host_input.numel() * host_input.element_size()" in cache_section
+    assert "host_scale.numel() * host_scale.element_size()" in cache_section
+    assert "host_output.numel() * host_output.element_size()" in cache_section
+    assert ") = self._slot_memcpy_bindings[slot_idx]" in bind_section
+    assert ") = self._slot_memcpy_bindings[slot_idx]" in update_section
+    assert "slot_input = self.host_inputs[slot_idx]" not in update_section
+    assert "slot_scale = self.host_scales[slot_idx]" not in update_section
+    assert "slot_output = self.host_outputs[slot_idx]" not in update_section
+    assert ".data_ptr()" not in update_section
+    assert ".numel()" not in update_section
+    assert ".element_size()" not in update_section
 
 
 def test_ch18_and_fullstack_pairs_keep_semantics_fixed() -> None:

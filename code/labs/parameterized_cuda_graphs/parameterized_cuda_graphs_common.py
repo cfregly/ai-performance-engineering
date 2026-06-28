@@ -50,6 +50,9 @@ class ParameterizedGraphConfig:
     warmup: int = _env_int("AISP_PARAMETERIZED_CUDA_GRAPHS_WARMUP", 10)
 
 
+SlotMemcpyBinding = Tuple[int, int, int, int, int, int, int, int, int]
+
+
 class _ResidualScaleBlock(nn.Module):
     """Two-layer residual MLP with a request-dependent scale tensor."""
 
@@ -80,6 +83,7 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.host_inputs: List[torch.Tensor] = []
         self.host_scales: List[torch.Tensor] = []
         self.host_outputs: List[torch.Tensor] = []
+        self._slot_memcpy_bindings: List[SlotMemcpyBinding] = []
         self.parameter_count: int = 0
         self._slot_cursor = 0
         self._last_slot = 0
@@ -146,6 +150,7 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             self.host_inputs[slot_idx] = host_input
             self.host_scales[slot_idx] = host_scale
             self.host_outputs[slot_idx] = host_output
+        self._refresh_slot_memcpy_bindings()
 
     def _warmup_eager_path(self) -> None:
         if self.capture_stream is None:
@@ -178,6 +183,33 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             device_scale.copy_(slot_scale, non_blocking=True)
             device_output.copy_(model(device_input, device_scale))
             slot_output.copy_(device_output, non_blocking=True)
+
+    def _refresh_slot_memcpy_bindings(self) -> None:
+        """Precompute stable graph memcpy arguments for each request slot."""
+
+        _, device_input, device_scale, device_output = self._require_runtime_state()
+        device_input_ptr = device_input.data_ptr()
+        device_scale_ptr = device_scale.data_ptr()
+        device_output_ptr = device_output.data_ptr()
+        self._slot_memcpy_bindings = [
+            (
+                device_input_ptr,
+                host_input.data_ptr(),
+                host_input.numel() * host_input.element_size(),
+                device_scale_ptr,
+                host_scale.data_ptr(),
+                host_scale.numel() * host_scale.element_size(),
+                host_output.data_ptr(),
+                device_output_ptr,
+                host_output.numel() * host_output.element_size(),
+            )
+            for host_input, host_scale, host_output in zip(
+                self.host_inputs,
+                self.host_scales,
+                self.host_outputs,
+                strict=True,
+            )
+        ]
 
     def _next_slot(self) -> int:
         slot_idx = self._slot_cursor % self.cfg.request_slots
@@ -253,6 +285,7 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.host_inputs = []
         self.host_scales = []
         self.host_outputs = []
+        self._slot_memcpy_bindings = []
         super().teardown()
 
 
@@ -326,10 +359,23 @@ class ParameterizedGraphReplayBenchmark(ParameterizedGraphBenchmarkBase):
             _, params = cudart.cudaGraphMemcpyNodeGetParams(node)
             node_by_endpoints[(int(params.srcPtr.ptr), int(params.dstPtr.ptr))] = node
 
-        _, device_input, device_scale, device_output = self._require_runtime_state()
-        input_key = (self.host_inputs[slot_idx].data_ptr(), device_input.data_ptr())
-        scale_key = (self.host_scales[slot_idx].data_ptr(), device_scale.data_ptr())
-        output_key = (device_output.data_ptr(), self.host_outputs[slot_idx].data_ptr())
+        try:
+            (
+                device_input_ptr,
+                host_input_ptr,
+                _input_nbytes,
+                device_scale_ptr,
+                host_scale_ptr,
+                _scale_nbytes,
+                host_output_ptr,
+                device_output_ptr,
+                _output_nbytes,
+            ) = self._slot_memcpy_bindings[slot_idx]
+        except IndexError as exc:
+            raise RuntimeError("slot memcpy bindings are not initialized") from exc
+        input_key = (host_input_ptr, device_input_ptr)
+        scale_key = (host_scale_ptr, device_scale_ptr)
+        output_key = (device_output_ptr, host_output_ptr)
 
         try:
             self._input_node = node_by_endpoints[input_key]
@@ -354,19 +400,28 @@ class ParameterizedGraphReplayBenchmark(ParameterizedGraphBenchmarkBase):
             raise RuntimeError("graph exec is not initialized")
         if self._input_node is None or self._scale_node is None or self._output_node is None:
             raise RuntimeError("memcpy nodes were not bound")
-
-        _, device_input, device_scale, device_output = self._require_runtime_state()
-        slot_input = self.host_inputs[slot_idx]
-        slot_scale = self.host_scales[slot_idx]
-        slot_output = self.host_outputs[slot_idx]
+        try:
+            (
+                device_input_ptr,
+                host_input_ptr,
+                input_nbytes,
+                device_scale_ptr,
+                host_scale_ptr,
+                scale_nbytes,
+                host_output_ptr,
+                device_output_ptr,
+                output_nbytes,
+            ) = self._slot_memcpy_bindings[slot_idx]
+        except IndexError as exc:
+            raise RuntimeError("slot memcpy bindings are not initialized") from exc
 
         self._check_cudart(
             cudart.cudaGraphExecMemcpyNodeSetParams1D(
                 self._graph_exec,
                 self._input_node,
-                device_input.data_ptr(),
-                slot_input.data_ptr(),
-                slot_input.numel() * slot_input.element_size(),
+                device_input_ptr,
+                host_input_ptr,
+                input_nbytes,
                 cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
             ),
             "updating input memcpy node",
@@ -375,9 +430,9 @@ class ParameterizedGraphReplayBenchmark(ParameterizedGraphBenchmarkBase):
             cudart.cudaGraphExecMemcpyNodeSetParams1D(
                 self._graph_exec,
                 self._scale_node,
-                device_scale.data_ptr(),
-                slot_scale.data_ptr(),
-                slot_scale.numel() * slot_scale.element_size(),
+                device_scale_ptr,
+                host_scale_ptr,
+                scale_nbytes,
                 cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
             ),
             "updating scale memcpy node",
@@ -386,9 +441,9 @@ class ParameterizedGraphReplayBenchmark(ParameterizedGraphBenchmarkBase):
             cudart.cudaGraphExecMemcpyNodeSetParams1D(
                 self._graph_exec,
                 self._output_node,
-                slot_output.data_ptr(),
-                device_output.data_ptr(),
-                slot_output.numel() * slot_output.element_size(),
+                host_output_ptr,
+                device_output_ptr,
+                output_nbytes,
                 cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost,
             ),
             "updating output memcpy node",
