@@ -4218,17 +4218,27 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
 
     assert "self.request_ids: list[str] = []" in source
     assert "self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []" in source
+    assert "self._request_block_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []" in source
+    assert "self._layer_groups: list[tuple[int, nn.Module]] = []" in source
     assert "self.request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
     assert "(block_idx * self.block_size, block_view)" in setup_section
     assert "enumerate(x.split(self.block_size, dim=1))" in setup_section
+    assert "(request_id, seq_len, block_views)" in setup_section
+    assert "self._layer_groups = list(enumerate(self.layers))" in setup_section
     assert "if len(self.request_ids) != len(self.inputs):" in benchmark_section
     assert "if len(self._input_block_views) != len(self.inputs):" in benchmark_section
-    assert "for request_id, (seq_len, block_views) in zip(self.request_ids, self._input_block_views):" in benchmark_section
+    assert "if len(self._request_block_groups) != len(self.inputs):" in benchmark_section
+    assert "for request_id, seq_len, block_views in self._request_block_groups:" in benchmark_section
+    assert "for layer_idx, layer in self._layer_groups:" in benchmark_section
+    assert "zip(self.request_ids, self._input_block_views)" not in benchmark_section
+    assert "enumerate(self.layers)" not in benchmark_section
     assert "for pos, block_view in block_views:" in benchmark_section
     assert "x[:, pos:pos + self.block_size, :]" not in benchmark_section
     assert "range(0, seq_len, self.block_size)" not in benchmark_section
     assert "request_id = f\"req_{seq_idx}\"" not in benchmark_section
     assert "self._input_block_views = []" in teardown_section
+    assert "self._request_block_groups = []" in teardown_section
+    assert "self._layer_groups = []" in teardown_section
     assert "k_block = k.permute(0, 2, 1, 3).contiguous()" not in attention_section
     assert "v_block = v.permute(0, 2, 1, 3).contiguous()" not in attention_section
     assert "k[batch_idx].transpose(0, 1)" in attention_section
@@ -8219,17 +8229,27 @@ def test_ch13_optimized_kv_cache_variants_precompute_request_views() -> None:
 
     assert "self._request_ids: list[str] = []" in source
     assert "self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []" in source
+    assert "self._request_block_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []" in source
+    assert "self._layer_groups: list[tuple[int, nn.Module]] = []" in source
     assert "self._request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
     assert "(block_idx * self.block_size, block_view)" in setup_section
     assert "enumerate(x.split(self.block_size, dim=1))" in setup_section
+    assert "(request_id, seq_len, block_views)" in setup_section
+    assert "self._layer_groups = list(enumerate(self.layers))" in setup_section
     assert "if len(self._request_ids) != len(self.inputs):" in benchmark_section
     assert "if len(self._input_block_views) != len(self.inputs):" in benchmark_section
-    assert "for request_id, (seq_len, block_views) in zip(self._request_ids, self._input_block_views):" in benchmark_section
+    assert "if len(self._request_block_groups) != len(self.inputs):" in benchmark_section
+    assert "for request_id, seq_len, block_views in self._request_block_groups:" in benchmark_section
+    assert "for layer_idx, layer in self._layer_groups:" in benchmark_section
+    assert "zip(self._request_ids, self._input_block_views)" not in benchmark_section
+    assert "enumerate(self.layers)" not in benchmark_section
     assert "for pos, block_view in block_views:" in benchmark_section
     assert "x[:, pos:pos + self.block_size, :]" not in benchmark_section
     assert "range(0, seq_len, self.block_size)" not in benchmark_section
     assert "request_id = f\"req_{seq_idx}\"" not in benchmark_section
     assert "self._input_block_views = []" in teardown_section
+    assert "self._request_block_groups = []" in teardown_section
+    assert "self._layer_groups = []" in teardown_section
 
 
 def test_ch13_token_kv_cache_attention_skips_contiguous_for_single_token_decode() -> None:

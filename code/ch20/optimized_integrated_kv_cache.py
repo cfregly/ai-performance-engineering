@@ -195,6 +195,8 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.inputs = None
         self.request_ids: list[str] = []
         self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []
+        self._request_block_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []
+        self._layer_groups: list[tuple[int, nn.Module]] = []
         self.page_size = 128
         self.num_layers = 2
         self.num_heads = 2
@@ -221,6 +223,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
                 for _ in range(self.num_layers)
             ]
         ).to(self.device).eval()
+        self._layer_groups = list(enumerate(self.layers))
         self._payload_parameter_count = sum(p.numel() for p in self.layers.parameters())
         
         self.kv_cache = PagedKVCache(
@@ -247,6 +250,14 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
             )
             for x in self.inputs
         ]
+        self._request_block_groups = [
+            (request_id, seq_len, block_views)
+            for request_id, (seq_len, block_views) in zip(
+                self.request_ids,
+                self._input_block_views,
+                strict=True,
+            )
+        ]
         self._verify_input = self.inputs[-1] if self.inputs else None
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
@@ -260,12 +271,16 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
                 raise RuntimeError("Request IDs not initialized")
             if len(self._input_block_views) != len(self.inputs):
                 raise RuntimeError("Input block views not initialized")
-            for request_id, (seq_len, block_views) in zip(self.request_ids, self._input_block_views):
+            if len(self._request_block_groups) != len(self.inputs):
+                raise RuntimeError("Request block groups not initialized")
+            if not self._layer_groups:
+                raise RuntimeError("Layer groups not initialized")
+            for request_id, seq_len, block_views in self._request_block_groups:
                 self.kv_cache.allocate(request_id, seq_len)
 
                 for pos, block_view in block_views:
                     hidden = block_view
-                    for layer_idx, layer in enumerate(self.layers):
+                    for layer_idx, layer in self._layer_groups:
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
                 self.kv_cache.free(request_id)
@@ -286,6 +301,8 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
     def teardown(self) -> None:
         """Cleanup."""
         self._input_block_views = []
+        self._request_block_groups = []
+        self._layer_groups = []
         del self.layers, self.kv_cache, self.inputs
         self.request_ids = []
         torch.cuda.empty_cache()

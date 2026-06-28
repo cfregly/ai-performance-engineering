@@ -152,6 +152,8 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         self.inputs = None
         self._request_ids: list[str] = []
         self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []
+        self._request_block_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []
+        self._layer_groups: list[tuple[int, nn.Module]] = []
         self.workload = WORKLOAD
         self.page_size = self.workload.page_size
         self.num_layers = self.workload.num_layers
@@ -185,6 +187,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
                 for _ in range(self.num_layers)
             ]
         ).to(self.device).eval()
+        self._layer_groups = list(enumerate(self.layers))
         for layer in self.layers:
             layer.configure_kv_workspace(
                 self.workload.max_seq_len,
@@ -219,6 +222,14 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
             )
             for x in self.inputs
         ]
+        self._request_block_groups = [
+            (request_id, seq_len, block_views)
+            for request_id, (seq_len, block_views) in zip(
+                self._request_ids,
+                self._input_block_views,
+                strict=True,
+            )
+        ]
         if self.inputs:
             self._verify_input = self.inputs[0].detach().clone()
         self._synchronize()
@@ -230,14 +241,18 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
             raise RuntimeError("Request IDs not initialized")
         if len(self._input_block_views) != len(self.inputs):
             raise RuntimeError("Input block views not initialized")
+        if len(self._request_block_groups) != len(self.inputs):
+            raise RuntimeError("Request block groups not initialized")
+        if not self._layer_groups:
+            raise RuntimeError("Layer groups not initialized")
 
         with self._nvtx_range("kv_cache_naive_flash_blockwise"):
-            for request_id, (seq_len, block_views) in zip(self._request_ids, self._input_block_views):
+            for request_id, seq_len, block_views in self._request_block_groups:
                 self.kv_cache.allocate(request_id, seq_len)
 
                 for pos, block_view in block_views:
                     hidden = block_view
-                    for layer_idx, layer in enumerate(self.layers):
+                    for layer_idx, layer in self._layer_groups:
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
                 self.kv_cache.free(request_id)
@@ -266,6 +281,8 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         self.inputs = None
         self._request_ids = []
         self._input_block_views = []
+        self._request_block_groups = []
+        self._layer_groups = []
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
