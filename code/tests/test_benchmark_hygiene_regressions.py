@@ -7218,6 +7218,29 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
     assert "with torch.no_grad():" not in scale_section
 
 
+def test_ch16_ch19_quantized_linears_add_bias_in_place() -> None:
+    cases = (
+        (
+            "ch16/awq_gptq_smoothquant_benchmarks.py",
+            "class PTQMLP",
+            "output.add_(self.bias)",
+        ),
+        (
+            "ch19/fp8_calibration_free_tool.py",
+            "class OptimizedFP8CalibrationFree",
+            "output.add_(self.bias)",
+        ),
+    )
+    for path, end_marker, inplace_bias in cases:
+        source = (REPO_ROOT / path).read_text(encoding="utf-8")
+        forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[
+            1
+        ].split(end_marker, maxsplit=1)[0]
+
+        assert inplace_bias in forward_section
+        assert "output = output + self.bias" not in forward_section
+
+
 def test_ch19_fp8_compiled_matmul_uses_cuda_event_timing() -> None:
     source = (REPO_ROOT / "ch19" / "fp8_compiled_matmul.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_matmul", maxsplit=1)[1].split(

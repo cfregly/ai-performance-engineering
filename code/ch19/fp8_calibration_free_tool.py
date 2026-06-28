@@ -136,7 +136,7 @@ class CalibrationFreeFP8Linear(nn.Module):
             output = output.view(*x.shape[:-1], self.out_features)
             
             if self.bias is not None:
-                output = output + self.bias
+                output.add_(self.bias)
             
             return output.to(x.dtype)
         
