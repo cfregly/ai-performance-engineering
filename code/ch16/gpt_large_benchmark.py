@@ -338,18 +338,18 @@ class GPTModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.device != self.devices[0]:
-            x = x.to(self.devices[0])
+            x = x.to(self.devices[0], non_blocking=True)
         x = self.embed(x)
         for block, device in zip(self.blocks, self.block_devices):
             if x.device != device:
-                x = x.to(device)
+                x = x.to(device, non_blocking=True)
             x = block(x)
         if x.device != self.ln_f.weight.device:
-            x = x.to(self.ln_f.weight.device)
+            x = x.to(self.ln_f.weight.device, non_blocking=True)
         x = self.ln_f(x)
         x = self.lm_head(x)
         if x.device != self.devices[0]:
-            x = x.to(self.devices[0])
+            x = x.to(self.devices[0], non_blocking=True)
         return x
 
 

@@ -793,7 +793,8 @@ class TensorParallelMultiGPU:
         """
         Forward pass with tensor parallelism.
         """
-        input_ids = input_ids.to(self.device)
+        if input_ids.device != self.device:
+            input_ids = input_ids.to(self.device, non_blocking=True)
         
         # If KV cache provided, shard it
         if kv_cache is not None:

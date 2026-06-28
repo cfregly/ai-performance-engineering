@@ -5364,6 +5364,9 @@ def test_ch16_blackwell_tensor_parallel_reuses_gather_buffers() -> None:
 
     assert "self._gathered_outputs = None" in init_section
     assert "self._final_output = None" in init_section
+    assert "if input_ids.device != self.device:" in forward_section
+    assert "input_ids = input_ids.to(self.device, non_blocking=True)" in forward_section
+    assert "input_ids = input_ids.to(self.device)\n" not in forward_section
     assert "torch.cat(self._gathered_outputs, dim=-1, out=self._final_output)" in forward_section
     assert "final_output = torch.cat(gathered_outputs, dim=-1)" not in forward_section
 
@@ -5572,6 +5575,12 @@ def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
 
     assert "@torch.inference_mode()" in source
     assert "@torch.no_grad()" not in source
+    assert "x = x.to(self.devices[0], non_blocking=True)" in source
+    assert "x = x.to(device, non_blocking=True)" in source
+    assert "x = x.to(self.ln_f.weight.device, non_blocking=True)" in source
+    assert "x = x.to(self.devices[0])" not in source
+    assert "x = x.to(device)" not in source
+    assert "x = x.to(self.ln_f.weight.device)" not in source
     assert "with torch.inference_mode():" in validation_function
     assert "torch.no_grad()" not in benchmark_function
     assert "torch.no_grad()" not in validation_function
