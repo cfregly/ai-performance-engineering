@@ -40,6 +40,7 @@ class OptimizedFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self.v: Optional[torch.Tensor] = None
         self.out_proj: Optional[nn.Linear] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self.wrapper: Optional[flashinfer.BlockSparseAttentionWrapper] = None
         self.sparsity_ratio = 0.0
         self._payload_parameter_count = 0
@@ -84,17 +85,30 @@ class OptimizedFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
             sm_scale=sm_scale,
         )
         self.out_proj = nn.Linear(self.hidden_size, self.hidden_size, bias=False).to(self.device, dtype=torch.float16)
+        self._output_buffer = torch.empty(
+            self.seq_len,
+            self.hidden_size,
+            device=self.device,
+            dtype=torch.float16,
+        )
         self._payload_parameter_count = self.out_proj.weight.numel()
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        if self.q is None or self.k is None or self.v is None or self.wrapper is None or self.out_proj is None:
+        if (
+            self.q is None
+            or self.k is None
+            or self.v is None
+            or self.wrapper is None
+            or self.out_proj is None
+            or self._output_buffer is None
+        ):
             raise RuntimeError("Benchmark not initialized")
         with self._nvtx_range("optimized_flashinfer_attention"):
             with torch.inference_mode():
                 attn_out = self.wrapper.run(self.q, self.k, self.v)
                 proj_in = attn_out.reshape(self.seq_len, self.hidden_size)
-                self.output = self.out_proj(proj_in)
+                self.output = torch.matmul(proj_in, self.out_proj.weight.t(), out=self._output_buffer)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
@@ -125,6 +139,7 @@ class OptimizedFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self.v = None
         self.out_proj = None
         self.output = None
+        self._output_buffer = None
         self.wrapper = None
         torch.cuda.empty_cache()
 

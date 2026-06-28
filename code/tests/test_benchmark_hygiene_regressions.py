@@ -2110,7 +2110,15 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
             maxsplit=1,
         )[0]
         assert "with torch.inference_mode():" in benchmark_section
-        assert "self.output = self.out_proj(proj_in)" in benchmark_section
+        if filename.startswith("baseline"):
+            assert "self.output = self.out_proj(proj_in)" in benchmark_section
+        else:
+            assert "self._output_buffer = torch.empty(" in setup_section
+            assert (
+                "self.output = torch.matmul(proj_in, self.out_proj.weight.t(), out=self._output_buffer)"
+                in benchmark_section
+            )
+            assert "self.output = self.out_proj(proj_in)" not in benchmark_section
         assert "self._payload_parameter_count = 0" in source
         assert "self._payload_parameter_count = self.out_proj.weight.numel()" in setup_section
         assert "parameter_count = self.out_proj.weight.numel()" not in capture_section
