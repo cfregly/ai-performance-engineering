@@ -57,7 +57,8 @@ class MoEBackendWorkload:
             h = x_e @ self.w1[expert]
             h = torch.relu_(h)
             y = h @ self.w2[expert]
-            out[token_ids] += y * weights[token_ids, slot_ids].unsqueeze(-1)
+            y.mul_(weights[token_ids, slot_ids].unsqueeze(-1))
+            out.index_add_(0, token_ids, y)
         return out
 
     def forward_vectorized(self, x: torch.Tensor) -> torch.Tensor:

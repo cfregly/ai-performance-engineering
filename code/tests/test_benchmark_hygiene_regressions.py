@@ -2190,6 +2190,9 @@ def test_moe_cuda_naive_backend_skips_redundant_mask_any_sync() -> None:
 
     assert "token_ids, slot_ids = (idx == expert).nonzero(as_tuple=True)" in naive_section
     assert "if token_ids.numel() == 0:" in naive_section
+    assert "y.mul_(weights[token_ids, slot_ids].unsqueeze(-1))" in naive_section
+    assert "out.index_add_(0, token_ids, y)" in naive_section
+    assert "out[token_ids] += y * weights[token_ids, slot_ids].unsqueeze(-1)" not in naive_section
     assert "torch.relu_(h)" in source
     assert "torch.relu(h)" not in source
     assert "torch.any(mask)" not in naive_section
