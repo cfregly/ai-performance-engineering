@@ -702,6 +702,8 @@ def test_ch04_torchtitan_async_tp_zero_target_uses_square_mean_loss() -> None:
 
 def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
     from ch04.baseline_tensor_parallel import _replicate_tensor_parallel_shard
+    from ch04.optimized_tensor_parallel_async import _linear_no_bias_into as async_linear_into
+    from ch04.optimized_tensor_parallel_multigpu import _linear_no_bias_into as multigpu_linear_into
 
     local_out = torch.arange(12, dtype=torch.float32).view(2, 2, 3)
     full_out = torch.empty(2, 2, 6)
@@ -709,6 +711,16 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
 
     assert result is full_out
     torch.testing.assert_close(full_out, torch.cat([local_out, local_out], dim=-1))
+
+    layer = torch.nn.Linear(3, 2, bias=False)
+    x = torch.arange(6, dtype=torch.float32).view(2, 3)
+    with torch.inference_mode():
+        expected = layer(x)
+        for helper in (async_linear_into, multigpu_linear_into):
+            out = torch.empty(2, 2)
+            result = helper(layer, x, out)
+            assert result is out
+            torch.testing.assert_close(out, expected)
 
     files = [
         "baseline_tensor_parallel.py",
@@ -756,7 +768,13 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
         assert "sum(" not in capture_section
         assert "def _replicate_tensor_parallel_shard(" in source
         assert "_replicate_tensor_parallel_shard(local_out, self._world_size, self._full_out)" in benchmark_section
-        assert "proj_out = self._proj_layers[layer_idx](self._full_out)" in benchmark_section
+        if filename in {"optimized_tensor_parallel_async.py", "optimized_tensor_parallel_multigpu.py"}:
+            assert (
+                "proj_out = _linear_no_bias_into(self._proj_layers[layer_idx], self._full_out, self._proj_out)"
+                in benchmark_section
+            )
+        else:
+            assert "proj_out = self._proj_layers[layer_idx](self._full_out)" in benchmark_section
         assert "torch.cat([local_out] * self._world_size, dim=-1, out=self._full_out)" not in benchmark_section
         assert "full_out = torch.cat([local_out] * self._world_size" not in benchmark_section
         assert "self._full_out = None" in source
@@ -768,7 +786,34 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
             assert "proj_out.add_(aux_out)" in benchmark_section
             assert "x = proj_out + aux_out" not in worker_section
             assert "x = proj_out + aux_out" not in benchmark_section
-        else:
+        if filename in {"optimized_tensor_parallel_async.py", "optimized_tensor_parallel_multigpu.py"}:
+            assert "def _linear_no_bias_into(layer: nn.Linear, x: torch.Tensor, out: torch.Tensor)" in source
+            assert "self._local_out: Optional[torch.Tensor] = None" in source
+            assert "self._proj_out: Optional[torch.Tensor] = None" in source
+            assert "local_out_buffer = torch.empty(" in worker_section
+            assert "proj_out_buffer = torch.empty(" in worker_section or "proj_out_buffer = torch.empty_like(" in worker_section
+            assert "self._local_out = torch.empty(" in setup_section
+            assert "self._proj_out = torch.empty_like(self._full_out)" in setup_section
+            assert "local_out = _linear_no_bias_into(shard_layers[layer_idx], x, local_out_buffer)" in worker_section
+            assert "proj_out = _linear_no_bias_into(proj_layers[layer_idx], full_out, proj_out_buffer)" in worker_section
+            assert "local_out = _linear_no_bias_into(self._shard_layers[layer_idx], x, self._local_out)" in benchmark_section
+            assert (
+                "proj_out = _linear_no_bias_into(self._proj_layers[layer_idx], self._full_out, self._proj_out)"
+                in benchmark_section
+            )
+            assert "local_out = shard_layers[layer_idx](x)" not in worker_section
+            assert "proj_out = proj_layers[layer_idx](full_out)" not in worker_section
+            assert "local_out = self._shard_layers[layer_idx](x)" not in benchmark_section
+            assert "proj_out = self._proj_layers[layer_idx](self._full_out)" not in benchmark_section
+        if filename == "optimized_tensor_parallel_async.py":
+            assert "self._aux_out: Optional[torch.Tensor] = None" in source
+            assert "aux_out_buffer = torch.empty(" in worker_section
+            assert "self._aux_out = torch.empty_like(self._full_out)" in setup_section
+            assert "aux_out = _linear_no_bias_into(aux_layers[layer_idx], x, aux_out_buffer)" in worker_section
+            assert "aux_out = _linear_no_bias_into(self._aux_layers[layer_idx], x, self._aux_out)" in benchmark_section
+            assert "aux_out = aux_layers[layer_idx](x)" not in worker_section
+            assert "aux_out = self._aux_layers[layer_idx](x)" not in benchmark_section
+        if not filename.startswith("optimized_"):
             assert "x = proj_out + aux_out" in worker_section
             assert "x = proj_out + aux_out" in benchmark_section
 
