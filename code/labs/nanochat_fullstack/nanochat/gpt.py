@@ -95,8 +95,9 @@ def apply_rotary_emb(x, cos, sin, out=None):
         return out
     y1 = x1 * cos + x2 * sin # rotate pairs of dims
     y2 = x1 * (-sin) + x2 * cos
-    out = torch.cat([y1, y2], 3) # re-assemble
-    out = out.to(x.dtype) # ensure input/output dtypes match
+    out = torch.empty_like(x)
+    out[..., :d] = y1
+    out[..., d:] = y2
     return out
 
 

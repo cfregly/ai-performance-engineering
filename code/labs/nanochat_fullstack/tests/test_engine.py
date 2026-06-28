@@ -831,12 +831,31 @@ def test_apply_rotary_emb_training_path_keeps_gradients():
     x = torch.randn(2, 3, 4, 8, dtype=torch.float32, requires_grad=True)
     cos = torch.randn(1, 3, 1, 4, dtype=torch.float32)
     sin = torch.randn(1, 3, 1, 4, dtype=torch.float32)
+    expected = torch.cat(
+        [x[..., :4] * cos + x[..., 4:] * sin, x[..., :4] * (-sin) + x[..., 4:] * cos],
+        3,
+    ).to(x.dtype)
 
     out = apply_rotary_emb(x, cos, sin)
     out.square().mean().backward()
 
+    torch.testing.assert_close(out, expected)
     assert x.grad is not None
     assert torch.isfinite(x.grad).all()
+
+    source = Path(__file__).resolve().parents[1] / "nanochat" / "gpt.py"
+    rotary_section = source.read_text(encoding="utf-8").split(
+        "def apply_rotary_emb",
+        maxsplit=1,
+    )[1].split(
+        "def _expand_gqa_kv_heads",
+        maxsplit=1,
+    )[0]
+    assert "out = torch.empty_like(x)" in rotary_section
+    assert "out[..., :d] = y1" in rotary_section
+    assert "out[..., d:] = y2" in rotary_section
+    assert "torch.cat([y1, y2]" not in rotary_section
+    assert "out.to(x.dtype)" not in rotary_section
 
 
 def test_mlp_relu_square_reuses_buffer_without_grad_and_preserves_backward():
