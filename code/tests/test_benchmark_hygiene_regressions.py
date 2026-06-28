@@ -6154,11 +6154,18 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "with torch.inference_mode():" in benchmark_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.moe_layer.parameters())" in setup_section
     assert ".detach().float().clone()" not in benchmark_section
+    end_event_idx = benchmark_section.index("end_event.record()")
+    output_idx = benchmark_section.index("self.output = output")
+    aux_metrics_idx = benchmark_section.index("self._last_aux_metrics.clear()")
+
+    assert end_event_idx < output_idx < aux_metrics_idx
     assert "self._last_aux_metrics.clear()" in benchmark_section
     assert "self._last_aux_metrics[key] = value.detach()" in benchmark_section
     assert "self._last_aux_metrics = {" not in benchmark_section
-    assert "self.output = output[:1, : min(4, output.shape[1]), : min(8, output.shape[2])]" in benchmark_section
-    assert "output=self.output.detach().float().clone()" in capture_section
+    assert "self.output = output" in benchmark_section
+    assert "self.output = output[:1, : min(4, output.shape[1]), : min(8, output.shape[2])]" not in benchmark_section
+    assert "output_slice = self.output[:1, : min(4, self.output.shape[1]), : min(8, self.output.shape[2])]" in capture_section
+    assert "output=output_slice.detach().float().clone()" in capture_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
 
@@ -6183,6 +6190,10 @@ def test_gpt4_architecture_runner_reuses_cuda_timing_events() -> None:
         "def cleanup",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_custom_metrics",
+        maxsplit=1,
+    )[0]
 
     assert "self._timing_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None" in init_section
     assert setup_section.count("torch.cuda.Event(enable_timing=True)") == 2
@@ -6195,6 +6206,10 @@ def test_gpt4_architecture_runner_reuses_cuda_timing_events() -> None:
     assert "elapsed_ms = start_event.elapsed_time(end_event)" in run_section
     assert "torch.no_grad()" not in run_section
     assert "torch.cuda.synchronize()" not in run_section
+    assert "self.output = x" in run_section
+    assert "self.output = x[:1, : min(4, x.shape[1]), : min(8, x.shape[2])]" not in run_section
+    assert "output_slice = self.output[:1, : min(4, self.output.shape[1]), : min(8, self.output.shape[2])]" in capture_section
+    assert "output=output_slice.detach().float().clone()" in capture_section
 
 
 def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None:

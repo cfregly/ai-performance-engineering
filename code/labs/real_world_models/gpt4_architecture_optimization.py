@@ -148,7 +148,7 @@ class GPT4ArchitectureOptimization:
             for layer in self.layers:
                 x = layer(x)
             elapsed_ms = (time.perf_counter() - start) * 1000
-        self.output = x[:1, : min(4, x.shape[1]), : min(8, x.shape[2])]
+        self.output = x
         
         tokens_per_sec = (self.batch_size * self.seq_length) / (elapsed_ms / 1000)
         
@@ -204,9 +204,10 @@ class GPT4ArchitectureOptimizationBenchmark(VerificationPayloadMixin, BaseBenchm
     def capture_verification_payload(self) -> None:
         if self.model_wrapper is None or self.output is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[:1, : min(4, self.output.shape[1]), : min(8, self.output.shape[2])]
         self._set_verification_payload(
             inputs={"input": self.model_wrapper.input.detach()},
-            output=self.output.detach().float().clone(),
+            output=output_slice.detach().float().clone(),
             batch_size=self.model_wrapper.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={

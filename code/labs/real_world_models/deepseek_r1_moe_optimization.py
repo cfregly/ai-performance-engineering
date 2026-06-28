@@ -320,16 +320,16 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         # Forward pass
         with torch.inference_mode():
             output, metrics = self.moe_layer(self.input)
-        self.output = output[:1, : min(4, output.shape[1]), : min(8, output.shape[2])]
-        self._last_aux_metrics.clear()
-        for key, value in metrics.items():
-            if torch.is_tensor(value):
-                self._last_aux_metrics[key] = value.detach()
-
         if use_cuda_timing:
             end_event.record()
         else:
             self._last_elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+
+        self.output = output
+        self._last_aux_metrics.clear()
+        for key, value in metrics.items():
+            if torch.is_tensor(value):
+                self._last_aux_metrics[key] = value.detach()
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -345,9 +345,10 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[:1, : min(4, self.output.shape[1]), : min(8, self.output.shape[2])]
         self._set_verification_payload(
             inputs={"input": self.input.detach()},
-            output=self.output.detach().float().clone(),
+            output=output_slice.detach().float().clone(),
             batch_size=self.batch_size,
             parameter_count=self._payload_parameter_count,
             precision_flags={
