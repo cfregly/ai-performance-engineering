@@ -72,6 +72,37 @@ def test_sorted_dispatch_reuses_flat_token_id_cache_on_cpu() -> None:
     assert layer._token_ids_cache.data_ptr() != cache1.data_ptr()
 
 
+def test_sorted_dispatch_top1_uses_write_once_output_path() -> None:
+    forward_source = inspect.getsource(MoEFeedForwardSortedDispatch.forward)
+
+    assert "single_route = self.top_k == 1" in forward_source
+    assert "torch.empty_like(flat) if single_route else torch.zeros_like(flat)" in forward_source
+    assert "combined.index_copy_(0, segment_tokens, weighted_out)" in forward_source
+    assert "combined.index_add_(0, segment_tokens, weighted_out)" in forward_source
+
+    torch.manual_seed(123)
+    baseline = MoEFeedForward(
+        hidden=8,
+        ffn=16,
+        num_experts=4,
+        top_k=1,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    sorted_dispatch = MoEFeedForwardSortedDispatch(
+        hidden=8,
+        ffn=16,
+        num_experts=4,
+        top_k=1,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    sorted_dispatch.load_state_dict(baseline.state_dict(), strict=True)
+    x = torch.randn(2, 3, 8)
+
+    torch.testing.assert_close(sorted_dispatch(x), baseline(x))
+
+
 def test_moe_capacity_mask_avoids_float_mask_materialization() -> None:
     source = inspect.getsource(moe_inference)
     assert "(~drop_mask).float()" not in source

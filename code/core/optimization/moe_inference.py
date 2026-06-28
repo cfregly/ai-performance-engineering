@@ -376,7 +376,8 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
             top_scores.masked_fill_(drop_mask, 0.0)
             overflow_mask = drop_mask.any(dim=-1)
 
-        combined = torch.zeros_like(flat)
+        single_route = self.top_k == 1
+        combined = torch.empty_like(flat) if single_route else torch.zeros_like(flat)
         tokens = flat.shape[0]
         token_ids = self._token_ids_for(tokens, flat.device)
         expert_ids = top_indices.reshape(-1).to(dtype=torch.long)
@@ -401,7 +402,11 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
             expert_input = flat.index_select(0, segment_tokens)
             expert_out = self.experts[int(expert_id)](expert_input)
             segment_weights = segment_weights.to(expert_out.dtype)
-            combined.index_add_(0, segment_tokens, expert_out * segment_weights)
+            weighted_out = expert_out * segment_weights
+            if single_route:
+                combined.index_copy_(0, segment_tokens, weighted_out)
+            else:
+                combined.index_add_(0, segment_tokens, weighted_out)
 
         combined = combined.view(batch, seq, hidden)
         if collect_router_stats:
