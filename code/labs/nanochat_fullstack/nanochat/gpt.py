@@ -673,13 +673,29 @@ class GPT(nn.Module):
         ids = self._generate_ids_buffer(total_len, device)
         if prompt_len:
             ids[:, :prompt_len] = torch.tensor([tokens], dtype=torch.long, device=device)
+        from nanochat.engine import KVCache
+
+        head_dim = self.config.n_embd // self.config.n_head
+        kv_cache = KVCache(
+            batch_size=1,
+            num_heads=self.config.n_kv_head,
+            seq_len=max(total_len, 1),
+            head_dim=head_dim,
+            num_layers=self.config.n_layer,
+        )
         next_ids = self._generate_long_buffer("_generate_next_ids", (1, 1), device)
         choice = self._generate_long_buffer("_generate_choice_ids", (1, 1), device)
         token_host = self._generate_token_host_buffer()
         cur_len = prompt_len
+        prefill_logits = None
+        if prompt_len:
+            prefill_logits = self.forward(ids[:, :prompt_len], kv_cache=kv_cache)[:, -1, :]
         for _ in range(max_tokens):
-            logits = self.forward(ids[:, :cur_len]) # (B, T, vocab_size)
-            logits = logits[:, -1, :] # (B, vocab_size)
+            if prefill_logits is not None:
+                logits = prefill_logits
+                prefill_logits = None
+            else:
+                logits = self.forward(ids[:, cur_len - 1:cur_len], kv_cache=kv_cache)[:, -1, :]
             if temperature > 0:
                 if top_k is not None:
                     k = min(top_k, logits.size(-1))

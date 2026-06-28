@@ -5592,9 +5592,13 @@ def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
     assert "def _generate_token_host_buffer" in source
     assert "ids = self._generate_ids_buffer(total_len, device)" in generate_section
     assert "ids = torch.empty((1, total_len), dtype=torch.long, device=device)" not in generate_section
+    assert "from nanochat.engine import KVCache" in generate_section
+    assert "kv_cache = KVCache(" in generate_section
+    assert "prefill_logits = self.forward(ids[:, :prompt_len], kv_cache=kv_cache)[:, -1, :]" in generate_section
+    assert "logits = self.forward(ids[:, cur_len - 1:cur_len], kv_cache=kv_cache)[:, -1, :]" in generate_section
     assert "next_ids = self._generate_long_buffer(\"_generate_next_ids\", (1, 1), device)" in generate_section
     assert "choice = self._generate_long_buffer(\"_generate_choice_ids\", (1, 1), device)" in generate_section
-    assert "logits = self.forward(ids[:, :cur_len])" in generate_section
+    assert "logits = self.forward(ids[:, :cur_len])" not in generate_section
     assert "torch.topk(logits, k, dim=-1, out=(top_vals, top_idx))" in generate_section
     assert "torch.softmax(top_vals, dim=-1, out=probs)" in generate_section
     assert "torch.multinomial(probs, num_samples=1, generator=rng, out=choice)" in generate_section
