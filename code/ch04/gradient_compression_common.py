@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import torch
 
@@ -48,6 +48,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._fp32_outputs: List[torch.Tensor] = []
         self._fp16_buffers: List[torch.Tensor] = []
         self._fp16_outputs: List[torch.Tensor] = []
+        self._fp16_copy_pairs: List[Tuple[torch.Tensor, torch.Tensor]] = []
         self._fp16_output_fp32: Optional[torch.Tensor] = None
         self._int8_buffers: List[torch.Tensor] = []
         self._int8_outputs: List[torch.Tensor] = []
@@ -95,6 +96,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 torch.empty_like(t, dtype=torch.float16) for t in self.inputs
             ]
             self._fp16_outputs = [torch.empty_like(t) for t in self._fp16_buffers]
+            self._fp16_copy_pairs = list(zip(self.inputs, self._fp16_buffers, strict=True))
             self._fp16_output_fp32 = torch.empty_like(self.inputs[0])
         elif self.compression == "int8":
             self._int8_buffers = [
@@ -110,9 +112,9 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             ]
             self._int8_output_fp32 = torch.empty_like(self.inputs[0])
         if self.comm_only and self.compression == "fp16":
-            if not self._fp16_buffers:
+            if not self._fp16_copy_pairs:
                 raise RuntimeError("FP16 buffers not initialized for comm-only mode")
-            for src, buf in zip(self.inputs, self._fp16_buffers):
+            for src, buf in self._fp16_copy_pairs:
                 buf.copy_(src)
         if self.comm_only and self.compression == "int8":
             self._prepare_int8_buffers()
@@ -143,7 +145,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     if not self._fp16_buffers:
                         raise RuntimeError("FP16 buffers not initialized")
                     if not self.comm_only:
-                        for src, buf in zip(self.inputs, self._fp16_buffers):
+                        for src, buf in self._fp16_copy_pairs:
                             buf.copy_(src)
                     if self.multi_gpu:
                         torch.cuda.nccl.all_reduce(self._fp16_buffers, outputs=self._fp16_outputs)
@@ -214,9 +216,9 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return slices
 
     def _fp16_all_reduce_naive(self) -> torch.Tensor:
-        if not self._fp16_buffers or self._fp16_output_fp32 is None:
+        if not self._fp16_buffers or not self._fp16_copy_pairs or self._fp16_output_fp32 is None:
             raise RuntimeError("FP16 buffers not initialized")
-        for src, buf in zip(self.inputs, self._fp16_buffers):
+        for src, buf in self._fp16_copy_pairs:
             buf.copy_(src)
         if self.multi_gpu:
             if len(self._bucket_slices) > 1:
@@ -368,6 +370,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._fp32_outputs = []
         self._fp16_buffers = []
         self._fp16_outputs = []
+        self._fp16_copy_pairs = []
         self._fp16_output_fp32 = None
         self._int8_buffers = []
         self._int8_outputs = []

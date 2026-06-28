@@ -515,6 +515,37 @@ def test_ch04_gradient_compression_int8_reuses_cast_buffers() -> None:
     assert "int8_buf[sl].copy_(float_buf[sl])" in naive_section
 
 
+def test_ch04_gradient_compression_fp16_reuses_copy_pairs() -> None:
+    source = (REPO_ROOT / "ch04" / "gradient_compression_common.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def _prepare_int8_buffers",
+        maxsplit=1,
+    )[0]
+    fp16_naive_section = source.split("def _fp16_all_reduce_naive", maxsplit=1)[1].split(
+        "def _int8_all_reduce",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._fp16_copy_pairs: List[Tuple[torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._fp16_copy_pairs = list(zip(self.inputs, self._fp16_buffers, strict=True))" in setup_section
+    assert "for src, buf in self._fp16_copy_pairs:" in setup_section
+    assert "for src, buf in self._fp16_copy_pairs:" in benchmark_section
+    assert "for src, buf in self._fp16_copy_pairs:" in fp16_naive_section
+    assert "zip(self.inputs, self._fp16_buffers)" not in benchmark_section
+    assert "zip(self.inputs, self._fp16_buffers)" not in fp16_naive_section
+    assert "self._fp16_copy_pairs = []" in teardown_section
+
+
 def test_ch05_optimized_storage_cpu_opens_mmap_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch05" / "optimized_storage_cpu.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
