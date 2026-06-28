@@ -111,10 +111,13 @@ def bench_once(
 
     # Decode steady-state (T=1)
     decode_tokens = torch.randint(0, cfg.vocab_size, (batch_size, decode_len), device=device, dtype=torch.long)
+    decode_token_steps = tuple(
+        decode_tokens[:, t:t + 1]
+        for t in range(decode_len)
+    )
 
     def _run_decode() -> None:
-        for t in range(decode_len):
-            step_ids = decode_tokens[:, t:t+1]
+        for step_ids in decode_token_steps:
             if engine is None:
                 _ = model(step_ids, kv_cache=kv_cache)
             else:

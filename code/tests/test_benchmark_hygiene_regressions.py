@@ -3193,6 +3193,10 @@ def test_nanochat_b200_flag_benchmark_uses_cuda_event_timing() -> None:
     assert "start.record()" in helper_section
     assert "end.record()" in helper_section
     assert "start.elapsed_time(end) / 1000.0" in helper_section
+    assert "decode_token_steps = tuple(" in run_once_section
+    assert "decode_tokens[:, t:t + 1]" in run_once_section
+    assert "for step_ids in decode_token_steps:" in run_once_section
+    assert "decode_tokens[:, t:t+1]" not in run_once_section
     assert run_once_section.count("_time_cuda_region_seconds(") == 2
     assert "time.time()" not in run_once_section
     assert "torch.cuda.synchronize()" not in run_once_section
