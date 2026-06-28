@@ -91,11 +91,11 @@ class MoEFeedForward(nn.Module):
                     continue
                 expert_input = flat[token_ids]
                 expert_out = expert(expert_input)
-                weighted_out = expert_out * weights[token_ids]
+                expert_out.mul_(weights[token_ids])
                 if k == 0:
-                    output[token_ids] = weighted_out
+                    output[token_ids] = expert_out
                 else:
-                    output[token_ids] += weighted_out
+                    output[token_ids] += expert_out
 
         return output.view(batch, seq, hidden)
 

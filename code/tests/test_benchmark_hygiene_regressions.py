@@ -5447,9 +5447,11 @@ def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
     assert "torch.zeros_like(flat)" not in forward_section
     assert "token_ids = (expert_ids == expert_id).nonzero(as_tuple=True)[0]" in forward_section
     assert "if token_ids.numel() == 0:" in forward_section
+    assert "expert_out.mul_(weights[token_ids])" in forward_section
     assert "if k == 0:" in forward_section
-    assert "output[token_ids] = weighted_out" in forward_section
-    assert "output[token_ids] += weighted_out" in forward_section
+    assert "output[token_ids] = expert_out" in forward_section
+    assert "output[token_ids] += expert_out" in forward_section
+    assert "weighted_out = expert_out * weights[token_ids]" not in forward_section
     assert "mask.any()" not in forward_section
 
     from ch16.moe_performance_benchmark import MoEConfig, MoEFeedForward

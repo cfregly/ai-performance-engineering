@@ -78,6 +78,9 @@ def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
     assert "output = self._sorted_output_like(sorted_x)" in expert_loop_section
     assert "output = torch.empty_like(sorted_x)" not in expert_loop_section
     assert "torch.zeros_like(sorted_x)" not in expert_loop_section
+    assert "F.silu(gate, inplace=True)" in expert_loop_section
+    assert "gate.mul_(up)" in expert_loop_section
+    assert "hidden = gate * up" not in expert_loop_section
     assert "output.mul_(sorted_weights.unsqueeze(-1))" in apply_weights_section
     assert "output = output * sorted_weights.unsqueeze(-1)" not in grouped_section
 

@@ -198,10 +198,11 @@ class GroupedMoEExperts(nn.Module):
             expert_x = sorted_x[start:end]
             
             # SwiGLU: silu(x @ w1) * (x @ w3) @ w2
-            gate = F.silu(expert_x @ self.w1[expert_id])
+            gate = expert_x @ self.w1[expert_id]
+            F.silu(gate, inplace=True)
             up = expert_x @ self.w3[expert_id]
-            hidden = gate * up
-            expert_out = hidden @ self.w2[expert_id]
+            gate.mul_(up)
+            expert_out = gate @ self.w2[expert_id]
             
             output[start:end] = expert_out
         
