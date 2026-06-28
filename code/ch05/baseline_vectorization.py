@@ -19,6 +19,8 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self.N = 1_000_000
+        self.chunk = 4096
+        self._chunk_views: list[torch.Tensor] = []
         # Computation benchmark - jitter check not applicable
         tokens = self.N
         self._workload = WorkloadMetadata(
@@ -31,6 +33,7 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         self.data = torch.randn(self.N, device=self.device)
         self._output_buffer = torch.empty(1, device=self.device)
+        self._chunk_views = list(self.data.split(self.chunk))
     
     def benchmark_fn(self) -> None:
         """Benchmark: Chunked reductions to simulate scalar-style overhead."""
@@ -40,9 +43,8 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if result is None:
                 raise RuntimeError("Output buffer not initialized")
             result.zero_()
-            chunk = 4096
-            for start in range(0, self.N, chunk):
-                result += self.data[start:start + chunk].sum()
+            for chunk_view in self._chunk_views:
+                result += chunk_view.sum()
         self.output = result
 
     def capture_verification_payload(self) -> None:
@@ -64,6 +66,7 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.data = None
         self._output_buffer = None
+        self._chunk_views = []
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
@@ -82,7 +85,7 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         return compute_vectorization_metrics(
             num_elements=self.N,
-            chunk_elements=4096,
+            chunk_elements=self.chunk,
             is_vectorized=False,
         )
 

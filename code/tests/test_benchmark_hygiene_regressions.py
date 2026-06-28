@@ -1365,6 +1365,34 @@ def test_ch05_optimized_vectorization_reuses_reduction_output_buffer() -> None:
     assert "torch.empty(" not in benchmark_section
 
 
+def test_ch05_baseline_vectorization_reuses_chunk_views() -> None:
+    source = (REPO_ROOT / "ch05" / "baseline_vectorization.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self.chunk = 4096" in source
+    assert "self._chunk_views: list[torch.Tensor] = []" in source
+    assert "self._chunk_views = list(self.data.split(self.chunk))" in setup_section
+    assert "for chunk_view in self._chunk_views:" in benchmark_section
+    assert "chunk_view.sum()" in benchmark_section
+    assert "range(0, self.N" not in benchmark_section
+    assert "self.data[start:start + chunk]" not in benchmark_section
+    assert "chunk_elements=self.chunk" in source
+    assert "self._chunk_views = []" in teardown_section
+
+
 def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
     source = (REPO_ROOT / "ch05" / "optimized_ai.py").read_text(encoding="utf-8")
     helper_source = (REPO_ROOT / "ch05" / "ai_common.py").read_text(encoding="utf-8")
