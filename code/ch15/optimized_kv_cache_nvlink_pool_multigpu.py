@@ -44,6 +44,10 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._value_steps: Optional[torch.Tensor] = None
         self._k_gather_buffer: Optional[torch.Tensor] = None
         self._v_gather_buffer: Optional[torch.Tensor] = None
+        self._k_gather_step_views: List[torch.Tensor] = []
+        self._v_gather_step_views: List[torch.Tensor] = []
+        self._k_gather_prefix_views: List[torch.Tensor] = []
+        self._v_gather_prefix_views: List[torch.Tensor] = []
         self._cache_key_slots: List[torch.Tensor] = []
         self._cache_value_slots: List[torch.Tensor] = []
         self._host_key_slots: List[torch.Tensor] = []
@@ -68,6 +72,18 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._k_gather_buffer = torch.empty(self.batch, self.seq_len, self.hidden, device=self.device)
         self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)
+        self._k_gather_step_views = [
+            self._k_gather_buffer[:, idx : idx + 1, :] for idx in range(self.seq_len)
+        ]
+        self._v_gather_step_views = [
+            self._v_gather_buffer[:, idx : idx + 1, :] for idx in range(self.seq_len)
+        ]
+        self._k_gather_prefix_views = [
+            self._k_gather_buffer[:, : idx + 1, :] for idx in range(self.seq_len)
+        ]
+        self._v_gather_prefix_views = [
+            self._v_gather_buffer[:, : idx + 1, :] for idx in range(self.seq_len)
+        ]
         self._cache_key_slots = [
             torch.empty(0, device=self.device)
             for _ in range(self.seq_len)
@@ -126,16 +142,25 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         if self._k_gather_buffer is None or self._v_gather_buffer is None:
             raise RuntimeError("KV gather buffers not initialized")
         gathered_len = len(cache_k) if cache_len is None else cache_len
+        if (
+            len(self._k_gather_step_views) < gathered_len
+            or len(self._v_gather_step_views) < gathered_len
+            or len(self._k_gather_prefix_views) < gathered_len
+            or len(self._v_gather_prefix_views) < gathered_len
+        ):
+            raise RuntimeError("KV gather views not initialized")
         for idx in range(gathered_len):
             tk = cache_k[idx]
             tv = cache_v[idx]
             tier = tiers[idx]
             non_blocking = tier != "local"
-            self._k_gather_buffer[:, idx : idx + 1, :].copy_(tk, non_blocking=non_blocking)
-            self._v_gather_buffer[:, idx : idx + 1, :].copy_(tv, non_blocking=non_blocking)
+            self._k_gather_step_views[idx].copy_(tk, non_blocking=non_blocking)
+            self._v_gather_step_views[idx].copy_(tv, non_blocking=non_blocking)
+        if gathered_len <= 0:
+            return self._k_gather_buffer[:, :0, :], self._v_gather_buffer[:, :0, :]
         return (
-            self._k_gather_buffer[:, :gathered_len, :],
-            self._v_gather_buffer[:, :gathered_len, :],
+            self._k_gather_prefix_views[gathered_len - 1],
+            self._v_gather_prefix_views[gathered_len - 1],
         )
 
     def benchmark_fn(self) -> None:
@@ -190,6 +215,10 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._value_steps = None
         self._k_gather_buffer = None
         self._v_gather_buffer = None
+        self._k_gather_step_views = []
+        self._v_gather_step_views = []
+        self._k_gather_prefix_views = []
+        self._v_gather_prefix_views = []
         self._cache_key_slots = []
         self._cache_value_slots = []
         self._host_key_slots = []

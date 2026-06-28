@@ -6023,6 +6023,10 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
             "def _gather_kv_into_buffers",
             maxsplit=1,
         )[0]
+        gather_section = source.split("def _gather_kv_into_buffers", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
@@ -6032,6 +6036,10 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
 
         assert "self._k_gather_buffer = torch.empty(" in setup_section
         assert "self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)" in setup_section
+        assert "self._k_gather_step_views = [" in setup_section
+        assert "self._v_gather_step_views = [" in setup_section
+        assert "self._k_gather_prefix_views = [" in setup_section
+        assert "self._v_gather_prefix_views = [" in setup_section
         assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
         assert "self._cache_key_slots = [" in setup_section
         assert "self._cache_value_slots = [" in setup_section
@@ -6042,6 +6050,12 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert "host_k.copy_(k, non_blocking=True)" in place_section
         assert "host_v.copy_(v, non_blocking=True)" in place_section
         assert ".cpu()" not in place_section
+        assert "self._k_gather_step_views[idx].copy_(tk, non_blocking=non_blocking)" in gather_section
+        assert "self._v_gather_step_views[idx].copy_(tv, non_blocking=non_blocking)" in gather_section
+        assert "self._k_gather_prefix_views[gathered_len - 1]" in gather_section
+        assert "self._v_gather_prefix_views[gathered_len - 1]" in gather_section
+        assert "self._k_gather_buffer[:, idx : idx + 1, :].copy_" not in gather_section
+        assert "self._v_gather_buffer[:, idx : idx + 1, :].copy_" not in gather_section
         assert "torch.cat(" not in benchmark_section
         assert ".to(self.device" not in benchmark_section
         assert ".append(" not in benchmark_section
@@ -6061,6 +6075,10 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         bench = benchmark_cls()
         bench._k_gather_buffer = torch.empty(2, 3, 4)
         bench._v_gather_buffer = torch.empty(2, 3, 4)
+        bench._k_gather_step_views = [bench._k_gather_buffer[:, idx : idx + 1, :] for idx in range(3)]
+        bench._v_gather_step_views = [bench._v_gather_buffer[:, idx : idx + 1, :] for idx in range(3)]
+        bench._k_gather_prefix_views = [bench._k_gather_buffer[:, : idx + 1, :] for idx in range(3)]
+        bench._v_gather_prefix_views = [bench._v_gather_buffer[:, : idx + 1, :] for idx in range(3)]
         bench.local_cache_limit = 1
         bench.peer_cache_limit = 0
         bench._host_key_slots = [torch.empty(2, 1, 4)]
