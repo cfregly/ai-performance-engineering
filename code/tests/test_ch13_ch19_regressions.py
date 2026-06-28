@@ -39,6 +39,13 @@ def test_optimized_autograd_standard_skips_post_capture_output_zero_fill() -> No
 
 
 def test_restore_bucketed_reduce_casts_weighted_output_and_reuses_buffer() -> None:
+    source = inspect.getsource(mxfp8_moe_common.restore_bucketed_reduce)
+
+    assert "weighted_out: Optional[torch.Tensor] = None" in source
+    assert "weighted_output = output.to(dtype=out.dtype, copy=True)" in source
+    assert "weighted_output.mul_(weights.unsqueeze(-1))" in source
+    assert "torch.mul(output, weights.unsqueeze(-1), out=weighted_output)" in source
+
     output = torch.tensor(
         [
             [2.0, 4.0, 6.0],
@@ -51,6 +58,7 @@ def test_restore_bucketed_reduce_casts_weighted_output_and_reuses_buffer() -> No
     weights = torch.tensor([0.25, 0.75, 1.0], dtype=torch.float16)
     out = torch.empty((2, 3), dtype=torch.float16)
     weight_out = torch.empty((2,), dtype=torch.float16)
+    weighted_out = torch.empty_like(output, dtype=torch.float16)
 
     restored = restore_bucketed_reduce(
         output,
@@ -59,6 +67,7 @@ def test_restore_bucketed_reduce_casts_weighted_output_and_reuses_buffer() -> No
         weights=weights,
         out=out,
         weight_out=weight_out,
+        weighted_out=weighted_out,
     )
 
     expected = torch.tensor(
@@ -69,6 +78,17 @@ def test_restore_bucketed_reduce_casts_weighted_output_and_reuses_buffer() -> No
         dtype=torch.float16,
     )
     assert restored.data_ptr() == out.data_ptr()
+    torch.testing.assert_close(
+        weighted_out,
+        torch.tensor(
+            [
+                [0.5, 1.0, 1.5],
+                [4.5, 6.0, 7.5],
+                [1.0, 3.0, 5.0],
+            ],
+            dtype=torch.float16,
+        ),
+    )
     assert torch.equal(weight_out, torch.tensor([1.0, 1.0], dtype=torch.float16))
     assert torch.allclose(restored, expected, atol=1e-3, rtol=0.0)
 
@@ -138,6 +158,13 @@ def test_optimized_mxfp8_moe_reuses_token_ids_and_keeps_reorder_on_device() -> N
     assert "bucket_indices.index_select(0, row_order)" in supergroup_source
     assert "bucket_token_ids.index_select(0, row_order)" in supergroup_source
     assert "gating_weights.index_select(0, row_order)" in supergroup_source
+    assert "self._weighted_out = torch.empty((bucketed.shape[0], self.ffn_dim)" in setup_source
+    assert "weighted_out=self._weighted_out" in inspect.getsource(
+        optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark._forward_grouped
+    )
+    assert "weighted_out=self._graph_weighted_out" in inspect.getsource(
+        optimized_mxfp8_moe.OptimizedMXFP8MoEBenchmark._capture_graph
+    )
     assert "reordered_inputs" not in supergroup_source
     assert "torch.cat(reordered" not in supergroup_source
 

@@ -73,8 +73,10 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._graph: Optional[torch.cuda.CUDAGraph] = None
         self._graph_out: Optional[torch.Tensor] = None
         self._graph_weight: Optional[torch.Tensor] = None
+        self._graph_weighted_out: Optional[torch.Tensor] = None
         self._restored_out: Optional[torch.Tensor] = None
         self._restored_weight: Optional[torch.Tensor] = None
+        self._weighted_out: Optional[torch.Tensor] = None
         self._verification_payload = None
         self._enable_nvtx = False
         self._payload_parameter_count = 0
@@ -207,12 +209,13 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     weight_param.copy_(ordered_weights[idx])
 
         self._calibrate_fp8()
-        if self.use_cuda_graphs:
-            self._capture_graph()
         self._restored_out = torch.empty(
             (self.num_tokens, self.ffn_dim), device=self.device, dtype=torch.float16
         )
         self._restored_weight = torch.empty((self.num_tokens,), device=self.device, dtype=torch.float16)
+        self._weighted_out = torch.empty((bucketed.shape[0], self.ffn_dim), device=self.device, dtype=torch.float16)
+        if self.use_cuda_graphs:
+            self._capture_graph()
         self.register_workload_metadata(tokens_per_iteration=float(self.num_tokens))
         torch.cuda.synchronize(self.device)
 
@@ -234,6 +237,9 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
             and self.bucket_indices is not None
             and self.bucket_token_ids is not None
             and self.gating_weights is not None
+            and self._restored_out is not None
+            and self._restored_weight is not None
+            and self._weighted_out is not None
         )
         with te_autocast(enabled=True, recipe=self.recipe):
             bucketed_out = self.layer(
@@ -248,15 +254,23 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
             weights=self.gating_weights,
             out=self._restored_out,
             weight_out=self._restored_weight,
+            weighted_out=self._weighted_out,
         )
 
     def _capture_graph(self) -> None:
-        assert self.bucket_token_ids is not None and self.gating_weights is not None
+        assert (
+            self.bucketed_inputs is not None
+            and self.bucket_token_ids is not None
+            and self.gating_weights is not None
+        )
         self._graph = torch.cuda.CUDAGraph()
         self._graph_out = torch.empty(
             (self.num_tokens, self.ffn_dim), device=self.device, dtype=torch.float16
         )
         self._graph_weight = torch.empty((self.num_tokens,), device=self.device, dtype=torch.float16)
+        self._graph_weighted_out = torch.empty(
+            (self.bucketed_inputs.shape[0], self.ffn_dim), device=self.device, dtype=torch.float16
+        )
         torch.cuda.synchronize(self.device)
         with torch.cuda.graph(self._graph):
             with te_autocast(enabled=True, recipe=self.recipe):
@@ -272,6 +286,7 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 weights=self.gating_weights,
                 out=self._graph_out,
                 weight_out=self._graph_weight,
+                weighted_out=self._graph_weighted_out,
             )
 
     def benchmark_fn(self) -> None:
@@ -326,8 +341,10 @@ class OptimizedMXFP8MoEBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._graph = None
         self._graph_out = None
         self._graph_weight = None
+        self._graph_weighted_out = None
         self._restored_out = None
         self._restored_weight = None
+        self._weighted_out = None
         torch.cuda.empty_cache()
 
     def validate_result(self) -> Optional[str]:
