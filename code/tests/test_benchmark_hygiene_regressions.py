@@ -1512,6 +1512,34 @@ def test_ch05_optimized_vectorization_reuses_reduction_output_buffer() -> None:
     assert "torch.empty(" not in benchmark_section
 
 
+def test_ch05_optimized_host_reduction_reuses_scalar_output_buffer() -> None:
+    source = (REPO_ROOT / "ch05" / "optimized_host_staged_reduction.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._output_buffer = torch.empty((), device=self.device, dtype=self.data.dtype)" in setup_section
+    assert "def _output_for_data(self) -> torch.Tensor:" in source
+    assert "output_buffer = self._output_for_data()" in benchmark_section
+    assert "torch.sum(self.data, dim=0, out=output_buffer)" in benchmark_section
+    assert "self.output = output_buffer" in benchmark_section
+    assert "self.data.sum()" not in benchmark_section
+    assert "torch.empty(" not in benchmark_section
+    assert "self._output_buffer = None" in teardown_section
+
+
 def test_ch05_baseline_vectorization_reuses_chunk_views() -> None:
     source = (REPO_ROOT / "ch05" / "baseline_vectorization.py").read_text(
         encoding="utf-8"
