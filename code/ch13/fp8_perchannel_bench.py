@@ -96,7 +96,7 @@ class FP8PerChannelLinear(nn.Module):
         output = output_q.to(x.dtype)
         
         if self.bias is not None:
-            output = output + self.bias
+            output.add_(self.bias)
         
         return output
 

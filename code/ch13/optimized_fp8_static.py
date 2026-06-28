@@ -209,9 +209,9 @@ class StaticFP8Linear(nn.Module):
                 self.weight_scale,
                 out_dtype=torch.float32,
             )
-            output = output_2d.reshape(*batch_shape, -1)
             if self.bias is not None:
-                output = output + self.bias
+                output_2d.add_(self.bias)
+            output = output_2d.reshape(*batch_shape, -1)
             output = output.to(original_dtype)
         else:
             output = F.linear(x, self.weight, self.bias)

@@ -183,10 +183,9 @@ class FP8PerChannelLinear(nn.Module):
             self._scale_b,
             out_dtype=torch.bfloat16,
         )
-        output = output_2d.reshape(batch_size, seq_len, -1)
-        
         if self._bias_bf16 is not None:
-            output = output + self._bias_bf16
+            output_2d.add_(self._bias_bf16)
+        output = output_2d.reshape(batch_size, seq_len, -1)
         
         return output
 

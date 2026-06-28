@@ -7424,8 +7424,38 @@ def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
     assert "scale_a.copy_(input_scale)" in forward_section
     assert "torch.div(x_2d, input_scale, out=input_scaled)" in forward_section
     assert "x_fp8.copy_(input_scaled)" in forward_section
+    assert "output_2d.add_(self._bias_bf16)" in forward_section
+    assert "output = output + self._bias_bf16" not in forward_section
     assert "(x_2d / input_scale).to(torch.float8_e4m3fn)" not in forward_section
     assert ".expand(x_fp8.size(0), 1).contiguous()" not in forward_section
+
+
+def test_ch13_optimized_quantized_linears_add_bias_in_place() -> None:
+    cases = (
+        (
+            "optimized_quantization.py",
+            "class Int8MLP",
+            "output.add_(self.bias)",
+        ),
+        (
+            "optimized_fp8_static.py",
+            "else:\n            output = F.linear",
+            "output_2d.add_(self.bias)",
+        ),
+        (
+            "fp8_perchannel_bench.py",
+            "class OptimizedFP8PerChannelBenchmark",
+            "output.add_(self.bias)",
+        ),
+    )
+    for filename, end_marker, inplace_bias in cases:
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[
+            1
+        ].split(end_marker, maxsplit=1)[0]
+
+        assert inplace_bias in forward_section
+        assert "output = output + self.bias" not in forward_section
 
 
 def test_ch13_optimized_fp8_perchannel_input_scale_cache_invalidates() -> None:
