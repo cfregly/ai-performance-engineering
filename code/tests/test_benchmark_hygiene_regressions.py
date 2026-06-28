@@ -6403,6 +6403,24 @@ def test_ch08_to_ch12_kernel_wrappers_use_inference_mode() -> None:
         assert "torch.no_grad()" not in benchmark_section
 
 
+def test_ch11_stream_benchmarks_use_cached_nvtx_range() -> None:
+    stream_base = (REPO_ROOT / "ch11" / "stream_overlap_base.py").read_text(encoding="utf-8")
+    baseline_tensor_cores = (
+        REPO_ROOT / "ch11" / "baseline_tensor_cores_streams.py"
+    ).read_text(encoding="utf-8")
+    optimized_tensor_cores = (
+        REPO_ROOT / "ch11" / "optimized_tensor_cores_streams.py"
+    ).read_text(encoding="utf-8")
+
+    assert stream_base.count("with self._nvtx_range(self.label):") == 2
+    assert "with self._nvtx_range(self.label):" in baseline_tensor_cores
+    assert "with self._nvtx_range(self.nvtx_label):" in optimized_tensor_cores
+
+    for source in (stream_base, baseline_tensor_cores, optimized_tensor_cores):
+        assert "get_nvtx_enabled(" not in source
+        assert "with nvtx_range(" not in source
+
+
 def test_ch11_ch12_standalone_timing_tools_use_inference_mode() -> None:
     paths = (
         "ch11/memory_async_demo.py",

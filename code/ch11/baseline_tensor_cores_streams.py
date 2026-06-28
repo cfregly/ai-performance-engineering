@@ -9,11 +9,7 @@ import torch
 from ch11.stream_overlap_base import resolve_device
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from core.profiling.nvtx_helper import (
-    canonicalize_nvtx_name,
-    get_nvtx_enabled,
-    nvtx_range,
-)
+from core.profiling.nvtx_helper import canonicalize_nvtx_name
 
 
 class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -78,10 +74,7 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        config = getattr(self, "_config", None) or self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-        with nvtx_range(self.label, enable=enable_nvtx):
+        with self._nvtx_range(self.label):
             assert self.stream is not None
             assert self.host_A is not None
             assert self.host_B is not None

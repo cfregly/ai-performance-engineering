@@ -10,11 +10,7 @@ import torch
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.common.device_utils import require_cuda_device
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
-from core.profiling.nvtx_helper import (
-    canonicalize_nvtx_name,
-    get_nvtx_enabled,
-    nvtx_range,
-)
+from core.profiling.nvtx_helper import canonicalize_nvtx_name
 
 resolve_device = partial(require_cuda_device, "CUDA required for ch11")
 
@@ -61,10 +57,7 @@ class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        config = getattr(self, "_config", None) or self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-        with nvtx_range(self.label, enable=enable_nvtx):
+        with self._nvtx_range(self.label):
             assert self.host_in_chunks is not None
             assert self.host_out_chunks is not None
             assert self.device_chunks is not None
@@ -211,10 +204,7 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        config = getattr(self, "_config", None) or self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-        with nvtx_range(self.label, enable=enable_nvtx):
+        with self._nvtx_range(self.label):
             assert self.streams is not None
             assert self.host_in_chunks is not None
             assert self.host_out_chunks is not None
