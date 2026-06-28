@@ -33,6 +33,7 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
         )
         self.output = None
         self._verification_payload = None
+        self._enable_nvtx = False
         self.register_workload_metadata(
             requests_per_iteration=float(self.num_chunks),
             tokens_per_iteration=float(tokens),
@@ -42,17 +43,14 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
         """Setup: initialize synthetic gradients."""
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.tensor = torch.randn(self.num_chunks, self.chunk_len, device=self.device, dtype=torch.float32)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
         """Benchmark: CPU quantization + host/device transfers."""
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
-        with nvtx_range("baseline_nccl_quantization", enable=enable_nvtx):
+        with nvtx_range("baseline_nccl_quantization", enable=self._enable_nvtx):
             if self.tensor is None:
                 raise RuntimeError("Tensor not initialized")
             total = 0.0

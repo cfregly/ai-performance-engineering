@@ -52,10 +52,13 @@ class BaselineCublasVsCutlassBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(self.m * self.n),
         )
         self._verification_payload = None
+        self._enable_nvtx = False
     
     def setup(self) -> None:
         """Setup: Initialize matrices and bind the explicit cuBLAS helper."""
         torch.manual_seed(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float16)
         self.B = torch.randn(self.k, self.n, device=self.device, dtype=torch.float16)
         self.C = None
@@ -69,10 +72,7 @@ class BaselineCublasVsCutlassBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         """Benchmark: explicit cuBLAS FP16 GEMM."""
-        config = self.get_config()
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-        with nvtx_range("baseline_cublas_vs_cutlass", enable=enable_nvtx):
+        with nvtx_range("baseline_cublas_vs_cutlass", enable=self._enable_nvtx):
             if self.A is None or self.B is None or self._cublas_gemm is None:
                 raise RuntimeError("Benchmark not initialized")
             self.C = self._cublas_gemm(self.A, self.B)

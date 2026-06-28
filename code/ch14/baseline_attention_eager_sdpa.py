@@ -40,6 +40,7 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         self._last_outputs: Optional[list[torch.Tensor]] = None
         self.parameter_count: int = 0
         self._verification_payload = None
+        self._enable_nvtx = False
         self.register_workload_metadata(
             requests_per_iteration=float(self.seq_len),
             tokens_per_iteration=float(tokens),
@@ -50,6 +51,8 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         torch.manual_seed(42)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         shape = (self.seq_len, self.num_heads, self.head_dim)
         self.q = torch.randn(shape, device=self.device, dtype=self.dtype)
         self.k = torch.randn(shape, device=self.device, dtype=self.dtype)
@@ -62,16 +65,9 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def benchmark_fn(self) -> None:
         """Benchmark: per-head attention computed serially."""
-        # Use conditional NVTX ranges - only enabled when profiling
-
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
         with (
             torch.inference_mode(),
-            nvtx_range("baseline_attention_eager_sdpa", enable=enable_nvtx),
+            nvtx_range("baseline_attention_eager_sdpa", enable=self._enable_nvtx),
         ):
             if self.q is None or self.k is None or self.v is None:
                 raise RuntimeError("Tensors not initialized")

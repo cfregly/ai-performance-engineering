@@ -4129,6 +4129,31 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "float(out.sum())" not in optimized_benchmark
 
 
+def test_ch14_wrappers_cache_nvtx_enabled_outside_hot_loop() -> None:
+    for filename in (
+        "baseline_attention_eager_sdpa.py",
+        "optimized_attention_eager_sdpa.py",
+        "baseline_cublas_vs_cutlass.py",
+        "optimized_cublas_vs_cutlass.py",
+        "baseline_model_compile_reduced_precision.py",
+        "optimized_model_compile_reduced_precision.py",
+        "baseline_nccl_quantization.py",
+        "optimized_nccl_quantization.py",
+    ):
+        source = (REPO_ROOT / "ch14" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
+
+        assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+        assert "get_config()" not in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert "enable=self._enable_nvtx" in benchmark_section
+
+
 def test_ch14_forward_benchmarks_use_inference_mode() -> None:
     benchmark_files = (
         "baseline_attention_eager_sdpa.py",

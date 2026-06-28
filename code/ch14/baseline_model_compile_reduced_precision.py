@@ -51,6 +51,7 @@ class BaselineModelCompileReducedPrecisionBenchmark(VerificationPayloadMixin, Ba
         self.parameter_count: int = 0
         self.dtype = torch.float16
         self._verification_payload = None
+        self._enable_nvtx = False
         self.register_workload_metadata(
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(tokens),
@@ -60,6 +61,8 @@ class BaselineModelCompileReducedPrecisionBenchmark(VerificationPayloadMixin, Ba
         """Setup: initialize model and data."""
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        config = getattr(self, "_config", None) or self.get_config()
+        self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.dtype = resolve_model_eager_dtype()
         self.model = SimpleTransformer().to(self.device, dtype=self.dtype).eval()
         self.input_ids = torch.randint(0, self.vocab_size, (self.batch_size, self.seq_len), device=self.device)
@@ -72,12 +75,7 @@ class BaselineModelCompileReducedPrecisionBenchmark(VerificationPayloadMixin, Ba
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
-        config = self.get_config()
-
-        enable_nvtx = get_nvtx_enabled(config) if config else False
-
-
-        with nvtx_range("model_compile_reduced_precision_baseline", enable=enable_nvtx):
+        with nvtx_range("model_compile_reduced_precision_baseline", enable=self._enable_nvtx):
             with torch.inference_mode():
                 self.output = self.model(self.input_ids)
         if self.output is None or self.input_ids is None:
