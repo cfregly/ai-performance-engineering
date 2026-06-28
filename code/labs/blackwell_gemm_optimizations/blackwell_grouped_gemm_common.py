@@ -291,8 +291,11 @@ def require_blackwell_grouped_gemm_support(device: torch.device) -> None:
 def _gather_packed_tokens(
     state: GroupedGemmState,
     out_flat: torch.Tensor,
+    out_view: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     torch.index_select(state.x_with_padding, 0, state.flat_padded_indices, out=out_flat)
+    if out_view is not None:
+        return out_view
     return out_flat.view(
         state.counts.shape[0],
         state.max_count,
@@ -306,9 +309,10 @@ def run_variant(
     variant: str,
     packed_tokens_flat: torch.Tensor,
     output_buffer: torch.Tensor,
+    packed_tokens_view: torch.Tensor | None = None,
     experimental: str | None = None,
 ) -> VariantResult:
-    packed_tokens = _gather_packed_tokens(state, packed_tokens_flat)
+    packed_tokens = _gather_packed_tokens(state, packed_tokens_flat, packed_tokens_view)
     schedule_name = experimental if experimental is not None else variant
     schedule = resolve_schedule(schedule_name)
 
@@ -354,6 +358,7 @@ class BlackwellGroupedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.state: Optional[GroupedGemmState] = None
         self.output: Optional[torch.Tensor] = None
         self._flat_packed_tokens: Optional[torch.Tensor] = None
+        self._packed_tokens_view: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self._workload_metadata = WorkloadMetadata(
             requests_per_iteration=float(self.workload.num_tokens),
@@ -386,6 +391,11 @@ class BlackwellGroupedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.workload.hidden_dim,
             device=device,
             dtype=self.workload.dtype,
+        )
+        self._packed_tokens_view = self._flat_packed_tokens.view(
+            self.workload.num_experts,
+            self.state.max_count,
+            self.workload.hidden_dim,
         )
         self._output_buffer = torch.empty(
             self.workload.num_experts,
@@ -426,13 +436,19 @@ class BlackwellGroupedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize(device)
 
     def benchmark_fn(self) -> None:
-        if self.state is None or self._flat_packed_tokens is None or self._output_buffer is None:
+        if (
+            self.state is None
+            or self._flat_packed_tokens is None
+            or self._packed_tokens_view is None
+            or self._output_buffer is None
+        ):
             raise RuntimeError("setup() must run before benchmark_fn()")
         with self._nvtx_range(self.label):
             result = run_variant(
                 self.state,
                 variant=self.variant,
                 packed_tokens_flat=self._flat_packed_tokens,
+                packed_tokens_view=self._packed_tokens_view,
                 output_buffer=self._output_buffer,
             )
             self.output = result.output
@@ -469,6 +485,7 @@ class BlackwellGroupedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.state = None
         self.output = None
         self._flat_packed_tokens = None
+        self._packed_tokens_view = None
         self._output_buffer = None
         torch.cuda.empty_cache()
         super().teardown()

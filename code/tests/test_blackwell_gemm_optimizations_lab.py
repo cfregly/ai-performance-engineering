@@ -17,6 +17,7 @@ from labs.blackwell_gemm_optimizations.blackwell_grouped_gemm_autotune import (
 from labs.blackwell_gemm_optimizations.blackwell_grouped_gemm_common import (
     BlackwellGroupedGemmWorkload,
     _assignment_counts_cpu,
+    _gather_packed_tokens,
     build_state,
     run_variant,
 )
@@ -119,6 +120,55 @@ def test_blackwell_grouped_gemm_padding_row_is_preallocated() -> None:
     assert "torch.cat([x" not in setup_section
     assert "zero_row" not in setup_section
     assert "x_with_padding[workload.num_tokens].zero_()" in setup_section
+
+
+def test_blackwell_grouped_gemm_reuses_packed_token_view() -> None:
+    source = (LAB_DIR / "blackwell_grouped_gemm_common.py").read_text(encoding="utf-8")
+    gather_section = source.split("def _gather_packed_tokens", maxsplit=1)[1].split(
+        "def run_variant",
+        maxsplit=1,
+    )[0]
+    run_section = source.split("def run_variant", maxsplit=1)[1].split(
+        "class BlackwellGroupedGemmBenchmark",
+        maxsplit=1,
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "out_view: Optional[torch.Tensor] = None" in gather_section
+    assert "if out_view is not None:" in gather_section
+    assert "return out_view" in gather_section
+    assert "packed_tokens_view: torch.Tensor | None = None" in run_section
+    assert "_gather_packed_tokens(state, packed_tokens_flat, packed_tokens_view)" in run_section
+    assert "self._packed_tokens_view = self._flat_packed_tokens.view(" in setup_section
+    assert "packed_tokens_view=self._packed_tokens_view" in benchmark_section
+
+    workload = BlackwellGroupedGemmWorkload(
+        num_tokens=17,
+        num_experts=4,
+        hidden_dim=32,
+        expert_ffn_dim=64,
+        dtype=torch.float16,
+        histogram="balanced",
+    )
+    state = build_state(workload, torch.device("cpu"))
+    flat = torch.empty(
+        workload.num_experts * state.max_count,
+        workload.hidden_dim,
+        dtype=workload.dtype,
+    )
+    view = flat.view(workload.num_experts, state.max_count, workload.hidden_dim)
+
+    gathered = _gather_packed_tokens(state, flat, view)
+
+    assert gathered is view
+    assert gathered.data_ptr() == flat.data_ptr()
 
 
 @pytest.mark.parametrize("histogram", ["balanced", "skewed"])
