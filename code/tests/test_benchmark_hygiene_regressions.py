@@ -195,6 +195,7 @@ def test_ch04_dataparallel_and_reduction_payloads_cache_parameter_counts() -> No
 
 
 def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
+    torchcomms_common = (REPO_ROOT / "ch04" / "torchcomms_common.py").read_text(encoding="utf-8")
     torchcomms_files = (
         "ch04/baseline_torchcomms.py",
         "ch04/optimized_torchcomms.py",
@@ -220,6 +221,10 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
         )[0]
         setup_section = source.split("def setup", maxsplit=1)[1].split(
             "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        build_block_section = source.split("def _build_block", maxsplit=1)[1].split(
+            "def _run_worker",
             maxsplit=1,
         )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
@@ -248,6 +253,14 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
         assert "param_count = sum(" not in capture_section
         assert "sum(p.numel()" not in capture_section
         if Path(relative).name.startswith("optimized_"):
+            assert "return BufferedTorchcommsBlock(hidden).to(device).eval()" in build_block_section
+            assert "nn.Sequential(" not in build_block_section
+            assert "self._fc1_buffer: Optional[torch.Tensor] = None" in torchcomms_common
+            assert "self._fc2_buffer: Optional[torch.Tensor] = None" in torchcomms_common
+            assert "if torch.is_grad_enabled():" in torchcomms_common
+            assert "torch.mm(x, self.fc1.weight.t(), out=fc1_out)" in torchcomms_common
+            assert "F.gelu(fc1_out, out=fc1_out)" in torchcomms_common
+            assert "torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)" in torchcomms_common
             assert ".add_(aux_out)" in worker_section
             assert "comm_out.add_(aux_out)" in benchmark_section
             assert "self._output = comm_out" in benchmark_section

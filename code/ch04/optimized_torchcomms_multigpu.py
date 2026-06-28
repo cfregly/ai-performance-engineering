@@ -11,7 +11,6 @@ from pathlib import Path
 import argparse
 import os
 
-from core.common.device_utils import resolve_local_rank
 import time
 from typing import Optional
 
@@ -19,6 +18,8 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 
+from ch04.torchcomms_common import BufferedTorchcommsBlock
+from core.common.device_utils import resolve_local_rank
 from core.benchmark.gpu_requirements import require_min_gpus
 from core.benchmark.verification import PrecisionFlags
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -59,12 +60,8 @@ def _resolve_world_size() -> int:
     return world_size
 
 
-def _build_block(hidden: int, device: torch.device) -> nn.Sequential:
-    return nn.Sequential(
-        nn.Linear(hidden, hidden * 4),
-        nn.GELU(),
-        nn.Linear(hidden * 4, hidden),
-    ).to(device).eval()
+def _build_block(hidden: int, device: torch.device) -> nn.Module:
+    return BufferedTorchcommsBlock(hidden).to(device).eval()
 
 
 def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
@@ -135,8 +132,8 @@ class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         tokens = float(_DEFAULT_BATCH * _DEFAULT_HIDDEN)
         self.register_workload_metadata(requests_per_iteration=float(_DEFAULT_BATCH), tokens_per_iteration=tokens)
-        self._comm_block: Optional[nn.Sequential] = None
-        self._aux_block: Optional[nn.Sequential] = None
+        self._comm_block: Optional[nn.Module] = None
+        self._aux_block: Optional[nn.Module] = None
         self._input: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
         self._world_size = 1
