@@ -80,7 +80,10 @@ class TokenMLP(nn.Module):
             layers.append(nn.GELU(approximate="tanh"))
         self.mlp = nn.Sequential(*layers)
         self.out = nn.Linear(self.hidden_size, self.vocab_size, device=device, dtype=dtype)
-        self._forward_buffers: List[torch.Tensor] = []
+        self._forward_buffers: dict[
+            tuple[int, torch.device, torch.dtype],
+            tuple[torch.Tensor, torch.Tensor],
+        ] = {}
 
     def _ensure_forward_buffers(
         self,
@@ -89,18 +92,16 @@ class TokenMLP(nn.Module):
         device: torch.device,
         dtype: torch.dtype,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        buffer_shape = (num_tokens, self.hidden_size)
-        if (
-            len(self._forward_buffers) != 2
-            or self._forward_buffers[0].shape != buffer_shape
-            or self._forward_buffers[0].device != device
-            or self._forward_buffers[0].dtype != dtype
-        ):
-            self._forward_buffers = [
+        cache_key = (int(num_tokens), device, dtype)
+        buffers = self._forward_buffers.get(cache_key)
+        if buffers is None:
+            buffer_shape = (num_tokens, self.hidden_size)
+            buffers = (
                 torch.empty(buffer_shape, device=device, dtype=dtype),
                 torch.empty(buffer_shape, device=device, dtype=dtype),
-            ]
-        return self._forward_buffers[0], self._forward_buffers[1]
+            )
+            self._forward_buffers[cache_key] = buffers
+        return buffers
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
         if token_ids.dim() != 2:
