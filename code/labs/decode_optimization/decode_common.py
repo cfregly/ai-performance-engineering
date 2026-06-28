@@ -145,10 +145,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.parameter_count: int = 0
         self.host_prompts: list[torch.Tensor] = []
         self.gpu_prompts: list[torch.Tensor] = []
+        self.gpu_prompt_last_tokens: list[torch.Tensor] = []
         self.host_payloads: list[torch.Tensor] = []
         self.gpu_payloads: list[torch.Tensor] = []
         self.host_payload: Optional[torch.Tensor] = None
         self.gpu_payload: Optional[torch.Tensor] = None
+        self.gpu_prompt_last_token: Optional[torch.Tensor] = None
         self._summary_buffer: Optional[torch.Tensor] = None
         self._copy_done_events: list[torch.cuda.Event] = []
         self._timing_events: dict[str, torch.cuda.Event] = {}
@@ -431,16 +433,20 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         bsz, prompt = self.cfg.batch_size, self.cfg.prompt_tokens
         self.host_prompts = []
         self.gpu_prompts = []
+        self.gpu_prompt_last_tokens = []
         for _ in range(self.cfg.prefetch_batches):
             host_prompt = torch.randint(
                 0, self.cfg.vocab_size, (bsz, prompt), dtype=torch.long, device="cpu"
             )
             if self.cfg.use_pinned_host:
                 host_prompt = host_prompt.pin_memory()
+            gpu_prompt = torch.empty_like(host_prompt, device=self.device)
             self.host_prompts.append(host_prompt)
-            self.gpu_prompts.append(torch.empty_like(host_prompt, device=self.device))
+            self.gpu_prompts.append(gpu_prompt)
+            self.gpu_prompt_last_tokens.append(gpu_prompt.select(1, prompt - 1))
         self.host_prompt = self.host_prompts[0]
         self.gpu_prompt = self.gpu_prompts[0]
+        self.gpu_prompt_last_token = self.gpu_prompt_last_tokens[0]
         if self.cfg.host_payload_mb:
             self._payload_bytes = int(self.cfg.host_payload_mb * 1024 * 1024)
             for _ in range(self.cfg.prefetch_batches):
@@ -482,7 +488,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         def _prime_decode_state() -> None:
             prefill_state = self.prefill_fn(self.gpu_prompt)
             self.state_buffer.copy_(prefill_state)
-            self.current_tokens.copy_(self.gpu_prompt[:, -1])
+            self.current_tokens.copy_(self.gpu_prompt_last_token)
 
         # NO FALLBACK - CUDA graph capture must succeed
         # Warm up to populate kernels/caches prior to capture
@@ -612,11 +618,16 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         except KeyError as exc:
             raise RuntimeError("Decode timing events were not initialized") from exc
 
-    def _run_prefill_decode(self, prompt: torch.Tensor, stream: torch.cuda.Stream) -> None:
+    def _run_prefill_decode(
+        self,
+        prompt: torch.Tensor,
+        prompt_last_token: torch.Tensor,
+        stream: torch.cuda.Stream,
+    ) -> None:
         with torch.cuda.stream(stream):
             prefill_state = self.prefill_fn(prompt)
             self.state_buffer.copy_(prefill_state)
-            self.current_tokens.copy_(prompt[:, -1])
+            self.current_tokens.copy_(prompt_last_token)
             for _ in range(self.cfg.decode_tokens):
                 next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                 self.state_buffer.copy_(next_state)
@@ -648,7 +659,11 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with self._get_fp8_context():
             if nvtx:
                 nvtx.range_push(self._nvtx_labels["prefill_decode_0"])
-            self._run_prefill_decode(self.gpu_prompts[0], prefill_stream)
+            self._run_prefill_decode(
+                self.gpu_prompts[0],
+                self.gpu_prompt_last_tokens[0],
+                prefill_stream,
+            )
             if nvtx:
                 nvtx.range_pop()
             batch0_end.record(timing_stream)
@@ -659,7 +674,11 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
             if nvtx:
                 nvtx.range_push(self._nvtx_labels["prefill_decode_1"])
-            self._run_prefill_decode(self.gpu_prompts[1], prefill_stream)
+            self._run_prefill_decode(
+                self.gpu_prompts[1],
+                self.gpu_prompt_last_tokens[1],
+                prefill_stream,
+            )
             if nvtx:
                 nvtx.range_pop()
             iter_end.record(timing_stream)
@@ -668,6 +687,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.cuda.current_stream().wait_stream(self.compute_stream)
 
         self.gpu_prompt = self.gpu_prompts[1]
+        self.gpu_prompt_last_token = self.gpu_prompt_last_tokens[1]
         self.host_prompt = self.host_prompts[1]
         if self.gpu_payloads:
             self.gpu_payload = self.gpu_payloads[1]
@@ -707,7 +727,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if self.decode_graph is None or not self.graph_includes_prefill:
                 prefill_state = self.prefill_fn(self.gpu_prompt)
                 self.state_buffer.copy_(prefill_state)
-                self.current_tokens.copy_(self.gpu_prompt[:, -1])
+                self.current_tokens.copy_(self.gpu_prompt_last_token)
             prefill_end.record(prefill_stream)
 
             # Ensure decode stream waits for prefill when streams differ
@@ -924,6 +944,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "host_prompts",
             "gpu_prompt",
             "gpu_prompts",
+            "gpu_prompt_last_token",
+            "gpu_prompt_last_tokens",
             "host_payload",
             "gpu_payload",
             "host_payloads",

@@ -84,7 +84,34 @@ def test_decode_state_buffers_are_overwritten_without_zero_fill() -> None:
     assert "self.state_buffer.zero_()" not in benchmark_section
     assert "self.current_tokens.zero_()" not in benchmark_section
     assert "self.state_buffer.copy_(prefill_state)" in graph_section
-    assert "self.current_tokens.copy_(self.gpu_prompt[:, -1])" in graph_section
+    assert "self.current_tokens.copy_(self.gpu_prompt_last_token)" in graph_section
+
+
+def test_decode_prompt_last_token_view_is_cached_outside_hot_path() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    init_section = source.split("def _init_buffers", maxsplit=1)[1].split(
+        "# Compiled / graphed helpers",
+        maxsplit=1,
+    )[0]
+    prefetch_section = source.split("def _benchmark_prefetch_batches", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+
+    assert "self.gpu_prompt_last_tokens: list[torch.Tensor] = []" in source
+    assert "self.gpu_prompt_last_token: Optional[torch.Tensor] = None" in source
+    assert "self.gpu_prompt_last_tokens.append(gpu_prompt.select(1, prompt - 1))" in init_section
+    assert "self.gpu_prompt_last_token = self.gpu_prompt_last_tokens[0]" in init_section
+    assert "self.gpu_prompt_last_token = self.gpu_prompt_last_tokens[1]" in prefetch_section
+    assert "self.current_tokens.copy_(self.gpu_prompt_last_token)" in benchmark_section
+    assert "self.gpu_prompt[:, -1]" not in benchmark_section
+    assert "prompt[:, -1]" not in prefetch_section
 
 
 def test_decode_step_reuses_next_token_buffer() -> None:
