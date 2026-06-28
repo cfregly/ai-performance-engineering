@@ -456,6 +456,7 @@ class GPT(nn.Module):
         self.register_buffer("cos", cos, persistent=False) # persistent=False means it's not saved to the checkpoint
         self.register_buffer("sin", sin, persistent=False)
         self.register_buffer("_position_offsets", torch.empty(0, dtype=torch.long), persistent=False)
+        self._generate_ids = None
         self._generate_next_ids = None
         self._generate_choice_ids = None
         self._generate_max_values = None
@@ -526,6 +527,13 @@ class GPT(nn.Module):
             buffer = torch.empty(shape, dtype=torch.long, device=device)
             setattr(self, name, buffer)
         return buffer
+
+    def _generate_ids_buffer(self, total_len, device):
+        buffer = self._generate_ids
+        if buffer is None or buffer.device != device or buffer.size(1) < total_len:
+            buffer = torch.empty((1, total_len), dtype=torch.long, device=device)
+            self._generate_ids = buffer
+        return buffer[:, :total_len]
 
     def _generate_like_buffer(self, name, tensor):
         buffer = getattr(self, name)
@@ -654,7 +662,7 @@ class GPT(nn.Module):
             rng.manual_seed(seed)
         prompt_len = len(tokens)
         total_len = prompt_len + max(max_tokens, 0)
-        ids = torch.empty((1, total_len), dtype=torch.long, device=device)
+        ids = self._generate_ids_buffer(total_len, device)
         if prompt_len:
             ids[:, :prompt_len] = torch.tensor([tokens], dtype=torch.long, device=device)
         next_ids = self._generate_long_buffer("_generate_next_ids", (1, 1), device)

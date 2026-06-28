@@ -8,7 +8,7 @@ import torch
 from pathlib import Path
 from types import SimpleNamespace
 from nanochat.engine import Engine, KVCache, sample_next_token
-from nanochat.gpt import CausalSelfAttention, GPTConfig, _expand_gqa_kv_heads, apply_rotary_emb
+from nanochat.gpt import CausalSelfAttention, GPT, GPTConfig, _expand_gqa_kv_heads, apply_rotary_emb
 
 def test_kv_cache_resize():
     """
@@ -303,6 +303,29 @@ def test_sample_next_token_reuses_workspace_outputs():
     )
     assert result is out
     assert out.shape == (2, 1)
+
+
+def test_gpt_generate_ids_buffer_reuses_larger_storage():
+    config = GPTConfig(
+        sequence_len=8,
+        vocab_size=32,
+        n_layer=1,
+        n_head=2,
+        n_kv_head=2,
+        n_embd=8,
+        use_flash3=False,
+    )
+    model = GPT(config)
+
+    first = model._generate_ids_buffer(6, torch.device("cpu"))
+    first_ptr = first.data_ptr()
+    shorter = model._generate_ids_buffer(4, torch.device("cpu"))
+    grown = model._generate_ids_buffer(9, torch.device("cpu"))
+
+    assert shorter.data_ptr() == first_ptr
+    assert shorter.shape == (1, 4)
+    assert grown.shape == (1, 9)
+    assert grown.data_ptr() != first_ptr
 
 
 def test_sample_batch_tokens_reuses_sampler_workspace():

@@ -4058,11 +4058,14 @@ def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
 
     assert "self._generate_next_ids = None" in source
     assert "self._generate_choice_ids = None" in source
+    assert "self._generate_ids = None" in source
     assert "self._generate_probs = None" in source
     assert "def _generate_long_buffer" in source
+    assert "def _generate_ids_buffer(self, total_len, device)" in source
     assert "def _generate_like_buffer" in source
     assert "def _generate_token_host_buffer" in source
-    assert "ids = torch.empty((1, total_len), dtype=torch.long, device=device)" in generate_section
+    assert "ids = self._generate_ids_buffer(total_len, device)" in generate_section
+    assert "ids = torch.empty((1, total_len), dtype=torch.long, device=device)" not in generate_section
     assert "next_ids = self._generate_long_buffer(\"_generate_next_ids\", (1, 1), device)" in generate_section
     assert "choice = self._generate_long_buffer(\"_generate_choice_ids\", (1, 1), device)" in generate_section
     assert "logits = self.forward(ids[:, :cur_len])" in generate_section
