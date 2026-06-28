@@ -5608,6 +5608,14 @@ def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
     assert "x = x.to(self.devices[0], non_blocking=True)" in source
     assert "x = x.to(device, non_blocking=True)" in source
     assert "x = x.to(self.ln_f.weight.device, non_blocking=True)" in source
+    assert '"weight_scale_t"' in source
+    assert '"bias_bf16"' in source
+    assert "module.weight_scale_t.copy_(weight_scale.transpose(0, 1).contiguous())" in source
+    assert "module.bias_bf16.copy_(module.bias.detach().to(torch.bfloat16))" in source
+    assert "weight_scale = self.weight_scale_t" in source
+    assert "bias = self.bias_bf16 if self.bias_bf16 is not None else None" in source
+    assert "self.weight_scale.transpose(0, 1).contiguous()" not in source
+    assert "bias = self.bias.to(torch.bfloat16)" not in source
     assert "x = x.to(self.devices[0])" not in source
     assert "x = x.to(device)" not in source
     assert "x = x.to(self.ln_f.weight.device)" not in source

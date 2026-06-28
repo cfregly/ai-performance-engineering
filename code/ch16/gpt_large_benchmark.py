@@ -114,10 +114,19 @@ class FP8Linear(nn.Module):
             "weight_scale",
             torch.zeros(out_features, 1, dtype=torch.float32, device=device),
         )
+        self.register_buffer(
+            "weight_scale_t",
+            torch.zeros(1, out_features, dtype=torch.float32, device=device),
+        )
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_features, dtype=dtype, device=device), requires_grad=False)
+            self.register_buffer(
+                "bias_bf16",
+                torch.zeros(out_features, dtype=torch.bfloat16, device=device),
+            )
         else:
             self.register_parameter("bias", None)
+            self.register_buffer("bias_bf16", None)
 
     @staticmethod
     def _quantize_weight(weight: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -139,9 +148,12 @@ class FP8Linear(nn.Module):
         )
         fp8_weight, scale = cls._quantize_weight(linear.weight.detach().to(dtype))
         module.weight_fp8.copy_(fp8_weight)
-        module.weight_scale.copy_(scale.to(torch.float32))
+        weight_scale = scale.to(torch.float32)
+        module.weight_scale.copy_(weight_scale)
+        module.weight_scale_t.copy_(weight_scale.transpose(0, 1).contiguous())
         if linear.bias is not None and module.bias is not None:
             module.bias.data.copy_(linear.bias.detach().to(dtype))
+            module.bias_bf16.copy_(module.bias.detach().to(torch.bfloat16))
         return module
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -154,12 +166,10 @@ class FP8Linear(nn.Module):
         x_fp8 = (x2d / act_scale.to(x.dtype)).clamp_(-448, 448).to(torch.float8_e4m3fn)
 
         # Column-wise weight scaling (already stored)
-        weight_scale = self.weight_scale.transpose(0, 1).contiguous()  # shape (1, out_features)
+        weight_scale = self.weight_scale_t  # shape (1, out_features)
         mat2 = self.weight_fp8.transpose(0, 1)  # shape (in_features, out_features)
 
-        bias = None
-        if self.bias is not None:
-            bias = self.bias.to(torch.bfloat16)
+        bias = self.bias_bf16 if self.bias_bf16 is not None else None
 
         out = torch._scaled_mm(
             x_fp8,
