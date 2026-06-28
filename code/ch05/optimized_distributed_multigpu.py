@@ -53,13 +53,13 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        with self._nvtx_range("optimized_distributed_multigpu"):
+        with torch.inference_mode(), self._nvtx_range("optimized_distributed_multigpu"):
             if not self.data:
                 raise RuntimeError("setup() must be called before benchmark_fn()")
             if not self.local_sums or not self.reduced_sums:
                 raise RuntimeError("setup() must be called before benchmark_fn()")
             for idx, tensor in enumerate(self.data):
-                self.local_sums[idx].copy_(tensor.sum().view(1))
+                torch.sum(tensor, dim=0, keepdim=True, out=self.local_sums[idx])
             torch.cuda.nccl.all_reduce(self.local_sums, outputs=self.reduced_sums)
             self.output = self.reduced_sums[0]
 

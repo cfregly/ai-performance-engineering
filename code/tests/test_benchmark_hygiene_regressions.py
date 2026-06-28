@@ -2831,7 +2831,12 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     assert "self.reduced_sums = [torch.empty_like(t) for t in self.local_sums]" in optimized_setup
     assert "torch.zeros(1" not in optimized_setup
     assert "torch.zeros_like" not in optimized_setup
+    assert "with torch.inference_mode(), self._nvtx_range(\"optimized_distributed_multigpu\"):" in optimized_benchmark
+    assert "torch.sum(tensor, dim=0, keepdim=True, out=self.local_sums[idx])" in optimized_benchmark
+    assert "tensor.sum().view(1)" not in optimized_benchmark
+    assert ".copy_(tensor.sum()" not in optimized_benchmark
     assert "self.output = self.reduced_sums[0].detach().clone()" not in optimized_benchmark
+    assert "torch.no_grad()" not in optimized_benchmark
     assert "torch.cuda.synchronize()" not in optimized_benchmark
     assert "self.output = self.reduced_sums[0]" in optimized_benchmark
 
