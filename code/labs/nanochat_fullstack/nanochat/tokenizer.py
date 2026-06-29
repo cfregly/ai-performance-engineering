@@ -171,7 +171,7 @@ if rustbpe is None:
             def train_from_iterator(self, text_iter, vocab_size: int, pattern: str = SPLIT_PATTERN):
                 from labs.nanochat_fullstack.tests.test_rustbpe import FastRegexTokenizer  # type: ignore
 
-                text = "".join(list(text_iter))
+                text = "".join(text_iter)
                 self.pattern = pattern
                 self._tok = FastRegexTokenizer(pattern=pattern)
                 self._tok.train(text, vocab_size, verbose=False)

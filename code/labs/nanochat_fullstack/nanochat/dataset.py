@@ -113,13 +113,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     num = MAX_SHARD + 1 if args.num_files == -1 else min(args.num_files, MAX_SHARD + 1)
-    ids_to_download = list(range(num))
-    print(f"Downloading {len(ids_to_download)} shards using {args.num_workers} workers...")
+    ids_to_download = range(num)
+    print(f"Downloading {num} shards using {args.num_workers} workers...")
     print(f"Target directory: {DATA_DIR}")
     print()
     with Pool(processes=args.num_workers) as pool:
-        results = pool.map(download_single_file, ids_to_download)
+        successful = sum(1 for success in pool.imap_unordered(download_single_file, ids_to_download) if success)
 
     # Report results
-    successful = sum(1 for success in results if success)
-    print(f"Done! Downloaded: {successful}/{len(ids_to_download)} shards to {DATA_DIR}")
+    print(f"Done! Downloaded: {successful}/{num} shards to {DATA_DIR}")

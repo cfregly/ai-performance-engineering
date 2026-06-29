@@ -158,7 +158,7 @@ class SpellingBee(Task):
 
         # Now create the ideal assistant response - build as parts (text + tool calls)
         assistant_parts = []
-        word_letters = ",".join(list(word))
+        word_letters = ",".join(word)
         manual_text = f"""We are asked to find the number '{letter}' in the word '{word}'. Let me try a manual approach first.
 
 First spell the word out:
@@ -256,7 +256,7 @@ class SimpleSpelling(Task):
         rng = random.Random(seed)
         # pick a random word
         word = rng.choice(self.words)
-        word_letters = ",".join(list(word))
+        word_letters = ",".join(word)
         # return the full conversation
         messages = [
             {"role": "user", "content": f"Spell the word: {word}"},

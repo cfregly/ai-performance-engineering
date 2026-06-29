@@ -15866,11 +15866,33 @@ def test_nanochat_tokenizer_prepends_without_front_inserts() -> None:
     assert ".insert(0," not in encode_section
     assert "ids = [prepend_id, *ids, append_id]" in encode_section
     assert "ids = [prepend_id, *ids]" in encode_section
+    assert 'text = "".join(text_iter)' in source
+    assert '"".join(list(text_iter))' not in source
     assert (
         "ids = [[prepend_id, *ids_row, append_id] for ids_row in ids]"
         in encode_section
     )
     assert "ids = [[prepend_id, *ids_row] for ids_row in ids]" in encode_section
+
+
+def test_nanochat_spellingbee_formats_words_without_temporary_lists() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "tasks" / "spellingbee.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'word_letters = ",".join(word)' in source
+    assert '",".join(list(word))' not in source
+
+
+def test_nanochat_dataset_download_counts_streamed_pool_results() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "dataset.py"
+    ).read_text(encoding="utf-8")
+
+    assert "ids_to_download = range(num)" in source
+    assert "pool.imap_unordered(download_single_file, ids_to_download)" in source
+    assert "results = pool.map(" not in source
+    assert "successful = sum(1 for success in results if success)" not in source
 
 
 def test_nanochat_calculator_uses_lazy_character_guards() -> None:
