@@ -5084,6 +5084,41 @@ def test_nvfp4_strict_ab_summarizes_pair_rows_incrementally() -> None:
     assert "baseline_geomean_us" not in main_summary_section
 
 
+def test_remaining_lab_elapsed_timing_uses_monotonic_clock() -> None:
+    strict_source = (
+        REPO_ROOT / "labs" / "nvfp4_dual_gemm" / "strict_ab_validation.py"
+    ).read_text(encoding="utf-8")
+    strict_main = strict_source.split("def main", maxsplit=1)[1]
+
+    assert "start = time.perf_counter()" in strict_main
+    assert "elapsed_window = time.perf_counter() - start" in strict_main
+    assert "time.time() - start" not in strict_main
+
+    base_eval_source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "base_eval.py"
+    ).read_text(encoding="utf-8")
+    task_loop = base_eval_source.split("# Evaluate each task", maxsplit=1)[1].split(
+        "core_metric =",
+        maxsplit=1,
+    )[0]
+
+    assert "start_time = time.perf_counter()" in task_loop
+    assert "end_time = time.perf_counter()" in task_loop
+    assert "time.time()" not in task_loop
+
+    rustbpe_source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "tests" / "test_rustbpe.py"
+    ).read_text(encoding="utf-8")
+    timing_helper = rustbpe_source.split("def time_function", maxsplit=1)[1].split(
+        "def test_correctness",
+        maxsplit=1,
+    )[0]
+
+    assert "start_time = time.perf_counter()" in timing_helper
+    assert "end_time = time.perf_counter()" in timing_helper
+    assert "time.time()" not in timing_helper
+
+
 def test_lab_utility_timers_record_on_current_stream() -> None:
     timing_splits = {
         "labs/tcgen05_cluster_shapes/run_cluster_shape_sweep.py": (

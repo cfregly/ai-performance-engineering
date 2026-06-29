@@ -250,7 +250,7 @@ def main() -> int:
         "top_score_us_598": TOP_SCORE_US_598,
     }
 
-    start = time.time()
+    start = time.perf_counter()
     try:
         # Global preflight before any timed run.
         report["initial_isolation_preflight"] = ensure_gpu_isolation(
@@ -263,7 +263,7 @@ def main() -> int:
         )
 
         for i in range(1, int(args.pairs) + 1):
-            elapsed_window = time.time() - start
+            elapsed_window = time.perf_counter() - start
             if elapsed_window > float(args.run_window_seconds):
                 raise RuntimeError(
                     f"run window exceeded before pair {i}: "

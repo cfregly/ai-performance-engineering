@@ -76,7 +76,7 @@ def evaluate_model(model, tokenizer, device, max_per_task=-1):
     results = {}
     centered_results = {}
     for task in tasks:
-        start_time = time.time()
+        start_time = time.perf_counter()
         label = task['label']
         task_meta = {
             'task_type': task['icl_task_type'],
@@ -105,7 +105,7 @@ def evaluate_model(model, tokenizer, device, max_per_task=-1):
         random_baseline = random_baselines[label]
         centered_result = (accuracy - 0.01 * random_baseline) / (1.0 - 0.01 * random_baseline)
         centered_results[label] = centered_result
-        end_time = time.time()
+        end_time = time.perf_counter()
         print0(f"accuracy: {accuracy:.4f} | centered: {centered_result:.4f} | time: {end_time - start_time:.2f}s")
 
     core_metric = sum(centered_results.values()) / len(centered_results)
