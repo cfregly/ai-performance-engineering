@@ -745,8 +745,49 @@ class TensorParallelAttention(nn.Module):
         self._valid_mask_workspace: Optional[torch.Tensor] = None
         self._attn_k_workspace: Optional[torch.Tensor] = None
         self._attn_v_workspace: Optional[torch.Tensor] = None
+        self._local_key_workspace: Optional[torch.Tensor] = None
+        self._local_value_workspace: Optional[torch.Tensor] = None
+        self._attn_merge_buffer: Optional[torch.Tensor] = None
+        self._attn_output_buffer: Optional[torch.Tensor] = None
         self._pending_work: Optional[Any] = None
         self._force_sdpa = num_gpus == 1
+
+    def _ensure_local_workspaces(
+        self,
+        batch_size: int,
+        seq_len: int,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> None:
+        if batch_size > self.max_batch_size:
+            raise ValueError(
+                f"Batch size {batch_size} exceeds configured max_batch_size={self.max_batch_size}"
+            )
+        if seq_len > self.max_seq_len:
+            raise ValueError(
+                f"Sequence length {seq_len} exceeds configured max_seq_len={self.max_seq_len}"
+            )
+
+        kv_shape = (batch_size, self.heads_per_gpu, seq_len, self.head_dim)
+        if (
+            self._local_key_workspace is None
+            or self._local_key_workspace.device != device
+            or self._local_key_workspace.dtype != dtype
+            or tuple(self._local_key_workspace.shape) != kv_shape
+        ):
+            self._local_key_workspace = torch.empty(kv_shape, dtype=dtype, device=device)
+            self._local_value_workspace = torch.empty_like(self._local_key_workspace)
+
+        merge_shape = (batch_size, seq_len, self.heads_per_gpu, self.head_dim)
+        output_shape = (batch_size, seq_len, self.d_model)
+        if (
+            self._attn_merge_buffer is None
+            or self._attn_merge_buffer.device != device
+            or self._attn_merge_buffer.dtype != dtype
+            or tuple(self._attn_merge_buffer.shape) != merge_shape
+        ):
+            self._attn_merge_buffer = torch.empty(merge_shape, dtype=dtype, device=device)
+            self._attn_output_buffer = torch.empty(output_shape, dtype=dtype, device=device)
 
     def _ensure_workspaces(
         self,
@@ -801,8 +842,13 @@ class TensorParallelAttention(nn.Module):
         
         # Attention computation using FlexAttention (fallback to SDPA)
         q = q.transpose(1, 2)  # (batch, heads, seq, head_dim)
-        key_local = k.transpose(1, 2).contiguous()
-        value_local = v.transpose(1, 2).contiguous()
+        self._ensure_local_workspaces(batch_size, seq_len, k.dtype, k.device)
+        if self._local_key_workspace is None or self._local_value_workspace is None:
+            raise RuntimeError("Local KV workspaces not configured")
+        key_local = self._local_key_workspace
+        value_local = self._local_value_workspace
+        key_local.copy_(k.transpose(1, 2))
+        value_local.copy_(v.transpose(1, 2))
         
         scale = 1.0 / (self.head_dim ** 0.5)
 
@@ -899,9 +945,21 @@ class TensorParallelAttention(nn.Module):
                 out = _call_flex_attention_scaled(q, attn_k, attn_v, scale)
         
         # Reshape and project
-        out = out.transpose(1, 2).contiguous()
-        out = out.reshape(batch_size, seq_len, -1)
-        out = self.out_proj(out)
+        merge_buffer = self._attn_merge_buffer
+        output_buffer = self._attn_output_buffer
+        if merge_buffer is None or output_buffer is None:
+            raise RuntimeError("Attention projection buffers not configured")
+        if torch.is_grad_enabled() and (out.requires_grad or self.out_proj.weight.requires_grad):
+            project_input = out.transpose(1, 2).reshape(batch_size, seq_len, -1)
+            out = self.out_proj(project_input)
+        else:
+            merge_buffer.copy_(out.transpose(1, 2))
+            torch.mm(
+                merge_buffer.view(batch_size * seq_len, -1),
+                self.out_proj.weight.t(),
+                out=output_buffer.view(batch_size * seq_len, self.d_model),
+            )
+            out = output_buffer
         
         # All-reduce across GPUs (async to enable overlap with downstream work)
         if dist.is_initialized():

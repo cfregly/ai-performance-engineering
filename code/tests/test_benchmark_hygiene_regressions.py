@@ -8340,6 +8340,39 @@ def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     assert "valid_mask.fill_(False)" in cached_attention_section
 
 
+def test_ch16_tensor_parallel_attention_reuses_layout_projection_buffers() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    attention_section = source.split("class TensorParallelAttention", maxsplit=1)[1].split(
+        "class ContinuousBatchScheduler",
+        maxsplit=1,
+    )[0]
+    forward_section = attention_section.split("def forward(", maxsplit=1)[1].split(
+        "def complete_pending",
+        maxsplit=1,
+    )[0]
+
+    assert "self._local_key_workspace: Optional[torch.Tensor] = None" in attention_section
+    assert "self._local_value_workspace: Optional[torch.Tensor] = None" in attention_section
+    assert "self._attn_merge_buffer: Optional[torch.Tensor] = None" in attention_section
+    assert "self._attn_output_buffer: Optional[torch.Tensor] = None" in attention_section
+    assert "def _ensure_local_workspaces(" in attention_section
+    assert "self._local_key_workspace = torch.empty(kv_shape" in attention_section
+    assert "self._local_value_workspace = torch.empty_like(self._local_key_workspace)" in attention_section
+    assert "self._attn_merge_buffer = torch.empty(merge_shape" in attention_section
+    assert "self._attn_output_buffer = torch.empty(output_shape" in attention_section
+    assert "key_local.copy_(k.transpose(1, 2))" in forward_section
+    assert "value_local.copy_(v.transpose(1, 2))" in forward_section
+    assert "merge_buffer.copy_(out.transpose(1, 2))" in forward_section
+    assert "torch.mm(" in forward_section
+    assert "out=output_buffer.view(batch_size * seq_len, self.d_model)" in forward_section
+    assert "k.transpose(1, 2).contiguous()" not in forward_section
+    assert "v.transpose(1, 2).contiguous()" not in forward_section
+    assert "out.transpose(1, 2).contiguous()" not in forward_section
+    assert "out = self.out_proj(out)" not in forward_section
+
+
 def test_ch16_demo_causal_lm_reuses_kv_stack_buffers() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"

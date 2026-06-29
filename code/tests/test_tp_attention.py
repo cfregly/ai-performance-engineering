@@ -138,6 +138,42 @@ def test_tensor_parallel_attention_forward_matches_reference():
     assert value_local.shape == (2, attn.heads_per_gpu, 5, attn.head_dim)
 
 
+def test_tensor_parallel_attention_reuses_layout_projection_buffers():
+    torch.manual_seed(3)
+    attn = TensorParallelAttention(
+        d_model=64,
+        num_heads=4,
+        num_gpus=1,
+        max_batch_size=8,
+        max_seq_len=32,
+    )
+    x = torch.randn(2, 5, 64)
+
+    with torch.inference_mode():
+        first_out, first_key, first_value = attn(x)
+        key_ptr = attn._local_key_workspace.data_ptr()
+        value_ptr = attn._local_value_workspace.data_ptr()
+        merge_ptr = attn._attn_merge_buffer.data_ptr()
+        output_ptr = attn._attn_output_buffer.data_ptr()
+
+        second_out, second_key, second_value = attn(x)
+    ref_out, ref_key, ref_value = _reference_attention(attn, x)
+
+    torch.testing.assert_close(second_out, ref_out, rtol=1e-3, atol=1e-3)
+    torch.testing.assert_close(second_key, ref_key)
+    torch.testing.assert_close(second_value, ref_value)
+    assert first_out.data_ptr() == output_ptr
+    assert second_out.data_ptr() == output_ptr
+    assert first_key.data_ptr() == key_ptr
+    assert first_value.data_ptr() == value_ptr
+    assert second_key.data_ptr() == key_ptr
+    assert second_value.data_ptr() == value_ptr
+    assert attn._local_key_workspace.data_ptr() == key_ptr
+    assert attn._local_value_workspace.data_ptr() == value_ptr
+    assert attn._attn_merge_buffer.data_ptr() == merge_ptr
+    assert attn._attn_output_buffer.data_ptr() == output_ptr
+
+
 def test_tensor_parallel_attention_with_kv_cache_matches_reference():
     torch.manual_seed(1)
     attn = TensorParallelAttention(
