@@ -147,7 +147,8 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         unique_lengths = sorted(set(self.sequence_schedule))
         capture_start = torch.cuda.Event(enable_timing=True)
         capture_stop = torch.cuda.Event(enable_timing=True)
-        capture_start.record()
+        capture_stream = torch.cuda.current_stream(self.device)
+        capture_start.record(capture_stream)
 
         for seq_len in unique_lengths:
             static_input = self._input_view_for(seq_len)
@@ -162,7 +163,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
                     static_output = self.model(static_input)
             self.graph_cache[seq_len] = (graph, static_input, static_output)
         self.compiled_layers = len(self.graph_cache)
-        capture_stop.record()
+        capture_stop.record(capture_stream)
         torch.cuda.synchronize()
         self.capture_ms = float(capture_start.elapsed_time(capture_stop))
 

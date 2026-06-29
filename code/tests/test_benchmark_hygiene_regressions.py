@@ -3793,6 +3793,9 @@ def test_ch16_piece_and_regional_graphs_cache_nvtx_outside_hot_loop() -> None:
     optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
         "def get_workload_metadata", maxsplit=1
     )[0]
+    optimized_graph_prep = optimized_source.split("def _prepare_cuda_graphs", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -3810,6 +3813,11 @@ def test_ch16_piece_and_regional_graphs_cache_nvtx_outside_hot_loop() -> None:
     assert "get_config()" not in optimized_benchmark
     assert "get_nvtx_enabled(" not in optimized_benchmark
     assert "self._run_with_cuda_graph(seq_len, self._enable_nvtx)" in optimized_benchmark
+    assert "capture_stream = torch.cuda.current_stream(self.device)" in optimized_graph_prep
+    assert "capture_start.record(capture_stream)" in optimized_graph_prep
+    assert "capture_stop.record(capture_stream)" in optimized_graph_prep
+    assert "capture_start.record()" not in optimized_graph_prep
+    assert "capture_stop.record()" not in optimized_graph_prep
     assert "self._payload_verify_input = self._input_view_for(seq_len)" in optimized_benchmark
     assert "self._verify_input[:, :seq_len]" not in optimized_benchmark
     assert "input_view = self._input_view_for(seq_len)" in optimized_run
