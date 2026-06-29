@@ -15526,6 +15526,13 @@ def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path(
     common_source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
         encoding="utf-8"
     )
+    multigpu_source = (
+        REPO_ROOT / "labs" / "decode_optimization" / "decode_multigpu_demo.py"
+    ).read_text(encoding="utf-8")
+    multigpu_worker_section = multigpu_source.split("def _run_worker", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
     init_buffers_section = common_source.split("def _init_buffers", maxsplit=1)[1].split(
         "# Compiled / graphed helpers",
         maxsplit=1,
@@ -15552,6 +15559,13 @@ def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path(
     assert '"config": self._config_tensor' in capture_section
     assert "config_tensor = torch.tensor(" not in capture_section
     assert "setup() must initialize config tensor before verification capture" in capture_section
+    assert "sample_count = max(iters, 1)" in multigpu_worker_section
+    assert "start = time.perf_counter()" in multigpu_worker_section
+    assert "elapsed = time.perf_counter() - start" in multigpu_worker_section
+    assert "for _ in range(sample_count):" in multigpu_worker_section
+    assert "tokens_per_iter * (sample_count / elapsed)" in multigpu_worker_section
+    assert "(elapsed / sample_count) * 1000.0" in multigpu_worker_section
+    assert "time.time()" not in multigpu_worker_section
 
     for name in ("baseline_decode_warp_specialized.py", "optimized_decode_warp_specialized.py"):
         source = (REPO_ROOT / "labs" / "decode_optimization" / name).read_text(encoding="utf-8")

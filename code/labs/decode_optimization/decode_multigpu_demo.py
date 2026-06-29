@@ -7,7 +7,6 @@ baseline/optimized benchmark pair.
 from __future__ import annotations
 
 import argparse
-import os
 
 from core.common.device_utils import resolve_local_rank
 import time
@@ -119,19 +118,20 @@ def _run_worker(iters: int, warmup: int) -> None:
     torch.cuda.synchronize()
 
     # Timed iterations
-    start = time.time()
-    for _ in range(max(iters, 1)):
+    sample_count = max(iters, 1)
+    start = time.perf_counter()
+    for _ in range(sample_count):
         bench.benchmark_fn()
     torch.cuda.synchronize()
-    elapsed = time.time() - start
+    elapsed = time.perf_counter() - start
 
     tokens_per_iter = cfg.batch_size * (cfg.prompt_tokens + cfg.decode_tokens)
-    local_tokens_per_s = tokens_per_iter * (iters / elapsed)
+    local_tokens_per_s = tokens_per_iter * (sample_count / elapsed)
     global_tokens_per_s = local_tokens_per_s * dist.get_world_size()
 
     if rank == 0:
         print(f"rank0 tokens/s: {global_tokens_per_s:.2f} tokens/s (local {local_tokens_per_s:.2f})")
-        print(f"rank0 time_per_iter_ms: {(elapsed / max(iters,1)) * 1000.0:.3f}")
+        print(f"rank0 time_per_iter_ms: {(elapsed / sample_count) * 1000.0:.3f}")
 
     dist.destroy_process_group()
 
@@ -146,5 +146,3 @@ def main() -> None:
 
 def get_benchmark() -> BaseBenchmark:
     return MultiGPUDecodeBenchmark()
-
-
