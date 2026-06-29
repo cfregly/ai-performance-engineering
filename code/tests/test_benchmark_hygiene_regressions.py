@@ -7075,6 +7075,7 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
         "def main",
         maxsplit=1,
     )[0]
+    scorecard_main = scorecard_source.split("def main", maxsplit=1)[1]
     plot_load_runs = plot_source.split("def _load_runs", maxsplit=1)[1].split(
         "def _plot_metric",
         maxsplit=1,
@@ -7110,6 +7111,12 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
     assert "[r[\"decode_p95\"] for r in runs]" not in scorecard_plot
     assert "[r[\"acc\"] for r in runs]" not in scorecard_plot
     assert "[r[\"drop_rate\"] * 100 for r in runs]" not in scorecard_plot
+    assert "runs = []" in scorecard_main
+    assert "runs.append(baseline)" in scorecard_main
+    assert "for run_path in args.runs:" in scorecard_main
+    assert "runs.append(_load_run(run_path))" in scorecard_main
+    assert "runs = [_load_run(r) for r in args.runs]" not in scorecard_main
+    assert "runs = [baseline] + [r for r in runs if r[\"dir\"] != baseline[\"dir\"]]" not in scorecard_main
     assert 'with path.open(encoding="utf-8") as f:' in plot_load_runs
     assert "data = json.load(f)" in plot_load_runs
     assert "json.loads(path.read_text())" not in plot_load_runs

@@ -201,12 +201,20 @@ def main() -> None:
     ap.add_argument("--min-acc", type=float, default=0.6)
     args = ap.parse_args()
 
-    runs = [_load_run(r) for r in args.runs]
     baseline = _load_run(args.baseline) if args.baseline else None
 
+    runs = []
     if baseline:
         # Ensure baseline shows up first
-        runs = [baseline] + [r for r in runs if r["dir"] != baseline["dir"]]
+        runs.append(baseline)
+        baseline_dir = baseline["dir"]
+    else:
+        baseline_dir = None
+
+    for run_path in args.runs:
+        if baseline_dir is not None and run_path == baseline_dir:
+            continue
+        runs.append(_load_run(run_path))
 
     _print_table(runs, args, baseline)
 
