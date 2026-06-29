@@ -3708,12 +3708,17 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         )[0]
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in flash_setup
         assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in flash_setup
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in flash_source
+        assert "self._verify_output_buffer = torch.empty(" in flash_setup
         assert "with torch.inference_mode():" in flash_benchmark
         assert "self.output = self.model(self.inputs)" in flash_benchmark
         assert "get_config()" not in flash_benchmark
         assert "get_nvtx_enabled(" not in flash_benchmark
         assert "enable=self._enable_nvtx" in flash_benchmark
         assert "sum(p.numel()" not in flash_benchmark
+        assert "self._verify_output_buffer.copy_(self.output)" in flash_capture
+        assert "output=self._verify_output_buffer" in flash_capture
+        assert "self.output.detach().clone()" not in flash_capture
         assert "parameter_count=self._payload_parameter_count" in flash_capture
         assert "sum(p.numel()" not in flash_capture
 

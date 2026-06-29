@@ -89,6 +89,7 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.output = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._enable_nvtx = False
         self._payload_parameter_count = 0
         self.register_workload_metadata(
@@ -110,6 +111,13 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model.cache_weight_views()
         self.inputs = torch.randn(self.batch, self.seq_len, self.hidden, device=self.device, dtype=torch.float16)
         self._verify_input = self.inputs.detach().clone()
+        self._verify_output_buffer = torch.empty(
+            self.batch,
+            self.seq_len,
+            self.hidden,
+            device=self.device,
+            dtype=torch.float16,
+        )
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         # Warmup
         with torch.inference_mode():
@@ -127,9 +135,12 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input missing")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_input is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -144,6 +155,7 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.model = None
         self.inputs = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def validate_result(self) -> Optional[str]:
