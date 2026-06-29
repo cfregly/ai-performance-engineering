@@ -11,7 +11,6 @@ import argparse
 import json
 import math
 import os
-import statistics
 import subprocess
 import time
 from pathlib import Path
@@ -29,6 +28,33 @@ def _extract_json_blob(text: str) -> dict[str, Any]:
     if start < 0 or end < start:
         raise RuntimeError("No JSON object found in local_eval output")
     return json.loads(text[start : end + 1])
+
+
+def _summarize_deltas(deltas: list[float]) -> tuple[float, float, float]:
+    count = len(deltas)
+    if count == 0:
+        raise ValueError("Cannot summarize an empty delta set")
+
+    total = 0.0
+    total_squares = 0.0
+    for delta in deltas:
+        total += delta
+        total_squares += delta * delta
+
+    mean = total / count
+    deltas_sorted = sorted(deltas)
+    midpoint = count // 2
+    if count % 2:
+        median = deltas_sorted[midpoint]
+    else:
+        median = (deltas_sorted[midpoint - 1] + deltas_sorted[midpoint]) / 2.0
+
+    if count > 1:
+        variance = max(0.0, (total_squares - (total * total / count)) / (count - 1))
+        stdev = math.sqrt(variance)
+    else:
+        stdev = 0.0
+    return float(mean), float(median), float(stdev)
 
 
 def _run_local_eval(
@@ -285,9 +311,7 @@ def main() -> int:
         baseline_scores = [r["baseline_score_us"] for r in report["pair_rows"]]
         candidate_scores = [r["candidate_score_us"] for r in report["pair_rows"]]
 
-        mean_delta = float(statistics.mean(deltas))
-        median_delta = float(statistics.median(deltas))
-        stdev_delta = float(statistics.stdev(deltas)) if len(deltas) > 1 else 0.0
+        mean_delta, median_delta, stdev_delta = _summarize_deltas(deltas)
         wins_candidate = int(sum(1 for d in deltas if d < 0.0))
         wins_baseline = int(sum(1 for d in deltas if d > 0.0))
         ties = int(len(deltas) - wins_candidate - wins_baseline)

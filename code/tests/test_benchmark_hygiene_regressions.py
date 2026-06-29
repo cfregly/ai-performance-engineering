@@ -4543,6 +4543,45 @@ def test_nvfp4_gemm_local_eval_timing_records_on_current_stream() -> None:
         assert implicit_end not in timing_section
 
 
+def test_nvfp4_local_eval_sample_stats_reuse_sorted_samples() -> None:
+    source_by_file = {
+        "labs/nvfp4_dual_gemm/local_eval.py": (
+            "def _run_case",
+            "def main",
+            "samples_us",
+        ),
+        "labs/nvfp4_gemm/local_eval.py": (
+            "def _summarize",
+            "def main",
+            "values",
+        ),
+        "labs/nvfp4_gemm/local_eval_submission.py": (
+            "def _run_case",
+            "def main",
+            "samples_us",
+        ),
+        "labs/nvfp4_dual_gemm/strict_ab_validation.py": (
+            "def _summarize_deltas",
+            "def _run_local_eval",
+            "deltas",
+        ),
+    }
+
+    for filename, (start_marker, end_marker, sample_name) in source_by_file.items():
+        source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        stats_section = source.split(start_marker, maxsplit=1)[1].split(
+            end_marker,
+            maxsplit=1,
+        )[0]
+        assert stats_section.count("sorted(") == 1
+        assert "statistics.mean" not in source
+        assert "statistics.median" not in source
+        assert "statistics.pstdev" not in source
+        assert f"min({sample_name})" not in stats_section
+        assert f"max({sample_name})" not in stats_section
+        assert "math.sqrt(" in stats_section
+
+
 def test_lab_utility_timers_record_on_current_stream() -> None:
     timing_splits = {
         "labs/tcgen05_cluster_shapes/run_cluster_shape_sweep.py": (

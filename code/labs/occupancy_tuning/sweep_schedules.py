@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import statistics
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -139,10 +138,20 @@ def benchmark_schedule(
         end_event.synchronize()
         times_ms.append(start_event.elapsed_time(end_event))
 
-    mean_ms = statistics.mean(times_ms)
-    median_ms = statistics.median(times_ms)
-    min_ms = min(times_ms)
-    max_ms = max(times_ms)
+    sample_count = len(times_ms)
+    total_ms = 0.0
+    for time_ms in times_ms:
+        total_ms += time_ms
+
+    times_sorted = sorted(times_ms)
+    midpoint = sample_count // 2
+    if sample_count % 2:
+        median_ms = times_sorted[midpoint]
+    else:
+        median_ms = (times_sorted[midpoint - 1] + times_sorted[midpoint]) / 2.0
+    mean_ms = total_ms / sample_count
+    min_ms = times_sorted[0]
+    max_ms = times_sorted[-1]
 
     total_flops = 2.0 * size_m * size_n * size_k
     tflops = (total_flops / (mean_ms / 1e3)) / 1e12

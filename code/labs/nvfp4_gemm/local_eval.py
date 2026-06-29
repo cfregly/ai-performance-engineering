@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
-import statistics
 import subprocess
 import time
 from contextlib import contextmanager
@@ -109,12 +109,31 @@ def _run_binary(binary_path: Path, *, timeout_seconds: int) -> dict[str, Any]:
 
 
 def _summarize(values: list[float]) -> dict[str, float]:
+    count = len(values)
+    if count == 0:
+        raise ValueError("Cannot summarize an empty sample set")
+
+    total = 0.0
+    total_squares = 0.0
+    for value in values:
+        total += value
+        total_squares += value * value
+
+    mean = total / count
+    variance = max(0.0, (total_squares / count) - mean * mean)
+    values_sorted = sorted(values)
+    midpoint = count // 2
+    if count % 2:
+        median = values_sorted[midpoint]
+    else:
+        median = (values_sorted[midpoint - 1] + values_sorted[midpoint]) / 2.0
+
     return {
-        "mean": float(statistics.mean(values)),
-        "median": float(statistics.median(values)),
-        "stdev": float(statistics.pstdev(values)) if len(values) > 1 else 0.0,
-        "min": float(min(values)),
-        "max": float(max(values)),
+        "mean": float(mean),
+        "median": float(median),
+        "stdev": float(math.sqrt(variance)) if count > 1 else 0.0,
+        "min": float(values_sorted[0]),
+        "max": float(values_sorted[-1]),
     }
 
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import statistics
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -110,9 +109,17 @@ def _run_case(
         repeat_us = float(start.elapsed_time(end) * 1000.0)
         samples_us.append(repeat_us / float(inputs_per_repeat))
 
+    sample_count = len(samples_us)
+    total_us = 0.0
+    total_squares_us = 0.0
+    for sample_us in samples_us:
+        total_us += sample_us
+        total_squares_us += sample_us * sample_us
+
     samples_sorted = sorted(samples_us)
-    mean_us = float(statistics.mean(samples_us))
-    stdev_us = float(statistics.pstdev(samples_us)) if len(samples_us) > 1 else 0.0
+    mean_us = float(total_us / sample_count)
+    variance_us = max(0.0, (total_squares_us / sample_count) - mean_us * mean_us)
+    stdev_us = float(math.sqrt(variance_us)) if sample_count > 1 else 0.0
     p50_us = float(samples_sorted[len(samples_sorted) // 2])
     p99_us = float(samples_sorted[max(0, int(len(samples_sorted) * 0.99) - 1)])
 
@@ -127,8 +134,8 @@ def _run_case(
         "stdev_us": stdev_us,
         "p50_us": p50_us,
         "p99_us": p99_us,
-        "min_us": float(min(samples_us)),
-        "max_us": float(max(samples_us)),
+        "min_us": float(samples_sorted[0]),
+        "max_us": float(samples_sorted[-1]),
         "warmup": int(warmup),
         "repeats": int(repeats),
         "inputs_per_repeat": int(inputs_per_repeat),

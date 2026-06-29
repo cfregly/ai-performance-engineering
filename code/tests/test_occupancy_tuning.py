@@ -32,7 +32,7 @@ def test_benchmark_schedule_uses_reused_cuda_events_for_samples() -> None:
     )[0]
     sample_loop = benchmark_section.split("for _ in range(max(1, iterations)):", maxsplit=1)[
         1
-    ].split("mean_ms = statistics.mean(times_ms)", maxsplit=1)[0]
+    ].split("sample_count = len(times_ms)", maxsplit=1)[0]
 
     assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "current_stream = torch.cuda.current_stream()" in benchmark_section
@@ -42,6 +42,11 @@ def test_benchmark_schedule_uses_reused_cuda_events_for_samples() -> None:
     assert "end_event.record()" not in sample_loop
     assert "end_event.synchronize()" in sample_loop
     assert "times_ms.append(start_event.elapsed_time(end_event))" in sample_loop
+    assert "times_sorted = sorted(times_ms)" in benchmark_section
+    assert "statistics.mean" not in benchmark_section
+    assert "statistics.median" not in benchmark_section
+    assert "min(times_ms)" not in benchmark_section
+    assert "max(times_ms)" not in benchmark_section
     assert "time.perf_counter()" not in benchmark_section
 
 
