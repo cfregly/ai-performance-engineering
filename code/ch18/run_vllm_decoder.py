@@ -306,7 +306,7 @@ class SpeculativeDecoder:
 
                     # This host read is required for control flow; keep it after token selection
                     # so it also accounts for the queued decode work used by the timing sample.
-                    match_count = int(match_summary.tolist())
+                    match_count = int(match_summary.detach().cpu())
                     all_matches = match_count == matches.numel()
                     self.accepted_tokens += int(match_count)
                     per_token_times[emitted] = (time.perf_counter() - start) * 1000.0

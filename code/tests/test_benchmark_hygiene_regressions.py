@@ -5689,14 +5689,15 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "match_summary[1].copy_" not in decode_section
     assert decode_section.index(
         "torch.where(matches, candidate, target_next, out=tokens)"
-    ) < decode_section.index("match_count = int(match_summary.tolist())")
+    ) < decode_section.index("match_count = int(match_summary.detach().cpu())")
     assert "if len(self._per_token_times) < total_tokens:" in decode_section
     assert "self._per_token_times = [0.0] * total_tokens" in decode_section
     assert "per_token_times = self._per_token_times" in decode_section
     assert "per_token_times[emitted] =" in decode_section
     assert "per_token_times.append(" not in decode_section
     assert "return tokens, per_token_times, emitted" in decode_section
-    assert "match_count = int(match_summary.tolist())" in decode_section
+    assert "match_count = int(match_summary.detach().cpu())" in decode_section
+    assert "match_summary.tolist()" not in decode_section
     assert "all_matches = match_count == matches.numel()" in decode_section
     assert "self.accepted_tokens += int(match_count)" in decode_section
     assert "if not all_matches:" in decode_section
