@@ -8909,9 +8909,14 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
     assert "self._next_token_values: Optional[torch.Tensor] = None" in sweep_section
     assert "self._next_token_buffer: Optional[torch.Tensor] = None" in sweep_section
     assert "self._loss_readback: Optional[torch.Tensor] = None" in sweep_section
+    assert "self._kv_cache: Optional[torch.Tensor] = None" in sweep_section
     assert "self._loss_readback = torch.empty(2, device=self.device, dtype=torch.float32)" in sweep_section
+    assert "self._kv_cache = allocate_kv_cache(" in sweep_section
     assert "def _next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor" in sweep_section
     assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in sweep_section
+    assert "kv_cache = self._kv_cache" in run_once_section
+    assert "allocate_kv_cache(" not in run_once_section
+    assert "self._loss_readback = torch.empty(" not in run_once_section
     assert "with torch.inference_mode():" in run_once_section
     assert "with torch.no_grad():" not in run_once_section
     assert "loss_readback.zero_()" in run_once_section

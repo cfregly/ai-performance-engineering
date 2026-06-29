@@ -151,6 +151,7 @@ class MoeValidationSweep:
         self._next_token_values: Optional[torch.Tensor] = None
         self._next_token_buffer: Optional[torch.Tensor] = None
         self._loss_readback: Optional[torch.Tensor] = None
+        self._kv_cache: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -170,6 +171,14 @@ class MoeValidationSweep:
             dtype=torch.long,
         )
         self._loss_readback = torch.empty(2, device=self.device, dtype=torch.float32)
+        total_tokens = self.config.context_window + self.config.decode_tokens
+        self._kv_cache = allocate_kv_cache(
+            self.config.batch_size,
+            total_tokens,
+            self.config.hidden_size,
+            self.config.dtype_obj,
+            self.device,
+        )
 
     def _next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor:
         logits_last = logits if logits.dim() == 2 else logits[:, -1, :]
@@ -224,17 +233,10 @@ class MoeValidationSweep:
         _set_router_config(self.model, top_k=top_k, capacity_factor=capacity_factor)
         moe_logger = MoEStatsLogger(num_experts=self.config.num_experts)
         cfg = self.config
-        total_tokens = cfg.context_window + cfg.decode_tokens
-        kv_cache = allocate_kv_cache(
-            cfg.batch_size,
-            total_tokens,
-            cfg.hidden_size,
-            cfg.dtype_obj,
-            self.device,
-        )
-        if self._loss_readback is None or self._loss_readback.device != self.device:
-            self._loss_readback = torch.empty(2, device=self.device, dtype=torch.float32)
+        if self._loss_readback is None or self._kv_cache is None:
+            raise RuntimeError("setup() must initialize validation buffers")
         loss_readback = self._loss_readback
+        kv_cache = self._kv_cache
 
         decode_loss_count = 0
         with torch.inference_mode():
