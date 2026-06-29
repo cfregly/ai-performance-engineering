@@ -32,7 +32,11 @@ class ParamShard:
         self.shard_dim = 0
         self.rank = get("rank")
         self.world_size = get("ws")
-        self.full_data = None
+        self.full_data = torch.empty(
+            param.data.shape,
+            device=param.data.device,
+            dtype=param.data.dtype,
+        )
 
         shards = param.data.chunk(self.world_size, dim=self.shard_dim)
         local_shard = shards[self.rank].contiguous()
@@ -41,9 +45,7 @@ class ParamShard:
         self.param.data = self.local_shard
 
     def all_gather(self):
-        shards = [torch.empty_like(self.local_shard) for _ in range(self.world_size)]
-        dist.all_gather(shards, self.local_shard)
-        self.full_data = torch.cat(shards, dim=self.shard_dim)
+        dist.all_gather_into_tensor(self.full_data, self.local_shard)
         self.param.data = self.full_data
 
     def drop_full(self):
@@ -52,7 +54,6 @@ class ParamShard:
             grad_shards = self.param.grad.data.chunk(self.world_size, dim=self.shard_dim)
             self.local_grad.copy_(grad_shards[self.rank])
             self.param.grad.data = self.local_grad
-        self.full_data = None
 
 
 def attach_zero3_hooks(model, shard_map):

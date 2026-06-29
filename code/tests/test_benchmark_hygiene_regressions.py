@@ -7842,6 +7842,23 @@ def test_train_distributed_zero_scripts_reuse_synthetic_batch_buffers() -> None:
         assert "torch.empty(" not in measured_loop
 
 
+def test_train_distributed_baseline_zero3_reuses_full_param_buffers() -> None:
+    for relative in ("baseline_zero3.py", "baseline_zero3_multigpu.py"):
+        source = (REPO_ROOT / "labs" / "train_distributed" / relative).read_text(
+            encoding="utf-8"
+        )
+        param_shard = source.split("class ParamShard:", maxsplit=1)[1].split(
+            "def attach_zero3_hooks",
+            maxsplit=1,
+        )[0]
+
+        assert "self.full_data = torch.empty(" in param_shard
+        assert "dist.all_gather_into_tensor(self.full_data, self.local_shard)" in param_shard
+        assert "[torch.empty_like(self.local_shard) for _ in range(self.world_size)]" not in param_shard
+        assert "torch.cat(shards" not in param_shard
+        assert "self.full_data = None" not in param_shard
+
+
 def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
     source = (
         REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_sft.py"
