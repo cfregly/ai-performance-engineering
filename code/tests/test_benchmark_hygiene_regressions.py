@@ -6744,7 +6744,20 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
 
         assert "torch.tensor(" not in benchmark_section
         if relative.endswith("scheduling_vllm_sglang.py"):
-            assert "self._output_values =" in benchmark_section
+            setup_section = source.split("def setup", maxsplit=1)[1].split(
+                "def _enqueue_requests", maxsplit=1
+            )[0]
+            assert "self._output_values: list[float] = [0.0, 0.0]" in source
+            assert 'self._result_metrics: Dict[str, int] = {"served_tokens": 0, "batched_tokens": 0}' in source
+            assert "self._output_ready = False" in setup_section
+            assert "self._history.clear()" in setup_section
+            assert "self._output_values[0] = float(served)" in benchmark_section
+            assert "self._output_values[1] = float(batch_tokens)" in benchmark_section
+            assert 'self._result_metrics["served_tokens"] = served' in benchmark_section
+            assert 'self._result_metrics["batched_tokens"] = batch_tokens' in benchmark_section
+            assert "return self._result_metrics" in benchmark_section
+            assert "self._output_values = [" not in benchmark_section
+            assert "return {\"served_tokens\": served, \"batched_tokens\": batch_tokens}" not in benchmark_section
         else:
             assert "self._output_values = self._payload_output_values" in benchmark_section
         assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
@@ -6787,9 +6800,6 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
             assert "self._last_sim.stats.summary()" in metrics_section
             assert "self._last_sim.summary()" not in metrics_section
         if relative.endswith("scheduling_vllm_sglang.py"):
-            setup_section = source.split("def setup", maxsplit=1)[1].split(
-                "def _enqueue_requests", maxsplit=1
-            )[0]
             assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
             assert "get_config()" not in benchmark_section
             assert "get_nvtx_enabled(" not in benchmark_section

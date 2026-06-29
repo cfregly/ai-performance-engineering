@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import random
 from collections import deque
-from pathlib import Path
 from typing import Deque, Dict, Optional
 
 import torch
@@ -24,7 +23,9 @@ class SchedulingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._history: Dict[str, float] = {}
         self.request_lengths: list[int] = []
         self.output: Optional[torch.Tensor] = None
-        self._output_values: Optional[list[float]] = None
+        self._output_values: list[float] = [0.0, 0.0]
+        self._output_ready = False
+        self._result_metrics: Dict[str, int] = {"served_tokens": 0, "batched_tokens": 0}
         self._enable_nvtx = False
 
     def setup(self) -> None:
@@ -34,6 +35,8 @@ class SchedulingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.queue.clear()
         self.request_lengths = [random.randint(4, 32) for _ in range(8)]
         self.output = None
+        self._output_ready = False
+        self._history.clear()
 
     def _enqueue_requests(self) -> None:
         for tokens in self.request_lengths:
@@ -56,11 +59,15 @@ class SchedulingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 served += self._serve_batch(tokens)
         self._history["served_tokens"] = served
         self._history["batched_tokens"] = batch_tokens
-        self._output_values = [float(served), float(batch_tokens)]
-        return {"served_tokens": served, "batched_tokens": batch_tokens}
+        self._output_values[0] = float(served)
+        self._output_values[1] = float(batch_tokens)
+        self._output_ready = True
+        self._result_metrics["served_tokens"] = served
+        self._result_metrics["batched_tokens"] = batch_tokens
+        return self._result_metrics
 
     def capture_verification_payload(self) -> None:
-        if self._output_values is None:
+        if not self._output_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self.output = torch.tensor(self._output_values, dtype=torch.float32)
         self._set_verification_payload(
