@@ -80,6 +80,7 @@ class BaselineFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._last = 0.0
         self._error_sum = 0.0
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         
         tokens = self.batch_size * self.seq_len
@@ -121,6 +122,13 @@ class BaselineFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device, dtype=self.dtype
         )
         self._verify_input = self.x.detach().clone()
+        self._verify_output_buffer = torch.empty(
+            self.batch_size,
+            min(128, self.seq_len),
+            self.out_features,
+            device=self.device,
+            dtype=torch.float32,
+        )
         
         # Warmup
         for _ in range(3):
@@ -138,12 +146,18 @@ class BaselineFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_dtype = dtype
 
     def capture_verification_payload(self) -> None:
-        if self.output is None:
+        if self.output is None or self._verify_input is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+            :,
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         dtype = self._payload_dtype
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -160,6 +174,9 @@ class BaselineFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.ref_model = None
         self.x = None
+        self.output = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

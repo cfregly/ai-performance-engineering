@@ -14059,7 +14059,6 @@ def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
 
 def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:
     targets = {
-        "fp8_perchannel_bench.py": "self.output = output.detach()",
         "optimized_precisionfp8_te.py": "self.output = self.output_buffer",
     }
 
@@ -14079,6 +14078,45 @@ def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:
         if name == "optimized_precisionfp8_te.py":
             assert "self.output_buffer.detach()" not in benchmark_section
         assert "output=self.output.detach().clone()" in capture_section
+
+
+def test_ch13_fp8_perchannel_wrappers_sample_verification_outputs() -> None:
+    for filename in (
+        "baseline_fp8_perchannel.py",
+        "optimized_fp8_perchannel.py",
+        "fp8_perchannel_bench.py",
+        "fp8_perchannel_demo.py",
+    ):
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "min(128, self.seq_len)" in setup_section
+        assert "dtype=torch.float32" in setup_section
+        assert "output_slice = self.output[" in capture_section
+        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.output.detach().clone()" not in capture_section
+        assert "output=self.output.detach().to(torch.float32).clone()" not in capture_section
+        assert "output=self.output.detach().float().clone()" not in capture_section
+        assert ".detach().clone()" not in benchmark_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch13_static_fp8_wrappers_sample_verification_outputs() -> None:
