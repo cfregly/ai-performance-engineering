@@ -5069,10 +5069,15 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    teardown_section = benchmark_section.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
     assert "self._prefill_next_values: Optional[torch.Tensor] = None" in benchmark_section
     assert "self._prefill_next_tokens: Optional[torch.Tensor] = None" in benchmark_section
     assert "self._router_prompt_stub: List[int] = []" in benchmark_section
+    assert "self._router_requests: List[Request] = []" in benchmark_section
     assert "self._ttft_total_ms: float = 0.0" in benchmark_section
     assert "self._ttft_count: int = 0" in benchmark_section
     assert "self._tpot_total_ms: float = 0.0" in benchmark_section
@@ -5087,6 +5092,8 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._replace_moe_dispatch(self.model, cfg)" in setup_section
     assert "self._replace_moe_dispatch(self.draft_model, draft_cfg)" in setup_section
     assert "self._router_prompt_stub = [0] * cfg.context_window" in setup_section
+    assert "self._router_requests = [" in setup_section
+    assert "Request(" in setup_section
     assert "def _prefill_next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor" in benchmark_section
     assert (
         "torch.max(last_logits, dim=-1, keepdim=True, out=(self._prefill_next_values, self._prefill_next_tokens))"
@@ -5098,6 +5105,11 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert 'with torch.inference_mode(), self._nvtx_range("speculative_decode"):' in eager_section
     assert "prompt_stub = self._router_prompt_stub" in hot_section
     assert "setup() must initialize router prompt stub" in hot_section
+    assert "router_requests = self._router_requests" in hot_section
+    assert "setup() must initialize router requests" in hot_section
+    assert "req = router_requests[idx]" in hot_section
+    assert "req = Request(" not in hot_section
+    assert "req.prefix_cached_length = self._router_prefix_cache_lengths[" in hot_section
     assert "prompt_stub = [0] * cfg.context_window" not in hot_section
     assert 'router_assignments = {"prefill": 0, "decode": 0}' not in hot_section
     assert "prefill_assignments = 0" in hot_section
@@ -5112,6 +5124,7 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert ".extend(tpot_times)" not in hot_section
     assert ".append(throughput)" not in hot_section
     assert "torch.no_grad()" not in eager_section
+    assert "self._router_requests = []" in teardown_section
 
 
 def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
