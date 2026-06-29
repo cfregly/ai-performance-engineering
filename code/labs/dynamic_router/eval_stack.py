@@ -150,13 +150,15 @@ def _percentiles(values: Sequence[float]) -> Dict[str, float]:
 
 def _summarize_quality_rows(rows: Sequence[Dict]) -> Dict:
     """Aggregate per-task accuracy from already-evaluated rows."""
-    per_task_acc: Dict[str, List[int]] = {}
+    correct_by_task: Dict[str, int] = {}
+    total_by_task: Dict[str, int] = {}
     for row in rows:
         task = row.get("task", "unknown")
         correct = 1 if row.get("correct") else 0
-        per_task_acc.setdefault(task, []).append(correct)
+        correct_by_task[task] = correct_by_task.get(task, 0) + correct
+        total_by_task[task] = total_by_task.get(task, 0) + 1
     per_task_summary = {
-        t: (sum(v) / len(v) if v else 0.0) for t, v in per_task_acc.items()
+        task: correct_by_task[task] / total_by_task[task] for task in correct_by_task
     }
     avg_acc = (
         sum(per_task_summary.values()) / len(per_task_summary) if per_task_summary else 0.0
@@ -181,15 +183,19 @@ def _summarize_moe(
     # Drops may be per-token or per-window; support both.
     dropped_tokens = 0.0
     total_tokens = 0.0
-    entropy_samples: List[float] = []
-    margin_samples: List[float] = []
+    entropy_total = 0.0
+    entropy_count = 0
+    margin_total = 0.0
+    margin_count = 0
     for row in moe_router_rows:
         dropped_tokens += float(row.get("drops", 0))
         total_tokens += float(row.get("total_tokens", 0.0))
         if "entropy" in row:
-            entropy_samples.append(float(row["entropy"]))
+            entropy_total += float(row["entropy"])
+            entropy_count += 1
         if "margin" in row:
-            margin_samples.append(float(row.get("margin", 0.0)))
+            margin_total += float(row.get("margin", 0.0))
+            margin_count += 1
     if total_tokens <= 0 and moe_router_rows:
         total_tokens = float(len(moe_router_rows))
 
@@ -197,8 +203,8 @@ def _summarize_moe(
     return {
         "token_drop_rate": drop_rate,
         "imbalance_cv": imbalance,
-        "entropy": mean(entropy_samples) if entropy_samples else 0.0,
-        "gate_margin": mean(margin_samples) if margin_samples else 0.0,
+        "entropy": entropy_total / entropy_count if entropy_count else 0.0,
+        "gate_margin": margin_total / margin_count if margin_count else 0.0,
     }
 
 

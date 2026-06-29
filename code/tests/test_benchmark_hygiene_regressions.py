@@ -6754,11 +6754,23 @@ def test_dynamic_router_percentiles_reuse_sorted_samples() -> None:
 
 
 def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
-    from labs.dynamic_router.eval_stack import _rank_top_experts
+    from labs.dynamic_router.eval_stack import (
+        _rank_top_experts,
+        _summarize_moe,
+        _summarize_quality_rows,
+    )
 
     source = (REPO_ROOT / "labs" / "dynamic_router" / "eval_stack.py").read_text(encoding="utf-8")
     percentile_section = source.split("def _percentiles", maxsplit=1)[1].split(
         "def _summarize_quality_rows",
+        maxsplit=1,
+    )[0]
+    quality_section = source.split("def _summarize_quality_rows", maxsplit=1)[1].split(
+        "def _summarize_moe",
+        maxsplit=1,
+    )[0]
+    summarize_moe_section = source.split("def _summarize_moe", maxsplit=1)[1].split(
+        "# ---------------------------------------------------------------------------",
         maxsplit=1,
     )[0]
     moe_section = source.split("def _simulate_moe", maxsplit=1)[1].split(
@@ -6780,6 +6792,16 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert "p95\": _percentile_from_ordered(ordered, 95)" in percentile_section
     assert "_percentile(values, 50)" not in percentile_section
     assert "_percentile(values, 95)" not in percentile_section
+    assert "correct_by_task: Dict[str, int] = {}" in quality_section
+    assert "total_by_task: Dict[str, int] = {}" in quality_section
+    assert "per_task_acc.setdefault" not in quality_section
+    assert "sum(v) / len(v)" not in quality_section
+    assert "entropy_total += float(row[\"entropy\"])" in summarize_moe_section
+    assert "margin_total += float(row.get(\"margin\", 0.0))" in summarize_moe_section
+    assert '"entropy": entropy_total / entropy_count if entropy_count else 0.0' in summarize_moe_section
+    assert '"gate_margin": margin_total / margin_count if margin_count else 0.0' in summarize_moe_section
+    assert "entropy_samples.append" not in summarize_moe_section
+    assert "margin_samples.append" not in summarize_moe_section
     assert "ttft_summary = _percentiles([r[\"ttft_ms\"] for r in latency_rows])" in run_summary_section
     assert "decode_summary = _percentiles([r[\"decode_ms\"] for r in latency_rows])" in run_summary_section
     assert "\"ttft_p50_ms\": ttft_summary[\"p50\"]" in run_summary_section
@@ -6817,6 +6839,25 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert _rank_top_experts(probs, range(len(probs)), 1) == [1]
     assert _rank_top_experts(probs, range(len(probs)), 2) == [1, 2]
     assert _rank_top_experts(probs, range(len(probs)), 3) == [1, 2, 4]
+    quality = _summarize_quality_rows(
+        [
+            {"task": "a", "correct": True},
+            {"task": "a", "correct": False},
+            {"task": "b", "correct": True},
+        ]
+    )
+    assert quality == {"per_task": {"a": 0.5, "b": 1.0}, "avg_accuracy": 0.75}
+    moe_summary = _summarize_moe(
+        [
+            {"drops": 1, "total_tokens": 10, "entropy": 2.0, "margin": 0.5},
+            {"drops": 0, "total_tokens": 10, "entropy": 4.0, "margin": 0.1},
+        ],
+        [{"expert_hist": [2, 4], "imbalance_cv": 0.25}],
+        experts=2,
+    )
+    assert moe_summary["token_drop_rate"] == 0.05
+    assert moe_summary["entropy"] == 3.0
+    assert moe_summary["gate_margin"] == 0.3
 
 
 def test_dynamic_router_policy_avoids_candidate_list_churn() -> None:
