@@ -4417,6 +4417,10 @@ def test_timed_loops_reuse_cuda_events() -> None:
                 "max_abs_diff = _compare_outputs",
                 maxsplit=1,
             )[0]
+            stats_section = source.split("batch_count = len(batches)", maxsplit=1)[1].split(
+                "max_abs_diff = _compare_outputs",
+                maxsplit=1,
+            )[0]
             assert "with torch.inference_mode():" in source
             assert "with torch.no_grad():" not in source
             assert "current_stream = torch.cuda.current_stream(device)" in timing_section
@@ -4424,6 +4428,12 @@ def test_timed_loops_reuse_cuda_events() -> None:
             assert "end_event.record(current_stream)" in timing_section
             assert "start_event.record()" not in timing_section
             assert "end_event.record()" not in timing_section
+            assert "import statistics" not in source
+            assert "statistics.fmean" not in source
+            assert "statistics.pstdev" not in source
+            assert "for batch in batches:" in stats_section
+            assert "latency_total_sq += elapsed_ms * elapsed_ms" in stats_section
+            assert "step_stdev_ms = math.sqrt(max(0.0, latency_variance))" in stats_section
         if filename == "labs/memory_bandwidth_patterns/bandwidth_patterns_common.py":
             timing_section = source.split("def measure_cuda_callable", maxsplit=1)[1].split(
                 "class BandwidthPatternsBenchmarkBase",

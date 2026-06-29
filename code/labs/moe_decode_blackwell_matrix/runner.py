@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import statistics
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -308,17 +307,35 @@ def measure_scenario(
         end_event.synchronize()
         elapsed_per_step_ms.append(start_event.elapsed_time(end_event) / len(batches))
 
-    max_abs_diff = _compare_outputs(experts, batches, refs, scenario=scenario)
-    entropy_mean = statistics.fmean(batch.routing_entropy_norm for batch in batches)
-    active_fraction_mean = statistics.fmean(batch.active_expert_fraction for batch in batches)
-    max_tokens_per_expert_mean = statistics.fmean(batch.max_tokens_per_expert for batch in batches)
-    step_mean_ms = statistics.fmean(elapsed_per_step_ms)
-    step_stdev_ms = (
-        statistics.pstdev(elapsed_per_step_ms) if len(elapsed_per_step_ms) > 1 else 0.0
-    )
+    batch_count = len(batches)
+    entropy_total = 0.0
+    active_fraction_total = 0.0
+    max_tokens_per_expert_total = 0.0
+    for batch in batches:
+        entropy_total += batch.routing_entropy_norm
+        active_fraction_total += batch.active_expert_fraction
+        max_tokens_per_expert_total += float(batch.max_tokens_per_expert)
+    entropy_mean = entropy_total / batch_count
+    active_fraction_mean = active_fraction_total / batch_count
+    max_tokens_per_expert_mean = max_tokens_per_expert_total / batch_count
+
+    sample_count = len(elapsed_per_step_ms)
+    latency_total = 0.0
+    latency_total_sq = 0.0
+    for elapsed_ms in elapsed_per_step_ms:
+        latency_total += elapsed_ms
+        latency_total_sq += elapsed_ms * elapsed_ms
+    step_mean_ms = latency_total / sample_count
+    if sample_count > 1:
+        latency_variance = (latency_total_sq / sample_count) - step_mean_ms * step_mean_ms
+        step_stdev_ms = math.sqrt(max(0.0, latency_variance))
+    else:
+        step_stdev_ms = 0.0
     sorted_latencies = sorted(elapsed_per_step_ms)
     p95_index = max(0, math.ceil(0.95 * len(sorted_latencies)) - 1)
     step_p95_ms = sorted_latencies[p95_index]
+
+    max_abs_diff = _compare_outputs(experts, batches, refs, scenario=scenario)
 
     metrics = experts.get_cuda_graph_metrics()
     graph_captured = float(metrics.get("cuda_graph_captured", 0.0))
