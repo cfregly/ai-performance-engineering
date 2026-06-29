@@ -34,6 +34,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_meta: Optional[torch.Tensor] = None
         self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
@@ -67,6 +68,11 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scale = 1.0 / math.sqrt(self.head_dim)
         torch.cuda.synchronize(self.device)
         self.output = None
+        self._verify_output_buffer = torch.empty(
+            (self.batch, 1, self.num_heads * self.head_dim),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self._latency_total_ms = 0.0
         self._latency_count = 0
         self._payload_meta = torch.tensor(
@@ -124,9 +130,12 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
         meta = self._payload_meta
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"meta": meta, "q": self.q, "k": self.k, "v": self.v},
-            output=self.output.float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch,
             parameter_count=0,
             precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -140,6 +149,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.v = None
         self._k_t = None
         self.output = None
+        self._verify_output_buffer = None
         self._payload_meta = None
         self._timing_pair = None
         self._pending_timing_pair = None

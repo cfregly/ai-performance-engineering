@@ -5944,6 +5944,12 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     baseline_finalize = baseline_source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+    baseline_teardown = baseline_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
     baseline_metrics = baseline_source.split("def get_custom_metrics", maxsplit=1)[1].split(
         "def validate_result", maxsplit=1
     )[0]
@@ -5953,6 +5959,12 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     )[0]
     finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
     )[0]
     metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
         "def validate_result", maxsplit=1
@@ -6003,6 +6015,16 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     for source_text in (baseline_source, source):
         assert "self._history" not in source_text
         assert '"latency_ms": []' not in source_text
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source_text
+    for setup, capture, teardown in (
+        (baseline_setup, baseline_capture, baseline_teardown),
+        (setup_section, capture_section, teardown_section),
+    ):
+        assert "self._verify_output_buffer = torch.empty(" in setup
+        assert "self._verify_output_buffer.copy_(self.output)" in capture
+        assert "output=self._verify_output_buffer" in capture
+        assert "self.output.float().clone()" not in capture
+        assert "self._verify_output_buffer = None" in teardown
 
 
 def test_moe_cuda_decode_kernel_wrappers_cache_nvtx_outside_hot_loop() -> None:

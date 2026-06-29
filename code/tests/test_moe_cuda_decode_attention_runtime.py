@@ -55,6 +55,7 @@ def test_moe_cuda_decode_attention_reuses_timing_and_meta(
         assert payload.inputs["meta"] is meta
         assert payload.output.dtype == torch.float32
         assert payload.output.data_ptr() != bench.output.data_ptr()
+        assert payload.output.data_ptr() == bench._verify_output_buffer.data_ptr()
 
         bench.benchmark_fn()
         torch.cuda.synchronize(bench.device)
