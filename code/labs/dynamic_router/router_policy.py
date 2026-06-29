@@ -66,6 +66,7 @@ class GPUState:
     is_decode: bool
     hourly_cost: float
     metrics: GPUMetrics
+    numa_node: Optional[int] = None
     last_raw_metrics: Dict[str, float] = field(default_factory=dict)
 
     def update_metrics(self, raw: Dict[str, float]) -> None:
@@ -107,6 +108,7 @@ class SequenceInfo:
     kv_gpus: Set[str]
     expected_tokens_remaining: Optional[int] = None
     priority: int = 0
+    numa_node: Optional[int] = None
 
 
 # -------------------------
@@ -198,6 +200,7 @@ class Router:
         is_prefill: bool,
         is_decode: bool,
         hourly_cost: float = 1.0,
+        numa_node: Optional[int] = None,
     ) -> None:
         """Register a GPU in one or both pools."""
         if gpu_id in self._gpus:
@@ -205,6 +208,7 @@ class Router:
             st.is_prefill = is_prefill
             st.is_decode = is_decode
             st.hourly_cost = hourly_cost
+            st.numa_node = numa_node
             return
 
         metrics = GPUMetrics(
@@ -220,6 +224,7 @@ class Router:
             is_decode=is_decode,
             hourly_cost=hourly_cost,
             metrics=metrics,
+            numa_node=numa_node,
         )
 
     # Metrics ingestion

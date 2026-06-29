@@ -5274,6 +5274,22 @@ def test_dynamic_router_wrappers_defer_metric_tensors_outside_hot_loop() -> None
             assert "if not self._summary_ready:" in capture_section
 
 
+def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
+    source = (REPO_ROOT / "labs" / "dynamic_router" / "vllm_runner.py").read_text(
+        encoding="utf-8"
+    )
+    routing_section = source.split(
+        "def run_vllm_routing_with_topology",
+        maxsplit=1,
+    )[1].split("def run_vllm_routing", maxsplit=1)[0]
+
+    assert "engine_ids = tuple(engines)" in routing_section
+    assert "gid = engine_ids[i % len(engine_ids)]" in routing_section
+    assert "list(engines.keys())" not in routing_section
+    assert "ttft_samples.extend(sample for _, sample in ttft_new)" in routing_section
+    assert "ttft_samples.extend([sample" not in routing_section
+
+
 def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     source = (REPO_ROOT / "labs" / "dynamic_router" / "eval_stack.py").read_text(encoding="utf-8")
     percentile_section = source.split("def _percentiles", maxsplit=1)[1].split(
@@ -5342,15 +5358,17 @@ def test_dynamic_router_policy_avoids_candidate_list_churn() -> None:
         scoring_fn_decode=lambda gpu, _snap: 1.0 if gpu.gpu_id == "d1" else 0.0,
         kv_locality_boost=2.0,
     )
-    router.register_gpu("pf0", is_prefill=True, is_decode=False)
+    router.register_gpu("pf0", is_prefill=True, is_decode=False, numa_node=0)
     router.register_gpu("pf1", is_prefill=True, is_decode=False)
     router.register_gpu("d0", is_prefill=False, is_decode=True)
     router.register_gpu("d1", is_prefill=False, is_decode=True)
+    router.register_gpu("pf0", is_prefill=True, is_decode=False, numa_node=1)
 
+    assert router._gpus["pf0"].numa_node == 1
     assert router.choose_prefill_gpu() == "pf1"
     assert (
         router.choose_decode_gpu(
-            SequenceInfo(seq_id="seq0", current_gpu="d0", kv_gpus={"d0"})
+            SequenceInfo(seq_id="seq0", current_gpu="d0", kv_gpus={"d0"}, numa_node=1)
         )
         == "d0"
     )

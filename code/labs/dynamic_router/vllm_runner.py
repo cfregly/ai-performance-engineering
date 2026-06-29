@@ -480,6 +480,7 @@ def run_vllm_routing_with_topology(
     completed = 0
     tpot_ema: Dict[str, float] = {gid: 0.0 for gid in engines}
     alpha = 0.3
+    engine_ids = tuple(engines)
 
     # Submit all requests up front
     for i in range(req_count_val):
@@ -490,7 +491,7 @@ def run_vllm_routing_with_topology(
             # Round-trip through Router for placement
             gid = router.choose_prefill_gpu() or "gpu0"
         else:
-            gid = list(engines.keys())[i % len(engines)]
+            gid = engine_ids[i % len(engine_ids)]
         rt = _RequestRuntime(req=req, gpu_id=gid, admitted_at=admitted)
         engines[gid].add_request(rt)
         requests[rid] = rt
@@ -504,7 +505,7 @@ def run_vllm_routing_with_topology(
             if finished_ids or eng.queue_depth() > 0:
                 active = True
             if ttft_new:
-                ttft_samples.extend([sample for _, sample in ttft_new])
+                ttft_samples.extend(sample for _, sample in ttft_new)
             # Update simple TPOT EMA
             if tokens > 0:
                 tpot_ema[gid] = alpha * (tokens) + (1.0 - alpha) * tpot_ema[gid]
@@ -657,7 +658,6 @@ def run_dual_pool_vllm_with_topology(
 
     prefill_pool_ids = [h.gpu_id for h in prefill_handles]
     decode_pool_ids = [h.gpu_id for h in decode_handles]
-    prefill_numa_hint = prefill_handles[0].numa_node if prefill_handles else None
     decode_numa_hint = decode_handles[0].numa_node if decode_handles else None
 
     requests: Dict[str, _RequestRuntime] = {}
