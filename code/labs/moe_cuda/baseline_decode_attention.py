@@ -88,7 +88,8 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.inference_mode():
                 timing_pair = self._get_timing_pair()
                 start_event, end_event = timing_pair
-                start_event.record()
+                current_stream = torch.cuda.current_stream(self.device)
+                start_event.record(current_stream)
                 q = self.q
                 v = self.v
                 scores = torch.matmul(q, self._k_t)
@@ -96,7 +97,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 probs = torch.softmax(scores, dim=-1)
                 attn = torch.matmul(probs, v)
                 attn_out = attn.transpose(1, 2).reshape(self.batch, 1, self.num_heads * self.head_dim)
-                end_event.record()
+                end_event.record(current_stream)
                 self._pending_timing_pair = timing_pair
                 self.output = attn_out.detach()
         if self.output is None:

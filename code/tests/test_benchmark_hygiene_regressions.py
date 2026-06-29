@@ -4468,6 +4468,12 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     assert "q = self._q_bf16" in benchmark_section
     assert "k = self._k_bf16" in benchmark_section
     assert "v = self._v_bf16" in benchmark_section
+    for section in (baseline_benchmark, benchmark_section):
+        assert "current_stream = torch.cuda.current_stream(self.device)" in section
+        assert "start_event.record(current_stream)" in section
+        assert "end_event.record(current_stream)" in section
+        assert "start_event.record()" not in section
+        assert "end_event.record()" not in section
     assert "self.output = attn_out" in benchmark_section
     assert "attn_out.detach()" not in benchmark_section
     assert "self._k_t = self.k.transpose(-2, -1)" in baseline_setup

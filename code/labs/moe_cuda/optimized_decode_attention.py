@@ -133,14 +133,15 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
             with torch.inference_mode():
                 timing_pair = self._get_timing_pair()
                 start_event, end_event = timing_pair
-                start_event.record()
+                current_stream = torch.cuda.current_stream(self.device)
+                start_event.record(current_stream)
                 q = self._q_bf16
                 k = self._k_bf16
                 v = self._v_bf16
                 with prefer_sdpa_backends():
                     attn = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, is_causal=False)
                 attn_out = attn.transpose(1, 2).reshape(self.batch, 1, self.num_heads * self.head_dim)
-                end_event.record()
+                end_event.record(current_stream)
                 self._pending_timing_pair = timing_pair
                 self.output = attn_out
         if self.output is None:
