@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import inspect
 import importlib
+import math
 import re
 import signal
 import subprocess
@@ -6153,9 +6154,36 @@ def test_nanochat_loss_eval_batches_reduced_totals() -> None:
     assert "dist.all_reduce(total_bytes" not in source
     assert "total_nats = total_nats.item()" not in source
     assert "total_bytes = total_bytes.item()" not in source
+    assert "if (y.int() < 0).any()" not in source
     assert "y_safe = y.clamp_min(0)" in source
     assert "num_bytes2d = token_bytes[y_safe] * valid.to(dtype=token_bytes.dtype)" in source
     assert "torch.zeros_like(y)" not in source
+
+
+def test_nanochat_loss_eval_branchless_ignore_index_semantics() -> None:
+    from labs.nanochat_fullstack.nanochat.loss_eval import evaluate_bpb
+
+    class DummyLossModel:
+        def get_device(self) -> torch.device:
+            return torch.device("cpu")
+
+        def __call__(
+            self,
+            x: torch.Tensor,
+            y: torch.Tensor,
+            *,
+            loss_reduction: str,
+        ) -> torch.Tensor:
+            assert loss_reduction == "none"
+            return x
+
+    losses = torch.tensor([[1.0, 99.0, 7.0], [3.0, 5.0, 11.0]], dtype=torch.float32)
+    targets = torch.tensor([[1, -1, 0], [2, 3, -1]], dtype=torch.long)
+    token_bytes = torch.tensor([0, 2, 3, 5], dtype=torch.int64)
+
+    bpb = evaluate_bpb(DummyLossModel(), [(losses, targets)], steps=1, token_bytes=token_bytes)
+
+    assert bpb == pytest.approx(9.0 / (math.log(2) * 10.0))
 
 
 def test_nanochat_dist_muon_reuses_padding_buffers() -> None:
