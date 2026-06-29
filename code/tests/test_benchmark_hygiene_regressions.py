@@ -14101,7 +14101,13 @@ def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:
         assert output_assignment in benchmark_section
         if name == "optimized_precisionfp8_te.py":
             assert "self.output_buffer.detach()" not in benchmark_section
-        assert "output=self.output.detach().clone()" in capture_section
+            assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+            assert "self._verify_output_buffer = torch.empty_like(self.output_buffer)" in source
+            assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+            assert "output=self._verify_output_buffer" in capture_section
+            assert "self._verify_output_buffer = None" in source
+        else:
+            assert "output=self.output.detach().clone()" in capture_section
 
 
 def test_ch13_fp8_perchannel_wrappers_sample_verification_outputs() -> None:

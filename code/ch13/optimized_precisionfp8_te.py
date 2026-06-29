@@ -77,6 +77,7 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph: Optional[torch.cuda.CUDAGraph] = None
         self.capture_stream: Optional[torch.cuda.Stream] = None
         self.output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -132,6 +133,7 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.static_input = self.input_pool[0].clone()
         self.static_target = self.target_pool[0].clone()
         self.output_buffer = torch.empty_like(self.static_input)
+        self._verify_output_buffer = torch.empty_like(self.output_buffer)
         self._verify_input = self.static_input.detach().clone()
         self.graph = torch.cuda.CUDAGraph()
         self.capture_stream = torch.cuda.Stream()
@@ -188,9 +190,12 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -211,6 +216,8 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.static_target = None
         self.capture_stream = None
         self.output_buffer = None
+        self.output = None
+        self._verify_output_buffer = None
         self.input_pool = []
         self.target_pool = []
         super().teardown()
