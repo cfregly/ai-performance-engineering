@@ -1856,6 +1856,10 @@ def test_ch14_ch15_demo_timing_records_on_current_streams() -> None:
         assert f"{start_name}.record()" not in section
         assert f"{end_name}.record()" not in section
 
+    assert "from core.benchmark.utils import scalar_tensor_to_float" in flex_demo_source
+    assert "num_blocks = scalar_tensor_to_float(block_mask.kv_num_blocks.sum())" in flex_pattern
+    assert "block_mask.kv_num_blocks.sum().item()" not in flex_pattern
+
 
 def test_ch14_triton_examples_batches_fp8_error_reads() -> None:
     source = (REPO_ROOT / "ch14" / "triton_examples.py").read_text(encoding="utf-8")
@@ -10183,6 +10187,25 @@ def test_ch15_tensor_parallel_demo_avoids_hotpath_readback_and_implicit_events()
     assert "worst_ms = scalar_tensor_to_float(worst)" in reduce_section
     assert ".abs().max().item()" not in source
     assert "worst.item()" not in source
+
+
+def test_ch15_pipeline_parallel_demo_uses_shared_scalar_readbacks() -> None:
+    source = (REPO_ROOT / "ch15" / "pipeline_parallel_demo.py").read_text(encoding="utf-8")
+    reduce_section = source.split("worst = torch.tensor", maxsplit=1)[1].split(
+        "max_diff =",
+        maxsplit=1,
+    )[0]
+    verify_section = source.split("if rank == 0:", maxsplit=1)[1].split(
+        "return 0",
+        maxsplit=1,
+    )[0]
+
+    assert "from core.benchmark.utils import scalar_tensor_to_float" in source
+    assert "worst = torch.tensor(elapsed_ms, device=device, dtype=torch.float32)" in source
+    assert "worst_ms = scalar_tensor_to_float(worst)" in reduce_section
+    assert "scalar_tensor_to_float((out.float() - ref.float()).abs().max())" in verify_section
+    assert "worst.item()" not in source
+    assert ".abs().max().item()" not in source
 
 
 def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:

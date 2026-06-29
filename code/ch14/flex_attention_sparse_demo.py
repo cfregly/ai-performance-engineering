@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
+from core.benchmark.utils import scalar_tensor_to_float
+
 import torch
 import torch.nn as nn
 from torch.nn.attention.flex_attention import (
@@ -224,7 +226,7 @@ class FlexAttentionBenchmark:
         tflops = total_flops / (elapsed_ms / 1000) / 1e12
         
         # Estimate sparsity from block mask
-        num_blocks = block_mask.kv_num_blocks.sum().item()
+        num_blocks = scalar_tensor_to_float(block_mask.kv_num_blocks.sum())
         max_blocks = (self.seq_len // _DEFAULT_SPARSE_BLOCK_SIZE) ** 2 * self.batch_size * self.num_heads
         sparsity = 1.0 - (num_blocks / max_blocks) if max_blocks > 0 else 0.0
         
