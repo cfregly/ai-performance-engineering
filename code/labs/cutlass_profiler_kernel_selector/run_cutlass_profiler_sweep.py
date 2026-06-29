@@ -155,8 +155,7 @@ def run_profiler_for_shape(binary: Path, shape: GemmShape, output_dir: Path, ext
             f"Profiler did not emit CSV for {shape.name}; expected something like {csv_path}*.csv; log: {log_path}"
         )
     # Select the most recent matching CSV (operation suffix varies, e.g., .gemm.csv)
-    candidate_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    csv_file = candidate_files[0]
+    csv_file = max(candidate_files, key=lambda p: p.stat().st_mtime)
 
     best_row = parse_best_result(csv_file)
     best_row.update(shape.as_dict())

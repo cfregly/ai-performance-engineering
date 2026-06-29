@@ -4412,6 +4412,20 @@ def test_timed_loops_reuse_cuda_events() -> None:
             assert "end.record()" not in timing_section
 
 
+def test_cutlass_profiler_sweep_selects_latest_csv_without_full_sort() -> None:
+    source = (
+        REPO_ROOT / "labs" / "cutlass_profiler_kernel_selector" / "run_cutlass_profiler_sweep.py"
+    ).read_text(encoding="utf-8")
+    run_section = source.split("def run_profiler_for_shape", maxsplit=1)[1].split(
+        "def parse_args",
+        maxsplit=1,
+    )[0]
+
+    assert "csv_file = max(candidate_files, key=lambda p: p.stat().st_mtime)" in run_section
+    assert "candidate_files.sort(" not in run_section
+    assert "candidate_files[0]" not in run_section
+
+
 def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:
     event_sync_files = {
         "ch02/hardware_info.py": "end.synchronize()",
@@ -7607,6 +7621,23 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "request_count = float(reduced_host[8])" in reduced_metrics_section
     assert "reduced.detach().cpu().tolist()" not in reduced_metrics_section
     assert ".item()" not in reduced_metrics_section
+
+
+def test_nanochat_checkpoint_manager_uses_max_for_single_item_selection() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "checkpoint_manager.py"
+    ).read_text(encoding="utf-8")
+    find_largest_section = source.split("def find_largest_model", maxsplit=1)[1].split(
+        "def find_last_step",
+        maxsplit=1,
+    )[0]
+
+    assert "return max(candidates, key=lambda x: x[0])[1]" in find_largest_section
+    assert "return max(model_tags, key=lambda x: os.path.getmtime" in find_largest_section
+    assert "candidates.sort(" not in find_largest_section
+    assert "model_tags.sort(" not in find_largest_section
+    assert "return candidates[0][1]" not in find_largest_section
+    assert "return model_tags[0]" not in find_largest_section
 
 
 def test_nanochat_kv_cache_growth_avoids_cat_with_uninitialized_tail() -> None:
