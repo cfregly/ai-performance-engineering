@@ -8,6 +8,7 @@ from typing import Optional
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.benchmark.utils import scalar_tensor_to_float
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.utils.extension_loader_template import load_cuda_extension
 
@@ -126,7 +127,7 @@ class TilingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             reference = torch.matmul(self.matrix_a, self.matrix_b)
         torch.cuda.synchronize()
 
-        max_error = torch.max(torch.abs(self.output - reference)).item()
+        max_error = scalar_tensor_to_float(torch.max(torch.abs(self.output - reference)))
         # Large GEMMs accumulate floating-point error quickly; tolerate small
         # absolute differences that stem from reordering in the tiled kernel.
         if max_error > 1e-1:

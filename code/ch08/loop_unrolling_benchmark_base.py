@@ -10,6 +10,7 @@ from typing import Optional
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.benchmark.utils import scalar_tensor_to_float
 from core.common.device_utils import require_cuda_device
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.utils.extension_loader_template import load_cuda_extension
@@ -121,7 +122,7 @@ class LoopUnrollingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         tiled_weights = self.weights.repeat(repeats)[: self.elements_per_row]
         reference = (self.inputs * tiled_weights).sum(dim=1)
         torch.cuda.synchronize()
-        max_error = torch.max(torch.abs(reference - self.output)).item()
+        max_error = scalar_tensor_to_float(torch.max(torch.abs(reference - self.output)))
         if max_error > 5e-3:
             raise RuntimeError(
                 f"Loop unrolling kernel validation failed (max error={max_error:.4f})"

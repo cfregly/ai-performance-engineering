@@ -21,6 +21,7 @@ from typing import Any, Callable, Optional
 import torch
 import torch.nn.functional as F
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.utils.compile_utils import compile_callable
 
 try:
@@ -811,7 +812,7 @@ def _candidate_matches_reference(
         return False, reference_output, "non-finite output"
 
     if not torch.allclose(candidate_output, reference_output, atol=0.5, rtol=0.05):
-        max_diff = (candidate_output - reference_output).abs().max().item()
+        max_diff = scalar_tensor_to_float((candidate_output - reference_output).abs().max())
         return False, reference_output, f"max_diff={max_diff:.6f}"
 
     return True, reference_output, "ok"

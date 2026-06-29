@@ -8,6 +8,7 @@ from typing import Optional
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.benchmark.utils import scalar_tensor_to_float
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.utils.extension_loader_template import load_cuda_extension
 
@@ -89,7 +90,7 @@ class AiOptimizationBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
 
         reference = torch.tanh(torch.matmul(self.inputs, self.weights))
         torch.cuda.synchronize()
-        max_error = torch.max(torch.abs(reference - self.output)).item()
+        max_error = scalar_tensor_to_float(torch.max(torch.abs(reference - self.output)))
         if max_error > 1e-3:
             raise RuntimeError(f"AI optimization kernel validation failed (max error={max_error:.4f})")
 

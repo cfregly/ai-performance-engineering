@@ -10,6 +10,7 @@ from pathlib import Path
 
 import torch
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.harness.benchmark_harness import lock_gpu_clocks
 from labs.recsys_sequence_ranking.baseline_sequence_ranking import BaselineSequenceRankingBenchmark
 from labs.recsys_sequence_ranking.optimized_sequence_ranking import (
@@ -79,7 +80,9 @@ def main() -> int:
         try:
             baseline_ms = _measure(baseline, warmup=args.warmup, iterations=args.iterations)
             optimized_ms = _measure(optimized, warmup=args.warmup, iterations=args.iterations)
-            max_abs_diff = float((baseline.output - optimized.output).abs().max().item())
+            max_abs_diff = scalar_tensor_to_float(
+                (baseline.output - optimized.output).abs().max()
+            )
             payload = {
                 "batch_size": workload.batch_size,
                 "seq_len": workload.seq_len,

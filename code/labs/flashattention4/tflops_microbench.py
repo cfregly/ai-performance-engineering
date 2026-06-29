@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from core.benchmark.utils import calculate_tflops
+from core.benchmark.utils import calculate_tflops, scalar_tensor_to_float
 from core.harness.benchmark_harness import lock_gpu_clocks
 from labs.flashattention4.flashattention4_common import (
     FlashAttention4Config,
@@ -230,7 +230,7 @@ def _verify_backend(args: argparse.Namespace, mode: str, backend: BenchBackend) 
     candidate_out = candidate().float()
     if not torch.isfinite(candidate_out).all():
         raise RuntimeError("non-finite output")
-    max_diff = float((candidate_out - reference_out).abs().max().item())
+    max_diff = scalar_tensor_to_float((candidate_out - reference_out).abs().max())
     if not torch.allclose(candidate_out, reference_out, atol=0.5, rtol=0.05):
         raise RuntimeError(f"max_diff={max_diff:.6f}")
     return max_diff

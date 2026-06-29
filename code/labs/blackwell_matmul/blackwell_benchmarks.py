@@ -8,6 +8,7 @@ from typing import Callable, Optional
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.benchmark.utils import scalar_tensor_to_float
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
 TensorRunner = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
@@ -150,7 +151,7 @@ class GraceBlackwellMatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._reference is None or self._output is None:
             return None
         diff = (self._output - self._reference).abs()
-        max_diff = diff.max().item()
+        max_diff = scalar_tensor_to_float(diff.max())
         if torch.isnan(diff).any():
             return "NaNs detected in result tensor"
         if max_diff > 2.5:

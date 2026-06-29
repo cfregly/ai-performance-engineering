@@ -10,6 +10,7 @@ import time
 
 import torch
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.harness.benchmark_harness import lock_gpu_clocks
 from labs.training_hotpath import baseline_metric_reduction_cuda as baseline_metric_reduction_cuda_module
 from labs.training_hotpath import baseline_metric_reduction_vectorized as baseline_metric_reduction_vectorized_module
@@ -102,7 +103,9 @@ def main() -> int:
         try:
             baseline_ms = _measure(baseline, warmup=args.warmup, iterations=args.iterations)
             optimized_ms = _measure(optimized, warmup=args.warmup, iterations=args.iterations)
-            max_abs_diff = float((baseline.output - optimized.output).abs().max().item())
+            max_abs_diff = scalar_tensor_to_float(
+                (baseline.output - optimized.output).abs().max()
+            )
             payload = {
                 "example": args.example,
                 "baseline_latency_ms": baseline_ms,

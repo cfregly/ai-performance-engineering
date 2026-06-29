@@ -14,6 +14,11 @@ except ImportError:
     logger = logging.getLogger(__name__)
 
 
+def scalar_tensor_to_float(value: torch.Tensor) -> float:
+    """Read a scalar tensor through the standard detached CPU-list path."""
+    return float(value.detach().cpu().tolist())
+
+
 def warmup_cuda(func: Callable, iterations: int = 10) -> None:
     """Warmup function to stabilize GPU clocks and caches."""
     for _ in range(iterations):

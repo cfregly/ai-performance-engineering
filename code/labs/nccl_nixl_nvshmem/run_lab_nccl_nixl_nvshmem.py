@@ -16,6 +16,7 @@ if __package__ in {None, ""}:
 
 import torch
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.harness.benchmark_harness import lock_gpu_clocks
 from labs.nccl_nixl_nvshmem.baseline_tier_handoff import get_benchmark as get_baseline_benchmark
 from labs.nccl_nixl_nvshmem.comm_stack_common import (
@@ -62,7 +63,9 @@ def _run_compare(workload: TierHandoffWorkload, *, warmup: int, iterations: int)
         optimized_ms = _measure(optimized, warmup=warmup, iterations=iterations)
         baseline_error = baseline.validate_result()
         optimized_error = optimized.validate_result()
-        max_abs_diff = float((baseline.output - optimized.output).abs().max().item())
+        max_abs_diff = scalar_tensor_to_float(
+            (baseline.output - optimized.output).abs().max()
+        )
         return {
             "workload": {
                 "total_blocks": workload.total_blocks,

@@ -10,6 +10,7 @@ from typing import Optional
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.benchmark.utils import scalar_tensor_to_float
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 from labs.blackwell_gemm_optimizations.blackwell_grouped_gemm_autotune import (
@@ -523,7 +524,7 @@ class BlackwellGroupedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not torch.isfinite(self.output).all():
             return "Output contains non-finite values"
         diff = (self.output.float() - self.state.reference_output.float()).abs()
-        max_diff = float(diff.max().item())
+        max_diff = scalar_tensor_to_float(diff.max())
         if max_diff > 0.35:
             return f"Grouped GEMM output drifted from reference (max_abs_diff={max_diff:.4f})"
         return None

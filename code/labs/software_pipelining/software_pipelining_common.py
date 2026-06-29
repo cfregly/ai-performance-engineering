@@ -9,6 +9,7 @@ from typing import Any, Optional
 import torch
 
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.benchmark.utils import scalar_tensor_to_float
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.software_pipelining.software_pipelining_extension import (
     load_software_pipelining_extension,
@@ -186,7 +187,7 @@ class TilePipelineBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return "benchmark_fn() did not produce output"
         if torch.isnan(self._output).any():
             return "NaNs detected in output tensor"
-        max_diff = (self._output - self._reference).abs().max().item()
+        max_diff = scalar_tensor_to_float((self._output - self._reference).abs().max())
         if max_diff > 5e-4:
             return f"Max abs diff {max_diff:.6f} exceeds tolerance 5e-4"
         return None

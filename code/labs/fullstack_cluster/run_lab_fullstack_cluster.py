@@ -6,6 +6,7 @@ import time
 
 import torch
 
+from core.benchmark.utils import scalar_tensor_to_float
 from labs.fullstack_cluster.capstone_extension import load_capstone_module
 
 
@@ -43,7 +44,7 @@ def run_benchmark(size: int, iters: int, baseline_iters: int,
     check_b = torch.randn(check_dim, check_dim, dtype=dtype, device=device)
     ref = module.baseline_matmul(check_a, check_b)
     opt = module.optimized_matmul(check_a, check_b)
-    max_diff = (ref - opt).abs().max().item()
+    max_diff = scalar_tensor_to_float((ref - opt).abs().max())
 
     optim_ms = _time_kernel(lambda: module.optimized_matmul(a, b),
                             iters, timeout_s)
@@ -58,7 +59,6 @@ def run_benchmark(size: int, iters: int, baseline_iters: int,
         speedup = base_ms / optim_ms
     else:
         base_ms = float("nan")
-        base_gflops = float("nan")
         speedup = float("nan")
 
     header = (
