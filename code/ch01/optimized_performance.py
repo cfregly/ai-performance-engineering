@@ -25,6 +25,7 @@ from ch01.performance_common import (
     build_training_mlp,
     capture_tf32_state,
     get_environment_custom_metrics,
+    preallocate_fused_microbatches,
     restore_tf32_state,
     seed_chapter1,
     set_tf32_state,
@@ -107,13 +108,11 @@ class OptimizedPerformanceBatchBenchmark(VerificationPayloadMixin, BaseBenchmark
             torch.cuda.synchronize()
         self.optimizer.zero_grad(set_to_none=True)
         # Pre-build fused batches so the benchmark loop can issue fewer, larger kernels.
-        self._fused_batches = []
-        self._fused_targets = []
-        for start in range(0, len(self.microbatches), self.fusion):
-            batch = torch.cat(self.microbatches[start : start + self.fusion], dim=0)
-            target = torch.cat(self.targets[start : start + self.fusion], dim=0)
-            self._fused_batches.append(batch)
-            self._fused_targets.append(target)
+        self._fused_batches, self._fused_targets = preallocate_fused_microbatches(
+            self.microbatches,
+            self.targets,
+            self.fusion,
+        )
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Sequence, Tuple
 
 import torch
 from core.benchmark.metrics import compute_environment_metrics
@@ -24,6 +24,43 @@ def build_training_mlp(hidden_dim: int) -> torch.nn.Sequential:
         torch.nn.ReLU(inplace=True),
         torch.nn.Linear(hidden_dim, 10),
     )
+
+
+def preallocate_fused_microbatches(
+    microbatches: Sequence[torch.Tensor],
+    targets: Sequence[torch.Tensor],
+    fusion: int,
+) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+    if fusion <= 0:
+        raise ValueError("fusion must be positive")
+    if len(microbatches) != len(targets):
+        raise ValueError("microbatches and targets must have the same length")
+
+    fused_batches: list[torch.Tensor] = []
+    fused_targets: list[torch.Tensor] = []
+    for start in range(0, len(microbatches), fusion):
+        batch_group = microbatches[start : start + fusion]
+        target_group = targets[start : start + fusion]
+        rows = sum(int(batch.shape[0]) for batch in batch_group)
+        target_rows = sum(int(target.shape[0]) for target in target_group)
+        fused_batch = batch_group[0].new_empty((rows, *batch_group[0].shape[1:]))
+        fused_target = target_group[0].new_empty((target_rows, *target_group[0].shape[1:]))
+
+        row_offset = 0
+        for batch in batch_group:
+            next_row_offset = row_offset + int(batch.shape[0])
+            fused_batch[row_offset:next_row_offset].copy_(batch)
+            row_offset = next_row_offset
+
+        target_offset = 0
+        for target in target_group:
+            next_target_offset = target_offset + int(target.shape[0])
+            fused_target[target_offset:next_target_offset].copy_(target)
+            target_offset = next_target_offset
+
+        fused_batches.append(fused_batch)
+        fused_targets.append(fused_target)
+    return fused_batches, fused_targets
 
 
 def capture_tf32_state() -> Tuple[bool, bool | None]:

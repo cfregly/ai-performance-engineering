@@ -20,6 +20,7 @@ from ch01.baseline_performance import BaselinePerformanceBenchmark
 from ch01.baseline_performance_fp16 import BaselinePerformanceFP16Benchmark
 from ch01.optimized_performance import OptimizedPerformanceBatchBenchmark
 from ch01.optimized_performance_fp16 import OptimizedPerformanceFP16Benchmark
+from ch01.performance_common import preallocate_fused_microbatches
 from ch02.baseline_cublas import BaselineCublasBenchmark
 from ch02.optimized_cublas import OptimizedCublasBenchmark
 from core.benchmark.verification import coerce_input_signature
@@ -95,6 +96,52 @@ def test_ch01_training_mlp_uses_inplace_relu_modules() -> None:
 
     assert "torch.nn.ReLU(inplace=True)" in source
     assert "torch.nn.ReLU()" not in source
+
+
+def test_ch01_fused_microbatches_preallocate_output_buffers() -> None:
+    microbatches = [
+        torch.full((2, 3), float(idx), dtype=torch.float32)
+        for idx in range(5)
+    ]
+    targets = [
+        torch.full((2,), idx, dtype=torch.long)
+        for idx in range(5)
+    ]
+
+    fused_batches, fused_targets = preallocate_fused_microbatches(
+        microbatches,
+        targets,
+        fusion=2,
+    )
+
+    assert [tuple(batch.shape) for batch in fused_batches] == [(4, 3), (4, 3), (2, 3)]
+    assert [tuple(target.shape) for target in fused_targets] == [(4,), (4,), (2,)]
+    torch.testing.assert_close(
+        fused_batches[0],
+        torch.cat((microbatches[0], microbatches[1]), dim=0),
+    )
+    torch.testing.assert_close(
+        fused_batches[2],
+        microbatches[4],
+    )
+    torch.testing.assert_close(
+        fused_targets[1],
+        torch.cat((targets[2], targets[3]), dim=0),
+    )
+
+    common_source = (REPO_ROOT / "ch01" / "performance_common.py").read_text(encoding="utf-8")
+    optimized_source = (REPO_ROOT / "ch01" / "optimized_performance.py").read_text(encoding="utf-8")
+    fusion_source = (REPO_ROOT / "ch01" / "optimized_performance_fusion.py").read_text(
+        encoding="utf-8"
+    )
+    assert "fused_batch = batch_group[0].new_empty" in common_source
+    assert "fused_target = target_group[0].new_empty" in common_source
+    assert ".copy_(batch)" in common_source
+    assert ".copy_(target)" in common_source
+    assert "torch.cat(self.microbatches[start : start + self.fusion]" not in optimized_source
+    assert "torch.cat(self.targets[start : start + self.fusion]" not in optimized_source
+    assert "torch.cat(self.microbatches[start : start + self.fusion]" not in fusion_source
+    assert "torch.cat(self.targets[start : start + self.fusion]" not in fusion_source
 
 
 def test_ch01_fp16_benchmark_precomputes_microbatch_groups() -> None:
