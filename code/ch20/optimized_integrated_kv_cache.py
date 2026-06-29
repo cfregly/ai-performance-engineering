@@ -159,18 +159,17 @@ class AttentionLayer(nn.Module):
     def forward(self, x: torch.Tensor, kv_cache: PagedKVCache, request_id: str, layer_idx: int, cache_pos: int) -> torch.Tensor:
         batch_size, seq_len, hidden_dim = x.shape
         qkv = self.qkv(x)
-        q, k, v = qkv.chunk(3, dim=-1)
+        _, k, v = qkv.chunk(3, dim=-1)
         
-        q = q.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
-        k = k.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
-        v = v.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        k = k.view(batch_size, seq_len, self.num_heads, self.head_dim)
+        v = v.view(batch_size, seq_len, self.num_heads, self.head_dim)
         
         for batch_idx in range(batch_size):
             kv_cache.append_block(
                 request_id,
                 layer_idx,
-                k[batch_idx].transpose(0, 1),
-                v[batch_idx].transpose(0, 1),
+                k[batch_idx],
+                v[batch_idx],
                 cache_pos,
             )
         

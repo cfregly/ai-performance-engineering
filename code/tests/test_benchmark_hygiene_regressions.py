@@ -5088,10 +5088,16 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     assert "self._input_block_views = []" in teardown_section
     assert "self._request_block_groups = []" in teardown_section
     assert "self._layer_groups = []" in teardown_section
+    assert "_, k, v = qkv.chunk(3, dim=-1)" in attention_section
+    assert "k = k.view(batch_size, seq_len, self.num_heads, self.head_dim)" in attention_section
+    assert "v = v.view(batch_size, seq_len, self.num_heads, self.head_dim)" in attention_section
+    assert "q = q.view(" not in attention_section
     assert "k_block = k.permute(0, 2, 1, 3).contiguous()" not in attention_section
     assert "v_block = v.permute(0, 2, 1, 3).contiguous()" not in attention_section
-    assert "k[batch_idx].transpose(0, 1)" in attention_section
-    assert "v[batch_idx].transpose(0, 1)" in attention_section
+    assert "k[batch_idx].transpose(0, 1)" not in attention_section
+    assert "v[batch_idx].transpose(0, 1)" not in attention_section
+    assert "k[batch_idx]," in attention_section
+    assert "v[batch_idx]," in attention_section
 
     from ch20.optimized_integrated_kv_cache import PagedKVCache
 
@@ -5105,10 +5111,10 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     )
     k = torch.arange(12, dtype=torch.float32).view(1, 2, 2, 3)
     v = k + 20.0
-    cache.append_block("req", 0, k[0].transpose(0, 1), v[0].transpose(0, 1), 0)
+    cache.append_block("req", 0, k[0], v[0], 0)
     actual_k, actual_v = cache.get("req", 0, 0, 4)
-    torch.testing.assert_close(actual_k, k.permute(0, 2, 1, 3)[0])
-    torch.testing.assert_close(actual_v, v.permute(0, 2, 1, 3)[0])
+    torch.testing.assert_close(actual_k, k[0])
+    torch.testing.assert_close(actual_v, v[0])
 
 
 def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> None:
