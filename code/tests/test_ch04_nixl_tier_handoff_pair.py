@@ -45,7 +45,17 @@ def test_ch04_nixl_tier_handoff_optimized_reuses_pack_buffer() -> None:
     assert "self.dst = torch.zeros_like(self.src)" not in source
     assert "self.dst.zero_()" not in benchmark_section
     assert "packed = self.src.index_select(0, self.selected_idx)" not in benchmark_section
-    assert "torch.index_select(self.src, 0, self.selected_idx, out=self.packed_stage)" in benchmark_section
+    assert "src = self.src" in benchmark_section
+    assert "dst = self.dst" in benchmark_section
+    assert "selected_idx = self.selected_idx" in benchmark_section
+    assert "packed_stage = self.packed_stage" in benchmark_section
+    assert "copy_stream = self.copy_stream" in benchmark_section
+    assert "copy_ready = self.copy_ready" in benchmark_section
+    assert "current_stream = torch.cuda.current_stream(self.device)" in benchmark_section
+    assert "torch.index_select(src, 0, selected_idx, out=packed_stage)" in benchmark_section
+    assert "copy_stream.wait_stream(current_stream)" in benchmark_section
+    assert "current_stream.wait_event(copy_ready)" in benchmark_section
+    assert "torch.cuda.current_stream().wait_event(self.copy_ready)" not in benchmark_section
     assert "self.output = self.dst.index_select(0, self.selected_idx)" not in benchmark_section
     assert "torch.index_select(self.dst, 0, self.selected_idx, out=self._output_buffer)" in benchmark_section
     assert "selected_source = self.src.index_select(0, self.selected_idx)" not in capture_section

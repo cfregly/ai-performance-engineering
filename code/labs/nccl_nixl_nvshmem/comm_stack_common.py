@@ -293,14 +293,24 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         else:
             if self.copy_stream is None or self.copy_ready is None or self.packed_stage is None:
                 raise RuntimeError("Optimized path requires a copy stream and event")
+            src = self.src
+            dst = self.dst
+            selected_idx = self.selected_idx
+            packed_stage = self.packed_stage
+            host_stage = self.host_stage
+            gpu_stage = self.gpu_stage
+            copy_stream = self.copy_stream
+            copy_ready = self.copy_ready
+            current_stream = torch.cuda.current_stream(self.device)
             for _ in range(self.workload.inner_iterations):
-                torch.index_select(self.src, 0, self.selected_idx, out=self.packed_stage)
-                with torch.cuda.stream(self.copy_stream):
-                    self.host_stage.copy_(self.packed_stage, non_blocking=True)
-                    self.gpu_stage.copy_(self.host_stage, non_blocking=True)
-                    self.copy_ready.record(self.copy_stream)
-                torch.cuda.current_stream().wait_event(self.copy_ready)
-                self.dst.index_copy_(0, self.selected_idx, self.gpu_stage)
+                torch.index_select(src, 0, selected_idx, out=packed_stage)
+                copy_stream.wait_stream(current_stream)
+                with torch.cuda.stream(copy_stream):
+                    host_stage.copy_(packed_stage, non_blocking=True)
+                    gpu_stage.copy_(host_stage, non_blocking=True)
+                    copy_ready.record(copy_stream)
+                current_stream.wait_event(copy_ready)
+                dst.index_copy_(0, selected_idx, gpu_stage)
             copy_calls = float(2 * self.workload.inner_iterations)
             uses_copy_stream = 1.0
 
