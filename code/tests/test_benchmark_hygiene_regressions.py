@@ -16838,6 +16838,15 @@ def test_ch16_and_lab_forward_benchmarks_use_inference_mode() -> None:
             assert "enable=self._enable_nvtx" in benchmark_section
             assert "parameter_count=self._payload_parameter_count" in capture_section
             assert "sum(p.numel()" not in capture_section
+            assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+            assert "self._verify_output_buffer = torch.empty(" in setup_section
+            assert "min(128, self.seq_len)" in setup_section
+            assert "min(256, self.vocab_size)" in setup_section
+            assert "output_slice = self.output[" in capture_section
+            assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+            assert "output=self._verify_output_buffer" in capture_section
+            assert "output=self.output.detach().clone()" not in capture_section
+            assert "self._verify_output_buffer = None" in capture_section
 
 
 def test_moe_journey_slice_verification_reuses_buffers() -> None:

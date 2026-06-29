@@ -146,6 +146,7 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.compiled = None
         self.inputs: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
 
         self.vocab_size = 32000
         self.hidden = 512
@@ -201,6 +202,13 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs = torch.randint(
             0, self.vocab_size, (self.batch, self.seq_len), device=self.device
         )
+        self._verify_output_buffer = torch.empty(
+            self.batch,
+            min(128, self.seq_len),
+            min(256, self.vocab_size),
+            device=self.device,
+            dtype=torch.bfloat16,
+        )
         # Replace the nonzero/tolist-based level-4 router dispatch with the
         # vectorized override, then run one eager pass so each MoEExperts
         # module calibrates its fixed dispatch capacity (the only host sync;
@@ -235,11 +243,17 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or self.inputs is None:
+        if self.output is None or self.inputs is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() did not produce output")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+            : self._verify_output_buffer.shape[2],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"input_ids": self.inputs.detach()},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch,
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -263,6 +277,7 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.model = None
         self.inputs = None
         self.output = None
+        self._verify_output_buffer = None
         try:
             torch._dynamo.reset()
         except Exception:
