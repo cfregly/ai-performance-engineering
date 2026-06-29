@@ -135,11 +135,12 @@ class GPT4ArchitectureOptimization:
             if self._timing_events is None:
                 raise RuntimeError("CUDA timing events are not initialized")
             start_event, end_event = self._timing_events
-            start_event.record()
+            current_stream = torch.cuda.current_stream(self.device)
+            start_event.record(current_stream)
             x = self.input
             for layer in self.layers:
                 x = layer(x)
-            end_event.record()
+            end_event.record(current_stream)
             end_event.synchronize()
             elapsed_ms = start_event.elapsed_time(end_event)
         else:

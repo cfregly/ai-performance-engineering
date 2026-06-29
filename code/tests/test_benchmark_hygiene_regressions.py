@@ -8281,8 +8281,11 @@ def test_gpt4_architecture_runner_reuses_cuda_timing_events() -> None:
     assert "]).to(self.device).to(torch.bfloat16).eval()" in setup_section
     assert "@torch.inference_mode()\n    def run" in class_section
     assert "start_event, end_event = self._timing_events" in run_section
-    assert "start_event.record()" in run_section
-    assert "end_event.record()" in run_section
+    assert "current_stream = torch.cuda.current_stream(self.device)" in run_section
+    assert "start_event.record(current_stream)" in run_section
+    assert "end_event.record(current_stream)" in run_section
+    assert "start_event.record()" not in run_section
+    assert "end_event.record()" not in run_section
     assert "end_event.synchronize()" in run_section
     assert "elapsed_ms = start_event.elapsed_time(end_event)" in run_section
     assert "torch.no_grad()" not in run_section
