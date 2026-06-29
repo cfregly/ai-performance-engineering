@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import statistics
 from typing import Dict, List, Optional
 
 import torch
@@ -37,7 +36,10 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
         self.model: Optional[flexdemo.FlexDecodingModule] = None
         self.prefill_tokens: Optional[torch.Tensor] = None
         self.decode_token: Optional[torch.Tensor] = None
-        self._history: Dict[str, List[float]] = {"prefill_ms": [], "decode_ms": []}
+        self._prefill_total_ms = 0.0
+        self._prefill_count = 0
+        self._decode_total_ms = 0.0
+        self._decode_count = 0
         self._last_output: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self._verification_payload = None
@@ -144,8 +146,10 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
         prefill_time = elapsed_ms(self._prefill_events)
         decode_times = elapsed_ms_list(self._decode_events)
         self._pending_iteration_metrics = False
-        self._history["prefill_ms"].append(prefill_time)
-        self._history["decode_ms"].extend(decode_times)
+        self._prefill_total_ms += prefill_time
+        self._prefill_count += 1
+        self._decode_total_ms += sum(decode_times)
+        self._decode_count += len(decode_times)
         return {"prefill_ms": [prefill_time], "decode_ms": decode_times}
 
     def capture_verification_payload(self) -> None:
@@ -184,20 +188,22 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
         self.finalize_iteration_metrics()
-        if not self._history["prefill_ms"]:
+        if self._prefill_count == 0:
             return None
         return {
-            "flex_prefill.mean_ms": float(statistics.mean(self._history["prefill_ms"])),
-            "flex_decode.mean_ms": float(statistics.mean(self._history["decode_ms"])),
+            "flex_prefill.mean_ms": float(self._prefill_total_ms / self._prefill_count),
+            "flex_decode.mean_ms": float(
+                self._decode_total_ms / self._decode_count if self._decode_count else 0.0
+            ),
             "flex_decode.tokens_per_iter": float(self.decode_tokens),
             "flexdecode.uses_flex_attention": float(self.use_flex_attention),
         }
 
     def validate_result(self) -> Optional[str]:
         self.finalize_iteration_metrics()
-        if not self._history["prefill_ms"]:
+        if self._prefill_count == 0:
             return "No prefill samples collected"
-        if not self._history["decode_ms"]:
+        if self._decode_count == 0:
             return "No decode samples collected"
         return None
 

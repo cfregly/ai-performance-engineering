@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import statistics
+import math
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -314,12 +314,32 @@ def _parse_csv(raw: str, cast) -> List:
 def _summarize(records: List[Dict[str, float]]) -> Dict[str, float]:
     if not records:
         return {}
-    best = max(records, key=lambda r: float(r.get("tokens_per_sec", 0.0)))
-    overflow_mean = statistics.mean(float(r.get("overflow_rate", 0.0)) for r in records)
-    gini_mean = statistics.mean(float(r.get("gini", 0.0)) for r in records)
-    loss_std = statistics.pstdev(float(r.get("loss", 0.0)) for r in records) if len(records) > 1 else 0.0
+
+    best = records[0]
+    best_tok_s = float(best.get("tokens_per_sec", 0.0))
+    overflow_total = 0.0
+    gini_total = 0.0
+    loss_total = 0.0
+    loss_squares = 0.0
+    for record in records:
+        tokens_per_sec = float(record.get("tokens_per_sec", 0.0))
+        if tokens_per_sec > best_tok_s:
+            best = record
+            best_tok_s = tokens_per_sec
+        overflow_total += float(record.get("overflow_rate", 0.0))
+        gini_total += float(record.get("gini", 0.0))
+        loss = float(record.get("loss", 0.0))
+        loss_total += loss
+        loss_squares += loss * loss
+
+    count = len(records)
+    overflow_mean = overflow_total / count
+    gini_mean = gini_total / count
+    loss_mean = loss_total / count
+    loss_variance = max(0.0, (loss_squares / count) - loss_mean * loss_mean)
+    loss_std = math.sqrt(loss_variance) if count > 1 else 0.0
     return {
-        "best_tok_s": float(best.get("tokens_per_sec", 0.0)),
+        "best_tok_s": best_tok_s,
         "best_loss": float(best.get("loss", 0.0)),
         "avg_overflow": float(overflow_mean),
         "avg_gini": float(gini_mean),

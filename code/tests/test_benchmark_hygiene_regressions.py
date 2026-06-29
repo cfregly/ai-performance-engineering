@@ -773,6 +773,10 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
         "def finalize_iteration_metrics",
         maxsplit=1,
     )[0]
+    metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "class BaselineDynamicQuantizedCacheBenchmark",
+        maxsplit=1,
+    )[0]
     finalize_section = source.split("def _finalize_quantized_output", maxsplit=1)[1].split(
         "def benchmark_fn",
         maxsplit=1,
@@ -787,6 +791,12 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     assert "self._packed_dst_bytes_cpu: Optional[torch.Tensor] = None" in source
     assert "self._last_scale_cpu: Optional[torch.Tensor] = None" in source
     assert "self._dequantized_cpu: Optional[torch.Tensor] = None" in source
+    assert "self._latency_total_ms = 0.0" in source
+    assert "self._latency_count = 0" in source
+    assert "self._error_total = 0.0" in source
+    assert "self._error_count = 0" in source
+    assert '"latency_ms": []' not in source
+    assert '"error": []' not in source
     assert "self._packed_dst_bytes_cpu = torch.empty(" in setup_section
     assert "self._last_scale_cpu = torch.empty(" in setup_section
     assert "self._dequantized_cpu = torch.empty_like(self._reference_cache_cpu)" in setup_section
@@ -804,8 +814,16 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     assert "packed_view = packed_cpu[..., :_FP4_PACKED_LAST_DIM]" in finalize_section
     assert "self._packed_dst_bytes[..., :_FP4_PACKED_LAST_DIM]" in finalize_section
     assert "dequantized.copy_(packed_cpu.view(torch.int8))" in finalize_section
+    assert "self._error_total += error" in finalize_section
+    assert "self._error_count += 1" in finalize_section
     assert "torch.empty_like(self._reference_cache_cpu)" not in finalize_section
     assert ".cpu()" not in finalize_section
+    assert "self._latency_total_ms += latency_ms" in source
+    assert "self._latency_count += 1" in source
+    assert "avg_ms = self._latency_total_ms / self._latency_count" in metrics_section
+    assert "avg_err = self._error_total / self._error_count if self._error_count else 0.0" in metrics_section
+    assert "statistics.mean" not in metrics_section
+    assert "self._history" not in source
     assert "self._packed_dst_bytes_cpu = None" in teardown_section
     assert "self._last_scale_cpu = None" in teardown_section
     assert "self._dequantized_cpu = None" in teardown_section
@@ -7351,6 +7369,31 @@ def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
             assert "start_evt.record(current_stream)" in benchmark_section
             assert "end_evt.record(current_stream)" in benchmark_section
 
+    baseline_source = (REPO_ROOT / "ch18" / "baseline_flexdecoding.py").read_text(
+        encoding="utf-8"
+    )
+    metrics_section = baseline_source.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "def validate_result",
+        maxsplit=1,
+    )[0]
+    finalize_section = baseline_source.split("def finalize_iteration_metrics", maxsplit=1)[
+        1
+    ].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    assert "self._prefill_total_ms = 0.0" in baseline_source
+    assert "self._prefill_count = 0" in baseline_source
+    assert "self._decode_total_ms = 0.0" in baseline_source
+    assert "self._decode_count = 0" in baseline_source
+    assert '"prefill_ms": []' not in baseline_source
+    assert '"decode_ms": []' not in baseline_source
+    assert "self._prefill_total_ms += prefill_time" in finalize_section
+    assert "self._decode_total_ms += sum(decode_times)" in finalize_section
+    assert "self._decode_count += len(decode_times)" in finalize_section
+    assert "statistics.mean" not in metrics_section
+    assert "self._history" not in baseline_source
+
 
 def test_ch18_optimized_flexdecoding_reuses_sdpa_backend_list() -> None:
     source = (REPO_ROOT / "ch18" / "optimized_flexdecoding.py").read_text(encoding="utf-8")
@@ -10287,6 +10330,10 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
         "def main",
         maxsplit=1,
     )[0]
+    summarize_section = source.split("def _summarize", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
     main_section = source.split("def main", maxsplit=1)[1]
     run_once_section = source.split("def _run_once", maxsplit=1)[1].split(
         "def run",
@@ -10346,6 +10393,16 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
     assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in run_once_section
     assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in run_once_section
     assert "torch.argmax(" not in run_once_section
+    assert "for record in records:" in summarize_section
+    assert "tokens_per_sec = float(record.get(\"tokens_per_sec\", 0.0))" in summarize_section
+    assert "if tokens_per_sec > best_tok_s:" in summarize_section
+    assert "overflow_total += float(record.get(\"overflow_rate\", 0.0))" in summarize_section
+    assert "gini_total += float(record.get(\"gini\", 0.0))" in summarize_section
+    assert "loss_squares += loss * loss" in summarize_section
+    assert "loss_std = math.sqrt(loss_variance) if count > 1 else 0.0" in summarize_section
+    assert "statistics.mean" not in summarize_section
+    assert "statistics.pstdev" not in summarize_section
+    assert "max(records" not in summarize_section
     assert "config_payload = asdict(cfg)" in main_section
     assert "if isinstance(value, torch.dtype):" in main_section
     assert '"config": config_payload' in main_section

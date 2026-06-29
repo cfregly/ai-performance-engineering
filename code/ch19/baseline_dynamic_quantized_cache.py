@@ -12,7 +12,6 @@ but swaps the FP32 refresh for an adaptive-bitwidth quantized refresh.
 
 from __future__ import annotations
 
-import statistics
 from typing import Dict, List, Optional
 
 import torch
@@ -115,7 +114,10 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._last_scale_cpu: Optional[torch.Tensor] = None
         self._dequantized_cpu: Optional[torch.Tensor] = None
         self._last_scale: Optional[torch.Tensor] = None
-        self._history: Dict[str, List[float]] = {"latency_ms": [], "error": []}
+        self._latency_total_ms = 0.0
+        self._latency_count = 0
+        self._error_total = 0.0
+        self._error_count = 0
         total_tokens = len(schedule_bits) * _CACHE_ROWS
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -303,7 +305,9 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         else:
             raise ValueError(f"Unsupported final quantization bits: {last_bits}")
         self.output = dequantized
-        self._history["error"].append(float((self._reference_cache_cpu - dequantized).abs().max().item()))
+        error = float((self._reference_cache_cpu - dequantized).abs().max().item())
+        self._error_total += error
+        self._error_count += 1
 
     def benchmark_fn(self) -> Dict[str, List[float]]:
         if self.use_fp32_baseline:
@@ -333,9 +337,10 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return None
         latency_ms = elapsed_ms(self._pending_timing_pair)
         self._pending_timing_pair = None
-        self._history["latency_ms"].append(latency_ms)
+        self._latency_total_ms += latency_ms
+        self._latency_count += 1
         if self.use_fp32_baseline:
-            self._history["error"].append(0.0)
+            self._error_count += 1
         else:
             self._finalize_quantized_output()
         return None
@@ -380,10 +385,10 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
         self.finalize_iteration_metrics()
-        if not self._history["latency_ms"]:
+        if self._latency_count == 0:
             return None
-        avg_ms = statistics.mean(self._history["latency_ms"])
-        avg_err = statistics.mean(self._history["error"]) if self._history["error"] else 0.0
+        avg_ms = self._latency_total_ms / self._latency_count
+        avg_err = self._error_total / self._error_count if self._error_count else 0.0
         elements = self._cache_numel
         if self.use_fp32_baseline:
             payload_bits = len(self.schedule_bits) * 32 * elements
