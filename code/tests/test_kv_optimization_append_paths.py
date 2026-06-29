@@ -21,11 +21,13 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         setup_source = inspect.getsource(benchmark_cls.setup)
         get_kv_source = inspect.getsource(benchmark_cls.get_kv)
         benchmark_source = inspect.getsource(benchmark_cls.benchmark_fn)
+        capture_source = inspect.getsource(benchmark_cls.capture_verification_payload)
         finalize_source = inspect.getsource(benchmark_cls.finalize_iteration_metrics)
         teardown_source = inspect.getsource(benchmark_cls.teardown)
 
         assert "self._generated_step_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in init_source
         assert "self._output_view: Optional[torch.Tensor] = None" in init_source
+        assert "self._batch_size_tensor: Optional[torch.Tensor] = None" in init_source
         assert "self._active_layer_slice = slice(0, active_layers)" in init_source
         assert "self._generated_step_pairs = list(" in setup_source
         assert "zip(self._generated_k_steps, self._generated_v_steps, strict=True)" in setup_source
@@ -34,6 +36,10 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
             assert "self._generated_step_layer_view_pairs = [" in setup_source
             assert "(k_step.unsqueeze(1), v_step.unsqueeze(1))" in setup_source
         assert "self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]" in setup_source
+        assert 'self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")' in setup_source
+        assert "self._batch_size_tensor[0] = self.batch_size" in setup_source
+        assert '"batch_size": self._batch_size_tensor' in capture_source
+        assert "torch.tensor([self.batch_size]" not in capture_source
         assert "seq_len = self._seq_lengths_host[batch_idx]" in get_kv_source
         assert ".item()" not in get_kv_source
         assert "self.seq_lengths += 1" not in benchmark_source
@@ -63,6 +69,7 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         if benchmark_cls is BaselineKVStandard:
             assert "self._generated_step_layer_view_pairs = []" in teardown_source
         assert "self._output_view = None" in teardown_source
+        assert "self._batch_size_tensor = None" in teardown_source
         assert "metrics = self._last_metrics" in finalize_source
         assert 'metrics["latency_ms"] = elapsed_ms_value' in finalize_source
         assert 'metrics["tokens_per_sec"] = tokens_per_sec' in finalize_source

@@ -63,6 +63,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._generated_step_layer_view_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._output_view: Optional[torch.Tensor] = None
         self._seq_lengths_host: list[int] = [0] * batch_size
+        self._batch_size_tensor: Optional[torch.Tensor] = None
         self._active_layer_slice = slice(0, active_layers)
         self.register_workload_metadata(requests_per_iteration=1.0)
 
@@ -109,6 +110,8 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
             for k_step, v_step in self._generated_step_pairs
         ]
         self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]
+        self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")
+        self._batch_size_tensor[0] = self.batch_size
 
         logger.debug("Baseline KV Cache (BF16)")
         logger.debug(f"  Estimated memory: {self._estimated_memory_gb:.2f} GB")
@@ -205,9 +208,11 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
+        if self._batch_size_tensor is None:
+            raise RuntimeError("setup() must initialize verification metadata tensors")
         self._set_verification_payload(
             inputs={
-                "batch_size": torch.tensor([self.batch_size], dtype=torch.int64, device="cpu"),
+                "batch_size": self._batch_size_tensor,
                 "seq_lengths": self.seq_lengths.detach().clone(),
             },
             output=self.output.float().clone(),
@@ -259,6 +264,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._generated_step_layer_view_pairs = []
         self._output_view = None
         self.output = None
+        self._batch_size_tensor = None
         self._seq_lengths_host = [0] * self.batch_size
         self._timing_pair = None
         self._pending_timing_pair = None
