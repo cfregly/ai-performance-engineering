@@ -3906,16 +3906,34 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         assert "output=verify_output" in capture_section
         assert "verify_output.detach().clone()" not in capture_section
 
-    trtllm_source = (
-        REPO_ROOT / "labs" / "trtllm_phi_3_5_moe" / "baseline_trtllm_phi_3_5_moe.py"
-    ).read_text(encoding="utf-8")
-    trtllm_capture = trtllm_source.split("def capture_verification_payload", maxsplit=1)[1].split(
-        "def teardown",
-        maxsplit=1,
-    )[0]
-    assert "self._payload_parameter_count = 0" in trtllm_source
-    assert "parameter_count = 0" not in trtllm_capture
-    assert "parameter_count=self._payload_parameter_count" in trtllm_capture
+    for trtllm_filename in (
+        "baseline_trtllm_phi_3_5_moe.py",
+        "optimized_trtllm_phi_3_5_moe.py",
+    ):
+        trtllm_source = (
+            REPO_ROOT / "labs" / "trtllm_phi_3_5_moe" / trtllm_filename
+        ).read_text(encoding="utf-8")
+        trtllm_setup = trtllm_source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        trtllm_capture = trtllm_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in trtllm_source
+        assert "self._verify_output_buffer = torch.empty(" in trtllm_setup
+        assert "verification_token_prefix_length(self.max_new_tokens)" in trtllm_setup
+        assert "generated_prefix = slice_generated_token_ids(" in trtllm_capture
+        assert ")[:, : self._verify_output_buffer.shape[1]]" in trtllm_capture
+        assert "self._verify_output_buffer.copy_(generated_prefix, non_blocking=False)" in trtllm_capture
+        assert "output=self._verify_output_buffer" in trtllm_capture
+        assert ".detach().cpu().clone()" not in trtllm_capture
+        assert "verify_output.detach().clone()" not in trtllm_capture
+        if trtllm_filename.startswith("baseline"):
+            assert "self._payload_parameter_count = 0" in trtllm_source
+            assert "parameter_count = 0" not in trtllm_capture
+            assert "parameter_count=self._payload_parameter_count" in trtllm_capture
 
     ch20_source = (REPO_ROOT / "ch20" / "ai_kernel_generator.py").read_text(
         encoding="utf-8"

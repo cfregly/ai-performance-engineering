@@ -44,6 +44,7 @@ class OptimizedTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.pad_token_id: int = 0
         self._generated_output_ids: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         tokens = float(self.prompt_len + self.max_new_tokens)
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -81,6 +82,12 @@ class OptimizedTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.input_ids[i, :valid_len].contiguous()
             for i, valid_len in enumerate(self.prompt_lengths)
         ]
+        self._verify_output_buffer = torch.empty(
+            1,
+            verification_token_prefix_length(self.max_new_tokens),
+            dtype=torch.long,
+            device="cpu",
+        )
         ensure_trtllm_assets(
             self.model_path,
             engine_path=self.engine_path,
@@ -147,19 +154,25 @@ class OptimizedTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return outputs
 
     def capture_verification_payload(self) -> None:
-        if self._generated_output_ids is None or self.input_ids is None or self.prompt_lengths is None:
+        if (
+            self._generated_output_ids is None
+            or self.input_ids is None
+            or self.prompt_lengths is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        verify_output = slice_generated_token_ids(
+        generated_prefix = slice_generated_token_ids(
             self._generated_output_ids[:1],
             prompt_lengths=[self.prompt_lengths[0]],
             max_new_tokens=self.max_new_tokens,
             pad_token_id=self.pad_token_id,
-        )[:, : verification_token_prefix_length(self.max_new_tokens)].detach().cpu().clone()
+        )[:, : self._verify_output_buffer.shape[1]]
+        self._verify_output_buffer.copy_(generated_prefix, non_blocking=False)
         # Keep signature fields backend-agnostic so baseline Transformers and optimized
         # TRT-LLM engine runs compare on equivalent workload semantics.
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids},
-            output=verify_output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=int(self.batch_size),
             parameter_count=0,
             precision_flags={
@@ -191,6 +204,7 @@ class OptimizedTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._batch_inputs = None
         self._generated_output_ids = None
         self.output = None
+        self._verify_output_buffer = None
         del runner
         gc.collect()
         torch.cuda.empty_cache()
