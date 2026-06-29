@@ -197,9 +197,10 @@ def triton_nvshmem_example():
     
     # Run the conceptual example
     results = triton_multi_gpu_operation(tensors)
-    result_values = torch.cat(
+    result_host = torch.cat(
         [result.detach().to(device=tensors[0].device, non_blocking=True) for result in results]
-    ).cpu().tolist()
+    ).cpu()
+    result_values = [float(result_host[idx]) for idx in range(result_host.numel())]
     
     print(f" Launched kernels on {n_gpus} GPUs")
     print(f"  Input size: {tensors[0].numel()} elements per GPU")

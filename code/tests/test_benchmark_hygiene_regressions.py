@@ -1719,8 +1719,10 @@ def test_ch14_triton_nvshmem_batches_result_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "result_values = torch.cat(" in example_section
+    assert "result_host = torch.cat(" in example_section
+    assert "result_values = [float(result_host[idx]) for idx in range(result_host.numel())]" in example_section
     assert "non_blocking=True" in example_section
+    assert ".cpu().tolist()" not in example_section
     assert "[r.item() for r in results]" not in example_section
     assert "tl.store(output_ptr, local_sum)" in source
     assert "outputs = [torch.empty(1, device=t.device, dtype=t.dtype) for t in tensors]" in operation_section
