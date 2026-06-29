@@ -134,6 +134,16 @@ class FA3PipelinedAttention(nn.Module):
         self._k_buffer: Optional[torch.Tensor] = None
         self._v_buffer: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._q_proj_weight_t: Optional[torch.Tensor] = None
+        self._k_proj_weight_t: Optional[torch.Tensor] = None
+        self._v_proj_weight_t: Optional[torch.Tensor] = None
+        self._out_proj_weight_t: Optional[torch.Tensor] = None
+
+    def cache_weight_views(self) -> None:
+        self._q_proj_weight_t = self.q_proj.weight.t()
+        self._k_proj_weight_t = self.k_proj.weight.t()
+        self._v_proj_weight_t = self.v_proj.weight.t()
+        self._out_proj_weight_t = self.out_proj.weight.t()
 
     def _ensure_projection_buffers(
         self,
@@ -234,9 +244,15 @@ class FA3PipelinedAttention(nn.Module):
                 batch_size,
                 seq_len,
             )
-            q_proj = torch.matmul(x, self.q_proj.weight.t(), out=q_buffer)
-            k_proj = torch.matmul(x, self.k_proj.weight.t(), out=k_buffer)
-            v_proj = torch.matmul(x, self.v_proj.weight.t(), out=v_buffer)
+            if (
+                self._q_proj_weight_t is None
+                or self._k_proj_weight_t is None
+                or self._v_proj_weight_t is None
+            ):
+                self.cache_weight_views()
+            q_proj = torch.matmul(x, self._q_proj_weight_t, out=q_buffer)
+            k_proj = torch.matmul(x, self._k_proj_weight_t, out=k_buffer)
+            v_proj = torch.matmul(x, self._v_proj_weight_t, out=v_buffer)
 
         q = q_proj.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         k = k_proj.view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
@@ -256,7 +272,9 @@ class FA3PipelinedAttention(nn.Module):
         # Reshape and project output
         attn_output = attn_output.transpose(1, 2).reshape(batch_size, seq_len, -1)
         if output_buffer is not None:
-            return torch.matmul(attn_output, self.out_proj.weight.t(), out=output_buffer)
+            if self._out_proj_weight_t is None:
+                self.cache_weight_views()
+            return torch.matmul(attn_output, self._out_proj_weight_t, out=output_buffer)
         return self.out_proj(attn_output)
 
 
@@ -339,6 +357,7 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
             self.model.k_proj.weight.copy_(k_weight)
             self.model.v_proj.weight.copy_(v_weight)
             self.model.out_proj.weight.copy_(out_weight)
+        self.model.cache_weight_views()
 
         self.input = torch.randn(
             self.batch_size, self.seq_len, self.hidden_dim,

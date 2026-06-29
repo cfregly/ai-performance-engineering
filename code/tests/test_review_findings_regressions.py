@@ -1174,16 +1174,26 @@ def test_ch10_flashattention3_pair_keeps_shared_warmup_and_unfused_qkv_structure
     assert "self._k_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._v_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._output_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._q_proj_weight_t: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._k_proj_weight_t: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._v_proj_weight_t: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._out_proj_weight_t: Optional[torch.Tensor] = None" in optimized_source
+    assert "def cache_weight_views(self) -> None:" in optimized_source
+    assert "self.model.cache_weight_views()" in optimized_source
     optimized_forward = optimized_source.split("def forward", maxsplit=1)[1].split(
         "class OptimizedFlashAttention3Benchmark",
         maxsplit=1,
     )[0]
     assert "enable_gqa=enable_gqa" in optimized_forward
     assert "repeat_interleave(n_rep" not in optimized_forward
-    assert "q_proj = torch.matmul(x, self.q_proj.weight.t(), out=q_buffer)" in optimized_forward
-    assert "k_proj = torch.matmul(x, self.k_proj.weight.t(), out=k_buffer)" in optimized_forward
-    assert "v_proj = torch.matmul(x, self.v_proj.weight.t(), out=v_buffer)" in optimized_forward
-    assert "return torch.matmul(attn_output, self.out_proj.weight.t(), out=output_buffer)" in optimized_forward
+    assert "q_proj = torch.matmul(x, self._q_proj_weight_t, out=q_buffer)" in optimized_forward
+    assert "k_proj = torch.matmul(x, self._k_proj_weight_t, out=k_buffer)" in optimized_forward
+    assert "v_proj = torch.matmul(x, self._v_proj_weight_t, out=v_buffer)" in optimized_forward
+    assert "return torch.matmul(attn_output, self._out_proj_weight_t, out=output_buffer)" in optimized_forward
+    assert "self.q_proj.weight.t()" not in optimized_forward
+    assert "self.k_proj.weight.t()" not in optimized_forward
+    assert "self.v_proj.weight.t()" not in optimized_forward
+    assert "self.out_proj.weight.t()" not in optimized_forward
 
 
 def test_persistent_decode_keeps_canonical_iteration_parity_and_marks_cuda_variant_informational() -> None:

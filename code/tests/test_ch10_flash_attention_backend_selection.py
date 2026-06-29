@@ -59,9 +59,28 @@ def test_optimized_flash_attention_reuses_projection_buffers_in_inference() -> N
     assert "self._k_buffer: Optional[torch.Tensor] = None" in tiled_module
     assert "self._v_buffer: Optional[torch.Tensor] = None" in tiled_module
     assert "self._output_buffer: Optional[torch.Tensor] = None" in tiled_module
+    assert "self._q_proj_weight_t: Optional[torch.Tensor] = None" in tiled_module
+    assert "self._k_proj_weight_t: Optional[torch.Tensor] = None" in tiled_module
+    assert "self._v_proj_weight_t: Optional[torch.Tensor] = None" in tiled_module
+    assert "self._out_proj_weight_t: Optional[torch.Tensor] = None" in tiled_module
+    assert "def cache_weight_views(self) -> None:" in tiled_module
+    assert "self._q_proj_weight_t = self.q_proj.weight.t()" in tiled_module
+    assert "self._out_proj_weight_t = self.out_proj.weight.t()" in tiled_module
     assert "def _ensure_projection_buffers(" in tiled_module
     assert "if torch.is_grad_enabled():" in tiled_module
-    assert "q = torch.matmul(x, self.q_proj.weight.t(), out=q_buffer)" in tiled_module
-    assert "k = torch.matmul(x, self.k_proj.weight.t(), out=k_buffer)" in tiled_module
-    assert "v = torch.matmul(x, self.v_proj.weight.t(), out=v_buffer)" in tiled_module
-    assert "return torch.matmul(merged, self.out_proj.weight.t(), out=output_buffer)" in tiled_module
+    assert "q = torch.matmul(x, self._q_proj_weight_t, out=q_buffer)" in tiled_module
+    assert "k = torch.matmul(x, self._k_proj_weight_t, out=k_buffer)" in tiled_module
+    assert "v = torch.matmul(x, self._v_proj_weight_t, out=v_buffer)" in tiled_module
+    assert "return torch.matmul(merged, self._out_proj_weight_t, out=output_buffer)" in tiled_module
+    project_qkv = tiled_module.split("def _project_qkv", maxsplit=1)[1].split(
+        "def _project_output",
+        maxsplit=1,
+    )[0]
+    project_output = tiled_module.split("def _project_output", maxsplit=1)[1].split(
+        "def forward",
+        maxsplit=1,
+    )[0]
+    assert "self.q_proj.weight.t()" not in project_qkv
+    assert "self.k_proj.weight.t()" not in project_qkv
+    assert "self.v_proj.weight.t()" not in project_qkv
+    assert "self.out_proj.weight.t()" not in project_output

@@ -3181,17 +3181,26 @@ def test_ch10_optimized_batch_reuses_mlp_buffers() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    forward_section = model_section.split("def forward", maxsplit=1)[1]
 
     assert "self._fc1_buffer: torch.Tensor | None = None" in model_section
     assert "self._fc2_buffer: torch.Tensor | None = None" in model_section
+    assert "self._fc1_weight_t: torch.Tensor | None = None" in model_section
+    assert "self._fc2_weight_t: torch.Tensor | None = None" in model_section
+    assert "def cache_weight_views(self) -> None:" in model_section
+    assert "self._fc1_weight_t = self.fc1.weight.t()" in model_section
+    assert "self._fc2_weight_t = self.fc2.weight.t()" in model_section
     assert "def _ensure_forward_buffers(" in model_section
     assert "if torch.is_grad_enabled():" in model_section
-    assert "torch.mm(x, self.fc1.weight.t(), out=fc1_out)" in model_section
+    assert "torch.mm(x, self._fc1_weight_t, out=fc1_out)" in forward_section
     assert "fc1_out.add_(self.fc1.bias)" in model_section
     assert "self.relu(fc1_out)" in model_section
-    assert "torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)" in model_section
+    assert "torch.mm(fc1_out, self._fc2_weight_t, out=fc2_out)" in forward_section
     assert "fc2_out.add_(self.fc2.bias)" in model_section
+    assert "self.fc1.weight.t()" not in forward_section
+    assert "self.fc2.weight.t()" not in forward_section
     assert "self.model = BufferedBatchMlp(self.hidden_dim, self.ffn_dim)" in setup_section
+    assert "self.model.cache_weight_views()" in setup_section
     assert "nn.Sequential(" not in setup_section
     assert "self.output = self.model(self.input)" in benchmark_section
 
