@@ -2680,6 +2680,10 @@ def test_ch10_baseline_batch_reuses_microbatch_views() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
     teardown_section = source.split("def teardown", maxsplit=1)[1].split(
         "def get_config",
         maxsplit=1,
@@ -2693,6 +2697,12 @@ def test_ch10_baseline_batch_reuses_microbatch_views() -> None:
     assert "output[start:end]" not in benchmark_section
     assert "self.inputs_chunked[idx]" not in benchmark_section
     assert "start = idx * self.micro_batch_size" not in benchmark_section
+    assert "self._verify_output_buffer: torch.Tensor | None = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(self._output_buffer)" in setup_section
+    assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "self.output.detach().float().clone()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
     assert "self._microbatch_pairs = []" in teardown_section
 
 
@@ -4134,6 +4144,14 @@ def test_ch10_optimized_batch_reuses_mlp_buffers() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
     forward_section = model_section.split("def forward", maxsplit=1)[1]
 
     assert "self._fc1_buffer: torch.Tensor | None = None" in model_section
@@ -4156,6 +4174,12 @@ def test_ch10_optimized_batch_reuses_mlp_buffers() -> None:
     assert "self.model.cache_weight_views()" in setup_section
     assert "nn.Sequential(" not in setup_section
     assert "self.output = self.model(self.input)" in benchmark_section
+    assert "self._verify_output_buffer: torch.Tensor | None = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(self.input)" in setup_section
+    assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "self.output.detach().float().clone()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch16_optimized_dense_attention_flash_reuses_projection_buffers() -> None:

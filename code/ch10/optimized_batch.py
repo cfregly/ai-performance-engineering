@@ -79,6 +79,7 @@ class OptimizedBatchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model: BufferedBatchMlp | None = None
         self.input: torch.Tensor | None = None
         self.output: torch.Tensor | None = None
+        self._verify_output_buffer: torch.Tensor | None = None
         self.workload = WORKLOAD
         self.total_batch_size = self.workload.optimized_batch_size  # 512
         self.hidden_dim = self.workload.hidden_dim
@@ -101,6 +102,7 @@ class OptimizedBatchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Generate input (same shape/order as baseline for verification)
         self.input = torch.randn(self.total_batch_size, self.hidden_dim, device=self.device)
+        self._verify_output_buffer = torch.empty_like(self.input)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
@@ -115,9 +117,12 @@ class OptimizedBatchBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.input},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.total_batch_size,
             parameter_count=0,
             precision_flags={
@@ -134,6 +139,7 @@ class OptimizedBatchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.input = None
         self.output = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
