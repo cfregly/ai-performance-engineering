@@ -88,14 +88,18 @@ def _routing_stats(indices: torch.Tensor, *, num_experts: int) -> tuple[float, f
         if num_experts > 1
         else counts.new_zeros(())
     )
-    total, active_count, max_tokens_float, entropy = torch.stack(
+    stats_host = torch.stack(
         (
             total_tensor,
             (counts > 0).sum().to(counts.dtype),
             counts.max(),
             entropy_tensor,
         )
-    ).tolist()
+    ).detach().cpu()
+    total = float(stats_host[0])
+    active_count = float(stats_host[1])
+    max_tokens_float = float(stats_host[2])
+    entropy = float(stats_host[3])
     active = float(active_count) / float(num_experts)
     max_tokens = int(max_tokens_float) if total > 0 else 0
     if total <= 0:
@@ -222,7 +226,7 @@ def _compare_outputs(
                 torch.maximum(max_diff, diff, out=max_diff)
     if max_diff is None:
         return 0.0
-    return float(max_diff.detach().cpu().tolist())
+    return float(max_diff.detach().cpu())
 
 
 def measure_scenario(

@@ -61,8 +61,13 @@ def test_routing_stats_batches_scalar_materialization() -> None:
 
     entropy, active, max_tokens = _routing_stats(indices, num_experts=4)
 
-    assert "torch.stack(" in source
-    assert ".tolist()" in source
+    assert "stats_host = torch.stack(" in source
+    assert ").detach().cpu()" in source
+    assert "total = float(stats_host[0])" in source
+    assert "active_count = float(stats_host[1])" in source
+    assert "max_tokens_float = float(stats_host[2])" in source
+    assert "entropy = float(stats_host[3])" in source
+    assert ".tolist()" not in source
     assert ".sum().item()" not in source
     assert ".max().item()" not in source
     assert entropy > 0.0
@@ -122,7 +127,8 @@ def test_compare_outputs_batches_diff_materialization() -> None:
 
     assert "max_diff: torch.Tensor | None = None" in source
     assert "torch.maximum(max_diff, diff, out=max_diff)" in source
-    assert "return float(max_diff.detach().cpu().tolist())" in source
+    assert "return float(max_diff.detach().cpu())" in source
+    assert "max_diff.detach().cpu().tolist()" not in source
     assert "diff_tensors" not in source
     assert "torch.stack(diff_tensors)" not in source
     assert "diffs.append(float(" not in source
