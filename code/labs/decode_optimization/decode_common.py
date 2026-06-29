@@ -642,7 +642,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         iter_start, batch0_end, _, iter_end = self._timing_event_tuple
 
         # Streams for copy/compute
-        prefill_stream = self.compute_stream or torch.cuda.current_stream()
+        current_stream = torch.cuda.current_stream()
+        prefill_stream = self.compute_stream or current_stream
         copy_stream = self.copy_stream or prefill_stream
         timing_stream = prefill_stream
         can_overlap_second_copy = bool(
@@ -690,7 +691,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             iter_end.record(timing_stream)
 
         if self.compute_stream is not None:
-            torch.cuda.current_stream().wait_stream(self.compute_stream)
+            current_stream.wait_stream(self.compute_stream)
 
         self.gpu_prompt = self.gpu_prompts[1]
         self.gpu_prompt_last_token = self.gpu_prompt_last_tokens[1]
@@ -711,7 +712,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         prefill_start, prefill_end, decode_start, decode_end = self._timing_event_tuple
 
         # Choose streams for work/timing
-        prefill_stream = self.compute_stream or torch.cuda.current_stream()
+        current_stream = torch.cuda.current_stream()
+        prefill_stream = self.compute_stream or current_stream
         decode_stream = self.graph_stream if self.decode_graph is not None else prefill_stream
         timing_stream = decode_stream
 
@@ -751,7 +753,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 if self.graph_stream is not None:
                     with torch.cuda.stream(self.graph_stream):
                         self.decode_graph.replay()
-                    torch.cuda.current_stream().wait_stream(self.graph_stream)
+                    current_stream.wait_stream(self.graph_stream)
                 else:
                     self.decode_graph.replay()
             else:
@@ -761,7 +763,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         self.state_buffer.copy_(next_state)
                         self.current_tokens.copy_(next_token)
                 if self.compute_stream is not None:
-                    torch.cuda.current_stream().wait_stream(self.compute_stream)
+                    current_stream.wait_stream(self.compute_stream)
             decode_end.record(timing_stream)
 
         if nvtx:

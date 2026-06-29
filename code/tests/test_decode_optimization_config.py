@@ -279,6 +279,12 @@ def test_decode_prompt_copy_waits_on_consumer_stream() -> None:
     assert "wait_stream.wait_stream(active_stream)" in copy_section
     assert "current_stream.wait_stream(active_stream)" in copy_section
     assert "torch.cuda.current_stream().wait_stream(self.copy_stream)" not in copy_section
+    assert "current_stream = torch.cuda.current_stream()" in benchmark_section
+    assert "prefill_stream = self.compute_stream or current_stream" in benchmark_section
+    assert "current_stream.wait_stream(self.graph_stream)" in benchmark_section
+    assert "current_stream.wait_stream(self.compute_stream)" in benchmark_section
+    assert "torch.cuda.current_stream().wait_stream(self.graph_stream)" not in benchmark_section
+    assert "torch.cuda.current_stream().wait_stream(self.compute_stream)" not in benchmark_section
     assert "copy_wait_stream = (" in benchmark_section
     assert "self._copy_prompts_to_device(wait_stream=copy_wait_stream)" in benchmark_section
     assert "with torch.cuda.stream(decode_stream):" in benchmark_section
@@ -310,6 +316,10 @@ def test_decode_prefetch_overlaps_second_copy_only_when_async_safe() -> None:
 
     assert "can_overlap_second_copy = bool(" in prefetch_section
     assert "self.cfg.use_pinned_host and copy_stream is not prefill_stream" in prefetch_section
+    assert "current_stream = torch.cuda.current_stream()" in prefetch_section
+    assert "prefill_stream = self.compute_stream or current_stream" in prefetch_section
+    assert "current_stream.wait_stream(self.compute_stream)" in prefetch_section
+    assert "torch.cuda.current_stream().wait_stream(self.compute_stream)" not in prefetch_section
     assert "if can_overlap_second_copy" in prefetch_section
     assert first_copy_idx < early_second_copy_idx < batch0_compute_idx
     assert batch0_compute_idx < fallback_second_copy_idx
