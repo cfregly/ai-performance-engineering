@@ -8276,6 +8276,10 @@ def test_persistent_decode_graphs_reuses_timing_events_outside_hot_loop() -> Non
     assert "self._pending_prefill_end: torch.cuda.Event | None = None" in setup_section
     assert "self._pending_decode_start: torch.cuda.Event | None = None" in setup_section
     assert "self._pending_decode_end: torch.cuda.Event | None = None" in setup_section
+    assert "self._ttft_metric_values: list[float] = [0.0]" in setup_section
+    assert "self._tpot_metric_values: list[float] = [0.0] * self.seq_len" in setup_section
+    assert "self._iteration_metric_payload: dict[str, list[float]] = {" in setup_section
+    assert "def _ensure_tpot_metric_values(self) -> list[float]:" in source
     assert "torch.cuda.Event(" not in piecewise_capture_section
     assert "torch.cuda.Event(" not in full_capture_section
     assert "torch.cuda.Event(" not in benchmark_section
@@ -8303,6 +8307,14 @@ def test_persistent_decode_graphs_reuses_timing_events_outside_hot_loop() -> Non
     assert "self._pending_iteration[" not in finalize_section
     assert "start = self._pending_start" in finalize_section
     assert "self._pending_start = None" in finalize_section
+    assert "self._ttft_metric_values[0] = ttft_ms" in finalize_section
+    assert "tpot_times_ms = self._ensure_tpot_metric_values()" in finalize_section
+    assert "for idx in range(len(tpot_times_ms)):" in finalize_section
+    assert "tpot_times_ms[idx] = per_token_ms" in finalize_section
+    assert "return self._iteration_metric_payload" in finalize_section
+    assert "self._history" not in source
+    assert '"ttft_times_ms": [ttft_ms]' not in finalize_section
+    assert '"tpot_times_ms": [(decode_ms / max(1, self.seq_len))] * self.seq_len' not in finalize_section
 
 
 def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
@@ -8336,6 +8348,10 @@ def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
             assert "torch.cuda.Event(enable_timing=True)" in setup_section
             assert "self._pending_graph_path: str | None = None" in setup_section
             assert "self._pending_start: torch.cuda.Event | None = None" in setup_section
+            assert "self._ttft_metric_values: list[float] = [0.0]" in setup_section
+            assert "self._tpot_metric_values: list[float] = [0.0] * self.seq_len" in setup_section
+            assert "self._iteration_metric_payload: dict[str, list[float]] = {" in setup_section
+            assert "def _ensure_tpot_metric_values(self) -> list[float]:" in source
             assert 'start = self._full_events["start"]' in benchmark_section
             assert 'start_prefill = self._piecewise_events["start_prefill"]' in benchmark_section
             assert 'start_decode = self._piecewise_events["start_decode"]' in benchmark_section
@@ -8352,6 +8368,14 @@ def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
             assert "self._pending_iteration[" not in finalize_section
             assert "start = self._pending_start" in finalize_section
             assert "self._pending_decode_end = None" in finalize_section
+            assert "self._ttft_metric_values[0] = ttft_ms" in finalize_section
+            assert "tpot_times_ms = self._ensure_tpot_metric_values()" in finalize_section
+            assert "for idx in range(len(tpot_times_ms)):" in finalize_section
+            assert "tpot_times_ms[idx] = per_token_ms" in finalize_section
+            assert "return self._iteration_metric_payload" in finalize_section
+            assert "self._history" not in source
+            assert '"ttft_times_ms": [ttft_ms]' not in finalize_section
+            assert '"tpot_times_ms": [(decode_ms / max(1, self.seq_len))] * self.seq_len' not in finalize_section
 
 
 def test_persistent_decode_tma_precomputes_prefill_work_outside_hot_loop() -> None:

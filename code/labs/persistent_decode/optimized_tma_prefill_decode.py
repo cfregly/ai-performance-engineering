@@ -298,7 +298,12 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.graph_out = None
         self.graph_mode = graph_mode or GraphMode.from_str(os.getenv("PD_GRAPH_MODE"))
         self.max_capture_seq = max_capture_seq or int(os.getenv("PD_MAX_CAPTURE_SEQ", self.seq_len))
-        self._history: dict[str, list[float]] = {}
+        self._ttft_metric_values: list[float] = [0.0]
+        self._tpot_metric_values: list[float] = [0.0] * self.seq_len
+        self._iteration_metric_payload: dict[str, list[float]] = {
+            "ttft_times_ms": self._ttft_metric_values,
+            "tpot_times_ms": self._tpot_metric_values,
+        }
         self._pending_graph_path: str | None = None
         self._pending_start: torch.cuda.Event | None = None
         self._pending_prefill_end: torch.cuda.Event | None = None
@@ -493,6 +498,12 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         else:
             raise RuntimeError("Inputs not initialized for verification")
 
+    def _ensure_tpot_metric_values(self) -> list[float]:
+        if len(self._tpot_metric_values) != self.seq_len:
+            self._tpot_metric_values = [0.0] * self.seq_len
+            self._iteration_metric_payload["tpot_times_ms"] = self._tpot_metric_values
+        return self._tpot_metric_values
+
     def finalize_iteration_metrics(self) -> dict[str, list[float]] | None:
         start = self._pending_start
         prefill_end = self._pending_prefill_end
@@ -510,14 +521,12 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
 
         ttft_ms = float(start.elapsed_time(prefill_end))
         decode_ms = float(decode_start.elapsed_time(decode_end))
-        self._history.setdefault("ttft_ms", []).append(ttft_ms)
-        self._history.setdefault("decode_ms", []).append(decode_ms)
-        self._history.setdefault("per_token_ms", []).append(decode_ms / max(1, self.seq_len))
-        self._history.setdefault("graph_path", []).append(graph_path)
-        return {
-            "ttft_times_ms": [ttft_ms],
-            "tpot_times_ms": [(decode_ms / max(1, self.seq_len))] * self.seq_len,
-        }
+        per_token_ms = decode_ms / max(1, self.seq_len)
+        self._ttft_metric_values[0] = ttft_ms
+        tpot_times_ms = self._ensure_tpot_metric_values()
+        for idx in range(len(tpot_times_ms)):
+            tpot_times_ms[idx] = per_token_ms
+        return self._iteration_metric_payload
 
     def capture_verification_payload(self) -> None:
         if self.inputs is None or self.output is None:
