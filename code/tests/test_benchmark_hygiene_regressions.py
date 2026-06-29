@@ -6167,6 +6167,32 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "if not matches.all()" not in decode_section
 
 
+def test_ch18_vllm_decoder_graph_replay_records_timing_on_current_stream() -> None:
+    source = (REPO_ROOT / "ch18" / "run_vllm_decoder.py").read_text(encoding="utf-8")
+    full_replay = source.split("def _replay_full_graph", maxsplit=1)[1].split(
+        "def _replay_piecewise_graph",
+        maxsplit=1,
+    )[0]
+    piecewise_replay = source.split("def _replay_piecewise_graph", maxsplit=1)[1].split(
+        "def _run_eager_path",
+        maxsplit=1,
+    )[0]
+
+    assert "current_stream = torch.cuda.current_stream(self.device)" in full_replay
+    assert "start.record(current_stream)" in full_replay
+    assert "end.record(current_stream)" in full_replay
+    assert "start.record()" not in full_replay
+    assert "end.record()" not in full_replay
+
+    assert "current_stream = torch.cuda.current_stream(self.device)" in piecewise_replay
+    assert "start_prefill.record(current_stream)" in piecewise_replay
+    assert "start_decode.record(current_stream)" in piecewise_replay
+    assert "end.record(current_stream)" in piecewise_replay
+    assert "start_prefill.record()" not in piecewise_replay
+    assert "start_decode.record()" not in piecewise_replay
+    assert "end.record()" not in piecewise_replay
+
+
 def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     source = (REPO_ROOT / "ch18" / "run_vllm_decoder.py").read_text(encoding="utf-8")
     benchmark_section = source.split("class VLLMMoEInferenceBenchmark", maxsplit=1)[1]

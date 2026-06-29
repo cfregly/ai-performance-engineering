@@ -694,9 +694,10 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         tpot_times: List[float] = []
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        start.record()
+        current_stream = torch.cuda.current_stream(self.device)
+        start.record(current_stream)
         self._full_graph.replay()  # type: ignore[union-attr]
-        end.record()
+        end.record(current_stream)
         torch.cuda.synchronize(self.device)
         ttft_ms = start.elapsed_time(self._full_prefill_done)
         decode_total_ms = self._full_prefill_done.elapsed_time(self._full_decode_done)
@@ -716,11 +717,12 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         start_prefill = torch.cuda.Event(enable_timing=True)
         start_decode = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        start_prefill.record()
+        current_stream = torch.cuda.current_stream(self.device)
+        start_prefill.record(current_stream)
         self._piecewise_prefill_graph.replay()  # type: ignore[union-attr]
-        start_decode.record()
+        start_decode.record(current_stream)
         self._piecewise_decode_graph.replay()  # type: ignore[union-attr]
-        end.record()
+        end.record(current_stream)
         torch.cuda.synchronize(self.device)
         ttft_ms = start_prefill.elapsed_time(self._piecewise_prefill_done)
         decode_total_ms = self._piecewise_prefill_done.elapsed_time(self._piecewise_decode_done)
