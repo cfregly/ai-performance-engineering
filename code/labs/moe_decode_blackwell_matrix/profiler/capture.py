@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import heapq
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -30,8 +31,7 @@ def _device_time_us(event: Any) -> float:
     )
 
 
-def _top_ops(profile: torch.profiler.profile, *, top_ops: int) -> list[dict[str, Any]]:
-    events = list(profile.key_averages())
+def _top_ops(events: Iterable[Any], *, top_ops: int) -> list[dict[str, Any]]:
     rows = []
     for event in heapq.nlargest(top_ops, events, key=_self_device_time_us):
         rows.append(
@@ -77,13 +77,20 @@ def profile_scenario(
         torch.cuda.synchronize(device)
 
     profile.export_chrome_trace(str(trace_path))
-    ops = _top_ops(profile, top_ops=top_ops)
-    all_events = list(profile.key_averages())
+    events = profile.key_averages()
+    ops = _top_ops(events, top_ops=top_ops)
+    total_self_cuda_time_us = 0.0
+    total_cuda_time_us = 0.0
+    total_cpu_time_us = 0.0
+    for event in events:
+        total_self_cuda_time_us += _self_device_time_us(event)
+        total_cuda_time_us += _device_time_us(event)
+        total_cpu_time_us += float(event.cpu_time_total)
     return {
         "config_id": scenario.config_id,
         "trace_path": str(trace_path),
         "top_ops": ops,
-        "total_self_cuda_time_us": round(sum(_self_device_time_us(event) for event in all_events), 3),
-        "total_cuda_time_us": round(sum(_device_time_us(event) for event in all_events), 3),
-        "total_cpu_time_us": round(sum(float(event.cpu_time_total) for event in all_events), 3),
+        "total_self_cuda_time_us": round(total_self_cuda_time_us, 3),
+        "total_cuda_time_us": round(total_cuda_time_us, 3),
+        "total_cpu_time_us": round(total_cpu_time_us, 3),
     }

@@ -88,8 +88,15 @@ def test_profiler_capture_selects_top_ops_without_full_sort() -> None:
     )[0]
 
     assert "import heapq" in source
+    assert "def _top_ops(events: Iterable[Any], *, top_ops: int)" in source
     assert "heapq.nlargest(top_ops, events, key=_self_device_time_us)" in top_ops_section
     assert "sorted(events, key=_self_device_time_us" not in top_ops_section
+    assert "events = profile.key_averages()" in source
+    assert "for event in events:" in source
+    assert "total_self_cuda_time_us += _self_device_time_us(event)" in source
+    assert "list(profile.key_averages())" not in source
+    assert "all_events =" not in source
+    assert "sum(_self_device_time_us(event) for event in events)" not in source
 
 
 def test_profiler_compare_selects_graph_pair_without_full_sort() -> None:
