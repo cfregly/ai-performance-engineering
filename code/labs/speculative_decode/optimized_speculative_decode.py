@@ -48,8 +48,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._draft_ids: Optional[torch.Tensor] = None
         self._verify_prev: Optional[torch.Tensor] = None
         self._verify_prev_first: Optional[torch.Tensor] = None
-        self._accept_prefix: Optional[torch.Tensor] = None
-        self._accept_count: Optional[torch.Tensor] = None
+        self._match_host: Optional[torch.Tensor] = None
         self._draft_next_values: Optional[torch.Tensor] = None
         self._draft_next_tokens: Optional[torch.Tensor] = None
         self._draft_next_token_view: Optional[torch.Tensor] = None
@@ -68,7 +67,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._match_views: list[torch.Tensor] = []
         self._draft_id_views: list[torch.Tensor] = []
         self._draft_id_column_views: list[torch.Tensor] = []
-        self._accept_prefix_views: list[torch.Tensor] = []
+        self._match_host_views: list[torch.Tensor] = []
         self.output: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
@@ -117,8 +116,12 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._draft_ids = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
         self._verify_prev = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
         self._verify_prev_first = self._verify_prev[:, 0]
-        self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)
-        self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)
+        self._match_host = torch.empty(
+            wl.speculative_k,
+            dtype=torch.bool,
+            device="cpu",
+            pin_memory=torch.cuda.is_available(),
+        )
         self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
         self._draft_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
         self._draft_next_token_view = self._draft_next_tokens.view(1, 1)
@@ -141,7 +144,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._draft_id_column_views = [
             self._draft_ids[:, token_idx] for token_idx in range(wl.speculative_k)
         ]
-        self._accept_prefix_views = [self._accept_prefix[:k] for k in range(1, wl.speculative_k + 1)]
+        self._match_host_views = [self._match_host[:k] for k in range(1, wl.speculative_k + 1)]
 
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
         self.output = None
@@ -157,8 +160,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             or self._verify_prev_first is None
             or self._draft_ids is None
             or self._verify_prev is None
-            or self._accept_prefix is None
-            or self._accept_count is None
+            or self._match_host is None
             or self._draft_next_values is None
             or self._draft_next_tokens is None
             or self._draft_next_token_view is None
@@ -180,7 +182,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             or len(self._match_views) != self.workload.speculative_k
             or len(self._draft_id_views) != self.workload.speculative_k
             or len(self._draft_id_column_views) != self.workload.speculative_k
-            or len(self._accept_prefix_views) != self.workload.speculative_k
+            or len(self._match_host_views) != self.workload.speculative_k
         ):
             raise RuntimeError("Benchmark not initialized")
 
@@ -226,10 +228,13 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 matches = self._match_views[view_idx]
                 torch.eq(target_next, draft_window, out=matches)
 
-                accept_prefix = self._accept_prefix_views[view_idx]
-                torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)
-                torch.sum(accept_prefix, dim=0, out=self._accept_count)
-                accept_k = int(self._accept_count.item())
+                match_host = self._match_host_views[view_idx]
+                match_host.copy_(matches[0], non_blocking=False)
+                accept_k = 0
+                for match_idx in range(k):
+                    if not bool(match_host[match_idx]):
+                        break
+                    accept_k += 1
 
                 if accept_k == k:
                     self._output_write_views[view_idx][pos].copy_(draft_window)
@@ -275,8 +280,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._draft_ids = None
         self._verify_prev = None
         self._verify_prev_first = None
-        self._accept_prefix = None
-        self._accept_count = None
+        self._match_host = None
         self._draft_next_values = None
         self._draft_next_tokens = None
         self._draft_next_token_view = None
@@ -295,7 +299,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._match_views = []
         self._draft_id_views = []
         self._draft_id_column_views = []
-        self._accept_prefix_views = []
+        self._match_host_views = []
         self.output = None
         torch.cuda.empty_cache()
 
