@@ -104,12 +104,39 @@ def _rank_top_experts(
     expert_ids: range,
     ranked_count: int,
 ) -> List[int]:
-    if len(expert_ids) < 64:
-        return sorted(expert_ids, key=probs.__getitem__, reverse=True)[:ranked_count]
-    return heapq.nlargest(
+    if ranked_count <= 0:
+        return []
+    if ranked_count == 1:
+        best_id: int | None = None
+        best_prob = float("-inf")
+        for expert_id in expert_ids:
+            prob = probs[expert_id]
+            if best_id is None or prob > best_prob:
+                best_id = expert_id
+                best_prob = prob
+        return [] if best_id is None else [best_id]
+    if ranked_count == 2:
+        best_id: int | None = None
+        second_id: int | None = None
+        best_prob = float("-inf")
+        second_prob = float("-inf")
+        for expert_id in expert_ids:
+            prob = probs[expert_id]
+            if best_id is None or prob > best_prob:
+                second_id = best_id
+                second_prob = best_prob
+                best_id = expert_id
+                best_prob = prob
+            elif second_id is None or prob > second_prob:
+                second_id = expert_id
+                second_prob = prob
+        if best_id is None:
+            return []
+        return [best_id] if second_id is None else [best_id, second_id]
+    return heapq.nsmallest(
         ranked_count,
         expert_ids,
-        key=probs.__getitem__,
+        key=lambda expert_id: (-probs[expert_id], expert_id),
     )
 
 

@@ -6728,6 +6728,8 @@ def test_dynamic_router_percentiles_reuse_sorted_samples() -> None:
 
 
 def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
+    from labs.dynamic_router.eval_stack import _rank_top_experts
+
     source = (REPO_ROOT / "labs" / "dynamic_router" / "eval_stack.py").read_text(encoding="utf-8")
     percentile_section = source.split("def _percentiles", maxsplit=1)[1].split(
         "def _summarize_quality_rows",
@@ -6766,12 +6768,20 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert "dirichlet_alpha = 0.85 if optimized else 0.55" in moe_section
     assert "ranked_experts = _rank_top_experts(probs, expert_ids, ranked_count)" in moe_section
     assert "ranked_experts = sorted(expert_ids" not in moe_section
-    assert "if len(expert_ids) < 64:" in ranking_section
-    assert "return sorted(expert_ids, key=probs.__getitem__, reverse=True)[:ranked_count]" in ranking_section
-    assert "return heapq.nlargest(" in ranking_section
-    assert "key=probs.__getitem__" in ranking_section
+    assert "if ranked_count == 1:" in ranking_section
+    assert "if ranked_count == 2:" in ranking_section
+    assert "return heapq.nsmallest(" in ranking_section
+    assert "key=lambda expert_id: (-probs[expert_id], expert_id)" in ranking_section
+    assert "return sorted(expert_ids, key=probs.__getitem__, reverse=True)[:ranked_count]" not in ranking_section
+    assert "heapq.nlargest(" not in ranking_section
     assert "sorted(probs, reverse=True)" not in moe_section
     assert "lambda i: probs[i]" not in moe_section
+
+    probs = [0.3, 0.7, 0.7, 0.1, 0.4]
+    assert _rank_top_experts(probs, range(len(probs)), 0) == []
+    assert _rank_top_experts(probs, range(len(probs)), 1) == [1]
+    assert _rank_top_experts(probs, range(len(probs)), 2) == [1, 2]
+    assert _rank_top_experts(probs, range(len(probs)), 3) == [1, 2, 4]
 
 
 def test_dynamic_router_policy_avoids_candidate_list_churn() -> None:
