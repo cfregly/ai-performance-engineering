@@ -178,14 +178,16 @@ smooth_train_loss = 0 # EMA of training loss
 ema_beta = 0.9 # EMA decay factor
 total_training_time = 0 # total wall-clock time of training
 step = 0
+last_step_reduce = torch.empty((), dtype=torch.int32, device=device) if ddp else None
 while True:
     flops_so_far = num_flops_per_token * total_batch_size * step
 
     # Synchronize last_step across all ranks to avoid hangs in the distributed setting
     if ddp:
-        last_step_tensor = torch.tensor(last_step, dtype=torch.int32, device=device)
-        dist.all_reduce(last_step_tensor, op=dist.ReduceOp.MAX)
-        last_step = bool(last_step_tensor.item())
+        assert last_step_reduce is not None
+        last_step_reduce.fill_(int(last_step))
+        dist.all_reduce(last_step_reduce, op=dist.ReduceOp.MAX)
+        last_step = bool(last_step_reduce.detach().cpu().item())
 
     # once in a while: evaluate the val bpb (all ranks participate)
     if eval_every > 0 and (last_step or step % eval_every == 0):

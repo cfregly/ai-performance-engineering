@@ -168,6 +168,7 @@ def get_lr_multiplier(it):
 # Go!
 step = 0
 train_iter = iter(train_loader)
+num_tokens = torch.empty((), dtype=torch.int64, device=device)
 for step in range(num_iterations):
     last_step = step == num_iterations - 1
 
@@ -212,7 +213,7 @@ for step in range(num_iterations):
         break
 
     # evaluate the gradient
-    num_tokens = torch.tensor(0, device=device) # the number of "active" tokens of supervision seen
+    num_tokens.zero_() # the number of "active" tokens of supervision seen
     for _ in range(grad_accum_steps):
         train_inputs, train_targets = next(train_iter)
         with autocast_ctx:

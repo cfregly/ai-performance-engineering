@@ -7283,8 +7283,26 @@ def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
     assert "train_loss.to(torch.float64)" in logging_section
     assert "num_tokens.to(torch.float64)" in logging_section
     assert ")).detach().cpu().tolist()" in logging_section
+    assert "num_tokens = torch.empty((), dtype=torch.int64, device=device)" in source
+    assert "num_tokens.zero_()" in source
+    assert "num_tokens = torch.tensor(0, device=device)" not in source
     assert "train_loss.item()" not in logging_section
     assert "num_tokens.item()" not in logging_section
+
+
+def test_nanochat_mid_train_reuses_last_step_reduce_scalar() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "mid_train.py"
+    ).read_text(encoding="utf-8")
+    loop_prefix = source.split("while True:", maxsplit=1)[1].split(
+        "# once in a while",
+        maxsplit=1,
+    )[0]
+
+    assert "last_step_reduce = torch.empty((), dtype=torch.int32, device=device) if ddp else None" in source
+    assert "last_step_reduce.fill_(int(last_step))" in loop_prefix
+    assert "dist.all_reduce(last_step_reduce, op=dist.ReduceOp.MAX)" in loop_prefix
+    assert "torch.tensor(last_step" not in loop_prefix
 
 
 def test_nanochat_tok_train_batches_token_byte_stat_syncs() -> None:
