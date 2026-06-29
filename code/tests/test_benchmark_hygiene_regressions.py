@@ -8532,7 +8532,8 @@ def test_train_distributed_pipeline_defers_microbatch_loss_syncs() -> None:
 
     assert "def _finish_pipeline_loss" in source
     assert "total = loss_buffer[:loss_count].sum()" in finish_section
-    assert "total.detach().cpu().tolist() / n_micro" in finish_section
+    assert "return float(total.detach().cpu()) / n_micro" in finish_section
+    assert "total.detach().cpu().tolist() / n_micro" not in finish_section
     assert ".cpu().item()" not in finish_section
     assert "torch.stack(loss_values)" not in finish_section
     assert "loss_values.append(loss.detach())" not in schedule_section

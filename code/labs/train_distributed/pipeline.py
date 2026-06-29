@@ -18,7 +18,7 @@ def _finish_pipeline_loss(loss_buffer: Tensor, loss_count: int, n_micro: int) ->
     if loss_count <= 0 or n_micro <= 0:
         return 0.0
     total = loss_buffer[:loss_count].sum()
-    return float(total.detach().cpu().tolist() / n_micro)
+    return float(total.detach().cpu()) / n_micro
 
 
 @dataclass
