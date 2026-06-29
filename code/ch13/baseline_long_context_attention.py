@@ -32,6 +32,7 @@ class BaselineLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBenchm
         self.v: Optional[torch.Tensor] = None
         self._mask: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._scale = 0.0
         self.register_workload_metadata(
             requests_per_iteration=1.0,
@@ -56,6 +57,14 @@ class BaselineLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBenchm
         pos = torch.arange(self.seq_len, device=self.device)
         mask = pos.unsqueeze(0) > pos.unsqueeze(1)
         self._mask = mask.view(1, 1, self.seq_len, self.seq_len)
+        self._verify_output_buffer = torch.empty(
+            self.batch_size,
+            self.num_heads,
+            min(128, self.seq_len),
+            self.head_dim,
+            device=self.device,
+            dtype=torch.float32,
+        )
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -71,11 +80,24 @@ class BaselineLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBenchm
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
-        if self.q is None or self.k is None or self.v is None or self.output is None:
+        if (
+            self.q is None
+            or self.k is None
+            or self.v is None
+            or self.output is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+            : self._verify_output_buffer.shape[2],
+            : self._verify_output_buffer.shape[3],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"q": self.q, "k": self.k, "v": self.v},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             precision_flags=PrecisionFlags(bf16=True, tf32=False),
             output_tolerance=(0.2, 2.0),
@@ -88,6 +110,7 @@ class BaselineLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBenchm
         self.v = None
         self._mask = None
         self.output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

@@ -16227,6 +16227,42 @@ def test_ch13_inference_precision_benchmarks_use_inference_mode() -> None:
         assert "torch.no_grad()" not in setup_section
 
 
+def test_ch13_attention_wrappers_sample_verification_outputs() -> None:
+    for filename in (
+        "baseline_attention_standard.py",
+        "optimized_attention_standard.py",
+        "baseline_long_context_attention.py",
+        "optimized_long_context_attention.py",
+    ):
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "min(128, self.seq_len)" in setup_section
+        assert "dtype=torch.float32" in setup_section
+        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.output.detach().float().clone()" not in capture_section
+        assert ".detach().float().clone()" not in benchmark_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch13_static_and_training_helpers_use_inference_mode() -> None:
     filenames = (
         "baseline_training_standard.py",
