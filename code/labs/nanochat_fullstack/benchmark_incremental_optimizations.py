@@ -92,9 +92,9 @@ class IncrementalBenchmark:
             end.synchronize()
             return start.elapsed_time(end) / 1000.0
 
-        t0 = time.time()
+        t0 = time.perf_counter()
         fn()
-        return time.time() - t0
+        return time.perf_counter() - t0
     
     def benchmark_inference(self, config_overrides: Dict[str, Any]) -> tuple:
         """Benchmark prefill + decode performance."""

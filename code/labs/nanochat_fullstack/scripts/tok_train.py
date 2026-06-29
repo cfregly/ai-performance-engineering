@@ -45,9 +45,9 @@ text_iter = text_iterator()
 
 # -----------------------------------------------------------------------------
 # Train the tokenizer
-t0 = time.time()
+t0 = time.perf_counter()
 tokenizer = RustBPETokenizer.train_from_iterator(text_iter, args.vocab_size)
-t1 = time.time()
+t1 = time.perf_counter()
 train_time = t1 - t0
 print(f"Training time: {train_time:.2f}s")
 

@@ -239,7 +239,7 @@ while True:
     # single training step
     # evaluate the gradient
     synchronize()
-    t0 = time.time()
+    t0 = time.perf_counter()
     for micro_step in range(grad_accum_steps):
         with autocast_ctx:
             loss = model(x, y)
@@ -260,7 +260,7 @@ while True:
         opt.step()
     model.zero_grad(set_to_none=True)
     synchronize()
-    t1 = time.time()
+    t1 = time.perf_counter()
     dt = t1 - t0
     # -------------------------------------------------------------------------
 

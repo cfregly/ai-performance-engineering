@@ -5136,6 +5136,65 @@ def test_remaining_lab_elapsed_timing_uses_monotonic_clock() -> None:
     assert "end_time = time.perf_counter()" in timing_helper
     assert "time.time()" not in timing_helper
 
+    base_train_source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "base_train.py"
+    ).read_text(encoding="utf-8")
+    base_train_step = base_train_source.split("# single training step", maxsplit=1)[1].split(
+        "# logging",
+        maxsplit=1,
+    )[0]
+    assert "t0 = time.perf_counter()" in base_train_step
+    assert "t1 = time.perf_counter()" in base_train_step
+    assert "time.time()" not in base_train_step
+
+    mid_train_source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "mid_train.py"
+    ).read_text(encoding="utf-8")
+    mid_train_step = mid_train_source.split("# single training step", maxsplit=1)[1].split(
+        "# State",
+        maxsplit=1,
+    )[0]
+    assert "t0 = time.perf_counter()" in mid_train_step
+    assert "t1 = time.perf_counter()" in mid_train_step
+    assert "time.time()" not in mid_train_step
+
+    tok_train_source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "tok_train.py"
+    ).read_text(encoding="utf-8")
+    tokenizer_train_section = tok_train_source.split("# Train the tokenizer", maxsplit=1)[1].split(
+        "# Save the tokenizer",
+        maxsplit=1,
+    )[0]
+    assert "t0 = time.perf_counter()" in tokenizer_train_section
+    assert "t1 = time.perf_counter()" in tokenizer_train_section
+    assert "time.time()" not in tokenizer_train_section
+
+    engine_source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "engine.py"
+    ).read_text(encoding="utf-8")
+    engine_main = engine_source.split("if __name__ == \"__main__\":", maxsplit=1)[1]
+    assert engine_main.count("time.perf_counter()") == 4
+    assert "time.time()" not in engine_main
+
+    repackage_source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "dev" / "repackage_data_reference.py"
+    ).read_text(encoding="utf-8")
+    repackage_loop = repackage_source.split("# Write to parquet files", maxsplit=1)[1]
+    assert "t0 = time.perf_counter()" in repackage_loop
+    assert "t1 = time.perf_counter()" in repackage_loop
+    assert "time.time()" not in repackage_loop
+
+    focused_sweep_source = (
+        REPO_ROOT / "labs" / "nvfp4_dual_gemm" / "focused_param_sweep.py"
+    ).read_text(encoding="utf-8")
+    focused_run_case = focused_sweep_source.split("def _run_candidate", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+    assert "t0 = time.perf_counter()" in focused_run_case
+    assert "time.perf_counter() - t0" in focused_run_case
+    assert "time.time() - t0" not in focused_run_case
+
 
 def test_lab_utility_timers_record_on_current_stream() -> None:
     timing_splits = {
@@ -8636,6 +8695,9 @@ def test_nanochat_incremental_benchmark_uses_cuda_event_timing() -> None:
     assert "start.record()" not in helper_section
     assert "end.record()" not in helper_section
     assert "start.elapsed_time(end) / 1000.0" in helper_section
+    assert "t0 = time.perf_counter()" in helper_section
+    assert "return time.perf_counter() - t0" in helper_section
+    assert "time.time()" not in helper_section
     assert "decode_token_steps = tuple(" in benchmark_section
     assert "decode_tokens[:, t:t + 1]" in benchmark_section
     assert "prefill_time_total = 0.0" in benchmark_section

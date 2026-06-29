@@ -1291,7 +1291,7 @@ if __name__ == "__main__":
     # generate the reference sequence using the model.generate() function
     generated_tokens = []
     torch.cuda.synchronize()
-    t0 = time.time()
+    t0 = time.perf_counter()
     stream = model.generate(prompt_tokens, **kwargs)
     with autocast_ctx:
         for token in stream:
@@ -1300,7 +1300,7 @@ if __name__ == "__main__":
             print(chunk, end="", flush=True)
     print()
     torch.cuda.synchronize()
-    t1 = time.time()
+    t1 = time.perf_counter()
     print(f"Reference time: {t1 - t0:.2f}s")
     reference_ids = generated_tokens
     # generate tokens with Engine
@@ -1308,7 +1308,7 @@ if __name__ == "__main__":
     engine = Engine(model, tokenizer)
     stream = engine.generate(prompt_tokens, num_samples=1, **kwargs) # note: runs in fp32
     torch.cuda.synchronize()
-    t0 = time.time()
+    t0 = time.perf_counter()
     with autocast_ctx:
         for token_column, _token_masks in stream:
             token = token_column[0] # only print out the first row
@@ -1317,7 +1317,7 @@ if __name__ == "__main__":
             print(chunk, end="", flush=True)
     print()
     torch.cuda.synchronize()
-    t1 = time.time()
+    t1 = time.perf_counter()
     print(f"Engine time: {t1 - t0:.2f}s")
     # compare the two sequences
     for i in range(len(reference_ids)):

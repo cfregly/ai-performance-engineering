@@ -143,7 +143,7 @@ def _run_candidate(
         ]
         for allow in isolation_allow_cmd_substring:
             cmd += ["--isolation-allow-cmd-substring", str(allow)]
-        t0 = time.time()
+        t0 = time.perf_counter()
         try:
             proc = subprocess.run(
                 cmd,
@@ -154,11 +154,11 @@ def _run_candidate(
         except subprocess.TimeoutExpired as exc:
             _cleanup_orphans()
             row["status"] = "timeout"
-            row["seconds"] = time.time() - t0
+            row["seconds"] = time.perf_counter() - t0
             row["stdout_tail"] = (exc.stdout or "")[-4000:]
             row["stderr_tail"] = (exc.stderr or "")[-4000:]
             return row
-        dt = time.time() - t0
+        dt = time.perf_counter() - t0
         row["seconds"] = dt
         if proc.returncode != 0:
             _cleanup_orphans()

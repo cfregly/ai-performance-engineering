@@ -45,7 +45,7 @@ shard_index = 0
 shard_characters = 0
 total_docs_processed = 0
 total_time_spent = 0
-t0 = time.time()
+t0 = time.perf_counter()
 for doc in ds:
     text = doc['text']
     shard_docs.append(text)
@@ -64,7 +64,7 @@ for doc in ds:
             compression_level=3,
             write_statistics=False, # not needed for text
         )
-        t1 = time.time()
+        t1 = time.perf_counter()
         dt = t1 - t0 # for this shard alone
         t0 = t1
         total_docs_processed += len(shard_docs)
