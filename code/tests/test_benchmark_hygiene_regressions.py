@@ -1213,6 +1213,8 @@ def test_ch15_placement_sim_batches_session_rng_samples() -> None:
     assert "decode_token_samples = torch.randint(" in simulate_section
     assert "(sessions,)" in simulate_section
     assert "for sess_idx, (prompt_tokens, decode_tokens) in enumerate(" in simulate_section
+    assert "ttft_total_ms += ttft" in simulate_section
+    assert "decode_total_ms += total_decode_ms" in simulate_section
     assert ".item()" not in simulate_section
 
     from ch15.placement_sim import PlacementConfig, PlacementSimulator
@@ -1238,6 +1240,8 @@ def test_ch15_placement_sim_batches_session_rng_samples() -> None:
     assert first.sessions == 8
     assert len(first.ttft_ms) == 8
     assert len(first.decode_ms) == 8
+    assert first.ttft_total_ms == sum(first.ttft_ms)
+    assert first.decode_total_ms == sum(first.decode_ms)
 
 
 def test_ch16_symmetric_memory_checksum_reduces_on_device() -> None:
@@ -10055,6 +10059,9 @@ def test_ch15_inference_placement_defers_output_tensor_outside_hot_loop() -> Non
     )[0]
 
     assert "torch.tensor(" not in benchmark_section
+    assert "total_ms = run.ttft_total_ms + run.decode_total_ms" in benchmark_section
+    assert "sum(run.ttft_ms)" not in benchmark_section
+    assert "sum(run.decode_ms)" not in benchmark_section
     assert "self._output_values = [" in benchmark_section
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 

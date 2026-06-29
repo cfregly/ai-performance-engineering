@@ -43,7 +43,7 @@ class _PlacementBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ttft_p95 = percentile(run.ttft_ms, 95)
         decode_p50 = percentile(run.decode_ms, 50)
         decode_p95 = percentile(run.decode_ms, 95)
-        total_ms = sum(run.ttft_ms) + sum(run.decode_ms)
+        total_ms = run.ttft_total_ms + run.decode_total_ms
         tput_tokens_s = run.tokens_processed / max(total_ms / 1000.0, 1e-6)
         self._total_tokens = int(run.tokens_processed)
         self._total_requests = int(run.sessions)
