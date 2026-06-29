@@ -24,9 +24,10 @@ import random
 import statistics
 import time
 import sys
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
 from labs.dynamic_router.router_round_robin import BaselineRouter, Request
 from labs.dynamic_router.router_policy import Router, SequenceInfo
@@ -65,8 +66,8 @@ class VirtualGPU:
     numa_node: Optional[int] = None
     host_kv_local_gb: float = 24.0
     host_kv_remote_gb: float = 4.0
-    prefill_q: List[PrefillTask] = field(default_factory=list)
-    decode_q: List[DecodeTask] = field(default_factory=list)
+    prefill_q: Deque[PrefillTask] = field(default_factory=deque)
+    decode_q: Deque[DecodeTask] = field(default_factory=deque)
     ttft_ema: float = 0.0
     tpot_ema: float = 0.0
     queue_depth_sum: float = 0.0
@@ -101,7 +102,7 @@ class VirtualGPU:
             task.remaining_time -= tick_s
             if task.remaining_time <= 0:
                 completed_prefills.append(task.req_id)
-                self.prefill_q.pop(0)
+                self.prefill_q.popleft()
 
         # Process decode tasks (simple FCFS, one-at-a-time)
         if self.decode_q:
@@ -111,7 +112,7 @@ class VirtualGPU:
             decode_events.append((task.req_id, tokens, not task.first_token_emitted))
             task.first_token_emitted = True
             if task.remaining_tokens <= 0:
-                self.decode_q.pop(0)
+                self.decode_q.popleft()
 
         return completed_prefills, decode_events
 
@@ -366,7 +367,7 @@ def simulate(
                 for idx, task in enumerate(src_gpu.decode_q):
                     if task.req_id == rid:
                         dst_gpu.decode_q.append(task)
-                        src_gpu.decode_q.pop(idx)
+                        del src_gpu.decode_q[idx]
                         break
 
         # 5) Clean up finished requests

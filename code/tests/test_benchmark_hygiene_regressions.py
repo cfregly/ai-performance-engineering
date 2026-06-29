@@ -6671,6 +6671,11 @@ def test_dynamic_router_driver_precomputes_active_request_sets() -> None:
     assert "any(t.req_id" not in migration_section
     assert "active_request_ids = {" in cleanup_section
     assert "if state.req.req_id not in active_request_ids" in cleanup_section
+    assert "from collections import deque" in source
+    assert "field(default_factory=deque)" in source
+    assert "self.prefill_q.popleft()" in source
+    assert "self.decode_q.popleft()" in source
+    assert ".pop(0)" not in source
     assert "gpu.prefill_q + gpu.decode_q" not in cleanup_section
     assert "not in [t.req_id" not in cleanup_section
 
