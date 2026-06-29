@@ -8514,8 +8514,11 @@ def test_nanochat_tok_train_batches_token_byte_stat_syncs() -> None:
     report_section = source.split("# Log to report", maxsplit=1)[1]
 
     assert "token_byte_stats = torch.stack((" in report_section
-    assert ")).tolist()" in report_section
-    assert "token_bytes_min, token_bytes_max, token_bytes_mean, token_bytes_std = token_byte_stats" in report_section
+    assert ")).tolist()" not in report_section
+    assert "token_bytes_min = float(token_byte_stats[0])" in report_section
+    assert "token_bytes_max = float(token_byte_stats[1])" in report_section
+    assert "token_bytes_mean = float(token_byte_stats[2])" in report_section
+    assert "token_bytes_std = float(token_byte_stats[3])" in report_section
     assert "token_bytes_nonzero.min().item()" not in report_section
     assert "token_bytes_nonzero.max().item()" not in report_section
     assert "token_bytes_nonzero.mean().item()" not in report_section

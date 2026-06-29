@@ -98,8 +98,11 @@ token_byte_stats = torch.stack((
     token_bytes_nonzero.max(),
     token_bytes_nonzero.mean(),
     token_bytes_nonzero.std(),
-)).tolist()
-token_bytes_min, token_bytes_max, token_bytes_mean, token_bytes_std = token_byte_stats
+))
+token_bytes_min = float(token_byte_stats[0])
+token_bytes_max = float(token_byte_stats[1])
+token_bytes_mean = float(token_byte_stats[2])
+token_bytes_std = float(token_byte_stats[3])
 get_report().log(section="Tokenizer training", data=[
     vars(args), # argparse command line arguments
     {"train_time": train_time},
