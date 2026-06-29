@@ -3972,6 +3972,9 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert "start_time = time.perf_counter()" in optimizer_process_section
     assert "total_time = time.perf_counter() - start_time" in optimizer_process_section
     assert "time.time()" not in optimizer_process_section
+    assert "selected_request_ids = {id(request) for request in batch}" in batcher_section
+    assert "self.request_queue = deque(" in batcher_section
+    assert "self.request_queue.remove(request)" not in batcher_section
     assert "route_count = min(len(self.routing_history), 100)" in cascader_section
     assert "prompt_length_total += route['prompt_length']" in cascader_section
     assert "self.routing_history[-100:]" not in cascader_section

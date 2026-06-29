@@ -185,9 +185,14 @@ class DynamicBatcher:
                 # Force include old requests
                 batch.append(request)
                 
-        # Remove processed requests from queue
-        for request in batch:
-            self.request_queue.remove(request)
+        # Remove processed requests from queue in one pass.
+        selected_request_ids = {id(request) for request in batch}
+        if selected_request_ids:
+            self.request_queue = deque(
+                request
+                for request in self.request_queue
+                if id(request) not in selected_request_ids
+            )
             
         if batch:
             token_total = 0
