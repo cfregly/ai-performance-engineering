@@ -9851,6 +9851,30 @@ def test_ch15_parallel_demos_use_inference_mode() -> None:
         assert "with torch.no_grad():" not in source
 
 
+def test_ch15_tensor_parallel_demo_avoids_hotpath_readback_and_implicit_events() -> None:
+    source = (REPO_ROOT / "ch15" / "tensor_parallel_demo.py").read_text(encoding="utf-8")
+    timed_section = source.split("start = torch.cuda.Event(enable_timing=True)", maxsplit=1)[1].split(
+        "per_iter_ms =",
+        maxsplit=1,
+    )[0]
+    reduce_section = source.split("worst = torch.tensor", maxsplit=1)[1].split(
+        "if rank == 0:",
+        maxsplit=1,
+    )[0]
+
+    assert "from core.benchmark.utils import scalar_tensor_to_float" in source
+    assert "current_stream = torch.cuda.current_stream(device)" in timed_section
+    assert "start.record(current_stream)" in timed_section
+    assert "end.record(current_stream)" in timed_section
+    assert "start.record()" not in timed_section
+    assert "end.record()" not in timed_section
+    assert "scalar_tensor_to_float((y_tp.float() - y_ref.float()).abs().max())" in source
+    assert "worst = torch.tensor(per_iter_ms, device=device, dtype=torch.float32)" in source
+    assert "worst_ms = scalar_tensor_to_float(worst)" in reduce_section
+    assert ".abs().max().item()" not in source
+    assert "worst.item()" not in source
+
+
 def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch17" / "baseline_dynamic_routing.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

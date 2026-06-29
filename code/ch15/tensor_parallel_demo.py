@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.common.device_utils import resolve_local_rank
 
 import torch
@@ -75,19 +76,20 @@ def main() -> int:
 
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        start.record()
+        current_stream = torch.cuda.current_stream(device)
+        start.record(current_stream)
         for _ in range(int(args.iters)):
             y_tp = tp_forward()
-        end.record()
+        end.record(current_stream)
         torch.cuda.synchronize(device)
         per_iter_ms = start.elapsed_time(end) / max(int(args.iters), 1)
 
         y_ref = x @ w_full.t()
-        max_diff = (y_tp.float() - y_ref.float()).abs().max().item()
+        max_diff = scalar_tensor_to_float((y_tp.float() - y_ref.float()).abs().max())
 
-    worst = torch.tensor([per_iter_ms], device=device, dtype=torch.float32)
+    worst = torch.tensor(per_iter_ms, device=device, dtype=torch.float32)
     dist.all_reduce(worst, op=dist.ReduceOp.MAX)
-    worst_ms = float(worst.item())
+    worst_ms = scalar_tensor_to_float(worst)
 
     if rank == 0:
         print(f"tensor_parallel_demo: world={world_size} -> {worst_ms:.3f} ms/iter, max_abs_diff={max_diff:.3e}")
