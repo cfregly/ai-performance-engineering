@@ -160,7 +160,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
                 # Preload first buffer on the copy stream and signal completion.
                 with torch.cuda.stream(self.copy_stream):
                     buffers[0].copy_(self.host_batches[0], non_blocking=True)
-                    copy_events[0].record()
+                    copy_events[0].record(self.copy_stream)
 
                 for i in range(self.micro_batches):
                     current_buffer = buffers[i % 2]
@@ -176,7 +176,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
                         next_event = copy_events[(i + 1) % 2]
                         with torch.cuda.stream(self.copy_stream):
                             next_buffer.copy_(self.host_batches[i + 1], non_blocking=True)
-                            next_event.record()
+                            next_event.record(self.copy_stream)
                 current = torch.cuda.current_stream(device=self.device)
                 current.wait_stream(self.compute_stream)
                 current.wait_stream(self.copy_stream)

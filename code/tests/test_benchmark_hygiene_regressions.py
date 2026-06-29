@@ -11971,6 +11971,10 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "with torch.no_grad():" not in benchmark_section
     assert "copy_events = self.copy_events" in benchmark_section
     assert "Double buffers or copy events not initialized" in benchmark_section
+    assert "copy_events[0].record(self.copy_stream)" in benchmark_section
+    assert "next_event.record(self.copy_stream)" in benchmark_section
+    assert "copy_events[0].record()" not in benchmark_section
+    assert "next_event.record()" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
 
