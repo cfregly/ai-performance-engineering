@@ -25,6 +25,7 @@ class BaselineDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cols = 1024
         self.input: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._module: Optional[ModuleType] = None
         tokens = self.rows * self.cols
@@ -80,6 +81,7 @@ class BaselineDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).to(self.device)
         self._module = load_baseline_kernel_module()
         self._output_buffer = torch.empty_like(self.input)
+        self._verify_output_buffer = torch.empty_like(self._output_buffer)
         self.output = None
         torch.cuda.synchronize(self.device)
 
@@ -96,9 +98,12 @@ class BaselineDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
+        if self.input is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.input.detach()},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=0,
             precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -109,6 +114,7 @@ class BaselineDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.empty_cache()
         self.input = None
         self._output_buffer = None
+        self._verify_output_buffer = None
         self.output = None
         self._module = None
 
@@ -141,4 +147,3 @@ class BaselineDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineDecodeKernelBenchmark()
-

@@ -6044,11 +6044,23 @@ def test_moe_cuda_decode_kernel_wrappers_cache_nvtx_outside_hot_loop() -> None:
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
 
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
         assert "get_config()" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert "enable=self._enable_nvtx" in benchmark_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(self._output_buffer)" in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.output.detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> None:

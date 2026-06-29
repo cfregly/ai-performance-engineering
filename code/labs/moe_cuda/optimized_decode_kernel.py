@@ -32,6 +32,7 @@ class OptimizedDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cols = 1024
         self.input: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._module: Optional[ModuleType] = None
         tokens = self.rows * self.cols
@@ -98,6 +99,7 @@ class OptimizedDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.float32,
             device=self.device,
         ).contiguous()
+        self._verify_output_buffer = torch.empty_like(self._output_buffer)
         self.output = None
         
         torch.cuda.synchronize(self.device)
@@ -117,9 +119,12 @@ class OptimizedDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
+        if self.input is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.input.detach()},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=0,
             precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -130,6 +135,7 @@ class OptimizedDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.empty_cache()
         self.input = None
         self._output_buffer = None
+        self._verify_output_buffer = None
         self.output = None
         self._module = None
 
