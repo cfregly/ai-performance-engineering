@@ -7091,10 +7091,19 @@ def test_ch15_sdpa_attention_reuses_kv_concat_buffers() -> None:
         "class PrefillKernel",
         maxsplit=1,
     )[0]
+    forward_section = attention_section.split("def forward", maxsplit=1)[1]
+    decode_worker_section = source.split("class DecodeWorker", maxsplit=1)[1].split(
+        "class MoERouter",
+        maxsplit=1,
+    )[0]
+    generate_next_section = decode_worker_section.split("def generate_next_token", maxsplit=1)[1]
 
     assert "self._k_cat_buffer: Optional[torch.Tensor] = None" in attention_section
     assert "def _concat_kv_cache(" in attention_section
     assert "k, v = self._concat_kv_cache(past_k, past_v, k, v)" in attention_section
+    assert "ScaledDotProductAttentionLayer expects inputs in compute_dtype" in forward_section
+    assert "x = x.to(dtype=self.compute_dtype)" not in forward_section
+    assert "token_embed = token_embed.to(device=self.device, dtype=self.compute_dtype)" not in generate_next_section
     assert "torch.cat([past_k, k]" not in attention_section
     assert "torch.cat([past_v, v]" not in attention_section
 

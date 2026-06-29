@@ -266,7 +266,8 @@ class ScaledDotProductAttentionLayer(nn.Module):
         kv_state: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size, seq_len, _ = x.shape
-        x = x.to(dtype=self.compute_dtype)
+        if x.dtype != self.compute_dtype:
+            raise RuntimeError("ScaledDotProductAttentionLayer expects inputs in compute_dtype")
 
         q = self.q_proj(x)
         k = self.k_proj(x)
@@ -656,7 +657,6 @@ class DecodeWorker:
             return "<EOS>"
 
         token_embed = self.token_embedding(self._last_token_id).unsqueeze(1)
-        token_embed = token_embed.to(device=self.device, dtype=self.compute_dtype)
 
         kernel = self.decode_kernel_compiled or self.decode_kernel
         logits, key_states, value_states = kernel(token_embed, self.kv_cache)
