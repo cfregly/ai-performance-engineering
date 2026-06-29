@@ -335,6 +335,7 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
 
     for relative in torchcomms_files:
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        torchcomms_forward = torchcomms_common.split("def forward", maxsplit=1)[1]
         worker_section = source.split("def _run_worker", maxsplit=1)[1].split(
             "def main",
             maxsplit=1,
@@ -377,10 +378,17 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
             assert "nn.Sequential(" not in build_block_section
             assert "self._fc1_buffer: Optional[torch.Tensor] = None" in torchcomms_common
             assert "self._fc2_buffer: Optional[torch.Tensor] = None" in torchcomms_common
-            assert "if torch.is_grad_enabled():" in torchcomms_common
-            assert "torch.mm(x, self.fc1.weight.t(), out=fc1_out)" in torchcomms_common
-            assert "F.gelu(fc1_out, out=fc1_out)" in torchcomms_common
-            assert "torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)" in torchcomms_common
+            assert "self._fc1_weight_t: Optional[torch.Tensor] = None" in torchcomms_common
+            assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in torchcomms_common
+            assert "def cache_weight_views(self) -> None:" in torchcomms_common
+            assert "self._fc1_weight_t = self.fc1.weight.t()" in torchcomms_common
+            assert "self._fc2_weight_t = self.fc2.weight.t()" in torchcomms_common
+            assert "if torch.is_grad_enabled():" in torchcomms_forward
+            assert "torch.mm(x, self._fc1_weight_t, out=fc1_out)" in torchcomms_forward
+            assert "F.gelu(fc1_out, out=fc1_out)" in torchcomms_forward
+            assert "torch.mm(fc1_out, self._fc2_weight_t, out=fc2_out)" in torchcomms_forward
+            assert "self.fc1.weight.t()" not in torchcomms_forward
+            assert "self.fc2.weight.t()" not in torchcomms_forward
             assert ".add_(aux_out)" in worker_section
             assert "comm_out.add_(aux_out)" in benchmark_section
             assert "self._output = comm_out" in benchmark_section
@@ -1911,6 +1919,8 @@ def test_ch05_baseline_vectorization_reuses_chunk_views() -> None:
 def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
     source = (REPO_ROOT / "ch05" / "optimized_ai.py").read_text(encoding="utf-8")
     helper_source = (REPO_ROOT / "ch05" / "ai_common.py").read_text(encoding="utf-8")
+    buffered_section = helper_source.split("class BufferedTinyBlock", maxsplit=1)[1]
+    buffered_forward = buffered_section.split("def forward", maxsplit=1)[1]
     enqueue_section = source.split("def _enqueue_copy", maxsplit=1)[1].split(
         "def _wait_for_copy",
         maxsplit=1,
@@ -1927,10 +1937,17 @@ def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
     assert "last_input = current_input" in benchmark_section
     assert "self.block = BufferedTinyBlock(self.hidden).to(self.device).eval()" in source
     assert "class BufferedTinyBlock(nn.Module):" in helper_source
-    assert "if torch.is_grad_enabled():" in helper_source
-    assert "torch.matmul(x, self.linear1.weight.t(), out=hidden)" in helper_source
-    assert "torch.relu_(hidden)" in helper_source
-    assert "torch.matmul(hidden, self.linear2.weight.t(), out=output)" in helper_source
+    assert "self._linear1_weight_t: torch.Tensor | None = None" in buffered_section
+    assert "self._linear2_weight_t: torch.Tensor | None = None" in buffered_section
+    assert "def cache_weight_views(self) -> None:" in buffered_section
+    assert "self._linear1_weight_t = self.linear1.weight.t()" in buffered_section
+    assert "self._linear2_weight_t = self.linear2.weight.t()" in buffered_section
+    assert "if torch.is_grad_enabled():" in buffered_forward
+    assert "torch.matmul(x, self._linear1_weight_t, out=hidden)" in buffered_forward
+    assert "torch.relu_(hidden)" in buffered_forward
+    assert "torch.matmul(hidden, self._linear2_weight_t, out=output)" in buffered_forward
+    assert "self.linear1.weight.t()" not in buffered_forward
+    assert "self.linear2.weight.t()" not in buffered_forward
 
 
 def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
@@ -2328,9 +2345,17 @@ def test_ch04_eval_reduction_and_disagg_paths_use_inference_mode() -> None:
 
 def test_ch04_optimized_disaggregated_normalizes_allreduce_in_place() -> None:
     common_source = (REPO_ROOT / "ch04" / "reduction_common.py").read_text(encoding="utf-8")
+    common_forward = common_source.split("def forward", maxsplit=1)[1]
     assert "prefix = tuple(x.shape[:-1])" in common_source
-    assert "torch.matmul(x, self.fc1.weight.t(), out=fc1_out)" in common_source
-    assert "torch.matmul(fc1_out, self.fc2.weight.t(), out=fc2_out)" in common_source
+    assert "self._fc1_weight_t: Optional[torch.Tensor] = None" in common_source
+    assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in common_source
+    assert "def cache_weight_views(self) -> None:" in common_source
+    assert "self._fc1_weight_t = self.fc1.weight.t()" in common_source
+    assert "self._fc2_weight_t = self.fc2.weight.t()" in common_source
+    assert "torch.matmul(x, self._fc1_weight_t, out=fc1_out)" in common_forward
+    assert "torch.matmul(fc1_out, self._fc2_weight_t, out=fc2_out)" in common_forward
+    assert "self.fc1.weight.t()" not in common_forward
+    assert "self.fc2.weight.t()" not in common_forward
 
     for relative in (
         "ch04/optimized_disaggregated.py",
@@ -2424,6 +2449,7 @@ def test_ch06_quantization_ilp_reuses_output_buffers() -> None:
 def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_nccl.py").read_text(encoding="utf-8")
     common_source = (REPO_ROOT / "ch04" / "reduction_common.py").read_text(encoding="utf-8")
+    common_forward = common_source.split("def forward", maxsplit=1)[1]
     setup_section = source.split("def setup", maxsplit=1)[1].split(
         "def benchmark_fn",
         maxsplit=1,
@@ -2457,9 +2483,14 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     assert "sum(p.numel()" not in capture_section
     assert "self._fc1_buffer: Optional[torch.Tensor] = None" in common_source
     assert "self._fc2_buffer: Optional[torch.Tensor] = None" in common_source
-    assert "if torch.is_grad_enabled():" in common_source
-    assert "torch.matmul(x, self.fc1.weight.t(), out=fc1_out)" in common_source
-    assert "torch.matmul(fc1_out, self.fc2.weight.t(), out=fc2_out)" in common_source
+    assert "self._fc1_weight_t: Optional[torch.Tensor] = None" in common_source
+    assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in common_source
+    assert "def cache_weight_views(self) -> None:" in common_source
+    assert "if torch.is_grad_enabled():" in common_forward
+    assert "torch.matmul(x, self._fc1_weight_t, out=fc1_out)" in common_forward
+    assert "torch.matmul(fc1_out, self._fc2_weight_t, out=fc2_out)" in common_forward
+    assert "self.fc1.weight.t()" not in common_forward
+    assert "self.fc2.weight.t()" not in common_forward
 
 
 def test_ch01_fp16_and_ch04_nvls_cache_nvtx_enablement() -> None:

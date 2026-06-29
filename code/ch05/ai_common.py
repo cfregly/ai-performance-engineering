@@ -29,6 +29,12 @@ class BufferedTinyBlock(nn.Module):
         self.linear2 = nn.Linear(hidden_dim * 2, hidden_dim)
         self._hidden_buffer: torch.Tensor | None = None
         self._output_buffer: torch.Tensor | None = None
+        self._linear1_weight_t: torch.Tensor | None = None
+        self._linear2_weight_t: torch.Tensor | None = None
+
+    def cache_weight_views(self) -> None:
+        self._linear1_weight_t = self.linear1.weight.t()
+        self._linear2_weight_t = self.linear2.weight.t()
 
     def _ensure_buffers(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         prefix = tuple(x.shape[:-1])
@@ -54,12 +60,14 @@ class BufferedTinyBlock(nn.Module):
         if torch.is_grad_enabled():
             return self.linear2(self.relu(self.linear1(x)))
 
+        if self._linear1_weight_t is None or self._linear2_weight_t is None:
+            self.cache_weight_views()
         hidden, output = self._ensure_buffers(x)
-        torch.matmul(x, self.linear1.weight.t(), out=hidden)
+        torch.matmul(x, self._linear1_weight_t, out=hidden)
         if self.linear1.bias is not None:
             hidden.add_(self.linear1.bias)
         torch.relu_(hidden)
-        torch.matmul(hidden, self.linear2.weight.t(), out=output)
+        torch.matmul(hidden, self._linear2_weight_t, out=output)
         if self.linear2.bias is not None:
             output.add_(self.linear2.bias)
         return output
