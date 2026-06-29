@@ -2000,6 +2000,8 @@ def test_custom_vs_cublas_timing_helpers_use_cuda_events() -> None:
     assert "end_event.record()" not in autotune_section
     assert "end_event.synchronize()" in autotune_section
     assert "times.append(start_event.elapsed_time(end_event))" in autotune_section
+    assert "heapq.nsmallest(len(times) // 2 + 1, times)[-1]" in autotune_section
+    assert "times.sort()" not in autotune_section
     assert "time.perf_counter()" not in autotune_section
 
 
@@ -4358,13 +4360,18 @@ def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:
         "def _benchmark_cuda_callable", maxsplit=1
     )[1].split("def _build_benchmark_callable", maxsplit=1)[0]
 
-    assert "import statistics" in source
+    assert "import statistics" not in source
     assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "for _ in range(iterations):\n        start = torch.cuda.Event" not in timing_section
     assert "end.synchronize()" in timing_section
     assert "sorted_times = sorted(times_ms)" in timing_section
+    assert "mean_ms = total_ms / count" in timing_section
+    assert "variance = (total_sq_ms - (total_ms * total_ms / count)) / (count - 1)" in timing_section
     assert "torch.tensor(times_ms" not in timing_section
-    assert "std_ms=statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0" in timing_section
+    assert "statistics.stdev(times_ms)" not in timing_section
+    assert "sum(times_ms)" not in timing_section
+    assert "min(times_ms)" not in timing_section
+    assert "max(times_ms)" not in timing_section
     assert "import statistics" not in microbench_source
     assert "def _timing_stats_from_samples" in microbench_source
     assert "return _timing_stats_from_samples(times_ms)" in microbench_timing_section

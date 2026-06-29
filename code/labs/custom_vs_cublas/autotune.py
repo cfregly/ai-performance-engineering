@@ -12,9 +12,10 @@ How it works:
 4. Adapts to different matrix sizes (small vs large may prefer different kernels)
 """
 
-from typing import Dict, Callable
+import heapq
 import json
 import os
+from typing import Callable, Dict
 
 import torch
 
@@ -79,9 +80,8 @@ def _benchmark_kernel(fn: Callable, A: torch.Tensor, B: torch.Tensor,
         end_event.synchronize()
         times.append(start_event.elapsed_time(end_event))
 
-    # Return median
-    times.sort()
-    return times[len(times) // 2]
+    # Return the same upper-median sample without fully sorting every timing.
+    return heapq.nsmallest(len(times) // 2 + 1, times)[-1]
 
 
 # Available kernels with names (in order of progressive optimization)

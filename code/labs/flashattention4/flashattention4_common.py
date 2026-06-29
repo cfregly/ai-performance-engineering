@@ -13,7 +13,6 @@ import inspect
 import json
 import math
 import re
-import statistics
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -610,19 +609,37 @@ def measure_flashattention4_latency(
         end.synchronize()
         times_ms.append(float(start.elapsed_time(end)))
 
+    count = len(times_ms)
+    total_ms = 0.0
+    total_sq_ms = 0.0
+    min_ms = float("inf")
+    max_ms = float("-inf")
+    for value in times_ms:
+        total_ms += value
+        total_sq_ms += value * value
+        min_ms = min(min_ms, value)
+        max_ms = max(max_ms, value)
+
     sorted_times = sorted(times_ms)
-    mid = len(times_ms) // 2
-    if len(times_ms) % 2 == 1:
+    mid = count // 2
+    if count % 2 == 1:
         median_ms = sorted_times[mid]
     else:
         median_ms = (sorted_times[mid - 1] + sorted_times[mid]) / 2.0
 
+    mean_ms = total_ms / count
+    if count > 1:
+        variance = (total_sq_ms - (total_ms * total_ms / count)) / (count - 1)
+        std_ms = variance**0.5 if variance > 0.0 else 0.0
+    else:
+        std_ms = 0.0
+
     return FlashAttention4Timing(
-        mean_ms=sum(times_ms) / len(times_ms),
+        mean_ms=mean_ms,
         median_ms=median_ms,
-        min_ms=min(times_ms),
-        max_ms=max(times_ms),
-        std_ms=statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0,
+        min_ms=min_ms,
+        max_ms=max_ms,
+        std_ms=std_ms,
     )
 
 
