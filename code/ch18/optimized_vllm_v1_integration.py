@@ -347,6 +347,8 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output: Optional[torch.Tensor] = None
         self._last_token_ids: Optional[torch.Tensor] = None
         self._token_id_buffer: Optional[torch.Tensor] = None
+        self._batch_size_tensor: Optional[torch.Tensor] = None
+        self._max_tokens_tensor: Optional[torch.Tensor] = None
         self._verification_payload = None
         self.register_workload_metadata(requests_per_iteration=8.0)
 
@@ -356,6 +358,10 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output = None
         self._last_token_ids = None
         self._token_id_buffer = None
+        self._batch_size_tensor = torch.empty((), dtype=torch.int64)
+        self._max_tokens_tensor = torch.empty((), dtype=torch.int64)
+        self._batch_size_tensor.fill_(int(self.runner.batch_size))
+        self._max_tokens_tensor.fill_(int(self.runner.max_tokens))
 
     def _materialize_token_ids(self, token_ids: Sequence[int]) -> torch.Tensor:
         num_ids = len(token_ids)
@@ -378,10 +384,12 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
     def capture_verification_payload(self) -> None:
         if self._last_token_ids is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if self._batch_size_tensor is None or self._max_tokens_tensor is None:
+            raise RuntimeError("setup() must initialize verification metadata tensors")
         self._set_verification_payload(
             inputs={
-                "batch_size": torch.tensor(self.runner.batch_size),
-                "max_tokens": torch.tensor(self.runner.max_tokens),
+                "batch_size": self._batch_size_tensor,
+                "max_tokens": self._max_tokens_tensor,
             },
             output=self.output,
             batch_size=self.runner.batch_size,
@@ -392,6 +400,8 @@ class OptimizedVLLMV1IntegrationBenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def teardown(self) -> None:
         self.runner.cleanup()
+        self._batch_size_tensor = None
+        self._max_tokens_tensor = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

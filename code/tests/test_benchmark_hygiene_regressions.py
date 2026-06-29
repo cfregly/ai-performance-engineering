@@ -7558,6 +7558,14 @@ def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
         )
 
         assert "self._token_id_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._batch_size_tensor: Optional[torch.Tensor] = None" in source
+        assert "self._max_tokens_tensor: Optional[torch.Tensor] = None" in source
+        assert "self._batch_size_tensor = torch.empty((), dtype=torch.int64)" in source
+        assert "self._max_tokens_tensor = torch.empty((), dtype=torch.int64)" in source
+        assert '"batch_size": self._batch_size_tensor' in source
+        assert '"max_tokens": self._max_tokens_tensor' in source
+        assert "torch.tensor(self.runner.batch_size)" not in source
+        assert "torch.tensor(self.runner.max_tokens)" not in source
         assert "def _materialize_token_ids" in source
         assert "torch.as_tensor(token_ids" not in source
         assert "self._result_payload" in source
