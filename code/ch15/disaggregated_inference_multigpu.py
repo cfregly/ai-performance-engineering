@@ -709,12 +709,7 @@ class MoERouter:
         
         for token in tokens:
             expert_scores = self._get_expert_scores(token)
-            
-            top_experts = sorted(
-                range(self.num_experts),
-                key=lambda x: expert_scores[x],
-                reverse=True
-            )[:self.top_k]
+            top_experts = self._rank_top_experts(expert_scores)
             
             routed = False
             for expert_id in top_experts:
@@ -733,10 +728,23 @@ class MoERouter:
                         
         return expert_assignments
         
-    def _get_expert_scores(self, token: int) -> List[float]:
+    def _get_expert_scores(self, token: int) -> np.ndarray:
         """Get expert preference scores for a token."""
-        scores = np.random.random(self.num_experts)
-        return scores.tolist()
+        return np.random.random(self.num_experts)
+
+    def _rank_top_experts(self, expert_scores: np.ndarray) -> List[int]:
+        """Return expert ids sorted by descending score without a full Python sort."""
+        expert_count = int(expert_scores.shape[0])
+        ranked_count = min(max(int(self.top_k), 0), expert_count)
+        if ranked_count == 0:
+            return []
+        if ranked_count == expert_count:
+            ranked = np.argsort(expert_scores)[::-1]
+        else:
+            split_index = expert_count - ranked_count
+            candidate_indices = np.argpartition(expert_scores, split_index)[split_index:]
+            ranked = candidate_indices[np.argsort(expert_scores[candidate_indices])[::-1]]
+        return [int(expert_id) for expert_id in ranked]
         
     def get_load_balance_metrics(self) -> Dict:
         """Get load balancing metrics."""

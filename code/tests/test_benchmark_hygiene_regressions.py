@@ -7466,6 +7466,24 @@ def test_ch15_decode_worker_reuses_sampling_buffers() -> None:
     assert "next_token.item()" not in generate_section
 
 
+def test_ch15_moe_router_ranks_topk_without_score_list_materialization() -> None:
+    source = (REPO_ROOT / "ch15" / "disaggregated_inference_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    router_section = source.split("class MoERouter", maxsplit=1)[1].split(
+        "class SpeculativeDecoder",
+        maxsplit=1,
+    )[0]
+
+    assert "top_experts = self._rank_top_experts(expert_scores)" in router_section
+    assert "def _rank_top_experts(self, expert_scores: np.ndarray) -> List[int]:" in router_section
+    assert "candidate_indices = np.argpartition(expert_scores, split_index)[split_index:]" in router_section
+    assert "expert_scores[candidate_indices]" in router_section
+    assert "return np.random.random(self.num_experts)" in router_section
+    assert "scores.tolist()" not in router_section
+    assert "sorted(" not in router_section
+
+
 def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     source = (REPO_ROOT / "ch15" / "moe_inference_common.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
