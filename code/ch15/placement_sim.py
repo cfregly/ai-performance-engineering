@@ -314,15 +314,26 @@ class PlacementSimulator:
         return (bytes_total * 8.0 / 1e9) / bw_gbps * 1000.0
 
 
-def percentile(data: List[float], pct: float) -> float:
-    """Lightweight percentile helper that tolerates empty lists."""
-    if not data:
-        return 0.0
+def _percentile_from_ordered(xs: List[float], pct: float) -> float:
     assert 0.0 <= pct <= 100.0
-    xs = sorted(data)
     k = (len(xs) - 1) * (pct / 100.0)
     lower = math.floor(k)
     upper = math.ceil(k)
     if lower == upper:
         return xs[int(k)]
     return xs[lower] * (upper - k) + xs[upper] * (k - lower)
+
+
+def percentile(data: List[float], pct: float) -> float:
+    """Lightweight percentile helper that tolerates empty lists."""
+    if not data:
+        return 0.0
+    return _percentile_from_ordered(sorted(data), pct)
+
+
+def percentiles(data: List[float], pcts: Tuple[float, ...]) -> Tuple[float, ...]:
+    """Compute several percentiles after sorting the input once."""
+    if not data:
+        return tuple(0.0 for _ in pcts)
+    xs = sorted(data)
+    return tuple(_percentile_from_ordered(xs, pct) for pct in pcts)

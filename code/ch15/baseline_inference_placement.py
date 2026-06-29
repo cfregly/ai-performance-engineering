@@ -9,7 +9,7 @@ import torch
 from ch15.placement_sim import (  # noqa: E402
     PlacementConfig,
     PlacementSimulator,
-    percentile,
+    percentiles,
 )
 from core.benchmark.verification_mixin import VerificationPayloadMixin  # noqa: E402
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig  # noqa: E402
@@ -39,10 +39,8 @@ class _PlacementBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         run = self.simulator.simulate(self.cfg, sessions=self.sessions, seed=17)
-        ttft_p50 = percentile(run.ttft_ms, 50)
-        ttft_p95 = percentile(run.ttft_ms, 95)
-        decode_p50 = percentile(run.decode_ms, 50)
-        decode_p95 = percentile(run.decode_ms, 95)
+        ttft_p50, ttft_p95 = percentiles(run.ttft_ms, (50, 95))
+        decode_p50, decode_p95 = percentiles(run.decode_ms, (50, 95))
         total_ms = run.ttft_total_ms + run.decode_total_ms
         tput_tokens_s = run.tokens_processed / max(total_ms / 1000.0, 1e-6)
         self._total_tokens = int(run.tokens_processed)

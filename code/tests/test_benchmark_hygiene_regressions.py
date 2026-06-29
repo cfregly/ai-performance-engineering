@@ -1387,6 +1387,7 @@ def test_ch15_placement_sim_batches_session_rng_samples() -> None:
         "def _prefill_latency_ms",
         maxsplit=1,
     )[0]
+    percentiles_section = source.split("def percentiles", maxsplit=1)[1]
 
     assert "prompt_token_samples = torch.randint(" in simulate_section
     assert "decode_token_samples = torch.randint(" in simulate_section
@@ -1395,6 +1396,9 @@ def test_ch15_placement_sim_batches_session_rng_samples() -> None:
     assert "ttft_total_ms += ttft" in simulate_section
     assert "decode_total_ms += total_decode_ms" in simulate_section
     assert ".item()" not in simulate_section
+    assert "def _percentile_from_ordered" in source
+    assert "xs = sorted(data)" in percentiles_section
+    assert "return tuple(_percentile_from_ordered(xs, pct) for pct in pcts)" in percentiles_section
 
     from ch15.placement_sim import PlacementConfig, PlacementSimulator
 
@@ -12479,6 +12483,11 @@ def test_ch15_inference_placement_defers_output_tensor_outside_hot_loop() -> Non
     )[0]
 
     assert "torch.tensor(" not in benchmark_section
+    assert "percentiles," in source
+    assert "ttft_p50, ttft_p95 = percentiles(run.ttft_ms, (50, 95))" in benchmark_section
+    assert "decode_p50, decode_p95 = percentiles(run.decode_ms, (50, 95))" in benchmark_section
+    assert "percentile(run.ttft_ms" not in benchmark_section
+    assert "percentile(run.decode_ms" not in benchmark_section
     assert "total_ms = run.ttft_total_ms + run.decode_total_ms" in benchmark_section
     assert "sum(run.ttft_ms)" not in benchmark_section
     assert "sum(run.decode_ms)" not in benchmark_section
