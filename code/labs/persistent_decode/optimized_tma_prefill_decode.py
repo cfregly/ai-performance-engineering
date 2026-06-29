@@ -299,7 +299,11 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.graph_mode = graph_mode or GraphMode.from_str(os.getenv("PD_GRAPH_MODE"))
         self.max_capture_seq = max_capture_seq or int(os.getenv("PD_MAX_CAPTURE_SEQ", self.seq_len))
         self._history: dict[str, list[float]] = {}
-        self._pending_iteration: dict[str, object] | None = None
+        self._pending_graph_path: str | None = None
+        self._pending_start: torch.cuda.Event | None = None
+        self._pending_prefill_end: torch.cuda.Event | None = None
+        self._pending_decode_start: torch.cuda.Event | None = None
+        self._pending_decode_end: torch.cuda.Event | None = None
         self._tma_ext: object | None = None
         self._full_events: dict[str, torch.cuda.Event] = {}
         self._piecewise_events: dict[str, torch.cuda.Event] = {}
@@ -449,13 +453,11 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
                     self.full_graph.replay()
                     end.record(self.decode_stream)
             current_stream.wait_stream(self.decode_stream)
-            self._pending_iteration = {
-                "path": "full_graph",
-                "start": start,
-                "prefill_end": end,
-                "decode_start": start,
-                "decode_end": end,
-            }
+            self._pending_graph_path = "full_graph"
+            self._pending_start = start
+            self._pending_prefill_end = end
+            self._pending_decode_start = start
+            self._pending_decode_end = end
             if self.inputs is not None:
                 self.output = self._output_view
             else:
@@ -481,28 +483,30 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
                 current_stream.wait_event(evt)
         end_prefill.record(current_stream)
         current_stream.wait_stream(self.decode_stream)
-        self._pending_iteration = {
-            "path": "piecewise_graph",
-            "start": start_prefill,
-            "prefill_end": end_prefill,
-            "decode_start": start_decode,
-            "decode_end": end_decode,
-        }
+        self._pending_graph_path = "piecewise_graph"
+        self._pending_start = start_prefill
+        self._pending_prefill_end = end_prefill
+        self._pending_decode_start = start_decode
+        self._pending_decode_end = end_decode
         if self.inputs is not None:
             self.output = self._output_view
         else:
             raise RuntimeError("Inputs not initialized for verification")
 
     def finalize_iteration_metrics(self) -> dict[str, list[float]] | None:
-        if not self._pending_iteration:
+        start = self._pending_start
+        prefill_end = self._pending_prefill_end
+        decode_start = self._pending_decode_start
+        decode_end = self._pending_decode_end
+        graph_path = self._pending_graph_path
+        if start is None or prefill_end is None or decode_start is None or decode_end is None or graph_path is None:
             return None
 
-        start = self._pending_iteration["start"]
-        prefill_end = self._pending_iteration["prefill_end"]
-        decode_start = self._pending_iteration["decode_start"]
-        decode_end = self._pending_iteration["decode_end"]
-        graph_path = str(self._pending_iteration["path"])
-        self._pending_iteration = None
+        self._pending_graph_path = None
+        self._pending_start = None
+        self._pending_prefill_end = None
+        self._pending_decode_start = None
+        self._pending_decode_end = None
 
         ttft_ms = float(start.elapsed_time(prefill_end))
         decode_ms = float(decode_start.elapsed_time(decode_end))
@@ -549,6 +553,11 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._output_view = None
         self._prefill_events = []
         self._prefill_work = []
+        self._pending_graph_path = None
+        self._pending_start = None
+        self._pending_prefill_end = None
+        self._pending_decode_start = None
+        self._pending_decode_end = None
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(

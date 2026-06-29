@@ -8189,10 +8189,18 @@ def test_persistent_decode_graphs_reuses_timing_events_outside_hot_loop() -> Non
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def finalize_iteration_metrics", maxsplit=1
     )[0]
+    finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
 
     assert "torch.cuda.Event(enable_timing=True)" in setup_section
     assert "self._full_events = {" in setup_section
     assert "self._piecewise_events = {" in setup_section
+    assert "self._pending_graph_path: str | None = None" in setup_section
+    assert "self._pending_start: torch.cuda.Event | None = None" in setup_section
+    assert "self._pending_prefill_end: torch.cuda.Event | None = None" in setup_section
+    assert "self._pending_decode_start: torch.cuda.Event | None = None" in setup_section
+    assert "self._pending_decode_end: torch.cuda.Event | None = None" in setup_section
     assert "torch.cuda.Event(" not in piecewise_capture_section
     assert "torch.cuda.Event(" not in full_capture_section
     assert "torch.cuda.Event(" not in benchmark_section
@@ -8212,6 +8220,14 @@ def test_persistent_decode_graphs_reuses_timing_events_outside_hot_loop() -> Non
     assert "self.inputs.out.zero_()" not in full_capture_section
     assert 'start = self._full_events["start"]' in benchmark_section
     assert 'start_prefill = self._piecewise_events["start_prefill"]' in benchmark_section
+    assert 'self._pending_graph_path = "full_graph"' in benchmark_section
+    assert 'self._pending_graph_path = "piecewise_graph"' in benchmark_section
+    assert "self._pending_start = start" in benchmark_section
+    assert "self._pending_start = start_prefill" in benchmark_section
+    assert "self._pending_iteration = {" not in benchmark_section
+    assert "self._pending_iteration[" not in finalize_section
+    assert "start = self._pending_start" in finalize_section
+    assert "self._pending_start = None" in finalize_section
 
 
 def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
@@ -8227,6 +8243,14 @@ def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
             "def finalize_iteration_metrics" if filename == "optimized_tma_prefill_decode.py" else "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        finalize_section = (
+            source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+                "def capture_verification_payload",
+                maxsplit=1,
+            )[0]
+            if filename == "optimized_tma_prefill_decode.py"
+            else ""
+        )
 
         assert "torch.cuda.Event(" not in benchmark_section
         assert "current_stream = torch.cuda.current_stream()" in benchmark_section
@@ -8235,6 +8259,8 @@ def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
         assert "torch.cuda.current_stream().wait_event(evt)" not in benchmark_section
         if filename == "optimized_tma_prefill_decode.py":
             assert "torch.cuda.Event(enable_timing=True)" in setup_section
+            assert "self._pending_graph_path: str | None = None" in setup_section
+            assert "self._pending_start: torch.cuda.Event | None = None" in setup_section
             assert 'start = self._full_events["start"]' in benchmark_section
             assert 'start_prefill = self._piecewise_events["start_prefill"]' in benchmark_section
             assert 'start_decode = self._piecewise_events["start_decode"]' in benchmark_section
@@ -8243,6 +8269,14 @@ def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
             assert "start_prefill.record()" not in benchmark_section
             assert "end_prefill.record()" not in benchmark_section
             assert "current_stream.wait_event(evt)" in benchmark_section
+            assert 'self._pending_graph_path = "full_graph"' in benchmark_section
+            assert 'self._pending_graph_path = "piecewise_graph"' in benchmark_section
+            assert "self._pending_start = start" in benchmark_section
+            assert "self._pending_start = start_prefill" in benchmark_section
+            assert "self._pending_iteration = {" not in benchmark_section
+            assert "self._pending_iteration[" not in finalize_section
+            assert "start = self._pending_start" in finalize_section
+            assert "self._pending_decode_end = None" in finalize_section
 
 
 def test_persistent_decode_tma_precomputes_prefill_work_outside_hot_loop() -> None:
