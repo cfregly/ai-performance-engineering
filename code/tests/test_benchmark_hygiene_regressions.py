@@ -14037,9 +14037,32 @@ def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:
 
 
 def test_ch13_optimized_autograd_uses_output_buffer_directly() -> None:
+    baseline_source = (REPO_ROOT / "ch13" / "baseline_autograd_standard.py").read_text(
+        encoding="utf-8"
+    )
     source = (REPO_ROOT / "ch13" / "optimized_autograd_standard.py").read_text(
         encoding="utf-8"
     )
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def _train_step",
+        maxsplit=1,
+    )[0]
+    baseline_train_step = baseline_source.split("def _train_step", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    baseline_teardown = baseline_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload",
         maxsplit=1,
@@ -14048,10 +14071,30 @@ def test_ch13_optimized_autograd_uses_output_buffer_directly() -> None:
         "def _train_step",
         maxsplit=1,
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
+    assert "self.output_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self.output_buffer = torch.empty_like(self.inputs)" in baseline_setup
+    assert "self._verify_output_buffer = torch.empty_like(self.inputs, dtype=torch.float32)" in baseline_setup
+    assert "self.output = outputs.detach().clone()" not in baseline_train_step
+    assert "self.output_buffer.copy_(outputs)" in baseline_train_step
+    assert "self.output = self.output_buffer" in baseline_train_step
+    assert "self._verify_output_buffer.copy_(self.output)" in baseline_capture
+    assert "output=self._verify_output_buffer" in baseline_capture
+    assert "self.output.detach().float().clone()" not in baseline_capture
+    assert "self.output_buffer = None" in baseline_teardown
+    assert "self._verify_output_buffer = None" in baseline_teardown
     assert "self.output = self.output_buffer" in benchmark_section
     assert "self.output_buffer.detach()" not in benchmark_section
-    assert "output=self.output.detach().float().clone()" in capture_section
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(self.inputs, dtype=torch.float32)" in setup_section
+    assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "output=self.output.detach().float().clone()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
