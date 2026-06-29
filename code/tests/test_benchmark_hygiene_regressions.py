@@ -8510,6 +8510,9 @@ def test_ch16_blackwell_tensor_parallel_reuses_gather_buffers() -> None:
     assert "if input_ids.device != self.device:" in forward_section
     assert "input_ids = input_ids.to(self.device, non_blocking=True)" in forward_section
     assert "input_ids = input_ids.to(self.device)\n" not in forward_section
+    assert "outputs = self.model(input_ids)" in forward_section
+    assert "self.shard_kv_cache(kv_cache)" not in forward_section
+    assert "cache_shard" not in forward_section
     assert "torch.cat(self._gathered_outputs, dim=-1, out=self._final_output)" in forward_section
     assert "final_output = torch.cat(gathered_outputs, dim=-1)" not in forward_section
 

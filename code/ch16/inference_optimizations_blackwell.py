@@ -888,13 +888,8 @@ class TensorParallelMultiGPU:
         if input_ids.device != self.device:
             input_ids = input_ids.to(self.device, non_blocking=True)
         
-        # If KV cache provided, shard it
-        if kv_cache is not None:
-            cache_shard, start_head, end_head = self.shard_kv_cache(kv_cache)
-            # Use only the relevant head slice
-            outputs = self.model(input_ids)  # Simplified for demo
-        else:
-            outputs = self.model(input_ids)
+        # Demo model does not consume the sharded KV cache in this simplified path.
+        outputs = self.model(input_ids)
         
         # All-gather outputs across GPUs
         import torch.distributed as dist
