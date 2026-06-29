@@ -71,7 +71,11 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with torch.inference_mode():
             model_out = self.model(self.input)
         self._model_shard_view = model_out.view(self.num_shards, self._reduced_rows, self.hidden_dim)
-        self._bytes_transferred = 0.0
+        element_size = self.input.element_size()
+        self._bytes_transferred = float(
+            (self.batch_size * self.hidden_dim + self._reduced_rows * self.hidden_dim)
+            * element_size
+        )
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -81,7 +85,7 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with nvtx_range("optimized_nccl", enable=self._enable_nvtx):
             # Forward pass
             with torch.inference_mode():
-                out = self.model(self.input)
+                self.model(self.input)
             
             # All-GPU reduction over a strided shard view, no CPU or Python shard loop.
             if self._model_shard_view is None:
@@ -91,10 +95,6 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
             # Average in place; the sum already landed in the reusable output buffer.
             self._output_buffer.div_(self.num_shards)
             self.output = self._output_buffer
-            self._bytes_transferred = float(
-                out.numel() * out.element_size()
-                + self._output_buffer.numel() * self._output_buffer.element_size()
-            )
         
 
     def capture_verification_payload(self) -> None:
