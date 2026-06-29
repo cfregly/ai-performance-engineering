@@ -14011,6 +14011,25 @@ def test_ch04_symmetric_queue_batches_head_tail_reads() -> None:
     assert "self.head.item()" not in queue_section
 
 
+def test_ch04_baseline_bandwidth_suite_flattens_chunk_copy_schedule() -> None:
+    source = (REPO_ROOT / "ch04" / "baseline_bandwidth_benchmark_suite_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._flat_chunk_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in setup_section
+    assert "self._flat_chunk_pairs = []" in setup_section
+    assert "chunk_pairs = list(zip(src_chunks, dst_chunks))" in setup_section
+    assert "self._flat_chunk_pairs.extend(chunk_pairs)" in setup_section
+    assert "if not self._flat_chunk_pairs:" in benchmark_section
+    assert "for src_chunk, dst_chunk in self._flat_chunk_pairs:" in benchmark_section
+    assert "for chunk_list in self.chunk_pairs:" not in benchmark_section
+
+
 def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_bandwidth_benchmark_suite_multigpu.py").read_text(
         encoding="utf-8"

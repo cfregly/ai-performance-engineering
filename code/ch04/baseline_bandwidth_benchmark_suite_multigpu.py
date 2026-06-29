@@ -8,7 +8,6 @@ from core.benchmark.gpu_requirements import require_min_gpus
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 
-import os
 import time
 from typing import Optional
 
@@ -60,6 +59,7 @@ class BandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         self.num_chunks = 32
         self.pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self.chunk_pairs: list[list[tuple[torch.Tensor, torch.Tensor]]] = []
+        self._flat_chunk_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
@@ -71,6 +71,7 @@ class BandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         device_count = torch.cuda.device_count()
         self.pairs = []
         self.chunk_pairs = []
+        self._flat_chunk_pairs = []
         src_buffers = [
             torch.randn(numel, device=f"cuda:{idx}", dtype=torch.float32)
             for idx in range(device_count)
@@ -81,21 +82,22 @@ class BandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             self.pairs.append((src, dst))
             src_chunks = torch.chunk(src, self.num_chunks)
             dst_chunks = torch.chunk(dst, self.num_chunks)
-            self.chunk_pairs.append(list(zip(src_chunks, dst_chunks)))
+            chunk_pairs = list(zip(src_chunks, dst_chunks))
+            self.chunk_pairs.append(chunk_pairs)
+            self._flat_chunk_pairs.extend(chunk_pairs)
         self.register_workload_metadata(
             requests_per_iteration=1.0,
             bytes_per_iteration=float(bytes_per_iter * self.inner_iterations * len(self.pairs)),
         )
 
     def benchmark_fn(self) -> None:
-        if not self.chunk_pairs:
+        if not self._flat_chunk_pairs:
             raise RuntimeError("Benchmark not initialized")
         total_bytes = self.size_mb * 1024 * 1024 * len(self.pairs) * self.inner_iterations
         start = time.perf_counter()
         for _ in range(self.inner_iterations):
-            for chunk_list in self.chunk_pairs:
-                for src_chunk, dst_chunk in chunk_list:
-                    dst_chunk.copy_(src_chunk, non_blocking=False)
+            for src_chunk, dst_chunk in self._flat_chunk_pairs:
+                dst_chunk.copy_(src_chunk, non_blocking=False)
         elapsed = time.perf_counter() - start
         self.last_bandwidth_gbps = (total_bytes / max(elapsed, 1e-9)) / 1e9
 
@@ -145,5 +147,3 @@ class BandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BandwidthSuiteMultiGPU()
-
-
