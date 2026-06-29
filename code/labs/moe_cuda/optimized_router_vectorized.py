@@ -355,7 +355,7 @@ class GroupedTopKMoE(VectorizedTopKMoE):
             and tuple(self._static_combine_index.shape) == tuple(values.shape)
         ):
             return self._static_combine_index
-        return token_indices.unsqueeze(-1).expand_as(values)
+        return super()._combine_index_for(token_indices, values)
 
     @torch.inference_mode()
     def calibrate_capacity(self, tokens: torch.Tensor) -> int:

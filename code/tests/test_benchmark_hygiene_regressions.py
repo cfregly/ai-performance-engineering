@@ -4302,6 +4302,7 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "self._output_buffer_for(tokens, batch)" in forward_section
     assert "combine_index = self._combine_index_for(token_indices, gathered)" in forward_section
     assert "token_indices.unsqueeze(-1).expand_as(gathered)" not in forward_section
+    assert "return super()._combine_index_for(token_indices, values)" in source
     assert "gathered.mul_(flat_weights)" in forward_section
     assert "weighted = gathered * flat_weights" not in forward_section
     assert "@torch.no_grad()\n    def configure_static_dispatch_buffers" in source
@@ -4410,6 +4411,14 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert model._combine_index_for(model._static_token_indices, grouped_values) is model._static_combine_index
     assert model._static_dense_input.shape == (4 * 64 + 1, 8)
     assert model._static_output_buffer.shape == (3, 8)
+
+    fallback_model = GroupedTopKMoE(hidden_size=8, num_experts=4, top_k=2, expansion=1)
+    fallback_indices = fallback_model._flat_token_indices_for(3, torch.device("cpu"))
+    fallback_values = torch.empty(6, 8)
+    fallback_combine = fallback_model._combine_index_for(fallback_indices, fallback_values)
+    fallback_combine_again = fallback_model._combine_index_for(fallback_indices, fallback_values)
+    assert fallback_combine_again is fallback_combine
+    torch.testing.assert_close(fallback_combine[:, 0], fallback_indices)
 
 
 def test_moe_cuda_topk_router_configures_static_dispatch_once() -> None:
