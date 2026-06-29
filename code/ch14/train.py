@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 
 """Minimal torch.compile training harness for Chapter 14."""
@@ -23,7 +24,7 @@ def main() -> None:
     loss.backward()
     opt.step()
 
-    print("ch14 train.py completed with loss {:.4f}".format(loss.item()))
+    print("ch14 train.py completed with loss {:.4f}".format(scalar_tensor_to_float(loss)))
 
 
 if __name__ == "__main__":

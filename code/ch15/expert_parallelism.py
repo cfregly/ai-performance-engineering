@@ -20,6 +20,8 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
+from core.benchmark.utils import scalar_tensor_to_float
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -376,9 +378,9 @@ def main() -> None:
     per_iter_ms = start.elapsed_time(end) / max(args.iters, 1)
 
     if args.mode == "distributed":
-        t = torch.tensor([per_iter_ms], device=device, dtype=torch.float32)
+        t = torch.tensor(per_iter_ms, device=device, dtype=torch.float32)
         dist.all_reduce(t, op=dist.ReduceOp.MAX)
-        per_iter_ms = float(t.item())
+        per_iter_ms = scalar_tensor_to_float(t)
 
     if is_rank0:
         total_tokens = args.batch * args.seq

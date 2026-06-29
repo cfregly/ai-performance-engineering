@@ -59,6 +59,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.benchmark.gpu_requirements import require_min_gpus
 from core.harness.arch_config import prefer_flash_sdpa
 from core.optimization.symmetric_memory_patch import (
@@ -644,7 +645,7 @@ class ShardedKVCacheManager:
             return None
         view = remote[:, :, :valid, :]
         try:
-            return float(view.norm().item())
+            return scalar_tensor_to_float(view.norm())
         except Exception:
             return None
 

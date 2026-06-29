@@ -2579,6 +2579,16 @@ def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
         assert "torch.relu(" not in source
         assert "nn.ReLU()" not in source
 
+    simple_scalar_readbacks = {
+        "ch14/transformer.py": "scalar_tensor_to_float(out.norm())",
+        "ch14/train.py": "scalar_tensor_to_float(loss)",
+    }
+    for relative, expected in simple_scalar_readbacks.items():
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        assert "from core.benchmark.utils import scalar_tensor_to_float" in source
+        assert expected in source
+        assert ".item()" not in source
+
     for relative in (
         "ch04/baseline_pipeline_parallel.py",
         "ch04/optimized_pipeline_parallel_1f1b.py",
@@ -9407,6 +9417,20 @@ def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     assert "valid_mask.fill_(False)" in cached_attention_section
 
 
+def test_ch16_inference_serving_symmetric_probe_uses_shared_scalar_readback() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    probe_section = source.split("def symmetric_probe", maxsplit=1)[1].split(
+        "def stats",
+        maxsplit=1,
+    )[0]
+
+    assert "from core.benchmark.utils import scalar_tensor_to_float" in source
+    assert "return scalar_tensor_to_float(view.norm())" in probe_section
+    assert "view.norm().item()" not in probe_section
+
+
 def test_ch16_tensor_parallel_attention_reuses_layout_projection_buffers() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"
@@ -9986,6 +10010,9 @@ def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
     assert "with torch.inference_mode():" in validation_function
     assert "torch.no_grad()" not in benchmark_function
     assert "torch.no_grad()" not in validation_function
+    assert "from core.benchmark.utils import scalar_tensor_to_float" in source
+    assert "scalar_tensor_to_float(torch.max(torch.abs(ref.to(devices[0]) - out.to(devices[0]))))" in source
+    assert "torch.max(torch.abs(ref.to(devices[0]) - out.to(devices[0]))).item()" not in source
 
 
 def test_ch15_moe_validation_batches_report_loss_reads() -> None:
@@ -10152,6 +10179,10 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
     assert "for unique_idx in range(recv_unique_ids_host.numel()):" in distributed_section
     assert "eid_int = int(recv_unique_ids_host[unique_idx])" in distributed_section
     assert "torch.unique(recv_ids).detach().cpu().tolist()" not in distributed_section
+    assert "from core.benchmark.utils import scalar_tensor_to_float" in source
+    assert "t = torch.tensor(per_iter_ms, device=device, dtype=torch.float32)" in source
+    assert "per_iter_ms = scalar_tensor_to_float(t)" in source
+    assert "t.item()" not in source
 
 
 def test_ch15_parallel_demos_use_inference_mode() -> None:

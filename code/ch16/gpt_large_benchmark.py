@@ -32,6 +32,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.harness.arch_config import prefer_flash_sdpa
 
 import torch
@@ -675,7 +676,7 @@ def validate_multi_gpu_equivalence(
     with torch.inference_mode():
         ref = base_model(inputs)
         out = multi_model(inputs)
-    diff = torch.max(torch.abs(ref.to(devices[0]) - out.to(devices[0]))).item()
+    diff = scalar_tensor_to_float(torch.max(torch.abs(ref.to(devices[0]) - out.to(devices[0]))))
 
     del base_model
     del multi_model

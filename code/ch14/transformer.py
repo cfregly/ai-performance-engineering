@@ -1,5 +1,7 @@
 """Lightweight transformer stub matching Chapter 14 trace paths."""
 
+from core.benchmark.utils import scalar_tensor_to_float
+
 import torch
 from torch import nn
 
@@ -26,7 +28,7 @@ def demo() -> None:
     model = MiniTransformer().to(device)
     data = torch.randn(4, 128, 1024, device=device)
     out = model(data)
-    print("transformer.py demo rms:", out.norm().item())
+    print("transformer.py demo rms:", scalar_tensor_to_float(out.norm()))
 
 
 if __name__ == "__main__":
