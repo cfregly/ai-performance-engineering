@@ -59,8 +59,11 @@ class NvshmemIbgdaMicrobench(CudaBinaryBenchmark):
         self.nvshmemrun: Optional[str] = None
         self._parsed_metrics: Dict[str, float] = {}
         self._last_output: Optional[torch.Tensor] = None
+        self._last_output_tensor: Optional[torch.Tensor] = None
         self._last_output_values: list[float] = [0.0]
         self._last_output_ready = False
+        self._payload_input_tensors: Optional[Dict[str, torch.Tensor]] = None
+        self._payload_device = torch.device("cpu")
 
         args = self._build_run_args()
 
@@ -131,6 +134,21 @@ class NvshmemIbgdaMicrobench(CudaBinaryBenchmark):
             super().setup()
         except Exception as exc:
             raise RuntimeError(f"SKIPPED: failed to build nvshmem_ibgda_microbench ({exc})") from exc
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._payload_device = device
+        self._last_output_tensor = torch.empty(1, device=device, dtype=torch.float32)
+        self._payload_input_tensors = {
+            "mode": torch.empty(1, device=device, dtype=torch.int64),
+            "bytes": torch.empty(1, device=device, dtype=torch.int64),
+            "ctas": torch.empty(1, device=device, dtype=torch.int64),
+            "threads": torch.empty(1, device=device, dtype=torch.int64),
+            "world_size": torch.empty(1, device=device, dtype=torch.int64),
+        }
+        self._payload_input_tensors["mode"][0] = ord(self.mode[0])
+        self._payload_input_tensors["bytes"][0] = self.bytes_per_message
+        self._payload_input_tensors["ctas"][0] = self.ctas
+        self._payload_input_tensors["threads"][0] = self.threads
+        self._payload_input_tensors["world_size"][0] = self.world_size
 
     # --------------------------------------------------------------------- Runtime helpers
     def _runtime_env(self) -> Dict[str, str]:
@@ -284,19 +302,16 @@ class NvshmemIbgdaMicrobench(CudaBinaryBenchmark):
         if not self._last_output_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         device = self._payload_device
-        self._last_output = torch.tensor(
-            self._last_output_values,
-            device=device,
-            dtype=torch.float32,
-        )
+        if (
+            self._last_output_tensor is None
+            or self._payload_input_tensors is None
+            or self._last_output_tensor.device != device
+        ):
+            raise RuntimeError("setup() must initialize verification tensors")
+        self._last_output_tensor[0] = self._last_output_values[0]
+        self._last_output = self._last_output_tensor
         self._set_verification_payload(
-            inputs={
-                "mode": torch.tensor([ord(self.mode[0])], device=device, dtype=torch.int64),
-                "bytes": torch.tensor([self.bytes_per_message], device=device, dtype=torch.int64),
-                "ctas": torch.tensor([self.ctas], device=device, dtype=torch.int64),
-                "threads": torch.tensor([self.threads], device=device, dtype=torch.int64),
-                "world_size": torch.tensor([self.world_size], device=device, dtype=torch.int64),
-            },
+            inputs=self._payload_input_tensors,
             output=self._last_output,
             batch_size=1,
             parameter_count=0,
