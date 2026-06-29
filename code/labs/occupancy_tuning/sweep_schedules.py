@@ -131,10 +131,11 @@ def benchmark_schedule(
     times_ms: List[float] = []
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream()
     for _ in range(max(1, iterations)):
-        start_event.record()
+        start_event.record(current_stream)
         runner()
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
         times_ms.append(start_event.elapsed_time(end_event))
 

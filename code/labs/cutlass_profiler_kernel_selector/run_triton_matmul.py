@@ -128,8 +128,9 @@ def benchmark_triton_matmul(
     times_ms: list[float] = []
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream()
     for _ in range(iters):
-        start.record()
+        start.record(current_stream)
         _matmul_kernel[grid](
             a,
             b,
@@ -147,7 +148,7 @@ def benchmark_triton_matmul(
             BLOCK_N=128,
             BLOCK_K=32,
         )
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         times_ms.append(start.elapsed_time(end))
 

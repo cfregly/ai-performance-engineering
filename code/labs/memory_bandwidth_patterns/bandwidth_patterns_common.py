@@ -126,10 +126,11 @@ def measure_cuda_callable(
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
     count = max(iterations, 1)
-    start.record()
+    current_stream = torch.cuda.current_stream()
+    start.record(current_stream)
     for _ in range(count):
         fn()
-    end.record()
+    end.record(current_stream)
     end.synchronize()
     return float(start.elapsed_time(end) / count)
 

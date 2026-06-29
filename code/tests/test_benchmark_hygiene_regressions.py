@@ -4138,10 +4138,23 @@ def test_timed_loops_reuse_cuda_events() -> None:
                 maxsplit=1,
             )[0]
             assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
-            assert timing_section.count("start.record()") == 1
-            assert timing_section.count("end.record()") == 1
+            assert timing_section.count("current_stream = torch.cuda.current_stream()") == 1
+            assert timing_section.count("start.record(current_stream)") == 1
+            assert timing_section.count("end.record(current_stream)") == 1
+            assert "start.record()" not in timing_section
+            assert "end.record()" not in timing_section
             assert timing_section.count("end.synchronize()") == 1
             assert "samples.append(start.elapsed_time(end))" not in timing_section
+        if filename == "labs/cutlass_profiler_kernel_selector/run_triton_matmul.py":
+            timing_section = source.split("times_ms: list[float] = []", maxsplit=1)[1].split(
+                "if not times_ms:",
+                maxsplit=1,
+            )[0]
+            assert timing_section.count("current_stream = torch.cuda.current_stream()") == 1
+            assert timing_section.count("start.record(current_stream)") == 1
+            assert timing_section.count("end.record(current_stream)") == 1
+            assert "start.record()" not in timing_section
+            assert "end.record()" not in timing_section
 
 
 def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:
