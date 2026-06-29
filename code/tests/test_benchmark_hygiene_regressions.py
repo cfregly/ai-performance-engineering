@@ -930,6 +930,8 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     assert "torch.randn(size, device=device, dtype=torch.float32)" not in p2p_section
     assert "torch.tensor([bw]" not in matrix_section
     assert "bw_tensor = torch.empty(1, device=torch.cuda.current_device()" in matrix_section
+    assert "bw_tensor[0].item()" not in matrix_section
+    assert "bw = scalar_tensor_to_float(bw_tensor[0])" in matrix_section
     assert "dist.all_reduce(tensor.clone())" not in collective_section
     assert "dist.all_reduce(tensor.clone())" not in curve_section
     assert "tensor = torch.empty(size, device=device, dtype=torch.float32)" in collective_section
@@ -938,8 +940,10 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     assert "tensor = torch.zeros(size_elements, device=device, dtype=torch.float32)" not in curve_section
     assert "allgather_output = [torch.empty_like(tensor) for _ in range(world_size)]" in collective_section
     assert "dist.all_gather(allgather_output, tensor)" in collective_section
-    assert "reducescatter_input = list(tensor.chunk(world_size))" in collective_section
-    assert "dist.reduce_scatter(reducescatter_output, reducescatter_input)" in collective_section
+    assert "reducescatter_input = reducescatter_source.view(world_size, shard_size)" in collective_section
+    assert "list(tensor.chunk(world_size))" not in collective_section
+    assert "dist.reduce_scatter(" not in collective_section
+    assert "dist.reduce_scatter_tensor(reducescatter_output, reducescatter_input)" in collective_section
 
 
 def test_ch04_nccl_benchmark_reuses_collective_buffers() -> None:
@@ -953,13 +957,15 @@ def test_ch04_nccl_benchmark_reuses_collective_buffers() -> None:
     )[0]
 
     assert "allgather_outputs = [torch.empty_like(tensor) for _ in range(world_size)]" in setup_section
-    assert "torch.empty(tensor.numel() // world_size, device=device, dtype=tensor.dtype)" in setup_section
-    assert "reducescatter_inputs = list(tensor.chunk(world_size))" in setup_section
+    assert "shard_size = (tensor.numel() + world_size - 1) // world_size" in setup_section
+    assert "torch.empty(shard_size, device=device, dtype=tensor.dtype)" in setup_section
+    assert "reducescatter_inputs = reducescatter_source.view(world_size, shard_size)" in setup_section
     assert "[torch.empty_like(tensor) for _ in range(world_size)]" not in run_section
     assert "torch.empty(tensor.numel() // world_size" not in run_section
     assert "list(tensor.chunk(world_size))" not in run_section
     assert "dist.all_gather(allgather_outputs, tensor)" in run_section
-    assert "dist.reduce_scatter(reducescatter_output, reducescatter_inputs)" in run_section
+    assert "dist.reduce_scatter(" not in run_section
+    assert "dist.reduce_scatter_tensor(reducescatter_output, reducescatter_inputs)" in run_section
 
 
 def test_ch04_symmetric_ring_allreduce_skips_dead_result_zero_fill() -> None:

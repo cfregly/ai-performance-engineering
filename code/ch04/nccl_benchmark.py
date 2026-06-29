@@ -55,12 +55,21 @@ def benchmark_collective(rank: int, world_size: int, tensor: torch.Tensor,
                          op_type: str, warmup: int, trials: int) -> tuple[float, float, float]:
     device = tensor.device
     allgather_outputs = [torch.empty_like(tensor) for _ in range(world_size)] if op_type == "allgather" else None
+    shard_size = (tensor.numel() + world_size - 1) // world_size
     reducescatter_output = (
-        torch.empty(tensor.numel() // world_size, device=device, dtype=tensor.dtype)
+        torch.empty(shard_size, device=device, dtype=tensor.dtype)
         if op_type == "reducescatter"
         else None
     )
-    reducescatter_inputs = list(tensor.chunk(world_size)) if op_type == "reducescatter" else None
+    reducescatter_inputs = None
+    if op_type == "reducescatter":
+        padded_numel = shard_size * world_size
+        reducescatter_source = (
+            tensor
+            if padded_numel == tensor.numel()
+            else torch.empty(padded_numel, device=device, dtype=tensor.dtype)
+        )
+        reducescatter_inputs = reducescatter_source.view(world_size, shard_size)
 
     def _run_collective() -> None:
         if op_type == "allreduce":
@@ -72,7 +81,7 @@ def benchmark_collective(rank: int, world_size: int, tensor: torch.Tensor,
         elif op_type == "reducescatter":
             if reducescatter_output is None or reducescatter_inputs is None:
                 raise RuntimeError("reduce-scatter buffers were not initialized")
-            dist.reduce_scatter(reducescatter_output, reducescatter_inputs)
+            dist.reduce_scatter_tensor(reducescatter_output, reducescatter_inputs)
         elif op_type == "broadcast":
             dist.broadcast(tensor, src=0)
         elif op_type == "reduce":

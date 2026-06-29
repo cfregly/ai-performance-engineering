@@ -42,6 +42,7 @@ import torch.distributed as dist
 
 from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_env
 from core.benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_count
+from core.benchmark.utils import scalar_tensor_to_float
 from core.common.device_utils import resolve_local_rank
 
 
@@ -158,7 +159,7 @@ def measure_p2p_matrix(
             
             # Broadcast result to all ranks
             dist.broadcast(bw_tensor, src=src)
-            bw = float(bw_tensor[0].item())
+            bw = scalar_tensor_to_float(bw_tensor[0])
             bandwidth_matrix[(src, dst)] = bw
             
             if rank == 0:
@@ -219,10 +220,15 @@ def benchmark_collective(
         for _ in range(10):
             dist.all_gather(allgather_output, tensor)
     elif op_type == "reducescatter":
-        reducescatter_output = torch.empty(size // world_size, device=device, dtype=torch.float32)
-        reducescatter_input = list(tensor.chunk(world_size))
+        shard_size = (size + world_size - 1) // world_size
+        padded_size = shard_size * world_size
+        reducescatter_source = (
+            tensor if padded_size == size else torch.empty(padded_size, device=device, dtype=torch.float32)
+        )
+        reducescatter_input = reducescatter_source.view(world_size, shard_size)
+        reducescatter_output = torch.empty(shard_size, device=device, dtype=torch.float32)
         for _ in range(10):
-            dist.reduce_scatter(reducescatter_output, reducescatter_input)
+            dist.reduce_scatter_tensor(reducescatter_output, reducescatter_input)
     else:
         raise ValueError(f"Unsupported collective op: {op_type}")
     
@@ -242,7 +248,7 @@ def benchmark_collective(
             dist.all_gather(allgather_output, tensor)
     else:
         for _ in range(iterations):
-            dist.reduce_scatter(reducescatter_output, reducescatter_input)
+            dist.reduce_scatter_tensor(reducescatter_output, reducescatter_input)
     end.record()
     end.synchronize()
     
