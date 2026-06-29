@@ -70,6 +70,7 @@ class BaselineRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchma
         self.model: Optional[DummyTransformer] = None
         self.inputs: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         # Use a mid-sized config so CUDA-graph replay overhead is amortized.
         self.choice = select_regional_compilation_choice()
@@ -98,6 +99,7 @@ class BaselineRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchma
             dtype=torch.bfloat16,
         )
         self._verify_input = self.inputs.detach().clone()
+        self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         warn_benchmark_scaling(
             scaling_type="Model size",
             original_values={
@@ -128,11 +130,14 @@ class BaselineRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchma
             raise RuntimeError("Verification input not initialized")
 
     def capture_verification_payload(self) -> None:
-        if self.output is None:
+        if self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if self._verify_input is None:
+            raise RuntimeError("Verification input not initialized")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -147,6 +152,7 @@ class BaselineRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchma
     def teardown(self) -> None:
         self.model = None
         self.inputs = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

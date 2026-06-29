@@ -36,6 +36,7 @@ class BaselinePieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.num_heads = 8
 
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
 
         self.graph_cache: dict[int, GraphCacheEntry] = {}
@@ -71,6 +72,7 @@ class BaselinePieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float16,
         )
+        self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
 
         self.graph_cache.clear()
         static_input = torch.empty_like(self._verify_input)
@@ -104,13 +106,14 @@ class BaselinePieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._seq_len_used = self.seq_len
 
     def capture_verification_payload(self) -> None:
-        if self.output is None:
+        if self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -125,6 +128,7 @@ class BaselinePieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.model = None
         self._verify_input = None
+        self._verify_output_buffer = None
         self.graph_cache.clear()
         torch.cuda.empty_cache()
 

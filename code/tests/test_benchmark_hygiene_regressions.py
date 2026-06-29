@@ -4327,11 +4327,19 @@ def test_ch16_piece_and_regional_graphs_cache_nvtx_outside_hot_loop() -> None:
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
 
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)" in setup_section
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
         assert "get_config()" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert "enable=self._enable_nvtx" in benchmark_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.output.detach().float().clone()" not in capture_section
 
     optimized_source = (REPO_ROOT / "ch16" / "optimized_regional_compilation.py").read_text(
         encoding="utf-8"
@@ -4353,6 +4361,8 @@ def test_ch16_piece_and_regional_graphs_cache_nvtx_outside_hot_loop() -> None:
     )[1].split("GraphCacheEntry", maxsplit=1)[0]
 
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in optimized_setup
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)" in optimized_setup
     assert "self._input_views: Dict[int, torch.Tensor] = {}" in optimized_source
     assert "def _input_view_for(self, seq_len: int) -> torch.Tensor:" in optimized_source
     assert "self._input_views = {self.max_seq_len: self._verify_input}" in optimized_setup
@@ -4371,6 +4381,13 @@ def test_ch16_piece_and_regional_graphs_cache_nvtx_outside_hot_loop() -> None:
     assert "layer_out.add_(x)" in optimized_model_forward
     assert "x = layer_out" in optimized_model_forward
     assert "x = x + _run_compiled_layer(layer, x)" not in optimized_model_forward
+    optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def run", maxsplit=1
+    )[0]
+    assert "verify_output = self._verify_output_buffer[" in optimized_capture
+    assert "verify_output.copy_(self.output)" in optimized_capture
+    assert "output=verify_output" in optimized_capture
+    assert "self.output.detach().float().clone()" not in optimized_capture
 
 
 def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:

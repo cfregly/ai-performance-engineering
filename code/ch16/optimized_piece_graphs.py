@@ -43,6 +43,7 @@ class OptimizedPieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._payload_verify_tokens: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._enable_nvtx = False
 
         self._workload = WorkloadMetadata(
@@ -74,6 +75,7 @@ class OptimizedPieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float16,
         )
+        self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         self._capture_piece_graphs()
 
     def _capture_piece_graphs(self) -> None:
@@ -139,11 +141,12 @@ class OptimizedPieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         verify_tokens = self._payload_verify_tokens
         if verify_tokens is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        if self.output is None:
+        if self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": verify_tokens},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=verify_tokens.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -159,6 +162,7 @@ class OptimizedPieceGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self._verify_input = None
         self._payload_verify_tokens = None
+        self._verify_output_buffer = None
         self.graph_cache.clear()
         torch.cuda.empty_cache()
 

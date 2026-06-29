@@ -69,6 +69,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         self.capture_ms: float = 0.0
         self._verify_input: Optional[torch.Tensor] = None
         self._payload_verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._input_views: Dict[int, torch.Tensor] = {}
         self.parameter_count: int = 0
         self._enable_nvtx = False
@@ -111,6 +112,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
             dtype=torch.bfloat16,
         )
         self._payload_verify_input = self._verify_input
+        self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         self._input_views = {self.max_seq_len: self._verify_input}
         self._prepare_cuda_graphs()
         tokens = self.max_seq_len * self.d_model
@@ -183,11 +185,19 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
 
     def capture_verification_payload(self) -> None:
         verify_input = self._payload_verify_input
-        if self.output is None:
+        if self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if verify_input is None:
+            raise RuntimeError("Verification input not initialized")
+        verify_output = self._verify_output_buffer[
+            : self.output.shape[0],
+            : self.output.shape[1],
+            : self.output.shape[2],
+        ]
+        verify_output.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": verify_input},
-            output=self.output.detach().float().clone(),
+            output=verify_output,
             batch_size=1,
             parameter_count=self.parameter_count,
             precision_flags={
@@ -270,6 +280,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         self.model = None
         self._verify_input = None
         self._payload_verify_input = None
+        self._verify_output_buffer = None
         self._input_views = {}
         self.graph_cache.clear()
         if self.device.type == "cuda":
