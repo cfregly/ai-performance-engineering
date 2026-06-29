@@ -1661,8 +1661,11 @@ def test_ch14_triton_persistent_demo_batches_correctness_error_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "std_err, pers_err, atom_err = torch.stack(" in verify_section
-    assert ").tolist()" in verify_section
+    assert "error_stats = torch.stack(" in verify_section
+    assert "std_err = float(error_stats[0])" in verify_section
+    assert "pers_err = float(error_stats[1])" in verify_section
+    assert "atom_err = float(error_stats[2])" in verify_section
+    assert ").tolist()" not in verify_section
     assert ".abs().max().item()" not in verify_section
 
 
@@ -1676,7 +1679,10 @@ def test_ch14_triton_examples_batches_fp8_error_reads() -> None:
     assert "diff_stats = torch.empty(2, device=diff.device, dtype=diff.dtype)" in fp8_section
     assert "diff_stats[0].copy_(diff.max())" in fp8_section
     assert "diff_stats[1].copy_(diff.mean())" in fp8_section
-    assert "max_diff, mean_diff = diff_stats.detach().cpu().tolist()" in fp8_section
+    assert "diff_stats_host = diff_stats.detach().cpu()" in fp8_section
+    assert "max_diff = float(diff_stats_host[0])" in fp8_section
+    assert "mean_diff = float(diff_stats_host[1])" in fp8_section
+    assert "diff_stats.detach().cpu().tolist()" not in fp8_section
     assert "torch.stack((diff.max(), diff.mean())).tolist()" not in fp8_section
     assert ".abs().max().item()" not in fp8_section
     assert ".abs().mean().item()" not in fp8_section
@@ -1691,7 +1697,10 @@ def test_ch14_triton_tma_batches_correctness_error_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "max_bias_diff, max_diff = torch.stack(" in benchmark_section
+    assert "error_stats = torch.stack(" in benchmark_section
+    assert "max_bias_diff = float(error_stats[0])" in benchmark_section
+    assert "max_diff = float(error_stats[1])" in benchmark_section
+    assert ").tolist()" not in benchmark_section
     assert "torch.abs(C_bias - C_ref).max()" in benchmark_section
     assert "torch.abs(C_tma - C_torch).max()" in benchmark_section
     assert ".max().item()" not in benchmark_section

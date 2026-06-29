@@ -372,7 +372,9 @@ def benchmark_fp8_vs_fp16() -> None:
             diff_stats = torch.empty(2, device=diff.device, dtype=diff.dtype)
             diff_stats[0].copy_(diff.max())
             diff_stats[1].copy_(diff.mean())
-            max_diff, mean_diff = diff_stats.detach().cpu().tolist()
+            diff_stats_host = diff_stats.detach().cpu()
+            max_diff = float(diff_stats_host[0])
+            mean_diff = float(diff_stats_host[1])
             print(f"  Numerical error: max={max_diff:.6f}, mean={mean_diff:.6f}")
         else:
             print(f"  FP8:  Not available (requires PyTorch 2.10+)")
