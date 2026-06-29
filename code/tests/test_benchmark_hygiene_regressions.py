@@ -1326,8 +1326,37 @@ def test_ch04_nvshmem_pipeline_defers_loss_materialization() -> None:
     )[0]
 
     assert "losses.append(loss.item())" not in schedule_section
-    assert "loss_tensors.append(loss.detach())" in schedule_section
-    assert "torch.stack(loss_tensors).detach().cpu().tolist()" in schedule_section
+    assert "loss_tensors = []" not in schedule_section
+    assert "loss_tensors.append(loss.detach())" not in schedule_section
+    assert "torch.stack(loss_tensors)" not in schedule_section
+    assert "self._loss_buffer = torch.empty(num_microbatches, dtype=torch.float64" in source
+    assert "loss_count = 0" in schedule_section
+    assert "self._loss_buffer[loss_count].copy_(loss.detach())" in schedule_section
+    assert "loss_count += 1" in schedule_section
+    assert "return self._loss_buffer[:loss_count].detach().cpu().tolist()" in schedule_section
+
+
+def test_ch04_nvshmem_and_symmem_demos_buffer_loss_logging() -> None:
+    nvshmem_source = (REPO_ROOT / "ch04" / "nvshmem_training_patterns.py").read_text(
+        encoding="utf-8"
+    )
+    pipeline_demo = nvshmem_source.split("def demo_pipeline_parallel", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+    symmem_source = (
+        REPO_ROOT / "ch04" / "symmetric_memory_training_advanced.py"
+    ).read_text(encoding="utf-8")
+    zero_demo = symmem_source.split("def demo_zero_style_sharding", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+
+    for section in (pipeline_demo, zero_demo):
+        assert "loss.item()" not in section
+        assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in section
+        assert "loss_value_buffer[0].copy_(loss.detach())" in section
+        assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in section
 
 
 def test_ch04_training_pipeline_defers_step_loss_sync_until_logging() -> None:

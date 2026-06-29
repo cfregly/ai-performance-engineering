@@ -70,8 +70,6 @@ When to Stick with NCCL:
 
 import os
 
-from core.common.device_utils import resolve_local_rank
-
 from core.optimization.symmetric_memory_patch import (
     SymmetricMemoryHandle,
     maybe_create_symmetric_memory_handle,
@@ -84,7 +82,7 @@ from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_
 import argparse
 import datetime
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -655,6 +653,7 @@ def demo_pipeline_parallel(benchmark: bool = False) -> None:
     )
 
     my_stage_idx = rank * stages_per_rank
+    loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
     
     for mb_idx in range(num_microbatches):
         if rank == 0:
@@ -662,7 +661,6 @@ def demo_pipeline_parallel(benchmark: bool = False) -> None:
             microbatch = torch.randn(batch_size, seq_len, dim, device=device, dtype=pipeline_dtype)
         else:
             # Other ranks receive from previous stage via symmetric memory
-            prev_stage = my_stage_idx - 1
             buffer = pipeline._get_or_create_buffer(
                 my_stage_idx, (batch_size, seq_len, dim), device, pipeline_dtype
             )
@@ -679,7 +677,9 @@ def demo_pipeline_parallel(benchmark: bool = False) -> None:
             # Last rank computes loss
             loss = output.sum()
             if mb_idx == 0 and not benchmark:
-                print(f"[pipeline] Microbatch {mb_idx} loss: {loss.item():.4f}")
+                loss_value_buffer[0].copy_(loss.detach())
+                loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+                print(f"[pipeline] Microbatch {mb_idx} loss: {loss_value:.4f}")
     
     if rank == 0:
         print(f"[pipeline] Processed {num_microbatches} microbatches")

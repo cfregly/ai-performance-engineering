@@ -72,7 +72,7 @@ from ch04.distributed_helper import run_main_with_skip_status, setup_single_gpu_
 import argparse
 import datetime
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -85,7 +85,6 @@ from core.optimization.symmetric_memory_patch import (
 )
 from core.benchmark.gpu_requirements import require_min_gpus
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, ShardingStrategy
 
 
@@ -795,13 +794,16 @@ def demo_zero_style_sharding(*, allow_single_gpu: bool = False) -> None:
     
     # Training loop
     num_steps = 5
+    loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
     
     for step in range(num_steps):
         batch = torch.randn(32, 4096, device=device)
         loss = trainer.training_step(batch)
         
         if rank == 0:
-            print(f"[zero] Step {step}, loss: {loss.item():.4f}")
+            loss_value_buffer[0].copy_(loss.detach())
+            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+            print(f"[zero] Step {step}, loss: {loss_value:.4f}")
     
     if rank == 0:
         print(f"[zero] Completed ZeRO-style training with symmetric memory")

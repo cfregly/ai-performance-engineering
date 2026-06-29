@@ -375,6 +375,7 @@ class NVSHMEMPipelineEngine:
         
         # Track activations for backward pass
         self.saved_activations: List[torch.Tensor] = []
+        self._loss_buffer = torch.empty(num_microbatches, dtype=torch.float64, device=device)
     
     def forward_microbatch(
         self,
@@ -471,7 +472,7 @@ class NVSHMEMPipelineEngine:
         Returns:
             List of losses (only for last stage)
         """
-        loss_tensors = []
+        loss_count = 0
         
         # Warmup: Forward passes
         num_warmup = min(self.num_stages - self.stage_id - 1, self.num_microbatches)
@@ -480,7 +481,8 @@ class NVSHMEMPipelineEngine:
             output = self.forward_microbatch(mb_id, input_data)
             if output is not None:
                 loss = output.sum()
-                loss_tensors.append(loss.detach())
+                self._loss_buffer[loss_count].copy_(loss.detach())
+                loss_count += 1
         
         # Steady state: 1F1B
         num_steady = self.num_microbatches - num_warmup
@@ -491,7 +493,8 @@ class NVSHMEMPipelineEngine:
             output = self.forward_microbatch(mb_id, input_data)
             if output is not None:
                 loss = output.sum()
-                loss_tensors.append(loss.detach())
+                self._loss_buffer[loss_count].copy_(loss.detach())
+                loss_count += 1
             
             # Backward
             self.backward_microbatch(i, loss if output is not None else None)
@@ -501,9 +504,9 @@ class NVSHMEMPipelineEngine:
             mb_id = num_steady + i
             self.backward_microbatch(mb_id, None)
         
-        if not loss_tensors:
+        if loss_count == 0:
             return []
-        return torch.stack(loss_tensors).detach().cpu().tolist()
+        return self._loss_buffer[:loss_count].detach().cpu().tolist()
 
     def close(self) -> None:
         """Release pipeline buffers to avoid teardown hangs."""
@@ -715,7 +718,7 @@ def demo_interleaved_pipeline(
     
     # Run interleaved schedule
     start_time = time.time()
-    losses = pipeline.run_interleaved_schedule(input_batches)
+    pipeline.run_interleaved_schedule(input_batches)
     torch.cuda.synchronize()
     elapsed = time.time() - start_time
     
