@@ -4979,6 +4979,7 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     )[0]
 
     assert "configure_static_dispatch_buffers" in source
+    assert "from core.benchmark.utils import scalar_tensor_to_float" in source
     assert "def _flat_token_indices" in source
     assert "self._flat_token_index_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}" in base_section
     assert "self._combine_index_cache: dict[tuple[int, int, int, torch.device], torch.Tensor] = {}" in base_section
@@ -5028,6 +5029,10 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "weighted = gathered * flat_weights" not in forward_section
     assert "@torch.no_grad()\n    def configure_static_dispatch_buffers" in source
     assert "@torch.inference_mode()\n    def configure_static_dispatch_buffers" not in source
+    assert "max_load = int(scalar_tensor_to_float(counts.max()))" in source
+    assert "overflow = int(scalar_tensor_to_float(model.overflow_total))" in source
+    assert "counts.max().item()" not in source
+    assert "overflow_total.item()" not in source
     assert "with torch.inference_mode():" in setup_section
     assert "with torch.no_grad():" not in setup_section
     assert "capture_no_grad" not in source

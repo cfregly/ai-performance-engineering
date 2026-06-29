@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
@@ -375,7 +376,7 @@ class GroupedTopKMoE(VectorizedTopKMoE):
         logits = self.router(tokens)
         _, expert_ids = torch.topk(logits, self.top_k, dim=-1)
         counts = torch.bincount(expert_ids.reshape(-1), minlength=self.num_experts)
-        max_load = int(counts.max().item())
+        max_load = int(scalar_tensor_to_float(counts.max()))
         total_assignments = tokens.shape[0] * self.top_k
         factor = 1 if self.capacity_rightsize else 2
         capacity = min(((max_load * factor + 63) // 64) * 64, total_assignments)
@@ -720,7 +721,7 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not isinstance(model, GroupedTopKMoE) or not model.capacity_guard:
             return
         torch.cuda.synchronize(self.device)
-        overflow = int(model.overflow_total.item())
+        overflow = int(scalar_tensor_to_float(model.overflow_total))
         if overflow != 0:
             raise RuntimeError(
                 f"capacity overflow guard tripped during {phase}: {overflow} "
