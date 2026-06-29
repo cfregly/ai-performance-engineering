@@ -86,7 +86,8 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
         with torch.inference_mode():
             comm_out = comm_block(inputs)
             if world_size > 1:
-                comm_stream.wait_stream(torch.cuda.current_stream())
+                current_stream = torch.cuda.current_stream()
+                comm_stream.wait_stream(current_stream)
                 with torch.cuda.stream(comm_stream):
                     reduced = functional_all_reduce(
                         comm_out,
@@ -97,7 +98,7 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
                 reduced = comm_out
             aux_out = aux_block(inputs)
             if world_size > 1:
-                torch.cuda.current_stream().wait_stream(comm_stream)
+                current_stream.wait_stream(comm_stream)
             reduced.add_(aux_out)
 
     for _ in range(max(warmup, 0)):

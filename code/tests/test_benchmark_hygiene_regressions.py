@@ -437,18 +437,32 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
 
 
 def test_ch04_optimized_torchcomms_overlaps_aux_compute_before_comm_wait() -> None:
-    source = (REPO_ROOT / "ch04" / "optimized_torchcomms.py").read_text(encoding="utf-8")
-    step_section = source.split("def _step", maxsplit=1)[1].split(
-        "for _ in range(max(warmup",
-        maxsplit=1,
-    )[0]
-    post_launch_section = step_section.split("with torch.cuda.stream(comm_stream):", maxsplit=1)[1]
+    for relative, aux_marker, output_marker in (
+        ("optimized_torchcomms.py", "aux_out = aux_block(inputs)", "reduced.add_(aux_out)"),
+        (
+            "optimized_torchcomms_multigpu.py",
+            "for _ in range(_AUX_PASSES):",
+            "comm_out.add_(aux_out)",
+        ),
+    ):
+        source = (REPO_ROOT / "ch04" / relative).read_text(encoding="utf-8")
+        step_section = source.split("def _step", maxsplit=1)[1].split(
+            "for _ in range(max(warmup",
+            maxsplit=1,
+        )[0]
+        post_launch_section = step_section.split("with torch.cuda.stream(comm_stream):", maxsplit=1)[1]
 
-    assert post_launch_section.index("aux_out = aux_block(inputs)") < post_launch_section.index(
-        "torch.cuda.current_stream().wait_stream(comm_stream)"
-    )
-    assert "reduced.add_(aux_out)" in post_launch_section
-    assert "_ = reduced + aux_out" not in post_launch_section
+        assert step_section.count("torch.cuda.current_stream()") == 1
+        assert "current_stream = torch.cuda.current_stream()" in step_section
+        assert "comm_stream.wait_stream(current_stream)" in step_section
+        assert "current_stream.wait_stream(comm_stream)" in step_section
+        assert "comm_stream.wait_stream(torch.cuda.current_stream())" not in step_section
+        assert "torch.cuda.current_stream().wait_stream(comm_stream)" not in step_section
+        assert post_launch_section.index(aux_marker) < post_launch_section.index(
+            "current_stream.wait_stream(comm_stream)"
+        )
+        assert output_marker in post_launch_section
+        assert "_ = reduced + aux_out" not in post_launch_section
 
 
 def test_ch04_optimizer_central_nvlink_uses_direct_copy_staging() -> None:

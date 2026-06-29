@@ -81,7 +81,8 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
     def _step() -> None:
         with torch.inference_mode():
             comm_out = comm_block(inputs)
-            comm_stream.wait_stream(torch.cuda.current_stream())
+            current_stream = torch.cuda.current_stream()
+            comm_stream.wait_stream(current_stream)
             with torch.cuda.stream(comm_stream):
                 work = dist.all_reduce(comm_out, op=dist.ReduceOp.AVG, async_op=True)
                 payload_work = dist.all_reduce(comm_payload, op=dist.ReduceOp.AVG, async_op=True)
@@ -90,7 +91,7 @@ def _run_worker(iters: int, warmup: int, batch: int, hidden: int) -> None:
                 aux_out = aux_block(aux_out)
             work.wait()
             payload_work.wait()
-            torch.cuda.current_stream().wait_stream(comm_stream)
+            current_stream.wait_stream(comm_stream)
             comm_out.add_(aux_out)
 
     for _ in range(max(warmup, 0)):
