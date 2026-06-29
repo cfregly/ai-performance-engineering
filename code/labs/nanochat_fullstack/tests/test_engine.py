@@ -714,6 +714,8 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     assert "active_mask = self._full_active_mask(batch_size, device)" in generate_batched
     assert "torch.ones(batch_size, dtype=torch.bool, device=device)" not in generate_batched
     assert "lengths_by_batch.add_(step_token_mask[:, 0])" in generate_batched
+    assert "ids_buf = self._ids_step_buffer_for(batch_size, device) if self.reuse_ids_buffer else None" in generate_batched
+    assert "torch.empty((batch_size, 1), dtype=torch.long, device=device)" not in generate_batched
     assert "return_active_indices=True" in generate_batched
     assert "active_indices=active_indices" in generate_batched
     assert "torch.as_tensor(active_rows" not in generate_batched

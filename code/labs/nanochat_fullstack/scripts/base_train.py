@@ -83,6 +83,7 @@ master_process = ddp_rank == 0 # this process will do logging, checkpointing etc
 autocast_ctx = torch.amp.autocast(device_type=device_type, dtype=torch.bfloat16) if device_type == "cuda" else nullcontext()
 synchronize = torch.cuda.synchronize if device_type == "cuda" else lambda: None
 get_max_memory = torch.cuda.max_memory_allocated if device_type == "cuda" else lambda: 0
+log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)
 
 # wandb logging init
 use_dummy_wandb = run == "dummy" or not master_process
@@ -361,10 +362,11 @@ while True:
     # -------------------------------------------------------------------------
 
     # logging
-    log_tensors = [train_loss.to(torch.float64)]
+    log_value_buffer[0].copy_(train_loss)
     if grad_clip_enabled:
-        log_tensors.append(grad_norm_tensor.to(torch.float64))
-    log_values = torch.stack(log_tensors).detach().cpu().tolist()
+        log_value_buffer[1].copy_(grad_norm_tensor)
+    log_count = 2 if grad_clip_enabled else 1
+    log_values = log_value_buffer[:log_count].detach().cpu().tolist()
     train_loss_value = log_values[0]
     grad_norm = log_values[1] if grad_clip_enabled else 0.0
     ema_beta = 0.9 # EMA decay factor for some smoothing just for nicer logging

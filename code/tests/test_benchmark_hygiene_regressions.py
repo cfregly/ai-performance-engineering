@@ -6606,12 +6606,26 @@ def test_nanochat_core_eval_batches_option_loss_reads() -> None:
     source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "core_eval.py").read_text(
         encoding="utf-8"
     )
+    forward_section = source.split("def forward_model", maxsplit=1)[1].split(
+        "def evaluate_example",
+        maxsplit=1,
+    )[0]
     option_section = source.split("elif task_type in ['multiple_choice', 'schema']:", maxsplit=1)[1].split(
         "else:",
         maxsplit=1,
     )[0]
 
-    assert "mean_losses = torch.stack(" in option_section
+    assert "logits = model(input_ids)" in forward_section
+    assert "torch.roll(" not in forward_section
+    assert "losses[:, -1] = float('nan')" not in forward_section
+    assert "logits[:, :-1, :].transpose(1, 2)" in forward_section
+    assert "input_ids[:, 1:]" in forward_section
+    assert "return losses, logits" in forward_section
+    assert "outputs.argmax(dim=-1)" not in source
+    assert "predicted_tokens = logits[0, si - 1 : ei - 1, :].argmax(dim=-1)" in source
+    assert "mean_losses = losses.new_empty(len(start_idxs))" in option_section
+    assert "for i, (si, ei) in enumerate(zip(start_idxs, end_idxs)):" in option_section
+    assert "mean_losses[i] = losses[i, si - 1 : ei - 1].mean()" in option_section
     assert "pred_idx = mean_losses.argmin()" in option_section
     assert "is_correct = pred_idx == int(item['gold'])" in option_section
     assert ").detach().cpu().tolist()" not in option_section
@@ -6621,6 +6635,68 @@ def test_nanochat_core_eval_batches_option_loss_reads() -> None:
     assert "correct[idx] = is_correct.to(device=device, dtype=correct.dtype)" in source
     assert source.count("@torch.inference_mode()") >= 2
     assert "@torch.no_grad()" not in source
+
+
+def test_nanochat_core_eval_forward_model_scores_next_tokens_only() -> None:
+    from labs.nanochat_fullstack.nanochat.core_eval import forward_model
+
+    input_ids = torch.tensor([[1, 2, 0]], dtype=torch.long)
+    logits = torch.tensor(
+        [
+            [
+                [0.0, 0.5, 2.0],
+                [3.0, 0.0, 0.25],
+                [0.0, 0.0, 9.0],
+            ]
+        ],
+        dtype=torch.float32,
+    )
+
+    class DummyModel:
+        def __call__(self, observed_ids: torch.Tensor) -> torch.Tensor:
+            torch.testing.assert_close(observed_ids, input_ids)
+            return logits
+
+    losses, returned_logits = forward_model(DummyModel(), input_ids)
+    expected = torch.nn.functional.cross_entropy(
+        logits[:, :-1, :].transpose(1, 2),
+        input_ids[:, 1:],
+        reduction="none",
+    )
+
+    torch.testing.assert_close(losses, expected)
+    assert losses.shape == (1, 2)
+    assert returned_logits is logits
+
+
+def test_nanochat_core_eval_reuses_prompt_templates() -> None:
+    source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "core_eval.py").read_text(
+        encoding="utf-8"
+    )
+    render_sections = [
+        source.split("def render_prompts_mc", maxsplit=1)[1].split(
+            "def render_prompts_schema",
+            maxsplit=1,
+        )[0],
+        source.split("def render_prompts_schema", maxsplit=1)[1].split(
+            "def render_prompts_lm",
+            maxsplit=1,
+        )[0],
+        source.split("def render_prompts_lm", maxsplit=1)[1].split(
+            "def find_common_length",
+            maxsplit=1,
+        )[0],
+    ]
+
+    assert source.count("Template(") == 3
+    assert "_PROMPT_TEMPLATE_MC = Template(" in source
+    assert "_PROMPT_TEMPLATE_SCHEMA = Template(" in source
+    assert "_PROMPT_TEMPLATE_LM = Template(" in source
+    assert "_PROMPT_TEMPLATE_MC.render(choice=choice, **context)" in source
+    assert "_PROMPT_TEMPLATE_SCHEMA.render(context=context_option, **context)" in source
+    assert "_PROMPT_TEMPLATE_LM.render(include_continuation=False, **context)" in source
+    assert "_PROMPT_TEMPLATE_LM.render(include_continuation=True, **context)" in source
+    assert all("Template(" not in section for section in render_sections)
 
 
 def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
@@ -7530,9 +7606,13 @@ def test_nanochat_base_train_defers_grad_norm_sync_until_logging() -> None:
     assert "grad_norm_tensor.item()" not in loop_section
     assert "grad_norm_tensor = None" in step_section
     assert "grad_norm_tensor = torch.nn.utils.clip_grad_norm_" in step_section
-    assert "log_tensors = [train_loss.to(torch.float64)]" in logging_section
-    assert "log_values = torch.stack(log_tensors).detach().cpu().tolist()" in logging_section
+    assert "log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)" in source
+    assert "log_value_buffer[0].copy_(train_loss)" in logging_section
+    assert "log_value_buffer[1].copy_(grad_norm_tensor)" in logging_section
+    assert "log_count = 2 if grad_clip_enabled else 1" in logging_section
+    assert "log_values = log_value_buffer[:log_count].detach().cpu().tolist()" in logging_section
     assert "grad_norm = log_values[1] if grad_clip_enabled else 0.0" in logging_section
+    assert "torch.stack(log_tensors)" not in logging_section
     assert "train_loss.item()" not in logging_section
 
 
@@ -7623,11 +7703,19 @@ def test_nanochat_mid_train_reuses_last_step_reduce_scalar() -> None:
         "# once in a while",
         maxsplit=1,
     )[0]
+    logging_section = source.split("# logging", maxsplit=1)[1].split(
+        "debiased_smooth_loss",
+        maxsplit=1,
+    )[0]
 
     assert "last_step_reduce = torch.empty((), dtype=torch.int32, device=device) if ddp else None" in source
     assert "last_step_reduce.fill_(int(last_step))" in loop_prefix
     assert "dist.all_reduce(last_step_reduce, op=dist.ReduceOp.MAX)" in loop_prefix
     assert "torch.tensor(last_step" not in loop_prefix
+    assert "log_value_buffer = torch.empty(1, dtype=torch.float64, device=device)" in source
+    assert "log_value_buffer[0].copy_(train_loss)" in logging_section
+    assert "train_loss_value = log_value_buffer.detach().cpu().tolist()[0]" in logging_section
+    assert "train_loss.item()" not in logging_section
 
 
 def test_nanochat_tok_train_batches_token_byte_stat_syncs() -> None:

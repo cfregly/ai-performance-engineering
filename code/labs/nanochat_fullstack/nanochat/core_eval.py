@@ -14,41 +14,49 @@ import torch.distributed as dist
 # -----------------------------------------------------------------------------
 # Prompt rendering utilities
 
-def render_prompts_mc(item, continuation_delimiter, fewshot_examples=None):
-    """Render complete prompts for a multiple choice question"""
-    template_str = """
+_PROMPT_TEMPLATE_MC = Template("""
 {%- for example in fewshot_examples -%}
 {{ example.query }}{{ continuation_delimiter }}{{ example.choices[example.gold] }}
 
 {% endfor -%}
-{{ item.query }}{{ continuation_delimiter }}{{ choice }}""".strip()
-    template = Template(template_str)
+{{ item.query }}{{ continuation_delimiter }}{{ choice }}""".strip())
+
+_PROMPT_TEMPLATE_SCHEMA = Template("""
+{%- for example in fewshot_examples -%}
+{{ example.context_options[example.gold] }}{{ continuation_delimiter }}{{ example.continuation }}
+
+{% endfor -%}
+{{ context }}{{ continuation_delimiter }}{{ item.continuation }}""".strip())
+
+_PROMPT_TEMPLATE_LM = Template("""
+{%- for example in fewshot_examples -%}
+{{ example.context | trim }}{{ continuation_delimiter }}{{ example.continuation }}
+
+{% endfor -%}
+{{ item.context | trim }}{{ continuation_delimiter }}{% if include_continuation %}{{ item.continuation }}{% endif %}""".strip())
+
+
+def render_prompts_mc(item, continuation_delimiter, fewshot_examples=None):
+    """Render complete prompts for a multiple choice question"""
     fewshot_examples = fewshot_examples or []
     context = {
         'fewshot_examples': fewshot_examples,
         'continuation_delimiter': continuation_delimiter,
         'item': item
     }
-    prompts = [template.render(choice=choice, **context) for choice in item['choices']]
+    prompts = [_PROMPT_TEMPLATE_MC.render(choice=choice, **context) for choice in item['choices']]
     return prompts
 
 
 def render_prompts_schema(item, continuation_delimiter, fewshot_examples=None):
     """Render complete prompts for a schema question"""
-    template_str = """
-{%- for example in fewshot_examples -%}
-{{ example.context_options[example.gold] }}{{ continuation_delimiter }}{{ example.continuation }}
-
-{% endfor -%}
-{{ context }}{{ continuation_delimiter }}{{ item.continuation }}""".strip()
-    template = Template(template_str)
     fewshot_examples = fewshot_examples or []
     context = {
         'fewshot_examples': fewshot_examples,
         'continuation_delimiter': continuation_delimiter,
         'item': item
     }
-    prompts = [template.render(context=context_option, **context)
+    prompts = [_PROMPT_TEMPLATE_SCHEMA.render(context=context_option, **context)
                for context_option in item['context_options']]
     return prompts
 
@@ -59,13 +67,6 @@ def render_prompts_lm(item, continuation_delimiter, fewshot_examples=None):
     Notice that we manually trim the context in the template,
     which in some datasets seems to have trailing whitespace (which we don't want).
     """
-    template_str = """
-{%- for example in fewshot_examples -%}
-{{ example.context | trim }}{{ continuation_delimiter }}{{ example.continuation }}
-
-{% endfor -%}
-{{ item.context | trim }}{{ continuation_delimiter }}{% if include_continuation %}{{ item.continuation }}{% endif %}""".strip()
-    template = Template(template_str)
     fewshot_examples = fewshot_examples or []
     context = {
         'fewshot_examples': fewshot_examples,
@@ -73,8 +74,8 @@ def render_prompts_lm(item, continuation_delimiter, fewshot_examples=None):
         'item': item
     }
     # Return two prompts: without and with the continuation
-    prompt_without = template.render(include_continuation=False, **context)
-    prompt_with = template.render(include_continuation=True, **context)
+    prompt_without = _PROMPT_TEMPLATE_LM.render(include_continuation=False, **context)
+    prompt_with = _PROMPT_TEMPLATE_LM.render(include_continuation=True, **context)
     # Due to the way the data seems to be stored, I think I need to strip in the case of LM here.
     # Otherwise we may get trailing whitespaces in prompt_without (which get absorbed into the next
     # token in prompt_with), meaning we don't get a nice and clean prefix in the token space
@@ -144,24 +145,20 @@ def batch_sequences_lm(tokenizer, prompts):
 @torch.inference_mode()
 def forward_model(model, input_ids):
     """
-    Take BxT tensor of token ids, return BxT tensor of losses and argmax predictions.
-    The last column of losses is set to nan because we don't have autoregressive targets there.
+    Take BxT tensor of token ids, return Bx(T-1) next-token losses and raw logits.
+    Callers can argmax only the positions that actually need token predictions.
     """
     batch_size, seq_len = input_ids.size()
-    outputs = model(input_ids)
-    # Roll the tensor to the left by one position to get the (autoregressive) target ids
-    target_ids = torch.roll(input_ids, shifts=-1, dims=1)
-    # Calculate cross entropy at all positions
-    losses = torch.nn.functional.cross_entropy(
-        outputs.view(batch_size * seq_len, -1),
-        target_ids.view(batch_size * seq_len),
-        reduction='none'
-    ).view(batch_size, seq_len)
-    # Set the last column to be nan because there is no autoregressive loss there
-    losses[:, -1] = float('nan')
-    # Get the argmax predictions at each position
-    predictions = outputs.argmax(dim=-1)
-    return losses, predictions
+    logits = model(input_ids)
+    if seq_len <= 1:
+        losses = logits.new_empty((batch_size, 0))
+    else:
+        losses = torch.nn.functional.cross_entropy(
+            logits[:, :-1, :].transpose(1, 2),
+            input_ids[:, 1:],
+            reduction='none',
+        )
+    return losses, logits
 
 
 @torch.inference_mode()
@@ -217,8 +214,8 @@ def evaluate_example(idx, model, tokenizer, data, device, task_meta):
     input_ids = stack_sequences(tokens, pad_token_id)
     input_ids = input_ids.to(device)
 
-    # Forward the model, get the autoregressive loss and argmax prediction at each token
-    losses, predictions = forward_model(model, input_ids)
+    # Forward the model and get autoregressive losses for each next-token target.
+    losses, logits = forward_model(model, input_ids)
 
     # See if the losses/predictions come out correctly
     if task_type == 'language_modeling':
@@ -226,17 +223,14 @@ def evaluate_example(idx, model, tokenizer, data, device, task_meta):
         si = start_idxs[0]
         ei = end_idxs[0]
         # predictions[i] predict input_ids[i+1] autoregressively
-        predicted_tokens = predictions[0, si-1:ei-1]
+        predicted_tokens = logits[0, si - 1 : ei - 1, :].argmax(dim=-1)
         actual_tokens = input_ids[0, si:ei]
         is_correct = torch.all(predicted_tokens == actual_tokens)
     elif task_type in ['multiple_choice', 'schema']:
         # For MC/schema: find the option with lowest average loss
-        mean_losses = torch.stack(
-            [
-                losses[i, si-1:ei-1].mean()
-                for i, (si, ei) in enumerate(zip(start_idxs, end_idxs))
-            ]
-        )
+        mean_losses = losses.new_empty(len(start_idxs))
+        for i, (si, ei) in enumerate(zip(start_idxs, end_idxs)):
+            mean_losses[i] = losses[i, si - 1 : ei - 1].mean()
         pred_idx = mean_losses.argmin()
         is_correct = pred_idx == int(item['gold'])
     else:

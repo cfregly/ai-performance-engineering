@@ -1131,7 +1131,7 @@ class Engine:
         row_states = [RowState(tokens.copy()) for tokens in prompt_tokens_batch]
         lengths_by_batch = lengths.clone()
         lengths_by_row = prompt_lengths.copy()
-        ids_buf = torch.empty((batch_size, 1), dtype=torch.long, device=device) if self.reuse_ids_buffer else None
+        ids_buf = self._ids_step_buffer_for(batch_size, device) if self.reuse_ids_buffer else None
 
         # Special tokens for control flow
         get_special = lambda s: self.tokenizer.encode_special(s)

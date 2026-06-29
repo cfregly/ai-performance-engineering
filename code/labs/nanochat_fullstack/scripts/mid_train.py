@@ -179,6 +179,7 @@ ema_beta = 0.9 # EMA decay factor
 total_training_time = 0 # total wall-clock time of training
 step = 0
 last_step_reduce = torch.empty((), dtype=torch.int32, device=device) if ddp else None
+log_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
 while True:
     flops_so_far = num_flops_per_token * total_batch_size * step
 
@@ -267,7 +268,9 @@ while True:
     step += 1
 
     # logging
-    smooth_train_loss = ema_beta * smooth_train_loss + (1 - ema_beta) * train_loss.item() # EMA the training loss
+    log_value_buffer[0].copy_(train_loss)
+    train_loss_value = log_value_buffer.detach().cpu().tolist()[0]
+    smooth_train_loss = ema_beta * smooth_train_loss + (1 - ema_beta) * train_loss_value # EMA the training loss
     debiased_smooth_loss = smooth_train_loss / (1 - ema_beta**(step + 1)) # debias the EMA
     pct_done = 100 * progress
     tok_per_sec = int(total_batch_size / dt)
