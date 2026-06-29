@@ -410,6 +410,7 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         self.model: Optional[Any] = None
         self.input_ids: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self.last_latency_ms: float = 0.0
         self.last_tokens_per_sec: float = 0.0
@@ -456,6 +457,11 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
             0, self.config.vocab_size,
             (self.config.batch_size, self.config.seq_len),
             device=self.device,
+        )
+        self._verify_output_buffer = torch.empty(
+            (self.config.batch_size, 1, min(8, self.config.vocab_size)),
+            device=self.device,
+            dtype=torch.float32,
         )
         
         print("\nWarmup (compilation happens here)...")
@@ -508,12 +514,17 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         return metrics
 
     def capture_verification_payload(self) -> None:
-        if self.input_ids is None or self.output is None:
+        if self.input_ids is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        output_slice = self.output[:, :1, : min(8, self.output.shape[-1])]
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+            : self._verify_output_buffer.shape[2],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids.detach()},
-            output=output_slice.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.config.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={"bf16": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -525,6 +536,7 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.input_ids = None
         self.output = None
+        self._verify_output_buffer = None
         self._timing_events = None
         self._pending_events = None
         torch.cuda.empty_cache()

@@ -76,6 +76,11 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
         
         # Input and weights - use CPU randn + to(device) to avoid CUDA RNG graph issues
         self.x = torch.randn(batch_seq, H, dtype=torch.bfloat16).to(self.device)
+        self._verify_output_buffer = torch.empty(
+            (1, min(8, H)),
+            device=self.device,
+            dtype=torch.float32,
+        )
         
         # BF16 reference weights
         w1 = torch.randn(E, H, I, dtype=torch.bfloat16).to(self.device)
@@ -203,13 +208,15 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.output is None:
+        verify_output = getattr(self, "_verify_output_buffer", None)
+        if self.output is None or verify_output is None:
             raise RuntimeError("benchmark_fn() must run before verification capture")
         param_count = self._payload_param_count
-        output_slice = self.output[:1, : min(8, self.output.shape[1])]
+        output_slice = self.output[: verify_output.shape[0], : verify_output.shape[1]]
+        verify_output.copy_(output_slice)
         self._set_verification_payload(
             inputs={"x": self.x.detach()},
-            output=output_slice.detach().float().clone(),
+            output=verify_output,
             batch_size=self.BATCH_SIZE,
             parameter_count=param_count,
             precision_flags={"bf16": True, "fp8": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -223,6 +230,29 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
             "total_flops": total_flops,
             "b200_peak_tflops": 2250,
         }
+
+    def teardown(self) -> None:
+        for name in (
+            "x",
+            "w1_fp8",
+            "w2_fp8",
+            "w3_fp8",
+            "scale",
+            "_sorted_token_indices",
+            "_sorted_weights",
+            "_sorted_tokens",
+            "_output_buffer",
+            "_tokens_fp8_buffer",
+            "_hidden_fp8_buffer",
+            "_expert_output_buffer",
+            "output",
+            "_verify_output_buffer",
+        ):
+            if hasattr(self, name):
+                setattr(self, name, None)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        super().teardown()
 
 def get_benchmark() -> NativeFP8MoE:
     return NativeFP8MoE()

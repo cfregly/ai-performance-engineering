@@ -16404,6 +16404,39 @@ def test_ch16_and_lab_forward_benchmarks_use_inference_mode() -> None:
             assert "sum(p.numel()" not in capture_section
 
 
+def test_moe_journey_slice_verification_reuses_buffers() -> None:
+    paths = (
+        "labs/moe_optimization_journey/moe_benchmark.py",
+        "labs/moe_optimization_journey/level4_triton.py",
+        "labs/moe_optimization_journey/level6_full_stack.py",
+        "labs/moe_optimization_journey/level6_native_fp8.py",
+    )
+
+    for path in paths:
+        source = (REPO_ROOT / path).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def ", maxsplit=1
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def ", maxsplit=1
+        )[0]
+
+        assert "_verify_output_buffer" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "output_slice.detach().float().clone()" not in capture_section
+        assert ".detach().float().clone()" not in capture_section
+        assert "_verify_output_buffer = None" in teardown_section or '"_verify_output_buffer"' in teardown_section
+        if path.endswith("level6_native_fp8.py"):
+            assert "verify_output.copy_(output_slice)" in capture_section
+            assert "output=verify_output" in capture_section
+        else:
+            assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+            assert "output=self._verify_output_buffer" in capture_section
+
+
 def test_ch13_memory_profiling_pair_keeps_compute_dtype_fixed_and_direct_output_capture() -> None:
     baseline_source = (REPO_ROOT / "ch13" / "baseline_memory_profiling.py").read_text(encoding="utf-8")
     optimized_source = (REPO_ROOT / "ch13" / "optimized_memory_profiling.py").read_text(encoding="utf-8")
