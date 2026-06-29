@@ -42,6 +42,7 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_meta: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_view: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._enable_nvtx = False
 
     def setup(self) -> None:
@@ -73,6 +74,7 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._compute_chunk_specs = list(zip(input_views, workspace_views, self.compute_done_events, strict=True))
         self._copy_chunk_specs = list(zip(workspace_views, dest_views, self.compute_done_events, strict=True))
         self._output_view = self.kv_dest[0, :1, : min(8, self.hidden_size)]
+        self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
         self._payload_meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
         
         # Warmup the streams so the steady-state path doesn't include one-time setup overhead.
@@ -127,11 +129,12 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         meta = self._payload_meta
-        if meta is None or self.output is None:
+        if meta is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"meta": meta},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=0,
             precision_flags={},
@@ -147,6 +150,7 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._copy_chunk_specs = []
         self.output = None
         self._output_view = None
+        self._verify_output_buffer = None
         self._payload_meta = None
         torch.cuda.empty_cache()
 

@@ -6042,12 +6042,17 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
         assert "torch.tensor(" not in benchmark_section
         assert ".clone()" not in benchmark_section
         assert ".float()" not in benchmark_section
-        assert "output=self.output.detach().float().clone()" in capture_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)" in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.output.detach().float().clone()" not in capture_section
         assert "self._output_view: Optional[torch.Tensor] = None" in source
         assert "self._output_view = self.kv_dest[0, :1, : min(8, self.hidden_size)]" in setup_section
         assert "self.output = self._output_view" in benchmark_section
         assert "self.kv_dest[0, :1, : min(8, self.hidden_size)]" not in benchmark_section
         assert "self._output_view = None" in teardown_section
+        assert "self._verify_output_buffer = None" in teardown_section
         assert "self.workspace = torch.empty_like(self.input_chunks)" in setup_section
         assert "self.kv_dest = torch.empty_like(self.input_chunks)" in setup_section
         assert "torch.zeros_like(self.input_chunks)" not in setup_section
