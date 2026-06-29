@@ -9,6 +9,7 @@ systems with Nsight Systems, Nsight Compute, and the PyTorch profiler.
 from __future__ import annotations
 
 import csv
+import heapq
 import re
 import subprocess
 from pathlib import Path
@@ -200,7 +201,7 @@ class NsightSystemsProfiler:
             except ValueError:
                 return 0.0
 
-        return sorted(rows, key=parse_pct, reverse=True)[:top_k]
+        return heapq.nlargest(top_k, rows, key=parse_pct)
 
     @staticmethod
     def _print_nsys_summary(summary: Dict[str, Any], kernel_regex: Optional[str]) -> None:

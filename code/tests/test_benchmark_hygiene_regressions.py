@@ -14766,3 +14766,17 @@ def test_ch19_adaptive_worker_pool_selects_best_candidate_without_sorting() -> N
     assert "import torch" not in source
     assert "import torch.distributed" not in source
     assert "import psutil" not in source
+
+
+def test_ch17_blackwell_profiling_ranks_top_k_without_full_sort() -> None:
+    source = (REPO_ROOT / "ch17" / "blackwell_profiling_guide.py").read_text(
+        encoding="utf-8"
+    )
+    rank_section = source.split("def _filter_and_rank_kernels", maxsplit=1)[1].split(
+        "def _print_nsys_summary",
+        maxsplit=1,
+    )[0]
+
+    assert "import heapq" in source
+    assert "return heapq.nlargest(top_k, rows, key=parse_pct)" in rank_section
+    assert "sorted(rows, key=parse_pct" not in rank_section
