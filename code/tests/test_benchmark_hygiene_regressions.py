@@ -3903,7 +3903,8 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "policy_metrics_buffer[0].copy_(compute_entropy(host_logits).mean())" in host_policy_section
     assert "policy_metrics_buffer[1].copy_(torch.softmax(host_logits, dim=-1).max(dim=-1).values.mean())" in host_policy_section
     assert "policy_metrics_buffer[2].copy_(torch.topk(host_logits, k=2, dim=-1).values.mean())" in host_policy_section
-    assert "policy_metrics_buffer[3].copy_(torch.sort(host_logits, dim=-1).values[:, -1].mean())" in host_policy_section
+    assert "policy_metrics_buffer[3].copy_(torch.amax(host_logits, dim=-1).mean())" in host_policy_section
+    assert "torch.sort(host_logits" not in host_policy_section
     assert "policy_metric_values[metric_idx] = float(policy_metrics_buffer[metric_idx])" in host_policy_section
     assert "policy_metrics = torch.stack(" not in host_policy_section
     assert "policy_metrics.tolist()" not in host_policy_section

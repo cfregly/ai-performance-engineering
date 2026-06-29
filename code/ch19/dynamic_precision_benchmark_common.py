@@ -209,7 +209,7 @@ def decode_host_policy_baseline(
         policy_metrics_buffer[0].copy_(compute_entropy(host_logits).mean())
         policy_metrics_buffer[1].copy_(torch.softmax(host_logits, dim=-1).max(dim=-1).values.mean())
         policy_metrics_buffer[2].copy_(torch.topk(host_logits, k=2, dim=-1).values.mean())
-        policy_metrics_buffer[3].copy_(torch.sort(host_logits, dim=-1).values[:, -1].mean())
+        policy_metrics_buffer[3].copy_(torch.amax(host_logits, dim=-1).mean())
         for metric_idx in range(4):
             policy_metric_values[metric_idx] = float(policy_metrics_buffer[metric_idx])
         if next_token_values is None:
