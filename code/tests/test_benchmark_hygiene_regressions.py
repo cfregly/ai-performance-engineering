@@ -5750,11 +5750,19 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     ):
         assert "self._latency_total_ms = 0.0" in setup
         assert "self._latency_count = 0" in setup
+        assert "self._latency_metric_values = [0.0]" in setup
+        assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in setup
         assert "self._latency_total_ms += latency_ms" in finalize
         assert "self._latency_count += 1" in finalize
+        assert "self._latency_metric_values[0] = latency_ms" in finalize
+        assert "return self._iteration_metric_payload" in finalize
+        assert 'return {"decode_ms": [latency_ms]}' not in finalize
         assert "if self._latency_count <= 0:" in metrics
         assert "self._latency_total_ms / self._latency_count" in metrics
         assert 'sum(self._history["latency_ms"])' not in metrics
+    for source_text in (baseline_source, source):
+        assert "self._history" not in source_text
+        assert '"latency_ms": []' not in source_text
 
 
 def test_moe_cuda_decode_kernel_wrappers_cache_nvtx_outside_hot_loop() -> None:

@@ -51,13 +51,16 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
             requests_per_iteration=float(self.batch),
             tokens_per_iteration=float(tokens),
         )
-        self._history: Dict[str, List[float]] = {"latency_ms": []}
         self._payload_meta: Optional[torch.Tensor] = None
         self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._enable_nvtx = False
         self._latency_total_ms = 0.0
         self._latency_count = 0
+        self._latency_metric_values = [0.0]
+        self._iteration_metric_payload: Dict[str, List[float]] = {
+            "decode_ms": self._latency_metric_values,
+        }
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -85,7 +88,6 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._refresh_bf16_cache(force=True)
         torch.cuda.synchronize(self.device)
         self.output = None
-        self._history = {"latency_ms": []}
         self._latency_total_ms = 0.0
         self._latency_count = 0
         self._payload_meta = torch.tensor(
@@ -158,10 +160,10 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
             return None
         latency_ms = elapsed_ms(self._pending_timing_pair)
         self._pending_timing_pair = None
-        self._history["latency_ms"].append(latency_ms)
         self._latency_total_ms += latency_ms
         self._latency_count += 1
-        return {"decode_ms": [latency_ms]}
+        self._latency_metric_values[0] = latency_ms
+        return self._iteration_metric_payload
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()

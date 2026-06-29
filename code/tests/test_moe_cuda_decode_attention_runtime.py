@@ -44,6 +44,11 @@ def test_moe_cuda_decode_attention_reuses_timing_and_meta(
         assert bench._payload_meta is meta
         assert bench.output is not None
         assert bench.output.dtype == output_dtype
+        metrics_payload = bench.finalize_iteration_metrics()
+        assert metrics_payload is bench._iteration_metric_payload
+        decode_ms = metrics_payload["decode_ms"]
+        assert decode_ms is bench._latency_metric_values
+        assert len(decode_ms) == 1
 
         bench.capture_verification_payload()
         payload = bench._verification_payload
@@ -55,5 +60,8 @@ def test_moe_cuda_decode_attention_reuses_timing_and_meta(
         torch.cuda.synchronize(bench.device)
         assert bench._timing_pair is timing_pair
         assert bench._payload_meta is meta
+        next_metrics_payload = bench.finalize_iteration_metrics()
+        assert next_metrics_payload is metrics_payload
+        assert next_metrics_payload["decode_ms"] is decode_ms
     finally:
         bench.teardown()
