@@ -77,10 +77,10 @@ def main():
         # Single process benchmark
         tensor = torch.ones(args.data_size, dtype=torch.float32, device=device)
         
-        start = time.time()
+        start = time.perf_counter()
         # Simulate all-reduce by just doing a local operation
         result = tensor * 1  # This simulates the all-reduce operation
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         
         mb = args.data_size * 4 / 1e6
         print(f"Single-process: All-reduce of {mb:.1f} MB took {elapsed*1000:.2f} ms", flush=True)
@@ -97,7 +97,7 @@ def main():
     dist.barrier()
     
     if rank == 0:
-        start = time.time()
+        start = time.perf_counter()
     
     # All-reduce (sum) across all ranks
     dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
@@ -106,7 +106,7 @@ def main():
     dist.barrier()
     
     if rank == 0:
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         mb = args.data_size * 4 / 1e6
         print(f"Rank0: All-reduce of {mb:.1f} MB took {elapsed*1000:.2f} ms "
               f"({mb/elapsed/1e3:.1f} GB/s)", flush=True)

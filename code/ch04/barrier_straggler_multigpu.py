@@ -4,7 +4,6 @@ from __future__ import annotations
 
 
 import datetime
-import os
 
 from core.common.device_utils import resolve_local_rank
 import time
@@ -50,9 +49,9 @@ def main() -> None:
     _ = torch.mm(dummy_tensor, dummy_tensor.t())
 
     try:
-        start = time.time()
+        start = time.perf_counter()
         dist.monitored_barrier(timeout=datetime.timedelta(seconds=30))
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         print(f"Rank {rank} completed barrier in {elapsed:.2f}s", flush=True)
     except RuntimeError as exc:
         print(f"Rank {rank} barrier timeout: {exc}", flush=True)

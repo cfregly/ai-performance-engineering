@@ -83,3 +83,20 @@ def test_main_uses_local_rank_instead_of_global_rank_for_nccl_tensor_device(monk
     assert captured["set_device_calls"] == [1]
     assert captured["init_kwargs"]["backend"] == "nccl"
     assert captured["init_kwargs"]["device_id"] == 1
+
+
+def test_ch04_distributed_demos_use_monotonic_elapsed_timing() -> None:
+    dist_source = dist_allreduce.__loader__.get_source(dist_allreduce.__name__)
+    assert dist_source is not None
+    barrier_source = (
+        dist_allreduce.__file__.replace("dist_allreduce.py", "barrier_straggler_multigpu.py")
+    )
+    with open(barrier_source, encoding="utf-8") as handle:
+        barrier_text = handle.read()
+
+    assert "start = time.perf_counter()" in dist_source
+    assert "elapsed = time.perf_counter() - start" in dist_source
+    assert "time.time()" not in dist_source
+    assert "start = time.perf_counter()" in barrier_text
+    assert "elapsed = time.perf_counter() - start" in barrier_text
+    assert "time.time()" not in barrier_text
