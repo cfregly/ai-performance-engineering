@@ -35,6 +35,30 @@ def test_flash_attention_pair_shares_verification_tolerance() -> None:
     assert "output_tolerance=(0.2, 2.0)" not in baseline
 
 
+def test_flash_attention_pair_reuses_verification_buffers() -> None:
+    for name in ("baseline_flash_attention.py", "optimized_flash_attention.py"):
+        source = (REPO_ROOT / f"ch10/{name}").read_text()
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _manual_attention" if name.startswith("baseline") else "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(self.input, dtype=torch.float32)" in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.output.detach().float().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_baseline_flash_attention_builds_causal_mask_directly() -> None:
     source = (REPO_ROOT / "ch10/baseline_flash_attention.py").read_text()
     setup_source = source.split("def setup", maxsplit=1)[1].split(

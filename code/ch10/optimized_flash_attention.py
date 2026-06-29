@@ -252,6 +252,7 @@ class OptimizedFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self.output = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._sdpa_backends: Optional[list[SDPBackend]] = None
         self._attention_runner: Optional[Callable[[torch.Tensor], torch.Tensor]] = None
         self._external_flash_func: Optional[Callable[..., torch.Tensor]] = None
@@ -388,6 +389,7 @@ class OptimizedFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.batch_size, self.seq_len, self.hidden_dim,
             device=self.device, dtype=torch.float16
         )
+        self._verify_output_buffer = torch.empty_like(self.input, dtype=torch.float32)
         self._resolve_attention_runner()
         
         # Warmup the selected tiled attention engine.
@@ -407,9 +409,12 @@ class OptimizedFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.input},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             precision_flags={
                 "fp16": True,
@@ -424,6 +429,8 @@ class OptimizedFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.model = None
         self.input = None
+        self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
