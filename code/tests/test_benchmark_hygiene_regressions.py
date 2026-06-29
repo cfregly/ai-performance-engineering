@@ -3476,8 +3476,20 @@ def test_ch19_token_precision_confidence_batches_scalar_transfer() -> None:
         "def _choose_precision", maxsplit=1
     )[0]
 
-    assert "metrics = torch.stack(" in confidence_section
-    assert ").detach().cpu()" in confidence_section
+    assert "self._confidence_top2_values = None" in source
+    assert "self._confidence_top2_indices = None" in source
+    assert "self._confidence_metrics_buffer = None" in source
+    assert "self._confidence_metrics_host_buffer = None" in source
+    assert "torch.topk(scaled, k=2, out=(self._confidence_top2_values, self._confidence_top2_indices))" in confidence_section
+    assert "self._confidence_metrics_buffer = torch.empty(3, device=scaled.device, dtype=torch.float32)" in confidence_section
+    assert "metrics[0].copy_(probs.max())" in confidence_section
+    assert "metrics[1].copy_((-(probs * log_probs).sum()))" in confidence_section
+    assert "metrics[2].copy_(self._confidence_top2_values[0] - self._confidence_top2_values[1])" in confidence_section
+    assert "metrics_host.copy_(metrics, non_blocking=False)" in confidence_section
+    assert "return ConfidenceMetrics(float(metrics_host[0]), float(metrics_host[1]), float(metrics_host[2]))" in confidence_section
+    assert "metrics = torch.stack(" not in confidence_section
+    assert ").detach().cpu()" not in confidence_section
+    assert "metrics.tolist()" not in confidence_section
     assert "log_probs = F.log_softmax(scaled, dim=-1)" in confidence_section
     assert "probs = log_probs.exp()" in confidence_section
     assert "F.softmax(scaled, dim=-1)" not in confidence_section
@@ -3715,9 +3727,13 @@ def test_ch19_token_precision_generate_reuses_workspace_without_return_alias() -
 
     first, _ = controller.generate(input_ids, max_length=3)
     workspace_ptr = controller._token_buffer.data_ptr()
+    top2_ptr = controller._confidence_top2_values.data_ptr()
+    metric_ptr = controller._confidence_metrics_buffer.data_ptr()
     second, _ = controller.generate(input_ids, max_length=3)
 
     assert controller._token_buffer.data_ptr() == workspace_ptr
+    assert controller._confidence_top2_values.data_ptr() == top2_ptr
+    assert controller._confidence_metrics_buffer.data_ptr() == metric_ptr
     assert first.data_ptr() != workspace_ptr
     assert second.data_ptr() != workspace_ptr
     assert torch.equal(first, second)

@@ -54,6 +54,10 @@ class TokenPrecisionController:
         self._next_token_buffer = None
         self._next_token_host_buffer = None
         self._token_buffer = None
+        self._confidence_top2_values = None
+        self._confidence_top2_indices = None
+        self._confidence_metrics_buffer = None
+        self._confidence_metrics_host_buffer = None
 
     def _next_token_buffers(self, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
         if self._next_token_buffer is None or self._next_token_buffer.device != device:
@@ -82,21 +86,43 @@ class TokenPrecisionController:
             )
         return self._token_buffer[:, :total_len]
 
-    @staticmethod
-    def _confidence(logits: torch.Tensor, temperature: float = 1.0) -> ConfidenceMetrics:
+    def _confidence(self, logits: torch.Tensor, temperature: float = 1.0) -> ConfidenceMetrics:
         scaled = logits / temperature
         log_probs = F.log_softmax(scaled, dim=-1)
         probs = log_probs.exp()
-        top2 = torch.topk(scaled, k=2).values
-        metrics = torch.stack(
-            (
-                probs.max(),
-                -(probs * log_probs).sum(),
-                top2[0] - top2[1] if top2.numel() == 2 else scaled.new_zeros(()),
-            )
-        ).detach().cpu()
-        max_prob, entropy, diff = (float(value) for value in metrics.tolist())
-        return ConfidenceMetrics(max_prob, entropy, diff)
+        if (
+            self._confidence_top2_values is None
+            or self._confidence_top2_values.device != scaled.device
+            or self._confidence_top2_values.dtype != scaled.dtype
+        ):
+            self._confidence_top2_values = torch.empty(2, device=scaled.device, dtype=scaled.dtype)
+            self._confidence_top2_indices = torch.empty(2, device=scaled.device, dtype=torch.long)
+        assert self._confidence_top2_indices is not None
+        torch.topk(scaled, k=2, out=(self._confidence_top2_values, self._confidence_top2_indices))
+
+        if self._confidence_metrics_buffer is None or self._confidence_metrics_buffer.device != scaled.device:
+            self._confidence_metrics_buffer = torch.empty(3, device=scaled.device, dtype=torch.float32)
+        metrics = self._confidence_metrics_buffer
+        metrics[0].copy_(probs.max())
+        metrics[1].copy_((-(probs * log_probs).sum()))
+        metrics[2].copy_(self._confidence_top2_values[0] - self._confidence_top2_values[1])
+
+        if metrics.device.type == "cuda":
+            if (
+                self._confidence_metrics_host_buffer is None
+                or not self._confidence_metrics_host_buffer.is_pinned()
+            ):
+                self._confidence_metrics_host_buffer = torch.empty(
+                    3,
+                    dtype=torch.float32,
+                    device="cpu",
+                    pin_memory=True,
+                )
+            metrics_host = self._confidence_metrics_host_buffer
+            metrics_host.copy_(metrics, non_blocking=False)
+        else:
+            metrics_host = metrics
+        return ConfidenceMetrics(float(metrics_host[0]), float(metrics_host[1]), float(metrics_host[2]))
 
     def _choose_precision(self, metrics: ConfidenceMetrics) -> PrecisionLevel:
         score = metrics.confidence_score
