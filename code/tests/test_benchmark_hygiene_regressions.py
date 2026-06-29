@@ -639,6 +639,31 @@ def test_ch05_optimized_storage_cpu_opens_mmap_outside_hot_loop() -> None:
     assert "self._output_buffer = None" in teardown_section
 
 
+def test_ch05_baseline_storage_cpu_reuses_output_buffer() -> None:
+    source = (REPO_ROOT / "ch05" / "baseline_storage_cpu.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._output_buffer = torch.empty(1, device=self.device, dtype=torch.float32)" in setup_section
+    assert "with torch.inference_mode(), self._nvtx_range(\"storage_cpu\"):" in benchmark_section
+    assert "torch.sum(self.data, dim=0, keepdim=True, out=self._output_buffer)" in benchmark_section
+    assert "self.output = self._output_buffer" in benchmark_section
+    assert "self.data.sum().unsqueeze(0)" not in benchmark_section
+    assert "torch.empty(" not in benchmark_section
+    assert "self._output_buffer = None" in teardown_section
+
+
 def test_ch05_storage_io_dataset_defers_label_tensor_to_collate() -> None:
     source = (REPO_ROOT / "ch05" / "storage_io_optimization.py").read_text(encoding="utf-8")
     getitem_section = source.split("def __getitem__", maxsplit=1)[1].split(
