@@ -37,6 +37,8 @@ class RuntimeSchedulerWorkload:
         # CPU send buffers (simulate network serialization).
         self.send_buffer = torch.randn(4096)
         self.send_scale = torch.randn(4096)
+        self._send_product = torch.empty_like(self.send_buffer)
+        self._send_scalar = torch.empty((), dtype=self.send_buffer.dtype)
 
         # GPU matmul buffers per scenario.
         self.gpu_buffers: Dict[str, Tuple[torch.Tensor, torch.Tensor]] = {}
@@ -59,7 +61,9 @@ class RuntimeSchedulerWorkload:
     def stream_send(self, tokens: int) -> float:
         """Simulate response serialization cost with fixed overhead + per-token work."""
         # Fixed overhead per send call.
-        _ = torch.sum(self.send_buffer * self.send_scale)
+        torch.mul(self.send_buffer, self.send_scale, out=self._send_product)
+        torch.sum(self._send_product, dim=0, out=self._send_scalar)
         # Per-token cost scales with tokens.
         chunk = self.send_buffer[: max(1, min(tokens, self.send_buffer.numel()))]
-        return float(torch.sum(chunk))
+        torch.sum(chunk, dim=0, out=self._send_scalar)
+        return float(self._send_scalar)

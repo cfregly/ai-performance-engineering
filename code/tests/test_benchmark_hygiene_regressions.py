@@ -3102,6 +3102,19 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
 
 
 def test_ch16_runtime_schedulers_cache_nvtx_and_verification_dummy() -> None:
+    common_source = (REPO_ROOT / "ch16" / "runtime_scheduler_common.py").read_text(
+        encoding="utf-8"
+    )
+    stream_send_section = common_source.split("def stream_send", maxsplit=1)[1]
+
+    assert "self._send_product = torch.empty_like(self.send_buffer)" in common_source
+    assert "self._send_scalar = torch.empty((), dtype=self.send_buffer.dtype)" in common_source
+    assert "torch.mul(self.send_buffer, self.send_scale, out=self._send_product)" in stream_send_section
+    assert "torch.sum(self._send_product, dim=0, out=self._send_scalar)" in stream_send_section
+    assert "torch.sum(chunk, dim=0, out=self._send_scalar)" in stream_send_section
+    assert "self.send_buffer * self.send_scale" not in stream_send_section
+    assert "float(torch.sum(chunk))" not in stream_send_section
+
     for filename, label in (
         ("baseline_runtime_scheduler.py", "runtime_scheduler_baseline"),
         ("optimized_runtime_scheduler.py", "runtime_scheduler_optimized"),
