@@ -181,7 +181,8 @@ def benchmark_fp8_training() -> Dict[str, BenchmarkResult]:
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
 
-        start.record()
+        current_stream = torch.cuda.current_stream(device)
+        start.record(current_stream)
         for _ in range(20):
             loss_tensor = _training_step(
                 model,
@@ -190,7 +191,7 @@ def benchmark_fp8_training() -> Dict[str, BenchmarkResult]:
                 targets,
                 amp_dtype=amp_dtype if not use_fp8 else None,
             )
-        end.record()
+        end.record(current_stream)
         end.synchronize()
 
         time_ms = start.elapsed_time(end) / 20.0
@@ -225,10 +226,11 @@ def demonstrate_fp8_compile() -> None:
     torch.cuda.synchronize()
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
-    start.record()
+    current_stream = torch.cuda.current_stream(device)
+    start.record(current_stream)
     for _ in range(20):
         compiled(sample)
-    end.record()
+    end.record(current_stream)
     end.synchronize()
     print(f"FP8 + torch.compile throughput: {start.elapsed_time(end)/20.0:6.2f} ms/iter")
 

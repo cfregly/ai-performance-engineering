@@ -1519,8 +1519,11 @@ def test_ch19_native_fp8_training_defers_loss_readback_until_after_timing() -> N
         "def demonstrate_fp8_compile",
         maxsplit=1,
     )[0]
-    timed_section = benchmark_section.split("start.record()", maxsplit=1)[1].split(
-        "end.record()",
+    timed_section = benchmark_section.split(
+        "current_stream = torch.cuda.current_stream(device)",
+        maxsplit=1,
+    )[1].split(
+        "end.synchronize()",
         maxsplit=1,
     )[0]
     readback_section = benchmark_section.split("end.synchronize()", maxsplit=1)[1].split(
@@ -1530,12 +1533,38 @@ def test_ch19_native_fp8_training_defers_loss_readback_until_after_timing() -> N
 
     assert "return float(loss.detach())" not in training_step_section
     assert "return loss.detach()" in training_step_section
+    assert "start.record(current_stream)" in timed_section
+    assert "end.record(current_stream)" in timed_section
+    assert "start.record()" not in timed_section
+    assert "end.record()" not in timed_section
     assert "loss_tensor = _training_step(" in timed_section
     assert ".cpu()" not in timed_section
     assert ".tolist()" not in timed_section
     assert "loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)" in benchmark_section
     assert "loss_value_buffer[0].copy_(loss_tensor)" in readback_section
     assert "loss_val = float(loss_value_buffer.detach().cpu()[0])" in readback_section
+
+
+def test_ch19_native_fp8_compile_timing_records_on_current_stream() -> None:
+    source = (REPO_ROOT / "ch19" / "native_fp8_training.py").read_text(
+        encoding="utf-8"
+    )
+    compile_section = source.split("def demonstrate_fp8_compile", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+    timing_section = compile_section.split(
+        "current_stream = torch.cuda.current_stream(device)",
+        maxsplit=1,
+    )[1].split(
+        "end.synchronize()",
+        maxsplit=1,
+    )[0]
+
+    assert "start.record(current_stream)" in timing_section
+    assert "end.record(current_stream)" in timing_section
+    assert "start.record()" not in timing_section
+    assert "end.record()" not in timing_section
 
 
 def test_ch04_nvshmem_training_example_defers_reduced_norm_sync() -> None:
