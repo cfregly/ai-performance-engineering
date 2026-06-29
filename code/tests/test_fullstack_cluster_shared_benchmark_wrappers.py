@@ -353,6 +353,29 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "meta = torch.stack(" not in roundtrip_section
     assert "torch.cuda.Event(enable_timing=True)" not in forward_section
     assert "torch.cuda.Event(enable_timing=True)" not in run_step_section
+    assert roundtrip_section.count("torch.cuda.current_stream()") == 1
+    assert "current_stream = torch.cuda.current_stream()" in roundtrip_section
+    assert "events.start.record(current_stream)" in roundtrip_section
+    assert "events.mid.record(current_stream)" in roundtrip_section
+    assert "events.mid2.record(current_stream)" in roundtrip_section
+    assert "events.end.record(current_stream)" in roundtrip_section
+    assert ".record(torch.cuda.current_stream())" not in roundtrip_section
+    assert forward_section.count("torch.cuda.current_stream()") == 1
+    assert "current_stream = torch.cuda.current_stream()" in forward_section
+    assert "routing_start.record(current_stream)" in forward_section
+    assert "routing_end.record(current_stream)" in forward_section
+    assert "self._comm_stream.wait_stream(current_stream)" in forward_section
+    assert "current_stream.wait_stream(self._comm_stream)" in forward_section
+    assert "torch.cuda.current_stream().wait_stream" not in forward_section
+    assert ".record(torch.cuda.current_stream())" not in forward_section
+    assert run_step_section.count("torch.cuda.current_stream()") == 1
+    assert "current_stream = torch.cuda.current_stream()" in run_step_section
+    assert "total_start.record(current_stream)" in run_step_section
+    assert "total_after_forward.record(current_stream)" in run_step_section
+    assert "total_after_backward.record(current_stream)" in run_step_section
+    assert "total_after_sync.record(current_stream)" in run_step_section
+    assert "total_end.record(current_stream)" in run_step_section
+    assert ".record(torch.cuda.current_stream())" not in run_step_section
     assert "self._loss_host_buffer = torch.empty((), dtype=torch.float32, pin_memory=True)" in source
     assert "self._loss_host_buffer.copy_(loss.detach(), non_blocking=False)" in run_step_section
     assert "loss.detach().item()" not in run_step_section

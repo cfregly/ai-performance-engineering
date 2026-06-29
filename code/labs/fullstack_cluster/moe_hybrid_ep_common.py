@@ -707,7 +707,8 @@ class DeepSeekHybridEPModule(nn.Module):
         recv_counts = self._exchange_counts(send_counts, group=group, group_size=group_size, group_rank=group_rank)
 
         events = self._phase_events(event_label)
-        events.start.record(torch.cuda.current_stream())
+        current_stream = torch.cuda.current_stream()
+        events.start.record(current_stream)
 
         meta = self._buffer(
             "route_meta",
@@ -726,20 +727,20 @@ class DeepSeekHybridEPModule(nn.Module):
             recv_tokens = self._all_to_all_list(sorted_tokens, send_counts, recv_counts, group=group)
             recv_weights = self._all_to_all_list(sorted_weights, send_counts, recv_counts, group=group)
             recv_meta = self._all_to_all_list(meta, send_counts, recv_counts, group=group)
-        events.mid.record(torch.cuda.current_stream())
+        events.mid.record(current_stream)
 
         expert_outputs = self._apply_local_experts(
             recv_tokens,
             recv_meta[:, 1].to(torch.int64),
             recv_weights,
         )
-        events.mid2.record(torch.cuda.current_stream())
+        events.mid2.record(current_stream)
 
         if use_single:
             returned = self._all_to_all_single(expert_outputs, recv_counts, send_counts, group=group, label="return_tokens", reuse=reuse)
         else:
             returned = self._all_to_all_list(expert_outputs, recv_counts, send_counts, group=group)
-        events.end.record(torch.cuda.current_stream())
+        events.end.record(current_stream)
 
         return returned.index_select(0, inverse_sort), events
 
@@ -778,9 +779,10 @@ class DeepSeekHybridEPModule(nn.Module):
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         hidden = self.input_proj(inputs)
         routing_start, routing_end = self._event_pair("routing")
-        routing_start.record(torch.cuda.current_stream())
+        current_stream = torch.cuda.current_stream()
+        routing_start.record(current_stream)
         expanded_tokens, top_indices, route_counts, aux, route_payload = self._route_tokens(hidden)
-        routing_end.record(torch.cuda.current_stream())
+        routing_end.record(current_stream)
 
         owner_ranks = route_payload["owner_ranks"]
         owner_nodes = route_payload["owner_nodes"]
@@ -813,14 +815,14 @@ class DeepSeekHybridEPModule(nn.Module):
 
         if self.optimized and self.topology.world_size == 1:
             same_rank_start, same_rank_end = self._event_pair("same_rank_single")
-            same_rank_start.record(torch.cuda.current_stream())
+            same_rank_start.record(current_stream)
             local_outputs = self._apply_local_experts(
                 expanded_tokens,
                 local_expert_ids,
                 expanded_weights,
             )
             combined.index_add_(0, token_indices, local_outputs)
-            same_rank_end.record(torch.cuda.current_stream())
+            same_rank_end.record(current_stream)
             same_rank_events = (same_rank_start, same_rank_end)
             same_rank_count = float(token_indices.numel())
         elif self.optimized:
@@ -858,10 +860,10 @@ class DeepSeekHybridEPModule(nn.Module):
                 local_branch_events = (local_branch_start, local_branch_end)
                 remote_branch_events = (remote_branch_start, remote_branch_end)
                 overlap_window_events = (overlap_window_start, overlap_window_end)
-                overlap_window_start.record(torch.cuda.current_stream())
+                overlap_window_start.record(current_stream)
             if overlap_active:
                 assert self._comm_stream is not None
-                self._comm_stream.wait_stream(torch.cuda.current_stream())
+                self._comm_stream.wait_stream(current_stream)
                 with torch.cuda.stream(self._comm_stream):
                     remote_branch_start.record(self._comm_stream)
                     remote_outputs, remote_events = self._roundtrip_routes(
@@ -880,17 +882,17 @@ class DeepSeekHybridEPModule(nn.Module):
                     remote_branch_end.record(self._comm_stream)
 
             if overlap_active and local_branch_events is not None:
-                local_branch_events[0].record(torch.cuda.current_stream())
+                local_branch_events[0].record(current_stream)
             if same_rank_count_int > 0:
                 same_rank_start, same_rank_end = self._event_pair("same_rank")
-                same_rank_start.record(torch.cuda.current_stream())
+                same_rank_start.record(current_stream)
                 local_outputs = self._apply_local_experts(
                     expanded_tokens[same_rank_mask],
                     local_expert_ids[same_rank_mask],
                     expanded_weights[same_rank_mask],
                 )
                 combined.index_add_(0, token_indices[same_rank_mask], local_outputs)
-                same_rank_end.record(torch.cuda.current_stream())
+                same_rank_end.record(current_stream)
                 same_rank_events = (same_rank_start, same_rank_end)
             if same_node_count_int > 0 and self.topology.local_group is not None:
                 local_group_ranks = owner_ranks[same_node_mask] % self.topology.local_world_size
@@ -911,11 +913,11 @@ class DeepSeekHybridEPModule(nn.Module):
             else:
                 same_node_events = None
             if overlap_active and local_branch_events is not None:
-                local_branch_events[1].record(torch.cuda.current_stream())
+                local_branch_events[1].record(current_stream)
 
             if remote_outputs is None and remote_count_int > 0 and self.topology.world_size > 1:
                 if remote_branch_events is not None:
-                    remote_branch_events[0].record(torch.cuda.current_stream())
+                    remote_branch_events[0].record(current_stream)
                 remote_outputs, remote_events = self._roundtrip_routes(
                     tokens=expanded_tokens[remote_node_mask],
                     weights=expanded_weights[remote_node_mask],
@@ -930,14 +932,14 @@ class DeepSeekHybridEPModule(nn.Module):
                     event_label="remote",
                 )
                 if remote_branch_events is not None:
-                    remote_branch_events[1].record(torch.cuda.current_stream())
+                    remote_branch_events[1].record(current_stream)
 
             if remote_outputs is not None:
                 if self._comm_stream is not None and overlap_mode == "local_remote":
-                    torch.cuda.current_stream().wait_stream(self._comm_stream)
+                    current_stream.wait_stream(self._comm_stream)
                 combined.index_add_(0, token_indices[remote_node_mask], remote_outputs)
             if overlap_active and overlap_window_events is not None:
-                overlap_window_events[1].record(torch.cuda.current_stream())
+                overlap_window_events[1].record(current_stream)
             same_rank_count = float(same_rank_count_int)
             same_node_count = float(same_node_count_int)
             remote_count = float(remote_count_int)
@@ -1113,21 +1115,22 @@ class HybridEPTrainer:
         total_after_backward = self._step_events["after_backward"]
         total_after_sync = self._step_events["after_sync"]
         total_end = self._step_events["end"]
+        current_stream = torch.cuda.current_stream()
 
-        total_start.record(torch.cuda.current_stream())
+        total_start.record(current_stream)
         loss, metrics = self.model.forward_loss(
             self.inputs,
             self.targets,
             overlap_mode=self.args.overlap_mode,
             aux_loss_scale=self.args.aux_loss_scale,
         )
-        total_after_forward.record(torch.cuda.current_stream())
+        total_after_forward.record(current_stream)
         loss.backward()
-        total_after_backward.record(torch.cuda.current_stream())
+        total_after_backward.record(current_stream)
         self._sync_replicated_grads()
-        total_after_sync.record(torch.cuda.current_stream())
+        total_after_sync.record(current_stream)
         self.optimizer.step()
-        total_end.record(torch.cuda.current_stream())
+        total_end.record(current_stream)
         torch.cuda.synchronize()
 
         metrics.update(
