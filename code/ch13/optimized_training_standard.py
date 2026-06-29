@@ -111,6 +111,7 @@ class OptimizedTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model: Optional[nn.Module] = None
         self.input_ids = None
         self.targets = None
+        self._targets_flat = None
         self.optimizer = None
         self.criterion = None
         
@@ -170,6 +171,7 @@ class OptimizedTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             (self.batch_size, self.seq_len),
             device=self.device
         )
+        self._targets_flat = self.targets.view(-1)
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=1e-4)
@@ -179,7 +181,17 @@ class OptimizedTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Training step WITH checkpointing - recomputes activations in backward."""
-        if any(v is None for v in (self.model, self.input_ids, self.targets, self.optimizer, self.criterion)):
+        if any(
+            v is None
+            for v in (
+                self.model,
+                self.input_ids,
+                self.targets,
+                self._targets_flat,
+                self.optimizer,
+                self.criterion,
+            )
+        ):
             raise RuntimeError("Benchmark not configured")
 
         with self._nvtx_range("checkpointed_training"):
@@ -191,7 +203,7 @@ class OptimizedTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             # Compute loss
             loss = self.criterion(
                 logits.view(-1, self.vocab_size),
-                self.targets.view(-1)
+                self._targets_flat
             )
             self.output = None
             
@@ -236,6 +248,7 @@ class OptimizedTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.input_ids = None
         self.targets = None
+        self._targets_flat = None
         self.optimizer = None
         self.criterion = None
         torch.cuda.empty_cache()

@@ -9513,6 +9513,9 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
         "baseline_training_speed.py",
     ):
         source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
@@ -9524,6 +9527,10 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
         assert "self.output = None" in benchmark_section
         assert "verify_logits = self.model(self.input_ids)" in capture_section
         assert "self.output = verify_logits[:1, :1, :8].detach().float().clone()" in capture_section
+        if name in {"baseline_training_standard.py", "optimized_training_standard.py"}:
+            assert "self._targets_flat = self.targets.view(-1)" in setup_section
+            assert "self._targets_flat" in benchmark_section
+            assert "self.targets.view(-1)" not in benchmark_section
 
     optimized_speed = (REPO_ROOT / "ch13" / "optimized_training_speed.py").read_text(encoding="utf-8")
     optimized_benchmark = optimized_speed.split("def benchmark_fn", maxsplit=1)[1].split(
