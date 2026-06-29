@@ -493,12 +493,14 @@ def should_use_low_precision(
     log_probs = torch.log_softmax(logits, dim=-1)
     probs = log_probs.exp()
     entropy_values = -(probs * log_probs).sum(dim=-1)
-    entropy, max_prob = torch.stack(
+    confidence_stats = torch.stack(
         (
             entropy_values.mean(),
             probs.max(dim=-1).values.mean(),
         )
-    ).tolist()
+    ).detach().cpu()
+    entropy = float(confidence_stats[0])
+    max_prob = float(confidence_stats[1])
     
     # Use low precision if confident (low entropy, high max prob)
     return entropy < entropy_threshold and max_prob > max_prob_threshold
@@ -615,12 +617,14 @@ if __name__ == '__main__':
     # Low confidence logits (flat distribution)
     low_conf_logits = torch.randn(1, 1000, device=device) * 0.1  # Flat
     
-    high_entropy, low_entropy = torch.stack(
+    entropy_stats = torch.stack(
         (
             compute_entropy(high_conf_logits).mean(),
             compute_entropy(low_conf_logits).mean(),
         )
-    ).tolist()
+    ).detach().cpu()
+    high_entropy = float(entropy_stats[0])
+    low_entropy = float(entropy_stats[1])
     
     print(f"High confidence entropy:  {high_entropy:.3f} (should be low)")
     print(f"Low confidence entropy:   {low_entropy:.3f} (should be high)")
