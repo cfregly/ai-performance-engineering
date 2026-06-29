@@ -268,10 +268,11 @@ def run_level(level: int) -> None:
     times = []
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream()
     for i in range(5):
-        start_event.record()
+        start_event.record(current_stream)
         benchmark.benchmark_fn()
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
         elapsed_ms = start_event.elapsed_time(end_event)
         times.append(elapsed_ms)

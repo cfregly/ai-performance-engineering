@@ -269,8 +269,11 @@ def test_moe_journey_run_level_uses_reused_cuda_events() -> None:
     )[0]
 
     assert run_level_section.count("torch.cuda.Event(enable_timing=True)") == 2
-    assert "start_event.record()" in timing_loop
-    assert "end_event.record()" in timing_loop
+    assert "current_stream = torch.cuda.current_stream()" in run_level_section
+    assert "start_event.record(current_stream)" in timing_loop
+    assert "end_event.record(current_stream)" in timing_loop
+    assert "start_event.record()" not in timing_loop
+    assert "end_event.record()" not in timing_loop
     assert "end_event.synchronize()" in timing_loop
     assert "elapsed_ms = start_event.elapsed_time(end_event)" in timing_loop
     assert "time.perf_counter()" not in run_level_section
