@@ -14880,8 +14880,14 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def finalize_iteration_metrics", maxsplit=1
     )[0]
+    finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
+    )[0]
+    metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "def validate_result", maxsplit=1
     )[0]
 
     assert "torch.cuda.Event" not in source
@@ -14898,6 +14904,14 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "self.output = torch.cat(self._last_decoded_tokens, dim=1)" in capture_section
     assert "self._last_elapsed_ms" in source
     assert "finalize_iteration_metrics" in source
+    assert "self._ttft_total_ms = 0.0" in setup_section
+    assert "self._tpot_total_ms = 0.0" in setup_section
+    assert "self._ttft_total_ms += ttft_ms" in finalize_section
+    assert "self._tpot_total_ms += tpot_mean_ms * self.num_tokens" in finalize_section
+    assert '"monolithic.ttft_ms": float(self._ttft_total_ms / self._ttft_count)' in metrics_section
+    assert "self._tpot_total_ms / self._tpot_count" in metrics_section
+    assert 'sum(self._history["ttft"])' not in metrics_section
+    assert 'sum(self._history["tpot"])' not in metrics_section
     assert "self.model.decode(decode_state, num_tokens=1)" in source
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
