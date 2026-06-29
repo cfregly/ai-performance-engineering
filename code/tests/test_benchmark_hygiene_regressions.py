@@ -1086,6 +1086,9 @@ def test_ch04_nccl_benchmark_reuses_collective_buffers() -> None:
     run_section = collective_section.split("def _run_collective", maxsplit=1)[1].split(
         "for _ in range(warmup):", maxsplit=1
     )[0]
+    timed_trials_section = collective_section.split("for _ in range(trials):", maxsplit=1)[
+        1
+    ].split("avg_time =", maxsplit=1)[0]
 
     assert "allgather_outputs = [torch.empty_like(tensor) for _ in range(world_size)]" in setup_section
     assert "shard_size = (tensor.numel() + world_size - 1) // world_size" in setup_section
@@ -1097,6 +1100,24 @@ def test_ch04_nccl_benchmark_reuses_collective_buffers() -> None:
     assert "dist.all_gather(allgather_outputs, tensor)" in run_section
     assert "dist.reduce_scatter(" not in run_section
     assert "dist.reduce_scatter_tensor(reducescatter_output, reducescatter_inputs)" in run_section
+    assert "total_time = 0.0" in collective_section
+    assert "min_time = float(\"inf\")" in collective_section
+    assert "max_time = float(\"-inf\")" in collective_section
+    assert "trial_count = 0" in collective_section
+    assert "start = time.perf_counter()" in timed_trials_section
+    assert "elapsed = time.perf_counter() - start" in timed_trials_section
+    assert "total_time += elapsed" in timed_trials_section
+    assert "min_time = min(min_time, elapsed)" in timed_trials_section
+    assert "max_time = max(max_time, elapsed)" in timed_trials_section
+    assert "trial_count += 1" in timed_trials_section
+    assert "avg_time = total_time / trial_count" in collective_section
+    assert "return avg_time, min_time, max_time" in collective_section
+    assert "times = []" not in collective_section
+    assert "times.append(" not in collective_section
+    assert "sum(times)" not in collective_section
+    assert "min(times)" not in collective_section
+    assert "max(times)" not in collective_section
+    assert "time.time()" not in source
 
 
 def test_ch04_symmetric_ring_allreduce_skips_dead_result_zero_fill() -> None:

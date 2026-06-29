@@ -93,16 +93,23 @@ def benchmark_collective(rank: int, world_size: int, tensor: torch.Tensor,
         _run_collective()
         torch.cuda.synchronize(device)
 
-    times = []
+    total_time = 0.0
+    min_time = float("inf")
+    max_time = float("-inf")
+    trial_count = 0
     for _ in range(trials):
         torch.cuda.synchronize(device)
-        start = time.time()
+        start = time.perf_counter()
         _run_collective()
         torch.cuda.synchronize(device)
-        times.append(time.time() - start)
+        elapsed = time.perf_counter() - start
+        total_time += elapsed
+        min_time = min(min_time, elapsed)
+        max_time = max(max_time, elapsed)
+        trial_count += 1
 
-    avg_time = sum(times) / len(times)
-    return avg_time, min(times), max(times)
+    avg_time = total_time / trial_count
+    return avg_time, min_time, max_time
 
 
 def format_bandwidth(tensor: torch.Tensor, op_type: str, avg_time: float, world_size: int) -> float:
@@ -135,10 +142,10 @@ def run_single_gpu(args: argparse.Namespace) -> None:
                 numel = max(1, total_bytes // bytes_per_elem)
                 tensor = torch.randn(numel, device=device, dtype=dtype)
                 torch.cuda.synchronize(device)
-                start = time.time()
+                start = time.perf_counter()
                 _ = tensor * 2
                 torch.cuda.synchronize(device)
-                elapsed = time.time() - start
+                elapsed = time.perf_counter() - start
                 bandwidth = (tensor.numel() * tensor.element_size()) / elapsed / 1e9
                 print(f"SINGLE_GPU {op.upper()} {dtype_name} {size_mb}MB: {bandwidth:.2f} GB/s")
 
