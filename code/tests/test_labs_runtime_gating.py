@@ -283,6 +283,41 @@ def test_nvfp4_group_gemm_prepare_zeroes_only_padding_tails() -> None:
     assert "padded[n_tiles_actual:].zero_()" in source
 
 
+def test_nvfp4_group_gemm_fused_context_preallocates_metadata() -> None:
+    ctxs = [
+        {
+            "a_ptrs": torch.tensor([10, 11], dtype=torch.int64),
+            "m_sizes": torch.tensor([128, 256], dtype=torch.int32),
+            "cta_group_idx_map": torch.tensor([0, 1, 0], dtype=torch.int32),
+        },
+        {
+            "a_ptrs": torch.tensor([12, 13, 14], dtype=torch.int64),
+            "m_sizes": torch.tensor([384, 512, 640], dtype=torch.int32),
+            "cta_group_idx_map": torch.tensor([0, 2], dtype=torch.int32),
+        },
+    ]
+
+    fused_sizes = custom_cuda_submission._fuse_grouped_ctx_tensor(ctxs, "m_sizes")
+    fused_cta_map = custom_cuda_submission._fuse_cta_group_idx_map(ctxs)
+
+    torch.testing.assert_close(
+        fused_sizes,
+        torch.tensor([128, 256, 384, 512, 640], dtype=torch.int32),
+    )
+    torch.testing.assert_close(
+        fused_cta_map,
+        torch.tensor([0, 1, 0, 2, 4], dtype=torch.int32),
+    )
+    assert fused_sizes.is_contiguous()
+    assert fused_cta_map.is_contiguous()
+
+    prepare_source = inspect.getsource(custom_cuda_submission.prepare_custom_cuda)
+    assert "_fuse_grouped_ctx_tensor(grouped_ctxs, key)" in prepare_source
+    assert "_fuse_cta_group_idx_map(grouped_ctxs)" in prepare_source
+    assert "torch.cat([ctx[key] for ctx in grouped_ctxs]" not in prepare_source
+    assert "cta_group_idx_parts" not in prepare_source
+
+
 def test_trtllm_capture_verification_payload_uses_small_cpu_slice() -> None:
     source = inspect.getsource(OptimizedTrtLlmPhi35MoeBenchmark.benchmark_fn)
     assert "self._generated_output_ids = output_ids" in source

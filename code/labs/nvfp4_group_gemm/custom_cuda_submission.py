@@ -445,6 +445,37 @@ def _pack_scale_tiles_for_tcgen05(
     return sfa_tiles.contiguous(), sfb_tiles.contiguous()
 
 
+def _fuse_grouped_ctx_tensor(grouped_ctxs: Sequence[dict[str, Any]], key: str) -> torch.Tensor:
+    first = grouped_ctxs[0][key]
+    total_rows = sum(int(ctx[key].shape[0]) for ctx in grouped_ctxs)
+    fused = first.new_empty((total_rows, *first.shape[1:]))
+    offset = 0
+    for grouped_ctx in grouped_ctxs:
+        tensor = grouped_ctx[key]
+        next_offset = offset + int(tensor.shape[0])
+        fused[offset:next_offset].copy_(tensor)
+        offset = next_offset
+    return fused
+
+
+def _fuse_cta_group_idx_map(grouped_ctxs: Sequence[dict[str, Any]]) -> torch.Tensor:
+    first = grouped_ctxs[0]["cta_group_idx_map"]
+    total_rows = sum(int(ctx["cta_group_idx_map"].shape[0]) for ctx in grouped_ctxs)
+    fused = first.new_empty((total_rows, *first.shape[1:]))
+    row_offset = 0
+    group_offset = 0
+    for grouped_ctx in grouped_ctxs:
+        cta_group_idx_map = grouped_ctx["cta_group_idx_map"]
+        next_row_offset = row_offset + int(cta_group_idx_map.shape[0])
+        fused_slice = fused[row_offset:next_row_offset]
+        fused_slice.copy_(cta_group_idx_map)
+        if group_offset:
+            fused_slice.add_(int(group_offset))
+        row_offset = next_row_offset
+        group_offset += int(grouped_ctx["a_ptrs"].numel())
+    return fused
+
+
 def prepare_custom_cuda(data_list: Sequence[input_t]) -> Optional[Sequence[tuple[Any, ...]]]:
     """Build pointer metadata + tensormap descriptors for the tcgen05 path (outside timed path)."""
     if not data_list:
@@ -759,16 +790,11 @@ def prepare_custom_cuda(data_list: Sequence[input_t]) -> Optional[Sequence[tuple
             "cta_tile_n_map",
         )
         fused_grouped_ctx: dict[str, torch.Tensor | int] = {
-            key: torch.cat([ctx[key] for ctx in grouped_ctxs], dim=0).contiguous() for key in cat_keys
+            key: _fuse_grouped_ctx_tensor(grouped_ctxs, key) for key in cat_keys
         }
 
         # CTA->group map must be offset per input so each CTA points at the correct flattened group.
-        cta_group_idx_parts: list[torch.Tensor] = []
-        group_offset = 0
-        for grouped_ctx in grouped_ctxs:
-            cta_group_idx_parts.append(grouped_ctx["cta_group_idx_map"] + int(group_offset))
-            group_offset += int(grouped_ctx["a_ptrs"].numel())
-        fused_grouped_ctx["cta_group_idx_map"] = torch.cat(cta_group_idx_parts, dim=0).contiguous()
+        fused_grouped_ctx["cta_group_idx_map"] = _fuse_cta_group_idx_map(grouped_ctxs)
         fused_grouped_ctx["max_m"] = int(max(int(ctx["max_m"]) for ctx in grouped_ctxs))
         fused_grouped_ctx["max_n"] = int(max(int(ctx["max_n"]) for ctx in grouped_ctxs))
 
