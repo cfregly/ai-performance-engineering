@@ -6164,6 +6164,25 @@ def test_ch20_kernel_verifiers_defer_contiguous_payload_slice_outside_hot_loop()
         assert "scalar_tensor_to_float((kernel_out - ref_out).abs().max())" in source
 
 
+def test_ch20_proofwright_report_accumulates_summary_once() -> None:
+    source = (REPO_ROOT / "ch20" / "proofwright_verify_tool.py").read_text(encoding="utf-8")
+    report_section = source.split("def generate_verification_report", maxsplit=1)[1].split(
+        "class OptimizedProofwrightBenchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "for proof in self.proofs:" in report_section
+    assert "proof_dicts.append(proof.to_dict())" in report_section
+    assert "proven += 1" in report_section
+    assert "refuted += 1" in report_section
+    assert "unknown += 1" in report_section
+    assert '"proofs": proof_dicts' in report_section
+    assert '"verification_complete": verification_complete' in report_section
+    assert "sum(1 for p in self.proofs" not in report_section
+    assert "[p.to_dict() for p in self.proofs]" not in report_section
+    assert "all(" not in report_section
+
+
 def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
     for relative in (
         "ch18/baseline_cudagraph_bucketing.py",
@@ -9424,6 +9443,49 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "output=output_slice.detach().float().clone()" in capture_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
+
+
+def test_vllm_deepseek_report_precomputes_best_index() -> None:
+    source = (
+        REPO_ROOT / "labs" / "vllm-deepseek-tuning" / "scripts" / "report_results.py"
+    ).read_text(encoding="utf-8")
+    best_by_section = source.split("def best_by", maxsplit=1)[1].split(
+        "def mean_metric",
+        maxsplit=1,
+    )[0]
+    mean_metric_section = source.split("def mean_metric", maxsplit=1)[1].split(
+        "def build_report_index",
+        maxsplit=1,
+    )[0]
+    index_section = source.split("def build_report_index", maxsplit=1)[1].split(
+        "def pct_gain",
+        maxsplit=1,
+    )[0]
+    markdown_section = source.split("def write_markdown", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+
+    assert "from statistics import mean" not in source
+    assert "best = None" in best_by_section
+    assert "for row in rows:" in best_by_section
+    assert "vals = [" not in best_by_section
+    assert "return max(vals" not in best_by_section
+    assert "total = 0.0" in mean_metric_section
+    assert "count += 1" in mean_metric_section
+    assert "return total / count if count else None" in mean_metric_section
+    assert "vals = [" not in mean_metric_section
+    assert "runs.add(run_name)" in index_section
+    assert "scenarios.add(scenario)" in index_section
+    assert "successful_count += 1" in index_section
+    assert 'bucket = best_map[run_name].setdefault(scenario, {"prefill": None, "decode": None})' in index_section
+    assert 'runs, scenarios, successful_count, best_map = build_report_index(rows)' in markdown_section
+    assert "def indexed_best" in markdown_section
+    assert 'bp = indexed_best(sc, run, "prefill")' in markdown_section
+    assert 'bd = indexed_best(sc, run, "decode")' in markdown_section
+    assert "best_by(rows" not in markdown_section
+    assert "best_map[run][sc]" not in markdown_section
+    assert "sum(1 for r in rows" not in markdown_section
 
 
 def test_gpt4_architecture_runner_reuses_cuda_timing_events() -> None:

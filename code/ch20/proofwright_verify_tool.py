@@ -296,17 +296,33 @@ class ProofWrightAgent:
     
     def generate_verification_report(self) -> Dict[str, Any]:
         """Generate comprehensive verification report."""
+        proven = 0
+        refuted = 0
+        unknown = 0
+        verification_complete = True
+        proof_dicts = []
+        for proof in self.proofs:
+            proof_dicts.append(proof.to_dict())
+            if proof.status == VerificationStatus.PROVEN:
+                proven += 1
+            elif proof.status == VerificationStatus.REFUTED:
+                refuted += 1
+                verification_complete = False
+            elif proof.status == VerificationStatus.UNKNOWN:
+                unknown += 1
+                verification_complete = False
+            else:
+                verification_complete = False
+
         return {
             "summary": {
                 "total_properties": len(self.proofs),
-                "proven": sum(1 for p in self.proofs if p.status == VerificationStatus.PROVEN),
-                "refuted": sum(1 for p in self.proofs if p.status == VerificationStatus.REFUTED),
-                "unknown": sum(1 for p in self.proofs if p.status == VerificationStatus.UNKNOWN),
+                "proven": proven,
+                "refuted": refuted,
+                "unknown": unknown,
             },
-            "proofs": [p.to_dict() for p in self.proofs],
-            "verification_complete": all(
-                p.status == VerificationStatus.PROVEN for p in self.proofs
-            ),
+            "proofs": proof_dicts,
+            "verification_complete": verification_complete,
         }
 
 

@@ -4,7 +4,6 @@ import csv
 import json
 from collections import defaultdict
 from pathlib import Path
-from statistics import mean
 
 
 def load_records(results_dir: Path):
@@ -30,15 +29,57 @@ def load_records(results_dir: Path):
 
 
 def best_by(rows, scenario, run_name, metric):
-    vals = [r for r in rows if r["scenario"] == scenario and r["run_name"] == run_name and r.get(metric) is not None and r.get("returncode") == 0]
-    if not vals:
-        return None
-    return max(vals, key=lambda x: x[metric])
+    best = None
+    for row in rows:
+        if row["scenario"] != scenario or row["run_name"] != run_name:
+            continue
+        value = row.get(metric)
+        if value is None or row.get("returncode") != 0:
+            continue
+        if best is None or value > best[metric]:
+            best = row
+    return best
 
 
 def mean_metric(rows, scenario, run_name, metric):
-    vals = [r[metric] for r in rows if r["scenario"] == scenario and r["run_name"] == run_name and r.get(metric) is not None and r.get("returncode") == 0]
-    return mean(vals) if vals else None
+    total = 0.0
+    count = 0
+    for row in rows:
+        if row["scenario"] != scenario or row["run_name"] != run_name:
+            continue
+        value = row.get(metric)
+        if value is None or row.get("returncode") != 0:
+            continue
+        total += float(value)
+        count += 1
+    return total / count if count else None
+
+
+def build_report_index(rows):
+    runs = set()
+    scenarios = set()
+    successful_count = 0
+    best_map = defaultdict(dict)
+    for row in rows:
+        run_name = row["run_name"]
+        scenario = row["scenario"]
+        runs.add(run_name)
+        scenarios.add(scenario)
+        if row.get("returncode") != 0:
+            continue
+        successful_count += 1
+        bucket = best_map[run_name].setdefault(scenario, {"prefill": None, "decode": None})
+        prefill = row.get("prefill_toks_per_s")
+        if prefill is not None and (
+            bucket["prefill"] is None or prefill > bucket["prefill"]["prefill_toks_per_s"]
+        ):
+            bucket["prefill"] = row
+        decode = row.get("decode_toks_per_s")
+        if decode is not None and (
+            bucket["decode"] is None or decode > bucket["decode"]["decode_toks_per_s"]
+        ):
+            bucket["decode"] = row
+    return sorted(runs), sorted(scenarios), successful_count, best_map
 
 
 def pct_gain(a, b):
@@ -76,29 +117,23 @@ def write_csv(rows, out_csv: Path):
 def write_markdown(rows, out_md: Path):
     out_md.parent.mkdir(parents=True, exist_ok=True)
 
-    runs = sorted({r["run_name"] for r in rows})
-    scenarios = sorted({r["scenario"] for r in rows})
+    runs, scenarios, successful_count, best_map = build_report_index(rows)
 
-    # best rows per run/scenario
-    best_map = defaultdict(dict)
-    for run in runs:
-        for sc in scenarios:
-            bp = best_by(rows, sc, run, "prefill_toks_per_s")
-            bd = best_by(rows, sc, run, "decode_toks_per_s")
-            best_map[run][sc] = {"prefill": bp, "decode": bd}
+    def indexed_best(scenario, run_name, kind):
+        return best_map.get(run_name, {}).get(scenario, {}).get(kind)
 
     # blog-like comparisons
-    v32_tp2_prefill = best_by(rows, "prefill_only", "ds_v32_nvfp4_tp2", "prefill_toks_per_s")
-    v32_tp4_prefill = best_by(rows, "prefill_only", "ds_v32_nvfp4_tp4", "prefill_toks_per_s")
-    v32_tp2_mix1k = best_by(rows, "mixed_moderate_1k", "ds_v32_nvfp4_tp2", "decode_toks_per_s")
-    v32_tp4_mix1k = best_by(rows, "mixed_moderate_1k", "ds_v32_nvfp4_tp4", "decode_toks_per_s")
+    v32_tp2_prefill = indexed_best("prefill_only", "ds_v32_nvfp4_tp2", "prefill")
+    v32_tp4_prefill = indexed_best("prefill_only", "ds_v32_nvfp4_tp4", "prefill")
+    v32_tp2_mix1k = indexed_best("mixed_moderate_1k", "ds_v32_nvfp4_tp2", "decode")
+    v32_tp4_mix1k = indexed_best("mixed_moderate_1k", "ds_v32_nvfp4_tp4", "decode")
 
-    r1_tp2_prefill = best_by(rows, "prefill_only", "ds_r1_nvfp4_tp2", "prefill_toks_per_s")
-    r1_ep2_prefill = best_by(rows, "prefill_only", "ds_r1_nvfp4_ep2", "prefill_toks_per_s")
-    r1_tp2_mix64 = best_by(rows, "mixed_short_64", "ds_r1_nvfp4_tp2", "decode_toks_per_s")
-    r1_ep2_mix64 = best_by(rows, "mixed_short_64", "ds_r1_nvfp4_ep2", "decode_toks_per_s")
+    r1_tp2_prefill = indexed_best("prefill_only", "ds_r1_nvfp4_tp2", "prefill")
+    r1_ep2_prefill = indexed_best("prefill_only", "ds_r1_nvfp4_ep2", "prefill")
+    r1_tp2_mix64 = indexed_best("mixed_short_64", "ds_r1_nvfp4_tp2", "decode")
+    r1_ep2_mix64 = indexed_best("mixed_short_64", "ds_r1_nvfp4_ep2", "decode")
 
-    r1_tp2_mtp1_mix64 = best_by(rows, "mixed_short_64", "ds_r1_nvfp4_tp2_mtp1", "decode_toks_per_s")
+    r1_tp2_mtp1_mix64 = indexed_best("mixed_short_64", "ds_r1_nvfp4_tp2_mtp1", "decode")
 
     r1_vs_v32_prefill_ratio = None
     if r1_tp2_prefill and v32_tp2_prefill and v32_tp2_prefill["prefill_toks_per_s"]:
@@ -110,7 +145,7 @@ def write_markdown(rows, out_md: Path):
     lines.append("## Executive summary")
     lines.append("")
     lines.append(f"- Records analyzed: **{len(rows)}**")
-    lines.append(f"- Successful records: **{sum(1 for r in rows if r['returncode'] == 0)}**")
+    lines.append(f"- Successful records: **{successful_count}**")
     lines.append(f"- Scenarios: {', '.join(scenarios)}")
     lines.append("")
     lines.append("## Blog-aligned comparisons")
@@ -156,8 +191,8 @@ def write_markdown(rows, out_md: Path):
     for run in runs:
         lines.append(f"### {run}")
         for sc in scenarios:
-            bp = best_map[run][sc]["prefill"]
-            bd = best_map[run][sc]["decode"]
+            bp = indexed_best(sc, run, "prefill")
+            bd = indexed_best(sc, run, "decode")
             lines.append(
                 f"- {sc}: prefill={fmt(bp['prefill_toks_per_s']) if bp else 'n/a'} tok/s @ c={bp['concurrency'] if bp else 'n/a'}; "
                 f"decode={fmt(bd['decode_toks_per_s']) if bd else 'n/a'} tok/s @ c={bd['concurrency'] if bd else 'n/a'}"
