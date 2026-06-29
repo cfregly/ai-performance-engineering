@@ -265,7 +265,7 @@ def run_level(level: int) -> None:
     benchmark = LevelBenchmark()
     benchmark.setup()
     
-    times = []
+    total_ms = 0.0
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
     current_stream = torch.cuda.current_stream()
@@ -275,12 +275,12 @@ def run_level(level: int) -> None:
         end_event.record(current_stream)
         end_event.synchronize()
         elapsed_ms = start_event.elapsed_time(end_event)
-        times.append(elapsed_ms)
+        total_ms += elapsed_ms
         total_tokens = benchmark.BATCH_SIZE * benchmark.SEQ_LEN
         tok_s = total_tokens / (elapsed_ms / 1000)
         print(f"  Run {i+1}: {elapsed_ms:.1f} ms ({tok_s:,.0f} tok/s)")
     
-    avg = sum(times) / len(times)
+    avg = total_ms / 5
     print(f"\nMean: {avg:.1f} ms")
     benchmark.teardown()
     return avg

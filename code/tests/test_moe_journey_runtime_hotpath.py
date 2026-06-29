@@ -264,7 +264,7 @@ def test_moe_journey_run_level_uses_reused_cuda_events() -> None:
         maxsplit=1,
     )[0]
     timing_loop = run_level_section.split("for i in range(5):", maxsplit=1)[1].split(
-        "avg = sum(times) / len(times)",
+        "avg = total_ms / 5",
         maxsplit=1,
     )[0]
 
@@ -276,6 +276,11 @@ def test_moe_journey_run_level_uses_reused_cuda_events() -> None:
     assert "end_event.record()" not in timing_loop
     assert "end_event.synchronize()" in timing_loop
     assert "elapsed_ms = start_event.elapsed_time(end_event)" in timing_loop
+    assert "total_ms += elapsed_ms" in timing_loop
+    assert "avg = total_ms / 5" in run_level_section
+    assert "times = []" not in run_level_section
+    assert "times.append(" not in run_level_section
+    assert "sum(times)" not in run_level_section
     assert "time.perf_counter()" not in run_level_section
 
 
