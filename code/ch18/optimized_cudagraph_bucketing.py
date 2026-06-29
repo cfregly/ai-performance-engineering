@@ -112,13 +112,14 @@ class CUDAGraphBucketing:
         
         # Warmup runs (required before capture)
         warmup_stream = torch.cuda.Stream()
-        warmup_stream.wait_stream(torch.cuda.current_stream())
+        current_stream = torch.cuda.current_stream()
+        warmup_stream.wait_stream(current_stream)
         
         with torch.cuda.stream(warmup_stream), torch.inference_mode():
             for _ in range(3):
                 _ = self.model(self.static_inputs[key])
         
-        torch.cuda.current_stream().wait_stream(warmup_stream)
+        current_stream.wait_stream(warmup_stream)
         
         # Capture the graph
         self.graphs[key] = torch.cuda.CUDAGraph()

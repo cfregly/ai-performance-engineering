@@ -125,6 +125,7 @@ def run_bucketed_loop(
     seen_shapes: set[Tuple[int, int]] = set()
     dtype = torch.float16 if getattr(decode_kernel, "backend", "") == "vllm" else torch.float32
     registry = BucketWorkspaceRegistry(BUCKETS, hidden=hidden, dtype=dtype)
+    current_stream = torch.cuda.current_stream() if torch.cuda.is_available() else None
 
     for outputs in step_iter:
         if not outputs:
@@ -149,8 +150,8 @@ def run_bucketed_loop(
             mask[:batch_size].fill_(True)
             mask[batch_size:bucket].fill_(False)
 
-        if ws.stream is not None:
-            torch.cuda.current_stream().wait_stream(ws.stream)
+        if ws.stream is not None and current_stream is not None:
+            current_stream.wait_stream(ws.stream)
 
         logits = decode_kernel(tokens_padded, kv_padded, mask)
         shape_key = (logits.shape[0], logits.shape[1])

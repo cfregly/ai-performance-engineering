@@ -5534,6 +5534,11 @@ def test_ch18_cudagraph_bucketing_static_inputs_avoid_zero_fill() -> None:
 
         assert "self.static_inputs[key] = torch.empty(" in capture_section
         assert "self.static_inputs[key] = torch.zeros(" not in capture_section
+        assert "current_stream = torch.cuda.current_stream()" in capture_section
+        assert "warmup_stream.wait_stream(current_stream)" in capture_section
+        assert "current_stream.wait_stream(warmup_stream)" in capture_section
+        assert "warmup_stream.wait_stream(torch.cuda.current_stream())" not in capture_section
+        assert "torch.cuda.current_stream().wait_stream(warmup_stream)" not in capture_section
         if relative.endswith("optimized_cudagraph_bucketing.py"):
             forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1].split(
                 "def get_stats",
@@ -5755,6 +5760,9 @@ def test_ch18_v1_bucketed_decode_reuses_bucket_inputs_and_mask() -> None:
     assert "mask = ws.mask" in run_section
     assert "mask[:batch_size].fill_(True)" in run_section
     assert "mask[batch_size:bucket].fill_(False)" in run_section
+    assert "current_stream = torch.cuda.current_stream() if torch.cuda.is_available() else None" in run_section
+    assert "current_stream.wait_stream(ws.stream)" in run_section
+    assert "torch.cuda.current_stream().wait_stream(ws.stream)" not in run_section
     assert "torch.randn(" not in run_section
 
 
