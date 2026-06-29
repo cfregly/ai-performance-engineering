@@ -46,6 +46,7 @@ class BaselinePrecisionFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchm
         self.hidden_dim = 8192
         self.output_dim = 8192
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         tokens = self.batch_size * self.input_dim
         self._workload = WorkloadMetadata(
@@ -69,6 +70,12 @@ class BaselinePrecisionFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchm
         ).to(self.device).train()
         self.inputs = torch.randn(self.batch_size, self.input_dim, device=self.device, dtype=torch.float32)
         self._verify_input = self.inputs.detach().clone()
+        self._verify_output_buffer = torch.empty(
+            min(128, self.batch_size),
+            min(256, self.output_dim),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
         self._synchronize()
         self.register_workload_metadata(
@@ -87,9 +94,16 @@ class BaselinePrecisionFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchm
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -103,6 +117,9 @@ class BaselinePrecisionFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchm
 
     def teardown(self) -> None:
         del self.model, self.inputs
+        self.output = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

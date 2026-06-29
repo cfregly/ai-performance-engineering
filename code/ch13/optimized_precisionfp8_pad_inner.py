@@ -56,6 +56,7 @@ class OptimizedFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_input_fp16: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self.batch_size = 4096
         self.input_dim = 8200
@@ -97,6 +98,12 @@ class OptimizedFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self._verify_input = self.inputs.detach().clone()
         self._verify_input_fp16 = self._verify_input.to(torch.float16)
+        self._verify_output_buffer = torch.empty(
+            min(128, self.batch_size),
+            min(256, self.output_dim),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self.inputs_fp16 = self.inputs.to(torch.float16)
 
         self.model = model
@@ -118,9 +125,16 @@ class OptimizedFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -136,7 +150,10 @@ class OptimizedFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.inputs = None
         self.inputs_fp16 = None
+        self.output = None
+        self._verify_input = None
         self._verify_input_fp16 = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

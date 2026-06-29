@@ -13226,11 +13226,17 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
 
     for name in training_pair:
         source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _train_step", maxsplit=1
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
         )[0]
 
         assert "verify_out = self.model(self._verify_input_fp16)" not in benchmark_section
@@ -13238,20 +13244,42 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
         assert "verify_out = self.model(self._verify_input_fp16)" in capture_section
         assert "with torch.inference_mode():" in capture_section
         assert "with torch.no_grad():" not in capture_section
-        assert "output=self.output.detach().float().clone()" in capture_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "min(128, self.batch_size)" in setup_section
+        assert "min(256, self.hidden_dim)" in setup_section
+        assert "output_slice = verify_out[" in capture_section
+        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.output.detach().float().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
     for name, expected_assignment in forward_pair:
         source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
 
         assert ".detach().float().clone()" not in benchmark_section
         assert expected_assignment in benchmark_section
-        assert "output=self.output.detach().float().clone()" in capture_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "min(128," in setup_section
+        assert "min(256," in setup_section
+        assert "output_slice = self.output[" in capture_section
+        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.output.detach().float().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch13_quantization_wrappers_sample_verification_outputs() -> None:

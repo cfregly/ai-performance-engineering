@@ -61,6 +61,7 @@ class BaselinePrecisionFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.hidden_dim = 8192
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_input_fp16: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
@@ -84,6 +85,12 @@ class BaselinePrecisionFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.targets = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
         self._verify_input = self.inputs.detach().clone()
         self._verify_input_fp16 = self._verify_input.to(torch.float16)
+        self._verify_output_buffer = torch.empty(
+            min(128, self.batch_size),
+            min(256, self.hidden_dim),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self.inputs_fp16 = self.inputs.to(torch.float16)
         self.targets_fp16 = self.targets.to(torch.float16)
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
@@ -119,14 +126,19 @@ class BaselinePrecisionFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             self.output = None
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self._verify_input_fp16 is None:
+        if self.model is None or self._verify_input is None or self._verify_input_fp16 is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         with torch.inference_mode():
             verify_out = self.model(self._verify_input_fp16)
-            self.output = verify_out
+            output_slice = verify_out[
+                : self._verify_output_buffer.shape[0],
+                : self._verify_output_buffer.shape[1],
+            ]
+            self._verify_output_buffer.copy_(output_slice)
+            self.output = self._verify_output_buffer
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -141,7 +153,10 @@ class BaselinePrecisionFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Cleanup."""
         del self.model, self.inputs, self.targets, self.inputs_fp16, self.targets_fp16, self.optimizer, self.criterion
+        self.output = None
+        self._verify_input = None
         self._verify_input_fp16 = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
