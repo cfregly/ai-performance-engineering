@@ -6956,6 +6956,10 @@ def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
             assert 'start = self._full_events["start"]' in benchmark_section
             assert 'start_prefill = self._piecewise_events["start_prefill"]' in benchmark_section
             assert 'start_decode = self._piecewise_events["start_decode"]' in benchmark_section
+            assert "start_prefill.record(current_stream)" in benchmark_section
+            assert "end_prefill.record(current_stream)" in benchmark_section
+            assert "start_prefill.record()" not in benchmark_section
+            assert "end_prefill.record()" not in benchmark_section
             assert "current_stream.wait_event(evt)" in benchmark_section
 
 

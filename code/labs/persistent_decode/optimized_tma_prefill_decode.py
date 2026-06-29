@@ -464,7 +464,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         with self._nvtx_range("prefill_shaped_low_pri"):
             start_prefill = self._piecewise_events["start_prefill"]
             end_prefill = self._piecewise_events["end_prefill"]
-            start_prefill.record()
+            start_prefill.record(current_stream)
             pref_events = self._prefill_shaped(async_only=True)
         with self._nvtx_range(
             "decode_graph_high_pri" if self.graph_mode != GraphMode.FULL_AND_PIECEWISE else "graph_fallback_piecewise"
@@ -478,7 +478,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         if pref_events:
             for evt in pref_events:
                 current_stream.wait_event(evt)
-        end_prefill.record()
+        end_prefill.record(current_stream)
         current_stream.wait_stream(self.decode_stream)
         self._pending_iteration = {
             "path": "piecewise_graph",
