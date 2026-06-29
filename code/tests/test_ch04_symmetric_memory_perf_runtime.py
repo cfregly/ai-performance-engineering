@@ -1,3 +1,5 @@
+import inspect
+
 import pytest
 import torch
 
@@ -14,6 +16,13 @@ from ch04.optimized_symmetric_memory_perf import OptimizedSymmetricMemoryPerfBen
     ),
 )
 def test_ch04_symmetric_memory_perf_reuses_timing_pair(benchmark_cls) -> None:
+    source = inspect.getsource(benchmark_cls.benchmark_fn)
+    assert "current_stream = torch.cuda.current_stream(self.device)" in source
+    assert "start.record(current_stream)" in source
+    assert "end.record(current_stream)" in source
+    assert "start.record()" not in source
+    assert "end.record()" not in source
+
     benchmark = benchmark_cls(size_mb=0.0625)
     benchmark.setup()
     try:

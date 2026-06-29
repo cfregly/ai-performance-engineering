@@ -71,9 +71,10 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         timing_pair = self._get_timing_pair()
         start, end = timing_pair
 
-        start.record()
+        current_stream = torch.cuda.current_stream(self.device)
+        start.record(current_stream)
         self.peer_buffer.copy_(self.local_tensor, non_blocking=True)
-        end.record()
+        end.record(current_stream)
         self._pending_timing_pair = timing_pair
         return None
 

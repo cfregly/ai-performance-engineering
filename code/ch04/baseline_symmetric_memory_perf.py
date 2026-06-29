@@ -71,10 +71,11 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         timing_pair = self._get_timing_pair()
         start, end = timing_pair
 
-        start.record()
+        current_stream = torch.cuda.current_stream(self.device)
+        start.record(current_stream)
         output = torch.empty_like(self.tensor)
         output.copy_(self.tensor, non_blocking=False)
-        end.record()
+        end.record(current_stream)
         self._pending_timing_pair = timing_pair
         self.output = output
         return None
