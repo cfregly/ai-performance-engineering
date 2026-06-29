@@ -6655,6 +6655,10 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
         "def _percentiles",
         maxsplit=1,
     )[0]
+    run_summary_section = source.split("(run_dir / \"sys_meta.json\")", maxsplit=1)[1].split(
+        "(run_dir / \"summary.json\")",
+        maxsplit=1,
+    )[0]
 
     assert "def _percentile_from_ordered" in source
     assert "ordered = sorted(values)" in percentile_section
@@ -6662,6 +6666,14 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert "p95\": _percentile_from_ordered(ordered, 95)" in percentile_section
     assert "_percentile(values, 50)" not in percentile_section
     assert "_percentile(values, 95)" not in percentile_section
+    assert "ttft_summary = _percentiles([r[\"ttft_ms\"] for r in latency_rows])" in run_summary_section
+    assert "decode_summary = _percentiles([r[\"decode_ms\"] for r in latency_rows])" in run_summary_section
+    assert "\"ttft_p50_ms\": ttft_summary[\"p50\"]" in run_summary_section
+    assert "\"ttft_p95_ms\": ttft_summary[\"p95\"]" in run_summary_section
+    assert "\"decode_p50_ms\": decode_summary[\"p50\"]" in run_summary_section
+    assert "\"decode_p95_ms\": decode_summary[\"p95\"]" in run_summary_section
+    assert "_percentile([r[\"ttft_ms\"] for r in latency_rows]" not in run_summary_section
+    assert "_percentile([r[\"decode_ms\"] for r in latency_rows]" not in run_summary_section
     assert "experts = self.cfg.experts" in moe_section
     assert "top_k = self.cfg.top_k" in moe_section
     assert "ranked_count = min(experts, max(top_k, 2))" in moe_section

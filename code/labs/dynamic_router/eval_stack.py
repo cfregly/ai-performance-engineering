@@ -390,16 +390,19 @@ class CheapEvalStack:
         }
         (run_dir / "sys_meta.json").write_text(json.dumps(sys_meta, indent=2))
 
+        ttft_summary = _percentiles([r["ttft_ms"] for r in latency_rows])
+        decode_summary = _percentiles([r["decode_ms"] for r in latency_rows])
+
         summary = {
             "run_dir": str(run_dir),
             "accuracy_overall": quality_summary["avg_accuracy"],
             "accuracy_mmlu": quality_summary["per_task"].get("mmlu-mini", 0.0),
             "accuracy_math": quality_summary["per_task"].get("gsm8k-lite", 0.0),
             "accuracy_truthful": quality_summary["per_task"].get("truthfulqa-lite", 0.0),
-            "ttft_p50_ms": _percentile([r["ttft_ms"] for r in latency_rows], 50),
-            "ttft_p95_ms": _percentile([r["ttft_ms"] for r in latency_rows], 95),
-            "decode_p50_ms": _percentile([r["decode_ms"] for r in latency_rows], 50),
-            "decode_p95_ms": _percentile([r["decode_ms"] for r in latency_rows], 95),
+            "ttft_p50_ms": ttft_summary["p50"],
+            "ttft_p95_ms": ttft_summary["p95"],
+            "decode_p50_ms": decode_summary["p50"],
+            "decode_p95_ms": decode_summary["p95"],
             "token_drop_rate": moe_summary["token_drop_rate"],
             "expert_imbalance_cv": moe_summary["imbalance_cv"],
             "router_entropy": moe_summary["entropy"],
