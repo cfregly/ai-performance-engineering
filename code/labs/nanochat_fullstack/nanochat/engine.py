@@ -878,7 +878,7 @@ class Engine:
         flat_tokens = token_tensor.reshape(-1)
         host_tokens = self._sample_host_token_buffer(flat_tokens.numel(), flat_tokens.device)
         host_tokens.copy_(flat_tokens, non_blocking=flat_tokens.device.type == "cuda")
-        return [int(token) for token in host_tokens.tolist()]
+        return host_tokens.tolist()
 
     def _sample_batch_tokens(
         self,
@@ -897,7 +897,10 @@ class Engine:
                 active_indices = active_mask.nonzero(as_tuple=False).squeeze(-1)
             if active_indices.numel() == 0:
                 return sampled_tokens
-            active_rows = active_indices.tolist()
+            if active_indices.device.type == "cpu":
+                active_rows = active_indices.tolist()
+            else:
+                active_rows = self._token_tensor_to_list(active_indices)
         elif len(active_rows) == 0:
             return sampled_tokens
         first_idx = active_rows[0]
@@ -936,7 +939,7 @@ class Engine:
             sampled_device[sample_idx].copy_(next_id[0, 0])
         sampled_host.copy_(sampled_device, non_blocking=sampled_device.device.type == "cuda")
         for idx, token in zip(active_rows, sampled_host.tolist()):
-            sampled_tokens[idx] = int(token)
+            sampled_tokens[idx] = token
         return sampled_tokens
 
     @torch.inference_mode()

@@ -591,14 +591,19 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "def _token_tensor_to_list(self, token_tensor)" in text
     assert "host_tokens = self._sample_host_token_buffer(flat_tokens.numel(), flat_tokens.device)" in token_list_section
     assert "host_tokens.copy_(flat_tokens, non_blocking=flat_tokens.device.type == \"cuda\")" in token_list_section
+    assert "return host_tokens.tolist()" in token_list_section
+    assert "[int(token) for token in host_tokens.tolist()]" not in token_list_section
     assert "device_tokens.copy_(flat_tokens)" not in token_list_section
     assert "**self._sample_workspace(active_logits, first_top_k, first_temp)," in sample_section
     assert "**self._sample_workspace(row_logits, top_k, temp)," in sample_section
     assert "active_indices=None" in sample_section
+    assert "active_indices.device.type == \"cpu\"" in sample_section
+    assert "active_rows = self._token_tensor_to_list(active_indices)" in sample_section
     assert "self._token_tensor_to_list(next_ids[:, 0])" in sample_section
     assert "sampled_device[sample_idx].copy_(next_id[0, 0])" in sample_section
     assert "sampled_host.copy_(sampled_device, non_blocking=sampled_device.device.type == \"cuda\")" in sample_section
     assert "sampled_tokens[idx] = next_id[0, 0].item()" not in sample_section
+    assert "sampled_tokens[idx] = int(token)" not in sample_section
     assert "next_ids[:, 0].tolist()" not in sample_section
     assert generate_section.count("**self._sample_workspace(logits, top_k, temperature),") == 2
     assert "ids = self._single_prompt_ids(tokens, device)" in generate_section

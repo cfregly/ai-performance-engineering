@@ -281,6 +281,8 @@ def test_decode_prompt_copy_waits_on_consumer_stream() -> None:
     assert "torch.cuda.current_stream().wait_stream(self.copy_stream)" not in copy_section
     assert "copy_wait_stream = (" in benchmark_section
     assert "self._copy_prompts_to_device(wait_stream=copy_wait_stream)" in benchmark_section
+    assert "with torch.cuda.stream(decode_stream):" in benchmark_section
+    assert "with torch.cuda.stream(self.compute_stream or torch.cuda.current_stream()):" not in benchmark_section
 
 
 def test_decode_prefetch_overlaps_second_copy_only_when_async_safe() -> None:

@@ -755,7 +755,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 else:
                     self.decode_graph.replay()
             else:
-                with torch.cuda.stream(self.compute_stream or torch.cuda.current_stream()):
+                with torch.cuda.stream(decode_stream):
                     for _ in range(self.cfg.decode_tokens):
                         next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                         self.state_buffer.copy_(next_state)
