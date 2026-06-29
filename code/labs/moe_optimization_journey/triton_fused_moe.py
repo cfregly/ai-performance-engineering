@@ -130,9 +130,13 @@ def triton_fused_moe(
     total_tokens = x.shape[0]
     output = torch.empty_like(x)
     
-    # Grid: (num_experts, max_tokens_per_expert / BLOCK_M)
+    # Grid: (num_experts, max_tokens_per_expert / BLOCK_M). Callers should pass
+    # the precomputed max for a tight launch; the fallback avoids a CUDA scalar
+    # readback by using the total sorted assignments as a conservative bound.
     if max_tokens is None:
-        max_tokens = int((expert_offsets[1:] - expert_offsets[:-1]).max().item())
+        max_tokens = total_tokens
+    else:
+        max_tokens = int(max_tokens)
     BLOCK_M = 64
     BLOCK_K = 64
     BLOCK_N = 64
@@ -208,11 +212,12 @@ def benchmark_triton_moe():
 
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        start.record()
+        current_stream = torch.cuda.current_stream()
+        start.record(current_stream)
         for _ in range(10):
             _ = triton_fused_moe(sorted_tokens, w_gate, w_up, w_down,
                                 sorted_weights, expert_offsets, E, H, I, max_tokens=max_tokens)
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         ms = start.elapsed_time(end) / 10
         

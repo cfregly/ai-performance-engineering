@@ -233,6 +233,8 @@ def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
 
     assert "max_tokens: int | None = None" in function_section
     assert "if max_tokens is None:" in function_section
+    assert "max_tokens = total_tokens" in function_section
+    assert ".max().item()" not in function_section
     assert "sorted_ids" not in function_section
     assert "Sorted_ids_ptr" not in source
     assert "def _flat_topk_token_ids" in source
@@ -243,6 +245,9 @@ def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
     assert "max_tokens = int(counts.max().item())" in benchmark_section
     assert benchmark_section.count("max_tokens=max_tokens") == 3
     assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "current_stream = torch.cuda.current_stream()" in benchmark_section
+    assert "start.record(current_stream)" in benchmark_section
+    assert "end.record(current_stream)" in benchmark_section
     assert "start.elapsed_time(end) / 10" in benchmark_section
     assert "time.perf_counter()" not in benchmark_section
 
