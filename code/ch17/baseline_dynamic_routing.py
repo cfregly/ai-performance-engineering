@@ -41,6 +41,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "offloaded": 0.0,
         }
         self._verification_payload = None
+        self._output_tensor: Optional[torch.Tensor] = None
         self._iteration = 0
         self._queue_length_table: Optional[torch.Tensor] = None
         self._queue_length_rows: Optional[list[list[int]]] = None
@@ -109,6 +110,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_values[0] = 0.0
         self._output_values[1] = 0.0
         self._output_values[2] = 0.0
+        self._output_tensor = torch.empty(len(self._output_values), dtype=torch.float32)
         self._output_values_ready = False
 
     def _make_metrics(self, queue: int, now: float):
@@ -250,7 +252,11 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         input_snapshot = self._payload_input_snapshot
         if not self._output_values_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self.output = torch.tensor(self._output_values, dtype=torch.float32)
+        if self._output_tensor is None:
+            raise RuntimeError("setup() must initialize verification tensors")
+        for idx, value in enumerate(self._output_values):
+            self._output_tensor[idx] = value
+        self.output = self._output_tensor
         self._set_verification_payload(
             inputs={"queue_lengths": input_snapshot},
             output=self.output,
@@ -289,6 +295,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._admit_mask = None
         self._served_offload_mask = None
         self._count_values = None
+        self._output_tensor = None
         self._queue_length_table = None
         self._queue_length_rows = None
         self._latency_total_ms = 0.0

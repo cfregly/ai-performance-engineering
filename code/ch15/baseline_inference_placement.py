@@ -39,6 +39,7 @@ class _PlacementBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._summary: Dict[str, float] = {key: 0.0 for key in self._summary_keys}
         self.output = None  # Simulation metrics as tensor
         self._output_values: list[float] = [0.0] * 7
+        self._output_tensor: Optional[torch.Tensor] = None
         self._output_values_ready = False
         self.register_workload_metadata(requests_per_iteration=float(self.sessions))
         self._verify_cfg = torch.tensor(
@@ -49,6 +50,7 @@ class _PlacementBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         self._previous_default_dtype = torch.get_default_dtype()
         torch.set_default_dtype(self.cfg.dtype)  # type: ignore[arg-type]
+        self._output_tensor = torch.empty(len(self._output_values), dtype=torch.float32)
         self._output_values_ready = False
 
     def benchmark_fn(self) -> None:
@@ -86,7 +88,11 @@ class _PlacementBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if not self._output_values_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self.output = torch.tensor(self._output_values, dtype=torch.float32)
+        if self._output_tensor is None:
+            raise RuntimeError("setup() must initialize verification tensors")
+        for idx, value in enumerate(self._output_values):
+            self._output_tensor[idx] = value
+        self.output = self._output_tensor
         self._set_verification_payload(
             inputs={"config": self._verify_cfg},
             output=self.output,
@@ -105,6 +111,7 @@ class _PlacementBenchmark(VerificationPayloadMixin, BaseBenchmark):
         previous = getattr(self, "_previous_default_dtype", None)
         if isinstance(previous, torch.dtype):
             torch.set_default_dtype(previous)
+        self._output_tensor = None
         self._output_values_ready = False
         super().teardown()
 

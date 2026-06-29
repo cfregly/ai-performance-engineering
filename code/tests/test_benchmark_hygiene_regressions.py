@@ -1030,7 +1030,14 @@ def test_kv_locality_microbench_reuses_copy_stream_and_defers_output_tensor() ->
     assert "with torch.cuda.stream(self.copy_stream)" in copy_section
     assert "torch.tensor(" not in benchmark_section
     assert "self._output_values = ordered" in benchmark_section
-    assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
+    assert "self._output_tensor: Optional[torch.Tensor] = None" in source
+    assert "self._signature_tensor: Optional[torch.Tensor] = None" in source
+    assert "self._output_tensor = torch.empty(4, dtype=torch.float32)" in setup_section
+    assert "self._signature_tensor = torch.empty(3, dtype=torch.float32)" in setup_section
+    assert "self.output = self._output_tensor" in capture_section
+    assert 'inputs={"shape": self._signature_tensor}' in capture_section
+    assert "torch.tensor(self._output_values" not in capture_section
+    assert "torch.tensor([self.rows, self.cols, self.iters]" not in capture_section
 
 
 def test_ch04_grace_blackwell_locality_reuses_verification_views() -> None:
@@ -12367,7 +12374,10 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "return self._result_metrics" in benchmark_section
     assert '"requests": float(len(requests))' not in benchmark_section
     assert "if not self._output_values_ready:" in capture_section
-    assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
+    assert "self._output_tensor: Optional[torch.Tensor] = None" in source
+    assert "self._output_tensor = torch.empty(len(self._output_values), dtype=torch.float32)" in source
+    assert "self.output = self._output_tensor" in capture_section
+    assert "torch.tensor(self._output_values" not in capture_section
 
 
 def test_ch17_dynamic_routing_latency_report_uses_heap_selection() -> None:
@@ -14878,7 +14888,10 @@ def test_ch15_inference_placement_defers_output_tensor_outside_hot_loop() -> Non
     assert "self._output_values_ready = True" in benchmark_section
     assert "self._output_values = [" not in benchmark_section
     assert "if not self._output_values_ready:" in capture_section
-    assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
+    assert "self._output_tensor: Optional[torch.Tensor] = None" in init_section
+    assert "self._output_tensor = torch.empty(len(self._output_values), dtype=torch.float32)" in setup_section
+    assert "self.output = self._output_tensor" in capture_section
+    assert "torch.tensor(self._output_values" not in capture_section
 
 
 def test_ch15_kv_cache_math_preconcats_static_inputs() -> None:

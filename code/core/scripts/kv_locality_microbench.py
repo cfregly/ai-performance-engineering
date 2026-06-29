@@ -94,6 +94,8 @@ class KvLocalityMicrobench(VerificationPayloadMixin, BaseBenchmark):
         self.results: Dict[str, float] = {}
         self.output: Optional[torch.Tensor] = None
         self._output_values: Optional[list[float]] = None
+        self._output_tensor: Optional[torch.Tensor] = None
+        self._signature_tensor: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         self.device = resolve_device()
@@ -110,6 +112,11 @@ class KvLocalityMicrobench(VerificationPayloadMixin, BaseBenchmark):
             self.pinned_remote = torch.randn(shape, device="cpu", dtype=torch.float16, pin_memory=True)
             self.helper.move_to_node(self.pinned_remote, remote_node)
         self.copy_stream = torch.cuda.Stream(device=self.device)
+        self._output_tensor = torch.empty(4, dtype=torch.float32)
+        self._signature_tensor = torch.empty(3, dtype=torch.float32)
+        self._signature_tensor[0] = self.rows
+        self._signature_tensor[1] = self.cols
+        self._signature_tensor[2] = self.iters
 
     def _bench_copy(self, src: torch.Tensor) -> float:
         if self.dst is None or self.copy_stream is None:
@@ -147,10 +154,13 @@ class KvLocalityMicrobench(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self._output_values is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self.output = torch.tensor(self._output_values, dtype=torch.float32)
-        signature = torch.tensor([self.rows, self.cols, self.iters], dtype=torch.float32)
+        if self._output_tensor is None or self._signature_tensor is None:
+            raise RuntimeError("setup() must initialize verification tensors")
+        for idx, value in enumerate(self._output_values):
+            self._output_tensor[idx] = value
+        self.output = self._output_tensor
         self._set_verification_payload(
-            inputs={"shape": signature},
+            inputs={"shape": self._signature_tensor},
             output=self.output,
             batch_size=1,
             parameter_count=0,
@@ -178,6 +188,8 @@ class KvLocalityMicrobench(VerificationPayloadMixin, BaseBenchmark):
         self.pinned_remote = None
         self.hbm = None
         self.copy_stream = None
+        self._output_tensor = None
+        self._signature_tensor = None
         self.results = {}
         self.output = None
         self._output_values = None
