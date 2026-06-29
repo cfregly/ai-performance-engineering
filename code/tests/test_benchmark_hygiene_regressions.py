@@ -8669,6 +8669,14 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "torch.cat(prefix_parts" not in worker_setup_section
     assert "recv_chunk_buffers: Dict[int, torch.Tensor] = {}" in worker_setup_section
     assert "recv_seed_buffer = torch.empty(" in worker_setup_section
+    assert "active_caches: Dict[int, torch.Tensor] = {}" in worker_setup_section
+    assert "kv_buffers: Dict[int, torch.Tensor] = {}" in worker_setup_section
+    assert "local_metrics = {" in worker_setup_section
+    assert "active_caches.clear()" in run_iteration_section
+    assert 'local_metrics["cache_hits"] = 0.0' in run_iteration_section
+    assert "active_caches: Dict[int, torch.Tensor] = {}" not in run_iteration_section
+    assert "kv_buffers: Dict[int, torch.Tensor] = {}" not in run_iteration_section
+    assert "local_metrics = {" not in run_iteration_section
     assert "chunks = prompt_chunks[plan.local_request_idx]" in run_iteration_section
     assert "_split_prompt(" not in run_iteration_section
     assert "recv_chunk = recv_chunk_buffers[chunk_idx]" in run_iteration_section

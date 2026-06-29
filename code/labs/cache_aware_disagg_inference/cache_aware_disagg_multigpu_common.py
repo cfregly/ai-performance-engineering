@@ -473,17 +473,25 @@ def _run_torchrun_worker(
             dtype=cfg.dtype,
         )
 
+    active_caches: Dict[int, torch.Tensor] = {}
+    kv_buffers: Dict[int, torch.Tensor] = {}
+    local_metrics = {
+        "cache_hits": 0.0,
+        "cache_misses": 0.0,
+        "worker_switches": 0.0,
+        "peer_handoffs": 0.0,
+        "kv_transfer_bytes": 0.0,
+        "shared_reload_bytes": 0.0,
+    }
+
     def run_iteration() -> tuple[Dict[str, float], float, float, int]:
-        active_caches: Dict[int, torch.Tensor] = {}
-        kv_buffers: Dict[int, torch.Tensor] = {}
-        local_metrics = {
-            "cache_hits": 0.0,
-            "cache_misses": 0.0,
-            "worker_switches": 0.0,
-            "peer_handoffs": 0.0,
-            "kv_transfer_bytes": 0.0,
-            "shared_reload_bytes": 0.0,
-        }
+        active_caches.clear()
+        local_metrics["cache_hits"] = 0.0
+        local_metrics["cache_misses"] = 0.0
+        local_metrics["worker_switches"] = 0.0
+        local_metrics["peer_handoffs"] = 0.0
+        local_metrics["kv_transfer_bytes"] = 0.0
+        local_metrics["shared_reload_bytes"] = 0.0
         ttft_sum_ms = 0.0
         tpot_sum_ms = 0.0
         request_count = 0
