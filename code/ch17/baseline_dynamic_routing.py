@@ -123,14 +123,15 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _generate_requests(self) -> List[Request]:
         reqs: List[Request] = []
+        priority_choices = tuple(Priority)
         for idx in range(self.batch_size):
             prompt_len = random.randint(64, 2048)
             cached = random.randint(0, min(prompt_len // 2, 512))
             reqs.append(
                 Request(
                     id=f"req-{idx}",
-                    prompt_tokens=list(range(prompt_len)),
-                    priority=random.choice(list(Priority)),
+                    prompt_tokens=range(prompt_len),
+                    priority=random.choice(priority_choices),
                     timestamp=time.time(),
                     prefix_cached_length=cached,
                     expected_output_length=random.randint(16, 128),

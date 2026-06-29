@@ -13,7 +13,7 @@ decode workers."""
 import heapq
 import time
 import random
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import json
@@ -27,7 +27,7 @@ class Priority(Enum):
 @dataclass
 class Request:
     id: str
-    prompt_tokens: List[int]
+    prompt_tokens: Sequence[int]
     priority: Priority
     timestamp: float
     prefix_cached_length: int = 0
@@ -312,7 +312,7 @@ def simulate_request_stream():
         
         request = Request(
             id=f"req-{i:03d}-{desc}",
-            prompt_tokens=list(range(prompt_len)),  # dummy tokens
+            prompt_tokens=range(prompt_len),  # dummy tokens; routing only needs length
             priority=priority,
             timestamp=time.time() + i * 0.1,  # stagger requests
             prefix_cached_length=max(0, cached),

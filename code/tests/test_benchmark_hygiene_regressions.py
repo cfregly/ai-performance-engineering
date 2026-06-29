@@ -12347,6 +12347,32 @@ def test_ch17_dynamic_routing_latency_report_uses_heap_selection() -> None:
     assert "router.calculate_latency_cost(metrics)" not in print_section
 
 
+def test_ch17_dynamic_routing_synthetic_requests_avoid_dummy_token_lists() -> None:
+    benchmark_source = (REPO_ROOT / "ch17" / "baseline_dynamic_routing.py").read_text(
+        encoding="utf-8"
+    )
+    generate_section = benchmark_source.split("def _generate_requests", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    router_source = (REPO_ROOT / "ch17" / "dynamic_routing.py").read_text(
+        encoding="utf-8"
+    )
+    demo_generation_section = router_source.split("for i in range(20):", maxsplit=1)[1].split(
+        "return requests",
+        maxsplit=1,
+    )[0]
+
+    assert "prompt_tokens: Sequence[int]" in router_source
+    assert "priority_choices = tuple(Priority)" in generate_section
+    assert "prompt_tokens=range(prompt_len)" in generate_section
+    assert "priority=random.choice(priority_choices)" in generate_section
+    assert "random.choice(list(Priority))" not in generate_section
+    assert "prompt_tokens=list(range(prompt_len))" not in benchmark_source
+    assert "prompt_tokens=range(prompt_len)" in demo_generation_section
+    assert "prompt_tokens=list(range(prompt_len))" not in router_source
+
+
 def test_ch17_early_rejection_uses_targeted_ttft_quantiles() -> None:
     source = (REPO_ROOT / "ch17" / "early_rejection.py").read_text(encoding="utf-8")
     health_section = source.split("def _system_health_check", maxsplit=1)[1].split(
