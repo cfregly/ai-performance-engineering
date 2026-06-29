@@ -444,16 +444,27 @@ def benchmark_tma_vs_standard(
     print("\n" + "="*70)
     print("SUMMARY")
     print("="*70)
-    avg_copy_speedup = sum(r['copy_speedup'] for r in results.values()) / len(results)
-    avg_gemm_speedup = sum(r['gemm_speedup'] for r in results.values()) / len(results)
-    max_bw = max(r['copy_bandwidth_tma'] for r in results.values())
-    max_tflops = max(r['gemm_tflops_tma'] for r in results.values())
+    summary_count = 0
+    copy_speedup_total = 0.0
+    gemm_speedup_total = 0.0
+    max_bw = 0.0
+    max_tflops = 0.0
+    all_tests_passed = True
+    for r in results.values():
+        summary_count += 1
+        copy_speedup_total += r['copy_speedup']
+        gemm_speedup_total += r['gemm_speedup']
+        max_bw = max(max_bw, r['copy_bandwidth_tma'])
+        max_tflops = max(max_tflops, r['gemm_tflops_tma'])
+        all_tests_passed = all_tests_passed and r['correctness']
+    avg_copy_speedup = copy_speedup_total / summary_count if summary_count else 0.0
+    avg_gemm_speedup = gemm_speedup_total / summary_count if summary_count else 0.0
     
     print(f"Average Copy Speedup:  {avg_copy_speedup:.2f}x")
     print(f"Average GEMM Speedup:  {avg_gemm_speedup:.2f}x")
     print(f"Peak Bandwidth:        {max_bw:.2f} TB/s")
     print(f"Peak TFLOPS:           {max_tflops:.2f}")
-    print(f"All Tests Passed:      {'YES' if all(r['correctness'] for r in results.values()) else 'NO'}")
+    print(f"All Tests Passed:      {'YES' if all_tests_passed else 'NO'}")
     
     if is_blackwell:
         hbm3e_peak = 7.8  # TB/s for B200

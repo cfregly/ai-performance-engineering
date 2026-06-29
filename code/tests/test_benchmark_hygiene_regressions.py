@@ -1928,6 +1928,7 @@ def test_ch14_triton_tma_batches_correctness_error_reads() -> None:
         "def demonstrate_tma_features",
         maxsplit=1,
     )[0]
+    summary_section = benchmark_section.split('print("SUMMARY")', maxsplit=1)[1]
 
     assert "error_stats = torch.stack(" in benchmark_section
     assert "max_bias_diff = float(error_stats[0])" in benchmark_section
@@ -1936,6 +1937,13 @@ def test_ch14_triton_tma_batches_correctness_error_reads() -> None:
     assert "torch.abs(C_bias - C_ref).max()" in benchmark_section
     assert "torch.abs(C_tma - C_torch).max()" in benchmark_section
     assert ".max().item()" not in benchmark_section
+    assert "for r in results.values():" in summary_section
+    assert "copy_speedup_total += r['copy_speedup']" in summary_section
+    assert "gemm_speedup_total += r['gemm_speedup']" in summary_section
+    assert "all_tests_passed = all_tests_passed and r['correctness']" in summary_section
+    assert "sum(r['copy_speedup'] for r in results.values())" not in summary_section
+    assert "max(r['copy_bandwidth_tma'] for r in results.values())" not in summary_section
+    assert "all(r['correctness'] for r in results.values())" not in summary_section
 
 
 def test_ch14_triton_nvshmem_batches_result_reads() -> None:
