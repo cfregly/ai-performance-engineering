@@ -8495,11 +8495,23 @@ def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
     assert "self._prefill_count = 0" in baseline_source
     assert "self._decode_total_ms = 0.0" in baseline_source
     assert "self._decode_count = 0" in baseline_source
+    assert "self._prefill_metric_values = [0.0]" in baseline_source
+    assert "self._decode_metric_values = [0.0] * self.decode_tokens" in baseline_source
+    assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in baseline_source
     assert '"prefill_ms": []' not in baseline_source
     assert '"decode_ms": []' not in baseline_source
+    assert "elapsed_ms_list" not in baseline_source
+    assert "decode_times = self._decode_metric_values" in finalize_section
+    assert "for idx, event_pair in enumerate(self._decode_events):" in finalize_section
+    assert "decode_times[idx] = token_ms" in finalize_section
+    assert "decode_total_ms += token_ms" in finalize_section
     assert "self._prefill_total_ms += prefill_time" in finalize_section
-    assert "self._decode_total_ms += sum(decode_times)" in finalize_section
-    assert "self._decode_count += len(decode_times)" in finalize_section
+    assert "self._decode_total_ms += decode_total_ms" in finalize_section
+    assert "self._decode_count += len(self._decode_events)" in finalize_section
+    assert "self._prefill_metric_values[0] = prefill_time" in finalize_section
+    assert "return self._iteration_metric_payload" in finalize_section
+    assert "self._decode_total_ms += sum(decode_times)" not in finalize_section
+    assert "return {\"prefill_ms\": [prefill_time], \"decode_ms\": decode_times}" not in finalize_section
     assert "statistics.mean" not in metrics_section
     assert "self._history" not in baseline_source
 

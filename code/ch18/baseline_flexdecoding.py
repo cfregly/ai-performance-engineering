@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 import torch
 
-from core.benchmark.cuda_event_timing import elapsed_ms, elapsed_ms_list
+from core.benchmark.cuda_event_timing import elapsed_ms
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -46,6 +46,12 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
         self._prefill_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._decode_events: Optional[List[tuple[torch.cuda.Event, torch.cuda.Event]]] = None
         self._pending_iteration_metrics = False
+        self._prefill_metric_values = [0.0]
+        self._decode_metric_values = [0.0] * self.decode_tokens
+        self._iteration_metric_payload: Dict[str, List[float]] = {
+            "prefill_ms": self._prefill_metric_values,
+            "decode_ms": self._decode_metric_values,
+        }
         total_tokens = self.config.max_seq_len + self.decode_tokens
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -144,13 +150,23 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
         if not self._pending_iteration_metrics or self._prefill_events is None or self._decode_events is None:
             return None
         prefill_time = elapsed_ms(self._prefill_events)
-        decode_times = elapsed_ms_list(self._decode_events)
+        decode_times = self._decode_metric_values
+        if len(decode_times) != len(self._decode_events):
+            decode_times = [0.0] * len(self._decode_events)
+            self._decode_metric_values = decode_times
+            self._iteration_metric_payload["decode_ms"] = decode_times
+        decode_total_ms = 0.0
+        for idx, event_pair in enumerate(self._decode_events):
+            token_ms = elapsed_ms(event_pair)
+            decode_times[idx] = token_ms
+            decode_total_ms += token_ms
         self._pending_iteration_metrics = False
         self._prefill_total_ms += prefill_time
         self._prefill_count += 1
-        self._decode_total_ms += sum(decode_times)
-        self._decode_count += len(decode_times)
-        return {"prefill_ms": [prefill_time], "decode_ms": decode_times}
+        self._decode_total_ms += decode_total_ms
+        self._decode_count += len(self._decode_events)
+        self._prefill_metric_values[0] = prefill_time
+        return self._iteration_metric_payload
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
