@@ -8139,6 +8139,28 @@ def test_ch16_demo_causal_lm_reuses_kv_stack_buffers() -> None:
     assert "value_stack = torch.stack(local_values" not in forward_section
 
 
+def test_ch08_occupancy_batching_demo_reuses_batched_buffers() -> None:
+    source = (REPO_ROOT / "ch08" / "occupancy_pytorch.py").read_text(encoding="utf-8")
+    batching_section = source.split("def batching_demo", maxsplit=1)[1].split(
+        "def compile_fusion_demo",
+        maxsplit=1,
+    )[0]
+
+    assert "batched = torch.randn(32, 256, 256, device=device)" in batching_section
+    assert "tensors = batched.unbind(0)" in batching_section
+    assert "individual_out = torch.empty_like(batched)" in batching_section
+    assert "individual_outputs = individual_out.unbind(0)" in batching_section
+    assert "batched_out = torch.empty_like(batched)" in batching_section
+    assert "[torch.randn(256, 256, device=device) for _ in range(32)]" not in batching_section
+    assert "torch.stack(tensors" not in batching_section
+    assert "out = []" not in batching_section
+    assert "out.append(" not in batching_section
+    assert "torch.relu(t, out=out_t)" in batching_section
+    assert "torch.nn.functional.silu(out_t, inplace=True)" in batching_section
+    assert "torch.relu(batched, out=batched_out)" in batching_section
+    assert "torch.nn.functional.silu(batched_out, inplace=True)" in batching_section
+
+
 def test_ch16_inference_serving_tracks_packed_max_tokens_on_host() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"

@@ -69,22 +69,23 @@ def batching_demo() -> None:
         return
 
     device = torch.device("cuda")
-    tensors = [torch.randn(256, 256, device=device) for _ in range(32)]
-    batched = torch.stack(tensors, dim=0)
+    batched = torch.randn(32, 256, 256, device=device)
+    tensors = batched.unbind(0)
+    individual_out = torch.empty_like(batched)
+    individual_outputs = individual_out.unbind(0)
+    batched_out = torch.empty_like(batched)
 
     print("\n=== Batching small pointwise ops ===")
 
     def individual():
-        out = []
-        for t in tensors:
-            y = torch.nn.functional.relu(t)
-            y = torch.nn.functional.silu(y)
-            out.append(y)
-        return out
+        for t, out_t in zip(tensors, individual_outputs, strict=True):
+            torch.relu(t, out=out_t)
+            torch.nn.functional.silu(out_t, inplace=True)
+        return individual_out
 
     def batched_op():
-        y = torch.nn.functional.relu(batched)
-        return torch.nn.functional.silu(y)
+        torch.relu(batched, out=batched_out)
+        return torch.nn.functional.silu(batched_out, inplace=True)
 
     indiv_ms = _benchmark("Individual 32x", individual, iters=5)
     batch_ms = _benchmark("Batched (N=32)", batched_op, iters=5)
