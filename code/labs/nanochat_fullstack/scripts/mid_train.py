@@ -269,7 +269,7 @@ while True:
 
     # logging
     log_value_buffer[0].copy_(train_loss)
-    train_loss_value = log_value_buffer.detach().cpu().tolist()[0]
+    train_loss_value = float(log_value_buffer.detach().cpu()[0])
     smooth_train_loss = ema_beta * smooth_train_loss + (1 - ema_beta) * train_loss_value # EMA the training loss
     debiased_smooth_loss = smooth_train_loss / (1 - ema_beta**(step + 1)) # debias the EMA
     pct_done = 100 * progress

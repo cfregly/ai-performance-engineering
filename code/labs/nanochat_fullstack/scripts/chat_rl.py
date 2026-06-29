@@ -232,9 +232,12 @@ for step in range(num_steps):
         eval_totals[1:].copy_(passk.to(torch.float64))
         if ddp:
             dist.all_reduce(eval_totals, op=dist.ReduceOp.SUM)
-        eval_values = eval_totals.detach().cpu().tolist()
-        num_records = max(eval_values[0], 1.0)
-        passk_values = [value / num_records for value in eval_values[1:]]
+        eval_values_host = eval_totals.detach().cpu()
+        num_records = max(float(eval_values_host[0]), 1.0)
+        passk_values = [
+            float(eval_values_host[k]) / num_records
+            for k in range(1, device_batch_size + 1)
+        ]
         print_passk = [f"Pass@{k}: {passk_values[k - 1]:.4f}" for k in range(1, device_batch_size + 1)]
         print0(f"Step {step} | {', '.join(print_passk)}")
         log_passk = {f"pass@{k}": passk_values[k - 1] for k in range(1, device_batch_size + 1)}
@@ -276,7 +279,9 @@ for step in range(num_steps):
             loss.backward()
             log_value_buffer[0].copy_(loss.detach())
             log_value_buffer[1].copy_(rewards.mean())
-            loss_item, reward_item = log_value_buffer.detach().cpu().tolist()
+            log_values_host = log_value_buffer.detach().cpu()
+            loss_item = float(log_values_host[0])
+            reward_item = float(log_values_host[1])
             print0(f"Step {step}/{num_steps} | Example step {example_step} | Pass {pass_idx} | loss: {loss_item:.6f} | Average reward: {reward_item}")
         # For logging
         reward_sum.add_(rewards_all.mean())
@@ -290,7 +295,9 @@ for step in range(num_steps):
     summary_buffer[1] = float(mean_sequence_length)
     if ddp: # aggregate across ranks
         dist.all_reduce(summary_buffer, op=dist.ReduceOp.AVG)
-    mean_reward, mean_sequence_length = summary_buffer.detach().cpu().tolist()
+    summary_host = summary_buffer.detach().cpu()
+    mean_reward = float(summary_host[0])
+    mean_sequence_length = float(summary_host[1])
     print0(f"Step {step}/{num_steps} | Average reward: {mean_reward} | Average sequence length: {mean_sequence_length:.2f}")
     wandb_run.log({
         "step": step,

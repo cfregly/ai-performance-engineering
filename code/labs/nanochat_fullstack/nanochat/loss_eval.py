@@ -46,7 +46,9 @@ def evaluate_bpb(model, batches, steps, token_bytes):
     if world_size > 1:
         dist.all_reduce(totals, op=dist.ReduceOp.SUM)
     # move both to cpu, calculate bpb and return
-    total_nats, total_bytes = totals.detach().cpu().tolist()
+    totals_host = totals.detach().cpu()
+    total_nats = float(totals_host[0])
+    total_bytes = float(totals_host[1])
     if total_bytes == 0:
         return float('inf')
     bpb = total_nats / (math.log(2) * total_bytes)

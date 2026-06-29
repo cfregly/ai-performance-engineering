@@ -366,9 +366,9 @@ while True:
     if grad_clip_enabled:
         log_value_buffer[1].copy_(grad_norm_tensor)
     log_count = 2 if grad_clip_enabled else 1
-    log_values = log_value_buffer[:log_count].detach().cpu().tolist()
-    train_loss_value = log_values[0]
-    grad_norm = log_values[1] if grad_clip_enabled else 0.0
+    log_values_host = log_value_buffer[:log_count].detach().cpu()
+    train_loss_value = float(log_values_host[0])
+    grad_norm = float(log_values_host[1]) if grad_clip_enabled else 0.0
     ema_beta = 0.9 # EMA decay factor for some smoothing just for nicer logging
     smooth_train_loss = ema_beta * smooth_train_loss + (1 - ema_beta) * train_loss_value # EMA the training loss
     debiased_smooth_loss = smooth_train_loss / (1 - ema_beta**(step + 1)) # debias the EMA

@@ -187,7 +187,7 @@ for step in range(num_iterations):
         if ddp:
             dist.all_reduce(val_loss, op=dist.ReduceOp.AVG) # average over ranks
         log_value_buffer[0].copy_(val_loss)
-        val_loss = log_value_buffer.detach().cpu().tolist()[0]
+        val_loss = float(log_value_buffer.detach().cpu()[0])
         print0(f"Step {step:05d} | Validation loss: {val_loss:.6f}")
         wandb_run.log({
             "step": step,
@@ -241,8 +241,9 @@ for step in range(num_iterations):
     # logging
     log_value_buffer[0].copy_(train_loss.detach())
     log_value_buffer[1].copy_(num_tokens)
-    train_loss_item, num_tokens_item = log_value_buffer.detach().cpu().tolist()
-    num_tokens_item = int(num_tokens_item)
+    log_values_host = log_value_buffer.detach().cpu()
+    train_loss_item = float(log_values_host[0])
+    num_tokens_item = int(log_values_host[1])
     print0(f"Step {step:05d}/{num_iterations:05d} | Training loss: {train_loss_item:.6f}| lrm: {lrm:.6f}| num_tokens: {num_tokens_item:,}")
     wandb_run.log({
         "step": step,

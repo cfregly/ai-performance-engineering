@@ -7047,7 +7047,10 @@ def test_nanochat_loss_eval_batches_reduced_totals() -> None:
     assert "totals[0].add_((loss2d * (num_bytes2d > 0)).sum())" in source
     assert "totals[1].add_(num_bytes2d.sum())" in source
     assert "dist.all_reduce(totals, op=dist.ReduceOp.SUM)" in source
-    assert "total_nats, total_bytes = totals.detach().cpu().tolist()" in source
+    assert "totals_host = totals.detach().cpu()" in source
+    assert "total_nats = float(totals_host[0])" in source
+    assert "total_bytes = float(totals_host[1])" in source
+    assert "totals.detach().cpu().tolist()" not in source
     assert "@torch.inference_mode()\ndef evaluate_bpb" in source
     assert "@torch.no_grad()" not in source
     assert "total_nats = torch.tensor(" not in source
@@ -8266,8 +8269,10 @@ def test_nanochat_base_train_defers_grad_norm_sync_until_logging() -> None:
     assert "log_value_buffer[0].copy_(train_loss)" in logging_section
     assert "log_value_buffer[1].copy_(grad_norm_tensor)" in logging_section
     assert "log_count = 2 if grad_clip_enabled else 1" in logging_section
-    assert "log_values = log_value_buffer[:log_count].detach().cpu().tolist()" in logging_section
-    assert "grad_norm = log_values[1] if grad_clip_enabled else 0.0" in logging_section
+    assert "log_values_host = log_value_buffer[:log_count].detach().cpu()" in logging_section
+    assert "train_loss_value = float(log_values_host[0])" in logging_section
+    assert "grad_norm = float(log_values_host[1]) if grad_clip_enabled else 0.0" in logging_section
+    assert "log_value_buffer[:log_count].detach().cpu().tolist()" not in logging_section
     assert "torch.stack(log_tensors)" not in logging_section
     assert "train_loss.item()" not in logging_section
 
@@ -8461,11 +8466,15 @@ def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
     assert "val_loss = eval_loss_buffer.mean()" in eval_section
     assert "val_loss = val_loss.item()" not in eval_section
     assert "log_value_buffer[0].copy_(val_loss)" in eval_section
-    assert "val_loss = log_value_buffer.detach().cpu().tolist()[0]" in eval_section
+    assert "val_loss = float(log_value_buffer.detach().cpu()[0])" in eval_section
+    assert "log_value_buffer.detach().cpu().tolist()[0]" not in eval_section
     assert "log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)" in source
     assert "log_value_buffer[0].copy_(train_loss.detach())" in logging_section
     assert "log_value_buffer[1].copy_(num_tokens)" in logging_section
-    assert "train_loss_item, num_tokens_item = log_value_buffer.detach().cpu().tolist()" in logging_section
+    assert "log_values_host = log_value_buffer.detach().cpu()" in logging_section
+    assert "train_loss_item = float(log_values_host[0])" in logging_section
+    assert "num_tokens_item = int(log_values_host[1])" in logging_section
+    assert "log_value_buffer.detach().cpu().tolist()" not in logging_section
     assert "torch.stack((" not in logging_section
     assert "num_tokens = torch.empty((), dtype=torch.int64, device=device)" in source
     assert "num_tokens.zero_()" in source
@@ -8493,7 +8502,8 @@ def test_nanochat_mid_train_reuses_last_step_reduce_scalar() -> None:
     assert "torch.tensor(last_step" not in loop_prefix
     assert "log_value_buffer = torch.empty(1, dtype=torch.float64, device=device)" in source
     assert "log_value_buffer[0].copy_(train_loss)" in logging_section
-    assert "train_loss_value = log_value_buffer.detach().cpu().tolist()[0]" in logging_section
+    assert "train_loss_value = float(log_value_buffer.detach().cpu()[0])" in logging_section
+    assert "log_value_buffer.detach().cpu().tolist()[0]" not in logging_section
     assert "train_loss.item()" not in logging_section
 
 
@@ -8593,7 +8603,9 @@ def test_nanochat_chat_eval_batches_count_reductions() -> None:
     assert "def _reduce_counts(num_passed, total, device):" in source
     assert "counts = torch.tensor([num_passed, total], dtype=torch.long, device=device)" in source
     assert "dist.all_reduce(counts, op=dist.ReduceOp.SUM)" in source
-    assert "num_passed, total = counts.detach().cpu().tolist()" in source
+    assert "counts_host = counts.detach().cpu()" in source
+    assert "return int(counts_host[0]), int(counts_host[1])" in source
+    assert "counts.detach().cpu().tolist()" not in source
     assert source.count("num_passed, total = _reduce_counts(num_passed, total, device)") == 2
     assert "with torch.inference_mode():" in source
     assert "with torch.no_grad():" not in source
@@ -8627,7 +8639,8 @@ def test_nanochat_chat_eval_batches_categorical_predictions() -> None:
     assert "predicted_choice_indices = focus_logits.argmax(dim=-1)" in categorical_section
     assert "predicted_choice_indices = torch.empty(active_batch_size, dtype=torch.long, device=device)" in categorical_section
     assert "predicted_choice_indices[idx] = focus_logits.argmax(dim=-1)" in categorical_section
-    assert "predicted_choice_indices = predicted_choice_indices.detach().cpu().tolist()" in categorical_section
+    assert "predicted_choice_indices_host = predicted_choice_indices.detach().cpu()" in categorical_section
+    assert "predicted_choice_indices.detach().cpu().tolist()" not in categorical_section
     assert "argmax_letter_id = focus_logits.argmax(dim=-1).item()" not in categorical_section
 
 
@@ -8638,14 +8651,19 @@ def test_nanochat_chat_rl_batches_eval_and_rollout_syncs() -> None:
 
     assert "eval_totals = torch.empty(device_batch_size + 1" in source
     assert "dist.all_reduce(eval_totals, op=dist.ReduceOp.SUM)" in source
-    assert "eval_values = eval_totals.detach().cpu().tolist()" in source
-    assert "passk_values = [value / num_records for value in eval_values[1:]]" in source
+    assert "eval_values_host = eval_totals.detach().cpu()" in source
+    assert "num_records = max(float(eval_values_host[0]), 1.0)" in source
+    assert "float(eval_values_host[k]) / num_records" in source
+    assert "eval_totals.detach().cpu().tolist()" not in source
     assert "log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)" in source
     assert "summary_buffer = torch.empty(2, dtype=torch.float64, device=device)" in source
     assert "reward_sum = torch.empty((), dtype=torch.float64, device=device)" in source
     assert "log_value_buffer[0].copy_(loss.detach())" in source
     assert "log_value_buffer[1].copy_(rewards.mean())" in source
-    assert "loss_item, reward_item = log_value_buffer.detach().cpu().tolist()" in source
+    assert "log_values_host = log_value_buffer.detach().cpu()" in source
+    assert "loss_item = float(log_values_host[0])" in source
+    assert "reward_item = float(log_values_host[1])" in source
+    assert "log_value_buffer.detach().cpu().tolist()" not in source
     assert "rewards_list = []" not in source
     assert "rewards_list.append(rewards_all.mean())" not in source
     assert "torch.stack(rewards_list)" not in source
@@ -8657,7 +8675,10 @@ def test_nanochat_chat_rl_batches_eval_and_rollout_syncs() -> None:
     assert "summary_buffer[0].copy_(mean_reward_tensor)" in source
     assert "summary_buffer[1] = float(mean_sequence_length)" in source
     assert "dist.all_reduce(summary_buffer, op=dist.ReduceOp.AVG)" in source
-    assert "mean_reward, mean_sequence_length = summary_buffer.detach().cpu().tolist()" in source
+    assert "summary_host = summary_buffer.detach().cpu()" in source
+    assert "mean_reward = float(summary_host[0])" in source
+    assert "mean_sequence_length = float(summary_host[1])" in source
+    assert "summary_buffer.detach().cpu().tolist()" not in source
     assert "torch.tensor(float(mean_sequence_length)" not in source
     assert "num_records.item()" not in source
     assert "passk[k - 1].item()" not in source

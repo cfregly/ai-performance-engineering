@@ -30,8 +30,8 @@ from tasks.spellingbee import SpellingBee
 def _reduce_counts(num_passed, total, device):
     counts = torch.tensor([num_passed, total], dtype=torch.long, device=device)
     dist.all_reduce(counts, op=dist.ReduceOp.SUM)
-    num_passed, total = counts.detach().cpu().tolist()
-    return int(num_passed), int(total)
+    counts_host = counts.detach().cpu()
+    return int(counts_host[0]), int(counts_host[1])
 
 
 # -----------------------------------------------------------------------------
@@ -175,11 +175,11 @@ def run_categorical_eval(task_object, tokenizer, model, batch_size, max_problems
                 focus_logits = logits[idx, answer_pos, letter_ids]
                 # get the argmax letter (the predicted answer)
                 predicted_choice_indices[idx] = focus_logits.argmax(dim=-1)
-        predicted_choice_indices = predicted_choice_indices.detach().cpu().tolist()
+        predicted_choice_indices_host = predicted_choice_indices.detach().cpu()
 
-        for conversation, predicted_choice_idx in zip(conversations, predicted_choice_indices):
+        for idx, conversation in enumerate(conversations):
             letters = conversation['letters']
-            predicted_letter = letters[int(predicted_choice_idx)]
+            predicted_letter = letters[int(predicted_choice_indices_host[idx])]
             # evaluate the outcome
             outcome = task_object.evaluate(conversation, predicted_letter)
             num_passed += int(outcome)
