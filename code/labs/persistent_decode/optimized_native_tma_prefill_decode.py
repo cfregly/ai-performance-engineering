@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from typing import Optional
 
 import torch
@@ -109,20 +110,20 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
             dot = (q_t * k_t).sum(dim=-1, keepdim=True)
             out[:, t, :] = v_t * dot
 
-    def _prefill_shaped_native(self, *, async_only: bool = False) -> list[torch.cuda.Event] | None:
+    def _prefill_shaped_native(self, *, async_only: bool = False) -> deque[torch.cuda.Event] | None:
         """Launch native TMA copies on multiple streams with an in-flight cap."""
         if self._tma_ext is None:
             raise RuntimeError("Native TMA extension not initialized")
         if len(self._prefill_work) != self.prefill_chunks:
             raise RuntimeError("Prefill work not initialized")
-        events: list[torch.cuda.Event] = []
+        events: deque[torch.cuda.Event] = deque()
         for stream, src, dst, evt in self._prefill_work:
             with torch.cuda.stream(stream):
                 self._tma_ext.tma_copy(src, dst)
             evt.record(stream)
             events.append(evt)
             if len(events) > self.cfg.max_in_flight:
-                stream.wait_event(events.pop(0))
+                stream.wait_event(events.popleft())
         if async_only:
             return events
         current_stream = torch.cuda.current_stream()

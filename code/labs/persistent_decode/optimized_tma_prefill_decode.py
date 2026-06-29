@@ -8,6 +8,7 @@ What it demonstrates for Nsight Systems:
 
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -395,20 +396,20 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             dot = (q_t * k_t).sum(dim=-1, keepdim=True)
             out[:, t, :] = v_t * dot
 
-    def _prefill_shaped(self, *, async_only: bool = False) -> list[torch.cuda.Event] | None:
+    def _prefill_shaped(self, *, async_only: bool = False) -> deque[torch.cuda.Event] | None:
         """Launch cp.async.bulk.tensor copies on multiple streams with a max_in_flight cap."""
         if self._tma_ext is None:
             raise RuntimeError("TMA extension not initialized")
         if len(self._prefill_work) != self.prefill_chunks:
             raise RuntimeError("Prefill work not initialized")
-        events: list[torch.cuda.Event] = []
+        events: deque[torch.cuda.Event] = deque()
         for stream, src, dst, evt in self._prefill_work:
             with torch.cuda.stream(stream):
                 self._tma_ext.tma_copy_tile(src, dst, self.cfg.chunk_k)
             evt.record(stream)
             events.append(evt)
             if len(events) > self.cfg.max_in_flight:
-                stream.wait_event(events.pop(0))
+                stream.wait_event(events.popleft())
 
         if async_only:
             return events

@@ -7098,7 +7098,11 @@ def test_persistent_decode_tma_precomputes_prefill_work_outside_hot_loop() -> No
         assert "self.prefill_dst.unbind(0)" in setup_section
         assert "self._prefill_events" in setup_section
         assert "strict=True" in setup_section
+        assert "from collections import deque" in source
         assert "for stream, src, dst, evt in self._prefill_work:" in prefill_section
+        assert "events: deque[torch.cuda.Event] = deque()" in prefill_section
+        assert "events.popleft()" in prefill_section
+        assert "events.pop(0)" not in prefill_section
         assert "range(self.prefill_chunks)" not in prefill_section
         assert "idx % len(self.prefill_streams)" not in prefill_section
         assert "self.prefill_src[idx]" not in prefill_section
