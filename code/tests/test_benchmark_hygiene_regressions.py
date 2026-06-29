@@ -9273,8 +9273,14 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
     )
     assert "if valid.any()" not in stats_logger_section
     assert "overflow_mask.sum().item()" not in stats_logger_section
-    assert "loss_values = loss_readback.detach().cpu().tolist()" in report_section
-    assert "loss_values[1] / max(decode_loss_count, 1)" in report_section
+    assert "int(self._overflow_pending.detach().cpu())" in stats_logger_section
+    assert "float(self._entropy_pending.detach().cpu())" in stats_logger_section
+    assert "self._overflow_pending.detach().cpu().tolist()" not in stats_logger_section
+    assert "self._entropy_pending.detach().cpu().tolist()" not in stats_logger_section
+    assert "loss_values = loss_readback.detach().cpu()" in report_section
+    assert "float(loss_values[1]) / max(decode_loss_count, 1)" in report_section
+    assert "avg_loss = float(loss_values[0]) + avg_decode_loss" in report_section
+    assert "loss_readback.detach().cpu().tolist()" not in report_section
     assert "decode_losses" not in report_section
     assert "sum(loss.item() for loss in decode_losses)" not in report_section
     assert "token_loss.item()" not in report_section

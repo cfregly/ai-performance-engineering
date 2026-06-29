@@ -101,12 +101,10 @@ class MoEStatsLogger:
 
     def _materialize_pending_scalars(self) -> None:
         if self._overflow_pending is not None:
-            overflow = self._overflow_pending.detach().cpu().tolist()
-            self.overflow_tokens += int(overflow)
+            self.overflow_tokens += int(self._overflow_pending.detach().cpu())
             self._overflow_pending = None
         if self._entropy_pending is not None:
-            entropy_sum = self._entropy_pending.detach().cpu().tolist()
-            self.entropy_sum += float(entropy_sum)
+            self.entropy_sum += float(self._entropy_pending.detach().cpu())
             self.entropy_count += self._entropy_pending_count
             self._entropy_pending = None
             self._entropy_pending_count = 0
@@ -279,11 +277,11 @@ class MoeValidationSweep:
             elapsed_s = max(time.perf_counter() - start, 1e-6)
 
         summary = moe_logger.summarize()
-        loss_values = loss_readback.detach().cpu().tolist()
+        loss_values = loss_readback.detach().cpu()
         avg_decode_loss = (
-            loss_values[1] / max(decode_loss_count, 1) if decode_loss_count else 0.0
+            float(loss_values[1]) / max(decode_loss_count, 1) if decode_loss_count else 0.0
         )
-        avg_loss = float(loss_values[0] + avg_decode_loss)
+        avg_loss = float(loss_values[0]) + avg_decode_loss
         record = {
             "top_k": float(top_k),
             "capacity_factor": float(capacity_factor),
