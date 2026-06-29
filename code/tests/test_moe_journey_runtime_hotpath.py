@@ -276,6 +276,28 @@ def test_moe_journey_run_level_uses_reused_cuda_events() -> None:
     assert "time.perf_counter()" not in run_level_section
 
 
+def test_moe_journey_level_benchmarks_record_events_on_captured_stream() -> None:
+    targets = ("level4_triton.py", "level6_full_stack.py")
+
+    for filename in targets:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "labs"
+            / "moe_optimization_journey"
+            / filename
+        ).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def finalize_iteration_metrics",
+            maxsplit=1,
+        )[0]
+
+        assert "current_stream = torch.cuda.current_stream(self.device)" in benchmark_section
+        assert "start_event.record(current_stream)" in benchmark_section
+        assert "end_event.record(current_stream)" in benchmark_section
+        assert "start_event.record()" not in benchmark_section
+        assert "end_event.record()" not in benchmark_section
+
+
 def test_moe_bmm_fusion_reuses_offset_buffer_without_cat() -> None:
     source = (
         Path(__file__).resolve().parents[1]

@@ -478,12 +478,13 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         events = self._get_timing_events()
         start_event, end_event = events
-        start_event.record()
+        current_stream = torch.cuda.current_stream(self.device)
+        start_event.record(current_stream)
         
         with self._nvtx_range("level4_triton"):
             with torch.inference_mode():
                 logits = self.model(self.input_ids)
-        end_event.record()
+        end_event.record(current_stream)
         self.output = logits
         self._pending_events = events
         if self.input_ids is None or self.output is None:

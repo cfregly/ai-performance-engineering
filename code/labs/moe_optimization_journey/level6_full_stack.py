@@ -256,13 +256,14 @@ class Level6FullStack(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         events = self._get_timing_events()
         start_event, end_event = events
-        start_event.record()
+        current_stream = torch.cuda.current_stream(self.device)
+        start_event.record(current_stream)
         
         with self._nvtx_range("level6_cuda_graphs"):
             # torch.compile with reduce-overhead handles graph replay internally
             with torch.inference_mode():
                 logits = self.compiled_model(self.static_input)
-        end_event.record()
+        end_event.record(current_stream)
         self.output = logits
         self._pending_events = events
         if self.static_input is None or self.output is None:
