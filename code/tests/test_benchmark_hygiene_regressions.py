@@ -9719,8 +9719,13 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
     assert "self._metric_totals: Dict[str, float]" in source
     assert "self._metric_counts: Dict[str, int]" in source
+    assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in source
+    assert "self._ttft_metric_values = [0.0]" in source
+    assert "self._tpot_metric_values = [0.0] * self.config.decode_tokens" in source
+    assert "self._peak_memory_gb = 0.0" in source
     assert "self._metric_totals = {key: 0.0 for key in self._metric_totals}" in setup_section
     assert "self._metric_counts = {key: 0 for key in self._metric_counts}" in setup_section
+    assert "self._peak_memory_gb = 0.0" in setup_section
     assert "def _next_token_from_logits" in source
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in source
@@ -9734,11 +9739,20 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert 'self._metric_totals["throughput"] += throughput' in finalize_section
     assert 'self._metric_totals["nvlink"] += nvlink_gbps' in finalize_section
     assert 'self._metric_totals["nvlink_measured"] += measured_nvlink' in finalize_section
+    assert "self._ttft_metric_values[0] = prefill_ms" in finalize_section
+    assert "tpot_times_ms = self._tpot_metric_values" in finalize_section
+    assert "for idx in range(len(tpot_times_ms)):" in finalize_section
+    assert "tpot_times_ms[idx] = avg_tpot_ms" in finalize_section
+    assert "return self._iteration_metric_payload" in finalize_section
+    assert '"ttft_times_ms": [prefill_ms]' not in finalize_section
+    assert "[avg_tpot_ms] * self.config.decode_tokens" not in finalize_section
+    assert "self._history" not in source
     assert 'ttft_ms=self._metric_totals["ttft"] / self._metric_counts["ttft"]' in metrics_section
     assert 'tpot_ms=self._metric_totals["tpot"] / self._metric_counts["tpot"]' in metrics_section
     assert 'self._metric_totals["throughput"] / self._metric_counts["throughput"]' in metrics_section
     assert 'self._metric_totals["nvlink"] / self._metric_counts["nvlink"]' in metrics_section
     assert 'self._metric_totals["nvlink_measured"] / self._metric_counts["nvlink_measured"]' in metrics_section
+    assert 'metrics["inference.peak_memory_gb"] = self._peak_memory_gb' in metrics_section
     assert 'sum(self._history["ttft"])' not in metrics_section
     assert 'sum(self._history["tpot"])' not in metrics_section
     assert 'sum(self._history["throughput"])' not in metrics_section
@@ -16579,11 +16593,17 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.cat(" not in benchmark_section
     assert "self._last_decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]" in source
+    assert "self._empty_iteration_result: Dict[str, List[float]] = {}" in source
+    assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in source
+    assert "self._ttft_metric_values = [0.0]" in source
+    assert "self._tpot_metric_values = [0.0] * self.num_tokens" in source
     assert "decoded_tokens = self._last_decoded_tokens" in benchmark_section
     assert "token_idx = 0" in benchmark_section
     assert "decoded_tokens[token_idx] = decode_state" in benchmark_section
     assert "token_idx += 1" in benchmark_section
     assert "self._last_decoded_tokens = decoded_tokens" in benchmark_section
+    assert "return self._empty_iteration_result" in benchmark_section
+    assert "return {}" not in benchmark_section
     assert "decoded_tokens = []" not in benchmark_section
     assert "decoded_tokens.append(" not in benchmark_section
     assert "self.output = torch.cat(self._last_decoded_tokens, dim=1)" in capture_section
@@ -16591,8 +16611,16 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "finalize_iteration_metrics" in source
     assert "self._ttft_total_ms = 0.0" in setup_section
     assert "self._tpot_total_ms = 0.0" in setup_section
+    assert "self._history" not in source
+    assert "tpot_times_ms = self._tpot_metric_values" in finalize_section
+    assert "for idx in range(len(tpot_times_ms)):" in finalize_section
+    assert "tpot_times_ms[idx] = tpot_mean_ms" in finalize_section
     assert "self._ttft_total_ms += ttft_ms" in finalize_section
     assert "self._tpot_total_ms += tpot_mean_ms * self.num_tokens" in finalize_section
+    assert "self._ttft_metric_values[0] = ttft_ms" in finalize_section
+    assert "return self._iteration_metric_payload" in finalize_section
+    assert '"ttft_times_ms": [ttft_ms]' not in finalize_section
+    assert "[tpot_mean_ms] * self.num_tokens" not in finalize_section
     assert '"monolithic.ttft_ms": float(self._ttft_total_ms / self._ttft_count)' in metrics_section
     assert "self._tpot_total_ms / self._tpot_count" in metrics_section
     assert 'sum(self._history["ttft"])' not in metrics_section

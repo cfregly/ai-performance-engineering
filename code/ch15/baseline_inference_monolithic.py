@@ -29,7 +29,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self.prompt: Optional[torch.Tensor] = None
         self.kv_cache: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
-        self._history: Dict[str, List[float]] = {"ttft": [], "tpot": []}
+        self._empty_iteration_result: Dict[str, List[float]] = {}
         # Workload dimensions for signature matching
         self.batch_size = 1
         self.prefill_seq = 64
@@ -42,6 +42,12 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self._last_elapsed_ms: Optional[float] = None
         self._metrics_pending = False
         self._last_decoded_tokens: List[torch.Tensor] = []
+        self._ttft_metric_values = [0.0]
+        self._tpot_metric_values = [0.0] * self.num_tokens
+        self._iteration_metric_payload: Dict[str, List[float]] = {
+            "ttft_times_ms": self._ttft_metric_values,
+            "tpot_times_ms": self._tpot_metric_values,
+        }
         self._enable_nvtx = False
         self._payload_parameter_count = 0
         self._ttft_total_ms = 0.0
@@ -60,12 +66,14 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self.prompt = (torch.arange(self.prefill_seq, device=self.device, dtype=torch.int64) % 10000).unsqueeze(0)
         self.kv_cache = None
         self.output = None
-        self._history = {"ttft": [], "tpot": []}
         self._ttft_total_ms = 0.0
         self._tpot_total_ms = 0.0
         self._ttft_count = 0
         self._tpot_count = 0
         self._last_decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]
+        if len(self._tpot_metric_values) != self.num_tokens:
+            self._tpot_metric_values = [0.0] * self.num_tokens
+            self._iteration_metric_payload["tpot_times_ms"] = self._tpot_metric_values
         self._verify_prompt = self.prompt.detach().clone()
 
     def benchmark_fn(self) -> Optional[dict]:
@@ -93,7 +101,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
                 self._last_decoded_tokens = decoded_tokens
                 self.output = None
                 self._metrics_pending = True
-                return {}
+                return self._empty_iteration_result
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, List[float]]]:
         if self._last_elapsed_ms is None or not self._metrics_pending:
@@ -107,19 +115,21 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
 
         ttft_ms = float(self._last_elapsed_ms) * (float(self.prefill_seq) / total_token_work)
         tpot_mean_ms = float(self._last_elapsed_ms) / total_token_work
-        tpot_times_ms = [tpot_mean_ms] * self.num_tokens
+        tpot_times_ms = self._tpot_metric_values
+        if len(tpot_times_ms) != self.num_tokens:
+            tpot_times_ms = [0.0] * self.num_tokens
+            self._tpot_metric_values = tpot_times_ms
+            self._iteration_metric_payload["tpot_times_ms"] = tpot_times_ms
+        for idx in range(len(tpot_times_ms)):
+            tpot_times_ms[idx] = tpot_mean_ms
 
-        self._history["ttft"].append(ttft_ms)
-        self._history["tpot"].extend(tpot_times_ms)
         self._ttft_total_ms += ttft_ms
         self._tpot_total_ms += tpot_mean_ms * self.num_tokens
         self._ttft_count += 1
         self._tpot_count += self.num_tokens
         self._metrics_pending = False
-        return {
-            "ttft_times_ms": [ttft_ms],
-            "tpot_times_ms": tpot_times_ms,
-        }
+        self._ttft_metric_values[0] = ttft_ms
+        return self._iteration_metric_payload
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
@@ -172,9 +182,9 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
 
     def validate_result(self) -> Optional[str]:
         self.finalize_iteration_metrics()
-        if not self._history["ttft"]:
+        if self._ttft_count <= 0:
             return "No TTFT samples recorded"
-        if not self._history["tpot"]:
+        if self._tpot_count <= 0:
             return "No TPOT samples recorded"
         return None
 

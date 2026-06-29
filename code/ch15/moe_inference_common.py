@@ -48,13 +48,11 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._next_token_buffer: Optional[torch.Tensor] = None
         self._next_token_values: Optional[torch.Tensor] = None
-        self._history: Dict[str, List[float]] = {
-            "ttft": [],
-            "tpot": [],
-            "throughput": [],
-            "nvlink": [],
-            "nvlink_measured": [],
-            "memory_gb": [],
+        self._ttft_metric_values = [0.0]
+        self._tpot_metric_values = [0.0] * self.config.decode_tokens
+        self._iteration_metric_payload: Dict[str, List[float]] = {
+            "ttft_times_ms": self._ttft_metric_values,
+            "tpot_times_ms": self._tpot_metric_values,
         }
         self._metric_totals: Dict[str, float] = {
             "ttft": 0.0,
@@ -77,6 +75,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._nvlink_warned = False
         self._nvlink_status = "unknown"
         self._telemetry_before: Dict[str, Optional[float]] = {}
+        self._peak_memory_gb = 0.0
         self._prefill_start_event: Optional[torch.cuda.Event] = None
         self._prefill_end_event: Optional[torch.cuda.Event] = None
         self._decode_start_event: Optional[torch.cuda.Event] = None
@@ -124,9 +123,12 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         )
         self._next_token_buffer = torch.empty((cfg.batch_size, 1), dtype=torch.long, device=self.device)
         self._next_token_values = torch.empty((cfg.batch_size, 1), dtype=cfg.dtype_obj, device=self.device)
-        self._history = {key: [] for key in self._history}
         self._metric_totals = {key: 0.0 for key in self._metric_totals}
         self._metric_counts = {key: 0 for key in self._metric_counts}
+        self._peak_memory_gb = 0.0
+        if len(self._tpot_metric_values) != cfg.decode_tokens:
+            self._tpot_metric_values = [0.0] * cfg.decode_tokens
+            self._iteration_metric_payload["tpot_times_ms"] = self._tpot_metric_values
         torch.cuda.synchronize(self.device)
         if hasattr(torch.cuda, "reset_peak_memory_stats"):
             torch.cuda.reset_peak_memory_stats(self.device)
@@ -230,10 +232,6 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         measured_nvlink = self._compute_nvlink_delta(self._telemetry_before, telemetry_after, total_time_s)
         self._nvlink_status = telemetry_after.get("nvlink_status", "unknown")
 
-        self._history["ttft"].append(prefill_ms)
-        self._history["tpot"].extend([avg_tpot_ms] * self.config.decode_tokens)
-        self._history["throughput"].append(throughput)
-        self._history["nvlink"].append(nvlink_gbps)
         decode_count = int(self.config.decode_tokens)
         self._metric_totals["ttft"] += prefill_ms
         self._metric_counts["ttft"] += 1
@@ -244,7 +242,6 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._metric_totals["nvlink"] += nvlink_gbps
         self._metric_counts["nvlink"] += 1
         if measured_nvlink is not None:
-            self._history["nvlink_measured"].append(measured_nvlink)
             self._metric_totals["nvlink_measured"] += measured_nvlink
             self._metric_counts["nvlink_measured"] += 1
         elif not self._nvlink_warned:
@@ -252,17 +249,22 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
 
         peak_bytes = torch.cuda.max_memory_allocated(self.device)
         if peak_bytes:
-            self._history["memory_gb"].append(peak_bytes / (1024 ** 3))
+            self._peak_memory_gb = max(self._peak_memory_gb, peak_bytes / (1024 ** 3))
 
         self._prefill_start_event = None
         self._prefill_end_event = None
         self._decode_start_event = None
         self._decode_end_event = None
 
-        return {
-            "ttft_times_ms": [prefill_ms],
-            "tpot_times_ms": [avg_tpot_ms] * self.config.decode_tokens,
-        }
+        self._ttft_metric_values[0] = prefill_ms
+        tpot_times_ms = self._tpot_metric_values
+        if len(tpot_times_ms) != decode_count:
+            tpot_times_ms = [0.0] * decode_count
+            self._tpot_metric_values = tpot_times_ms
+            self._iteration_metric_payload["tpot_times_ms"] = tpot_times_ms
+        for idx in range(len(tpot_times_ms)):
+            tpot_times_ms[idx] = avg_tpot_ms
+        return self._iteration_metric_payload
 
     def _compute_nvlink_delta(
         self,
@@ -334,14 +336,14 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             metrics["inference.nvlink_measured_gbps"] = (
                 self._metric_totals["nvlink_measured"] / self._metric_counts["nvlink_measured"]
             )
-        if self._history["memory_gb"]:
-            metrics["inference.peak_memory_gb"] = max(self._history["memory_gb"])
+        if self._peak_memory_gb > 0.0:
+            metrics["inference.peak_memory_gb"] = self._peak_memory_gb
         return metrics
 
     def validate_result(self) -> Optional[str]:
-        if not self._history["ttft"]:
+        if self._metric_counts["ttft"] <= 0:
             return "No TTFT samples recorded"
-        if not self._history["tpot"]:
+        if self._metric_counts["tpot"] <= 0:
             return "No TPOT samples recorded"
         return None
 
