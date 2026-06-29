@@ -17,6 +17,7 @@ that emits a consistent artifact layout:
 from __future__ import annotations
 
 import argparse
+import heapq
 import io
 import json
 import math
@@ -96,6 +97,20 @@ def _dirichlet(rng: random.Random, alpha: float, k: int) -> List[float]:
     if total == 0:
         return [1.0 / k] * k
     return [d / total for d in draws]
+
+
+def _rank_top_experts(
+    probs: Sequence[float],
+    expert_ids: range,
+    ranked_count: int,
+) -> List[int]:
+    if len(expert_ids) < 64:
+        return sorted(expert_ids, key=probs.__getitem__, reverse=True)[:ranked_count]
+    return heapq.nlargest(
+        ranked_count,
+        expert_ids,
+        key=probs.__getitem__,
+    )
 
 
 def _percentiles(values: Sequence[float]) -> Dict[str, float]:
@@ -505,6 +520,7 @@ class CheapEvalStack:
         rng = self._rng
         experts = self.cfg.experts
         top_k = self.cfg.top_k
+        ranked_count = min(experts, max(top_k, 2))
         expert_ids = range(experts)
         expert_hist = [0 for _ in expert_ids]
         entropy_samples: List[float] = []
@@ -526,7 +542,7 @@ class CheapEvalStack:
                 alpha=dirichlet_alpha,
                 k=experts,
             )
-            ranked_experts = sorted(expert_ids, key=probs.__getitem__, reverse=True)
+            ranked_experts = _rank_top_experts(probs, expert_ids, ranked_count)
             entropy = -sum(p * math.log(p + 1e-9) for p in probs)
             best_prob = probs[ranked_experts[0]]
             second_prob = probs[ranked_experts[1]] if experts > 1 else 0.0

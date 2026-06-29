@@ -5284,6 +5284,10 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
         "def _compute_throughput",
         maxsplit=1,
     )[0]
+    ranking_section = source.split("def _rank_top_experts", maxsplit=1)[1].split(
+        "def _percentiles",
+        maxsplit=1,
+    )[0]
 
     assert "def _percentile_from_ordered" in source
     assert "ordered = sorted(values)" in percentile_section
@@ -5293,8 +5297,14 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert "_percentile(values, 95)" not in percentile_section
     assert "experts = self.cfg.experts" in moe_section
     assert "top_k = self.cfg.top_k" in moe_section
+    assert "ranked_count = min(experts, max(top_k, 2))" in moe_section
     assert "dirichlet_alpha = 0.85 if optimized else 0.55" in moe_section
-    assert "ranked_experts = sorted(expert_ids, key=probs.__getitem__, reverse=True)" in moe_section
+    assert "ranked_experts = _rank_top_experts(probs, expert_ids, ranked_count)" in moe_section
+    assert "ranked_experts = sorted(expert_ids" not in moe_section
+    assert "if len(expert_ids) < 64:" in ranking_section
+    assert "return sorted(expert_ids, key=probs.__getitem__, reverse=True)[:ranked_count]" in ranking_section
+    assert "return heapq.nlargest(" in ranking_section
+    assert "key=probs.__getitem__" in ranking_section
     assert "sorted(probs, reverse=True)" not in moe_section
     assert "lambda i: probs[i]" not in moe_section
 
