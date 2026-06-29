@@ -14296,6 +14296,14 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
 
 def test_ch15_inference_placement_defers_output_tensor_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch15" / "baseline_inference_placement.py").read_text(encoding="utf-8")
+    init_section = source.split("def __init__", maxsplit=1)[1].split(
+        "def setup",
+        maxsplit=1,
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -14312,7 +14320,21 @@ def test_ch15_inference_placement_defers_output_tensor_outside_hot_loop() -> Non
     assert "total_ms = run.ttft_total_ms + run.decode_total_ms" in benchmark_section
     assert "sum(run.ttft_ms)" not in benchmark_section
     assert "sum(run.decode_ms)" not in benchmark_section
-    assert "self._output_values = [" in benchmark_section
+    assert "self._summary_keys = (" in init_section
+    assert "self._summary: Dict[str, float] = {key: 0.0 for key in self._summary_keys}" in init_section
+    assert "self._output_values: list[float] = [0.0] * 7" in init_section
+    assert "self._output_values_ready = False" in source
+    assert "self._output_values_ready = False" in setup_section
+    assert "summary = self._summary" in benchmark_section
+    assert "keys = self._summary_keys" in benchmark_section
+    assert "summary[keys[0]] = ttft_p50" in benchmark_section
+    assert "summary[keys[9]] = run.remote_expert_ms" in benchmark_section
+    assert "self._summary = {" not in benchmark_section
+    assert "self._output_values[0] = ttft_p50" in benchmark_section
+    assert "self._output_values[6] = float(run.cross_node_collectives)" in benchmark_section
+    assert "self._output_values_ready = True" in benchmark_section
+    assert "self._output_values = [" not in benchmark_section
+    assert "if not self._output_values_ready:" in capture_section
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
