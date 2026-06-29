@@ -166,7 +166,7 @@ def forward_model(model, input_ids):
 
 @torch.inference_mode()
 def evaluate_example(idx, model, tokenizer, data, device, task_meta):
-    """Evaluate a single example, return True if correct, False otherwise"""
+    """Evaluate a single example, returning a bool-like tensor when possible."""
     item = data[idx]
     task_type = task_meta['task_type']
     num_fewshot = task_meta['num_fewshot']
@@ -228,7 +228,7 @@ def evaluate_example(idx, model, tokenizer, data, device, task_meta):
         # predictions[i] predict input_ids[i+1] autoregressively
         predicted_tokens = predictions[0, si-1:ei-1]
         actual_tokens = input_ids[0, si:ei]
-        is_correct = torch.all(predicted_tokens == actual_tokens).item()
+        is_correct = torch.all(predicted_tokens == actual_tokens)
     elif task_type in ['multiple_choice', 'schema']:
         # For MC/schema: find the option with lowest average loss
         mean_losses = torch.stack(
@@ -236,9 +236,9 @@ def evaluate_example(idx, model, tokenizer, data, device, task_meta):
                 losses[i, si-1:ei-1].mean()
                 for i, (si, ei) in enumerate(zip(start_idxs, end_idxs))
             ]
-        ).detach().cpu().tolist()
-        pred_idx = mean_losses.index(min(mean_losses))
-        is_correct = pred_idx == item['gold']
+        )
+        pred_idx = mean_losses.argmin()
+        is_correct = pred_idx == int(item['gold'])
     else:
         raise ValueError(f"Unsupported task type: {task_type}")
 
@@ -256,11 +256,14 @@ def evaluate_task(model, tokenizer, data, device, task_meta):
     # stride the examples to each rank
     for idx in range(rank, len(data), world_size):
         is_correct = evaluate_example(idx, model, tokenizer, data, device, task_meta)
-        correct[idx] = float(is_correct)
+        if isinstance(is_correct, torch.Tensor):
+            correct[idx] = is_correct.to(device=device, dtype=correct.dtype)
+        else:
+            correct[idx] = float(is_correct)
     # sync results across all the processes if running distributed
     if world_size > 1:
         dist.barrier()
         dist.all_reduce(correct, op=dist.ReduceOp.SUM)
     # compute the mean
-    mean_correct = correct.mean().item()
+    mean_correct = float(correct.mean().detach().cpu())
     return mean_correct

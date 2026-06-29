@@ -6287,8 +6287,13 @@ def test_nanochat_core_eval_batches_option_loss_reads() -> None:
     )[0]
 
     assert "mean_losses = torch.stack(" in option_section
-    assert ").detach().cpu().tolist()" in option_section
+    assert "pred_idx = mean_losses.argmin()" in option_section
+    assert "is_correct = pred_idx == int(item['gold'])" in option_section
+    assert ").detach().cpu().tolist()" not in option_section
+    assert "mean_losses.index(min(mean_losses))" not in option_section
     assert ".mean().item()" not in option_section
+    assert "torch.all(predicted_tokens == actual_tokens).item()" not in source
+    assert "correct[idx] = is_correct.to(device=device, dtype=correct.dtype)" in source
     assert source.count("@torch.inference_mode()") >= 2
     assert "@torch.no_grad()" not in source
 
