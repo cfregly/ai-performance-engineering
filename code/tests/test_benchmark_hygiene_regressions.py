@@ -5701,6 +5701,18 @@ def test_flexattention_metrics_use_attention_formula_and_hot_paths_skip_clone() 
 
     assert "self.output = output_tensor.detach().float().clone()" not in flex_baseline_source
     assert "self.output = output_tensor.detach().float().clone()" not in flex_optimized_source
+    for flex_source in (flex_baseline_source, flex_optimized_source):
+        flex_setup = flex_source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
+        flex_capture = flex_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in flex_source
+        assert "self._verify_output_buffer = torch.empty_like(self.inputs.q, dtype=torch.float32)" in flex_setup
+        assert "self._verify_output_buffer.copy_(self.output)" in flex_capture
+        assert "output=self._verify_output_buffer" in flex_capture
+        assert "self.output.detach().float().clone()" not in flex_capture
     assert "self.output = result.detach().float().clone()" not in flash4_source
     assert "self._sparsity_ratio = float(self.inputs.dense_mask.float().mean())" in flash4_source
     assert "self.inputs.dense_mask.float().mean().item()" not in flash4_source
