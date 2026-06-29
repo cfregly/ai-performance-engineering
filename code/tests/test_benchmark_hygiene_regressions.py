@@ -940,6 +940,18 @@ def test_ch07_pytorch_microbenchmarks_record_timing_on_current_stream() -> None:
         assert "start_event.record()" not in section
         assert "end_event.record()" not in section
 
+    vectorized_source = (REPO_ROOT / "ch07" / "vectorized_pytorch.py").read_text(
+        encoding="utf-8"
+    )
+    vectorized_cpu_section = vectorized_source.split("# CPU timing", maxsplit=1)[1].split(
+        "print(",
+        maxsplit=1,
+    )[0]
+    assert "start = time.perf_counter()" in vectorized_cpu_section
+    assert "sequential_ms = (time.perf_counter() - start) * 1_000" in vectorized_cpu_section
+    assert "vector_ms = (time.perf_counter() - start) * 1_000" in vectorized_cpu_section
+    assert "time.time()" not in vectorized_cpu_section
+
 
 def test_kv_locality_microbench_reuses_copy_stream_and_defers_output_tensor() -> None:
     source = (REPO_ROOT / "core" / "scripts" / "kv_locality_microbench.py").read_text(

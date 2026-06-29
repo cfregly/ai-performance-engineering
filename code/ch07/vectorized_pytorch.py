@@ -35,14 +35,14 @@ def main() -> None:
         # CPU timing
         import time
 
-        start = time.time()
+        start = time.perf_counter()
         for i in range(N):
             c[i] = a[i] + b[i]
-        sequential_ms = (time.time() - start) * 1_000
+        sequential_ms = (time.perf_counter() - start) * 1_000
 
-        start = time.time()
+        start = time.perf_counter()
         c = a + b
-        vector_ms = (time.time() - start) * 1_000
+        vector_ms = (time.perf_counter() - start) * 1_000
 
     print(f"naive loop: {sequential_ms:.2f} ms, vectorized: {vector_ms:.2f} ms")
 
