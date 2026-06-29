@@ -134,7 +134,6 @@ def setup_blackwell_distributed(
     
     # Set device
     torch.cuda.set_device(local_rank)
-    device = torch.device(f"cuda:{local_rank}")
     
     # Configure NCCL for Blackwell
     if backend == "nccl":
@@ -495,9 +494,11 @@ def train_multi_node(
     
     model.train()
     global_step = 0
+    loss_value_buffer = torch.empty(1, dtype=torch.float64, device=f"cuda:{device}")
+    epoch_loss_sum = torch.zeros((), dtype=torch.float64, device=f"cuda:{device}")
     
     for epoch in range(num_epochs):
-        epoch_loss_tensors = []
+        epoch_loss_sum.zero_()
         epoch_start = time.time()
         for step, batch in enumerate(train_data):
             step_start = time.time()
@@ -526,7 +527,8 @@ def train_multi_node(
             step_time = time.time() - step_start
             # Log statistics
             if rank == 0 and step % 10 == 0:
-                loss_value = float(loss.detach()) * gradient_accumulation_steps
+                loss_value_buffer[0].copy_(loss.detach())
+                loss_value = loss_value_buffer.detach().cpu().tolist()[0] * gradient_accumulation_steps
                 tokens_per_step = input_ids.numel() * world_size
                 throughput = tokens_per_step / step_time
                 stats['losses'].append(loss_value)
@@ -538,14 +540,11 @@ def train_multi_node(
                       f"Time: {step_time*1000:.1f}ms")
             
             if rank == 0:
-                epoch_loss_tensors.append(loss.detach())
+                epoch_loss_sum.add_(loss.detach())
             epoch_time = time.time() - epoch_start
         if rank == 0:
-            epoch_loss = (
-                float(torch.stack(epoch_loss_tensors).sum())
-                if epoch_loss_tensors
-                else 0.0
-            )
+            loss_value_buffer[0].copy_(epoch_loss_sum)
+            epoch_loss = loss_value_buffer.detach().cpu().tolist()[0]
             avg_loss = epoch_loss / len(train_data)
             print(f"\nEpoch {epoch} complete:")
             print(f" Average loss: {avg_loss:.4f}")

@@ -9025,9 +9025,21 @@ def test_ch04_multi_node_training_defers_repeated_loss_syncs() -> None:
     )[0]
 
     assert "loss.item()" not in train_section
-    assert "epoch_loss_tensors = []" in train_section
+    assert "float(loss.detach())" not in train_section
+    assert "epoch_loss_tensors = []" not in train_section
+    assert "torch.stack(epoch_loss_tensors)" not in train_section
+    assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in train_section
+    assert "epoch_loss_sum = torch.zeros((), dtype=torch.float64" in train_section
+    assert "epoch_loss_sum.zero_()" in train_section
+    assert "loss_value_buffer[0].copy_(loss.detach())" in train_section
+    assert (
+        "loss_value = loss_value_buffer.detach().cpu().tolist()[0] * gradient_accumulation_steps"
+        in train_section
+    )
+    assert "epoch_loss_sum.add_(loss.detach())" in train_section
+    assert "loss_value_buffer[0].copy_(epoch_loss_sum)" in train_section
     assert "stats['losses'].append(loss_value)" in train_section
-    assert "float(torch.stack(epoch_loss_tensors).sum())" in train_section
+    assert "epoch_loss = loss_value_buffer.detach().cpu().tolist()[0]" in train_section
 
 
 def test_ch13_expert_parallel_batches_recv_split_materialization() -> None:
