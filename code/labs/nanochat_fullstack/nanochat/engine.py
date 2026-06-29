@@ -890,6 +890,7 @@ class Engine:
         pad_id,
         active_rows=None,
         active_indices=None,
+        uniform_sampling=None,
     ):
         sampled_tokens = [pad_id] * logits.size(0)
         if active_rows is None:
@@ -906,7 +907,9 @@ class Engine:
         first_idx = active_rows[0]
         first_temp = temperatures[first_idx]
         first_top_k = top_ks[first_idx]
-        if all(temperatures[idx] == first_temp and top_ks[idx] == first_top_k for idx in active_rows):
+        if uniform_sampling is None:
+            uniform_sampling = all(temperatures[idx] == first_temp and top_ks[idx] == first_top_k for idx in active_rows)
+        if uniform_sampling:
             if len(active_rows) == logits.size(0):
                 active_logits = logits
             else:
@@ -987,12 +990,13 @@ class Engine:
         # 4) Main generation loop
         num_generated = 0
         first_iteration = True
+        active_count = num_samples
         while True:
             # Stop condition: we've reached max tokens
             if max_tokens is not None and num_generated >= max_tokens:
                 break
             # Stop condition: all rows are completed
-            if all(state.completed for state in row_states):
+            if active_count == 0:
                 break
 
             # Get sampled tokens - either from prefill or from forward pass
@@ -1026,6 +1030,7 @@ class Engine:
             token_masks = [] # contains the mask (was it sampled (1) or forced (0)?) along each row
             has_forced_tokens = False
             for i, state in enumerate(row_states):
+                was_completed = state.completed
                 # Select the next token in this row
                 is_forced = len(state.forced_tokens) > 0 # are there tokens waiting to be forced in deque?
                 has_forced_tokens |= is_forced
@@ -1054,6 +1059,8 @@ class Engine:
                     state.python_expr_tokens = []
                 elif state.in_python_block:
                     state.python_expr_tokens.append(next_token)
+                if not was_completed and state.completed:
+                    active_count -= 1
 
             # Yield the token column
             yield token_column, token_masks
@@ -1081,6 +1088,10 @@ class Engine:
         pad_id = self.tokenizer.get_bos_token_id()
         temps = self._expand_param(temperature, batch_size, temperature if temperature is not None else 1.0)
         top_ks = self._expand_param(top_k, batch_size, top_k)
+        first_temp = temps[0]
+        first_top_k = top_ks[0]
+        uniform_sampling = all(temp == first_temp and top_k == first_top_k for temp, top_k in zip(temps, top_ks, strict=True))
+        uniform_sampling_hint = True if uniform_sampling else None
         fallback_max = self.model.config.sequence_len if max_tokens is None else (max_tokens if isinstance(max_tokens, int) else self.model.config.sequence_len)
         max_tokens_list = self._expand_param(max_tokens, batch_size, fallback_max)
         row_max_tokens = [mt if mt is not None else fallback_max for mt in max_tokens_list]
@@ -1124,6 +1135,7 @@ class Engine:
             active_mask,
             pad_id,
             active_rows=list(range(batch_size)),
+            uniform_sampling=uniform_sampling_hint,
         )
 
         kv_cache_decode = KVCache(**self._kv_cache_params(batch_size=batch_size, seq_len=kv_length_hint))
@@ -1149,9 +1161,10 @@ class Engine:
         max_total_steps = max(row_max_tokens) if row_max_tokens else 0
         first_iteration = True
         token_column = None
+        active_count = sum(1 for limit in row_max_tokens if limit > 0)
 
         while True:
-            if all(state.completed or generated_counts[i] >= row_max_tokens[i] for i, state in enumerate(row_states)):
+            if active_count == 0:
                 break
             if max_total_steps and num_generated >= max_total_steps:
                 break
@@ -1188,6 +1201,7 @@ class Engine:
                     pad_id,
                     active_rows=active_rows,
                     active_indices=active_indices,
+                    uniform_sampling=uniform_sampling_hint,
                 )
                 current_tokens = sampled_tokens
 
@@ -1224,6 +1238,8 @@ class Engine:
                     state.python_expr_tokens = []
                 elif state.in_python_block:
                     state.python_expr_tokens.append(next_token)
+                if state.completed:
+                    active_count -= 1
 
             yield token_column, token_masks
             num_generated += 1
@@ -1238,16 +1254,18 @@ class Engine:
         results = [tokens.copy() for _ in range(num_samples)]
         masks = [[0] * len(tokens) for _ in range(num_samples)]
         completed = [False] * num_samples
+        remaining = num_samples
         for token_column, token_masks in self.generate(tokens, num_samples, **kwargs):
             for i, (token, mask) in enumerate(zip(token_column, token_masks)):
                 if not completed[i]:
                     if token == assistant_end or token == bos:
                         completed[i] = True
+                        remaining -= 1
                     else:
                         results[i].append(token)
                         masks[i].append(mask)
             # Stop if all rows are completed
-            if all(completed):
+            if remaining == 0:
                 break
         return results, masks
 

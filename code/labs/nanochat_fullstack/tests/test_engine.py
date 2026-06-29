@@ -589,6 +589,7 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "def _single_prompt_ids(self, tokens, device)" in text
     assert "def _ids_step_buffer_for(self, batch_size, device)" in text
     assert "def _token_tensor_to_list(self, token_tensor)" in text
+    assert "uniform_sampling=None" in sample_section
     assert "host_tokens = self._sample_host_token_buffer(flat_tokens.numel(), flat_tokens.device)" in token_list_section
     assert "host_tokens.copy_(flat_tokens, non_blocking=flat_tokens.device.type == \"cuda\")" in token_list_section
     assert "return host_tokens.tolist()" in token_list_section
@@ -596,6 +597,7 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "device_tokens.copy_(flat_tokens)" not in token_list_section
     assert "**self._sample_workspace(active_logits, first_top_k, first_temp)," in sample_section
     assert "**self._sample_workspace(row_logits, top_k, temp)," in sample_section
+    assert "if uniform_sampling is None:" in sample_section
     assert "active_indices=None" in sample_section
     assert "active_indices.device.type == \"cpu\"" in sample_section
     assert "active_rows = self._token_tensor_to_list(active_indices)" in sample_section
@@ -612,6 +614,32 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "torch.empty((num_samples, 1), dtype=torch.long, device=device)" not in generate_section
     assert "sampled_tokens = self._token_tensor_to_list(next_ids[:, 0])" in generate_section
     assert "next_ids[:, 0].tolist()" not in generate_section
+    assert "active_count = num_samples" in generate_section
+    assert "if active_count == 0:" in generate_section
+    assert "if all(state.completed for state in row_states):" not in generate_section
+
+
+def test_generate_loops_track_completion_counts_without_rescanning_rows():
+    source = Path(__file__).resolve().parents[1] / "nanochat" / "engine.py"
+    text = source.read_text(encoding="utf-8")
+    generate_batched = text.split(
+        "def generate_batched", maxsplit=1,
+    )[1].split(
+        "def generate_batch", maxsplit=1,
+    )[0]
+    generate_batch = text.split(
+        "def generate_batch", maxsplit=1,
+    )[1].split(
+        'if __name__ == "__main__"',
+        maxsplit=1,
+    )[0]
+
+    assert "active_count = sum(1 for limit in row_max_tokens if limit > 0)" in generate_batched
+    assert "if active_count == 0:" in generate_batched
+    assert "if all(state.completed or generated_counts[i] >= row_max_tokens[i]" not in generate_batched
+    assert "remaining = num_samples" in generate_batch
+    assert "if remaining == 0:" in generate_batch
+    assert "if all(completed):" not in generate_batch
 
 
 def test_gpt_generate_prompt_copy_reuses_ids_buffer():
@@ -735,6 +763,9 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     assert "torch.empty((batch_size, 1), dtype=torch.long, device=device)" not in generate_batched
     assert "return_active_indices=True" in generate_batched
     assert "active_indices=active_indices" in generate_batched
+    assert "uniform_sampling = all(temp == first_temp and top_k == first_top_k for temp, top_k in zip(temps, top_ks, strict=True))" in generate_batched
+    assert "uniform_sampling_hint = True if uniform_sampling else None" in generate_batched
+    assert generate_batched.count("uniform_sampling=uniform_sampling_hint") == 2
     assert "torch.as_tensor(active_rows" not in generate_batched
     assert "attn_mask = self._build_attention_mask(lengths_by_batch, max(lengths_by_row))" in generate_batched
     assert "next_lengths = lengths_by_batch +" not in generate_batched
