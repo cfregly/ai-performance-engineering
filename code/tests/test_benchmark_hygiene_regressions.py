@@ -3303,14 +3303,23 @@ def test_ch16_piece_and_regional_graphs_cache_nvtx_outside_hot_loop() -> None:
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    optimized_run = optimized_source.split("def run", maxsplit=1)[1].split(
+        "def _run_with_cuda_graph", maxsplit=1
+    )[0]
     optimized_model_forward = optimized_source.split(
         "class RegionalCompilationTransformer", maxsplit=1
     )[1].split("GraphCacheEntry", maxsplit=1)[0]
 
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in optimized_setup
+    assert "self._input_views: Dict[int, torch.Tensor] = {}" in optimized_source
+    assert "def _input_view_for(self, seq_len: int) -> torch.Tensor:" in optimized_source
+    assert "self._input_views = {self.max_seq_len: self._verify_input}" in optimized_setup
     assert "get_config()" not in optimized_benchmark
     assert "get_nvtx_enabled(" not in optimized_benchmark
     assert "self._run_with_cuda_graph(seq_len, self._enable_nvtx)" in optimized_benchmark
+    assert "self._payload_verify_input = self._input_view_for(seq_len)" in optimized_benchmark
+    assert "self._verify_input[:, :seq_len]" not in optimized_benchmark
+    assert "input_view = self._input_view_for(seq_len)" in optimized_run
     assert "layer_out = _run_compiled_layer(layer, x)" in optimized_model_forward
     assert "layer_out.add_(x)" in optimized_model_forward
     assert "x = layer_out" in optimized_model_forward

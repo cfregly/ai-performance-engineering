@@ -68,6 +68,8 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         self.graph_cache: Dict[int, GraphCacheEntry] = {}
         self.capture_ms: float = 0.0
         self._verify_input: Optional[torch.Tensor] = None
+        self._payload_verify_input: Optional[torch.Tensor] = None
+        self._input_views: Dict[int, torch.Tensor] = {}
         self.parameter_count: int = 0
         self._enable_nvtx = False
         tokens = self.max_seq_len * self.d_model
@@ -108,6 +110,8 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._payload_verify_input = self._verify_input
+        self._input_views = {self.max_seq_len: self._verify_input}
         self._prepare_cuda_graphs()
         tokens = self.max_seq_len * self.d_model
         self._workload = WorkloadMetadata(
@@ -121,6 +125,16 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def _input_view_for(self, seq_len: int) -> torch.Tensor:
+        if self._verify_input is None:
+            raise RuntimeError("Verification input must be initialized before slicing")
+        view = self._input_views.get(seq_len)
+        if view is not None:
+            return view
+        view = self._verify_input if seq_len == self.max_seq_len else self._verify_input[:, :seq_len]
+        self._input_views[seq_len] = view
+        return view
 
     def _prepare_cuda_graphs(self) -> None:
         """Capture CUDA graphs per sequence length to eliminate Python overhead."""
@@ -136,11 +150,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         capture_start.record()
 
         for seq_len in unique_lengths:
-            static_input = (
-                self._verify_input
-                if seq_len == self.max_seq_len
-                else self._verify_input[:, :seq_len]
-            )
+            static_input = self._input_view_for(seq_len)
             # Warm-up and capture under inference mode to avoid autograd state.
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 static_output = self.model(static_input)
@@ -168,9 +178,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         if not ran_graph:
             raise RuntimeError("CUDA graph replay missing for expected sequence length bucket")
 
-        self._payload_verify_input = (
-            self._verify_input if seq_len == self.max_seq_len else self._verify_input[:, :seq_len]
-        )
+        self._payload_verify_input = self._input_view_for(seq_len)
 
     def capture_verification_payload(self) -> None:
         verify_input = self._payload_verify_input
@@ -196,13 +204,14 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
             raise RuntimeError("Optimized model not initialized")
 
         seq_len = self.sequence_schedule[0]
+        input_view = self._input_view_for(seq_len)
         ran_graph = self._run_with_cuda_graph(seq_len, enable_nvtx=False)
         if not ran_graph:
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-                _ = self.model(self._verify_input[:, :seq_len])
+                _ = self.model(input_view)
         if compare_eager:
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-                _ = self.model(self._verify_input[:, :seq_len])
+                _ = self.model(input_view)
         self._synchronize()
         if self.output is None:
             raise RuntimeError("run() did not produce output")
@@ -259,6 +268,8 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
     def teardown(self) -> None:
         self.model = None
         self._verify_input = None
+        self._payload_verify_input = None
+        self._input_views = {}
         self.graph_cache.clear()
         if self.device.type == "cuda":
             torch.cuda.empty_cache()
