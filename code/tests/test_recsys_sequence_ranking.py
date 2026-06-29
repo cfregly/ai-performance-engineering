@@ -169,6 +169,7 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     workspace_context = context_sum_vectorized(inputs, state, workspace)
 
     assert workspace.sequence_metadata_key is not None
+    assert workspace.context_metadata_key is not None
     assert workspace.context_table_index.shape == (1, workload.num_tables)
     assert workspace.sequence_embedding_flat.shape == (
         workload.batch_size * workload.seq_len,
@@ -189,6 +190,8 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     assert "out=sequence_embedding_flat" in sequence_source
     assert "out=context_embedding_flat" in context_source
     assert "state.context_embeddings[workspace.context_table_index, inputs.context_ids]" in context_source
+    assert "prepare_context_workspace_for_inputs(inputs, state, workspace)" in context_source
+    assert "workspace.context_flat_ids.copy_(" not in context_source
     assert workspace_sequence.data_ptr() == workspace.sequence_accum.data_ptr()
     assert workspace_context.data_ptr() == workspace.context_accum.data_ptr()
     torch.testing.assert_close(workspace_sequence, fallback_sequence, rtol=1e-6, atol=1e-6)

@@ -86,6 +86,7 @@ class RankingWorkspace:
     candidate_embedding_f32: torch.Tensor | None = None
     user_vec_f32: torch.Tensor | None = None
     sequence_metadata_key: tuple[int, int] | None = None
+    context_metadata_key: tuple[int, int] | None = None
 
 
 class SequenceRankingTower(nn.Module):
@@ -402,6 +403,10 @@ def _sequence_metadata_key(inputs: RankingInputs) -> tuple[int, int]:
     return (inputs.sequence_mask.data_ptr(), inputs.sequence_lengths.data_ptr())
 
 
+def _context_metadata_key(inputs: RankingInputs, state: RankingModelState) -> tuple[int, int]:
+    return (inputs.context_ids.data_ptr(), int(state.context_embeddings.shape[1]))
+
+
 def prepare_workspace_for_inputs(inputs: RankingInputs, workspace: RankingWorkspace) -> None:
     """Cache immutable sequence metadata derived from the benchmark inputs."""
 
@@ -409,6 +414,20 @@ def prepare_workspace_for_inputs(inputs: RankingInputs, workspace: RankingWorksp
     workspace.sequence_length_recip.copy_(inputs.sequence_lengths.unsqueeze(1))
     workspace.sequence_length_recip.clamp_min_(1).reciprocal_()
     workspace.sequence_metadata_key = _sequence_metadata_key(inputs)
+
+
+def prepare_context_workspace_for_inputs(
+    inputs: RankingInputs,
+    state: RankingModelState,
+    workspace: RankingWorkspace,
+) -> None:
+    """Cache flattened context lookup ids derived from immutable benchmark inputs."""
+
+    context_vocab_size = int(state.context_embeddings.shape[1])
+    workspace.context_flat_ids.copy_(workspace.context_table_index)
+    workspace.context_flat_ids.mul_(context_vocab_size)
+    workspace.context_flat_ids.add_(inputs.context_ids)
+    workspace.context_metadata_key = _context_metadata_key(inputs, state)
 
 
 def sequence_mean_baseline(
@@ -520,12 +539,10 @@ def context_sum_vectorized(
         context_vecs = state.context_embeddings[workspace.context_table_index, inputs.context_ids]
         return context_vecs.sum(dim=1)
 
-    context_vocab_size = int(state.context_embeddings.shape[1])
     embedding_dim = int(state.context_embeddings.shape[2])
     context_rows = int(inputs.context_ids.numel())
-    workspace.context_flat_ids.copy_(workspace.context_table_index)
-    workspace.context_flat_ids.mul_(context_vocab_size)
-    workspace.context_flat_ids.add_(inputs.context_ids)
+    if workspace.context_metadata_key != _context_metadata_key(inputs, state):
+        prepare_context_workspace_for_inputs(inputs, state, workspace)
     flat_context_embeddings = state.context_embeddings.view(-1, embedding_dim)
     context_embedding_flat = workspace.context_embedding_flat[:context_rows]
     torch.index_select(
@@ -845,6 +862,7 @@ __all__ = [
     "default_workload",
     "optimized_forward",
     "prepare_workspace_for_inputs",
+    "prepare_context_workspace_for_inputs",
     "ranking_metrics",
     "RankingWorkspace",
     "requests_per_iteration",
