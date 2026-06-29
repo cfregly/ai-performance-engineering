@@ -125,6 +125,7 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._baseline_kv_cache: Optional[torch.Tensor] = None
         self._kv_host_staging: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
         self._next_token_buffer: Optional[torch.Tensor] = None
         self._next_token_values: Optional[torch.Tensor] = None
@@ -151,10 +152,15 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         output_shape = (self.cfg.batch_size, 1)
         if self.cfg.batch_size == 1:
             output_shape = (1,)
+        output_buffer_shape = (
+            self.cfg.requests_per_rank * output_shape[0],
+            *output_shape[1:],
+        )
         self._pending_outputs = [
             torch.empty(output_shape, dtype=torch.long, device=self.device)
             for _ in range(self.cfg.requests_per_rank)
         ]
+        self._output_buffer = torch.empty(output_buffer_shape, dtype=torch.long, device=self.device)
         self._next_token_buffer = torch.empty((self.cfg.batch_size, 1), dtype=torch.long, device=self.device)
         self._next_token_values = torch.empty((self.cfg.batch_size, 1), dtype=self.cfg.dtype, device=self.device)
         self._output = None
@@ -225,7 +231,16 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         if self._output is None:
             if not self._pending_outputs:
                 raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-            self._output = torch.cat(self._pending_outputs, dim=0)
+            if self._output_buffer is None:
+                raise RuntimeError("setup() must initialize verification output buffer")
+            output_offset = 0
+            for output in self._pending_outputs:
+                output_rows = output.shape[0]
+                self._output_buffer[output_offset : output_offset + output_rows].copy_(output)
+                output_offset += output_rows
+            if output_offset != self._output_buffer.shape[0]:
+                raise RuntimeError("unexpected decode output shape")
+            self._output = self._output_buffer
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
         meta_dtype = torch.float32
         self._set_verification_payload(
@@ -259,6 +274,7 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._baseline_kv_cache = None
         self._kv_host_staging = None
         self._output = None
+        self._output_buffer = None
         self._pending_outputs = []
         self._next_token_buffer = None
         self._next_token_values = None

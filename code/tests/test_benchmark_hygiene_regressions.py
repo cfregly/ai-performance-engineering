@@ -14800,6 +14800,9 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "output_shape = (self.cfg.batch_size, 1)" in setup_section
     assert "if self.cfg.batch_size == 1:" in setup_section
     assert "torch.empty(output_shape, dtype=torch.long, device=self.device)" in setup_section
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+    assert "output_buffer_shape = (" in setup_section
+    assert "self._output_buffer = torch.empty(output_buffer_shape, dtype=torch.long, device=self.device)" in setup_section
     assert "self._next_token_buffer = torch.empty((self.cfg.batch_size, 1), dtype=torch.long, device=self.device)" in setup_section
     assert "self._next_token_values = torch.empty((self.cfg.batch_size, 1), dtype=self.cfg.dtype, device=self.device)" in setup_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" not in setup_section
@@ -14820,7 +14823,10 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "self._baseline_kv_cache = self._allocate_kv_cache()" in baseline_benchmark
     assert "self._kv_host_staging.copy_(hidden, non_blocking=False)" in baseline_benchmark
     assert "self._baseline_kv_cache[:, : self.cfg.context_window].copy_(" in baseline_benchmark
-    assert "self._output = torch.cat(self._pending_outputs, dim=0)" in capture_section
+    assert "self._output = torch.cat(self._pending_outputs, dim=0)" not in capture_section
+    assert "for output in self._pending_outputs:" in capture_section
+    assert "self._output_buffer[output_offset : output_offset + output_rows].copy_(output)" in capture_section
+    assert "self._output = self._output_buffer" in capture_section
 
 
 def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache() -> None:
