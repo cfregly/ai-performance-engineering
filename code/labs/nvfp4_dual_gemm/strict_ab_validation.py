@@ -146,7 +146,7 @@ def _run_local_eval(
     for allow in isolation_allow_cmd_substring:
         cmd += ["--isolation-allow-cmd-substring", str(allow)]
 
-    t0 = time.time()
+    t0 = time.perf_counter()
     env = os.environ.copy()
     if torch_extensions_dir:
         env["TORCH_EXTENSIONS_DIR"] = str(torch_extensions_dir)
@@ -159,7 +159,7 @@ def _run_local_eval(
         timeout=int(timeout_seconds),
         check=False,
     )
-    elapsed = time.time() - t0
+    elapsed = time.perf_counter() - t0
     if proc.returncode != 0:
         raise RuntimeError(
             f"local_eval failed rc={proc.returncode} for {submission_file}\n"

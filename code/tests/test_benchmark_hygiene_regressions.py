@@ -5106,8 +5106,15 @@ def test_remaining_lab_elapsed_timing_uses_monotonic_clock() -> None:
     strict_source = (
         REPO_ROOT / "labs" / "nvfp4_dual_gemm" / "strict_ab_validation.py"
     ).read_text(encoding="utf-8")
+    strict_run_eval = strict_source.split("def _run_local_eval", maxsplit=1)[1].split(
+        "def _metric_delta",
+        maxsplit=1,
+    )[0]
     strict_main = strict_source.split("def main", maxsplit=1)[1]
 
+    assert "t0 = time.perf_counter()" in strict_run_eval
+    assert "elapsed = time.perf_counter() - t0" in strict_run_eval
+    assert "time.time() - t0" not in strict_run_eval
     assert "start = time.perf_counter()" in strict_main
     assert "elapsed_window = time.perf_counter() - start" in strict_main
     assert "time.time() - start" not in strict_main
