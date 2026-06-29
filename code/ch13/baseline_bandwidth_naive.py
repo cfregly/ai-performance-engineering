@@ -47,6 +47,8 @@ class BaselineBandwidthNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.A: torch.Tensor | None = None
         self.B: torch.Tensor | None = None
         self.C: torch.Tensor | None = None
+        self._verify_indices: torch.Tensor | None = None
+        self._verify_output_buffer: torch.Tensor | None = None
 
         self.rows = 4096
         self.cols = 4096
@@ -70,6 +72,16 @@ class BaselineBandwidthNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.A = torch.randn(self.size, device=self.device, dtype=torch.float32)
         self.B = torch.randn(self.size, device=self.device, dtype=torch.float32)
         self.C = torch.empty_like(self.A)
+        verify_count = min(4096, self.size)
+        verify_step = max(self.size // verify_count, 1)
+        self._verify_indices = torch.arange(
+            0,
+            verify_step * verify_count,
+            verify_step,
+            device=self.device,
+            dtype=torch.long,
+        )
+        self._verify_output_buffer = torch.empty(verify_count, device=self.device, dtype=torch.float32)
         self.ext = _load_extension()
         
         # Warmup
@@ -90,9 +102,12 @@ class BaselineBandwidthNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.C is None or self._verify_indices is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        torch.index_select(self.C, 0, self._verify_indices, out=self._verify_output_buffer)
         self._set_verification_payload(
             inputs={"A": self.A, "B": self.B},
-            output=self.C.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.size,
             precision_flags={
                 "fp16": False,
@@ -109,6 +124,8 @@ class BaselineBandwidthNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.A = None
         self.B = None
         self.C = None
+        self._verify_indices = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:

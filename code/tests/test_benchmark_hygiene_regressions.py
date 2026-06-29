@@ -2381,6 +2381,40 @@ def test_ch13_arithmetic_intensity_setup_avoids_redundant_zero_fill() -> None:
         assert "self._verify_output_buffer = None" in target_teardown
 
 
+def test_ch13_bandwidth_pair_samples_verification_output() -> None:
+    for name in ("baseline_bandwidth_naive.py", "optimized_bandwidth_naive.py"):
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_indices: torch.Tensor | None = None" in source
+        assert "self._verify_output_buffer: torch.Tensor | None = None" in source
+        assert "verify_count = min(4096, self.size)" in setup_section
+        assert "verify_step = max(self.size // verify_count, 1)" in setup_section
+        assert "self._verify_indices = torch.arange(" in setup_section
+        assert "self._verify_output_buffer = torch.empty(verify_count, device=self.device, dtype=torch.float32)" in setup_section
+        assert "torch.index_select(" not in benchmark_section
+        assert "torch.index_select(self.C, 0, self._verify_indices, out=self._verify_output_buffer)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.C.detach().float().clone()" not in capture_section
+        assert "self._verify_indices = None" in teardown_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch03_ch05_accumulator_buffers_skip_setup_zero_fill() -> None:
     targets = (
         ("ch03/baseline_gemm.py", "self._output_buffer = torch.empty(", "result.zero_()"),
