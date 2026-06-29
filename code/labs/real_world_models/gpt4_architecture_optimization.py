@@ -180,6 +180,7 @@ class GPT4ArchitectureOptimizationBenchmark(VerificationPayloadMixin, BaseBenchm
         super().__init__()
         self.model_wrapper: Optional[GPT4ArchitectureOptimization] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count = 0
         self._last_metrics: Dict[str, float] = {
             "gpt4_architecture.mean_time_ms": 0.0,
@@ -198,6 +199,11 @@ class GPT4ArchitectureOptimizationBenchmark(VerificationPayloadMixin, BaseBenchm
         self.model_wrapper = GPT4ArchitectureOptimization()
         self.model_wrapper.setup()
         self.parameter_count = sum(p.numel() for p in self.model_wrapper.layers.parameters())
+        self._verify_output_buffer = torch.empty(
+            (1, min(4, self.model_wrapper.seq_length), min(8, self.model_wrapper.input.shape[2])),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
     def benchmark_fn(self) -> None:
         if self.model_wrapper is None:
@@ -215,12 +221,17 @@ class GPT4ArchitectureOptimizationBenchmark(VerificationPayloadMixin, BaseBenchm
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.model_wrapper is None or self.output is None:
+        if self.model_wrapper is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        output_slice = self.output[:1, : min(4, self.output.shape[1]), : min(8, self.output.shape[2])]
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+            : self._verify_output_buffer.shape[2],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"input": self.model_wrapper.input.detach()},
-            output=output_slice.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.model_wrapper.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={
@@ -237,6 +248,7 @@ class GPT4ArchitectureOptimizationBenchmark(VerificationPayloadMixin, BaseBenchm
             self.model_wrapper.cleanup()
         self.model_wrapper = None
         self.output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

@@ -270,6 +270,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         self.top_k = top_k
         self._last_metrics: Dict[str, Any] = {}
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._timing_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._last_aux_metrics: Dict[str, torch.Tensor] = {}
@@ -304,6 +305,11 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
             self.hidden_size,
             device=self.device,
             dtype=torch.bfloat16
+        )
+        self._verify_output_buffer = torch.empty(
+            (1, min(4, self.seq_length), min(8, self.hidden_size)),
+            device=self.device,
+            dtype=torch.float32,
         )
         self._timing_events = (
             torch.cuda.Event(enable_timing=True),
@@ -354,12 +360,17 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         return self._iteration_metric_payload
 
     def capture_verification_payload(self) -> None:
-        if self.output is None:
+        if self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        output_slice = self.output[:1, : min(4, self.output.shape[1]), : min(8, self.output.shape[2])]
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+            : self._verify_output_buffer.shape[2],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"input": self.input.detach()},
-            output=output_slice.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -386,6 +397,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         del self.moe_layer
         del self.input
         self.output = None
+        self._verify_output_buffer = None
         self._timing_events = None
         self._pending_timing_events = None
         self._last_aux_metrics.clear()

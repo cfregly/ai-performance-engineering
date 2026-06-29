@@ -10843,8 +10843,12 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "**{" not in metrics_section
     assert "self.output = output" in benchmark_section
     assert "self.output = output[:1, : min(4, output.shape[1]), : min(8, output.shape[2])]" not in benchmark_section
-    assert "output_slice = self.output[:1, : min(4, self.output.shape[1]), : min(8, self.output.shape[2])]" in capture_section
-    assert "output=output_slice.detach().float().clone()" in capture_section
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in setup_section
+    assert "self._verify_output_buffer = torch.empty(" in setup_section
+    assert ": self._verify_output_buffer.shape[0]," in capture_section
+    assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "output=output_slice.detach().float().clone()" not in capture_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
 
@@ -10948,8 +10952,10 @@ def test_gpt4_architecture_runner_reuses_cuda_timing_events() -> None:
     assert "torch.cuda.synchronize()" not in run_section
     assert "self.output = x" in run_section
     assert "self.output = x[:1, : min(4, x.shape[1]), : min(8, x.shape[2])]" not in run_section
-    assert "output_slice = self.output[:1, : min(4, self.output.shape[1]), : min(8, self.output.shape[2])]" in capture_section
-    assert "output=output_slice.detach().float().clone()" in capture_section
+    assert ": self._verify_output_buffer.shape[0]," in capture_section
+    assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "output=output_slice.detach().float().clone()" not in capture_section
 
 
 def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None:
