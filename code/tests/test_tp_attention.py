@@ -155,6 +155,7 @@ def test_tensor_parallel_attention_reuses_layout_projection_buffers():
         value_ptr = attn._local_value_workspace.data_ptr()
         merge_ptr = attn._attn_merge_buffer.data_ptr()
         output_ptr = attn._attn_output_buffer.data_ptr()
+        weight_view_ptr = attn._out_proj_weight_t.data_ptr()
 
         second_out, second_key, second_value = attn(x)
     ref_out, ref_key, ref_value = _reference_attention(attn, x)
@@ -172,6 +173,7 @@ def test_tensor_parallel_attention_reuses_layout_projection_buffers():
     assert attn._local_value_workspace.data_ptr() == value_ptr
     assert attn._attn_merge_buffer.data_ptr() == merge_ptr
     assert attn._attn_output_buffer.data_ptr() == output_ptr
+    assert attn._out_proj_weight_t.data_ptr() == weight_view_ptr
 
 
 def test_tensor_parallel_attention_with_kv_cache_matches_reference():

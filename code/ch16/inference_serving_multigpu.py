@@ -749,8 +749,23 @@ class TensorParallelAttention(nn.Module):
         self._local_value_workspace: Optional[torch.Tensor] = None
         self._attn_merge_buffer: Optional[torch.Tensor] = None
         self._attn_output_buffer: Optional[torch.Tensor] = None
+        self._out_proj_weight_t: Optional[torch.Tensor] = None
         self._pending_work: Optional[Any] = None
         self._force_sdpa = num_gpus == 1
+
+    def cache_weight_views(self) -> None:
+        self._out_proj_weight_t = self.out_proj.weight.t()
+
+    def _out_proj_weight_view(self) -> torch.Tensor:
+        if (
+            self._out_proj_weight_t is None
+            or self._out_proj_weight_t.data_ptr() != self.out_proj.weight.data_ptr()
+            or self._out_proj_weight_t.device != self.out_proj.weight.device
+            or self._out_proj_weight_t.dtype != self.out_proj.weight.dtype
+        ):
+            self.cache_weight_views()
+        assert self._out_proj_weight_t is not None
+        return self._out_proj_weight_t
 
     def _ensure_local_workspaces(
         self,
@@ -956,7 +971,7 @@ class TensorParallelAttention(nn.Module):
             merge_buffer.copy_(out.transpose(1, 2))
             torch.mm(
                 merge_buffer.view(batch_size * seq_len, -1),
-                self.out_proj.weight.t(),
+                self._out_proj_weight_view(),
                 out=output_buffer.view(batch_size * seq_len, self.d_model),
             )
             out = output_buffer

@@ -8564,6 +8564,9 @@ def test_ch16_tensor_parallel_attention_reuses_layout_projection_buffers() -> No
     assert "self._local_value_workspace: Optional[torch.Tensor] = None" in attention_section
     assert "self._attn_merge_buffer: Optional[torch.Tensor] = None" in attention_section
     assert "self._attn_output_buffer: Optional[torch.Tensor] = None" in attention_section
+    assert "self._out_proj_weight_t: Optional[torch.Tensor] = None" in attention_section
+    assert "def cache_weight_views(self) -> None:" in attention_section
+    assert "def _out_proj_weight_view(self) -> torch.Tensor:" in attention_section
     assert "def _ensure_local_workspaces(" in attention_section
     assert "self._local_key_workspace = torch.empty(kv_shape" in attention_section
     assert "self._local_value_workspace = torch.empty_like(self._local_key_workspace)" in attention_section
@@ -8573,6 +8576,8 @@ def test_ch16_tensor_parallel_attention_reuses_layout_projection_buffers() -> No
     assert "value_local.copy_(v.transpose(1, 2))" in forward_section
     assert "merge_buffer.copy_(out.transpose(1, 2))" in forward_section
     assert "torch.mm(" in forward_section
+    assert "self._out_proj_weight_view()" in forward_section
+    assert "self.out_proj.weight.t()" not in forward_section
     assert "out=output_buffer.view(batch_size * seq_len, self.d_model)" in forward_section
     assert "k.transpose(1, 2).contiguous()" not in forward_section
     assert "v.transpose(1, 2).contiguous()" not in forward_section
