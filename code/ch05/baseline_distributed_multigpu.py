@@ -26,6 +26,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._cpu_total: Optional[float] = None
         self._host_total: Optional[torch.Tensor] = None
+        self._output_tensor: Optional[torch.Tensor] = None
         self.num_elements = 200_000_000
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -48,6 +49,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for _ in self.data
         ]
         self._host_total = torch.empty(1, dtype=torch.float32, pin_memory=True)
+        self._output_tensor = torch.empty(1, device=f"cuda:{self.device_ids[0]}", dtype=torch.float32)
         total_tokens = self.num_elements * len(self.device_ids)
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(len(self.device_ids)),
@@ -75,11 +77,10 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self._cpu_total is None or not self.data:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        self.output = torch.tensor(
-            [self._cpu_total],
-            device=f"cuda:{self.device_ids[0]}",
-            dtype=torch.float32,
-        )
+        if self._output_tensor is None:
+            raise RuntimeError("setup() must initialize verification output tensor")
+        self._output_tensor[0] = self._cpu_total
+        self.output = self._output_tensor
         probe = self.data[0][:256].detach().cpu()
         self._set_verification_payload(
             inputs={"data_probe": probe},
@@ -102,6 +103,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._cpu_total = None
         self._host_total = None
+        self._output_tensor = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
