@@ -414,6 +414,7 @@ def _run_torchrun_worker(
     def run_iteration() -> List[torch.Tensor]:
         if is_prefill:
             if use_overlap:
+                prefill_stream = torch.cuda.current_stream(device)
                 with torch.inference_mode():
                     for group_idx, (start, group_len) in enumerate(group_slices):
                         group_prompts = prompts[start:start + group_len].reshape(
@@ -431,7 +432,7 @@ def _run_torchrun_worker(
                         seed_group = seed.view(group_len, cfg.batch_size, cfg.hidden_size)
                         prefill_inflight_groups[group_idx] = (kv_group, seed_group)
                         ready = ready_events[group_idx]
-                        ready.record()
+                        ready.record(prefill_stream)
                         prefill_send_handles[group_idx] = _batch_isend(
                             kv_group,
                             seed_group,

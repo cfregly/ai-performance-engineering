@@ -333,13 +333,14 @@ def _run_torchrun_worker(
                 pending_count = 0
                 pending_read_idx = 0
                 pending_write_idx = 0
+                prefill_stream = torch.cuda.current_stream(device)
                 with torch.inference_mode():
                     for req_idx in range(cfg.requests_per_rank):
                         request_prompt = prompts[req_idx]
                         hidden, logits = model.prefill(request_prompt)
                         seed_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
                         ready = ready_events[req_idx]
-                        ready.record()
+                        ready.record(prefill_stream)
                         handles = _batch_isend(
                             hidden.contiguous(),
                             seed_tokens.contiguous(),

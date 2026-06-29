@@ -7976,6 +7976,9 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "with torch.inference_mode():" in benchmark_section
     assert "[torch.cuda.Event() for _ in range(cfg.requests_per_rank)]" in torchrun_worker
     assert "ready = ready_events[req_idx]" in torchrun_worker
+    assert "prefill_stream = torch.cuda.current_stream(device)" in torchrun_worker
+    assert "ready.record(prefill_stream)" in torchrun_worker
+    assert "ready.record()" not in torchrun_worker
     assert "ready = torch.cuda.Event()" not in torchrun_worker
     assert "prefill_pending_slots: List[Optional[List[dist.Work]]]" in torchrun_worker
     assert "recv_pending_slots: List[Optional[List[dist.Work]]]" in torchrun_worker
@@ -8502,6 +8505,9 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "outputs.append(" not in decode_helper
     assert "torch.cuda.Event(blocking=False)" in worker_section
     assert "ready = ready_events[group_idx]" in run_iteration_section
+    assert "prefill_stream = torch.cuda.current_stream(device)" in run_iteration_section
+    assert "ready.record(prefill_stream)" in run_iteration_section
+    assert "ready.record()" not in run_iteration_section
     assert "torch.cuda.Event(" not in run_iteration_section
     assert "prefill_send_handles = [None] * len(group_slices)" in worker_section
     assert "prefill_inflight_groups = [None] * len(group_slices)" in worker_section
