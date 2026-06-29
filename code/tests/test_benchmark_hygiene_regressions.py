@@ -10270,6 +10270,10 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def finalize_iteration_metrics", maxsplit=1
     )[0]
+    finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def get_custom_metrics", maxsplit=1
     )[0]
@@ -10332,6 +10336,11 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "self._last_aux_metrics.clear()" in benchmark_section
     assert "self._last_aux_metrics[key] = value.detach()" in benchmark_section
     assert "self._last_aux_metrics = {" not in benchmark_section
+    assert "self._latency_metric_values = [0.0]" in setup_section
+    assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in setup_section
+    assert "self._latency_metric_values[0] = elapsed_ms" in finalize_section
+    assert "return self._iteration_metric_payload" in finalize_section
+    assert 'return {"latency_ms": [elapsed_ms]}' not in finalize_section
     metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]

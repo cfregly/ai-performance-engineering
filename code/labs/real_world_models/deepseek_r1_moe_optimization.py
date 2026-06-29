@@ -274,6 +274,10 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         self._pending_timing_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._last_aux_metrics: Dict[str, torch.Tensor] = {}
         self._last_elapsed_ms: Optional[float] = None
+        self._latency_metric_values = [0.0]
+        self._iteration_metric_payload: Dict[str, List[float]] = {
+            "latency_ms": self._latency_metric_values,
+        }
         self._payload_parameter_count = 0
 
         logger.info(f"DeepSeek-R1 MoE Optimization")
@@ -346,7 +350,8 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         elapsed_ms = float(start_event.elapsed_time(end_event))
         self._last_elapsed_ms = elapsed_ms
         self._pending_timing_events = None
-        return {"latency_ms": [elapsed_ms]}
+        self._latency_metric_values[0] = elapsed_ms
+        return self._iteration_metric_payload
 
     def capture_verification_payload(self) -> None:
         if self.output is None:
