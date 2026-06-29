@@ -304,8 +304,6 @@ class SimpleMoELayer(nn.Module):
         )
         
     def forward(self, x):
-        if x.dtype != self.compute_dtype:
-            x = x.to(self.compute_dtype)
         # Route to experts (simplified: use all tokens with expert 0)
         return self.expert(x)
 
@@ -327,8 +325,6 @@ class SyntheticMoEBlock(nn.Module):
         self.moe = SimpleMoELayer(config)
         
     def forward(self, x):
-        if x.dtype != self.compute_dtype:
-            x = x.to(self.compute_dtype)
         # Attention with residual
         residual = x
         x = self.ln1(x)
@@ -380,14 +376,10 @@ class SyntheticMoEModel(nn.Module):
         
     def forward(self, input_ids):
         x = self.embedding(input_ids)
-        if x.dtype != self.compute_dtype:
-            x = x.to(self.compute_dtype)
         
         for block in self.blocks:
             x = block(x)
             
-        if x.dtype != self.compute_dtype:
-            x = x.to(self.compute_dtype)
         x = self.ln_f(x)
         logits = self.lm_head(x)
         
