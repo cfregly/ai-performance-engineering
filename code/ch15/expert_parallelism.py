@@ -363,13 +363,14 @@ def main() -> None:
 
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        start.record()
+        current_stream = torch.cuda.current_stream(device)
+        start.record(current_stream)
         for _ in range(args.iters):
             if args.mode == "distributed":
                 out = model.forward_distributed(tokens, ctx=ctx)  # type: ignore[arg-type]
             else:
                 out = model.forward_local(tokens)
-        end.record()
+        end.record(current_stream)
         torch.cuda.synchronize(device)
 
     per_iter_ms = start.elapsed_time(end) / max(args.iters, 1)

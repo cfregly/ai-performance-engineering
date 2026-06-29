@@ -203,12 +203,13 @@ class FlexAttentionBenchmark:
         # Benchmark
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
+        current_stream = torch.cuda.current_stream(self.device)
         
-        start.record()
+        start.record(current_stream)
         last_output = None
         for _ in range(num_iterations):
             last_output = self._compiled_flex(self.q, self.k, self.v, block_mask=block_mask)
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         
         if store_output and last_output is not None:
@@ -255,13 +256,14 @@ class FlexAttentionBenchmark:
         # Benchmark
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
+        current_stream = torch.cuda.current_stream(self.device)
         
-        start.record()
+        start.record(current_stream)
         for _ in range(num_iterations):
             _ = torch.nn.functional.scaled_dot_product_attention(
                 self.q, self.k, self.v, is_causal=False
             )
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         
         elapsed_ms = start.elapsed_time(end) / num_iterations

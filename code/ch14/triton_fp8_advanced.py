@@ -22,6 +22,7 @@ Author: Blackwell Optimization Project
 """
 
 import os
+import sys
 
 # Allow Triton kernels that rely on module-level globals.
 os.environ.setdefault("TRITON_ALLOW_NON_CONSTEXPR_GLOBALS", "1")
@@ -432,11 +433,12 @@ def benchmark_fp8_attention():
     # Benchmark FP16 using CUDA Events (GPU timing)
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream(device)
     
-    start_event.record()
+    start_event.record(current_stream)
     for _ in range(100):
         _ = fp8_fused_attention(q_fp16, k_fp16, v_fp16)
-    end_event.record()
+    end_event.record(current_stream)
     end_event.synchronize()
     fp16_time = start_event.elapsed_time(end_event) / 100  # Already in ms
     
@@ -447,10 +449,10 @@ def benchmark_fp8_attention():
         torch.cuda.synchronize()
         
         # Benchmark FP8 using CUDA Events
-        start_event.record()
+        start_event.record(current_stream)
         for _ in range(100):
             _ = fp8_fused_attention(q_fp8, k_fp8, v_fp8)
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
         fp8_time = start_event.elapsed_time(end_event) / 100
         
@@ -483,11 +485,12 @@ def benchmark_fp8_layernorm():
     # Benchmark Triton FP8 using CUDA Events (GPU timing)
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream(device)
     
-    start_event.record()
+    start_event.record(current_stream)
     for _ in range(100):
         _ = fp8_layernorm(x, weight, bias, residual)
-    end_event.record()
+    end_event.record(current_stream)
     end_event.synchronize()
     triton_time = start_event.elapsed_time(end_event) / 100  # Already in ms
     
@@ -497,10 +500,10 @@ def benchmark_fp8_layernorm():
     torch.cuda.synchronize()
     
     # Benchmark PyTorch using CUDA Events
-    start_event.record()
+    start_event.record(current_stream)
     for _ in range(100):
         y = torch.nn.functional.layer_norm(x + residual, [N], weight, bias)
-    end_event.record()
+    end_event.record(current_stream)
     end_event.synchronize()
     pytorch_time = start_event.elapsed_time(end_event) / 100
     

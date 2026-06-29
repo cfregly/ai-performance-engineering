@@ -306,11 +306,12 @@ def benchmark_sliding_window():
         # Benchmark sliding
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
+        current_stream = torch.cuda.current_stream(device)
         
-        start.record()
+        start.record(current_stream)
         for _ in range(10):
             _ = sliding_attn(x)
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         
         sliding_ms = start.elapsed_time(end) / 10
@@ -330,10 +331,10 @@ def benchmark_sliding_window():
                 _ = full_attn(x, x, x, attn_mask=causal_mask)
             torch.cuda.synchronize()
             
-            start.record()
+            start.record(current_stream)
             for _ in range(10):
                 _ = full_attn(x, x, x, attn_mask=causal_mask)
-            end.record()
+            end.record(current_stream)
             end.synchronize()
             
             full_ms = start.elapsed_time(end) / 10

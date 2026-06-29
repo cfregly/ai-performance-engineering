@@ -1794,6 +1794,69 @@ def test_ch14_triton_persistent_demo_batches_correctness_error_reads() -> None:
     assert ".abs().max().item()" not in verify_section
 
 
+def test_ch14_ch15_demo_timing_records_on_current_streams() -> None:
+    optimized_flex_source = (REPO_ROOT / "ch14" / "optimized_flex_attention_sparse.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_flex_benchmark = optimized_flex_source.split("def benchmark()", maxsplit=1)[1].split(
+        "class FlexAttentionSparseBenchmark",
+        maxsplit=1,
+    )[0]
+    flex_demo_source = (REPO_ROOT / "ch14" / "flex_attention_sparse_demo.py").read_text(
+        encoding="utf-8"
+    )
+    flex_pattern = flex_demo_source.split("def benchmark_pattern", maxsplit=1)[1].split(
+        "def benchmark_full_attention",
+        maxsplit=1,
+    )[0]
+    flex_full = flex_demo_source.split("def benchmark_full_attention", maxsplit=1)[1].split(
+        "def run_all_benchmarks",
+        maxsplit=1,
+    )[0]
+    triton_fp8_source = (REPO_ROOT / "ch14" / "triton_fp8_advanced.py").read_text(
+        encoding="utf-8"
+    )
+    fp8_attention = triton_fp8_source.split("def benchmark_fp8_attention", maxsplit=1)[1].split(
+        "def benchmark_fp8_layernorm",
+        maxsplit=1,
+    )[0]
+    fp8_layernorm = triton_fp8_source.split("def benchmark_fp8_layernorm", maxsplit=1)[1]
+    persistent_source = (REPO_ROOT / "ch14" / "triton_persistent_demo.py").read_text(
+        encoding="utf-8"
+    )
+    persistent_benchmark = persistent_source.split("def benchmark_kernels", maxsplit=1)[1].split(
+        "class TritonPersistentDemoBenchmark",
+        maxsplit=1,
+    )[0]
+    sliding_source = (REPO_ROOT / "ch14" / "sliding_window_demo.py").read_text(encoding="utf-8")
+    sliding_benchmark = sliding_source.split("def benchmark_sliding_window", maxsplit=1)[1].split(
+        "class SlidingWindowDemoBenchmark",
+        maxsplit=1,
+    )[0]
+    expert_source = (REPO_ROOT / "ch15" / "expert_parallelism.py").read_text(encoding="utf-8")
+    expert_timing = expert_source.split("start = torch.cuda.Event(enable_timing=True)", maxsplit=1)[
+        1
+    ].split("per_iter_ms =", maxsplit=1)[0]
+
+    checks = (
+        (optimized_flex_benchmark, "torch.cuda.current_stream(device)", "start", "end", 2),
+        (flex_pattern, "torch.cuda.current_stream(self.device)", "start", "end", 1),
+        (flex_full, "torch.cuda.current_stream(self.device)", "start", "end", 1),
+        (fp8_attention, "torch.cuda.current_stream(device)", "start_event", "end_event", 2),
+        (fp8_layernorm, "torch.cuda.current_stream(device)", "start_event", "end_event", 2),
+        (persistent_benchmark, "torch.cuda.current_stream(device)", "start", "end", 3),
+        (sliding_benchmark, "torch.cuda.current_stream(device)", "start", "end", 2),
+        (expert_timing, "torch.cuda.current_stream(device)", "start", "end", 1),
+    )
+
+    for section, stream_call, start_name, end_name, expected_records in checks:
+        assert f"current_stream = {stream_call}" in section
+        assert section.count(f"{start_name}.record(current_stream)") == expected_records
+        assert section.count(f"{end_name}.record(current_stream)") == expected_records
+        assert f"{start_name}.record()" not in section
+        assert f"{end_name}.record()" not in section
+
+
 def test_ch14_triton_examples_batches_fp8_error_reads() -> None:
     source = (REPO_ROOT / "ch14" / "triton_examples.py").read_text(encoding="utf-8")
     fp8_section = source.split("def benchmark_fp8_vs_fp16", maxsplit=1)[1].split(

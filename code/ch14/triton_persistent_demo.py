@@ -386,29 +386,30 @@ def benchmark_kernels():
         # Benchmark standard
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
+        current_stream = torch.cuda.current_stream(device)
         
-        start.record()
+        start.record(current_stream)
         for _ in range(20):
             _ = matmul_standard(a, b)
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         
         ms_standard = start.elapsed_time(end) / 20
         
         # Benchmark persistent
-        start.record()
+        start.record(current_stream)
         for _ in range(20):
             _ = matmul_persistent(a, b, num_sms)
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         
         ms_persistent = start.elapsed_time(end) / 20
         
         # Benchmark atomic
-        start.record()
+        start.record(current_stream)
         for _ in range(20):
             _ = matmul_persistent_atomic(a, b, num_sms)
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         
         ms_atomic = start.elapsed_time(end) / 20

@@ -239,11 +239,12 @@ def benchmark():
     
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream(device)
     
-    start.record()
+    start.record(current_stream)
     for _ in range(10):
         _ = F.scaled_dot_product_attention(q, k, v, is_causal=True)
-    end.record()
+    end.record(current_stream)
     end.synchronize()
     
     sdpa_ms = start.elapsed_time(end) / 10
@@ -266,10 +267,10 @@ def benchmark():
             _ = compiled_flex(q, k, v, block_mask=block_mask)
         torch.cuda.synchronize()
         
-        start.record()
+        start.record(current_stream)
         for _ in range(10):
             _ = compiled_flex(q, k, v, block_mask=block_mask)
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         
         flex_ms = start.elapsed_time(end) / 10
