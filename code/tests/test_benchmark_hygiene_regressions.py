@@ -8445,6 +8445,47 @@ def test_ch16_blackwell_tensor_parallel_reuses_gather_buffers() -> None:
     assert "final_output = torch.cat(gathered_outputs, dim=-1)" not in forward_section
 
 
+def test_ch16_blackwell_decoder_reuses_attention_projection_buffers() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_optimizations_blackwell.py").read_text(
+        encoding="utf-8"
+    )
+    decoder_section = source.split("class OptimizedDecoderLayer", maxsplit=1)[1].split(
+        "class BlackwellInferencePipeline",
+        maxsplit=1,
+    )[0]
+    forward_section = decoder_section.split("def forward", maxsplit=1)[1]
+
+    assert "self._attn_merge_buffer: Optional[torch.Tensor] = None" in decoder_section
+    assert "self._attn_project_buffer: Optional[torch.Tensor] = None" in decoder_section
+    assert "def _attention_project_workspace(" in decoder_section
+    assert "self._attn_merge_buffer = torch.empty(shape" in decoder_section
+    assert "self._attn_project_buffer = torch.empty(shape" in decoder_section
+    assert "merge_view.copy_(attn_output.transpose(1, 2))" in forward_section
+    assert "torch.mm(merge_2d, self.o_proj.weight.t(), out=output_2d)" in forward_section
+    assert "output_2d.add_(self.o_proj.bias)" in forward_section
+    assert "attn_output.transpose(1, 2).contiguous()" in forward_section
+
+    from ch16.inference_optimizations_blackwell import OptimizedDecoderLayer
+
+    layer = OptimizedDecoderLayer(
+        d_model=8,
+        num_heads=2,
+        device="cpu",
+        use_flex_attention=False,
+    ).eval()
+    x = torch.randn(2, 3, 8)
+    with torch.inference_mode():
+        out = layer(x)
+        merge_ptr = layer._attn_merge_buffer.data_ptr()
+        output_ptr = layer._attn_project_buffer.data_ptr()
+        out_again = layer(x)
+
+    assert out.shape == x.shape
+    assert out_again.shape == x.shape
+    assert layer._attn_merge_buffer.data_ptr() == merge_ptr
+    assert layer._attn_project_buffer.data_ptr() == output_ptr
+
+
 def test_ch16_blackwell_generate_reuses_output_token_buffer() -> None:
     source = (REPO_ROOT / "ch16" / "inference_optimizations_blackwell.py").read_text(
         encoding="utf-8"

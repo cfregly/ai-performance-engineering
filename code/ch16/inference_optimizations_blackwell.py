@@ -391,6 +391,11 @@ class OptimizedDecoderLayer(nn.Module):
         self.k_proj = nn.Linear(d_model, d_model, device=device)
         self.v_proj = nn.Linear(d_model, d_model, device=device)
         self.o_proj = nn.Linear(d_model, d_model, device=device)
+        self._attn_merge_buffer: Optional[torch.Tensor] = None
+        self._attn_merge_view: Optional[torch.Tensor] = None
+        self._attn_merge_2d: Optional[torch.Tensor] = None
+        self._attn_project_buffer: Optional[torch.Tensor] = None
+        self._attn_project_2d: Optional[torch.Tensor] = None
         
         # FlexAttention block mask (sliding window)
         def sliding_window(b, h, q_idx, kv_idx):
@@ -398,6 +403,36 @@ class OptimizedDecoderLayer(nn.Module):
         
         self.block_mask_fn = sliding_window
         self.flex_attention_fn = _FLEX_ATTENTION_FN if self.use_flex_attention else None
+
+    def _attention_project_workspace(
+        self,
+        batch_size: int,
+        seq_len: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        shape = (batch_size, seq_len, self.d_model)
+        merge_shape = (batch_size, seq_len, self.num_heads, self.head_dim)
+        if (
+            self._attn_merge_buffer is None
+            or self._attn_project_buffer is None
+            or self._attn_merge_buffer.shape != shape
+            or self._attn_merge_buffer.device != device
+            or self._attn_merge_buffer.dtype != dtype
+        ):
+            self._attn_merge_buffer = torch.empty(shape, device=device, dtype=dtype)
+            self._attn_merge_view = self._attn_merge_buffer.view(merge_shape)
+            self._attn_merge_2d = self._attn_merge_buffer.view(batch_size * seq_len, self.d_model)
+            self._attn_project_buffer = torch.empty(shape, device=device, dtype=dtype)
+            self._attn_project_2d = self._attn_project_buffer.view(batch_size * seq_len, self.d_model)
+        assert self._attn_merge_view is not None and self._attn_merge_2d is not None
+        assert self._attn_project_buffer is not None and self._attn_project_2d is not None
+        return (
+            self._attn_merge_view,
+            self._attn_merge_2d,
+            self._attn_project_buffer,
+            self._attn_project_2d,
+        )
         
     def forward(
         self,
@@ -454,10 +489,21 @@ class OptimizedDecoderLayer(nn.Module):
                 )
         
         # Reshape and project
-        attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.view(batch_size, seq_len, self.d_model)
-        output = self.o_proj(attn_output)
-        
+        if torch.is_grad_enabled() and hidden_states.requires_grad:
+            attn_output = attn_output.transpose(1, 2).contiguous()
+            attn_output = attn_output.view(batch_size, seq_len, self.d_model)
+            return self.o_proj(attn_output)
+
+        merge_view, merge_2d, output, output_2d = self._attention_project_workspace(
+            batch_size,
+            seq_len,
+            attn_output.device,
+            attn_output.dtype,
+        )
+        merge_view.copy_(attn_output.transpose(1, 2))
+        torch.mm(merge_2d, self.o_proj.weight.t(), out=output_2d)
+        if self.o_proj.bias is not None:
+            output_2d.add_(self.o_proj.bias)
         return output
 
 
