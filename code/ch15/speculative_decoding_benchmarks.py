@@ -38,8 +38,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_token_views: list[torch.Tensor] = []
         self._output_write_views: list[list[torch.Tensor]] = []
         self._draft_ids: Optional[torch.Tensor] = None
-        self._draft_input: Optional[torch.Tensor] = None
-        self._draft_input_token: Optional[torch.Tensor] = None
         self._verify_prev: Optional[torch.Tensor] = None
         self._verify_prev_first: Optional[torch.Tensor] = None
         self._match_host: Optional[torch.Tensor] = None
@@ -47,6 +45,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._greedy_next_tokens: Optional[torch.Tensor] = None
         self._draft_next_values: Optional[torch.Tensor] = None
         self._draft_next_tokens: Optional[torch.Tensor] = None
+        self._draft_next_token_view: Optional[torch.Tensor] = None
         self._target_next_values: Optional[torch.Tensor] = None
         self._target_next_tokens: Optional[torch.Tensor] = None
         self._matches: Optional[torch.Tensor] = None
@@ -110,13 +109,12 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not self.use_speculative:
             self.draft_model = None
             self._draft_ids = None
-            self._draft_input = None
-            self._draft_input_token = None
             self._verify_prev = None
             self._verify_prev_first = None
             self._match_host = None
             self._draft_next_values = None
             self._draft_next_tokens = None
+            self._draft_next_token_view = None
             self._target_next_values = None
             self._target_next_tokens = None
             self._matches = None
@@ -140,8 +138,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for length in range(1, wl.speculative_k + 1)
         ]
         self._draft_ids = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
-        self._draft_input = torch.empty((1, 1), device=self.device, dtype=torch.int64)
-        self._draft_input_token = self._draft_input[:, 0]
         self._verify_prev = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
         self._verify_prev_first = self._verify_prev[:, 0]
         self._match_host = torch.empty(
@@ -152,6 +148,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
         self._draft_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
+        self._draft_next_token_view = self._draft_next_tokens.view(1, 1)
         self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)
         self._target_next_tokens = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.long)
         self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)
@@ -226,13 +223,12 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.input_ids is None
             or self._output_ids is None
             or self._draft_ids is None
-            or self._draft_input is None
-            or self._draft_input_token is None
             or self._verify_prev is None
             or self._verify_prev_first is None
             or self._match_host is None
             or self._draft_next_values is None
             or self._draft_next_tokens is None
+            or self._draft_next_token_view is None
             or self._target_next_values is None
             or self._target_next_tokens is None
             or self._matches is None
@@ -267,12 +263,12 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     remaining = wl.total_tokens - pos
                     k = wl.speculative_k if remaining >= wl.speculative_k else remaining
 
-                    self._draft_input_token.copy_(self._output_token_views[pos])
+                    prev = self._output_step_views[pos]
                     for j in range(k):
-                        logits_d = self.draft_model(self._draft_input)
+                        logits_d = self.draft_model(prev)
                         torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))
                         self._draft_id_column_views[j].copy_(self._draft_next_tokens)
-                        self._draft_input_token.copy_(self._draft_next_tokens)
+                        prev = self._draft_next_token_view
 
                     draft_tokens += int(k)
 
@@ -338,8 +334,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_token_views = []
         self._output_write_views = []
         self._draft_ids = None
-        self._draft_input = None
-        self._draft_input_token = None
         self._verify_prev = None
         self._verify_prev_first = None
         self._match_host = None
@@ -347,6 +341,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._greedy_next_tokens = None
         self._draft_next_values = None
         self._draft_next_tokens = None
+        self._draft_next_token_view = None
         self._target_next_values = None
         self._target_next_tokens = None
         self._matches = None

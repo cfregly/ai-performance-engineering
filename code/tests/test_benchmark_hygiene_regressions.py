@@ -12371,8 +12371,8 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._output_step_views = [" in setup_section
     assert "self._output_token_views = [" in setup_section
     assert "self._output_write_views = [" in setup_section
-    assert "self._draft_input = torch.empty((1, 1), device=self.device, dtype=torch.int64)" in setup_section
-    assert "self._draft_input_token = self._draft_input[:, 0]" in setup_section
+    assert "self._draft_next_token_view = self._draft_next_tokens.view(1, 1)" in setup_section
+    assert "self._draft_input" not in source
     assert "self._verify_prev_first = self._verify_prev[:, 0]" in setup_section
     assert "self._verify_prev_views = [self._verify_prev[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._verify_prev_tail_views = [self._verify_prev[:, 1:k] for k in range(2, wl.speculative_k + 1)]" in setup_section
@@ -12398,9 +12398,10 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))" in benchmark_section
     assert "self._draft_id_column_views[j].copy_(self._draft_next_tokens)" in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
-    assert "self._draft_input_token.copy_(self._output_token_views[pos])" in benchmark_section
-    assert "logits_d = self.draft_model(self._draft_input)" in benchmark_section
-    assert "self._draft_input_token.copy_(self._draft_next_tokens)" in benchmark_section
+    assert "prev = self._output_step_views[pos]" in benchmark_section
+    assert "logits_d = self.draft_model(prev)" in benchmark_section
+    assert "prev = self._draft_next_token_view" in benchmark_section
+    assert "self._draft_input_token.copy_" not in benchmark_section
     assert "self._verify_prev_first.copy_(self._output_token_views[pos])" in benchmark_section
     assert "self._verify_prev_tail_views[k - 2].copy_(self._draft_id_views[k - 2])" in benchmark_section
     assert "view_idx = k - 1" in benchmark_section
