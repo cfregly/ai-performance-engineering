@@ -159,6 +159,7 @@ def main() -> None:
     optimizer = torch.optim.AdamW(compiled_model.parameters(), lr=3e-4, fused=True)
 
     x = torch.randn(args.batch_size, args.hidden_dim, device=device)
+    loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
 
     torch.cuda.synchronize()
     dist.barrier()
@@ -176,8 +177,10 @@ def main() -> None:
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         if dist.get_rank() == 0:
+            loss_value_buffer[0].copy_(loss.detach())
+            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
             print(
-                f"[step {step:02d}] loss={loss.item():.5f} "
+                f"[step {step:02d}] loss={loss_value:.5f} "
                 f"(Async-TP micro-pipelined step took {elapsed_ms:.2f} ms)"
             )
 

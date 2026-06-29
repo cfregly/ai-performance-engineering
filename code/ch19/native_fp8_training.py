@@ -13,8 +13,6 @@ from __future__ import annotations
 from core.utils import compile_utils as _compile_utils_patch  # noqa: F401
 from core.utils.compile_utils import compile_model
 import contextlib
-import os
-import time
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
@@ -115,7 +113,7 @@ def _training_step(
     target: torch.Tensor,
     *,
     amp_dtype: Optional[torch.dtype] = None,
-) -> float:
+) -> torch.Tensor:
     autocast_ctx = (
         torch.autocast(device_type="cuda", dtype=amp_dtype) if amp_dtype is not None else contextlib.nullcontext()
     )
@@ -125,7 +123,7 @@ def _training_step(
     loss.backward()
     optimizer.step()
     optimizer.zero_grad(set_to_none=True)
-    return float(loss.detach())
+    return loss.detach()
 
 
 def benchmark_fp8_training() -> Dict[str, BenchmarkResult]:
@@ -166,10 +164,12 @@ def benchmark_fp8_training() -> Dict[str, BenchmarkResult]:
         if amp_dtype is not None:
             inputs = inputs.to(amp_dtype)
             targets = targets.to(amp_dtype)
+        loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
+        loss_tensor: torch.Tensor | None = None
 
         # Warmup
         for _ in range(5):
-            loss_val = _training_step(
+            loss_tensor = _training_step(
                 model,
                 optimizer,
                 inputs,
@@ -183,7 +183,7 @@ def benchmark_fp8_training() -> Dict[str, BenchmarkResult]:
 
         start.record()
         for _ in range(20):
-            loss_val = _training_step(
+            loss_tensor = _training_step(
                 model,
                 optimizer,
                 inputs,
@@ -195,6 +195,10 @@ def benchmark_fp8_training() -> Dict[str, BenchmarkResult]:
 
         time_ms = start.elapsed_time(end) / 20.0
         memory_mb = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
+        if loss_tensor is None:
+            raise RuntimeError("No FP8 training iterations ran")
+        loss_value_buffer[0].copy_(loss_tensor)
+        loss_val = loss_value_buffer.detach().cpu().tolist()[0]
 
         results[name] = BenchmarkResult(time_ms=time_ms, memory_mb=memory_mb, loss=loss_val)
         print(f"{name:<4}  time={time_ms:6.2f} ms | memory={memory_mb:7.1f} MB | loss={loss_val:.5f}")

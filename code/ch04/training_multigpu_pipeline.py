@@ -391,6 +391,11 @@ def train(
     # Training loop
     step = 0
     start_time = time.time()
+    loss_value_buffer = torch.empty(
+        1,
+        dtype=torch.float64,
+        device=next(model.parameters()).device,
+    )
     
     for batch in dataloader:
         # Move to device
@@ -400,9 +405,10 @@ def train(
         step_start = time.time()
         loss = train_step(model, batch, optimizer)
         step_time = time.time() - step_start
-        
+
         if rank == 0 and step % 10 == 0:
-            loss_value = float(loss)
+            loss_value_buffer[0].copy_(loss)
+            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
             tokens_per_sec = (batch_size * seq_len * world_size) / step_time
             print(f"Step {step:4d} | Loss: {loss_value:.4f} | "
                   f"Tokens/sec: {tokens_per_sec/1e6:.2f}M | "

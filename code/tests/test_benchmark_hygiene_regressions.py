@@ -1039,6 +1039,11 @@ def test_ch04_torchtitan_async_tp_zero_target_uses_square_mean_loss() -> None:
     assert "loss_fn = torch.nn.MSELoss()" not in main_section
     assert "target = torch.zeros_like(x)" not in main_section
     assert "loss = out.square().mean()" in main_section
+    assert "loss.item()" not in main_section
+    assert "loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)" in main_section
+    assert "loss_value_buffer[0].copy_(loss.detach())" in main_section
+    assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in main_section
+    assert "loss={loss_value:.5f}" in main_section
 
 
 def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
@@ -1340,7 +1345,41 @@ def test_ch04_training_pipeline_defers_step_loss_sync_until_logging() -> None:
 
     assert "return loss.item()" not in train_step_section
     assert "return loss.detach()" in train_step_section
-    assert "loss_value = float(loss)" in train_loop_section
+    assert "loss_value = float(loss)" not in train_loop_section
+    assert "loss_value_buffer = torch.empty(" in train_loop_section
+    assert "loss_value_buffer[0].copy_(loss)" in train_loop_section
+    assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in train_loop_section
+
+
+def test_ch19_native_fp8_training_defers_loss_readback_until_after_timing() -> None:
+    source = (REPO_ROOT / "ch19" / "native_fp8_training.py").read_text(
+        encoding="utf-8"
+    )
+    training_step_section = source.split("def _training_step", maxsplit=1)[1].split(
+        "def benchmark_fp8_training",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fp8_training", maxsplit=1)[1].split(
+        "def demonstrate_fp8_compile",
+        maxsplit=1,
+    )[0]
+    timed_section = benchmark_section.split("start.record()", maxsplit=1)[1].split(
+        "end.record()",
+        maxsplit=1,
+    )[0]
+    readback_section = benchmark_section.split("end.synchronize()", maxsplit=1)[1].split(
+        "results[name]",
+        maxsplit=1,
+    )[0]
+
+    assert "return float(loss.detach())" not in training_step_section
+    assert "return loss.detach()" in training_step_section
+    assert "loss_tensor = _training_step(" in timed_section
+    assert ".cpu()" not in timed_section
+    assert ".tolist()" not in timed_section
+    assert "loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)" in benchmark_section
+    assert "loss_value_buffer[0].copy_(loss_tensor)" in readback_section
+    assert "loss_val = loss_value_buffer.detach().cpu().tolist()[0]" in readback_section
 
 
 def test_ch04_nvshmem_training_example_defers_reduced_norm_sync() -> None:
