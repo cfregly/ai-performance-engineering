@@ -34,6 +34,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         self.next_slot = 1
         self.batch_idx = 0
         self.output: Optional[torch.Tensor] = None
+        self._model_parameters: tuple[nn.Parameter, ...] = ()
         self._payload_parameter_count = 0
         # Training benchmarks don't support jitter check - outputs change due to weight updates
         
@@ -65,6 +66,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
             nn.Linear(1024, 1024),
         ).to(self.device)
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
+        self._model_parameters = tuple(self.model.parameters())
         
         # Pre-allocate host batches with pinned memory (the optimization)
         num_batches = 4
@@ -114,7 +116,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
             loss.backward()
             
             # Clear gradients (simulate optimizer step)
-            for p in self.model.parameters():
+            for p in self._model_parameters:
                 p.grad = None
         
         self.output = out.detach()
@@ -151,6 +153,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         self.device_targets = []
         self.copy_events = []
         self.output = None
+        self._model_parameters = ()
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

@@ -2090,6 +2090,28 @@ def test_ch03_double_buffered_optimized_paths_wait_on_slot_events() -> None:
         assert "wait_event(self.copy_events[self.cur_slot])" in benchmark_section
         assert "wait_stream(self.copy_stream)" not in benchmark_section
 
+    double_buffered = (
+        REPO_ROOT / "ch03" / "optimized_double_buffered_batch_provisioning.py"
+    ).read_text(encoding="utf-8")
+    double_setup = double_buffered.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    double_benchmark = double_buffered.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    double_teardown = double_buffered.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._model_parameters: tuple[nn.Parameter, ...] = ()" in double_buffered
+    assert "self._model_parameters = tuple(self.model.parameters())" in double_setup
+    assert "for p in self._model_parameters:" in double_benchmark
+    assert "for p in self.model.parameters():" not in double_benchmark
+    assert "self._model_parameters = ()" in double_teardown
+
 
 def test_ch09_compute_bound_baseline_uses_inference_mode_and_cached_nvtx() -> None:
     source = (REPO_ROOT / "ch09" / "baseline_compute_bound.py").read_text(encoding="utf-8")
