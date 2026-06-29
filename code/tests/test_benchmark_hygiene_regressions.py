@@ -769,6 +769,10 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
         "def _get_timing_pair",
         maxsplit=1,
     )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
     finalize_section = source.split("def _finalize_quantized_output", maxsplit=1)[1].split(
         "def benchmark_fn",
         maxsplit=1,
@@ -786,6 +790,11 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     assert "self._packed_dst_bytes_cpu = torch.empty(" in setup_section
     assert "self._last_scale_cpu = torch.empty(" in setup_section
     assert "self._dequantized_cpu = torch.empty_like(self._reference_cache_cpu)" in setup_section
+    assert "current_stream = torch.cuda.current_stream(self.device)" in benchmark_section
+    assert "start_event.record(current_stream)" in benchmark_section
+    assert "end_event.record(current_stream)" in benchmark_section
+    assert "start_event.record()" not in benchmark_section
+    assert "end_event.record()" not in benchmark_section
     assert "dequantized = self._dequantized_cpu" in finalize_section
     assert "scale_cpu.copy_(self._last_scale" in finalize_section
     assert "packed_view = packed_cpu" in finalize_section
