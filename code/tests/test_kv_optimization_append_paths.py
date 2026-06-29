@@ -21,6 +21,7 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         setup_source = inspect.getsource(benchmark_cls.setup)
         get_kv_source = inspect.getsource(benchmark_cls.get_kv)
         benchmark_source = inspect.getsource(benchmark_cls.benchmark_fn)
+        finalize_source = inspect.getsource(benchmark_cls.finalize_iteration_metrics)
         teardown_source = inspect.getsource(benchmark_cls.teardown)
 
         assert "self._generated_step_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in init_source
@@ -62,6 +63,14 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         if benchmark_cls is BaselineKVStandard:
             assert "self._generated_step_layer_view_pairs = []" in teardown_source
         assert "self._output_view = None" in teardown_source
+        assert "metrics = self._last_metrics" in finalize_source
+        assert 'metrics["latency_ms"] = elapsed_ms_value' in finalize_source
+        assert 'metrics["tokens_per_sec"] = tokens_per_sec' in finalize_source
+        assert 'metrics["memory_gb"] = memory_gb' in finalize_source
+        assert "self._last_metrics = {" not in finalize_source
+        assert "logger.debug(f" not in finalize_source
+        if benchmark_cls is OptimizedKVFP8Compressed:
+            assert 'metrics["compression_ratio"] = 2.0 / self.bytes_per_element' in finalize_source
 
 
 def test_kv_standard_cache_allocation_avoids_zero_fill() -> None:
@@ -164,11 +173,14 @@ def test_baseline_benchmark_reuses_timing_pair_and_defers_output_clone() -> None
         payload = bench._verification_payload
         assert payload.output.dtype == torch.float32
         assert payload.output.data_ptr() != bench.output.data_ptr()
+        metrics = bench.get_custom_metrics()
 
         bench.benchmark_fn()
         torch.cuda.synchronize()
         assert bench._timing_pair is timing_pair
         assert bench._pending_timing_pair is timing_pair
+        next_metrics = bench.get_custom_metrics()
+        assert next_metrics is metrics
     finally:
         bench.teardown()
 
@@ -236,10 +248,13 @@ def test_fp8_benchmark_reuses_timing_pair_and_defers_dequantized_output() -> Non
         payload = bench._verification_payload
         assert payload.output.dtype == torch.float32
         assert payload.output.data_ptr() != bench.output.data_ptr()
+        metrics = bench.get_custom_metrics()
 
         bench.benchmark_fn()
         torch.cuda.synchronize()
         assert bench._timing_pair is timing_pair
         assert bench._pending_timing_pair is timing_pair
+        next_metrics = bench.get_custom_metrics()
+        assert next_metrics is metrics
     finally:
         bench.teardown()

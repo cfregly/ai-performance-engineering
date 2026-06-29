@@ -226,14 +226,13 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         memory_gb = torch.cuda.max_memory_allocated(self.device) / (1024**3)
         tokens_per_sec = (self.batch_size * self.num_decode_steps) / elapsed_s
 
-        logger.debug(f"Throughput: {tokens_per_sec:.2f} tokens/sec")
-        logger.debug(f"Memory: {memory_gb:.2f} GB")
+        logger.debug("Throughput: %.2f tokens/sec", tokens_per_sec)
+        logger.debug("Memory: %.2f GB", memory_gb)
 
-        self._last_metrics = {
-            "latency_ms": elapsed_ms_value,
-            "tokens_per_sec": tokens_per_sec,
-            "memory_gb": memory_gb,
-        }
+        metrics = self._last_metrics
+        metrics["latency_ms"] = elapsed_ms_value
+        metrics["tokens_per_sec"] = tokens_per_sec
+        metrics["memory_gb"] = memory_gb
         return None
 
     def get_custom_metrics(self) -> Dict[str, Any]:

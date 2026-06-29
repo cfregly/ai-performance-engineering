@@ -328,15 +328,14 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         memory_gb = torch.cuda.max_memory_allocated(self.device) / (1024**3)
         tokens_per_sec = (self.batch_size * self.num_decode_steps) / elapsed_s
 
-        logger.debug(f"Throughput: {tokens_per_sec:.2f} tokens/sec")
-        logger.debug(f"Memory: {memory_gb:.2f} GB (FP8 compressed)")
+        logger.debug("Throughput: %.2f tokens/sec", tokens_per_sec)
+        logger.debug("Memory: %.2f GB (FP8 compressed)", memory_gb)
 
-        self._last_metrics = {
-            "latency_ms": elapsed_ms_value,
-            "tokens_per_sec": tokens_per_sec,
-            "memory_gb": memory_gb,
-            "compression_ratio": 2.0 / self.bytes_per_element,
-        }
+        metrics = self._last_metrics
+        metrics["latency_ms"] = elapsed_ms_value
+        metrics["tokens_per_sec"] = tokens_per_sec
+        metrics["memory_gb"] = memory_gb
+        metrics["compression_ratio"] = 2.0 / self.bytes_per_element
         return None
 
     def get_custom_metrics(self) -> Dict[str, Any]:
