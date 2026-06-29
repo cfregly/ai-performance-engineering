@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -91,6 +93,20 @@ def test_build_top_op_summary_ignores_profiler_step_rows() -> None:
 
     assert summary["top_ops"][0]["name"] == "aten::linear"
     assert all(row["name"] != "ProfilerStep*" for row in summary["top_ops"])
+
+
+def test_build_top_op_summary_selects_top_rows_without_full_sort() -> None:
+    source = (
+        Path(__file__).resolve().parents[1] / "ch13" / "train_deepseek_coder.py"
+    ).read_text(encoding="utf-8")
+    summary_section = source.split("def _build_top_op_summary", maxsplit=1)[1].split(
+        "def _format_top_ops_report",
+        maxsplit=1,
+    )[0]
+
+    assert "import heapq" in source
+    assert "top_ops = heapq.nlargest(row_limit, events, key=_sort_value)" in summary_section
+    assert "sorted(events, key=_sort_value" not in summary_section
 
 
 def test_build_top_op_summary_fails_when_device_times_are_missing() -> None:

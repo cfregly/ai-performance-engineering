@@ -15,6 +15,7 @@ For full DeepSeek-V3, see multi-GPU examples in extras/ch13/fsdp_example.py
 
 import os
 
+import heapq
 import json
 from contextlib import nullcontext
 from typing import Any
@@ -99,7 +100,7 @@ def _build_top_op_summary(prof: Any, row_limit: int = 10) -> dict[str, object]:
     def _sort_value(evt: object) -> float:
         return _event_time_us(evt, "self_device_time_total", "self_cuda_time_total")
 
-    top_ops = sorted(events, key=_sort_value, reverse=True)[:row_limit]
+    top_ops = heapq.nlargest(row_limit, events, key=_sort_value)
     rows = []
     for evt in top_ops:
         rows.append(
