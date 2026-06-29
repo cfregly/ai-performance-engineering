@@ -8590,6 +8590,7 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._kv_buffer_pools = {rank: {} for rank in self._decode_models}" in setup_section
     assert "self._prompt_chunks: Dict[tuple[int, int], Sequence[torch.Tensor]] = {}" in source
     assert "self._sync_devices: List[torch.device] = []" in source
+    assert "self._output_stack: Optional[torch.Tensor] = None" in source
     assert "self._prompt_chunks = {}" in setup_section
     assert "self._sync_devices = []" in setup_section
     assert "self._sync_devices = [\n            torch.device(f\"cuda:{rank}\") for rank in range(world_size)\n        ]" in setup_section
@@ -8632,14 +8633,21 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "timing_count = 0" in benchmark_section
     assert "timing_count += 1" in benchmark_section
     assert "outputs = self._output_parts" in benchmark_section
+    assert "self._output_stack = self._allocate_host_output_stack()" in setup_section
     assert "output_idx = 0" in benchmark_section
     assert "outputs.append(" not in benchmark_section
     assert "outputs[output_idx] = output.detach()" in benchmark_section
     assert "output_idx += 1" in benchmark_section
     assert "self._outputs_ready = True" in benchmark_section
     assert "if not self._outputs_ready or self._verify_prompt is None:" in capture_section
+    assert "if self._output_stack is None:" in capture_section
+    assert "for output_idx, part in enumerate(self._output_parts):" in capture_section
+    assert "self._output_stack[output_idx].copy_(part, non_blocking=False)" in capture_section
+    assert "self.output = self._output_stack" in capture_section
+    assert "torch.stack([part.detach().cpu() for part in self._output_parts], dim=0)" not in capture_section
     assert "self._prompt_chunks = {}" in teardown_section
     assert "self._sync_devices = []" in teardown_section
+    assert "self._output_stack = None" in teardown_section
     assert "self._metric_total_tokens = 0" in teardown_section
     assert "reduced_host = reduced.detach().cpu()" in reduced_metrics_section
     assert "cache_hits = float(reduced_host[0])" in reduced_metrics_section

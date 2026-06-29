@@ -720,6 +720,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._verify_prompt: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_parts: List[torch.Tensor] = []
+        self._output_stack: Optional[torch.Tensor] = None
         self._outputs_ready = False
         self.parameter_count: int = 0
         self._custom_metrics: Dict[str, float] = {}
@@ -772,6 +773,17 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         if cached is None:
             raise RuntimeError(f"Empty KV template missing for {device}")
         return cached
+
+    def _allocate_host_output_stack(self) -> torch.Tensor:
+        shape = (
+            len(self._request_plans),
+            self.cfg.batch_size,
+            self.cfg.hidden_size,
+        )
+        try:
+            return torch.empty(shape, device="cpu", dtype=self.cfg.dtype, pin_memory=True)
+        except RuntimeError:
+            return torch.empty(shape, device="cpu", dtype=self.cfg.dtype)
 
     def _ensure_local_cache(
         self,
@@ -864,6 +876,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._prefill_seed_store = {}
         self.output = None
         self._output_parts = [torch.empty(0) for _ in self._request_plans]
+        self._output_stack = self._allocate_host_output_stack()
         self._outputs_ready = False
         self._custom_metrics = {}
         self._empty_kv_by_device = {}
@@ -1101,7 +1114,11 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def capture_verification_payload(self) -> None:
         if not self._outputs_ready or self._verify_prompt is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        self.output = torch.stack([part.detach().cpu() for part in self._output_parts], dim=0)
+        if self._output_stack is None:
+            raise RuntimeError("Output stack buffer not initialized")
+        for output_idx, part in enumerate(self._output_parts):
+            self._output_stack[output_idx].copy_(part, non_blocking=False)
+        self.output = self._output_stack
         world_size = self._resolved_world_size or _world_size_hint()
         prefill_ranks = self._resolved_prefill_ranks or _hint_prefill_ranks(world_size, self.cfg.prefill_ranks)
         decode_ranks = max(world_size - prefill_ranks, 1)
@@ -1150,6 +1167,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._request_plans = []
         self.output = None
         self._output_parts = []
+        self._output_stack = None
         self._outputs_ready = False
         self._empty_kv_by_device = {}
         self._decode_seed_buffers = {}
