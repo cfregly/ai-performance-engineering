@@ -79,6 +79,7 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
         self.output: Optional[torch.Tensor] = None
         self._output_view: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -86,6 +87,7 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
             torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
         self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+        self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
         self._synchronize()
 
         # Precompile the Triton kernel to keep measurement under benchmark timeouts.
@@ -134,13 +136,16 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
+        if self.inputs is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
                 "q": self.inputs.q.detach(),
                 "k": self.inputs.k.detach(),
                 "v": self.inputs.v.detach(),
             },
-            output=self.output.float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch,
             parameter_count=0,
             precision_flags={
@@ -156,6 +161,7 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
         self.inputs = None
         self.output = None
         self._output_view = None
+        self._verify_output_buffer = None
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(

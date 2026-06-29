@@ -16929,8 +16929,34 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
     for path in targets:
         text = path.read_text(encoding="utf-8")
         benchmark_section = text.split("def capture_verification_payload", maxsplit=1)[0]
+        capture_section = text.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
         assert ".float().clone()" not in benchmark_section
         assert ".detach().clone()" not in benchmark_section
+
+        if path.name in {
+            "baseline_persistent_decode.py",
+            "optimized_persistent_decode_cuda.py",
+            "optimized_persistent_decode_graphs.py",
+            "optimized_persistent_decode_triton.py",
+        }:
+            setup_split = {
+                "baseline_persistent_decode.py": "def _decode_step",
+                "optimized_persistent_decode_graphs.py": "def _capture_graphs",
+            }.get(path.name, "def benchmark_fn")
+            setup_section = text.split("def setup", maxsplit=1)[1].split(
+                setup_split,
+                maxsplit=1,
+            )[0]
+
+            assert "_verify_output_buffer" in text
+            assert "dtype=torch.float32" in setup_section
+            assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+            assert "output=self._verify_output_buffer" in capture_section
+            assert "self.output.float().clone()" not in capture_section
+            assert "self.output.to(dtype=torch.float32)" not in capture_section
 
         if path.name in {
             "optimized_persistent_decode_cuda.py",
