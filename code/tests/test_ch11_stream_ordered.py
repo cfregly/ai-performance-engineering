@@ -47,20 +47,18 @@ def test_stream_ordered_reduces_inner_iterations_only_during_profiling() -> None
     assert optimized._active_inner_iterations() == 8
 
 
-def test_stream_ordered_benchmark_fn_defers_payload_tensor_allocation(monkeypatch) -> None:
+def test_stream_ordered_benchmark_fn_and_capture_reuse_payload_tensors(monkeypatch) -> None:
     baseline = BaselineStreamOrderedBenchmark()
     optimized = OptimizedStreamOrderedBenchmark()
     baseline._module = _FakeStreamOrderedModule()
     optimized._module = _FakeStreamOrderedModule()
 
     def fail_tensor(*args, **kwargs):
-        raise AssertionError("benchmark_fn() should not allocate verification tensors")
+        raise AssertionError("benchmark_fn() and capture should reuse verification tensors")
 
     monkeypatch.setattr(torch, "tensor", fail_tensor)
     baseline.benchmark_fn()
     optimized.benchmark_fn()
-    monkeypatch.undo()
-
     baseline.capture_verification_payload()
     optimized.capture_verification_payload()
 
@@ -82,8 +80,19 @@ def test_stream_ordered_benchmark_fn_uses_setup_cached_iteration_count() -> None
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
 
+        assert "self._elements_tensor = torch.tensor([self.elements], dtype=torch.int64)" in source
+        assert "self._inner_iterations_tensor = torch.empty((1,), dtype=torch.int64)" in source
+        assert "self._inner_iterations_tensor[0] = self.inner_iterations" in source
         assert "self._active_inner_iterations_count = self._active_inner_iterations()" in setup_section
         assert "inner_iterations = self._active_inner_iterations_count" in benchmark_section
+        assert "self._inner_iterations_tensor[0] = inner_iterations" in benchmark_section
+        assert '"elements": self._elements_tensor' in capture_section
+        assert '"inner_iterations": self._inner_iterations_tensor' in capture_section
+        assert "torch.tensor([self.elements]" not in capture_section
+        assert "torch.tensor([self._last_inner_iterations]" not in capture_section
         assert "_active_inner_iterations()" not in benchmark_section
         assert "getattr(self, \"_config\"" not in benchmark_section

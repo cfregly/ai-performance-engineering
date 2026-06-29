@@ -31,6 +31,9 @@ class OptimizedStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._last_inner_iterations = self.inner_iterations
         self._active_inner_iterations_count = self.inner_iterations
+        self._elements_tensor = torch.tensor([self.elements], dtype=torch.int64)
+        self._inner_iterations_tensor = torch.empty((1,), dtype=torch.int64)
+        self._inner_iterations_tensor[0] = self.inner_iterations
         self._module: Optional[ModuleType] = None
         # Application replay is not stable for this allocator-heavy profile on NCU.
         self.preferred_ncu_replay_mode = "kernel"
@@ -66,14 +69,15 @@ class OptimizedStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
         self._last_inner_iterations = inner_iterations
+        self._inner_iterations_tensor[0] = inner_iterations
 
     def capture_verification_payload(self) -> None:
         if self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
             inputs={
-                "elements": torch.tensor([self.elements], dtype=torch.int64),
-                "inner_iterations": torch.tensor([self._last_inner_iterations], dtype=torch.int64),
+                "elements": self._elements_tensor,
+                "inner_iterations": self._inner_iterations_tensor,
             },
             output=self.output,
             batch_size=int(self._last_inner_iterations),
