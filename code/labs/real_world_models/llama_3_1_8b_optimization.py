@@ -124,7 +124,11 @@ class Llama31_8B_Optimization:
                 self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
             
             def forward(self, x):
-                return self.down_proj(nn.functional.silu(self.gate_proj(x)) * self.up_proj(x))
+                gate = self.gate_proj(x)
+                up = self.up_proj(x)
+                F.silu(gate, inplace=True)
+                gate.mul_(up)
+                return self.down_proj(gate)
         
         return SimplifiedMLP(self.HIDDEN_SIZE, self.INTERMEDIATE_SIZE)
     

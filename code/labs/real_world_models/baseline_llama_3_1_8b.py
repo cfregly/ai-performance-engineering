@@ -47,7 +47,6 @@ class BaselineLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
         if self.model_wrapper is None:
             raise RuntimeError("Model wrapper not initialized")
         self.model_wrapper.run()
-        self._last_metrics = {}
         self.output = self.model_wrapper.output
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
@@ -77,5 +76,4 @@ class BaselineLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineLlama31_8B()
-
 

@@ -3522,9 +3522,18 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         "def forward",
         maxsplit=1,
     )[0]
+    llama_mlp = llama_source.split("class SimplifiedMLP", maxsplit=1)[1].split(
+        "return SimplifiedMLP",
+        maxsplit=1,
+    )[0]
     assert "torch.triu(torch.ones(" not in llama_attention
     assert "pos = torch.arange(seq_len)" in llama_attention
     assert "causal = pos.unsqueeze(0) > pos.unsqueeze(1)" in llama_attention
+    assert "gate = self.gate_proj(x)" in llama_mlp
+    assert "up = self.up_proj(x)" in llama_mlp
+    assert "F.silu(gate, inplace=True)" in llama_mlp
+    assert "gate.mul_(up)" in llama_mlp
+    assert "nn.functional.silu(self.gate_proj(x)) * self.up_proj(x)" not in llama_mlp
 
     ch16_source = (REPO_ROOT / "ch16" / "baseline_dense_attention_flash.py").read_text(
         encoding="utf-8"
@@ -5374,6 +5383,64 @@ def test_occupancy_tuning_variants_match_their_filenames() -> None:
 def test_real_world_model_entrypoints_return_harness_benchmarks() -> None:
     assert isinstance(get_deepseek_benchmark(), BaseBenchmark)
     assert isinstance(get_gpt4_benchmark(), BaseBenchmark)
+
+
+def test_real_world_model_wrappers_reuse_metric_state() -> None:
+    baseline_source = (
+        REPO_ROOT / "labs" / "real_world_models" / "baseline_llama_3_1_8b.py"
+    ).read_text(encoding="utf-8")
+    optimized_source = (
+        REPO_ROOT / "labs" / "real_world_models" / "optimized_llama_3_1_8b.py"
+    ).read_text(encoding="utf-8")
+    gpt4_source = (
+        REPO_ROOT / "labs" / "real_world_models" / "gpt4_architecture_optimization.py"
+    ).read_text(encoding="utf-8")
+
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    optimized_init = optimized_source.split("def __init__", maxsplit=1)[1].split(
+        "def setup",
+        maxsplit=1,
+    )[0]
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    optimized_metrics = optimized_source.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "def get_benchmark",
+        maxsplit=1,
+    )[0]
+    gpt4_wrapper_init = gpt4_source.split(
+        "class GPT4ArchitectureOptimizationBenchmark",
+        maxsplit=1,
+    )[1].split("def setup", maxsplit=1)[0]
+    gpt4_benchmark = gpt4_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    gpt4_run = gpt4_source.split("def run(self) -> float:", maxsplit=1)[1].split(
+        "def cleanup",
+        maxsplit=1,
+    )[0]
+
+    assert "self._last_metrics = {}" not in baseline_benchmark
+    assert "self._last_metrics = {}" not in optimized_benchmark
+    assert '"llama.use_compile": 1.0' in optimized_init
+    assert '"llama.use_flex_attention": 1.0' in optimized_init
+    assert '"llama.use_fp8": 1.0 if self.use_fp8 else 0.0' in optimized_init
+    assert "return self._last_metrics" in optimized_metrics
+    assert "self._last_metrics.copy()" not in optimized_metrics
+
+    assert "self._last_metrics: Dict[str, float] = {" in gpt4_wrapper_init
+    assert 'metrics["gpt4_architecture.mean_time_ms"] = float(elapsed_ms)' in gpt4_benchmark
+    assert 'metrics["gpt4_architecture.use_moe"]' in gpt4_benchmark
+    assert "self._last_metrics = {" not in gpt4_benchmark
+    assert "self._last_tokens_per_sec = tokens_per_sec" in gpt4_run
+    assert "if not self._throughput_logged:" in gpt4_run
+    assert 'logger.info("Throughput: %.2f tokens/sec", tokens_per_sec)' in gpt4_run
+    assert 'logger.info(f"Throughput:' not in gpt4_run
 
 
 def test_base_benchmark_nvtx_range_caches_config_flag() -> None:
@@ -10120,6 +10187,11 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert layer._route_count_list(torch.tensor([0, 0, 2], dtype=torch.long)) is route_counts
     assert id(route_counts) == route_counts_id
     assert route_counts == [2, 0, 1]
+    _, metrics = layer(x)
+    metrics_id = id(metrics)
+    _, next_metrics = layer(x)
+    assert next_metrics is metrics
+    assert id(next_metrics) == metrics_id
 
     source = (REPO_ROOT / "labs" / "real_world_models" / "deepseek_r1_moe_optimization.py").read_text(
         encoding="utf-8"
@@ -10147,6 +10219,10 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "torch.cuda.Event(enable_timing=True)" in setup_section
     assert 'self.register_buffer(\n            "_gini_index",' in router_forward
     assert "def _gini_index_for" in router_forward
+    assert "self._aux_loss_dict: Dict[str, torch.Tensor] = {}" in router_forward
+    assert "aux_loss_dict = self._aux_loss_dict" in router_forward
+    assert "aux_loss_dict[\"balance_loss\"] = balance_loss" in router_forward
+    assert "aux_loss_dict = {" not in router_forward
     assert "torch.arange(1, n + 1" not in router_forward
     assert "F.silu(gate, inplace=True)" in expert_forward
     assert "gate.mul_(up)" in expert_forward
@@ -10198,6 +10274,16 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "self._last_aux_metrics.clear()" in benchmark_section
     assert "self._last_aux_metrics[key] = value.detach()" in benchmark_section
     assert "self._last_aux_metrics = {" not in benchmark_section
+    metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+    assert "metrics = self._last_metrics" in metrics_section
+    assert 'metrics["latency_ms"] = self._last_elapsed_ms' in metrics_section
+    assert 'metrics["throughput"] = tokens_per_sec' in metrics_section
+    assert "for key, value in self._last_aux_metrics.items():" in metrics_section
+    assert "metrics[key] = float(value.detach())" in metrics_section
+    assert "self._last_metrics = {" not in metrics_section
+    assert "**{" not in metrics_section
     assert "self.output = output" in benchmark_section
     assert "self.output = output[:1, : min(4, output.shape[1]), : min(8, output.shape[2])]" not in benchmark_section
     assert "output_slice = self.output[:1, : min(4, self.output.shape[1]), : min(8, self.output.shape[2])]" in capture_section

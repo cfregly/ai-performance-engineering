@@ -47,6 +47,8 @@ class GPT4ArchitectureOptimization:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.output: Optional[torch.Tensor] = None
         self._timing_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
+        self._last_tokens_per_sec = 0.0
+        self._throughput_logged = False
         
         logger.info(f"GPT-4 Architecture Optimization")
         logger.info(f"  MoE: {use_moe}")
@@ -125,6 +127,7 @@ class GPT4ArchitectureOptimization:
                 torch.cuda.Event(enable_timing=True),
                 torch.cuda.Event(enable_timing=True),
             )
+        self._throughput_logged = False
         
         logger.info("Simplified GPT-4 model initialized")
     
@@ -152,8 +155,11 @@ class GPT4ArchitectureOptimization:
         self.output = x
         
         tokens_per_sec = (self.batch_size * self.seq_length) / (elapsed_ms / 1000)
+        self._last_tokens_per_sec = tokens_per_sec
         
-        logger.info(f"Throughput: {tokens_per_sec:.2f} tokens/sec")
+        if not self._throughput_logged:
+            logger.info("Throughput: %.2f tokens/sec", tokens_per_sec)
+            self._throughput_logged = True
         
         return elapsed_ms
     
@@ -175,7 +181,12 @@ class GPT4ArchitectureOptimizationBenchmark(VerificationPayloadMixin, BaseBenchm
         self.model_wrapper: Optional[GPT4ArchitectureOptimization] = None
         self.output: Optional[torch.Tensor] = None
         self.parameter_count = 0
-        self._last_metrics: Dict[str, float] = {}
+        self._last_metrics: Dict[str, float] = {
+            "gpt4_architecture.mean_time_ms": 0.0,
+            "gpt4_architecture.use_moe": 0.0,
+            "gpt4_architecture.use_fp8": 0.0,
+            "gpt4_architecture.use_context_parallel": 0.0,
+        }
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
@@ -193,12 +204,13 @@ class GPT4ArchitectureOptimizationBenchmark(VerificationPayloadMixin, BaseBenchm
             raise RuntimeError("Model wrapper not initialized")
         elapsed_ms = self.model_wrapper.run()
         self.output = self.model_wrapper.output
-        self._last_metrics = {
-            "gpt4_architecture.mean_time_ms": float(elapsed_ms),
-            "gpt4_architecture.use_moe": 1.0 if self.model_wrapper.use_moe else 0.0,
-            "gpt4_architecture.use_fp8": 1.0 if self.model_wrapper.use_fp8 else 0.0,
-            "gpt4_architecture.use_context_parallel": 1.0 if self.model_wrapper.use_context_parallel else 0.0,
-        }
+        metrics = self._last_metrics
+        metrics["gpt4_architecture.mean_time_ms"] = float(elapsed_ms)
+        metrics["gpt4_architecture.use_moe"] = 1.0 if self.model_wrapper.use_moe else 0.0
+        metrics["gpt4_architecture.use_fp8"] = 1.0 if self.model_wrapper.use_fp8 else 0.0
+        metrics["gpt4_architecture.use_context_parallel"] = (
+            1.0 if self.model_wrapper.use_context_parallel else 0.0
+        )
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 

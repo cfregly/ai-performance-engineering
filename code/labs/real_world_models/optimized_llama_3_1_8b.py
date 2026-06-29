@@ -32,7 +32,11 @@ class OptimizedLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
         self.model_wrapper = None
         self.output: Optional[torch.Tensor] = None
         self.parameter_count = 0
-        self._last_metrics: dict = {}
+        self._last_metrics: dict[str, float] = {
+            "llama.use_compile": 1.0,
+            "llama.use_flex_attention": 1.0,
+            "llama.use_fp8": 1.0 if self.use_fp8 else 0.0,
+        }
         self.register_workload_metadata(requests_per_iteration=float(batch_size))
 
     def setup(self) -> None:
@@ -54,7 +58,6 @@ class OptimizedLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
         if self.model_wrapper is None:
             raise RuntimeError("Model wrapper not initialized")
         self.model_wrapper.run()
-        self._last_metrics = {}
         self.output = self.model_wrapper.output
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
@@ -84,14 +87,9 @@ class OptimizedLlama31_8B(VerificationPayloadMixin, BaseBenchmark):
         return BenchmarkConfig(iterations=10, warmup=5)
 
     def get_custom_metrics(self) -> dict:
-        metrics = self._last_metrics.copy()
-        metrics["llama.use_compile"] = 1.0
-        metrics["llama.use_flex_attention"] = 1.0
-        metrics["llama.use_fp8"] = 1.0 if self.use_fp8 else 0.0
-        return metrics
+        return self._last_metrics
 
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedLlama31_8B()
-
 

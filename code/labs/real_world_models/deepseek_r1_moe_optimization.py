@@ -43,6 +43,7 @@ class LoadBalancedRouter(nn.Module):
             torch.arange(1, num_experts + 1, dtype=torch.float32),
             persistent=False,
         )
+        self._aux_loss_dict: Dict[str, torch.Tensor] = {}
 
     def _gini_index_for(self, usage: torch.Tensor) -> torch.Tensor:
         index = self._gini_index
@@ -86,12 +87,11 @@ class LoadBalancedRouter(nn.Module):
         index = self._gini_index_for(sorted_usage)
         gini = (2 * (index * sorted_usage).sum()) / (n * sorted_usage.sum()) - (n + 1) / n
         
-        aux_loss_dict = {
-            "balance_loss": balance_loss,
-            "expert_usage_variance": torch.var(expert_usage),
-            "gini_coefficient": gini,
-            "router_entropy": -(probs * torch.log(probs + 1e-10)).sum(dim=-1).mean(),
-        }
+        aux_loss_dict = self._aux_loss_dict
+        aux_loss_dict["balance_loss"] = balance_loss
+        aux_loss_dict["expert_usage_variance"] = torch.var(expert_usage)
+        aux_loss_dict["gini_coefficient"] = gini
+        aux_loss_dict["router_entropy"] = -(probs * torch.log(probs + 1e-10)).sum(dim=-1).mean()
         
         return routing_weights, selected_experts, aux_loss_dict
 
@@ -369,15 +369,12 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         if self._last_elapsed_ms is None:
             return self._last_metrics
         tokens_per_sec = (self.batch_size * self.seq_length) / max(self._last_elapsed_ms / 1000.0, 1e-9)
-        self._last_metrics = {
-            "latency_ms": self._last_elapsed_ms,
-            "throughput": tokens_per_sec,
-            **{
-                key: float(value.detach())
-                for key, value in self._last_aux_metrics.items()
-            },
-        }
-        return self._last_metrics
+        metrics = self._last_metrics
+        metrics["latency_ms"] = self._last_elapsed_ms
+        metrics["throughput"] = tokens_per_sec
+        for key, value in self._last_aux_metrics.items():
+            metrics[key] = float(value.detach())
+        return metrics
 
     def teardown(self):
         """Clean up resources."""
