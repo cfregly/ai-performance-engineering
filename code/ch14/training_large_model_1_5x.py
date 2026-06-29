@@ -198,12 +198,13 @@ def benchmark_training(model, input_ids, labels, optimizer, name, num_warmup=10,
     print(f"  Running benchmark...", end='', flush=True)
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
-    start.record()
+    current_stream = torch.cuda.current_stream(input_ids.device)
+    start.record(current_stream)
     for i in range(num_iters):
         if i % 20 == 0:
             print('.', end='', flush=True)
         _ = training_step(model, input_ids, labels, optimizer)
-    end.record()
+    end.record(current_stream)
     end.synchronize()
     elapsed = start.elapsed_time(end) / 1000.0
     print(" done")

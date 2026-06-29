@@ -70,10 +70,11 @@ def _benchmark_cuda_latency_ms(fn: Callable[[], object], iterations: int) -> flo
     """Measure average CUDA latency in milliseconds for a callable."""
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
-    start.record()
+    current_stream = torch.cuda.current_stream()
+    start.record(current_stream)
     for _ in range(iterations):
         fn()
-    end.record()
+    end.record(current_stream)
     end.synchronize()
     return start.elapsed_time(end) / iterations
 

@@ -12,10 +12,9 @@ Usage:
 import argparse
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List
 import torch
 
-from labs.nanochat_fullstack.nanochat.engine import Engine
 from labs.nanochat_fullstack.nanochat.gpt import GPT, GPTConfig
 
 
@@ -86,9 +85,10 @@ class IncrementalBenchmark:
         if self.device.type == "cuda":
             start = torch.cuda.Event(enable_timing=True)
             end = torch.cuda.Event(enable_timing=True)
-            start.record()
+            current_stream = torch.cuda.current_stream(self.device)
+            start.record(current_stream)
             fn()
-            end.record()
+            end.record(current_stream)
             end.synchronize()
             return start.elapsed_time(end) / 1000.0
 

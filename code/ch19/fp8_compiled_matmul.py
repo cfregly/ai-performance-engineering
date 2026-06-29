@@ -18,11 +18,9 @@ Architecture support:
 - Older: Emulated (slow)
 """
 
-import os
 from typing import Tuple
 
 import torch
-import torch.nn as nn
 
 
 def detect_fp8_support() -> Tuple[bool, str]:
@@ -126,10 +124,11 @@ def benchmark_matmul(fn, *args, name="", warmup=50, iters=500):
     # Benchmark
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
-    start.record()
+    current_stream = torch.cuda.current_stream()
+    start.record(current_stream)
     for _ in range(iters):
         _ = fn(*args)
-    end.record()
+    end.record(current_stream)
     end.synchronize()
 
     return start.elapsed_time(end) / max(iters, 1)

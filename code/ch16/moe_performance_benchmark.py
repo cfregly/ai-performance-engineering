@@ -141,10 +141,11 @@ def benchmark_model(
     if input_ids.device.type == "cuda":
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
-        start_event.record()
+        current_stream = torch.cuda.current_stream(input_ids.device)
+        start_event.record(current_stream)
         for _ in range(iters):
             _ = model(input_ids)
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
         elapsed = start_event.elapsed_time(end_event) / 1000.0
     else:

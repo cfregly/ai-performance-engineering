@@ -7121,8 +7121,11 @@ def test_nanochat_incremental_benchmark_uses_cuda_event_timing() -> None:
     )[0]
 
     assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
-    assert "start.record()" in helper_section
-    assert "end.record()" in helper_section
+    assert "current_stream = torch.cuda.current_stream(self.device)" in helper_section
+    assert "start.record(current_stream)" in helper_section
+    assert "end.record(current_stream)" in helper_section
+    assert "start.record()" not in helper_section
+    assert "end.record()" not in helper_section
     assert "start.elapsed_time(end) / 1000.0" in helper_section
     assert "decode_token_steps = tuple(" in benchmark_section
     assert "decode_tokens[:, t:t + 1]" in benchmark_section
@@ -7149,8 +7152,11 @@ def test_nanochat_b200_flag_benchmark_uses_cuda_event_timing() -> None:
     )[0]
 
     assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
-    assert "start.record()" in helper_section
-    assert "end.record()" in helper_section
+    assert "current_stream = torch.cuda.current_stream()" in helper_section
+    assert "start.record(current_stream)" in helper_section
+    assert "end.record(current_stream)" in helper_section
+    assert "start.record()" not in helper_section
+    assert "end.record()" not in helper_section
     assert "start.elapsed_time(end) / 1000.0" in helper_section
     assert "decode_token_steps = tuple(" in run_once_section
     assert "decode_tokens[:, t:t + 1]" in run_once_section
@@ -8505,8 +8511,11 @@ def test_ch14_training_large_model_defers_step_loss_sync() -> None:
     assert "return loss.item()" not in train_step_section
     assert "return loss.detach()" in train_step_section
     assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
-    assert "start.record()" in benchmark_section
-    assert "end.record()" in benchmark_section
+    assert "current_stream = torch.cuda.current_stream(input_ids.device)" in benchmark_section
+    assert "start.record(current_stream)" in benchmark_section
+    assert "end.record(current_stream)" in benchmark_section
+    assert "start.record()" not in benchmark_section
+    assert "end.record()" not in benchmark_section
     assert "elapsed = start.elapsed_time(end) / 1000.0" in benchmark_section
     assert "time.perf_counter()" not in benchmark_section
 
@@ -9254,8 +9263,11 @@ def test_ch16_blackwell_inference_demo_uses_cuda_event_timing() -> None:
     )[0]
 
     assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
-    assert "start.record()" in helper_section
-    assert "end.record()" in helper_section
+    assert "current_stream = torch.cuda.current_stream()" in helper_section
+    assert "start.record(current_stream)" in helper_section
+    assert "end.record(current_stream)" in helper_section
+    assert "start.record()" not in helper_section
+    assert "end.record()" not in helper_section
     assert "start.elapsed_time(end) / iterations" in helper_section
     assert demo_section.count("_benchmark_cuda_latency_ms(") == 3
     assert "time.time()" not in demo_section
@@ -9312,8 +9324,11 @@ def test_ch16_moe_performance_benchmark_uses_cuda_event_timing() -> None:
     cpu_section = benchmark_section.split("else:", maxsplit=1)[1]
 
     assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
-    assert "start_event.record()" in cuda_section
-    assert "end_event.record()" in cuda_section
+    assert "current_stream = torch.cuda.current_stream(input_ids.device)" in cuda_section
+    assert "start_event.record(current_stream)" in cuda_section
+    assert "end_event.record(current_stream)" in cuda_section
+    assert "start_event.record()" not in cuda_section
+    assert "end_event.record()" not in cuda_section
     assert "elapsed = start_event.elapsed_time(end_event) / 1000.0" in cuda_section
     assert "time.time()" not in cuda_section
     assert "time.time()" in cpu_section
@@ -12387,8 +12402,11 @@ def test_ch19_fp8_compiled_matmul_uses_cuda_event_timing() -> None:
     )[0]
 
     assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
-    assert "start.record()" in benchmark_section
-    assert "end.record()" in benchmark_section
+    assert "current_stream = torch.cuda.current_stream()" in benchmark_section
+    assert "start.record(current_stream)" in benchmark_section
+    assert "end.record(current_stream)" in benchmark_section
+    assert "start.record()" not in benchmark_section
+    assert "end.record()" not in benchmark_section
     assert "start.elapsed_time(end) / max(iters, 1)" in benchmark_section
     assert "time.perf_counter()" not in benchmark_section
 
@@ -12432,9 +12450,12 @@ def test_ch19_quantization_validator_reuses_timing_events() -> None:
     )[1].split("if cuda_available:", maxsplit=1)[0]
     assert "if cuda_available:\n            torch.cuda.synchronize()" in warmup_section
     assert before_sample_loop.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "current_stream = torch.cuda.current_stream()" in before_sample_loop
     assert "torch.cuda.Event(enable_timing=True)" not in sample_loop
-    assert "start_event.record()" in sample_loop
-    assert "end_event.record()" in sample_loop
+    assert "start_event.record(current_stream)" in sample_loop
+    assert "end_event.record(current_stream)" in sample_loop
+    assert "start_event.record()" not in sample_loop
+    assert "end_event.record()" not in sample_loop
     assert "end_event.synchronize()" in sample_loop
     assert "times.append(start_event.elapsed_time(end_event))" in sample_loop
     assert "with nvtx.range(iteration_labels[i]):" in sample_loop

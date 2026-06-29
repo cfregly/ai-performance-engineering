@@ -28,11 +28,9 @@ import json
 import os
 import time
 from dataclasses import asdict, dataclass
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import torch
-import torch.nn as nn
 
 # PyTorch profiler
 from torch.profiler import ProfilerActivity, profile, record_function
@@ -156,11 +154,12 @@ class ProfiledBenchmark:
             if cuda_available:
                 start_event = torch.cuda.Event(enable_timing=True)
                 end_event = torch.cuda.Event(enable_timing=True)
+                current_stream = torch.cuda.current_stream()
                 for i in range(benchmark_iters):
-                    start_event.record()
+                    start_event.record(current_stream)
                     with nvtx.range(iteration_labels[i]):
                         _ = func(*args)
-                    end_event.record()
+                    end_event.record(current_stream)
                     end_event.synchronize()
                     times.append(start_event.elapsed_time(end_event))
             else:
