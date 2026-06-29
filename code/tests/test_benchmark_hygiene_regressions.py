@@ -12251,12 +12251,17 @@ def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path(
     )[0]
 
     assert "self._summary_buffer: Optional[torch.Tensor] = None" in common_source
+    assert "self._config_tensor: Optional[torch.Tensor] = None" in common_source
     assert "self._summary_buffer = torch.empty(" in init_buffers_section
+    assert "self._config_tensor = torch.tensor(" in init_buffers_section
     assert "self._summary_buffer.copy_(self.state_buffer[:1, : self._summary_buffer.shape[1]])" in finalize_section
     assert "self.output = self._summary_buffer.detach()" in finalize_section
     assert ".float()" not in finalize_section
     assert ".clone()" not in finalize_section
     assert "self._finalize_output()" in capture_section
+    assert '"config": self._config_tensor' in capture_section
+    assert "config_tensor = torch.tensor(" not in capture_section
+    assert "setup() must initialize config tensor before verification capture" in capture_section
 
     for name in ("baseline_decode_warp_specialized.py", "optimized_decode_warp_specialized.py"):
         source = (REPO_ROOT / "labs" / "decode_optimization" / name).read_text(encoding="utf-8")

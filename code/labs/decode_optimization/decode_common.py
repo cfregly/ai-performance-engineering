@@ -152,6 +152,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.gpu_payload: Optional[torch.Tensor] = None
         self.gpu_prompt_last_token: Optional[torch.Tensor] = None
         self._summary_buffer: Optional[torch.Tensor] = None
+        self._config_tensor: Optional[torch.Tensor] = None
         self._copy_done_events: list[torch.cuda.Event] = []
         self._timing_events: dict[str, torch.cuda.Event] = {}
         self._nvtx = None
@@ -468,6 +469,17 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             (1, min(8, self.cfg.hidden_size)),
             device=self.device,
             dtype=torch.float32,
+        )
+        self._config_tensor = torch.tensor(
+            [
+                self.cfg.batch_size,
+                self.cfg.prompt_tokens,
+                self.cfg.decode_tokens,
+                self.cfg.prefetch_batches,
+                self.cfg.host_payload_mb,
+            ],
+            device="cpu",
+            dtype=torch.int64,
         )
 
     # Compiled / graphed helpers
@@ -839,21 +851,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError(
                 "benchmark_fn() must populate output before capture_verification_payload()"
             )
-        config_tensor = torch.tensor(
-            [
-                self.cfg.batch_size,
-                self.cfg.prompt_tokens,
-                self.cfg.decode_tokens,
-                self.cfg.prefetch_batches,
-                self.cfg.host_payload_mb,
-            ],
-            device="cpu",
-            dtype=torch.int64,
-        )
+        if self._config_tensor is None:
+            raise RuntimeError("setup() must initialize config tensor before verification capture")
         inputs = {
             "gpu_prompt": self.gpu_prompt,
             "state_buffer": self.state_buffer,
-            "config": config_tensor,
+            "config": self._config_tensor,
         }
         if self.gpu_payload is not None:
             inputs["host_payload"] = self.gpu_payload
@@ -950,6 +953,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "_decode_next_token_values",
             "_decode_next_token",
             "_summary_buffer",
+            "_config_tensor",
             "next_token_out",
             "_copy_done_events",
             "_timing_events",
