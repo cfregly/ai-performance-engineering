@@ -10706,6 +10706,28 @@ def test_ch16_inference_serving_reuses_sampled_token_buffers() -> None:
     assert "next_tokens_device.cpu()" not in generate_batch_section
 
 
+def test_ch16_inference_serving_loop_uses_monotonic_elapsed_clock() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    serve_loop_section = source.split("def serve_loop", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+    timeout_section = serve_loop_section.split("# Check for timed-out requests", maxsplit=1)[
+        1
+    ].split("# Log stats periodically", maxsplit=1)[0]
+
+    assert "loop_start = time.perf_counter()" in serve_loop_section
+    assert "while time.perf_counter() - loop_start < duration_seconds:" in serve_loop_section
+    assert 'stats["total_tokens_generated"] / (time.perf_counter() - loop_start)' in serve_loop_section
+    assert "elapsed = time.perf_counter() - loop_start" in serve_loop_section
+    assert "start_time = time.time()" not in serve_loop_section
+    assert "time.time() - start_time" not in serve_loop_section
+    assert "current_time = time.time()" in timeout_section
+    assert "current_time - state.request.arrived_at" in timeout_section
+
+
 def test_ch16_inference_serving_flushes_kv_views_without_stack() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"

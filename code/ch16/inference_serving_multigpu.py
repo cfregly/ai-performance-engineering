@@ -1644,10 +1644,10 @@ class InferenceServerMultiGPU:
             print("Starting serving loop...")
             print(f"Duration: {duration_seconds:.1f} seconds\n")
         
-        start_time = time.time()
+        loop_start = time.perf_counter()
         iteration = 0
         
-        while time.time() - start_time < duration_seconds:
+        while time.perf_counter() - loop_start < duration_seconds:
             iteration += 1
             
             # Get next batch (mix of new and ongoing)
@@ -1682,7 +1682,7 @@ class InferenceServerMultiGPU:
             # Log stats periodically
             if self.rank == 0 and iteration % 100 == 0:
                 stats = self.scheduler.get_stats()
-                throughput = stats["total_tokens_generated"] / (time.time() - start_time)
+                throughput = stats["total_tokens_generated"] / (time.perf_counter() - loop_start)
                 cache_stats = self.kv_cache.stats()
                 
                 print(f"Iter {iteration}: "
@@ -1695,7 +1695,7 @@ class InferenceServerMultiGPU:
         
         # Final statistics
         if self.rank == 0:
-            elapsed = time.time() - start_time
+            elapsed = time.perf_counter() - loop_start
             stats = self.scheduler.get_stats()
             
             print(f"\n=== Serving Complete ===")
