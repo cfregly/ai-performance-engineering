@@ -208,11 +208,10 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     rejects += 1
                     continue
                 if queue_lengths is None:
-                    queue_depth = random.randint(0, self.router.PREFILL_QUEUE_MAX + 5)
-                else:
-                    if queue_lengths_host is None:
-                        raise RuntimeError("Queue length host inputs not initialized")
-                    queue_depth = queue_lengths_host[idx % self.batch_size]
+                    raise RuntimeError("Queue length inputs not initialized")
+                if queue_lengths_host is None:
+                    raise RuntimeError("Queue length host inputs not initialized")
+                queue_depth = queue_lengths_host[idx % self.batch_size]
                 if self.router.should_offload_prefill(len(req.prompt_tokens), req.prefix_cached_length, queue_depth):
                     offloaded += 1
 
