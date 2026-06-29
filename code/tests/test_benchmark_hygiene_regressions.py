@@ -8708,6 +8708,12 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "for rank in self._decode_models:" in benchmark_section
     assert "for cache in active_caches.values():" in benchmark_section
     assert "cache.clear()" in benchmark_section
+    assert "self._pending_metrics: Dict[str, float] = {}" in source
+    assert '"peer_handoffs": 0.0' in setup_section
+    assert "metrics = self._pending_metrics" in benchmark_section
+    assert 'metrics["cache_hits"] = 0.0' in benchmark_section
+    assert 'metrics["shared_reload_bytes"] = 0.0' in benchmark_section
+    assert "metrics = {\n            \"cache_hits\": 0.0" not in benchmark_section
     assert "total_requests = self._metric_request_count" in benchmark_section
     assert "total_tokens=self._metric_total_tokens" in benchmark_section
     assert "total_requests=self._metric_total_batch_requests" in benchmark_section

@@ -724,6 +724,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._outputs_ready = False
         self.parameter_count: int = 0
         self._custom_metrics: Dict[str, float] = {}
+        self._pending_metrics: Dict[str, float] = {}
         self._request_plans: List[DistributedRequestPlan] = []
         self._prefill_models: Dict[int, TinyPrefillDecode] = {}
         self._decode_models: Dict[int, TinyPrefillDecode] = {}
@@ -974,6 +975,14 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
         self.parameter_count = total_params
         self._verify_prompt = self._prompts[0][0].detach().cpu()
+        self._pending_metrics = {
+            "cache_hits": 0.0,
+            "cache_misses": 0.0,
+            "worker_switches": 0.0,
+            "peer_handoffs": 0.0,
+            "kv_transfer_bytes": 0.0,
+            "shared_reload_bytes": 0.0,
+        }
         self._sync_local_devices()
 
     def benchmark_fn(self) -> None:
@@ -998,14 +1007,13 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         ttft_total_ms = 0.0
         tpot_total_ms = 0.0
         timing_count = 0
-        metrics = {
-            "cache_hits": 0.0,
-            "cache_misses": 0.0,
-            "worker_switches": 0.0,
-            "peer_handoffs": 0.0,
-            "kv_transfer_bytes": 0.0,
-            "shared_reload_bytes": 0.0,
-        }
+        metrics = self._pending_metrics
+        metrics["cache_hits"] = 0.0
+        metrics["cache_misses"] = 0.0
+        metrics["worker_switches"] = 0.0
+        metrics["peer_handoffs"] = 0.0
+        metrics["kv_transfer_bytes"] = 0.0
+        metrics["shared_reload_bytes"] = 0.0
 
         with torch.inference_mode():
             for plan in self._request_plans:
