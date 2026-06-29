@@ -708,6 +708,10 @@ def test_ch05_storage_io_dataset_defers_label_tensor_to_collate() -> None:
         "def make_dataloader",
         maxsplit=1,
     )[0]
+    main_section = source.split("def main", maxsplit=1)[1].split(
+        'if __name__ == "__main__"',
+        maxsplit=1,
+    )[0]
 
     assert "def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:" in source
     assert "label = index % 10" in getitem_section
@@ -715,6 +719,9 @@ def test_ch05_storage_io_dataset_defers_label_tensor_to_collate() -> None:
     assert "prefetch_factor: int | None = 4" in source
     assert "prefetch_factor = None" in source
     assert "persistent_workers = False" in source
+    assert "start = time.perf_counter()" in main_section
+    assert 'print(f"Epoch time: {time.perf_counter() - start:.2f}s")' in main_section
+    assert "time.time()" not in main_section
 
     from ch05.storage_io_optimization import DummyDataset, make_dataloader
 
@@ -3841,6 +3848,10 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
         "class QuantizationManager",
         maxsplit=1,
     )[0]
+    optimizer_process_section = profiling_source.split(
+        "class InferenceOptimizer",
+        maxsplit=1,
+    )[1].split("def _simulate_inference", maxsplit=1)[0]
     cascader_section = profiling_source.split("class ModelCascader", maxsplit=1)[1].split(
         "class StreamingResponse",
         maxsplit=1,
@@ -3883,6 +3894,9 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert "_mean_recent_dict_value(self.batch_history, 'batch_size')" in batcher_section
     assert "_mean_recent_dict_value(self.batch_history, 'avg_tokens')" in batcher_section
     assert "recent_batches = self.batch_history[-100:]" not in batcher_section
+    assert "start_time = time.perf_counter()" in optimizer_process_section
+    assert "total_time = time.perf_counter() - start_time" in optimizer_process_section
+    assert "time.time()" not in optimizer_process_section
     assert "route_count = min(len(self.routing_history), 100)" in cascader_section
     assert "prompt_length_total += route['prompt_length']" in cascader_section
     assert "self.routing_history[-100:]" not in cascader_section
@@ -9106,6 +9120,27 @@ def test_ch15_decode_worker_reuses_sampling_buffers() -> None:
     assert "next_token.item()" not in generate_section
 
 
+def test_ch15_disaggregated_inference_phase_timing_uses_monotonic_clock() -> None:
+    source = (REPO_ROOT / "ch15" / "disaggregated_inference_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    coordinator_section = source.split("class DisaggregatedInferenceSystem", maxsplit=1)[
+        1
+    ].split("class PrefillWorker", maxsplit=1)[0]
+    prefill_section = coordinator_section.split("def prefill_phase", maxsplit=1)[1].split(
+        "def transfer_kv_cache",
+        maxsplit=1,
+    )[0]
+    decode_section = coordinator_section.split("def decode_phase", maxsplit=1)[1]
+
+    assert "start_time = time.perf_counter()" in prefill_section
+    assert "prefill_time = time.perf_counter() - start_time" in prefill_section
+    assert "time.time()" not in prefill_section
+    assert "start_time = time.perf_counter()" in decode_section
+    assert "decode_time = time.perf_counter() - start_time" in decode_section
+    assert "time.time()" not in decode_section
+
+
 def test_ch15_moe_router_ranks_topk_without_score_list_materialization() -> None:
     source = (REPO_ROOT / "ch15" / "disaggregated_inference_multigpu.py").read_text(
         encoding="utf-8"
@@ -11584,6 +11619,10 @@ def test_ch17_early_rejection_uses_targeted_ttft_quantiles() -> None:
         "def _admit_request",
         maxsplit=1,
     )[0]
+    scenario_loop = source.split("for scenario in scenarios:", maxsplit=1)[1].split(
+        "# Print stats for this scenario",
+        maxsplit=1,
+    )[0]
     slo_section = source.split("# Analyze SLO compliance", maxsplit=1)[1].split(
         "# Check SLO compliance by priority",
         maxsplit=1,
@@ -11609,6 +11648,9 @@ def test_ch17_early_rejection_uses_targeted_ttft_quantiles() -> None:
     assert "violations = _count_ttft_violations_from_ordered(ttft_ordered, slo_limit)" in source
     assert "ttft_samples = list(qos.metrics.recent_ttft_samples)" not in source
     assert "sum(1 for ttft in ttft_samples if ttft > slo_limit)" not in source
+    assert "scenario_start = time.perf_counter()" in scenario_loop
+    assert "while time.perf_counter() - scenario_start < scenario['duration']:" in scenario_loop
+    assert "time.time() - scenario_start" not in scenario_loop
 
     import statistics
     from ch17.early_rejection import (

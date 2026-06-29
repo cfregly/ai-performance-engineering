@@ -508,7 +508,7 @@ class InferenceOptimizer:
         
     def process_request(self, request_id: str, prompt: str, user_tier: str = 'standard') -> Dict:
         """Process a single inference request with optimizations."""
-        start_time = time.time()
+        start_time = time.perf_counter()
         
         # 1. Check prefix cache
         prefix, prefix_length = self.prefix_cache.find_longest_prefix(prompt)
@@ -530,7 +530,7 @@ class InferenceOptimizer:
         response_tokens = self.streamer.generate_streaming_response(prompt)
         
         # 7. Record metrics
-        total_time = time.time() - start_time
+        total_time = time.perf_counter() - start_time
         self.monitor.record_metric('request_latency_ms', total_time * 1000)
         self.monitor.record_metric('cache_hit_rate', 1.0 if cache_hit else 0.0)
         self.monitor.record_metric('model_tier_usage', len(model_tier))

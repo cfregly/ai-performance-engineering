@@ -428,7 +428,7 @@ class DisaggregatedInferenceSystem:
         print(f"Prefill phase: Processing prompt of length {len(prompt)}")
         
         # Simulate prefill computation
-        start_time = time.time()
+        start_time = time.perf_counter()
         
         # Distribute across prefill workers
         kv_cache = {}
@@ -436,7 +436,7 @@ class DisaggregatedInferenceSystem:
             worker_kv = worker.process_prompt(prompt)
             kv_cache.update(worker_kv)
             
-        prefill_time = time.time() - start_time
+        prefill_time = time.perf_counter() - start_time
         print(f"Prefill completed in {prefill_time:.3f}s")
         
         return kv_cache
@@ -465,7 +465,7 @@ class DisaggregatedInferenceSystem:
         """Generate response using decode workers."""
         print("Decode phase: Generating response tokens...")
         
-        start_time = time.time()
+        start_time = time.perf_counter()
         response_tokens = []
         
         # Generate tokens autoregressively
@@ -476,7 +476,7 @@ class DisaggregatedInferenceSystem:
             if token == "<EOS>":
                 break
                 
-        decode_time = time.time() - start_time
+        decode_time = time.perf_counter() - start_time
         print(f"Decode completed in {decode_time:.3f}s")
         
         return " ".join(response_tokens)

@@ -90,10 +90,10 @@ def main() -> None:
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
     criterion = torch.nn.CrossEntropyLoss()
 
-    start = time.time()
+    start = time.perf_counter()
     train_epoch(model, loader, device, optimizer, criterion)
     torch.cuda.synchronize() if device.type == "cuda" else None
-    print(f"Epoch time: {time.time() - start:.2f}s")
+    print(f"Epoch time: {time.perf_counter() - start:.2f}s")
 
 
 if __name__ == "__main__":

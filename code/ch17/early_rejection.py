@@ -404,8 +404,8 @@ def simulate_load_spike():
         )
         
         # Generate requests for this scenario
-        scenario_start = time.time()
-        while time.time() - scenario_start < scenario['duration']:
+        scenario_start = time.perf_counter()
+        while time.perf_counter() - scenario_start < scenario['duration']:
             # Randomly generate a request
             priority = random.choices(
                 list(scenario['priority_distribution'].keys()),
