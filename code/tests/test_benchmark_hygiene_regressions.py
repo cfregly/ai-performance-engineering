@@ -12265,6 +12265,27 @@ def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path(
             maxsplit=1,
         )[0]
         assert "self._finalize_output()" not in benchmark_section
+        if name.startswith("baseline"):
+            pre_stream_section = benchmark_section.split("with torch.cuda.stream(stream):", maxsplit=1)[0]
+            stream_section = benchmark_section.split("with torch.cuda.stream(stream):", maxsplit=1)[1]
+            assert "self.state_buffer.copy_(self._prefilled_state)" not in pre_stream_section
+            assert "self.current_tokens.copy_(self._prefilled_tokens)" not in pre_stream_section
+            assert "self.state_buffer.copy_(self._prefilled_state)" in stream_section
+            assert "self.current_tokens.copy_(self._prefilled_tokens)" in stream_section
+        else:
+            pre_stream_section = benchmark_section.split(
+                "with torch.cuda.stream(self._graph_stream):",
+                maxsplit=1,
+            )[0]
+            stream_section = benchmark_section.split(
+                "with torch.cuda.stream(self._graph_stream):",
+                maxsplit=1,
+            )[1]
+            assert "self.state_buffer.copy_(self._prefilled_state)" not in pre_stream_section
+            assert "self.current_tokens.copy_(self._prefilled_tokens)" not in pre_stream_section
+            assert "self.state_buffer.copy_(self._prefilled_state)" in stream_section
+            assert "self.current_tokens.copy_(self._prefilled_tokens)" in stream_section
+            assert "self._decode_graph.replay()" in stream_section
 
 
 def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> None:

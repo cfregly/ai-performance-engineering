@@ -65,11 +65,10 @@ class CUDAGraphPersistentDecodeBenchmark(DecodeBenchmark):
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        # Reset to persistent state; avoid recomputing prefill every iteration.
-        self.state_buffer.copy_(self._prefilled_state)
-        self.current_tokens.copy_(self._prefilled_tokens)
-
         with torch.cuda.stream(self._graph_stream):
+            # Reset on the graph stream so replay consumes the intended state.
+            self.state_buffer.copy_(self._prefilled_state)
+            self.current_tokens.copy_(self._prefilled_tokens)
             self._decode_graph.replay()
         torch.cuda.current_stream().wait_stream(self._graph_stream)
 
