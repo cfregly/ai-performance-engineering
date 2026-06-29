@@ -4663,6 +4663,18 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
         "class OptimizedEndToEndBandwidthBenchmark",
         maxsplit=1,
     )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
     assert "self._fc1_buffer: Optional[torch.Tensor] = None" in pipeline_section
     assert "self._fc2_buffer: Optional[torch.Tensor] = None" in pipeline_section
@@ -4673,6 +4685,15 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
     assert "self.relu(fc1_out)" in pipeline_section
     assert "torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)" in pipeline_section
     assert "fc2_out.add_(self.fc2.bias)" in pipeline_section
+    assert "self._flat_output: Optional[torch.Tensor] = None" in source
+    assert "self._output_view: Optional[torch.Tensor] = None" in source
+    assert "self._flat_output = self.model(self.flat_inputs)" in setup_section
+    assert "self._output_view = self._flat_output.view(self.num_batches, self.batch_size, self.hidden_dim)" in setup_section
+    assert "self.model(self.flat_inputs)" in benchmark_section
+    assert "self.output = self._output_view" in benchmark_section
+    assert "flat_output.view(" not in benchmark_section
+    assert "self._flat_output = None" in teardown_section
+    assert "self._output_view = None" in teardown_section
 
 
 def test_ch20_training_and_moe_use_inplace_relu_modules() -> None:

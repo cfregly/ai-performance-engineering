@@ -67,6 +67,8 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.inputs: Optional[list[torch.Tensor]] = None
         self.stacked_inputs: Optional[torch.Tensor] = None
         self.flat_inputs: Optional[torch.Tensor] = None
+        self._flat_output: Optional[torch.Tensor] = None
+        self._output_view: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.batch_size = 32
         self.hidden_dim = 1024
@@ -91,14 +93,15 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.flat_inputs = self.stacked_inputs.view(self.num_batches * self.batch_size, self.hidden_dim).contiguous()
         self.output = None
         with torch.inference_mode():
-            _ = self.model(self.flat_inputs)
+            self._flat_output = self.model(self.flat_inputs)
+        self._output_view = self._flat_output.view(self.num_batches, self.batch_size, self.hidden_dim)
     
     def benchmark_fn(self) -> None:
-        assert self.model is not None and self.flat_inputs is not None
+        assert self.model is not None and self.flat_inputs is not None and self._output_view is not None
         with self._nvtx_range("optimized_end_to_end_bandwidth"):
             with torch.inference_mode():
-                flat_output = self.model(self.flat_inputs)
-                self.output = flat_output.view(self.num_batches, self.batch_size, self.hidden_dim)
+                self.model(self.flat_inputs)
+                self.output = self._output_view
 
     def capture_verification_payload(self) -> None:
         if self.model is None or self.stacked_inputs is None:
@@ -116,6 +119,9 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.inputs = None
         self.stacked_inputs = None
         self.flat_inputs = None
+        self._flat_output = None
+        self._output_view = None
+        self.output = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
