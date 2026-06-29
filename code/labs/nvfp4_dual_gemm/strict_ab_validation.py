@@ -57,6 +57,51 @@ def _summarize_deltas(deltas: list[float]) -> tuple[float, float, float]:
     return float(mean), float(median), float(stdev)
 
 
+def _summarize_pair_rows(pair_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    deltas: list[float] = []
+    baseline_log_total = 0.0
+    candidate_log_total = 0.0
+    wins_candidate = 0
+    wins_baseline = 0
+
+    for row in pair_rows:
+        baseline_score = float(row["baseline_score_us"])
+        candidate_score = float(row["candidate_score_us"])
+        delta = float(row["delta_candidate_minus_baseline_us"])
+        deltas.append(delta)
+        baseline_log_total += math.log(baseline_score)
+        candidate_log_total += math.log(candidate_score)
+        if delta < 0.0:
+            wins_candidate += 1
+        elif delta > 0.0:
+            wins_baseline += 1
+
+    mean_delta, median_delta, stdev_delta = _summarize_deltas(deltas)
+    pair_count = len(deltas)
+    ties = pair_count - wins_candidate - wins_baseline
+    baseline_geo = float(math.exp(baseline_log_total / pair_count))
+    candidate_geo = float(math.exp(candidate_log_total / pair_count))
+    promote_candidate = bool(
+        mean_delta < 0.0 and wins_candidate > wins_baseline and candidate_geo < baseline_geo
+    )
+
+    return {
+        "pairs": pair_count,
+        "baseline_geomean_us": baseline_geo,
+        "candidate_geomean_us": candidate_geo,
+        "delta_geomean_candidate_minus_baseline_us": candidate_geo - baseline_geo,
+        "delta_mean_candidate_minus_baseline_us": mean_delta,
+        "delta_median_candidate_minus_baseline_us": median_delta,
+        "delta_stdev_candidate_minus_baseline_us": stdev_delta,
+        "wins_candidate": wins_candidate,
+        "wins_baseline": wins_baseline,
+        "ties": ties,
+        "promote_candidate": promote_candidate,
+        "delta_candidate_vs_top598_us": candidate_geo - TOP_SCORE_US_598,
+        "delta_baseline_vs_top598_us": baseline_geo - TOP_SCORE_US_598,
+    }
+
+
 def _run_local_eval(
     *,
     repo_root: Path,
@@ -307,36 +352,7 @@ def main() -> int:
                 }
             )
 
-        deltas = [r["delta_candidate_minus_baseline_us"] for r in report["pair_rows"]]
-        baseline_scores = [r["baseline_score_us"] for r in report["pair_rows"]]
-        candidate_scores = [r["candidate_score_us"] for r in report["pair_rows"]]
-
-        mean_delta, median_delta, stdev_delta = _summarize_deltas(deltas)
-        wins_candidate = int(sum(1 for d in deltas if d < 0.0))
-        wins_baseline = int(sum(1 for d in deltas if d > 0.0))
-        ties = int(len(deltas) - wins_candidate - wins_baseline)
-
-        baseline_geo = float(math.exp(sum(math.log(x) for x in baseline_scores) / len(baseline_scores)))
-        candidate_geo = float(math.exp(sum(math.log(x) for x in candidate_scores) / len(candidate_scores)))
-        promote_candidate = bool(
-            mean_delta < 0.0 and wins_candidate > wins_baseline and candidate_geo < baseline_geo
-        )
-
-        report["summary"] = {
-            "pairs": len(deltas),
-            "baseline_geomean_us": baseline_geo,
-            "candidate_geomean_us": candidate_geo,
-            "delta_geomean_candidate_minus_baseline_us": candidate_geo - baseline_geo,
-            "delta_mean_candidate_minus_baseline_us": mean_delta,
-            "delta_median_candidate_minus_baseline_us": median_delta,
-            "delta_stdev_candidate_minus_baseline_us": stdev_delta,
-            "wins_candidate": wins_candidate,
-            "wins_baseline": wins_baseline,
-            "ties": ties,
-            "promote_candidate": promote_candidate,
-            "delta_candidate_vs_top598_us": candidate_geo - TOP_SCORE_US_598,
-            "delta_baseline_vs_top598_us": baseline_geo - TOP_SCORE_US_598,
-        }
+        report["summary"] = _summarize_pair_rows(report["pair_rows"])
         report["status"] = "ok"
     except Exception as exc:  # noqa: BLE001
         report["status"] = "error"

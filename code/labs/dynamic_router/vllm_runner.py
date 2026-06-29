@@ -404,12 +404,6 @@ def _percentiles(data: List[float], pcts: Tuple[float, ...]) -> Tuple[float, ...
     return tuple(_percentile_from_ordered(data_sorted, pct) for pct in pcts)
 
 
-def _mean(data: List[float]) -> float:
-    if not data:
-        return 0.0
-    return float(sum(data) / len(data))
-
-
 def _build_handles(
     mode: str, prefill_ids: List[int], decode_ids: List[int], gpu_numa: Optional[Dict[int, Optional[int]]] = None
 ) -> List[_GPUHandle]:
@@ -693,7 +687,8 @@ def run_dual_pool_vllm_with_topology(
 
     ttft_samples: List[float] = []
     pool_ttft: Dict[str, List[float]] = {"prefill": [], "decode": []}
-    queue_samples: Dict[str, List[float]] = {"prefill": [], "decode": []}
+    queue_depth_totals: Dict[str, float] = {"prefill": 0.0, "decode": 0.0}
+    queue_depth_counts: Dict[str, int] = {"prefill": 0, "decode": 0}
     completed: Set[str] = set()
     alpha = 0.3
     ttft_ema: Dict[str, float] = {h.gpu_id: 0.0 for h in handles}
@@ -722,9 +717,11 @@ def run_dual_pool_vllm_with_topology(
             )
             qd = eng.queue_depth()
             if handle.is_prefill:
-                queue_samples["prefill"].append(float(qd))
+                queue_depth_totals["prefill"] += float(qd)
+                queue_depth_counts["prefill"] += 1
             if handle.is_decode:
-                queue_samples["decode"].append(float(qd))
+                queue_depth_totals["decode"] += float(qd)
+                queue_depth_counts["decode"] += 1
             for rid in finished_ids:
                 completed.add(rid)
         time.sleep(0.01)
@@ -747,8 +744,16 @@ def run_dual_pool_vllm_with_topology(
         "prefill_ttft_ms_p95": prefill_ttft_p95,
         "decode_ttft_ms_p50": decode_ttft_p50,
         "decode_ttft_ms_p95": decode_ttft_p95,
-        "queue_depth_prefill_mean": _mean(queue_samples["prefill"]),
-        "queue_depth_decode_mean": _mean(queue_samples["decode"]),
+        "queue_depth_prefill_mean": (
+            queue_depth_totals["prefill"] / queue_depth_counts["prefill"]
+            if queue_depth_counts["prefill"]
+            else 0.0
+        ),
+        "queue_depth_decode_mean": (
+            queue_depth_totals["decode"] / queue_depth_counts["decode"]
+            if queue_depth_counts["decode"]
+            else 0.0
+        ),
         "long_prompt_tokens": float(long_prompt_tokens),
         "short_prompt_tokens": float(short_prompt_tokens),
         "prefill_burst": float(prefill_burst),

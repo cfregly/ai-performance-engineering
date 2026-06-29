@@ -4696,6 +4696,33 @@ def test_nvfp4_local_eval_sample_stats_reuse_sorted_samples() -> None:
         assert "math.sqrt(" in stats_section
 
 
+def test_nvfp4_strict_ab_summarizes_pair_rows_incrementally() -> None:
+    source = (REPO_ROOT / "labs" / "nvfp4_dual_gemm" / "strict_ab_validation.py").read_text(
+        encoding="utf-8"
+    )
+    pair_summary_section = source.split("def _summarize_pair_rows", maxsplit=1)[1].split(
+        "def _run_local_eval",
+        maxsplit=1,
+    )[0]
+    main_summary_section = source.split(
+        'report["summary"] = _summarize_pair_rows(report["pair_rows"])',
+        maxsplit=1,
+    )[0].split("for i in range", maxsplit=1)[-1]
+
+    assert "for row in pair_rows:" in pair_summary_section
+    assert "deltas.append(delta)" in pair_summary_section
+    assert "baseline_log_total += math.log(baseline_score)" in pair_summary_section
+    assert "candidate_log_total += math.log(candidate_score)" in pair_summary_section
+    assert "wins_candidate += 1" in pair_summary_section
+    assert "wins_baseline += 1" in pair_summary_section
+    assert "baseline_scores = [" not in source
+    assert "candidate_scores = [" not in source
+    assert "wins_candidate = int(sum(" not in source
+    assert "wins_baseline = int(sum(" not in source
+    assert 'report["summary"] = _summarize_pair_rows(report["pair_rows"])' in source
+    assert "baseline_geomean_us" not in main_summary_section
+
+
 def test_lab_utility_timers_record_on_current_stream() -> None:
     timing_splits = {
         "labs/tcgen05_cluster_shapes/run_cluster_shape_sweep.py": (
@@ -6819,7 +6846,7 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
         REPO_ROOT / "labs" / "dynamic_router" / "scorecard.py"
     ).read_text(encoding="utf-8")
     runner_percentiles = runner_source.split("def _percentiles", maxsplit=1)[1].split(
-        "def _mean",
+        "def _build_handles",
         maxsplit=1,
     )[0]
     routing_section = runner_source.split(
@@ -6846,6 +6873,16 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
     assert "ttft_p50, ttft_p95 = _percentiles(ttft_samples, (50.0, 95.0))" in dual_pool_section
     assert "prefill_ttft_p50, prefill_ttft_p95 = _percentiles(pool_ttft[\"prefill\"]" in dual_pool_section
     assert "decode_ttft_p50, decode_ttft_p95 = _percentiles(pool_ttft[\"decode\"]" in dual_pool_section
+    assert 'queue_depth_totals: Dict[str, float] = {"prefill": 0.0, "decode": 0.0}' in dual_pool_section
+    assert 'queue_depth_counts: Dict[str, int] = {"prefill": 0, "decode": 0}' in dual_pool_section
+    assert 'queue_depth_totals["prefill"] += float(qd)' in dual_pool_section
+    assert 'queue_depth_counts["prefill"] += 1' in dual_pool_section
+    assert 'queue_depth_totals["decode"] += float(qd)' in dual_pool_section
+    assert 'queue_depth_counts["decode"] += 1' in dual_pool_section
+    assert 'queue_depth_totals["prefill"] / queue_depth_counts["prefill"]' in dual_pool_section
+    assert 'queue_depth_totals["decode"] / queue_depth_counts["decode"]' in dual_pool_section
+    assert "queue_samples" not in dual_pool_section
+    assert "_mean(" not in dual_pool_section
     assert "_percentile(ttft_samples, 50.0)" not in runner_source
     assert "_percentile(ttft_samples, 95.0)" not in runner_source
     assert "_percentile(pool_ttft" not in runner_source
@@ -6912,6 +6949,10 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
         "(run_dir / \"summary.json\")",
         maxsplit=1,
     )[0]
+    scorecard_section = source.split("def _build_scorecard", maxsplit=1)[1].split(
+        "def _attach_baseline",
+        maxsplit=1,
+    )[0]
     run_quality_section = source.split("def _run_quality", maxsplit=1)[1].split(
         "def _run_quality_with_llm",
         maxsplit=1,
@@ -6937,14 +6978,29 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert '"gate_margin": margin_total / margin_count if margin_count else 0.0' in summarize_moe_section
     assert "entropy_samples.append" not in summarize_moe_section
     assert "margin_samples.append" not in summarize_moe_section
-    assert "ttft_summary = _percentiles([r[\"ttft_ms\"] for r in latency_rows])" in run_summary_section
-    assert "decode_summary = _percentiles([r[\"decode_ms\"] for r in latency_rows])" in run_summary_section
+    assert 'latency_summary = scorecard["latency"]' in run_summary_section
+    assert 'ttft_summary = latency_summary["ttft"]' in run_summary_section
+    assert 'decode_summary = latency_summary["decode"]' in run_summary_section
     assert "\"ttft_p50_ms\": ttft_summary[\"p50\"]" in run_summary_section
     assert "\"ttft_p95_ms\": ttft_summary[\"p95\"]" in run_summary_section
     assert "\"decode_p50_ms\": decode_summary[\"p50\"]" in run_summary_section
     assert "\"decode_p95_ms\": decode_summary[\"p95\"]" in run_summary_section
+    assert "ttft_summary = _percentiles([r[\"ttft_ms\"] for r in latency_rows])" not in run_summary_section
+    assert "decode_summary = _percentiles([r[\"decode_ms\"] for r in latency_rows])" not in run_summary_section
     assert "_percentile([r[\"ttft_ms\"] for r in latency_rows]" not in run_summary_section
     assert "_percentile([r[\"decode_ms\"] for r in latency_rows]" not in run_summary_section
+    assert "decode_by_token_vals: Dict[int, List[float]] = {128: [], 512: [], 2048: []}" in scorecard_section
+    assert "for row in latency_rows:" in scorecard_section
+    assert "warm_ttft_vals.append(ttft_ms)" in scorecard_section
+    assert "cold_ttft_vals.append(ttft_ms)" in scorecard_section
+    assert "token_bucket = decode_by_token_vals.get(row[\"output_tokens\"])" in scorecard_section
+    assert "token_bucket.append(decode_ms)" in scorecard_section
+    assert '"ttft_warm": _percentiles(warm_ttft_vals)' in scorecard_section
+    assert '"ttft_cold": _percentiles(cold_ttft_vals)' in scorecard_section
+    assert "warm_rows = [r for r in latency_rows" not in scorecard_section
+    assert "cold_rows = [r for r in latency_rows" not in scorecard_section
+    assert "def _decode_bucket" not in scorecard_section
+    assert "for r in latency_rows if r[\"output_tokens\"]" not in scorecard_section
     assert "rows = self._run_quality_with_llm()" in run_quality_section
     assert "return rows, _summarize_quality_rows(rows)" in run_quality_section
     assert "per_task_acc" not in run_quality_section
@@ -8712,6 +8768,18 @@ def test_python_concurrency_summaries_reuse_sorted_latency_samples() -> None:
     assert "p50_success_ms, _ = _latency_percentiles(success_totals)" in all_in_one_summary
     assert "p50_total_ms, p95_total_ms = _total_latency_percentiles(totals)" in hybrid_summary
 
+    assert "for result in results:" in round1_summary
+    assert "latencies = [r.latency_ms for r in results]" not in round1_summary
+    assert "sum(1 for r in results" not in round1_summary
+    assert "for result in results:" in round2_summary
+    assert "success_latencies = [r.latency_ms for r in results" not in round2_summary
+    assert "sum(1 for r in results" not in round2_summary
+    assert "totals = [record.total_ms for record in results]" not in all_in_one_summary
+    assert "success_totals = [record.total_ms for record in results" not in all_in_one_summary
+    assert "for result in results:" in hybrid_summary
+    assert "success_lat = [r.total_ms for r in results" not in hybrid_summary
+    assert "sum(1 for r in results" not in hybrid_summary
+    assert "statistics.mean(" not in hybrid_source
     assert "statistics.median(" not in round1_summary
     assert "statistics.median(" not in round2_summary
     assert "statistics.median(" not in all_in_one_summary

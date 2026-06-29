@@ -282,17 +282,34 @@ async def worker(
 def summarize(results: list[Result]) -> dict[str, Any]:
     """Aggregate status counts and latency distribution."""
 
-    success_latencies = [r.latency_ms for r in results if r.status == SUCCESS]
+    success_latencies: list[float] = []
+    started = 0
+    success = 0
+    failed = 0
+    timed_out = 0
+    cancelled = 0
+    for result in results:
+        if result.attempts > 0:
+            started += 1
+        if result.status == SUCCESS:
+            success += 1
+            success_latencies.append(result.latency_ms)
+        elif result.status == FAILED:
+            failed += 1
+        elif result.status == TIMED_OUT:
+            timed_out += 1
+        elif result.status == CANCELLED:
+            cancelled += 1
     p50_success_ms, p95_success_ms = _success_latency_percentiles(success_latencies)
 
     summary = {
         "queued": len(results),
-        "started": sum(1 for r in results if r.attempts > 0),
+        "started": started,
         "completed": len(results),
-        "success": sum(1 for r in results if r.status == SUCCESS),
-        "failed": sum(1 for r in results if r.status == FAILED),
-        "timed_out": sum(1 for r in results if r.status == TIMED_OUT),
-        "cancelled": sum(1 for r in results if r.status == CANCELLED),
+        "success": success,
+        "failed": failed,
+        "timed_out": timed_out,
+        "cancelled": cancelled,
         "p50_success_ms": p50_success_ms,
         "p95_success_ms": p95_success_ms,
     }

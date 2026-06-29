@@ -27,7 +27,6 @@ import asyncio
 import json
 import math
 import multiprocessing as mp
-import statistics
 import time
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass
@@ -457,14 +456,25 @@ def summarize(results: list[PipelineResult]) -> dict[str, Any]:
     """Create aggregate pipeline metrics."""
 
     total = len(results)
-    success = sum(1 for r in results if r.status == SUCCESS)
-    failed_a = sum(1 for r in results if r.status == FAILED_STAGE_A)
-    failed_b = sum(1 for r in results if r.status == FAILED_STAGE_B)
-    failed_c = sum(1 for r in results if r.status == FAILED_STAGE_C)
-
-    totals = [r.total_ms for r in results]
-    success_lat = [r.total_ms for r in results if r.status == SUCCESS]
+    success = 0
+    failed_a = 0
+    failed_b = 0
+    failed_c = 0
+    success_total_ms = 0.0
+    totals: list[float] = []
+    for result in results:
+        totals.append(result.total_ms)
+        if result.status == SUCCESS:
+            success += 1
+            success_total_ms += result.total_ms
+        elif result.status == FAILED_STAGE_A:
+            failed_a += 1
+        elif result.status == FAILED_STAGE_B:
+            failed_b += 1
+        elif result.status == FAILED_STAGE_C:
+            failed_c += 1
     p50_total_ms, p95_total_ms = _total_latency_percentiles(totals)
+    mean_success_ms = round(success_total_ms / success, 2) if success else math.nan
 
     return {
         "total": total,
@@ -474,7 +484,7 @@ def summarize(results: list[PipelineResult]) -> dict[str, Any]:
         "failed_stage_c": failed_c,
         "p50_total_ms": p50_total_ms,
         "p95_total_ms": p95_total_ms,
-        "mean_success_ms": round(statistics.mean(success_lat), 2) if success_lat else math.nan,
+        "mean_success_ms": mean_success_ms,
     }
 
 

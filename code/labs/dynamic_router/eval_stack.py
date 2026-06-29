@@ -423,8 +423,9 @@ class CheapEvalStack:
         }
         (run_dir / "sys_meta.json").write_text(json.dumps(sys_meta, indent=2))
 
-        ttft_summary = _percentiles([r["ttft_ms"] for r in latency_rows])
-        decode_summary = _percentiles([r["decode_ms"] for r in latency_rows])
+        latency_summary = scorecard["latency"]
+        ttft_summary = latency_summary["ttft"]
+        decode_summary = latency_summary["decode"]
 
         summary = {
             "run_dir": str(run_dir),
@@ -653,19 +654,27 @@ class CheapEvalStack:
         moe_summary: Dict,
         throughput_summary: Dict,
     ) -> Dict[str, Dict]:
-        ttft_vals = [r["ttft_ms"] for r in latency_rows]
-        decode_vals = [r["decode_ms"] for r in latency_rows]
-        warm_rows = [r for r in latency_rows if r["case"] == "warm"]
-        cold_rows = [r for r in latency_rows if r["case"] == "cold"]
-
-        def _decode_bucket(target: int) -> Dict[str, float]:
-            bucket = [r["decode_ms"] for r in latency_rows if r["output_tokens"] == target]
-            return _percentiles(bucket) if bucket else {"p50": 0.0, "p95": 0.0}
+        ttft_vals: List[float] = []
+        decode_vals: List[float] = []
+        warm_ttft_vals: List[float] = []
+        cold_ttft_vals: List[float] = []
+        decode_by_token_vals: Dict[int, List[float]] = {128: [], 512: [], 2048: []}
+        for row in latency_rows:
+            ttft_ms = row["ttft_ms"]
+            decode_ms = row["decode_ms"]
+            ttft_vals.append(ttft_ms)
+            decode_vals.append(decode_ms)
+            if row["case"] == "warm":
+                warm_ttft_vals.append(ttft_ms)
+            elif row["case"] == "cold":
+                cold_ttft_vals.append(ttft_ms)
+            token_bucket = decode_by_token_vals.get(row["output_tokens"])
+            if token_bucket is not None:
+                token_bucket.append(decode_ms)
 
         decode_by_len = {
-            "128": _decode_bucket(128),
-            "512": _decode_bucket(512),
-            "2048": _decode_bucket(2048),
+            str(target): _percentiles(bucket) if bucket else {"p50": 0.0, "p95": 0.0}
+            for target, bucket in decode_by_token_vals.items()
         }
 
         return {
@@ -676,8 +685,8 @@ class CheapEvalStack:
             },
             "latency": {
                 "ttft": _percentiles(ttft_vals),
-                "ttft_warm": _percentiles([r["ttft_ms"] for r in warm_rows]),
-                "ttft_cold": _percentiles([r["ttft_ms"] for r in cold_rows]),
+                "ttft_warm": _percentiles(warm_ttft_vals),
+                "ttft_cold": _percentiles(cold_ttft_vals),
                 "decode": _percentiles(decode_vals),
                 "decode_by_tokens": decode_by_len,
                 "slo_ms": {"ttft": self.cfg.ttft_slo_ms, "latency": self.cfg.latency_slo_ms},

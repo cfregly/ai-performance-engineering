@@ -1083,11 +1083,14 @@ def summarize(results: list[ResultRecord], shared: SharedState) -> dict[str, Any
         FAILED_STAGE_C: 0,
     }
 
+    totals: list[float] = []
+    success_totals: list[float] = []
     for record in results:
         status_counts[record.status] += 1
+        totals.append(record.total_ms)
+        if record.status == SUCCESS:
+            success_totals.append(record.total_ms)
 
-    totals = [record.total_ms for record in results]
-    success_totals = [record.total_ms for record in results if record.status == SUCCESS]
     p50_total_ms, p95_total_ms = _latency_percentiles(totals)
     p50_success_ms, _ = _latency_percentiles(success_totals)
 
