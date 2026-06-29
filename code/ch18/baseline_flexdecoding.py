@@ -115,20 +115,21 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Timing event count mismatch")
 
         base_position = self.prefill_tokens.size(1)
+        current_stream = torch.cuda.current_stream(self.device)
 
         with torch.inference_mode():
             with self._nvtx_range("flex_prefill"):
                 prefill_start, prefill_end = self._prefill_events
-                prefill_start.record()
+                prefill_start.record(current_stream)
                 prefill_out = self._prefill_step()
-                prefill_end.record()
+                prefill_end.record(current_stream)
 
             with self._nvtx_range("flex_decode"):
                 for pos in range(self.decode_tokens):
                     start_evt, end_evt = self._decode_events[pos]
-                    start_evt.record()
+                    start_evt.record(current_stream)
                     decode_out = self._decode_step(self.decode_token, base_position + pos)
-                    end_evt.record()
+                    end_evt.record(current_stream)
 
         # Store last output for verification
         self._last_output = decode_out if "decode_out" in locals() else prefill_out

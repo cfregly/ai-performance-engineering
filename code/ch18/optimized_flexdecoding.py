@@ -120,13 +120,14 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
             raise RuntimeError("Timing event count mismatch")
 
         base_position = self.prefill_tokens.size(1)
+        current_stream = torch.cuda.current_stream(self.device)
 
         with torch.inference_mode():
             with self._nvtx_range("flex_prefill"):
                 prefill_start, prefill_end = self._prefill_events
-                prefill_start.record()
+                prefill_start.record(current_stream)
                 prefill_out = self._prefill_step()
-                prefill_end.record()
+                prefill_end.record(current_stream)
 
             decode_q, decode_k, decode_v = self.model._project_token(self.decode_token)
 
@@ -134,14 +135,14 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
                 with sdpa_kernel(self._flash_attention_backends):
                     for pos in range(self.decode_tokens):
                         start_evt, end_evt = self._decode_events[pos]
-                        start_evt.record()
+                        start_evt.record(current_stream)
                         decode_out = self._decode_projected_step(
                             decode_q,
                             decode_k,
                             decode_v,
                             base_position + pos,
                         )
-                        end_evt.record()
+                        end_evt.record(current_stream)
 
         self._last_output = decode_out if "decode_out" in locals() else prefill_out
         self._pending_iteration_metrics = True

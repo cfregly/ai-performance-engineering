@@ -6678,6 +6678,14 @@ def test_optimized_flexdecode_graph_preprojects_static_decode_token() -> None:
     assert "self.model.k_proj(self.decode_token)" not in benchmark_section
     assert "self.model.v_proj(self.decode_token)" not in benchmark_section
     assert "self.model._update_cache(self.static_decode_k, self.static_decode_v, self.base_position + pos)" in benchmark_section
+    assert "default_stream = torch.cuda.current_stream(device=self.device)" in benchmark_section
+    assert "prefill_start.record(default_stream)" in benchmark_section
+    assert "prefill_end.record(default_stream)" in benchmark_section
+    assert "start_evt.record(default_stream)" in benchmark_section
+    assert "end_evt.record(self.capture_stream)" in benchmark_section
+    assert "prefill_start.record()" not in benchmark_section
+    assert "prefill_end.record()" not in benchmark_section
+    assert "end_evt.record()" not in benchmark_section
 
 
 def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
@@ -6693,6 +6701,22 @@ def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
 
         assert "with torch.inference_mode():" in benchmark_section
         assert "with torch.no_grad():" not in benchmark_section
+        assert "prefill_start.record()" not in benchmark_section
+        assert "prefill_end.record()" not in benchmark_section
+        assert "start_evt.record()" not in benchmark_section
+        assert "end_evt.record()" not in benchmark_section
+        if filename == "optimized_flexdecoding_graphs.py":
+            assert "default_stream = torch.cuda.current_stream(device=self.device)" in benchmark_section
+            assert "prefill_start.record(default_stream)" in benchmark_section
+            assert "prefill_end.record(default_stream)" in benchmark_section
+            assert "start_evt.record(default_stream)" in benchmark_section
+            assert "end_evt.record(self.capture_stream)" in benchmark_section
+        else:
+            assert "current_stream = torch.cuda.current_stream(self.device)" in benchmark_section
+            assert "prefill_start.record(current_stream)" in benchmark_section
+            assert "prefill_end.record(current_stream)" in benchmark_section
+            assert "start_evt.record(current_stream)" in benchmark_section
+            assert "end_evt.record(current_stream)" in benchmark_section
 
 
 def test_ch18_optimized_flexdecoding_reuses_sdpa_backend_list() -> None:
