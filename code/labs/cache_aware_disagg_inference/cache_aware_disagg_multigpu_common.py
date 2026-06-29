@@ -887,7 +887,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._output_parts = [torch.empty(0) for _ in self._request_plans]
         self._output_stack = self._allocate_host_output_stack()
         self._outputs_ready = False
-        self._custom_metrics = {}
+        self._custom_metrics.clear()
         self._empty_kv_by_device = {}
         self._decode_seed_buffers = {}
         self._active_caches = {}
@@ -1111,21 +1111,25 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         total_requests = self._metric_request_count
         cache_decisions = max(metrics["cache_hits"] + metrics["cache_misses"], 1.0)
         timing_divisor = max(timing_count, 1)
-        self._custom_metrics = {
-            **compute_inference_metrics(
+        custom_metrics = self._custom_metrics
+        custom_metrics.clear()
+        custom_metrics.update(
+            compute_inference_metrics(
                 ttft_ms=ttft_total_ms / timing_divisor,
                 tpot_ms=tpot_total_ms / timing_divisor,
                 total_tokens=self._metric_total_tokens,
                 total_requests=self._metric_total_batch_requests,
                 batch_size=self.cfg.batch_size,
                 max_batch_size=self._metric_max_batch_size,
-            ),
-            "cache_aware.cache_hit_rate": metrics["cache_hits"] / cache_decisions,
-            "cache_aware.kv_transfer_mb": metrics["kv_transfer_bytes"] / 1e6,
-            "cache_aware.worker_switches_per_request": metrics["worker_switches"] / total_requests,
-            "cache_aware.peer_handoffs": metrics["peer_handoffs"],
-            "cache_aware.shared_reload_mb": metrics["shared_reload_bytes"] / 1e6,
-        }
+            )
+        )
+        custom_metrics["cache_aware.cache_hit_rate"] = metrics["cache_hits"] / cache_decisions
+        custom_metrics["cache_aware.kv_transfer_mb"] = metrics["kv_transfer_bytes"] / 1e6
+        custom_metrics["cache_aware.worker_switches_per_request"] = (
+            metrics["worker_switches"] / total_requests
+        )
+        custom_metrics["cache_aware.peer_handoffs"] = metrics["peer_handoffs"]
+        custom_metrics["cache_aware.shared_reload_mb"] = metrics["shared_reload_bytes"] / 1e6
 
     def capture_verification_payload(self) -> None:
         if not self._outputs_ready or self._verify_prompt is None:

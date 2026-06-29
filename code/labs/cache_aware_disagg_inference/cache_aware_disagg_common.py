@@ -285,14 +285,13 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_stack = torch.empty(
             len(self.request_plans),
             self.cfg.batch_size,
-            self.cfg.decode_tokens,
             self.cfg.hidden_size,
             device=self.device,
             dtype=self.cfg.dtype,
         )
         self._outputs_ready = False
         self._timing_history = {"ttft": [], "tpot": []}
-        self._custom_metrics = {}
+        self._custom_metrics.clear()
         self._request_event_pool = [
             (
                 torch.cuda.Event(enable_timing=True),
@@ -505,7 +504,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._timing_history = {"ttft": request_ttft, "tpot": request_tpot}
         timing_count = max(len(request_ttft), 1)
 
-        metrics = dict(self._pending_metrics)
+        metrics = self._pending_metrics
         cache_decisions = metrics.get("cache_hits", 0.0) + metrics.get("cache_misses", 0.0)
         cache_hit_rate = metrics.get("cache_hits", 0.0) / cache_decisions if cache_decisions else 0.0
         warm_requests = metrics.get("warm_requests", 0.0)
@@ -516,30 +515,36 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         max_transitions = float(max(1, self.cfg.requests_per_iteration * self.cfg.num_chunks))
         temporal_locality = 1.0 - min(metrics.get("worker_switches", 0.0) / max_transitions, 1.0)
-        self._custom_metrics = {
-            **compute_inference_metrics(
+        custom_metrics = self._custom_metrics
+        custom_metrics.clear()
+        custom_metrics.update(
+            compute_inference_metrics(
                 ttft_ms=ttft_total_ms / timing_count,
                 tpot_ms=tpot_total_ms / timing_count,
                 total_tokens=self.cfg.total_requests * self.cfg.decode_tokens,
                 total_requests=self.cfg.total_requests,
                 batch_size=self.cfg.batch_size,
                 max_batch_size=self.cfg.batch_size * self.cfg.logical_decode_workers,
-            ),
-            "cache_aware.cache_hit_rate": cache_hit_rate,
-            "cache_aware.cache_miss_rate": 1.0 - cache_hit_rate,
-            "cache_aware.warm_request_local_rate": warm_local_rate,
-            "cache_aware.worker_switches_per_request": metrics.get("worker_switches", 0.0) / max(
-                float(self.cfg.requests_per_iteration),
-                1.0,
-            ),
-            "cache_aware.temporal_locality_score": temporal_locality,
-            "cache_aware.shared_reloads": metrics.get("shared_reloads", 0.0),
-            "cache_aware.peer_reloads": metrics.get("peer_reloads", 0.0),
-            "cache_aware.kv_transfer_mb": metrics.get("kv_transfer_bytes", 0.0) / 1e6,
-            "cache_aware.logical_decode_workers": float(self.cfg.logical_decode_workers),
-            "cache_aware.prefill_chunks_per_request": float(self.cfg.num_chunks),
-            "cache_aware.warm_request_ratio": float(self.cfg.warm_request_ratio),
-        }
+            )
+        )
+        custom_metrics["cache_aware.cache_hit_rate"] = cache_hit_rate
+        custom_metrics["cache_aware.cache_miss_rate"] = 1.0 - cache_hit_rate
+        custom_metrics["cache_aware.warm_request_local_rate"] = warm_local_rate
+        custom_metrics["cache_aware.worker_switches_per_request"] = metrics.get(
+            "worker_switches",
+            0.0,
+        ) / max(float(self.cfg.requests_per_iteration), 1.0)
+        custom_metrics["cache_aware.temporal_locality_score"] = temporal_locality
+        custom_metrics["cache_aware.shared_reloads"] = metrics.get("shared_reloads", 0.0)
+        custom_metrics["cache_aware.peer_reloads"] = metrics.get("peer_reloads", 0.0)
+        custom_metrics["cache_aware.kv_transfer_mb"] = (
+            metrics.get("kv_transfer_bytes", 0.0) / 1e6
+        )
+        custom_metrics["cache_aware.logical_decode_workers"] = float(
+            self.cfg.logical_decode_workers
+        )
+        custom_metrics["cache_aware.prefill_chunks_per_request"] = float(self.cfg.num_chunks)
+        custom_metrics["cache_aware.warm_request_ratio"] = float(self.cfg.warm_request_ratio)
         self._set_verification_payload(
             inputs={"prompt": self.prompts[0]},
             output=self.output,

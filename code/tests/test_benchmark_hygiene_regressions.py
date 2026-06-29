@@ -16640,6 +16640,12 @@ def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    output_stack_section = setup_section.split("self._output_stack = torch.empty(", maxsplit=1)[
+        1
+    ].split(
+        "        self._outputs_ready",
+        maxsplit=1,
+    )[0]
     teardown_section = source.split("def teardown", maxsplit=1)[1].split(
         "def get_config",
         maxsplit=1,
@@ -16653,15 +16659,71 @@ def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:
     assert "prompt_chunks = self._prompt_chunks" in benchmark_section
     assert "Prompt chunk views not initialized" in benchmark_section
     assert "chunks = prompt_chunks[plan.request_idx]" in benchmark_section
+    assert "self.cfg.batch_size" in output_stack_section
+    assert "self.cfg.hidden_size" in output_stack_section
+    assert "self.cfg.decode_tokens" not in output_stack_section
     assert "for chunk_idx in range(plan.warm_chunks, plan.total_chunks):" in benchmark_section
     assert "chunk = chunks[chunk_idx]" in benchmark_section
-    assert '"warm_requests": float(self._warm_request_count)' in benchmark_section
+    assert '"warm_requests": float(self._warm_request_count)' in setup_section
+    assert 'metrics["warm_requests"] = float(self._warm_request_count)' in benchmark_section
     assert "_split_prompt(" not in benchmark_section
     assert "chunks[plan.warm_chunks :]" not in benchmark_section
     assert "request_events[: len(self.request_plans)]" not in benchmark_section
     assert "self._request_event_triplets = request_events" in benchmark_section
     assert "sum(1 for plan in self.request_plans if plan.is_warm)" not in benchmark_section
     assert "self._prompt_chunks = []" in teardown_section
+
+
+def test_cache_aware_disagg_reuses_custom_metric_buffers() -> None:
+    single_source = (
+        REPO_ROOT / "labs" / "cache_aware_disagg_inference" / "cache_aware_disagg_common.py"
+    ).read_text(encoding="utf-8")
+    single_setup_section = single_source.split("def setup", maxsplit=1)[1].split(
+        "def _empty_kv",
+        maxsplit=1,
+    )[0]
+    single_capture_section = single_source.split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+
+    multi_source = (
+        REPO_ROOT
+        / "labs"
+        / "cache_aware_disagg_inference"
+        / "cache_aware_disagg_multigpu_common.py"
+    ).read_text(encoding="utf-8")
+    multi_setup_section = multi_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    multi_benchmark_section = multi_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    metric_update_call = "custom_metrics.update(\n            compute_inference_metrics("
+
+    assert "self._custom_metrics.clear()" in single_setup_section
+    assert "metrics = self._pending_metrics" in single_capture_section
+    assert "custom_metrics = self._custom_metrics" in single_capture_section
+    assert "custom_metrics.clear()" in single_capture_section
+    assert metric_update_call in single_capture_section
+    assert "self._custom_metrics = {" not in single_setup_section
+    assert "self._custom_metrics = {" not in single_capture_section
+    assert "metrics = dict(self._pending_metrics)" not in single_capture_section
+    assert "**compute_inference_metrics" not in single_capture_section
+
+    assert "self._custom_metrics.clear()" in multi_setup_section
+    assert "custom_metrics = self._custom_metrics" in multi_benchmark_section
+    assert "custom_metrics.clear()" in multi_benchmark_section
+    assert metric_update_call in multi_benchmark_section
+    assert "self._custom_metrics = {" not in multi_setup_section
+    assert "self._custom_metrics = {" not in multi_benchmark_section
+    assert "**compute_inference_metrics" not in multi_benchmark_section
 
 
 def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events() -> None:
