@@ -37,17 +37,21 @@ class BaselineCUDAGraphBucketing:
         self.traffic = list(traffic) if traffic is not None else demo_traffic()
         self.vllm_model = vllm_model
         self.use_vllm_bins = use_vllm_bins
+        self._vllm_config = load_vllm_config(vllm_model) if use_vllm_bins else None
+        self._capture_bins = (
+            capture_bins_from_vllm_config(self._vllm_config)
+            if self._vllm_config
+            else DEFAULT_CAPTURE_BATCH_SIZES
+        )
+        self._pad_fn = pad_fn_from_vllm_config(self._vllm_config) if self._vllm_config else None
 
     def build_simulator(self) -> GraphTreeSimulator:
         bands = BucketBands(batch_buckets=[], seqlen_buckets=[])
-        vllm_config = load_vllm_config(self.vllm_model) if self.use_vllm_bins else None
-        capture_bins = capture_bins_from_vllm_config(vllm_config) if vllm_config else DEFAULT_CAPTURE_BATCH_SIZES
-        pad_fn = pad_fn_from_vllm_config(vllm_config) if vllm_config else None
         return GraphTreeSimulator(
             bucket_bands=bands,
-            capture_batch_sizes=capture_bins,
+            capture_batch_sizes=self._capture_bins,
             name="baseline_cudagraphs",
-            pad_fn=pad_fn,
+            pad_fn=self._pad_fn,
             # Model expensive graph capture vs cheap replay.
             capture_cost_iters=5000,
         )
@@ -163,7 +167,7 @@ class BaselineCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchmar
         """Return simulator-derived graph bucketing metrics."""
         if self._last is None:
             return None
-        summary = self._last.summary()
+        summary = self._last.stats.summary()
         return {
             "graph_tree.captures": float(summary["captures"]),
             "graph_tree.prewarm_captures": float(summary["prewarm_captures"]),

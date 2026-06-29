@@ -5121,6 +5121,62 @@ def test_ch18_cudagraph_bucketing_static_inputs_avoid_zero_fill() -> None:
             assert "torch.no_grad()" not in forward_section
 
 
+def test_ch18_cudagraph_bucketing_reuses_resolved_capture_bins() -> None:
+    for relative in (
+        "ch18/baseline_cudagraph_bucketing.py",
+        "ch18/optimized_cudagraph_bucketing.py",
+        "ch18/cudagraph_bucketing_simulator.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        if "class BaselineCUDAGraphBucketing" in source:
+            baseline_class = source.split("class BaselineCUDAGraphBucketing", maxsplit=1)[1]
+            baseline_init = baseline_class.split("def build_simulator", maxsplit=1)[0]
+            baseline_build = baseline_class.split("def build_simulator", maxsplit=1)[1].split(
+                "def run",
+                maxsplit=1,
+            )[0]
+
+            assert "self._vllm_config = load_vllm_config(vllm_model) if use_vllm_bins else None" in baseline_init
+            assert "self._capture_bins = (" in baseline_init
+            assert "self._pad_fn = pad_fn_from_vllm_config(self._vllm_config)" in baseline_init
+            assert "capture_batch_sizes=self._capture_bins" in baseline_build
+            assert "pad_fn=self._pad_fn" in baseline_build
+            assert "load_vllm_config(" not in baseline_build
+            assert "capture_bins_from_vllm_config(" not in baseline_build
+            assert "pad_fn_from_vllm_config(" not in baseline_build
+            if relative.endswith("baseline_cudagraph_bucketing.py"):
+                metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
+                    "def get_config",
+                    maxsplit=1,
+                )[0]
+                assert "self._last.stats.summary()" in metrics_section
+                assert "self._last.summary()" not in metrics_section
+
+        if "class OptimizedCUDAGraphBucketing" not in source:
+            continue
+        optimized_class = source.split("class OptimizedCUDAGraphBucketing", maxsplit=1)[1]
+        optimized_init = optimized_class.split("def _default_prewarm", maxsplit=1)[0]
+        optimized_prewarm = optimized_class.split("def _default_prewarm", maxsplit=1)[1].split(
+            "def build_simulator",
+            maxsplit=1,
+        )[0]
+        optimized_build = optimized_class.split("def build_simulator", maxsplit=1)[1].split(
+            "def run_compile_validation",
+            maxsplit=1,
+        )[0]
+
+        assert "vllm_model=vllm_model" in optimized_init
+        assert "use_vllm_bins=use_vllm_bins" in optimized_init
+        assert "load_vllm_config(" not in optimized_init
+        assert "capture_bins_from_vllm_config(" not in optimized_prewarm
+        assert "pad_fn_from_vllm_config(" not in optimized_prewarm
+        assert "pad_batch_to_capture(b_bucket, self._capture_bins, self._pad_fn)" in optimized_prewarm
+        assert "capture_batch_sizes=self._capture_bins" in optimized_build
+        assert "pad_fn=self._pad_fn" in optimized_build
+        assert "capture_bins_from_vllm_config(" not in optimized_build
+        assert "pad_fn_from_vllm_config(" not in optimized_build
+
+
 def test_ch18_dynamic_flex_attention_mask_avoids_scalar_tensor_allocation() -> None:
     source = (REPO_ROOT / "ch18" / "flex_attention_enhanced.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_attention", maxsplit=1)[1].split(
