@@ -67,12 +67,15 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
     assert "torch.cumsum(expert_counts, dim=0, out=expert_offsets)" in grouped_section
     assert "expert_offsets.sub_(expert_counts)" in grouped_section
     assert "expert_metadata[1].copy_(expert_counts)" in grouped_section
-    assert "expert_metadata_host.copy_(expert_metadata)" in grouped_section
+    assert 'expert_metadata_host.copy_(expert_metadata, non_blocking=expert_counts.device.type == "cuda")' in grouped_section
     assert "expert_offsets_cpu = expert_metadata_host[0]" in grouped_section
     assert "expert_counts_cpu = expert_metadata_host[1]" in grouped_section
     assert "for expert_id in range(self.num_experts):" in grouped_section
-    assert "start = int(expert_offsets_cpu[expert_id])" in grouped_section
     assert "count = int(expert_counts_cpu[expert_id])" in grouped_section
+    assert "start = int(expert_offsets_cpu[expert_id])" in grouped_section
+    assert grouped_section.index("count = int(expert_counts_cpu[expert_id])") < grouped_section.index(
+        "start = int(expert_offsets_cpu[expert_id])"
+    )
     assert "expert_metadata_host.tolist()" not in grouped_section
     assert "zip(expert_offsets_cpu, expert_counts_cpu)" not in grouped_section
     assert "expert_counts.detach().cpu().tolist()" not in grouped_section

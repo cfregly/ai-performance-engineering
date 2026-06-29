@@ -275,7 +275,7 @@ class GroupedMoEExperts(nn.Module):
         torch.cumsum(expert_counts, dim=0, out=expert_offsets)
         expert_offsets.sub_(expert_counts)
         expert_metadata[1].copy_(expert_counts)
-        expert_metadata_host.copy_(expert_metadata)
+        expert_metadata_host.copy_(expert_metadata, non_blocking=expert_counts.device.type == "cuda")
         expert_offsets_cpu = expert_metadata_host[0]
         expert_counts_cpu = expert_metadata_host[1]
         
@@ -283,10 +283,10 @@ class GroupedMoEExperts(nn.Module):
         output = self._sorted_output_like(sorted_x)
         
         for expert_id in range(self.num_experts):
-            start = int(expert_offsets_cpu[expert_id])
             count = int(expert_counts_cpu[expert_id])
             if count == 0:
                 continue
+            start = int(expert_offsets_cpu[expert_id])
             end = start + count
             
             expert_x = sorted_x[start:end]
