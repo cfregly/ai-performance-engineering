@@ -149,7 +149,11 @@ class ProfiledBenchmark:
             torch.cuda.empty_cache()
 
         # Benchmark
-        times: List[float] = []
+        sample_count = 0
+        mean_time_ms = 0.0
+        m2_time_ms = 0.0
+        min_time_ms = float("inf")
+        max_time_ms = float("-inf")
         with nvtx.range(compute_label):
             if cuda_available:
                 start_event = torch.cuda.Event(enable_timing=True)
@@ -161,20 +165,29 @@ class ProfiledBenchmark:
                         _ = func(*args)
                     end_event.record(current_stream)
                     end_event.synchronize()
-                    times.append(start_event.elapsed_time(end_event))
+                    elapsed_ms = start_event.elapsed_time(end_event)
+                    sample_count += 1
+                    delta = elapsed_ms - mean_time_ms
+                    mean_time_ms += delta / sample_count
+                    m2_time_ms += delta * (elapsed_ms - mean_time_ms)
+                    min_time_ms = min(min_time_ms, elapsed_ms)
+                    max_time_ms = max(max_time_ms, elapsed_ms)
             else:
                 for i in range(benchmark_iters):
                     start = time.time()
                     with nvtx.range(iteration_labels[i]):
                         _ = func(*args)
                     elapsed_ms = (time.time() - start) * 1000
-                    times.append(elapsed_ms)
+                    sample_count += 1
+                    delta = elapsed_ms - mean_time_ms
+                    mean_time_ms += delta / sample_count
+                    m2_time_ms += delta * (elapsed_ms - mean_time_ms)
+                    min_time_ms = min(min_time_ms, elapsed_ms)
+                    max_time_ms = max(max_time_ms, elapsed_ms)
 
         # Calculate statistics
-        avg_time_ms = sum(times) / len(times)
-        min_time_ms = min(times)
-        max_time_ms = max(times)
-        std_time_ms = (sum((t - avg_time_ms) ** 2 for t in times) / len(times)) ** 0.5
+        avg_time_ms = mean_time_ms
+        std_time_ms = (m2_time_ms / sample_count) ** 0.5
 
         # Memory statistics
         if cuda_available:

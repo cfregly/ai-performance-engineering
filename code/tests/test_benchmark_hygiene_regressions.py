@@ -14199,8 +14199,16 @@ def test_ch19_quantization_validator_reuses_timing_events() -> None:
     source = (REPO_ROOT / "ch19" / "validate_quantization_performance.py").read_text(
         encoding="utf-8"
     )
-    benchmark_section = source.split("def benchmark_function", maxsplit=1)[1].split(
+    method_section = source.split("def benchmark_function", maxsplit=1)[1].split(
+        "def run_with_pytorch_profiler",
+        maxsplit=1,
+    )[0]
+    benchmark_section = method_section.split(
         "# Calculate statistics",
+        maxsplit=1,
+    )[0]
+    statistics_section = method_section.split("# Calculate statistics", maxsplit=1)[1].split(
+        "# Memory statistics",
         maxsplit=1,
     )[0]
     warmup_section = benchmark_section.split("# Warmup", maxsplit=1)[1].split(
@@ -14222,6 +14230,7 @@ def test_ch19_quantization_validator_reuses_timing_events() -> None:
         "for i in range(benchmark_iters):",
         maxsplit=1,
     )[1]
+    cpu_sample_loop = timing_section.split("else:", maxsplit=1)[1]
 
     assert 'warmup_label = standardize_nvtx_label(f"warmup:{self.name}_{precision}")' in benchmark_section
     assert 'compute_label = standardize_nvtx_label(f"compute_math:{self.name}_{precision}")' in benchmark_section
@@ -14241,7 +14250,23 @@ def test_ch19_quantization_validator_reuses_timing_events() -> None:
     assert "start_event.record()" not in sample_loop
     assert "end_event.record()" not in sample_loop
     assert "end_event.synchronize()" in sample_loop
-    assert "times.append(start_event.elapsed_time(end_event))" in sample_loop
+    assert "elapsed_ms = start_event.elapsed_time(end_event)" in sample_loop
+    assert "sample_count = 0" in benchmark_section
+    assert "mean_time_ms = 0.0" in benchmark_section
+    assert "m2_time_ms = 0.0" in benchmark_section
+    assert "sample_count += 1" in sample_loop
+    assert "delta = elapsed_ms - mean_time_ms" in sample_loop
+    assert "mean_time_ms += delta / sample_count" in sample_loop
+    assert "m2_time_ms += delta * (elapsed_ms - mean_time_ms)" in sample_loop
+    assert "min_time_ms = min(min_time_ms, elapsed_ms)" in sample_loop
+    assert "max_time_ms = max(max_time_ms, elapsed_ms)" in sample_loop
+    assert "sample_count += 1" in cpu_sample_loop
+    assert "m2_time_ms += delta * (elapsed_ms - mean_time_ms)" in cpu_sample_loop
+    assert "avg_time_ms = mean_time_ms" in statistics_section
+    assert "std_time_ms = (m2_time_ms / sample_count) ** 0.5" in statistics_section
+    assert "times: List[float]" not in method_section
+    assert "times.append(" not in method_section
+    assert "sum(times)" not in method_section
     assert "with nvtx.range(iteration_labels[i]):" in sample_loop
     assert "standardize_nvtx_label(" not in sample_loop
 
