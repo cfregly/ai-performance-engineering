@@ -348,31 +348,44 @@ class GuidedDecoder:
     def __init__(self, backend: str = "tensorrt-llm-guided_json"):
         self.backend = backend
         self.schema: Optional[Dict] = None
+        self._schema_keys: Optional[Tuple[str, ...]] = None
+        self._cached_backend = ""
+        self._simulated_latency_ms = 0.0
+        self._refresh_backend_cache()
         self._compiled = False
+
+    def _refresh_backend_cache(self):
+        self._cached_backend = self.backend
+        backend_lower = self.backend.lower()
+        # Simulated latencies: TensorRT-LLM guided_json tends to be faster than generic fallbacks.
+        self._simulated_latency_ms = (
+            3.5 if "tensorrt" in backend_lower or "guided_json" in backend_lower else 7.0
+        )
 
     def load_schema(self, schema: Dict):
         self.schema = schema
+        self._schema_keys = tuple(schema.keys())
         self._compiled = True
 
     def compile_backend(self):
         """Simulate backend compilation."""
+        if self.backend != self._cached_backend:
+            self._refresh_backend_cache()
         self._compiled = True
 
     def generate(self, prompt: str) -> Dict:
         if not self._compiled:
             raise RuntimeError("GuidedDecoder requires compile_backend() or load_schema() before generation.")
-
-        backend_lower = self.backend.lower()
-        # Simulated latencies: TensorRT-LLM guided_json tends to be faster than generic fallbacks.
-        simulated_latency_ms = 3.5 if "tensorrt" in backend_lower or "guided_json" in backend_lower else 7.0
+        if self.backend != self._cached_backend:
+            self._refresh_backend_cache()
 
         payload = {
             "backend": self.backend,
             "prompt_prefix": prompt[:32],
-            "latency_ms": simulated_latency_ms,
+            "latency_ms": self._simulated_latency_ms,
         }
-        if self.schema:
-            payload["schema_keys"] = list(self.schema.keys())
+        if self._schema_keys:
+            payload["schema_keys"] = self._schema_keys
         return payload
 
 class DisaggregatedInferenceSystem:

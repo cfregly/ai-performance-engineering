@@ -590,6 +590,9 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "def _ids_step_buffer_for(self, batch_size, device)" in text
     assert "def _token_tensor_to_list(self, token_tensor)" in text
     assert "uniform_sampling=None" in sample_section
+    assert "batch_size = logits.size(0)" in sample_section
+    assert "full_active_rows = (" in sample_section
+    assert "len(active_rows) == batch_size" in sample_section
     assert "host_tokens = self._sample_host_token_buffer(flat_tokens.numel(), flat_tokens.device)" in token_list_section
     assert "host_tokens.copy_(flat_tokens, non_blocking=flat_tokens.device.type == \"cuda\")" in token_list_section
     assert "return host_tokens.tolist()" in token_list_section
@@ -602,6 +605,8 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "active_indices.device.type == \"cpu\"" in sample_section
     assert "active_rows = self._token_tensor_to_list(active_indices)" in sample_section
     assert "self._token_tensor_to_list(next_ids[:, 0])" in sample_section
+    assert "if full_active_rows:\n                return next_tokens" in sample_section
+    assert "sampled_tokens = [pad_id] * logits.size(0)" not in sample_section
     assert "sampled_device[sample_idx].copy_(next_id[0, 0])" in sample_section
     assert "sampled_host.copy_(sampled_device, non_blocking=sampled_device.device.type == \"cuda\")" in sample_section
     assert "sampled_tokens[idx] = next_id[0, 0].item()" not in sample_section
@@ -765,6 +770,8 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     assert "torch.tensor(token_column, dtype=torch.long, device=device).unsqueeze(1)" not in generate_batched
     assert "return_active_indices=True" in generate_batched
     assert "active_indices=active_indices" in generate_batched
+    assert "active_rows=range(batch_size)" in generate_batched
+    assert "active_rows=list(range(batch_size))" not in generate_batched
     assert "uniform_sampling = all(temp == first_temp and top_k == first_top_k for temp, top_k in zip(temps, top_ks, strict=True))" in generate_batched
     assert "uniform_sampling_hint = True if uniform_sampling else None" in generate_batched
     assert generate_batched.count("uniform_sampling=uniform_sampling_hint") == 2

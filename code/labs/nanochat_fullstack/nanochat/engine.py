@@ -892,25 +892,30 @@ class Engine:
         active_indices=None,
         uniform_sampling=None,
     ):
-        sampled_tokens = [pad_id] * logits.size(0)
+        batch_size = logits.size(0)
         if active_rows is None:
             if active_indices is None:
                 active_indices = active_mask.nonzero(as_tuple=False).squeeze(-1)
             if active_indices.numel() == 0:
-                return sampled_tokens
+                return [pad_id] * batch_size
             if active_indices.device.type == "cpu":
                 active_rows = active_indices.tolist()
             else:
                 active_rows = self._token_tensor_to_list(active_indices)
         elif len(active_rows) == 0:
-            return sampled_tokens
+            return [pad_id] * batch_size
+        full_active_rows = (
+            len(active_rows) == batch_size
+            and active_rows[0] == 0
+            and active_rows[-1] == batch_size - 1
+        )
         first_idx = active_rows[0]
         first_temp = temperatures[first_idx]
         first_top_k = top_ks[first_idx]
         if uniform_sampling is None:
             uniform_sampling = all(temperatures[idx] == first_temp and top_ks[idx] == first_top_k for idx in active_rows)
         if uniform_sampling:
-            if len(active_rows) == logits.size(0):
+            if full_active_rows:
                 active_logits = logits
             else:
                 if active_indices is None:
@@ -923,7 +928,11 @@ class Engine:
                 top_k=first_top_k,
                 **self._sample_workspace(active_logits, first_top_k, first_temp),
             )
-            for idx, token in zip(active_rows, self._token_tensor_to_list(next_ids[:, 0])):
+            next_tokens = self._token_tensor_to_list(next_ids[:, 0])
+            if full_active_rows:
+                return next_tokens
+            sampled_tokens = [pad_id] * batch_size
+            for idx, token in zip(active_rows, next_tokens):
                 sampled_tokens[idx] = token
             return sampled_tokens
 
@@ -941,7 +950,11 @@ class Engine:
             )
             sampled_device[sample_idx].copy_(next_id[0, 0])
         sampled_host.copy_(sampled_device, non_blocking=sampled_device.device.type == "cuda")
-        for idx, token in zip(active_rows, sampled_host.tolist()):
+        next_tokens = sampled_host.tolist()
+        if full_active_rows:
+            return next_tokens
+        sampled_tokens = [pad_id] * batch_size
+        for idx, token in zip(active_rows, next_tokens):
             sampled_tokens[idx] = token
         return sampled_tokens
 
@@ -1132,7 +1145,7 @@ class Engine:
             top_ks,
             active_mask,
             pad_id,
-            active_rows=list(range(batch_size)),
+            active_rows=range(batch_size),
             uniform_sampling=uniform_sampling_hint,
         )
 

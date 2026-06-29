@@ -9759,6 +9759,42 @@ def test_ch15_decode_worker_reuses_sampling_buffers() -> None:
     assert "next_token.item()" not in generate_section
 
 
+def test_ch15_guided_decoder_caches_backend_and_schema_metadata() -> None:
+    from ch15.disaggregated_inference_multigpu import GuidedDecoder
+
+    decoder = GuidedDecoder(backend="fallback-json")
+    decoder.compile_backend()
+    assert decoder.generate("hello") == {
+        "backend": "fallback-json",
+        "prompt_prefix": "hello",
+        "latency_ms": 7.0,
+    }
+
+    decoder.backend = "tensorrt-llm-guided_json"
+    decoder.load_schema({"type": "object", "required": ["summary"]})
+    payload = decoder.generate("x" * 40)
+    assert payload["backend"] == "tensorrt-llm-guided_json"
+    assert payload["prompt_prefix"] == "x" * 32
+    assert payload["latency_ms"] == 3.5
+    assert payload["schema_keys"] == ("type", "required")
+
+    source = (REPO_ROOT / "ch15" / "disaggregated_inference_multigpu.py").read_text(
+        encoding="utf-8"
+    )
+    guided_section = source.split("class GuidedDecoder", maxsplit=1)[1].split(
+        "class DisaggregatedInferenceSystem",
+        maxsplit=1,
+    )[0]
+    generate_section = guided_section.split("def generate", maxsplit=1)[1]
+
+    assert "self._schema_keys: Optional[Tuple[str, ...]] = None" in guided_section
+    assert "self._schema_keys = tuple(schema.keys())" in guided_section
+    assert "self._simulated_latency_ms" in guided_section
+    assert "if self.backend != self._cached_backend:" in generate_section
+    assert "backend_lower = self.backend.lower()" not in generate_section
+    assert "list(self.schema.keys())" not in generate_section
+
+
 def test_ch15_disaggregated_inference_phase_timing_uses_monotonic_clock() -> None:
     source = (REPO_ROOT / "ch15" / "disaggregated_inference_multigpu.py").read_text(
         encoding="utf-8"
