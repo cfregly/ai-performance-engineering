@@ -1594,6 +1594,81 @@ def test_ch04_nvshmem_and_symmem_demos_buffer_loss_logging() -> None:
         assert "loss_value = float(loss_value_buffer.detach().cpu()[0])" in section
 
 
+def test_ch04_distributed_demo_elapsed_timing_uses_monotonic_clock() -> None:
+    sources = {
+        "multi_node": (REPO_ROOT / "ch04" / "multi_node_blackwell.py").read_text(
+            encoding="utf-8"
+        ),
+        "nvshmem_training": (
+            REPO_ROOT / "ch04" / "nvshmem_training_patterns.py"
+        ).read_text(encoding="utf-8"),
+        "symmetric": (
+            REPO_ROOT / "ch04" / "symmetric_memory_multigpu.py"
+        ).read_text(encoding="utf-8"),
+        "training_pipeline": (
+            REPO_ROOT / "ch04" / "training_multigpu_pipeline.py"
+        ).read_text(encoding="utf-8"),
+        "nvshmem_pipeline": (
+            REPO_ROOT / "ch04" / "nvshmem_pipeline_parallel_multigpu.py"
+        ).read_text(encoding="utf-8"),
+    }
+
+    multi_node_train = sources["multi_node"].split(
+        "def train_multi_node",
+        maxsplit=1,
+    )[1].split("# ============================================================================", maxsplit=1)[0]
+    nvshmem_grad = sources["nvshmem_training"].split(
+        "def demo_gradient_sync",
+        maxsplit=1,
+    )[1].split("# ============================================================================", maxsplit=1)[0]
+    symmetric_ring = sources["symmetric"].split(
+        "def demonstrate_ring_pattern",
+        maxsplit=1,
+    )[1].split("def demonstrate_butterfly_pattern", maxsplit=1)[0]
+    symmetric_butterfly = sources["symmetric"].split(
+        "def demonstrate_butterfly_pattern",
+        maxsplit=1,
+    )[1].split("def main", maxsplit=1)[0]
+    training_loop = sources["training_pipeline"].split("def train", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+    pipeline_1f1b = sources["nvshmem_pipeline"].split(
+        "def demo_1f1b_pipeline",
+        maxsplit=1,
+    )[1].split("def demo_interleaved_pipeline", maxsplit=1)[0]
+    pipeline_interleaved = sources["nvshmem_pipeline"].split(
+        "def demo_interleaved_pipeline",
+        maxsplit=1,
+    )[1].split("# ============================================================================", maxsplit=1)[0]
+
+    assert "epoch_start = time.perf_counter()" in multi_node_train
+    assert "step_start = time.perf_counter()" in multi_node_train
+    assert "step_time = time.perf_counter() - step_start" in multi_node_train
+    assert "epoch_time = time.perf_counter() - epoch_start" in multi_node_train
+    assert "time.time()" not in multi_node_train
+
+    assert "start_time = time.perf_counter()" in nvshmem_grad
+    assert "elapsed = time.perf_counter() - start_time" in nvshmem_grad
+    assert "time.time()" not in nvshmem_grad
+
+    for section in (symmetric_ring, symmetric_butterfly):
+        assert "start = time.perf_counter()" in section
+        assert "elapsed = time.perf_counter() - start" in section
+        assert "time.time()" not in section
+
+    assert "start_time = time.perf_counter()" in training_loop
+    assert "step_start = time.perf_counter()" in training_loop
+    assert "step_time = time.perf_counter() - step_start" in training_loop
+    assert "total_time = time.perf_counter() - start_time" in training_loop
+    assert "time.time()" not in training_loop
+
+    for section in (pipeline_1f1b, pipeline_interleaved):
+        assert "start_time = time.perf_counter()" in section
+        assert "elapsed = time.perf_counter() - start_time" in section
+        assert "time.time()" not in section
+
+
 def test_ch04_training_pipeline_defers_step_loss_sync_until_logging() -> None:
     source = (REPO_ROOT / "ch04" / "training_multigpu_pipeline.py").read_text(
         encoding="utf-8"

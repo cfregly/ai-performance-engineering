@@ -390,7 +390,7 @@ def train(
     
     # Training loop
     step = 0
-    start_time = time.time()
+    start_time = time.perf_counter()
     loss_value_buffer = torch.empty(
         1,
         dtype=torch.float64,
@@ -402,9 +402,9 @@ def train(
         batch = {k: v.cuda(non_blocking=True) for k, v in batch.items()}
         
         # Training step
-        step_start = time.time()
+        step_start = time.perf_counter()
         loss = train_step(model, batch, optimizer)
-        step_time = time.time() - step_start
+        step_time = time.perf_counter() - step_start
 
         if rank == 0 and step % 10 == 0:
             loss_value_buffer[0].copy_(loss)
@@ -418,7 +418,7 @@ def train(
         if step >= num_steps:
             break
     
-    total_time = time.time() - start_time
+    total_time = time.perf_counter() - start_time
     
     if rank == 0:
         print(f"\n{'='*70}")

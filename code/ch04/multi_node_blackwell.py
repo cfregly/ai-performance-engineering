@@ -499,9 +499,9 @@ def train_multi_node(
     
     for epoch in range(num_epochs):
         epoch_loss_sum.zero_()
-        epoch_start = time.time()
+        epoch_start = time.perf_counter()
         for step, batch in enumerate(train_data):
-            step_start = time.time()
+            step_start = time.perf_counter()
             
             # Move to device
             input_ids = batch['input_ids'].to(device)
@@ -524,7 +524,7 @@ def train_multi_node(
                 optimizer.zero_grad()
                 global_step += 1
             
-            step_time = time.time() - step_start
+            step_time = time.perf_counter() - step_start
             # Log statistics
             if rank == 0 and step % 10 == 0:
                 loss_value_buffer[0].copy_(loss.detach())
@@ -541,7 +541,7 @@ def train_multi_node(
             
             if rank == 0:
                 epoch_loss_sum.add_(loss.detach())
-            epoch_time = time.time() - epoch_start
+            epoch_time = time.perf_counter() - epoch_start
         if rank == 0:
             loss_value_buffer[0].copy_(epoch_loss_sum)
             epoch_loss = float(loss_value_buffer.detach().cpu()[0])

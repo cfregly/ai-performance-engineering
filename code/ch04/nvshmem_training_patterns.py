@@ -323,7 +323,7 @@ def demo_gradient_sync(benchmark: bool = False) -> None:
     num_steps = 10 if not benchmark else 100
     batch_size = 1
     
-    start_time = time.time()
+    start_time = time.perf_counter()
     for step in range(num_steps):
         inputs = torch.randn(batch_size, hidden_dim, device=device)
         outputs = model(inputs)
@@ -342,7 +342,7 @@ def demo_gradient_sync(benchmark: bool = False) -> None:
         optimizer.step()
         optimizer.zero_grad()
     
-    elapsed = time.time() - start_time
+    elapsed = time.perf_counter() - start_time
     
     if rank == 0:
         print(f"[gradient_sync] Completed {num_steps} steps in {elapsed:.2f}s")

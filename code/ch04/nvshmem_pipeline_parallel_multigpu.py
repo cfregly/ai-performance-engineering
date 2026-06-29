@@ -652,10 +652,10 @@ def demo_1f1b_pipeline(
         ]
     
     # Run 1F1B schedule
-    start_time = time.time()
+    start_time = time.perf_counter()
     losses = engine.run_1f1b_schedule(input_batches)
     torch.cuda.synchronize()
-    elapsed = time.time() - start_time
+    elapsed = time.perf_counter() - start_time
     
     if rank == 0:
         print(f"[1f1b] Completed {num_microbatches} microbatches in {elapsed:.2f}s")
@@ -718,10 +718,10 @@ def demo_interleaved_pipeline(
         ]
     
     # Run interleaved schedule
-    start_time = time.time()
+    start_time = time.perf_counter()
     pipeline.run_interleaved_schedule(input_batches)
     torch.cuda.synchronize()
-    elapsed = time.time() - start_time
+    elapsed = time.perf_counter() - start_time
     
     if rank == 0:
         print(f"[interleaved] Completed {num_microbatches} microbatches in {elapsed:.2f}s")

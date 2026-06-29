@@ -288,7 +288,7 @@ def demonstrate_ring_pattern(rank: int, world_size: int) -> None:
         dist.barrier()
         
         # Benchmark
-        start = time.time()
+        start = time.perf_counter()
         for _ in range(100):
             next_rank = (rank + 1) % world_size
             prev_rank = (rank - 1) % world_size
@@ -299,7 +299,7 @@ def demonstrate_ring_pattern(rank: int, world_size: int) -> None:
             send_req.wait()
             recv_req.wait()
         torch.cuda.synchronize()
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         
         if rank == 0:
             latency_us = (elapsed / 100) * 1e6
@@ -357,7 +357,7 @@ def demonstrate_butterfly_pattern(rank: int, world_size: int) -> None:
     dist.barrier()
     
     # Benchmark
-    start = time.time()
+    start = time.perf_counter()
     for _ in range(100):
         for stage in range(stages):
             stride = 1 << stage
@@ -371,7 +371,7 @@ def demonstrate_butterfly_pattern(rank: int, world_size: int) -> None:
             
             tensor.add_(recv_tensor)
     torch.cuda.synchronize()
-    elapsed = time.time() - start
+    elapsed = time.perf_counter() - start
     
     if rank == 0:
         latency_us = (elapsed / 100) * 1e6
