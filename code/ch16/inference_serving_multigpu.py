@@ -187,6 +187,8 @@ class DemoCausalLM(nn.Module):
         )
         self._key_stack_buffer: Optional[torch.Tensor] = None
         self._value_stack_buffer: Optional[torch.Tensor] = None
+        self._local_key_slots: List[torch.Tensor] = []
+        self._local_value_slots: List[torch.Tensor] = []
 
     def _stack_layer_outputs(self, tensors: List[torch.Tensor], buffer_name: str) -> torch.Tensor:
         if torch.is_grad_enabled() and any(t.requires_grad for t in tensors):
@@ -225,8 +227,11 @@ class DemoCausalLM(nn.Module):
             current_lengths = input_lengths
 
         layer_count = len(self.layers)
-        local_keys: List[torch.Tensor] = [hidden] * layer_count
-        local_values: List[torch.Tensor] = [hidden] * layer_count
+        if len(self._local_key_slots) != layer_count:
+            self._local_key_slots = [hidden] * layer_count
+            self._local_value_slots = [hidden] * layer_count
+        local_keys = self._local_key_slots
+        local_values = self._local_value_slots
 
         for layer_idx, layer in enumerate(self.layers):
             layer_cache = None
