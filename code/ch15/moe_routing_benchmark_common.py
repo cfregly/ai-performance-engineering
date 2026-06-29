@@ -32,6 +32,28 @@ def topology_aware_expert_ids(token_ids: torch.Tensor, *, local_experts: int) ->
     return (token_ids % int(local_experts)).to(torch.int64)
 
 
+def active_expert_ids_for_static_route(
+    *,
+    route_mode: str,
+    num_tokens: int,
+    num_experts: int,
+    local_experts: int,
+) -> list[int]:
+    """Return active experts for deterministic routes without a GPU readback."""
+    if num_tokens <= 0:
+        return []
+    if route_mode == "uniform":
+        return sorted(
+            {
+                int((token_id * 1103515245 + 12345) % int(num_experts))
+                for token_id in range(int(num_tokens))
+            }
+        )
+    if route_mode == "topology_aware":
+        return list(range(min(int(local_experts), int(num_tokens))))
+    raise ValueError(f"Unknown route mode: {route_mode}")
+
+
 class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
     """Benchmark base that keeps expert weights fixed across routing studies."""
 
@@ -93,7 +115,12 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.expert_ids = self._build_expert_ids(token_ids).view(self.batch, self.seq)
         expert_ids_flat = self.expert_ids.reshape(-1)
         if self.dispatch_mode == "active_experts":
-            active_experts = torch.unique(expert_ids_flat).detach().cpu().tolist()
+            active_experts = active_expert_ids_for_static_route(
+                route_mode=self.route_mode,
+                num_tokens=expert_ids_flat.numel(),
+                num_experts=self.num_experts,
+                local_experts=self.local_experts,
+            )
             self._active_dispatch_indices = [
                 (expert_ids_flat == int(expert_id)).nonzero(as_tuple=False).squeeze(-1)
                 for expert_id in active_experts

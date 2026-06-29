@@ -6,7 +6,13 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+import torch
 
+from ch15.moe_routing_benchmark_common import (
+    active_expert_ids_for_static_route,
+    pseudo_uniform_expert_ids,
+    topology_aware_expert_ids,
+)
 from core.hot_path_checks import (
     check_benchmark_fn_antipatterns,
     check_benchmark_fn_sync_calls,
@@ -96,3 +102,22 @@ def test_shared_ch15_family_goals_match_benchmark_contract(relative_path: str, e
     bench = module.get_benchmark()
 
     assert bench.get_optimization_goal() == expected_goal
+
+
+def test_static_moe_route_active_experts_match_tensor_routes() -> None:
+    token_ids = torch.arange(37, dtype=torch.int64)
+    uniform_ids = pseudo_uniform_expert_ids(token_ids, num_experts=16)
+    topology_ids = topology_aware_expert_ids(token_ids, local_experts=6)
+
+    assert active_expert_ids_for_static_route(
+        route_mode="uniform",
+        num_tokens=token_ids.numel(),
+        num_experts=16,
+        local_experts=6,
+    ) == sorted(int(expert_id) for expert_id in torch.unique(uniform_ids))
+    assert active_expert_ids_for_static_route(
+        route_mode="topology_aware",
+        num_tokens=token_ids.numel(),
+        num_experts=16,
+        local_experts=6,
+    ) == sorted(int(expert_id) for expert_id in torch.unique(topology_ids))
