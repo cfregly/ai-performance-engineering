@@ -9256,7 +9256,13 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "torch.stack(" in perchannel_stats
     assert "self.input_amax_history.mean().item()" not in perchannel_stats
     assert "self.amax_counter.item()" not in perchannel_stats
-    assert "pt_error_value, pc_error_value = torch.stack((pt_error, pc_error)).tolist()" in perchannel_accuracy
+    assert "error_sums = torch.zeros(2, device=self.device, dtype=torch.float32)" in perchannel_accuracy
+    assert "error_sums[0].add_(pt_error.detach())" in perchannel_accuracy
+    assert "error_sums[1].add_(pc_error.detach())" in perchannel_accuracy
+    assert "pt_error_total, pc_error_total = error_sums.detach().cpu().tolist()" in perchannel_accuracy
+    assert "torch.stack((pt_error, pc_error)).tolist()" not in perchannel_accuracy
+    assert "results[\"per_tensor\"].append" not in perchannel_accuracy
+    assert "results[\"per_channel\"].append" not in perchannel_accuracy
     assert "pt_error.item()" not in perchannel_accuracy
     assert "pc_error.item()" not in perchannel_accuracy
 

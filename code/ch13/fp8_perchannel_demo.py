@@ -350,7 +350,7 @@ class FP8PerChannelBenchmark:
         Uses weights with varying magnitudes across output channels to highlight
         per-channel benefits. Per-channel weight scaling adapts to each row's range.
         """
-        results = {"per_tensor": [], "per_channel": []}
+        error_sums = torch.zeros(2, device=self.device, dtype=torch.float32)
         
         # Create weights with varying magnitudes per output channel
         # This stresses per-tensor scaling (one scale for all) vs per-channel (one per row)
@@ -381,13 +381,14 @@ class FP8PerChannelBenchmark:
             pt_error = (pt_output - ref_output).abs().mean() / ref_norm
             pc_error = (pc_output - ref_output).abs().mean() / ref_norm
 
-            pt_error_value, pc_error_value = torch.stack((pt_error, pc_error)).tolist()
-            results["per_tensor"].append(pt_error_value)
-            results["per_channel"].append(pc_error_value)
+            error_sums[0].add_(pt_error.detach())
+            error_sums[1].add_(pc_error.detach())
+
+        pt_error_total, pc_error_total = error_sums.detach().cpu().tolist()
         
         return {
-            "per_tensor_error_pct": 100 * sum(results["per_tensor"]) / len(results["per_tensor"]),
-            "per_channel_error_pct": 100 * sum(results["per_channel"]) / len(results["per_channel"]),
+            "per_tensor_error_pct": 100 * pt_error_total / num_samples,
+            "per_channel_error_pct": 100 * pc_error_total / num_samples,
         }
     
     def measure_throughput(
