@@ -110,6 +110,7 @@ class OptimizedFP4PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.dtype = torch.float32
         self.parameter_count: int = 0
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.fp4_recipe: Optional[object] = None
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
@@ -156,6 +157,12 @@ class OptimizedFP4PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.inputs = inputs
         self._verify_input = self.inputs.detach().clone()
+        self._verify_output_buffer = torch.empty(
+            min(128, self.batch_size),
+            min(256, self.hidden_dim),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
         for _ in range(3):
             with torch.inference_mode(), fp8_autocast_fn(enabled=True, fp8_recipe=self.fp4_recipe):
@@ -171,11 +178,16 @@ class OptimizedFP4PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
-        if self._verify_input is None or self.output is None:
+        if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -191,6 +203,8 @@ class OptimizedFP4PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.inputs = None
         self.output = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         self.fp4_recipe = None
         super().teardown()
 
