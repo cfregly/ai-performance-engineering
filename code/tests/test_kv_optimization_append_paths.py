@@ -35,6 +35,15 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
             assert "self._generated_step_layer_view_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in init_source
             assert "self._generated_step_layer_view_pairs = [" in setup_source
             assert "(k_step.unsqueeze(1), v_step.unsqueeze(1))" in setup_source
+        else:
+            build_source = inspect.getsource(benchmark_cls._build_verification_output)
+            assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in init_source
+            assert "self._verify_output_buffer = torch.empty(" in setup_source
+            assert "torch.div(kq0.float(), k_scale0, out=self._verify_output_buffer[0, 0, 0, :, 0, :])" in build_source
+            assert "torch.div(vq0.float(), v_scale0, out=self._verify_output_buffer[0, 0, 1, :, 0, :])" in build_source
+            assert "return self._verify_output_buffer" in build_source
+            assert "torch.stack(" not in build_source
+            assert ".detach().clone()" not in build_source
         assert "self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]" in setup_source
         assert 'self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")' in setup_source
         assert "self._batch_size_tensor[0] = self.batch_size" in setup_source
@@ -68,6 +77,8 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         assert "self._generated_step_pairs = []" in teardown_source
         if benchmark_cls is BaselineKVStandard:
             assert "self._generated_step_layer_view_pairs = []" in teardown_source
+        else:
+            assert "self._verify_output_buffer = None" in teardown_source
         assert "self._output_view = None" in teardown_source
         assert "self._batch_size_tensor = None" in teardown_source
         assert "metrics = self._last_metrics" in finalize_source

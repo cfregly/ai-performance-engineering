@@ -68,6 +68,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._k_quantized_layer_view: Optional[torch.Tensor] = None
         self._v_quantized_layer_view: Optional[torch.Tensor] = None
         self._output_view: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._seq_lengths_host: list[int] = [0] * batch_size
         self._batch_size_tensor: Optional[torch.Tensor] = None
         self._active_layer_slice = slice(0, active_layers)
@@ -143,6 +144,16 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._k_quantized_layer_view = self._k_quantized_step.unsqueeze(1)
         self._v_quantized_layer_view = self._v_quantized_step.unsqueeze(1)
         self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]
+        self._verify_output_buffer = torch.empty(
+            1,
+            1,
+            2,
+            self.num_heads,
+            1,
+            min(8, self.head_dim),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")
         self._batch_size_tensor[0] = self.batch_size
 
@@ -293,16 +304,17 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
     def _build_verification_output(self) -> torch.Tensor:
         if self.output is None:
             raise RuntimeError("benchmark_fn() must run before verification capture")
+        if self._verify_output_buffer is None:
+            raise RuntimeError("setup() must initialize verification output buffer")
 
         # Dequantize the first token of layer 0 so we compare against the BF16 baseline.
         kq0 = self.output[0, 0, 0, :, 0, :]
         vq0 = self.output[0, 0, 1, :, 0, :]
         k_scale0 = self.k_scales[0, 0]
         v_scale0 = self.v_scales[0, 0]
-        k0 = (kq0.float() / k_scale0).unsqueeze(1)
-        v0 = (vq0.float() / v_scale0).unsqueeze(1)
-        view = torch.stack([k0, v0], dim=0).unsqueeze(0).unsqueeze(0)
-        return view.detach().clone()
+        torch.div(kq0.float(), k_scale0, out=self._verify_output_buffer[0, 0, 0, :, 0, :])
+        torch.div(vq0.float(), v_scale0, out=self._verify_output_buffer[0, 0, 1, :, 0, :])
+        return self._verify_output_buffer
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
@@ -369,6 +381,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._k_quantized_layer_view = None
         self._v_quantized_layer_view = None
         self._output_view = None
+        self._verify_output_buffer = None
         self.output = None
         self._batch_size_tensor = None
         self._seq_lengths_host = [0] * self.batch_size
