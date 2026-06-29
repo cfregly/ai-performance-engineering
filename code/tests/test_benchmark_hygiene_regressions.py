@@ -886,7 +886,8 @@ def test_ch04_grace_blackwell_locality_reuses_verification_views() -> None:
         assert "self._materialization_buffer = torch.empty((), device=self.device, dtype=torch.float32)" in setup_section
         assert "torch.sum(self.device_buf, dim=0, out=self._materialization_buffer)" in benchmark_section
         assert "self.device_buf.sum()" not in benchmark_section
-        assert "self.output = self._output_view.detach()" in benchmark_section
+        assert "self.output = self._output_view" in benchmark_section
+        assert "self._output_view.detach()" not in benchmark_section
         assert "self.device_buf[: 256 * 256]" not in benchmark_section
         assert "probe = self._verify_probe" in capture_section
         assert "output = self.output" in capture_section

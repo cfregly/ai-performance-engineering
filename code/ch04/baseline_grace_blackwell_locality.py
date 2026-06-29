@@ -54,7 +54,7 @@ class BaselineGb200LocalityBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.device_buf.add_(1.0)
         # Keep the reduction in the workload, but verify via a representative slice.
         torch.sum(self.device_buf, dim=0, out=self._materialization_buffer)
-        self.output = self._output_view.detach()
+        self.output = self._output_view
 
     def capture_verification_payload(self) -> None:
         if self._verify_probe is None or self.output is None:

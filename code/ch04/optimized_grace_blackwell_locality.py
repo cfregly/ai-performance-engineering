@@ -52,7 +52,7 @@ class OptimizedGb200LocalityBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.device_buf.copy_(self.device_template)
             self.device_buf.add_(1.0)
         torch.sum(self.device_buf, dim=0, out=self._materialization_buffer)
-        self.output = self._output_view.detach()
+        self.output = self._output_view
 
     def capture_verification_payload(self) -> None:
         if self._verify_probe is None or self.output is None:
