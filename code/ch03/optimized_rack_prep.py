@@ -16,14 +16,12 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
     BenchmarkConfig,
-    WorkloadMetadata,
 )
 
 from ch03.grace_blackwell_topology import (
     NICInfo,
     cpulist_to_mask,
     discover_nics,
-    format_cpulist,
     recommended_cpuset,
     render_affinity_block,
 )
@@ -116,18 +114,24 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.copy_events = [torch.cuda.Event() for _ in self.device_buffers]
         self.cur_slot = 0
         self.next_slot = 1
-        self._start_copy(self.cur_slot)
-        torch.cuda.current_stream().wait_event(self.copy_events[self.cur_slot])
-        self._start_copy(self.next_slot)
+        current_stream = torch.cuda.current_stream()
+        self._start_copy(self.cur_slot, wait_stream=current_stream)
+        current_stream.wait_event(self.copy_events[self.cur_slot])
+        self._start_copy(self.next_slot, wait_stream=current_stream)
         
 
-    def _start_copy(self, slot: int) -> None:
+    def _start_copy(
+        self,
+        slot: int,
+        wait_stream: Optional[torch.cuda.Stream] = None,
+    ) -> None:
         if self.copy_stream is None:
             raise RuntimeError("Copy stream not initialized")
         if not self.copy_events:
             raise RuntimeError("Copy events not initialized")
+        producer_stream = wait_stream or torch.cuda.current_stream()
         with torch.cuda.stream(self.copy_stream):
-            self.copy_stream.wait_stream(torch.cuda.current_stream())
+            self.copy_stream.wait_stream(producer_stream)
             self.device_buffers[slot].copy_(self.host_buffers[slot], non_blocking=True)
             self.copy_events[slot].record(self.copy_stream)
 
@@ -135,13 +139,14 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.norm is not None
         if self.copy_stream is None:
             raise RuntimeError("Copy stream not initialized")
-        torch.cuda.current_stream().wait_event(self.copy_events[self.cur_slot])
+        current_stream = torch.cuda.current_stream()
+        current_stream.wait_event(self.copy_events[self.cur_slot])
         with self._nvtx_range("optimized_rack_prep"):
             self.output = self.norm(self.device_buffers[self.cur_slot])
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
         self._last_slot = self.cur_slot
-        self._start_copy(self.cur_slot)
+        self._start_copy(self.cur_slot, wait_stream=current_stream)
         self.cur_slot, self.next_slot = self.next_slot, self.cur_slot
 
     def capture_verification_payload(self) -> None:

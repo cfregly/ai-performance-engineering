@@ -2200,6 +2200,80 @@ def test_ch03_double_buffered_optimized_paths_wait_on_slot_events() -> None:
     assert "self._model_parameters = ()" in double_teardown
 
 
+def test_ch03_prefetchers_wait_on_captured_producer_streams() -> None:
+    rack_source = (REPO_ROOT / "ch03" / "optimized_rack_prep.py").read_text(
+        encoding="utf-8"
+    )
+    rack_setup = rack_source.split("def setup", maxsplit=1)[1].split(
+        "def _start_copy",
+        maxsplit=1,
+    )[0]
+    rack_helper = rack_source.split("def _start_copy", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    rack_benchmark = rack_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "producer_stream = wait_stream or torch.cuda.current_stream()" in rack_helper
+    assert "self.copy_stream.wait_stream(producer_stream)" in rack_helper
+    assert "self.copy_stream.wait_stream(torch.cuda.current_stream())" not in rack_helper
+    assert "current_stream = torch.cuda.current_stream()" in rack_setup
+    assert "self._start_copy(self.cur_slot, wait_stream=current_stream)" in rack_setup
+    assert "self._start_copy(self.next_slot, wait_stream=current_stream)" in rack_setup
+    assert rack_benchmark.count("torch.cuda.current_stream()") == 1
+    assert "current_stream.wait_event(self.copy_events[self.cur_slot])" in rack_benchmark
+    assert "self._start_copy(self.cur_slot, wait_stream=current_stream)" in rack_benchmark
+    assert "torch.cuda.current_stream().wait_event" not in rack_benchmark
+
+    double_source = (
+        REPO_ROOT / "ch03" / "optimized_double_buffered_batch_provisioning.py"
+    ).read_text(encoding="utf-8")
+    double_setup = double_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    double_helper = double_source.split("def _prefetch_slot", maxsplit=1)[1].split(
+        "def setup",
+        maxsplit=1,
+    )[0]
+    double_benchmark = double_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "producer_stream = wait_stream or torch.cuda.current_stream()" in double_helper
+    assert "self.copy_stream.wait_stream(producer_stream)" in double_helper
+    assert "compute_stream = torch.cuda.current_stream()" not in double_helper
+    assert "current_stream = torch.cuda.current_stream()" in double_setup
+    assert "self._prefetch_slot(self.next_slot, wait_stream=current_stream)" in double_setup
+    assert double_benchmark.count("torch.cuda.current_stream()") == 1
+    assert "current_stream.wait_event(self.copy_events[self.cur_slot])" in double_benchmark
+    assert "self._prefetch_slot(self.next_slot, wait_stream=current_stream)" in double_benchmark
+    assert "torch.cuda.current_stream().wait_event" not in double_benchmark
+
+    prefetch_source = (
+        REPO_ROOT / "ch03" / "optimized_pinned_prefetch_mlp.py"
+    ).read_text(encoding="utf-8")
+    prefetch_helper = prefetch_source.split("def _prefetch", maxsplit=1)[1].split(
+        "def next",
+        maxsplit=1,
+    )[0]
+    prefetch_next = prefetch_source.split("def next", maxsplit=1)[1].split(
+        "class OptimizedPinnedPrefetchMLPBenchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "if wait_stream is not None:" in prefetch_helper
+    assert "self.copy_stream.wait_stream(wait_stream)" in prefetch_helper
+    assert "current_stream = torch.cuda.current_stream()" in prefetch_next
+    assert "current_stream.wait_stream(self.copy_stream)" in prefetch_next
+    assert "self._prefetch(wait_stream=current_stream)" in prefetch_next
+    assert "torch.cuda.current_stream().wait_stream(self.copy_stream)" not in prefetch_next
+
+
 def test_ch09_compute_bound_baseline_uses_inference_mode_and_cached_nvtx() -> None:
     source = (REPO_ROOT / "ch09" / "baseline_compute_bound.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

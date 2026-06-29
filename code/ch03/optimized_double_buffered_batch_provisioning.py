@@ -46,12 +46,16 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
             bytes_per_iteration=float(elements * 4),
         )
 
-    def _prefetch_slot(self, slot: int) -> None:
+    def _prefetch_slot(
+        self,
+        slot: int,
+        wait_stream: Optional[torch.cuda.Stream] = None,
+    ) -> None:
         """Async copy to device buffer on copy stream."""
         batch_idx = (self.batch_idx + 1) % len(self.host_batches)
-        compute_stream = torch.cuda.current_stream()
+        producer_stream = wait_stream or torch.cuda.current_stream()
         with torch.cuda.stream(self.copy_stream):
-            self.copy_stream.wait_stream(compute_stream)
+            self.copy_stream.wait_stream(producer_stream)
             self.device_batches[slot].copy_(self.host_batches[batch_idx], non_blocking=True)
             self.device_targets[slot].copy_(self.target_batches[batch_idx], non_blocking=True)
             self.copy_events[slot].record(self.copy_stream)
@@ -94,10 +98,11 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
             self.device_batches[self.cur_slot].copy_(self.host_batches[0], non_blocking=True)
             self.device_targets[self.cur_slot].copy_(self.target_batches[0], non_blocking=True)
             self.copy_events[self.cur_slot].record(self.copy_stream)
-        torch.cuda.current_stream().wait_event(self.copy_events[self.cur_slot])
+        current_stream = torch.cuda.current_stream()
+        current_stream.wait_event(self.copy_events[self.cur_slot])
 
         # Start prefetching the *next* batch into slot 1 (batch 1).
-        self._prefetch_slot(self.next_slot)
+        self._prefetch_slot(self.next_slot, wait_stream=current_stream)
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -105,7 +110,8 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         assert self.model is not None
         
         # Wait for current batch to be ready
-        torch.cuda.current_stream().wait_event(self.copy_events[self.cur_slot])
+        current_stream = torch.cuda.current_stream()
+        current_stream.wait_event(self.copy_events[self.cur_slot])
         data = self.device_batches[self.cur_slot]
         target = self.device_targets[self.cur_slot]
         
@@ -124,7 +130,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         # Swap slots and start next prefetch
         self.cur_slot, self.next_slot = self.next_slot, self.cur_slot
         self.batch_idx += 1
-        self._prefetch_slot(self.next_slot)
+        self._prefetch_slot(self.next_slot, wait_stream=current_stream)
         self._payload_data = data
         self._payload_target = target
 

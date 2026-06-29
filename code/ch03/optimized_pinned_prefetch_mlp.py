@@ -7,7 +7,6 @@ as baseline for fair verification comparison.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import List, Optional
 
 import torch
@@ -40,19 +39,22 @@ class Prefetcher:
         self._inflight = False
         self._prefetch()
 
-    def _prefetch(self) -> None:
+    def _prefetch(self, wait_stream: Optional[torch.cuda.Stream] = None) -> None:
         host_idx = self.batch_idx % len(self.host_batches)
         self.batch_idx += 1
         with torch.cuda.stream(self.copy_stream):
+            if wait_stream is not None:
+                self.copy_stream.wait_stream(wait_stream)
             self.buffers[self.next_slot].copy_(self.host_batches[host_idx], non_blocking=True)
             self.target_bufs[self.next_slot].copy_(self.targets[host_idx], non_blocking=True)
         self._inflight = True
 
     def next(self) -> tuple[torch.Tensor, torch.Tensor]:
-        torch.cuda.current_stream().wait_stream(self.copy_stream)
+        current_stream = torch.cuda.current_stream()
+        current_stream.wait_stream(self.copy_stream)
         if self._inflight:
             self.cur_slot, self.next_slot = self.next_slot, self.cur_slot
-            self._prefetch()
+            self._prefetch(wait_stream=current_stream)
         return self.buffers[self.cur_slot], self.target_bufs[self.cur_slot]
 
 
