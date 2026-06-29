@@ -167,10 +167,10 @@ def benchmark(*, batch, heads, seqlen, head_dim, dtype, repeat=10):
         end.synchronize()
         avg_ms = start.elapsed_time(end) / count
     else:
-        start_time = time.time()
+        start_time = time.perf_counter()
         for _ in range(count):
             _run_fused_attention(fused_fn, q, k, v, scale, block_mask)
-        avg_ms = (time.time() - start_time) * 1000.0 / count
+        avg_ms = (time.perf_counter() - start_time) * 1000.0 / count
     print(
         "FlexAttention fused kernel: "
         f"{avg_ms:.1f} ms (device={_DEVICE}, B={batch}, H={heads}, Q={seqlen}, "

@@ -3643,6 +3643,9 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "start.record()" not in ch20_benchmark
     assert "end.record()" not in ch20_benchmark
     assert "start.elapsed_time(end) / count" in ch20_benchmark
+    assert "start_time = time.perf_counter()" in ch20_benchmark
+    assert "avg_ms = (time.perf_counter() - start_time) * 1000.0 / count" in ch20_benchmark
+    assert "time.time()" not in ch20_benchmark
 
     ch14_demo_source = (REPO_ROOT / "ch14" / "sliding_window_demo.py").read_text(
         encoding="utf-8"
@@ -13075,6 +13078,10 @@ def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
     assert benchmark_section.count("end_event.record(current_stream)") == 2
     assert "start_event.record()" not in benchmark_section
     assert "end_event.record()" not in benchmark_section
+    assert benchmark_section.count("start_time = time.perf_counter()") == 2
+    assert "naive_time = time.perf_counter() - start_time" in benchmark_section
+    assert "cached_time = time.perf_counter() - start_time" in benchmark_section
+    assert "time.time()" not in benchmark_section
 
     from ch16.radix_attention_example import ModelState, SimpleTransformerModel
 

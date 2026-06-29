@@ -650,7 +650,7 @@ def benchmark_prefix_caching():
         current_stream = torch.cuda.current_stream(model.device)
         start_event.record(current_stream)
     else:
-        start_time = time.time()
+        start_time = time.perf_counter()
     
     naive_responses = []
     with nvtx.range(standardize_nvtx_label("step:radix_naive_pass")) if torch.cuda.is_available() else nullcontext():
@@ -674,7 +674,7 @@ def benchmark_prefix_caching():
         end_event.synchronize()
         naive_time = start_event.elapsed_time(end_event) / 1000  # Convert ms to seconds
     else:
-        naive_time = time.time() - start_time
+        naive_time = time.perf_counter() - start_time
     print(f"Naive approach took: {naive_time:.3f} seconds")
     
     # Test with RadixAttention caching
@@ -689,7 +689,7 @@ def benchmark_prefix_caching():
     if torch.cuda.is_available():
         start_event.record(current_stream)
     else:
-        start_time = time.time()
+        start_time = time.perf_counter()
     
     cached_responses = []
     with nvtx.range(standardize_nvtx_label("step:radix_cached_pass")) if torch.cuda.is_available() else nullcontext():
@@ -728,7 +728,7 @@ def benchmark_prefix_caching():
         end_event.synchronize()
         cached_time = start_event.elapsed_time(end_event) / 1000  # Convert ms to seconds
     else:
-        cached_time = time.time() - start_time
+        cached_time = time.perf_counter() - start_time
     print(f"RadixAttention approach took: {cached_time:.3f} seconds")
     
     speedup = naive_time / cached_time if cached_time > 0 else float('inf')
