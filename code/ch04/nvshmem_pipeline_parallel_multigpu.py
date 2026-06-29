@@ -87,8 +87,9 @@ from core.benchmark.gpu_requirements import require_min_gpus, warn_optimal_gpu_c
 import argparse
 import datetime
 import time
+from collections import deque
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Deque, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -374,7 +375,7 @@ class NVSHMEMPipelineEngine:
         )
         
         # Track activations for backward pass
-        self.saved_activations: List[torch.Tensor] = []
+        self.saved_activations: Deque[torch.Tensor] = deque()
         self._loss_buffer = torch.empty(num_microbatches, dtype=torch.float64, device=device)
     
     def forward_microbatch(
@@ -434,7 +435,7 @@ class NVSHMEMPipelineEngine:
             return
         
         # Pop saved activation
-        activation = self.saved_activations.pop(0)
+        activation = self.saved_activations.popleft()
         
         if self.stage_id == self.num_stages - 1:
             # Last stage: compute loss and backward
