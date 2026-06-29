@@ -3029,8 +3029,13 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
             "def benchmark_fn",
             maxsplit=1,
         )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
         assert "with torch.inference_mode():" in setup_section
         assert "with torch.no_grad():" not in setup_section
+        assert ").detach()" not in benchmark_section
 
     optimized_ch10_flash = (REPO_ROOT / "ch10" / "optimized_flash_attention.py").read_text(
         encoding="utf-8"

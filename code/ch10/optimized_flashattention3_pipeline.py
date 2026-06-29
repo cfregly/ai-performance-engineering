@@ -380,7 +380,7 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
         """Benchmark FA3-optimized attention."""
         with self._nvtx_range("optimized_fa3_attention"):
             with torch.inference_mode():
-                self.output = self.compiled_model(self.input, is_causal=self.use_causal).detach()
+                self.output = self.compiled_model(self.input, is_causal=self.use_causal)
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
         dtype = self._verify_input.dtype

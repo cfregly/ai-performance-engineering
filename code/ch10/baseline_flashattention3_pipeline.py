@@ -210,7 +210,7 @@ class BaselineFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark baseline attention."""
         with self._nvtx_range("baseline_fa3_attention"):
             with torch.inference_mode():
-                self.output = self.model(self.input, is_causal=self.use_causal).detach()
+                self.output = self.model(self.input, is_causal=self.use_causal)
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
         dtype = self._verify_input.dtype
