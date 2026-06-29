@@ -147,6 +147,7 @@ class BandwidthPatternsBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.dst: Optional[torch.Tensor] = None
         self.reference: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._extension = None
         self._custom_metrics: dict[str, float] = {}
         self._refresh_workload_metadata()
@@ -166,6 +167,7 @@ class BandwidthPatternsBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._extension = load_memory_bandwidth_patterns_extension()
         self.src = build_source_matrix(self.config, self.device)
         self.dst = make_transpose_output(self.config, self.device)
+        self._verify_output_buffer = torch.empty_like(self.dst)
         self.reference = transpose_reference(self.src)
         self.output = None
         self._custom_metrics = {
@@ -186,11 +188,12 @@ class BandwidthPatternsBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._run_variant()
 
     def capture_verification_payload(self) -> None:
-        if self.src is None or self.output is None:
+        if self.src is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"src": self.src},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.config.rows,
             parameter_count=0,
             precision_flags={"fp16": False, "bf16": False, "tf32": False},
@@ -202,6 +205,7 @@ class BandwidthPatternsBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.dst = None
         self.reference = None
         self.output = None
+        self._verify_output_buffer = None
         self._extension = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

@@ -5020,6 +5020,14 @@ def test_timed_loops_reuse_cuda_events() -> None:
                 "class BandwidthPatternsBenchmarkBase",
                 maxsplit=1,
             )[0]
+            setup_section = source.split("def setup", maxsplit=1)[1].split(
+                "def benchmark_fn",
+                maxsplit=1,
+            )[0]
+            capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+                "def teardown",
+                maxsplit=1,
+            )[0]
             assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
             assert timing_section.count("current_stream = torch.cuda.current_stream()") == 1
             assert timing_section.count("start.record(current_stream)") == 1
@@ -5028,6 +5036,11 @@ def test_timed_loops_reuse_cuda_events() -> None:
             assert "end.record()" not in timing_section
             assert timing_section.count("end.synchronize()") == 1
             assert "samples.append(start.elapsed_time(end))" not in timing_section
+            assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+            assert "self._verify_output_buffer = torch.empty_like(self.dst)" in setup_section
+            assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+            assert "output=self._verify_output_buffer" in capture_section
+            assert "self.output.detach().clone()" not in capture_section
         if filename == "labs/cutlass_profiler_kernel_selector/run_triton_matmul.py":
             timing_section = source.split("times_ms: list[float] = []", maxsplit=1)[1].split(
                 "if not times_ms:",
