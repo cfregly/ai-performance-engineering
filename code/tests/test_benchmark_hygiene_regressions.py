@@ -8601,6 +8601,14 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
         "def finalize_iteration_metrics",
         maxsplit=1,
     )[0]
+    finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def _compute_nvlink_delta",
+        maxsplit=1,
+    )[0]
+    metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "def validate_result",
+        maxsplit=1,
+    )[0]
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown",
         maxsplit=1,
@@ -8610,6 +8618,10 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "self._next_token_buffer = torch.empty((cfg.batch_size, 1)" in setup_section
     assert "self._next_token_values = torch.empty((cfg.batch_size, 1), dtype=cfg.dtype_obj, device=self.device)" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
+    assert "self._metric_totals: Dict[str, float]" in source
+    assert "self._metric_counts: Dict[str, int]" in source
+    assert "self._metric_totals = {key: 0.0 for key in self._metric_totals}" in setup_section
+    assert "self._metric_counts = {key: 0 for key in self._metric_counts}" in setup_section
     assert "def _next_token_from_logits" in source
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in source
@@ -8618,6 +8630,20 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in benchmark_section
     assert "self.output = seed_tokens" in benchmark_section
     assert "seed_tokens.detach()" not in benchmark_section
+    assert 'self._metric_totals["ttft"] += prefill_ms' in finalize_section
+    assert 'self._metric_totals["tpot"] += avg_tpot_ms * decode_count' in finalize_section
+    assert 'self._metric_totals["throughput"] += throughput' in finalize_section
+    assert 'self._metric_totals["nvlink"] += nvlink_gbps' in finalize_section
+    assert 'self._metric_totals["nvlink_measured"] += measured_nvlink' in finalize_section
+    assert 'ttft_ms=self._metric_totals["ttft"] / self._metric_counts["ttft"]' in metrics_section
+    assert 'tpot_ms=self._metric_totals["tpot"] / self._metric_counts["tpot"]' in metrics_section
+    assert 'self._metric_totals["throughput"] / self._metric_counts["throughput"]' in metrics_section
+    assert 'self._metric_totals["nvlink"] / self._metric_counts["nvlink"]' in metrics_section
+    assert 'self._metric_totals["nvlink_measured"] / self._metric_counts["nvlink_measured"]' in metrics_section
+    assert 'sum(self._history["ttft"])' not in metrics_section
+    assert 'sum(self._history["tpot"])' not in metrics_section
+    assert 'sum(self._history["throughput"])' not in metrics_section
+    assert 'sum(self._history["nvlink"])' not in metrics_section
     assert "torch.argmax(" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section

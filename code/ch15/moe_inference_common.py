@@ -56,6 +56,14 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             "nvlink_measured": [],
             "memory_gb": [],
         }
+        self._metric_totals: Dict[str, float] = {
+            "ttft": 0.0,
+            "tpot": 0.0,
+            "throughput": 0.0,
+            "nvlink": 0.0,
+            "nvlink_measured": 0.0,
+        }
+        self._metric_counts: Dict[str, int] = {key: 0 for key in self._metric_totals}
         self._workload_metadata = WorkloadMetadata(
             requests_per_iteration=float(self.config.batch_size),
             tokens_per_iteration=float(self.config.tokens_per_iteration),
@@ -116,6 +124,9 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         )
         self._next_token_buffer = torch.empty((cfg.batch_size, 1), dtype=torch.long, device=self.device)
         self._next_token_values = torch.empty((cfg.batch_size, 1), dtype=cfg.dtype_obj, device=self.device)
+        self._history = {key: [] for key in self._history}
+        self._metric_totals = {key: 0.0 for key in self._metric_totals}
+        self._metric_counts = {key: 0 for key in self._metric_counts}
         torch.cuda.synchronize(self.device)
         if hasattr(torch.cuda, "reset_peak_memory_stats"):
             torch.cuda.reset_peak_memory_stats(self.device)
@@ -223,8 +234,19 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._history["tpot"].extend([avg_tpot_ms] * self.config.decode_tokens)
         self._history["throughput"].append(throughput)
         self._history["nvlink"].append(nvlink_gbps)
+        decode_count = int(self.config.decode_tokens)
+        self._metric_totals["ttft"] += prefill_ms
+        self._metric_counts["ttft"] += 1
+        self._metric_totals["tpot"] += avg_tpot_ms * decode_count
+        self._metric_counts["tpot"] += decode_count
+        self._metric_totals["throughput"] += throughput
+        self._metric_counts["throughput"] += 1
+        self._metric_totals["nvlink"] += nvlink_gbps
+        self._metric_counts["nvlink"] += 1
         if measured_nvlink is not None:
             self._history["nvlink_measured"].append(measured_nvlink)
+            self._metric_totals["nvlink_measured"] += measured_nvlink
+            self._metric_counts["nvlink_measured"] += 1
         elif not self._nvlink_warned:
             self._nvlink_warned = True
 
@@ -289,26 +311,28 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         return self._workload_metadata
 
     def get_custom_metrics(self) -> Optional[dict]:
-        if not self._history["ttft"] or not self._history["tpot"]:
+        if self._metric_counts["ttft"] <= 0 or self._metric_counts["tpot"] <= 0:
             return None
 
         metrics = compute_inference_metrics(
-            ttft_ms=sum(self._history["ttft"]) / len(self._history["ttft"]),
-            tpot_ms=sum(self._history["tpot"]) / len(self._history["tpot"]),
+            ttft_ms=self._metric_totals["ttft"] / self._metric_counts["ttft"],
+            tpot_ms=self._metric_totals["tpot"] / self._metric_counts["tpot"],
             total_tokens=self._total_tokens,
             total_requests=self._total_requests,
             batch_size=self.batch_size,
             max_batch_size=self.max_batch_size,
         )
-        if self._history["throughput"]:
+        if self._metric_counts["throughput"] > 0:
             metrics["inference.measured_tokens_per_second"] = (
-                sum(self._history["throughput"]) / len(self._history["throughput"])
+                self._metric_totals["throughput"] / self._metric_counts["throughput"]
             )
-        if self._history["nvlink"]:
-            metrics["inference.nvlink_tx_gbps"] = sum(self._history["nvlink"]) / len(self._history["nvlink"])
-        if self._history["nvlink_measured"]:
+        if self._metric_counts["nvlink"] > 0:
+            metrics["inference.nvlink_tx_gbps"] = (
+                self._metric_totals["nvlink"] / self._metric_counts["nvlink"]
+            )
+        if self._metric_counts["nvlink_measured"] > 0:
             metrics["inference.nvlink_measured_gbps"] = (
-                sum(self._history["nvlink_measured"]) / len(self._history["nvlink_measured"])
+                self._metric_totals["nvlink_measured"] / self._metric_counts["nvlink_measured"]
             )
         if self._history["memory_gb"]:
             metrics["inference.peak_memory_gb"] = max(self._history["memory_gb"])
