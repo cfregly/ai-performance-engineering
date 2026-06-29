@@ -3895,8 +3895,16 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
             assert "self.out_proj.weight.t()" not in benchmark_section
         assert "self._payload_parameter_count = 0" in source
         assert "self._payload_parameter_count = self.out_proj.weight.numel()" in setup_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "min(128, self.seq_len)" in setup_section
+        assert "min(128, self.hidden_size)" in setup_section
         assert "parameter_count = self.out_proj.weight.numel()" not in capture_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "verify_output = self._verify_output_buffer" in capture_section
+        assert "verify_output.copy_(self.output[: verify_output.shape[0], : verify_output.shape[1]])" in capture_section
+        assert "output=verify_output" in capture_section
+        assert "verify_output.detach().clone()" not in capture_section
 
     trtllm_source = (
         REPO_ROOT / "labs" / "trtllm_phi_3_5_moe" / "baseline_trtllm_phi_3_5_moe.py"

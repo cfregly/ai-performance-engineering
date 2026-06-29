@@ -39,6 +39,7 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self._proj_weight_t: Optional[torch.Tensor] = None
         self._attn_layout_buffer: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.sparsity_ratio = 0.0
         self._payload_parameter_count = 0
@@ -83,6 +84,12 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float16,
         )
+        self._verify_output_buffer = torch.empty(
+            min(128, self.seq_len),
+            min(128, self.hidden_size),
+            device=self.device,
+            dtype=torch.float16,
+        )
         self._payload_parameter_count = self.out_proj.weight.numel()
         self._synchronize()
 
@@ -116,12 +123,19 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
-        if self.q is None or self.k is None or self.v is None or self.output is None:
+        if (
+            self.q is None
+            or self.k is None
+            or self.v is None
+            or self.output is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        verify_output = self.output[:128, :128]
+        verify_output = self._verify_output_buffer
+        verify_output.copy_(self.output[: verify_output.shape[0], : verify_output.shape[1]])
         self._set_verification_payload(
             inputs={"q": self.q, "k": self.k, "v": self.v},
-            output=verify_output.detach().clone(),
+            output=verify_output,
             batch_size=self.seq_len,
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -148,6 +162,7 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self._proj_weight_t = None
         self._attn_layout_buffer = None
         self._output_buffer = None
+        self._verify_output_buffer = None
         self.output = None
         torch.cuda.empty_cache()
 
