@@ -7767,6 +7767,9 @@ def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
 
     assert eval_section.count("with torch.inference_mode(), autocast_ctx:") == 2
     assert "torch.no_grad()" not in eval_section
+    assert "val_loss = val_loss.item()" not in eval_section
+    assert "log_value_buffer[0].copy_(val_loss)" in eval_section
+    assert "val_loss = log_value_buffer.detach().cpu().tolist()[0]" in eval_section
     assert "log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)" in source
     assert "log_value_buffer[0].copy_(train_loss.detach())" in logging_section
     assert "log_value_buffer[1].copy_(num_tokens)" in logging_section
