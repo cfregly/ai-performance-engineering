@@ -23,11 +23,10 @@ Usage:
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import time
 import json
 import argparse
-from typing import Dict, List, Tuple, Optional
+from typing import Optional
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
@@ -67,6 +66,11 @@ class SimpleLongContextModel(nn.Module):
         
         self.embedding = nn.Embedding(vocab_size, hidden_dim)
         self.pos_embedding = nn.Embedding(max_seq_len, hidden_dim)
+        self.register_buffer(
+            "_position_ids",
+            torch.arange(max_seq_len, dtype=torch.long),
+            persistent=False,
+        )
         
         self.layers = nn.ModuleList([
             nn.TransformerEncoderLayer(
@@ -79,13 +83,24 @@ class SimpleLongContextModel(nn.Module):
         ])
         
         self.num_layers = num_layers
+
+    def _position_ids_for(self, seq_len: int, device: torch.device) -> torch.Tensor:
+        position_ids = self._position_ids
+        if position_ids.device != device or position_ids.numel() < seq_len:
+            position_ids = torch.arange(
+                max(seq_len, self.pos_embedding.num_embeddings),
+                device=device,
+                dtype=torch.long,
+            )
+            self._position_ids = position_ids
+        return position_ids[:seq_len]
     
     def forward(self, input_ids):
         batch_size, seq_len = input_ids.shape
         
         # Embeddings
         x = self.embedding(input_ids)
-        pos_ids = torch.arange(seq_len, device=input_ids.device).unsqueeze(0)
+        pos_ids = self._position_ids_for(seq_len, input_ids.device).unsqueeze(0)
         x = x + self.pos_embedding(pos_ids)
         
         # Transformer layers
@@ -252,7 +267,7 @@ def validate_long_context(
             success=True
         )
         
-    except torch.cuda.OutOfMemoryError as e:
+    except torch.cuda.OutOfMemoryError:
         print(f"    ERROR: OUT OF MEMORY")
         torch.cuda.empty_cache()
         return LongContextMetrics(

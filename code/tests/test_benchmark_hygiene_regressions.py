@@ -8365,6 +8365,39 @@ def test_ch13_training_models_reuse_position_id_buffers() -> None:
         assert "pos_ids = self._position_ids[:, :seq_len].expand(batch_size, -1)" in forward_section
 
 
+def test_long_context_validation_model_reuses_position_ids() -> None:
+    source = (
+        REPO_ROOT / "core" / "scripts" / "utilities" / "long_context_validation.py"
+    ).read_text(encoding="utf-8")
+    model_section = source.split("class SimpleLongContextModel", maxsplit=1)[1].split(
+        "def estimate_kv_cache_size",
+        maxsplit=1,
+    )[0]
+    forward_section = model_section.split("def forward", maxsplit=1)[1]
+
+    assert 'self.register_buffer(\n            "_position_ids",' in model_section
+    assert "def _position_ids_for(self, seq_len: int, device: torch.device)" in model_section
+    assert "torch.arange(seq_len, device=input_ids.device)" not in forward_section
+    assert "pos_ids = self._position_ids_for(seq_len, input_ids.device).unsqueeze(0)" in forward_section
+
+    from core.scripts.utilities.long_context_validation import SimpleLongContextModel
+
+    model = SimpleLongContextModel(
+        vocab_size=16,
+        hidden_dim=8,
+        num_layers=1,
+        num_heads=2,
+        max_seq_len=8,
+    )
+    position_ids = model._position_ids_for(4, torch.device("cpu"))
+    position_ptr = model._position_ids.data_ptr()
+    shorter_position_ids = model._position_ids_for(2, torch.device("cpu"))
+
+    assert model._position_ids.data_ptr() == position_ptr
+    torch.testing.assert_close(position_ids, torch.arange(4, dtype=torch.long))
+    torch.testing.assert_close(shorter_position_ids, torch.arange(2, dtype=torch.long))
+
+
 def test_ch13_context_parallel_ring_attention_caches_position_views() -> None:
     source = (REPO_ROOT / "ch13" / "context_parallelism.py").read_text(encoding="utf-8")
     ring_section = source.split("class RingAttention", maxsplit=1)[1].split(
