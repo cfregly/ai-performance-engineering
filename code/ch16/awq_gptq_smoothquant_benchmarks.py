@@ -10,6 +10,7 @@ import torch.nn as nn
 
 from core.benchmark.metrics import compute_precision_metrics
 from core.benchmark.verification_mixin import VerificationPayloadMixin
+from core.benchmark.wrapper_utils import attach_benchmark_metadata
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
 
@@ -185,6 +186,8 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimized_model: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_input_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
@@ -201,6 +204,12 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.workload.in_features,
             device=self.device,
             dtype=self.workload.dtype,
+        )
+        self._verify_input_buffer = torch.empty_like(self.inputs, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty(
+            (self.workload.batch_size, self.workload.out_features),
+            device=self.device,
+            dtype=torch.float32,
         )
 
         if self.scheme == "baseline":
@@ -234,14 +243,21 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.output = self.optimized_model(self.inputs)
 
     def capture_verification_payload(self) -> None:
-        if self.inputs is None or self.output is None:
+        if (
+            self.inputs is None
+            or self.output is None
+            or self._verify_input_buffer is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         # Verification is baseline-bound in the harness, so the dense reference must
         # advertise the same bounded PTQ family tolerance as the optimized variants.
         tolerance = (1.0, 10.0)
+        self._verify_input_buffer.copy_(self.inputs)
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
-            inputs={"input": self.inputs.detach().float().clone()},
-            output=self.output.detach().float().clone(),
+            inputs={"input": self._verify_input_buffer},
+            output=self._verify_output_buffer,
             batch_size=self.inputs.shape[0],
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -258,6 +274,8 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimized_model = None
         self.inputs = None
         self.output = None
+        self._verify_input_buffer = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
