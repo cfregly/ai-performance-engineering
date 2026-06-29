@@ -413,6 +413,10 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         self.parameter_count: int = 0
         self.last_latency_ms: float = 0.0
         self.last_tokens_per_sec: float = 0.0
+        self._iteration_metrics: Dict[str, float] = {
+            "latency_ms": 0.0,
+            "tokens_per_sec": 0.0,
+        }
         self._timing_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_events: Optional[Tuple[torch.cuda.Event, torch.cuda.Event]] = None
         
@@ -498,10 +502,10 @@ class Level4Triton(VerificationPayloadMixin, BaseBenchmark):
         self.last_latency_ms = start_event.elapsed_time(end_event)
         total_tokens = self.config.batch_size * self.config.seq_len
         self.last_tokens_per_sec = total_tokens / max(self.last_latency_ms / 1000.0, 1e-9)
-        return {
-            "latency_ms": float(self.last_latency_ms),
-            "tokens_per_sec": float(self.last_tokens_per_sec),
-        }
+        metrics = self._iteration_metrics
+        metrics["latency_ms"] = float(self.last_latency_ms)
+        metrics["tokens_per_sec"] = float(self.last_tokens_per_sec)
+        return metrics
 
     def capture_verification_payload(self) -> None:
         if self.input_ids is None or self.output is None:

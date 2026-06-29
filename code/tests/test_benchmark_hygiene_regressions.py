@@ -13206,14 +13206,25 @@ def test_moe_level4_and_level6_defer_verification_slices_after_timing() -> None:
             "def finalize_iteration_metrics",
             maxsplit=1,
         )[0]
+        finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown",
             maxsplit=1,
         )[0]
 
-        assert "end_event.record()\n        self.output = logits" in benchmark_section
+        assert "end_event.record(current_stream)\n        self.output = logits" in benchmark_section
         assert "self.output = logits[:, :1, : min(8, logits.shape[-1])]" not in benchmark_section
         assert ".detach()" not in benchmark_section
+        assert "self._iteration_metrics: Dict[str, float] = {" in source
+        assert "metrics = self._iteration_metrics" in finalize_section
+        assert 'metrics["latency_ms"] = float(self.last_latency_ms)' in finalize_section
+        assert 'metrics["tokens_per_sec"] = float(self.last_tokens_per_sec)' in finalize_section
+        assert "return metrics" in finalize_section
+        assert '"latency_ms": float(self.last_latency_ms)' not in finalize_section
+        assert '"tokens_per_sec": float(self.last_tokens_per_sec)' not in finalize_section
         assert "output_slice = self.output[:, :1, : min(8, self.output.shape[-1])]" in capture_section
         assert "output=output_slice.detach().float().clone()" in capture_section
 

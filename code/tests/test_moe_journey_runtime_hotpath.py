@@ -423,6 +423,7 @@ def test_moe_journey_timing_events_and_verification_clone_stay_out_of_hot_path(
 
     metrics = bench.finalize_iteration_metrics()
     assert metrics is not None
+    assert metrics is bench._iteration_metrics
     assert metrics["latency_ms"] >= 0.0
 
     bench.capture_verification_payload()
@@ -434,3 +435,5 @@ def test_moe_journey_timing_events_and_verification_clone_stay_out_of_hot_path(
     torch.cuda.synchronize()
     assert bench._timing_events is first_events
     assert fake_forward.calls == 2
+    next_metrics = bench.finalize_iteration_metrics()
+    assert next_metrics is metrics
