@@ -1203,6 +1203,9 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
             assert "self._aux_out: Optional[torch.Tensor] = None" in source
             assert "aux_out_buffer = torch.empty(" in worker_section
             assert "self._aux_out = torch.empty_like(self._full_out)" in setup_section
+            assert "current_stream = torch.cuda.current_stream()" in worker_section
+            assert "comm_stream.wait_stream(current_stream)" in worker_section
+            assert "comm_stream.wait_stream(torch.cuda.current_stream())" not in worker_section
             assert "aux_out = _linear_no_bias_into(aux_layers[layer_idx], x, aux_out_buffer)" in worker_section
             assert "aux_out = _linear_no_bias_into(self._aux_layers[layer_idx], x, self._aux_out)" in benchmark_section
             assert "aux_out = aux_layers[layer_idx](x)" not in worker_section
@@ -11497,6 +11500,15 @@ def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() 
         if filename == "optimized_symmetric_memory_perf_multigpu.py":
             assert "self._stream_timing_pairs: List[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []" in setup_section
             assert "self._stream_timing_pairs = list(zip(self._copy_streams, self._timing_pairs, strict=True))" in setup_section
+            assert "current_stream = torch.cuda.current_stream()" in benchmark_section
+            assert "send_stream.wait_stream(current_stream)" in benchmark_section
+            assert "recv_stream.wait_stream(current_stream)" in benchmark_section
+            assert "current_stream.wait_stream(send_stream)" in benchmark_section
+            assert "current_stream.wait_stream(recv_stream)" in benchmark_section
+            assert "send_stream.wait_stream(torch.cuda.current_stream())" not in benchmark_section
+            assert "recv_stream.wait_stream(torch.cuda.current_stream())" not in benchmark_section
+            assert "torch.cuda.current_stream().wait_stream(send_stream)" not in benchmark_section
+            assert "torch.cuda.current_stream().wait_stream(recv_stream)" not in benchmark_section
             assert "for stream, (start_event, _) in self._stream_timing_pairs:" in benchmark_section
             assert "zip((send_stream, recv_stream), timing_pairs)" not in benchmark_section
 

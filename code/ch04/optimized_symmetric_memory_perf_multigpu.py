@@ -144,8 +144,9 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         if self._copy_streams is None or len(timing_pairs) < 2 or len(self._stream_timing_pairs) < 2:
             raise RuntimeError("Timing events not initialized")
         send_stream, recv_stream = self._copy_streams
-        send_stream.wait_stream(torch.cuda.current_stream())
-        recv_stream.wait_stream(torch.cuda.current_stream())
+        current_stream = torch.cuda.current_stream()
+        send_stream.wait_stream(current_stream)
+        recv_stream.wait_stream(current_stream)
         for stream, (start_event, _) in self._stream_timing_pairs:
             with torch.cuda.stream(stream):
                 start_event.record()
@@ -154,8 +155,8 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
                 self._peer_buffer.copy_(self._local_buffer, non_blocking=True)
             with torch.cuda.stream(recv_stream):
                 self._recv_buffer.copy_(self._prev_buffer, non_blocking=True)
-        torch.cuda.current_stream().wait_stream(send_stream)
-        torch.cuda.current_stream().wait_stream(recv_stream)
+        current_stream.wait_stream(send_stream)
+        current_stream.wait_stream(recv_stream)
         with torch.cuda.stream(send_stream):
             timing_pairs[0][1].record()
         with torch.cuda.stream(recv_stream):
