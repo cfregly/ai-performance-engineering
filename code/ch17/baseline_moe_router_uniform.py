@@ -71,6 +71,7 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.output: Optional[torch.Tensor] = None
         self._verify_probe: Optional[torch.Tensor] = None
         self._verify_meta: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
@@ -112,6 +113,11 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
             [int(self.num_islands), int(self.experts_per_island), int(self.num_experts)],
             dtype=torch.int64,
         )
+        self._verify_output_buffer = torch.empty(
+            (min(2, self.batch), min(2, self.seq), min(256, self.hidden_size)),
+            dtype=torch.float32,
+            device="cpu",
+        )
 
         for _ in range(3):
             with torch.inference_mode():
@@ -145,12 +151,19 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or self._verify_probe is None or self._verify_meta is None:
+        if (
+            self.output is None
+            or self._verify_probe is None
+            or self._verify_meta is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        output_slice = self.output[:2, :2, :256].detach().cpu().float().clone()
+        verify_output = self._verify_output_buffer
+        output_slice = self.output[: verify_output.shape[0], : verify_output.shape[1], : verify_output.shape[2]]
+        verify_output.copy_(output_slice)
         self._set_verification_payload(
             inputs={"probe": self._verify_probe, "topology": self._verify_meta},
-            output=output_slice,
+            output=verify_output,
             batch_size=int(self.batch),
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -172,6 +185,7 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._remote_buf_a = None
         self._remote_buf_b = None
         self.output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

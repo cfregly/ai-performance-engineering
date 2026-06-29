@@ -12793,8 +12793,14 @@ def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
         assert "with torch.inference_mode():" in benchmark_section
         assert "self._payload_parameter_count = 0" in source
         assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
         assert "param_count = sum(" not in capture_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "verify_output = self._verify_output_buffer" in capture_section
+        assert "verify_output.copy_(output_slice)" in capture_section
+        assert "output=verify_output" in capture_section
+        assert ".detach().cpu().float().clone()" not in capture_section
         assert "torch.index_select(flat, 0, self._remote_idx, out=self._remote_buf_a[:, : self.hidden_size])" in benchmark_section
         assert "self._remote_buf_b.copy_(self._remote_buf_a)" in benchmark_section
         assert "self._remote_buf_a.copy_(self._remote_buf_b)" in benchmark_section
