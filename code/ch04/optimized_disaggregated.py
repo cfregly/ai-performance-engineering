@@ -111,7 +111,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 if self.is_distributed:
                     dist.all_reduce(decode_output, op=dist.ReduceOp.SUM)
                     decode_output.div_(self.world_size)
-                self.output = decode_output.detach()
+                self.output = decode_output
 
     def capture_verification_payload(self) -> None:
         if self.prefill_input is None or self.decode_input is None or self.output is None:

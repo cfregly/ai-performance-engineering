@@ -2397,6 +2397,8 @@ def test_ch04_optimized_disaggregated_normalizes_allreduce_in_place() -> None:
         assert "dist.all_reduce(decode_output, op=dist.ReduceOp.SUM)" in benchmark_section
         assert "decode_output.div_(self.world_size)" in benchmark_section
         assert "decode_output = decode_output / self.world_size" not in benchmark_section
+        assert "self.output = decode_output" in benchmark_section
+        assert "decode_output.detach()" not in benchmark_section
 
 
 def test_ch06_ch12_cuda_output_buffers_skip_setup_zero_fill() -> None:
