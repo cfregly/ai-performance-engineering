@@ -55,6 +55,7 @@ class CalibrationFreeFP8Linear(nn.Module):
         
         # Fallback flag for problematic layers
         self.use_fp8 = True
+        self._weight_fp8_cache: Optional[torch.Tensor] = None
     
     def _compute_scale(self, x: torch.Tensor) -> torch.Tensor:
         """Compute FP8 scaling factor dynamically.
@@ -103,6 +104,17 @@ class CalibrationFreeFP8Linear(nn.Module):
             x_fp8 = torch.clamp(x_scaled, -448.0, 448.0)
         
         return x_fp8, scale
+
+    def _weight_fp8(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        if (
+            self._weight_fp8_cache is None
+            or self._weight_fp8_cache.device != self.weight.device
+            or tuple(self._weight_fp8_cache.shape) != tuple(self.weight.shape)
+        ):
+            weight_fp8, weight_scale = self._quantize_fp8(self.weight, self.weight_scale)
+            self.weight_scale = weight_scale
+            self._weight_fp8_cache = weight_fp8
+        return self._weight_fp8_cache, self.weight_scale
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -123,15 +135,15 @@ class CalibrationFreeFP8Linear(nn.Module):
         # Quantize input
         x_fp8, self.input_scale = self._quantize_fp8(x, self.input_scale)
         
-        # Quantize weight
-        weight_fp8, self.weight_scale = self._quantize_fp8(self.weight, self.weight_scale)
+        # Static inference weights only need FP8 materialization once.
+        weight_fp8, weight_scale = self._weight_fp8()
         
         try:
             # FP8 matrix multiplication
             # output = (x_fp8 / input_scale) @ (weight_fp8 / weight_scale).T
             output = torch.mm(
                 x_fp8.view(-1, self.in_features).to(torch.float32) / self.input_scale,
-                (weight_fp8.to(torch.float32) / self.weight_scale).T
+                (weight_fp8.to(torch.float32) / weight_scale).T
             )
             
             output = output.view(*x.shape[:-1], self.out_features)

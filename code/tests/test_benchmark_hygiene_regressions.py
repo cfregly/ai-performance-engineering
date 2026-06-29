@@ -11485,12 +11485,17 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
     assert "torch.tensor(" not in benchmark_section
     assert "self._output = output" in benchmark_section
     assert "output=self._output.detach().float().clone()" in capture_section
+    assert "self._weight_fp8_cache: Optional[torch.Tensor] = None" in source
+    assert "def _weight_fp8(self) -> Tuple[torch.Tensor, torch.Tensor]:" in source
+    assert "self._weight_fp8_cache = weight_fp8" in source
     assert "with torch.inference_mode():" in scale_section
     assert "with torch.no_grad():" not in scale_section
     assert "if x.dtype != torch.bfloat16:" in forward_section
     assert "x = x.to(torch.bfloat16)" in forward_section
     assert "nn.functional.linear(x, self.weight, self.bias)" in forward_section
     assert "nn.functional.linear(x.to(torch.bfloat16)" not in forward_section
+    assert "weight_fp8, weight_scale = self._weight_fp8()" in forward_section
+    assert "self._quantize_fp8(self.weight, self.weight_scale)" not in forward_section
 
 
 def test_ch16_ch19_quantized_linears_add_bias_in_place() -> None:
