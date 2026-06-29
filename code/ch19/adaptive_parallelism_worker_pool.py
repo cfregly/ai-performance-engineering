@@ -174,14 +174,14 @@ class WorkerPool:
         except queue.Empty:
             pass
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         
         # Simulate inference (in production, would call actual model)
         # For demonstration, we just sleep based on estimated latency
         estimated_latency = self.get_estimated_latency(request)
         time.sleep(estimated_latency / 1000.0)
         
-        actual_latency = (time.time() - start_time) * 1000.0
+        actual_latency = (time.perf_counter() - start_time) * 1000.0
         
         with self.lock:
             self.active_requests -= 1

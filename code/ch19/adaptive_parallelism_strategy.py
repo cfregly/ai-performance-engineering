@@ -1,16 +1,12 @@
 """Adaptive parallelism routing demo (Chapter 19)."""
 from __future__ import annotations
 
-import os
-
-
-
 import logging
 import random
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Optional
 
 try:
     import pynvml  # type: ignore
@@ -94,7 +90,7 @@ class DynamicParallelismRouter:
         return 0.1 * latency + 0.7 * throughput + 0.2 * memory
 
     def maybe_switch(self, metrics: WorkloadMetrics) -> Optional[StrategyConfig]:
-        now = time.time()
+        now = time.perf_counter()
         if now - self.last_switch < self.cooldown:
             return None
         proposed = self.choose(metrics)
@@ -128,11 +124,11 @@ def collect_metrics() -> WorkloadMetrics:
 
 
 def simulate(router: DynamicParallelismRouter, seconds: float = 10.0) -> None:
-    start = time.time()
+    start = time.perf_counter()
     switches = 0
     processed = 0
     latency_total = 0.0
-    while time.time() - start < seconds:
+    while time.perf_counter() - start < seconds:
         metrics = collect_metrics()
         cfg = router.maybe_switch(metrics)
         if cfg:

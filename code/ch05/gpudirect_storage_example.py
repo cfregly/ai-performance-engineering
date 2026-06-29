@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 
-import torch.profiler as profiler
-from torch.profiler import profile, record_function, ProfilerActivity, schedule
-import torch.cuda.nvtx as nvtx
+import threading
+import time
+from typing import Dict
+
+import numpy as np
+import psutil
 import torch
-import os
-from core.utils.architecture_runtime import (
-    get_arch_config,
-    get_architecture,
-    get_architecture_info,
-)
+from torch.utils.data import DataLoader, Dataset
+
+from core.utils.architecture_runtime import get_arch_config
 
 _ARCH_CFG = get_arch_config()
 """
@@ -22,16 +22,6 @@ This example demonstrates:
 - Storage I/O monitoring
 - Sequential vs random read patterns
 """
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
-import time
-import subprocess
-import psutil
-import numpy as np
-from typing import Dict, List, Tuple, Optional
-import threading
-import queue
 
 class OptimizedDataset(Dataset):
     """Dataset optimized for sequential reads and GPU processing."""
@@ -80,7 +70,7 @@ class StorageIOMonitor:
         
     def start_monitoring(self):
         """Start monitoring system resources."""
-        self.start_time = time.time()
+        self.start_time = time.perf_counter()
         self.gpu_utilization = []
         self.cpu_utilization = []
         self.memory_usage = []
@@ -112,7 +102,7 @@ class StorageIOMonitor:
     def stop_monitoring(self):
         """Stop monitoring and calculate metrics."""
         self.monitoring = False
-        self.end_time = time.time()
+        self.end_time = time.perf_counter()
         
         if self.monitor_thread.is_alive():
             self.monitor_thread.join()
@@ -161,7 +151,7 @@ class OptimizedDataLoader:
         monitor = StorageIOMonitor()
         monitor.start_monitoring()
         
-        start_time = time.time()
+        start_time = time.perf_counter()
         batch_count = 0
         
         for batch_idx, (data, target) in enumerate(self.loader):
@@ -174,7 +164,7 @@ class OptimizedDataLoader:
             if batch_count >= num_batches:
                 break
         
-        end_time = time.time()
+        end_time = time.perf_counter()
         monitor.stop_monitoring()
         
         total_time = end_time - start_time
@@ -210,9 +200,9 @@ def demonstrate_sequential_vs_random_access():
         pin_memory=True
     )
     
-    start_time = time.time()
+    start_time = time.perf_counter()
     sequential_metrics = sequential_loader.benchmark_throughput(num_batches=50)
-    sequential_time = time.time() - start_time
+    sequential_time = time.perf_counter() - start_time
     
     # Test random access
     print("Testing random access pattern...")
@@ -223,9 +213,9 @@ def demonstrate_sequential_vs_random_access():
         pin_memory=True
     )
     
-    start_time = time.time()
+    start_time = time.perf_counter()
     random_metrics = random_loader.benchmark_throughput(num_batches=50)
-    random_time = time.time() - start_time
+    random_time = time.perf_counter() - start_time
     
     # Compare results
     print(f"\nSequential Access Results:")

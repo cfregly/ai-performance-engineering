@@ -20,10 +20,7 @@ import torch
 import torch.cuda.nvtx as nvtx
 from core.profiling.nvtx_helper import standardize_nvtx_label
 
-from core.harness.hardware_capabilities import (
-    detect_capabilities,
-    format_capability_report,
-)
+from core.harness.hardware_capabilities import detect_capabilities
 
 
 def get_architecture() -> str:
@@ -210,7 +207,7 @@ def benchmark_memory_bandwidth() -> None:
                 _ = torch.mm(a, b)
 
             torch.cuda.synchronize()
-            start_time = time.time()
+            start_time = time.perf_counter()
 
             with nvtx.range(standardize_nvtx_label(f"compute_math:gemm_{size}")):
                 active_iters = 5
@@ -218,7 +215,7 @@ def benchmark_memory_bandwidth() -> None:
                     _ = torch.mm(a, b)
 
             torch.cuda.synchronize()
-            end_time = time.time()
+            end_time = time.perf_counter()
 
             avg_time = (end_time - start_time) / active_iters
             bytes_transferred = 2 * size * size * 4
@@ -260,7 +257,7 @@ def benchmark_tensor_operations() -> None:
                 op_func(a, b)
 
             torch.cuda.synchronize()
-            start_time = time.time()
+            start_time = time.perf_counter()
 
             with nvtx.range(standardize_nvtx_label(f"compute_math:tensor_op_{op_name.lower().replace(' ', '_')}")):
                 active_iters = 5
@@ -268,7 +265,7 @@ def benchmark_tensor_operations() -> None:
                     op_func(a, b)
 
             torch.cuda.synchronize()
-            end_time = time.time()
+            end_time = time.perf_counter()
 
             avg_time = (end_time - start_time) / active_iters
             print(f"{op_name:25}: {avg_time:.6f}s")

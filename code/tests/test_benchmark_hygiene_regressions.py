@@ -4755,6 +4755,51 @@ def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:
         assert global_wait_after_event.search(source) is None
 
 
+def test_ch02_and_ch05_host_elapsed_timing_uses_monotonic_clock() -> None:
+    hardware_source = (REPO_ROOT / "ch02" / "hardware_info.py").read_text(
+        encoding="utf-8"
+    )
+    memory_bandwidth_section = hardware_source.split(
+        "def benchmark_memory_bandwidth",
+        maxsplit=1,
+    )[1].split("def benchmark_tensor_operations", maxsplit=1)[0]
+    tensor_ops_section = hardware_source.split(
+        "def benchmark_tensor_operations",
+        maxsplit=1,
+    )[1].split("def demonstrate_memory_hierarchy", maxsplit=1)[0]
+
+    for section in (memory_bandwidth_section, tensor_ops_section):
+        assert "start_time = time.perf_counter()" in section
+        assert "end_time = time.perf_counter()" in section
+        assert "time.time()" not in section
+
+    gds_source = (REPO_ROOT / "ch05" / "gpudirect_storage_example.py").read_text(
+        encoding="utf-8"
+    )
+    monitor_section = gds_source.split("class StorageIOMonitor", maxsplit=1)[1].split(
+        "class OptimizedDataLoader",
+        maxsplit=1,
+    )[0]
+    dataloader_section = gds_source.split(
+        "def benchmark_throughput",
+        maxsplit=1,
+    )[1].split("def demonstrate_sequential_vs_random_access", maxsplit=1)[0]
+    access_demo_section = gds_source.split(
+        "def demonstrate_sequential_vs_random_access",
+        maxsplit=1,
+    )[1].split("def demonstrate_worker_scaling", maxsplit=1)[0]
+
+    assert "self.start_time = time.perf_counter()" in monitor_section
+    assert "self.end_time = time.perf_counter()" in monitor_section
+    assert "start_time = time.perf_counter()" in dataloader_section
+    assert "end_time = time.perf_counter()" in dataloader_section
+    assert "sequential_time = time.perf_counter() - start_time" in access_demo_section
+    assert "random_time = time.perf_counter() - start_time" in access_demo_section
+    assert "time.time()" not in monitor_section
+    assert "time.time()" not in dataloader_section
+    assert "time.time()" not in access_demo_section
+
+
 def test_nvfp4_dual_gemm_timing_records_on_current_stream() -> None:
     timing_splits = {
         "labs/nvfp4_dual_gemm/env_probe_b200.py": ("clocks_before", "clocks_after"),
@@ -16275,6 +16320,41 @@ def test_ch19_adaptive_worker_pool_demo_accumulates_concurrent_results() -> None
     assert "import torch" not in source
     assert "import torch.distributed" not in source
     assert "import psutil" not in source
+
+
+def test_ch19_adaptive_parallelism_elapsed_timing_uses_monotonic_clock() -> None:
+    strategy_source = (REPO_ROOT / "ch19" / "adaptive_parallelism_strategy.py").read_text(
+        encoding="utf-8"
+    )
+    switch_section = strategy_source.split("def maybe_switch", maxsplit=1)[1].split(
+        "def collect_metrics",
+        maxsplit=1,
+    )[0]
+    simulate_section = strategy_source.split("def simulate", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+
+    assert "now = time.perf_counter()" in switch_section
+    assert "time.time()" not in switch_section
+    assert "start = time.perf_counter()" in simulate_section
+    assert "while time.perf_counter() - start < seconds:" in simulate_section
+    assert "time.time()" not in simulate_section
+
+    worker_source = (
+        REPO_ROOT / "ch19" / "adaptive_parallelism_worker_pool.py"
+    ).read_text(encoding="utf-8")
+    process_section = worker_source.split("def process_request", maxsplit=1)[1].split(
+        "def get_stats",
+        maxsplit=1,
+    )[0]
+
+    assert "start_time = time.perf_counter()" in process_section
+    assert (
+        "actual_latency = (time.perf_counter() - start_time) * 1000.0"
+        in process_section
+    )
+    assert "time.time()" not in process_section
 
 
 def test_ch17_blackwell_profiling_ranks_top_k_without_full_sort() -> None:
