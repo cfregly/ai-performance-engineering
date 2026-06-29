@@ -45,6 +45,12 @@ def test_cpu_decompression_defers_full_output_clone_to_capture() -> None:
     assert "with nvtx_range(" not in benchmark_section
     assert "from core.profiling.nvtx_helper" not in source
     assert "self._run_len = int(run_len)" in setup_section
+    assert "self._decompressed_len = int(total_len)" in setup_section
+    assert 'self._result_metrics = {"latency_ms": 0.0, "decompressed_len": 0}' in source
+    assert 'self._result_metrics["latency_ms"] = latency_ms' in benchmark_section
+    assert 'self._result_metrics["decompressed_len"] = self._decompressed_len' in benchmark_section
+    assert "return self._result_metrics" in benchmark_section
+    assert 'return {"latency_ms": latency_ms' not in benchmark_section
     assert "self.counts[0].item()" not in source
     assert "run_length = self._run_len if run_count > 0 else 0" in source
 
@@ -74,6 +80,12 @@ def test_gpu_decompression_reuses_preallocated_broadcast_output() -> None:
     assert "get_nvtx_enabled(" not in benchmark_section
     assert "with nvtx_range(" not in benchmark_section
     assert "from core.profiling.nvtx_helper" not in source
+    assert "self._decompressed_len = int(total_len)" in setup_section
+    assert 'self._result_metrics = {"latency_ms": 0.0, "decompressed_len": 0}' in source
+    assert 'self._result_metrics["latency_ms"] = latency_ms' in benchmark_section
+    assert 'self._result_metrics["decompressed_len"] = self._decompressed_len' in benchmark_section
+    assert "return self._result_metrics" in benchmark_section
+    assert 'return {"latency_ms": latency_ms' not in benchmark_section
     assert "self.counts[0].item()" not in source
     assert "run_length = self._run_len if run_count > 0 else 0" in source
 

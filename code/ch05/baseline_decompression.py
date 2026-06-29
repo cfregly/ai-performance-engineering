@@ -21,6 +21,8 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.values: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._run_len: int = 0
+        self._decompressed_len: int = 0
+        self._result_metrics = {"latency_ms": 0.0, "decompressed_len": 0}
         self._workload = WorkloadMetadata(bytes_per_iteration=float(1024 * 1024 * 4))
 
     def setup(self) -> None:
@@ -33,6 +35,7 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.counts = torch.full((num_runs,), run_len, dtype=torch.int32)
         self.values = torch.randn((num_runs,), dtype=torch.float32)
         self._run_len = int(run_len)
+        self._decompressed_len = int(total_len)
         self.output = None
 
     def benchmark_fn(self) -> Optional[dict]:
@@ -46,7 +49,9 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = decompressed.detach()
         self._payload_counts = self.counts
         self._payload_values = self.values
-        return {"latency_ms": latency_ms, "decompressed_len": int(decompressed.numel())}
+        self._result_metrics["latency_ms"] = latency_ms
+        self._result_metrics["decompressed_len"] = self._decompressed_len
+        return self._result_metrics
 
     def capture_verification_payload(self) -> None:
         if self.output is None:

@@ -21,6 +21,8 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.values: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._run_len: int = 0
+        self._decompressed_len: int = 0
+        self._result_metrics = {"latency_ms": 0.0, "decompressed_len": 0}
         self._output_matrix: Optional[torch.Tensor] = None
         self._output_flat: Optional[torch.Tensor] = None
         self._values_column: Optional[torch.Tensor] = None
@@ -40,6 +42,7 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.counts = counts.to(self.device)
         self.values = values.to(self.device)
         self._run_len = int(run_len)
+        self._decompressed_len = int(total_len)
         self._output_matrix = torch.empty((num_runs, run_len), device=self.device, dtype=self.values.dtype)
         self._output_flat = self._output_matrix.reshape(-1)
         self._values_column = self.values.unsqueeze(1)
@@ -62,7 +65,9 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = out
         self._payload_counts = self.counts
         self._payload_values = self.values
-        return {"latency_ms": latency_ms, "decompressed_len": int(out.numel())}
+        self._result_metrics["latency_ms"] = latency_ms
+        self._result_metrics["decompressed_len"] = self._decompressed_len
+        return self._result_metrics
 
     def capture_verification_payload(self) -> None:
         if self.output is None:
