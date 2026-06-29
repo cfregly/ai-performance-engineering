@@ -18,6 +18,7 @@ from __future__ import annotations
 import torch
 from typing import Optional, List, Tuple, Dict, Any
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -69,7 +70,7 @@ class ManualKernelVerifier:
                 ref_out = reference_fn(x)
                 
                 if not torch.allclose(kernel_out, ref_out, rtol=rtol, atol=atol):
-                    max_diff = (kernel_out - ref_out).abs().max().item()
+                    max_diff = scalar_tensor_to_float((kernel_out - ref_out).abs().max())
                     errors.append(f"Test {i}: max diff = {max_diff}")
             except Exception as e:
                 errors.append(f"Test {i}: Exception - {e}")
@@ -126,7 +127,7 @@ class ManualKernelVerifier:
                 
                 # Use looser tolerance for CUDA - parallel reduction has ~1e-3 variance
                 if not torch.allclose(kernel_out, ref_out, rtol=1e-3, atol=1e-3, equal_nan=True):
-                    max_diff = (kernel_out - ref_out).abs().max().item()
+                    max_diff = scalar_tensor_to_float((kernel_out - ref_out).abs().max())
                     errors.append(f"Edge case '{name}': max diff = {max_diff}")
             except Exception as e:
                 errors.append(f"Edge case '{name}': Exception - {e}")
@@ -168,7 +169,7 @@ class ManualKernelVerifier:
                 
                 # Use looser tolerance for CUDA - parallel reduction has ~1e-3 variance
                 if not torch.allclose(kernel_out, ref_out, rtol=1e-3, atol=1e-3):
-                    max_diff = (kernel_out - ref_out).abs().max().item()
+                    max_diff = scalar_tensor_to_float((kernel_out - ref_out).abs().max())
                     errors.append(f"Shape {shape}: max diff = {max_diff}")
             except Exception as e:
                 errors.append(f"Shape {shape}: Exception - {e}")

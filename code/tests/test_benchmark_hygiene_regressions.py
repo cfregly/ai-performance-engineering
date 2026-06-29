@@ -5626,6 +5626,9 @@ def test_ch20_kernel_verifiers_defer_contiguous_payload_slice_outside_hot_loop()
         assert "[:32, :32].contiguous()" not in benchmark_section
         assert "self.output = self.test_kernel(self._verify_input)[:32, :32]" in benchmark_section
         assert "output=self.output.contiguous()" in capture_section
+        assert "from core.benchmark.utils import scalar_tensor_to_float" in source
+        assert ".abs().max().item()" not in source
+        assert "scalar_tensor_to_float((kernel_out - ref_out).abs().max())" in source
 
 
 def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:

@@ -20,6 +20,7 @@ from typing import Optional, List, Tuple, Dict, Any, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -240,7 +241,7 @@ class ProofWrightAgent:
                     
                     # Looser tolerance for CUDA - parallel reduction has ~1e-3 variance
                     if not torch.allclose(kernel_out, ref_out, rtol=1e-3, atol=1e-3):
-                        max_diff = (kernel_out - ref_out).abs().max().item()
+                        max_diff = scalar_tensor_to_float((kernel_out - ref_out).abs().max())
                         errors.append({
                             "shape": shape,
                             "input_type": "edge_case",
