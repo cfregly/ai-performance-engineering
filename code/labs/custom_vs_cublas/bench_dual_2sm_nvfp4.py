@@ -192,10 +192,11 @@ def bench(fn, args, warmup=10, iters=50):
     torch.cuda.synchronize()
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
-    start.record()
+    current_stream = torch.cuda.current_stream()
+    start.record(current_stream)
     for _ in range(iters):
         fn(*args)
-    end.record()
+    end.record(current_stream)
     end.synchronize()
     return start.elapsed_time(end) / iters  # ms
 
