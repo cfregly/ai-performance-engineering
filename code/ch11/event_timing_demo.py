@@ -56,9 +56,9 @@ def main() -> int:
 
     # CORRECT: record events on the stream that actually runs the work.
     with torch.inference_mode(), torch.cuda.stream(stream):
-        good_start.record()
+        good_start.record(stream)
         torch.cuda._sleep(int(args.sleep_cycles))
-        good_end.record()
+        good_end.record(stream)
     good_end.synchronize()
     good_ms = float(good_start.elapsed_time(good_end))
 

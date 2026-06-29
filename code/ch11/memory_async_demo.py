@@ -32,9 +32,10 @@ def _run_once(*, n_elems: int, matmul_size: int, pinned: bool) -> float:
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    current = torch.cuda.current_stream(device)
 
     with torch.inference_mode():
-        start.record()
+        start.record(current)
         with torch.cuda.stream(copy_stream):
             dev.copy_(host, non_blocking=True)
         with torch.cuda.stream(compute_stream):
@@ -42,10 +43,9 @@ def _run_once(*, n_elems: int, matmul_size: int, pinned: bool) -> float:
 
         # Join both streams back onto the current stream so event timing
         # accounts for all asynchronous work.
-        current = torch.cuda.current_stream(device)
         current.wait_stream(copy_stream)
         current.wait_stream(compute_stream)
-        end.record()
+        end.record(current)
 
     end.synchronize()
     return float(start.elapsed_time(end))

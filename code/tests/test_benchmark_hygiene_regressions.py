@@ -13409,6 +13409,50 @@ def test_ch11_ch12_standalone_timing_tools_use_inference_mode() -> None:
     rebuild_section = instantiation_source.split("# Rebuild loop", maxsplit=1)[1]
     assert "with torch.inference_mode(), torch.cuda.graph(g2):" in rebuild_section
 
+    stream_overlap_source = (
+        REPO_ROOT / "ch11" / "stream_overlap_demo.py"
+    ).read_text(encoding="utf-8")
+    stream_overlap_timer = stream_overlap_source.split("def _time_ms", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+    memory_async_source = (
+        REPO_ROOT / "ch11" / "memory_async_demo.py"
+    ).read_text(encoding="utf-8")
+    memory_async_timer = memory_async_source.split("def _run_once", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+    event_timing_source = (
+        REPO_ROOT / "ch11" / "event_timing_demo.py"
+    ).read_text(encoding="utf-8")
+    stream_priority_source = (
+        REPO_ROOT / "ch11" / "stream_priority_demo.py"
+    ).read_text(encoding="utf-8")
+    stream_priority_timer = stream_priority_source.split("def _run_once", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+
+    assert "current_stream = torch.cuda.current_stream()" in stream_overlap_timer
+    assert "start.record(current_stream)" in stream_overlap_timer
+    assert "end.record(current_stream)" in stream_overlap_timer
+    assert "start.record()" not in stream_overlap_timer
+    assert "end.record()" not in stream_overlap_timer
+    assert "current = torch.cuda.current_stream(device)" in memory_async_timer
+    assert "start.record(current)" in memory_async_timer
+    assert "end.record(current)" in memory_async_timer
+    assert "start.record()" not in memory_async_timer
+    assert "end.record()" not in memory_async_timer
+    assert "good_start.record(stream)" in event_timing_source
+    assert "good_end.record(stream)" in event_timing_source
+    assert "good_start.record()" not in event_timing_source
+    assert "good_end.record()" not in event_timing_source
+    assert "start.record(high_stream)" in stream_priority_timer
+    assert "end.record(high_stream)" in stream_priority_timer
+    assert "start.record()" not in stream_priority_timer
+    assert "end.record()" not in stream_priority_timer
+
 
 def test_ch12_bias_relu_residual_batches_verification_metric_reads() -> None:
     source = (REPO_ROOT / "ch12" / "bias_relu_residual_fusion_benchmark.py").read_text(

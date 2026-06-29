@@ -23,10 +23,11 @@ def _require_cuda() -> torch.device:
 def _time_ms(fn, *, iters: int) -> float:
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
-    start.record()
+    current_stream = torch.cuda.current_stream()
+    start.record(current_stream)
     for _ in range(iters):
         fn()
-    end.record()
+    end.record(current_stream)
     end.synchronize()
     return float(start.elapsed_time(end)) / max(iters, 1)
 

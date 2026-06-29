@@ -55,9 +55,9 @@ def _run_once(
                 _ = a @ b
 
         with torch.cuda.stream(high_stream):
-            start.record()
+            start.record(high_stream)
             _ = vec.mul(1.01).add(0.1)
-            end.record()
+            end.record(high_stream)
 
     end.synchronize()
     return float(start.elapsed_time(end))
