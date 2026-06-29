@@ -73,7 +73,8 @@ class BaselineDataloaderDefaultBenchmark(VerificationPayloadMixin, BaseBenchmark
             tokens_per_iteration=float(self.batch_size * self.feature_dim),
         )
         self.output = None
-        self._payload_inputs: Optional[dict] = None
+        self._payload_inputs: dict[str, Optional[torch.Tensor]] = {"data": None, "labels": None}
+        self._payload_inputs_ready = False
         self.register_workload_metadata(
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(self.batch_size * self.feature_dim),
@@ -105,8 +106,9 @@ class BaselineDataloaderDefaultBenchmark(VerificationPayloadMixin, BaseBenchmark
             pin_memory=False,
             prefetch_factor=None,
         )
-        
+
         self._data_iter = iter(self.dataloader)
+        self._payload_inputs_ready = False
 
         for _ in range(2):
             data, labels = self._next_batch()
@@ -126,14 +128,20 @@ class BaselineDataloaderDefaultBenchmark(VerificationPayloadMixin, BaseBenchmark
             loss.backward()
             self.optimizer.step()
             self.output = outputs.detach()
-        self._payload_inputs = {"data": data.detach(), "labels": labels.detach()}
+        self._payload_inputs["data"] = data.detach()
+        self._payload_inputs["labels"] = labels.detach()
+        self._payload_inputs_ready = True
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
-        if self._payload_inputs is None or self.output is None:
+        if not self._payload_inputs_ready or self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        inputs = {k: v.detach().clone() for k, v in self._payload_inputs.items()}
+        data = self._payload_inputs["data"]
+        labels = self._payload_inputs["labels"]
+        if data is None or labels is None:
+            raise RuntimeError("benchmark_fn() must stash inputs for verification")
+        inputs = {"data": data.detach().clone(), "labels": labels.detach().clone()}
         self._set_verification_payload(
             inputs=inputs,
             output=self.output.detach().clone(),
@@ -153,6 +161,9 @@ class BaselineDataloaderDefaultBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.optimizer = None
         self.criterion = None
         self._data_iter = None
+        self._payload_inputs["data"] = None
+        self._payload_inputs["labels"] = None
+        self._payload_inputs_ready = False
         super().teardown()
     
     def _next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:

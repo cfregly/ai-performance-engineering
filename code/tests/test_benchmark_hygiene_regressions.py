@@ -12413,6 +12413,41 @@ def test_ch13_mlp_benchmarks_use_inplace_relu_modules() -> None:
     assert "torch.relu(x)" not in int8_forward
 
 
+def test_ch13_dataloader_payload_inputs_reuse_dict() -> None:
+    for name in ("baseline_dataloader_default.py", "optimized_dataloader_default.py"):
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def _next_batch",
+            maxsplit=1,
+        )[0]
+
+        assert 'self._payload_inputs: dict[str, Optional[torch.Tensor]] = {"data": None, "labels": None}' in source
+        assert "self._payload_inputs_ready = False" in source
+        assert "self._payload_inputs_ready = False" in setup_section
+        assert 'self._payload_inputs["data"] = data.detach()' in benchmark_section
+        assert 'self._payload_inputs["labels"] = labels.detach()' in benchmark_section
+        assert "self._payload_inputs_ready = True" in benchmark_section
+        assert 'self._payload_inputs = {"data": data.detach(), "labels": labels.detach()}' not in benchmark_section
+        assert "if not self._payload_inputs_ready or self.output is None:" in capture_section
+        assert 'inputs = {"data": data.detach().clone(), "labels": labels.detach().clone()}' in capture_section
+        assert "{k: v.detach().clone() for k, v in self._payload_inputs.items()}" not in capture_section
+        assert 'self._payload_inputs["data"] = None' in teardown_section
+        assert 'self._payload_inputs["labels"] = None' in teardown_section
+        assert "self._payload_inputs_ready = False" in teardown_section
+
+
 def test_ch13_optimized_dataloader_reuses_preprocessing_scratch() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_dataloader_default.py").read_text(
         encoding="utf-8"
