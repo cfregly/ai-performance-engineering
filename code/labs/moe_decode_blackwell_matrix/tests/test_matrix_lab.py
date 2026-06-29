@@ -13,6 +13,7 @@ from labs.moe_decode_blackwell_matrix.runner import (
     _compare_outputs,
     _routing_stats,
     build_decode_batches,
+    render_console_table,
     summarize_rows,
 )
 
@@ -133,7 +134,11 @@ def test_profiler_compare_selects_graph_pair_without_full_sort() -> None:
     assert eager_row["config_id"] == "wk_b_eager"
     assert graph_row["config_id"] == "wk_b_graph"
     assert "best_pair" in source
+    assert "best_graph_by_workload" in source
+    assert "for row in rows:" in source
     assert "ranked_pairs" not in source
+    assert "ok_rows = [" not in source
+    assert "graph_rows = [" not in source
     assert ".sort(" not in source
 
 
@@ -198,6 +203,10 @@ def test_compare_outputs_batches_diff_materialization() -> None:
 
 
 def test_summary_builds_pairwise_sections() -> None:
+    source = inspect.getsource(summarize_rows)
+    run_matrix_source = (Path(__file__).resolve().parents[1] / "run_matrix.py").read_text(
+        encoding="utf-8"
+    )
     rows = [
         {
             "config_id": "wk_dyn",
@@ -233,3 +242,42 @@ def test_summary_builds_pairwise_sections() -> None:
     assert summary["best_overall"]["config_id"] == "wk_grf"
     assert summary["persistent_vs_dynamic"][0]["speedup"] == 1.6
     assert summary["graph_vs_eager"][0]["speedup"] == 1.25
+    assert "for row in rows:" in source
+    assert "ok_row_count += 1" in source
+    assert "unsupported_row_count += 1" in source
+    assert "error_row_count += 1" in source
+    assert "by_config[(row[\"workload_key\"], row[\"schedule_mode\"], row[\"launch_mode\"])] = row" in source
+    assert "workload_keys.add(row[\"workload_key\"])" in source
+    assert "ok_rows = [" not in source
+    assert "sum(1 for row in rows" not in source
+    assert "min(ok_rows" not in source
+    assert "for row in ok_rows" not in source
+    assert 'return 0 if int(summary["error_row_count"]) == 0 else 2' in run_matrix_source
+    assert "error_count = sum(1 for row in rows" not in run_matrix_source
+
+
+def test_console_table_uses_bounded_selection() -> None:
+    source = inspect.getsource(render_console_table)
+    rows = [
+        {
+            "config_id": f"cfg_{idx}",
+            "decode_batch": idx,
+            "routing_policy": "balanced",
+            "schedule_mode": "persistent",
+            "launch_mode": "eager",
+            "status": "ok",
+            "step_mean_ms": float(ms),
+            "tokens_per_second": 1000.0 / float(ms),
+        }
+        for idx, ms in enumerate((9.0, 3.0, 7.0, 1.0), start=1)
+    ]
+    rows.append({"status": "error", "config_id": "bad", "step_mean_ms": 0.1})
+
+    table = render_console_table(rows, limit=2)
+
+    assert "`cfg_4`" in table
+    assert "`cfg_2`" in table
+    assert "`cfg_3`" not in table
+    assert "`bad`" not in table
+    assert "heapq.nsmallest(" in source
+    assert "sorted(" not in source

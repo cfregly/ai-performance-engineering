@@ -4,20 +4,22 @@ from typing import Any, Sequence
 
 
 def auto_select_graph_pair(rows: Sequence[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
-    ok_rows = [row for row in rows if row.get("status") == "ok"]
-    eager_by_workload = {
-        row["workload_key"]: row
-        for row in ok_rows
-        if row["schedule_mode"] == "persistent" and row["launch_mode"] == "eager"
-    }
-    graph_rows = [
-        row
-        for row in ok_rows
-        if row["schedule_mode"] == "persistent" and row["launch_mode"] == "cuda_graph"
-    ]
+    eager_by_workload: dict[Any, dict[str, Any]] = {}
+    best_graph_by_workload: dict[Any, dict[str, Any]] = {}
+    for row in rows:
+        if row.get("status") != "ok" or row["schedule_mode"] != "persistent":
+            continue
+        workload_key = row["workload_key"]
+        if row["launch_mode"] == "eager":
+            eager_by_workload[workload_key] = row
+        elif row["launch_mode"] == "cuda_graph":
+            best_graph = best_graph_by_workload.get(workload_key)
+            if best_graph is None or float(row["step_mean_ms"]) < float(best_graph["step_mean_ms"]):
+                best_graph_by_workload[workload_key] = row
+
     best_pair: tuple[float, dict[str, Any], dict[str, Any]] | None = None
-    for graph_row in graph_rows:
-        eager_row = eager_by_workload.get(graph_row["workload_key"])
+    for workload_key, graph_row in best_graph_by_workload.items():
+        eager_row = eager_by_workload.get(workload_key)
         if eager_row is None:
             continue
         speedup = float(eager_row["step_mean_ms"]) / float(graph_row["step_mean_ms"])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import heapq
 import json
 import math
 import time
@@ -368,18 +369,35 @@ def measure_scenario(
 
 
 def summarize_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    ok_rows = [row for row in rows if row.get("status") == "ok"]
+    ok_row_count = 0
+    unsupported_row_count = 0
+    error_row_count = 0
+    best: dict[str, Any] | None = None
+    by_config: dict[tuple[Any, Any, Any], dict[str, Any]] = {}
+    workload_keys: set[Any] = set()
+    for row in rows:
+        status = row.get("status")
+        if status == "ok":
+            ok_row_count += 1
+            if best is None or float(row["step_mean_ms"]) < float(best["step_mean_ms"]):
+                best = row
+            by_config[(row["workload_key"], row["schedule_mode"], row["launch_mode"])] = row
+            workload_keys.add(row["workload_key"])
+        elif status == "unsupported":
+            unsupported_row_count += 1
+        elif status == "error":
+            error_row_count += 1
+
     summary: dict[str, Any] = {
         "row_count": len(rows),
-        "ok_row_count": len(ok_rows),
-        "unsupported_row_count": sum(1 for row in rows if row.get("status") == "unsupported"),
-        "error_row_count": sum(1 for row in rows if row.get("status") == "error"),
+        "ok_row_count": ok_row_count,
+        "unsupported_row_count": unsupported_row_count,
+        "error_row_count": error_row_count,
         "best_overall": None,
         "persistent_vs_dynamic": [],
         "graph_vs_eager": [],
     }
-    if ok_rows:
-        best = min(ok_rows, key=lambda row: float(row["step_mean_ms"]))
+    if best is not None:
         summary["best_overall"] = {
             "config_id": best["config_id"],
             "step_mean_ms": best["step_mean_ms"],
@@ -387,16 +405,7 @@ def summarize_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "workload_key": best["workload_key"],
         }
 
-    by_config = {
-        (
-            row["workload_key"],
-            row["schedule_mode"],
-            row["launch_mode"],
-        ): row
-        for row in ok_rows
-    }
-    workload_keys = sorted({row["workload_key"] for row in ok_rows})
-    for workload_key in workload_keys:
+    for workload_key in sorted(workload_keys):
         dynamic = by_config.get((workload_key, "dynamic", "eager"))
         persistent = by_config.get((workload_key, "persistent", "eager"))
         graph = by_config.get((workload_key, "persistent", "cuda_graph"))
@@ -433,10 +442,11 @@ def summarize_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
 
 
 def render_console_table(rows: Sequence[dict[str, Any]], *, limit: int = 16) -> str:
-    ok_rows = sorted(
+    ok_rows = heapq.nsmallest(
+        limit,
         (row for row in rows if row.get("status") == "ok"),
         key=lambda row: float(row["step_mean_ms"]),
-    )[:limit]
+    )
     lines = [
         "| config_id | batch | routing | schedule | launch | mean ms | tok/s |",
         "| --- | ---: | --- | --- | --- | ---: | ---: |",

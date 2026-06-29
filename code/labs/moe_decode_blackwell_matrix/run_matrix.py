@@ -128,8 +128,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Run directory: {run_dir}")
     print(render_console_table(rows))
 
-    error_count = sum(1 for row in rows if row.get("status") == "error")
-    return 0 if error_count == 0 else 2
+    return 0 if int(summary["error_row_count"]) == 0 else 2
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entrypoint
