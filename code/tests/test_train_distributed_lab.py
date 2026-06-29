@@ -93,3 +93,34 @@ def test_zero2_gradient_sharder_reuses_reduce_buffers() -> None:
     assert "(shard_grad / world_size)" not in step_section
     assert "torch.cat([flattened" not in step_section
     assert "shard_grad = torch.empty_like(flattened)\n            dist.reduce_scatter_tensor" not in step_section
+
+
+def test_zero3_param_shards_reuse_local_drop_buffers() -> None:
+    for relative in ("baseline_zero3.py", "baseline_zero3_multigpu.py"):
+        source = (LAB_DIR / relative).read_text(encoding="utf-8")
+        init_section = source.split("class ParamShard", maxsplit=1)[1].split(
+            "def all_gather",
+            maxsplit=1,
+        )[0]
+        all_gather_section = source.split("def all_gather", maxsplit=1)[1].split(
+            "def drop_full",
+            maxsplit=1,
+        )[0]
+        drop_full_section = source.split("def drop_full", maxsplit=1)[1].split(
+            "def attach_zero3_hooks",
+            maxsplit=1,
+        )[0]
+
+        assert "self.full_data = None" in init_section
+        assert "self.local_shard = local_shard" in init_section
+        assert "self.local_grad = torch.empty_like(local_shard)" in init_section
+        assert "shards = [torch.empty_like(self.local_shard) for _ in range(self.world_size)]" in all_gather_section
+        assert "dist.all_gather(shards, self.local_shard)" in all_gather_section
+        assert "self.full_data = torch.cat(shards, dim=self.shard_dim)" in all_gather_section
+        assert "local = self.param.data.contiguous()" not in all_gather_section
+        assert "self.param.data = self.local_shard" in drop_full_section
+        assert "local = shards[self.rank].contiguous()" not in drop_full_section
+        assert "self.local_grad.copy_(grad_shards[self.rank])" in drop_full_section
+        assert "self.param.grad.data = self.local_grad" in drop_full_section
+        assert "self.param.grad.data = grad_shards[self.rank].contiguous()" not in drop_full_section
+        assert "self.full_data = None" in drop_full_section

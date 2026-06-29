@@ -36,22 +36,22 @@ class ParamShard:
 
         shards = param.data.chunk(self.world_size, dim=self.shard_dim)
         local_shard = shards[self.rank].contiguous()
-        self.param.data = local_shard
+        self.local_shard = local_shard
+        self.local_grad = torch.empty_like(local_shard)
+        self.param.data = self.local_shard
 
     def all_gather(self):
-        local = self.param.data.contiguous()
-        shards = [torch.empty_like(local) for _ in range(self.world_size)]
-        dist.all_gather(shards, local)
+        shards = [torch.empty_like(self.local_shard) for _ in range(self.world_size)]
+        dist.all_gather(shards, self.local_shard)
         self.full_data = torch.cat(shards, dim=self.shard_dim)
         self.param.data = self.full_data
 
     def drop_full(self):
-        shards = self.param.data.chunk(self.world_size, dim=self.shard_dim)
-        local = shards[self.rank].contiguous()
-        self.param.data = local
-        if self.param.grad is not None and self.param.grad.shape != local.shape:
+        self.param.data = self.local_shard
+        if self.param.grad is not None and self.param.grad.shape != self.local_shard.shape:
             grad_shards = self.param.grad.data.chunk(self.world_size, dim=self.shard_dim)
-            self.param.grad.data = grad_shards[self.rank].contiguous()
+            self.local_grad.copy_(grad_shards[self.rank])
+            self.param.grad.data = self.local_grad
         self.full_data = None
 
 
