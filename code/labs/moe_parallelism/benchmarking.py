@@ -198,7 +198,7 @@ class PlanBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must preallocate metric buffers for PlanBenchmark")
         for index, value in enumerate(metric_values):
             self._summary_buffer[0, index] = float(value)
-        self.output = self._summary_buffer.detach()
+        self.output = self._summary_buffer
 
 
 def run_benchmark(benchmark: PlanBenchmark) -> None:

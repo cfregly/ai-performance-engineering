@@ -191,7 +191,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
                     )
                     seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])
                 self._decode_end_event.record(stream)
-                self.output = seed_tokens.detach()
+                self.output = seed_tokens
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, List[float]]]:
         if any(

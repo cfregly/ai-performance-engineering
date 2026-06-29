@@ -488,7 +488,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if attn_out is None:
             raise RuntimeError("benchmark_fn() did not produce output")
         # Capture a slice of attention output for verification
-        self.output = attn_out[:, :, :1, : min(8, attn_out.shape[-1])].detach()
+        self.output = attn_out[:, :, :1, : min(8, attn_out.shape[-1])]
         fp8_dtype = getattr(torch, "float8_e4m3fn", None)
         fp8_enabled = fp8_dtype is not None and self.runtime_dtype == fp8_dtype
         self._payload_fp8_enabled = fp8_enabled

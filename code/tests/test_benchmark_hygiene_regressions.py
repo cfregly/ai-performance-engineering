@@ -5716,6 +5716,8 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert ".extend(ttft_times)" not in hot_section
     assert ".extend(tpot_times)" not in hot_section
     assert ".append(throughput)" not in hot_section
+    assert "self.output = tokens" in hot_section
+    assert "tokens.detach()" not in hot_section
     assert "torch.no_grad()" not in eager_section
     assert "self._router_requests = []" in teardown_section
 
@@ -6530,6 +6532,8 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "self.prefetch_event = torch.cuda.Event() if buffer_count == 2 else None" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
     assert "Prefetch event not initialized for async two-buffer prefetch" in benchmark_section
+    assert "self.output = attn_out[:, :, :1, : min(8, attn_out.shape[-1])]" in benchmark_section
+    assert "attn_out[:, :, :1, : min(8, attn_out.shape[-1])].detach()" not in benchmark_section
 
 
 def test_paged_kv_offload_hot_page_buffers_avoid_zero_fill() -> None:
@@ -7405,6 +7409,8 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "torch.empty_like(logits_last[:, :1])" not in source
     assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in benchmark_section
     assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in benchmark_section
+    assert "self.output = seed_tokens" in benchmark_section
+    assert "seed_tokens.detach()" not in benchmark_section
     assert "torch.argmax(" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
@@ -11794,7 +11800,8 @@ def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:
     assert "torch.tensor([metric_values]" not in finalize_section
     assert "for index, value in enumerate(metric_values):" in finalize_section
     assert "self._summary_buffer[0, index] = float(value)" in finalize_section
-    assert "self.output = self._summary_buffer.detach()" in finalize_section
+    assert "self.output = self._summary_buffer" in finalize_section
+    assert "self._summary_buffer.detach()" not in finalize_section
 
 
 def test_dynamic_router_verification_payloads_reuse_summary_buffers() -> None:
@@ -13025,7 +13032,8 @@ def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path(
     assert "self._summary_buffer = torch.empty(" in init_buffers_section
     assert "self._config_tensor = torch.tensor(" in init_buffers_section
     assert "self._summary_buffer.copy_(self.state_buffer[:1, : self._summary_buffer.shape[1]])" in finalize_section
-    assert "self.output = self._summary_buffer.detach()" in finalize_section
+    assert "self.output = self._summary_buffer" in finalize_section
+    assert "self._summary_buffer.detach()" not in finalize_section
     assert ".float()" not in finalize_section
     assert ".clone()" not in finalize_section
     assert "self._finalize_output()" in capture_section

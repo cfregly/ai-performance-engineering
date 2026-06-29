@@ -284,6 +284,10 @@ def test_nvfp4_group_gemm_prepare_zeroes_only_padding_tails() -> None:
 
 
 def test_trtllm_capture_verification_payload_uses_small_cpu_slice() -> None:
+    source = inspect.getsource(OptimizedTrtLlmPhi35MoeBenchmark.benchmark_fn)
+    assert "self._generated_output_ids = output_ids" in source
+    assert "output_ids.detach()" not in source
+
     bench = OptimizedTrtLlmPhi35MoeBenchmark()
     bench.input_ids = torch.arange(256, dtype=torch.long).view(1, 256)
     bench.prompt_lengths = [0]

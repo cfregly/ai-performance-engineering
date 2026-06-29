@@ -121,7 +121,7 @@ class OptimizedTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 raise RuntimeError("Prompt input batch not initialized")
             outputs = self.runner.generate(self._batch_inputs, sampling_config=self.sampling_config)
             output_ids = self._normalize_output_ids(outputs)
-            self._generated_output_ids = output_ids.detach()
+            self._generated_output_ids = output_ids
             self.output = self._generated_output_ids
         if self._generated_output_ids is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

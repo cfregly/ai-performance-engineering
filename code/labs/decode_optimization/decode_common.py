@@ -836,7 +836,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 dtype=torch.float32,
             )
         self._summary_buffer.copy_(self.state_buffer[:1, : self._summary_buffer.shape[1]])
-        self.output = self._summary_buffer.detach()
+        self.output = self._summary_buffer
 
     def capture_verification_payload(self) -> None:
         if any(

@@ -887,7 +887,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._memory_count += 1
 
         if tokens is not None:
-            self.output = tokens.detach()
+            self.output = tokens
         self._iteration += 1
         self._refresh_router_metrics()
         return {
