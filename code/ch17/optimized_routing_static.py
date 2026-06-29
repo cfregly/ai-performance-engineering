@@ -46,6 +46,7 @@ class OptimizedRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
         self.route_scores: Optional[torch.Tensor] = None
+        self.route_ids: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self._verification_payload = None
         self.register_workload_metadata(
@@ -76,6 +77,11 @@ class OptimizedRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=dtype,
         )
+        self.route_ids = torch.empty(
+            self.requests_per_iteration,
+            device=self.device,
+            dtype=torch.int64,
+        )
         self.route_scores[:, 0] = 1.0  # always select "large"
         self._synchronize()
 
@@ -86,8 +92,10 @@ class OptimizedRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.inference_mode():
                 if self.route_scores is None:
                     raise RuntimeError("Routing scores not initialized")
+                if self.route_ids is None:
+                    raise RuntimeError("Routing id buffer not initialized")
                 # Vectorized routing: compute all argmaxes in one kernel.
-                _ = torch.argmax(self.route_scores, dim=1)
+                torch.argmax(self.route_scores, dim=1, out=self.route_ids)
             if self._verify_input is not None:
                 with torch.inference_mode():
                     self.output = self.model(self._verify_input)
@@ -115,6 +123,7 @@ class OptimizedRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.model = None
         self.inputs = None
+        self.route_ids = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

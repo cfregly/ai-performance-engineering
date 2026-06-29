@@ -5612,6 +5612,30 @@ def test_ch17_inference_wrappers_use_inference_mode() -> None:
                 assert "self.model.layers[: self.exit_layer]" not in benchmark_section
 
 
+def test_ch17_optimized_static_routing_reuses_argmax_output() -> None:
+    source = (REPO_ROOT / "ch17" / "optimized_routing_static.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self.route_ids: Optional[torch.Tensor] = None" in source
+    assert "self.route_ids = torch.empty(" in setup_section
+    assert "torch.argmax(self.route_scores, dim=1, out=self.route_ids)" in benchmark_section
+    assert "_ = torch.argmax(self.route_scores, dim=1)" not in benchmark_section
+    assert "self.route_ids = None" in teardown_section
+
+
 def test_ch17_inference_models_use_inplace_relu_on_layer_outputs() -> None:
     for relative in (
         "ch17/baseline_inference_full.py",
