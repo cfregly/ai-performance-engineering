@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import heapq
+
 import torch.cuda.nvtx as nvtx
 from core.profiling.nvtx_helper import standardize_nvtx_label
 import torch
@@ -275,13 +277,9 @@ class RadixTree:
         if not leaves:
             return
         
-        # Sort by access time (oldest first)
-        leaves.sort(key=lambda x: x.last_accessed)
-        
         # Evict the oldest 10% of leaves
         evict_count = max(1, len(leaves) // 10)
-        for i in range(evict_count):
-            leaf = leaves[i]
+        for leaf in heapq.nsmallest(evict_count, leaves, key=lambda x: x.last_accessed):
             if leaf.cache:
                 leaf.cache.release()
                 leaf.cache = None

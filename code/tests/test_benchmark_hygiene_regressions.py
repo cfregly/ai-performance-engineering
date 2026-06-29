@@ -11653,8 +11653,15 @@ def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
         "def main",
         maxsplit=1,
     )[0]
+    evict_section = source.split("def _evict_lru", maxsplit=1)[1].split(
+        "def _collect_leaves",
+        maxsplit=1,
+    )[0]
 
     assert source.count("@torch.inference_mode()") >= 2
+    assert "import heapq" in source
+    assert "heapq.nsmallest(evict_count, leaves, key=lambda x: x.last_accessed)" in evict_section
+    assert "leaves.sort(" not in evict_section
     assert "with torch.no_grad():" not in forward_section
     assert "with torch.no_grad():" not in generate_next_section
     assert "torch.tensor([token]" not in forward_section
