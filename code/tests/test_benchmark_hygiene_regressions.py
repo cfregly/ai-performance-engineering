@@ -10508,6 +10508,37 @@ def test_ch17_dynamic_routing_latency_report_uses_heap_selection() -> None:
     assert "router.calculate_latency_cost(metrics)" not in print_section
 
 
+def test_ch17_early_rejection_uses_targeted_ttft_quantiles() -> None:
+    source = (REPO_ROOT / "ch17" / "early_rejection.py").read_text(encoding="utf-8")
+    health_section = source.split("def _system_health_check", maxsplit=1)[1].split(
+        "def _admit_request",
+        maxsplit=1,
+    )[0]
+    slo_section = source.split("# Analyze SLO compliance", maxsplit=1)[1].split(
+        "# Check SLO compliance by priority",
+        maxsplit=1,
+    )[0]
+
+    assert "def _exclusive_quantile_from_sorted" in source
+    assert "def _ttft_p95_p99" in source
+    assert "import statistics" not in source
+    assert "statistics.quantiles(" not in source
+    assert "torch.profiler" not in source
+    assert "torch.cuda.nvtx" not in source
+    assert "recent_p95_ttft = _exclusive_quantile_from_sorted(sorted(recent_samples), 20, 19)" in health_section
+    assert "ttft_p95, ttft_p99 = _ttft_p95_p99(ttft_samples)" in slo_section
+
+    import statistics
+    from ch17.early_rejection import _exclusive_quantile_from_sorted, _ttft_p95_p99
+
+    samples = [float(value) for value in range(1, 121)]
+    assert _exclusive_quantile_from_sorted(sorted(samples), 20, 19) == statistics.quantiles(samples, n=20)[18]
+    assert _ttft_p95_p99(samples) == (
+        statistics.quantiles(samples, n=100)[94],
+        statistics.quantiles(samples, n=100)[98],
+    )
+
+
 def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
     for relative in (
         "ch17/baseline_moe_router_uniform.py",

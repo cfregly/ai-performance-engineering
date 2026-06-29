@@ -1,13 +1,5 @@
-import os
-import torch.profiler as profiler
-from torch.profiler import profile, record_function, ProfilerActivity, schedule
-import torch.cuda.nvtx as nvtx
 import torch
-from core.utils.architecture_runtime import (
-    get_arch_config,
-    get_architecture,
-    get_architecture_info,
-)
+from core.utils.architecture_runtime import get_arch_config
 
 _ARCH_CFG = get_arch_config()
 
@@ -19,7 +11,6 @@ QoS mechanisms for ultra-scale inference systems."""
 
 import time
 import random
-import statistics
 from typing import Dict, List, Optional, Tuple, Deque
 from dataclasses import dataclass, field
 from enum import Enum
@@ -30,6 +21,30 @@ class Priority(Enum):
     FREE = "free"
     STANDARD = "standard"
     PREMIUM = "premium"
+
+
+def _exclusive_quantile_from_sorted(sorted_values: List[float], n: int, cut_index: int) -> float:
+    """Return one cut point using statistics.quantiles' exclusive method."""
+    count = len(sorted_values)
+    if count < 2:
+        raise ValueError("exclusive quantile requires at least two samples")
+    scale = count + 1
+    j = cut_index * scale // n
+    j = 1 if j < 1 else count - 1 if j > count - 1 else j
+    delta = cut_index * scale - j * n
+    return (sorted_values[j - 1] * (n - delta) + sorted_values[j] * delta) / n
+
+
+def _ttft_p95_p99(samples: List[float]) -> Tuple[float, float]:
+    sorted_samples = sorted(samples)
+    count = len(sorted_samples)
+    if count >= 100:
+        return (
+            _exclusive_quantile_from_sorted(sorted_samples, 100, 95),
+            _exclusive_quantile_from_sorted(sorted_samples, 100, 99),
+        )
+    p95 = _exclusive_quantile_from_sorted(sorted_samples, 20, 19) if count >= 20 else sorted_samples[-1]
+    return p95, sorted_samples[-1]
 
 @dataclass
 class Request:
@@ -199,9 +214,8 @@ class QoSController:
         """Additional system health checks."""
         # Check recent performance
         if len(self.metrics.recent_ttft_samples) > 10:
-            recent_p95_ttft = statistics.quantiles(
-                list(self.metrics.recent_ttft_samples), n=20
-            )[18]  # 95th percentile
+            recent_samples = list(self.metrics.recent_ttft_samples)
+            recent_p95_ttft = _exclusive_quantile_from_sorted(sorted(recent_samples), 20, 19)
             
             # If recent performance is bad, be more conservative
             if recent_p95_ttft > self.TTFT_SLO_MAX[Priority.STANDARD] * 1.5:
@@ -404,8 +418,7 @@ def simulate_load_spike():
     print(f"\n=== SLO Analysis ===")
     if len(qos.metrics.recent_ttft_samples) > 0:
         ttft_samples = list(qos.metrics.recent_ttft_samples)
-        ttft_p95 = statistics.quantiles(ttft_samples, n=20)[18] if len(ttft_samples) >= 20 else max(ttft_samples)
-        ttft_p99 = statistics.quantiles(ttft_samples, n=100)[98] if len(ttft_samples) >= 100 else max(ttft_samples)
+        ttft_p95, ttft_p99 = _ttft_p95_p99(ttft_samples)
         
         print(f"TTFT P95: {ttft_p95:.1f}ms")
         print(f"TTFT P99: {ttft_p99:.1f}ms")
