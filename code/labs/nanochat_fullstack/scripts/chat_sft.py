@@ -170,6 +170,7 @@ step = 0
 train_iter = iter(train_loader)
 num_tokens = torch.empty((), dtype=torch.int64, device=device)
 log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)
+eval_loss_buffer = torch.empty(eval_steps, dtype=torch.float64, device=device)
 for step in range(num_iterations):
     last_step = step == num_iterations - 1
 
@@ -177,13 +178,12 @@ for step in range(num_iterations):
     if last_step or step % eval_every == 0:
         model.eval()
         val_iter = iter(build_val_loader())
-        losses = []
-        for _ in range(eval_steps):
+        for eval_idx in range(eval_steps):
             val_inputs, val_targets = next(val_iter)
             with torch.inference_mode(), autocast_ctx:
                 loss = model(val_inputs, val_targets)
-            losses.append(loss)
-        val_loss = torch.stack(losses).mean() # average over eval_steps
+            eval_loss_buffer[eval_idx].copy_(loss.detach())
+        val_loss = eval_loss_buffer.mean() # average over eval_steps
         if ddp:
             dist.all_reduce(val_loss, op=dist.ReduceOp.AVG) # average over ranks
         log_value_buffer[0].copy_(val_loss)
