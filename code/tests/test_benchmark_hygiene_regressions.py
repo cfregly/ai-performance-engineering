@@ -10666,11 +10666,23 @@ def test_ch17_early_rejection_uses_targeted_ttft_quantiles() -> None:
     assert "statistics.quantiles(" not in source
     assert "torch.profiler" not in source
     assert "torch.cuda.nvtx" not in source
-    assert "recent_p95_ttft = _exclusive_quantile_from_sorted(sorted(recent_samples), 20, 19)" in health_section
+    assert "from bisect import bisect_left, insort" in source
+    assert "recent_ttft_ordered: List[float] = field(default_factory=list)" in source
+    assert "def _ordered_ttft_samples" in source
+    assert "def _append_ttft_sample" in source
+    assert "recent_p95_ttft = _exclusive_quantile_from_sorted(" in health_section
+    assert "_ordered_ttft_samples(self.metrics), 20, 19" in health_section
+    assert "sorted(recent_samples)" not in health_section
     assert "ttft_p95, ttft_p99 = _ttft_p95_p99(ttft_samples)" in slo_section
 
     import statistics
-    from ch17.early_rejection import _exclusive_quantile_from_sorted, _ttft_p95_p99
+    from ch17.early_rejection import (
+        SystemMetrics,
+        _append_ttft_sample,
+        _exclusive_quantile_from_sorted,
+        _ordered_ttft_samples,
+        _ttft_p95_p99,
+    )
 
     samples = [float(value) for value in range(1, 121)]
     assert _exclusive_quantile_from_sorted(sorted(samples), 20, 19) == statistics.quantiles(samples, n=20)[18]
@@ -10678,6 +10690,14 @@ def test_ch17_early_rejection_uses_targeted_ttft_quantiles() -> None:
         statistics.quantiles(samples, n=100)[94],
         statistics.quantiles(samples, n=100)[98],
     )
+    metrics = SystemMetrics()
+    for value in [5.0, 1.0, 4.0, 2.0, 3.0]:
+        _append_ttft_sample(metrics, value)
+    assert _ordered_ttft_samples(metrics) == [1.0, 2.0, 3.0, 4.0, 5.0]
+    for value in range(6, 108):
+        _append_ttft_sample(metrics, float(value))
+    assert len(metrics.recent_ttft_samples) == 100
+    assert _ordered_ttft_samples(metrics) == sorted(metrics.recent_ttft_samples)
 
 
 def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:

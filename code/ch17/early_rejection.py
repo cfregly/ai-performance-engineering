@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Tuple, Deque
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import deque
+from bisect import bisect_left, insort
 import threading
 
 class Priority(Enum):
@@ -75,7 +76,35 @@ class SystemMetrics:
     current_load: float = 0.0  # 0-1
     recent_ttft_samples: Deque[float] = field(default_factory=lambda: deque(maxlen=100))
     recent_tpot_samples: Deque[float] = field(default_factory=lambda: deque(maxlen=100))
+    recent_ttft_ordered: List[float] = field(default_factory=list)
     last_updated: float = field(default_factory=time.time)
+
+
+def _ordered_ttft_samples(metrics: SystemMetrics) -> List[float]:
+    if len(metrics.recent_ttft_ordered) != len(metrics.recent_ttft_samples):
+        metrics.recent_ttft_ordered = sorted(metrics.recent_ttft_samples)
+    return metrics.recent_ttft_ordered
+
+
+def _append_ttft_sample(metrics: SystemMetrics, sample: float) -> None:
+    evicted = None
+    if (
+        metrics.recent_ttft_samples.maxlen is not None
+        and len(metrics.recent_ttft_samples) == metrics.recent_ttft_samples.maxlen
+    ):
+        evicted = metrics.recent_ttft_samples[0]
+    metrics.recent_ttft_samples.append(sample)
+    if evicted is not None:
+        evict_idx = bisect_left(metrics.recent_ttft_ordered, evicted)
+        if (
+            evict_idx < len(metrics.recent_ttft_ordered)
+            and metrics.recent_ttft_ordered[evict_idx] == evicted
+        ):
+            del metrics.recent_ttft_ordered[evict_idx]
+        else:
+            metrics.recent_ttft_ordered = sorted(metrics.recent_ttft_samples)
+            return
+    insort(metrics.recent_ttft_ordered, sample)
 
 class QoSController:
     """
@@ -214,8 +243,9 @@ class QoSController:
         """Additional system health checks."""
         # Check recent performance
         if len(self.metrics.recent_ttft_samples) > 10:
-            recent_samples = list(self.metrics.recent_ttft_samples)
-            recent_p95_ttft = _exclusive_quantile_from_sorted(sorted(recent_samples), 20, 19)
+            recent_p95_ttft = _exclusive_quantile_from_sorted(
+                _ordered_ttft_samples(self.metrics), 20, 19
+            )
             
             # If recent performance is bad, be more conservative
             if recent_p95_ttft > self.TTFT_SLO_MAX[Priority.STANDARD] * 1.5:
@@ -257,7 +287,7 @@ class QoSController:
             self.active_requests[request.priority] -= 1
             
             # Update performance metrics
-            self.metrics.recent_ttft_samples.append(actual_ttft)
+            _append_ttft_sample(self.metrics, actual_ttft)
             self.metrics.recent_tpot_samples.append(actual_tpot)
             
             # Update exponential moving averages
