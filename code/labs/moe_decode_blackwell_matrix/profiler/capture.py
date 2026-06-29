@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import heapq
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +33,7 @@ def _device_time_us(event: Any) -> float:
 def _top_ops(profile: torch.profiler.profile, *, top_ops: int) -> list[dict[str, Any]]:
     events = list(profile.key_averages())
     rows = []
-    for event in sorted(events, key=_self_device_time_us, reverse=True)[:top_ops]:
+    for event in heapq.nlargest(top_ops, events, key=_self_device_time_us):
         rows.append(
             {
                 "name": event.key,

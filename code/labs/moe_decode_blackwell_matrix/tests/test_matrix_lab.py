@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 import torch
 
@@ -73,6 +74,20 @@ def test_routing_stats_batches_scalar_materialization() -> None:
     assert entropy > 0.0
     assert active == 1.0
     assert max_tokens == 3
+
+
+def test_profiler_capture_selects_top_ops_without_full_sort() -> None:
+    source = (
+        Path(__file__).resolve().parents[1] / "profiler" / "capture.py"
+    ).read_text(encoding="utf-8")
+    top_ops_section = source.split("def _top_ops", maxsplit=1)[1].split(
+        "def profile_scenario",
+        maxsplit=1,
+    )[0]
+
+    assert "import heapq" in source
+    assert "heapq.nlargest(top_ops, events, key=_self_device_time_us)" in top_ops_section
+    assert "sorted(events, key=_self_device_time_us" not in top_ops_section
 
 
 def test_compare_outputs_batches_diff_materialization() -> None:
