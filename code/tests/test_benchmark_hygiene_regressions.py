@@ -7786,7 +7786,20 @@ def test_nanochat_chat_eval_batches_categorical_predictions() -> None:
         maxsplit=1,
     )[0]
 
-    assert "predicted_choice_indices = torch.empty(len(conversations), dtype=torch.long, device=device)" in categorical_section
+    assert "letter_id_tensor_cache = {}" in categorical_section
+    assert "batch_row_indices = torch.arange(batch_size, device=device)" in categorical_section
+    assert "answer_positions_device = torch.empty(batch_size, dtype=torch.long, device=device)" in categorical_section
+    assert "answer_positions_host = torch.empty(batch_size, dtype=torch.long, pin_memory=use_pinned_transfer)" in categorical_section
+    assert "def get_letter_ids(letters):" in categorical_section
+    assert "def get_letter_id_tensor(letters_key, letter_ids):" in categorical_section
+    assert "active_answer_positions.copy_(" in categorical_section
+    assert "same_letter_choices = all(tuple(conversation['letters']) == letters_key for conversation in conversations)" in categorical_section
+    assert "focus_logits = logits[" in categorical_section
+    assert "batch_row_indices[:active_batch_size]," in categorical_section
+    assert "active_answer_positions," in categorical_section
+    assert "][:, letter_id_tensor]" in categorical_section
+    assert "predicted_choice_indices = focus_logits.argmax(dim=-1)" in categorical_section
+    assert "predicted_choice_indices = torch.empty(active_batch_size, dtype=torch.long, device=device)" in categorical_section
     assert "predicted_choice_indices[idx] = focus_logits.argmax(dim=-1)" in categorical_section
     assert "predicted_choice_indices = predicted_choice_indices.detach().cpu().tolist()" in categorical_section
     assert "argmax_letter_id = focus_logits.argmax(dim=-1).item()" not in categorical_section

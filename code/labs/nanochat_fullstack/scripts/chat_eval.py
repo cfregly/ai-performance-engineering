@@ -104,7 +104,31 @@ def run_categorical_eval(task_object, tokenizer, model, batch_size, max_problems
 
     # Run the evaluation
     letter_to_id_cache = {} # many letters will repeat often, let's save the tokenizer some work
+    letter_id_tensor_cache = {}
+    use_pinned_transfer = device.type == "cuda"
+    batch_row_indices = torch.arange(batch_size, device=device)
+    answer_positions_device = torch.empty(batch_size, dtype=torch.long, device=device)
+    answer_positions_host = torch.empty(batch_size, dtype=torch.long, pin_memory=use_pinned_transfer)
     num_passed, total = 0, 0
+
+    def get_letter_ids(letters):
+        key = tuple(letters)
+        letter_ids = []
+        for letter in key:
+            if not letter in letter_to_id_cache:
+                encoded_letter = tokenizer.encode(letter)
+                assert len(encoded_letter) == 1, "Each letter must be a single token"
+                letter_to_id_cache[letter] = encoded_letter[0]
+            letter_ids.append(letter_to_id_cache[letter])
+        return key, letter_ids
+
+    def get_letter_id_tensor(letters_key, letter_ids):
+        cached = letter_id_tensor_cache.get(letters_key)
+        if cached is None:
+            cached = torch.tensor(letter_ids, dtype=torch.long, device=device)
+            letter_id_tensor_cache[letters_key] = cached
+        return cached
+
     for i in range(ddp_rank, num_batches, ddp_world_size):
         i0, i1 = i * batch_size, min((i + 1) * batch_size, num_problems)
 
@@ -115,6 +139,14 @@ def run_categorical_eval(task_object, tokenizer, model, batch_size, max_problems
         answer_time_positions = [len(ids) - 1 for ids in prompt_ids] # where the last token is (and the predicted answer)
         padded_prompt_ids = [ids + [bos] * (max_length - len(ids)) for ids in prompt_ids]
         prompt_ids = torch.tensor(padded_prompt_ids, dtype=torch.long, device=device)
+        active_batch_size = len(conversations)
+        for idx, answer_pos in enumerate(answer_time_positions):
+            answer_positions_host[idx] = answer_pos
+        active_answer_positions = answer_positions_device[:active_batch_size]
+        active_answer_positions.copy_(
+            answer_positions_host[:active_batch_size],
+            non_blocking=use_pinned_transfer,
+        )
 
         # Get the logits for the whole batch of conversations in parallel (efficiency win here)
         with torch.inference_mode():
@@ -124,22 +156,25 @@ def run_categorical_eval(task_object, tokenizer, model, batch_size, max_problems
         # Note that this helps the evaluation a lot because it specifically narrows the focus to only the available letters
         # The much harder alternative would be to just generate from the Assistant and check if it responded with the correct
         # letter (e.g. A, B, C, D), but evaluations typically make the task easier in this way.
-        predicted_choice_indices = torch.empty(len(conversations), dtype=torch.long, device=device)
-        for idx, conversation in enumerate(conversations):
-            # get the token ids of all the available letters of this problem
-            letters = conversation['letters']
-            letter_ids = []
-            for letter in letters:
-                if not letter in letter_to_id_cache:
-                    encoded_letter = tokenizer.encode(letter)
-                    assert len(encoded_letter) == 1, "Each letter must be a single token"
-                    letter_to_id_cache[letter] = encoded_letter[0]
-                letter_ids.append(letter_to_id_cache[letter])
-            # focus logits just down to the answer position and the available letters of the answer
-            answer_pos = answer_time_positions[idx]
-            focus_logits = logits[idx, answer_pos, letter_ids]
-            # get the argmax letter (the predicted answer)
-            predicted_choice_indices[idx] = focus_logits.argmax(dim=-1)
+        letters_key, letter_ids = get_letter_ids(conversations[0]['letters'])
+        same_letter_choices = all(tuple(conversation['letters']) == letters_key for conversation in conversations)
+        if same_letter_choices:
+            letter_id_tensor = get_letter_id_tensor(letters_key, letter_ids)
+            focus_logits = logits[
+                batch_row_indices[:active_batch_size],
+                active_answer_positions,
+            ][:, letter_id_tensor]
+            predicted_choice_indices = focus_logits.argmax(dim=-1)
+        else:
+            predicted_choice_indices = torch.empty(active_batch_size, dtype=torch.long, device=device)
+            for idx, conversation in enumerate(conversations):
+                # get the token ids of all the available letters of this problem
+                _, letter_ids = get_letter_ids(conversation['letters'])
+                # focus logits just down to the answer position and the available letters of the answer
+                answer_pos = answer_time_positions[idx]
+                focus_logits = logits[idx, answer_pos, letter_ids]
+                # get the argmax letter (the predicted answer)
+                predicted_choice_indices[idx] = focus_logits.argmax(dim=-1)
         predicted_choice_indices = predicted_choice_indices.detach().cpu().tolist()
 
         for conversation, predicted_choice_idx in zip(conversations, predicted_choice_indices):
