@@ -176,7 +176,10 @@ class BlockScalingProblem:
             atol=self.config.tolerance,
             rtol=1e-2,
         )
-        max_abs_error, mean_abs_error = torch.stack((diff.max(), diff.mean())).tolist()
+        error_stats = torch.empty(2, device=diff.device, dtype=diff.dtype)
+        error_stats[0].copy_(diff.max())
+        error_stats[1].copy_(diff.mean())
+        max_abs_error, mean_abs_error = error_stats.detach().cpu().tolist()
         return {
             "max_abs_error": float(max_abs_error),
             "mean_abs_error": float(mean_abs_error),

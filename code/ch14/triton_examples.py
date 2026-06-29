@@ -369,7 +369,10 @@ def benchmark_fp8_vs_fp16() -> None:
             print(f"  FP8:  {fp8_time:.2f} ms/iter, {fp8_tflops:.1f} TFLOPS ({speedup:.2f}x speedup)")
             
             diff = (C_fp16 - C_fp8).abs()
-            max_diff, mean_diff = torch.stack((diff.max(), diff.mean())).tolist()
+            diff_stats = torch.empty(2, device=diff.device, dtype=diff.dtype)
+            diff_stats[0].copy_(diff.max())
+            diff_stats[1].copy_(diff.mean())
+            max_diff, mean_diff = diff_stats.detach().cpu().tolist()
             print(f"  Numerical error: max={max_diff:.6f}, mean={mean_diff:.6f}")
         else:
             print(f"  FP8:  Not available (requires PyTorch 2.10+)")
@@ -394,8 +397,6 @@ def persistent_matmul_kernel(
     num_pid_m = tl.cdiv(M, BLOCK_M)
     num_pid_n = tl.cdiv(N, BLOCK_N)
     num_tiles = num_pid_m * num_pid_n
-    
-    tiles_per_sm = tl.cdiv(num_tiles, NUM_SMS)
     
     for tile_id in range(pid, num_tiles, NUM_SMS):
         pid_m = tile_id // num_pid_n

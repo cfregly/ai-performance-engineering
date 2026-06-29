@@ -93,6 +93,10 @@ def test_verification_output_slice_caps_to_small_tile() -> None:
 def test_block_scaling_verify_close_batches_error_materialization() -> None:
     source = inspect.getsource(BlockScalingProblem.verify_close)
 
-    assert "max_abs_error, mean_abs_error = torch.stack((diff.max(), diff.mean())).tolist()" in source
+    assert "error_stats = torch.empty(2, device=diff.device, dtype=diff.dtype)" in source
+    assert "error_stats[0].copy_(diff.max())" in source
+    assert "error_stats[1].copy_(diff.mean())" in source
+    assert "max_abs_error, mean_abs_error = error_stats.detach().cpu().tolist()" in source
+    assert "torch.stack((diff.max(), diff.mean())).tolist()" not in source
     assert "diff.max().item()" not in source
     assert "diff.mean().item()" not in source

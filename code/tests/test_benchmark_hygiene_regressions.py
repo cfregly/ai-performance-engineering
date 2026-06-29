@@ -1606,7 +1606,11 @@ def test_ch14_triton_examples_batches_fp8_error_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "max_diff, mean_diff = torch.stack((diff.max(), diff.mean())).tolist()" in fp8_section
+    assert "diff_stats = torch.empty(2, device=diff.device, dtype=diff.dtype)" in fp8_section
+    assert "diff_stats[0].copy_(diff.max())" in fp8_section
+    assert "diff_stats[1].copy_(diff.mean())" in fp8_section
+    assert "max_diff, mean_diff = diff_stats.detach().cpu().tolist()" in fp8_section
+    assert "torch.stack((diff.max(), diff.mean())).tolist()" not in fp8_section
     assert ".abs().max().item()" not in fp8_section
     assert ".abs().mean().item()" not in fp8_section
 
