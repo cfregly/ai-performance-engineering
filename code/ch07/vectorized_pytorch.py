@@ -6,6 +6,7 @@ import torch
 
 N = 1 << 20
 
+
 def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     a = torch.arange(N, device=device, dtype=torch.float32)
@@ -16,27 +17,29 @@ def main() -> None:
         # Use CUDA Events for accurate GPU timing
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
-        
-        start_event.record()
+        current_stream = torch.cuda.current_stream(device)
+
+        start_event.record(current_stream)
         for i in range(N):
             c[i] = a[i] + b[i]
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
         sequential_ms = start_event.elapsed_time(end_event)
-        
-        start_event.record()
+
+        start_event.record(current_stream)
         c = a + b
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
         vector_ms = start_event.elapsed_time(end_event)
     else:
         # CPU timing
         import time
+
         start = time.time()
         for i in range(N):
             c[i] = a[i] + b[i]
         sequential_ms = (time.time() - start) * 1_000
-        
+
         start = time.time()
         c = a + b
         vector_ms = (time.time() - start) * 1_000

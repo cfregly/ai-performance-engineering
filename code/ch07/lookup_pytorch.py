@@ -37,9 +37,10 @@ def run(
         else:
             start_event, end_event = events
 
-        start_event.record()
+        current_stream = torch.cuda.current_stream(indices.device)
+        start_event.record(current_stream)
         _ = table[indices]
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
 
         return float(start_event.elapsed_time(end_event))  # Already in ms

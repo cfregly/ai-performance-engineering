@@ -855,6 +855,45 @@ def test_ch07_lookup_pytorch_reuses_table_and_timing_events() -> None:
     assert "ms = run(coalesced_indices, table=table, events=events)" in main_section
 
 
+def test_ch07_pytorch_microbenchmarks_record_timing_on_current_stream() -> None:
+    targets = {
+        "lookup_pytorch.py": (
+            'if indices.device.type == "cuda":',
+            "# CPU timing",
+            "torch.cuda.current_stream(indices.device)",
+            1,
+        ),
+        "matmul_pytorch.py": (
+            "def benchmark",
+            "def main",
+            "torch.cuda.current_stream()",
+            1,
+        ),
+        "memory_access_pytorch.py": (
+            "def benchmark_copy",
+            "def main",
+            "torch.cuda.current_stream()",
+            1,
+        ),
+        "vectorized_pytorch.py": (
+            'if device.type == "cuda":',
+            "else:",
+            "torch.cuda.current_stream(device)",
+            2,
+        ),
+    }
+
+    for filename, (start_marker, end_marker, stream_call, expected_records) in targets.items():
+        source = (REPO_ROOT / "ch07" / filename).read_text(encoding="utf-8")
+        section = source.split(start_marker, maxsplit=1)[1].split(end_marker, maxsplit=1)[0]
+        assert section.count("torch.cuda.Event(enable_timing=True)") == 2
+        assert f"current_stream = {stream_call}" in section
+        assert section.count("start_event.record(current_stream)") == expected_records
+        assert section.count("end_event.record(current_stream)") == expected_records
+        assert "start_event.record()" not in section
+        assert "end_event.record()" not in section
+
+
 def test_kv_locality_microbench_reuses_copy_stream_and_defers_output_tensor() -> None:
     source = (REPO_ROOT / "core" / "scripts" / "kv_locality_microbench.py").read_text(
         encoding="utf-8"

@@ -9,19 +9,20 @@ N = 1 << 20
 def benchmark_copy(style: str) -> float:
     src = torch.arange(N, device="cuda", dtype=torch.float32)
     dst = torch.empty_like(src)
-    
+
     # Use CUDA Events for accurate GPU timing
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
-    
-    start_event.record()
+    current_stream = torch.cuda.current_stream()
+
+    start_event.record(current_stream)
     if style == "scalar":
         dst.copy_(src)
     elif style == "vectorized":
         dst.copy_(src)
-    end_event.record()
+    end_event.record(current_stream)
     end_event.synchronize()
-    
+
     return float(start_event.elapsed_time(end_event))  # Already in ms
 
 
