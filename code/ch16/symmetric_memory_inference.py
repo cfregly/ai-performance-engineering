@@ -304,6 +304,19 @@ def demo_speculative(num_steps: int = 8) -> None:
 
     role = "draft" if rank < world_size // 2 else "target"
     torch.manual_seed(rank)
+    topk_values = None
+    topk_indices = None
+    topk_host = None
+    topk_display = [0] * 4
+    if role == "target":
+        topk_values = torch.empty(4, device=device, dtype=torch.float16)
+        topk_indices = torch.empty(4, device=device, dtype=torch.long)
+        topk_host = torch.empty(
+            4,
+            dtype=torch.long,
+            device="cpu",
+            pin_memory=device.type == "cuda",
+        )
 
     for step in range(num_steps):
         if role == "draft":
@@ -313,9 +326,15 @@ def demo_speculative(num_steps: int = 8) -> None:
         dist.barrier()
         if role == "target":
             probs = coordinator.consume(step)
-            topk = torch.topk(probs, k=4).indices.tolist()
+            assert topk_values is not None
+            assert topk_indices is not None
+            assert topk_host is not None
+            torch.topk(probs, k=4, out=(topk_values, topk_indices))
+            topk_host.copy_(topk_indices, non_blocking=False)
+            for topk_idx in range(4):
+                topk_display[topk_idx] = int(topk_host[topk_idx])
             if rank == world_size // 2:
-                print(f"[speculative] step={step} topk={topk}")
+                print(f"[speculative] step={step} topk={topk_display}")
         dist.barrier()
 
 

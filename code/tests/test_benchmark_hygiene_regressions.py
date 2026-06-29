@@ -1359,6 +1359,25 @@ def test_ch16_symmetric_memory_checksum_reduces_on_device() -> None:
     assert "torch.tensor(checksum" not in multi_model_section
 
 
+def test_ch16_symmetric_memory_speculative_reuses_topk_buffers() -> None:
+    source = (REPO_ROOT / "ch16" / "symmetric_memory_inference.py").read_text(
+        encoding="utf-8"
+    )
+    speculative_section = source.split("def demo_speculative", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+
+    assert "topk_values = torch.empty(4, device=device, dtype=torch.float16)" in speculative_section
+    assert "topk_indices = torch.empty(4, device=device, dtype=torch.long)" in speculative_section
+    assert "topk_display = [0] * 4" in speculative_section
+    assert "torch.topk(probs, k=4, out=(topk_values, topk_indices))" in speculative_section
+    assert "topk_host.copy_(topk_indices, non_blocking=False)" in speculative_section
+    assert "topk_display[topk_idx] = int(topk_host[topk_idx])" in speculative_section
+    assert "torch.topk(probs, k=4).indices.tolist()" not in speculative_section
+    assert ".indices.tolist()" not in speculative_section
+
+
 def test_ch04_nvshmem_pipeline_defers_loss_materialization() -> None:
     source = (REPO_ROOT / "ch04" / "nvshmem_pipeline_parallel_multigpu.py").read_text(
         encoding="utf-8"
