@@ -133,6 +133,8 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._draft_id_views: list[torch.Tensor] = []
         self._draft_id_column_views: list[torch.Tensor] = []
         self._match_host_views: list[torch.Tensor] = []
+        self._verify_summary_device: Optional[torch.Tensor] = None
+        self._verify_summary_host: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._metrics: Dict[str, float] = {}
         self._payload_parameter_count = 0
@@ -146,6 +148,13 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=tokens,
         )
+
+    @staticmethod
+    def _allocate_verify_summary_host() -> torch.Tensor:
+        try:
+            return torch.empty(3, dtype=torch.float32, device="cpu", pin_memory=True)
+        except RuntimeError:
+            return torch.empty(3, dtype=torch.float32, device="cpu")
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -174,6 +183,8 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._greedy_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
         self._greedy_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
         self._greedy_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)
+        self._verify_summary_device = torch.empty(3, device=self.device, dtype=torch.float32)
+        self._verify_summary_host = self._allocate_verify_summary_host()
         self.output = None
         self._metrics = {}
 
@@ -478,17 +489,17 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.input_ids is None or self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if self._verify_summary_device is None or self._verify_summary_host is None:
+            raise RuntimeError("setup() must initialize verification summary buffers")
         in_vocab = ((self.output >= 0) & (self.output < self.workload.vocab_size)).sum()
-        verify_summary = torch.stack(
-            (
-                self.input_ids[0, 0].to(torch.float32),
-                torch.full((), float(self.output.shape[-1]), device=self.output.device, dtype=torch.float32),
-                in_vocab.to(torch.float32),
-            )
-        ).detach().cpu()
+        summary = self._verify_summary_device
+        summary[0].copy_(self.input_ids[0, 0])
+        summary[1].fill_(float(self.output.shape[-1]))
+        summary[2].copy_(in_vocab)
+        self._verify_summary_host.copy_(summary, non_blocking=False)
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids},
-            output=verify_summary,
+            output=self._verify_summary_host,
             batch_size=1,
             parameter_count=self._payload_parameter_count,
             output_tolerance=(0.0, 0.0),
@@ -534,6 +545,8 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._draft_id_views = []
         self._draft_id_column_views = []
         self._match_host_views = []
+        self._verify_summary_device = None
+        self._verify_summary_host = None
         self.output = None
         super().teardown()
 

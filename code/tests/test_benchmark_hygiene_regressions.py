@@ -14283,15 +14283,35 @@ def test_medusa_eagle_verification_batches_summary_scalar_reads() -> None:
     source = (REPO_ROOT / "ch15" / "medusa_eagle_speculative_benchmarks.py").read_text(
         encoding="utf-8"
     )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def get_workload_metadata",
         maxsplit=1,
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
-    assert "verify_summary = torch.stack(" in capture_section
-    assert ").detach().cpu()" in capture_section
+    assert "self._verify_summary_device: Optional[torch.Tensor] = None" in source
+    assert "self._verify_summary_host: Optional[torch.Tensor] = None" in source
+    assert "self._verify_summary_device = torch.empty(3, device=self.device, dtype=torch.float32)" in setup_section
+    assert "self._verify_summary_host = self._allocate_verify_summary_host()" in setup_section
+    assert "summary = self._verify_summary_device" in capture_section
+    assert "summary[0].copy_(self.input_ids[0, 0])" in capture_section
+    assert "summary[1].fill_(float(self.output.shape[-1]))" in capture_section
+    assert "summary[2].copy_(in_vocab)" in capture_section
+    assert "self._verify_summary_host.copy_(summary, non_blocking=False)" in capture_section
+    assert "output=self._verify_summary_host" in capture_section
+    assert "torch.stack(" not in capture_section
+    assert ".detach().cpu()" not in capture_section
     assert "self.input_ids[0, 0].item()" not in capture_section
     assert "in_vocab.item()" not in capture_section
+    assert "self._verify_summary_device = None" in teardown_section
+    assert "self._verify_summary_host = None" in teardown_section
 
 
 def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
