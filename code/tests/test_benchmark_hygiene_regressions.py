@@ -6385,9 +6385,11 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
         )[0]
 
         assert "self.microbatches = [chunk.contiguous() for chunk in self.inputs.chunk" in source
+        assert "self._output_buffer = torch.empty_like(self.inputs)" in source
         assert ".chunk(" not in benchmark_section
         assert "torch.cat(" not in benchmark_section
         assert "self._last_outputs = [" in baseline_setup
+        assert "self._output_buffer: Optional[torch.Tensor] = None" in source
         assert "outputs: list[torch.Tensor] = []" not in baseline_run
         assert "outputs.append" not in baseline_run
         assert "self._last_outputs[output_count] = x" in baseline_run
@@ -6395,7 +6397,10 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
         assert "self._run_pipeline_once(self.microbatches)" in benchmark_section
         assert "self._last_outputs = outputs" not in benchmark_section
         assert "torch.cat([out.detach() for out in self._last_outputs], dim=0)" not in capture_section
-        assert "self.output = torch.cat(self._last_outputs, dim=0).detach()" in capture_section
+        assert "torch.cat(self._last_outputs, dim=0, out=self._output_buffer)" in capture_section
+        assert "self.output = self._output_buffer.detach()" in capture_section
+        assert "self.output = torch.cat(self._last_outputs, dim=0).detach()" not in capture_section
+        assert "self._output_buffer = None" in source
 
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
@@ -6418,6 +6423,8 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
     assert "torch.cuda.Event(enable_timing=False)" in optimized_setup
     assert "self._stage_outputs = [" in optimized_setup
     assert "self._last_outputs = [" in optimized_setup
+    assert "self._output_buffer = torch.empty_like(self.inputs)" in optimized_setup
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "stage_outputs: list[list[Optional[torch.Tensor]]] = [" not in optimized_run
     assert "return [output for output in final_outputs if output is not None]" not in optimized_run
     assert "with torch.inference_mode():" in optimized_benchmark
@@ -6426,7 +6433,10 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
     assert "self._run_pipelined_once()" in optimized_benchmark
     assert "self._last_outputs = outputs" not in optimized_benchmark
     assert "torch.cat([out.detach() for out in self._last_outputs], dim=0)" not in optimized_capture
-    assert "self.output = torch.cat(self._last_outputs, dim=0).detach()" in optimized_capture
+    assert "torch.cat(self._last_outputs, dim=0, out=self._output_buffer)" in optimized_capture
+    assert "self.output = self._output_buffer.detach()" in optimized_capture
+    assert "self.output = torch.cat(self._last_outputs, dim=0).detach()" not in optimized_capture
+    assert "self._output_buffer = None" in optimized_source
     assert "torch.cuda.Event(" not in optimized_benchmark
 
 

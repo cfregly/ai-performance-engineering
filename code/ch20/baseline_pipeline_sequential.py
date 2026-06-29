@@ -48,6 +48,7 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output = None
         self.microbatches: Optional[list[torch.Tensor]] = None
         self._last_outputs: Optional[list[torch.Tensor]] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._last_output_count: int = 0
         self.batch_size = 512
         self.hidden_dim = 1536
@@ -90,6 +91,7 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         
         self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float16)
         self.microbatches = [chunk.contiguous() for chunk in self.inputs.chunk(self.num_microbatches, dim=0)]
+        self._output_buffer = torch.empty_like(self.inputs)
         self._last_outputs = [
             torch.empty(0, device=self.device, dtype=torch.float16)
             for _ in range(self.num_microbatches)
@@ -119,11 +121,17 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
                     self._run_pipeline_once(self.microbatches)
 
     def capture_verification_payload(self) -> None:
-        if self.inputs is None or self._last_outputs is None or self.stages is None:
+        if (
+            self.inputs is None
+            or self._last_outputs is None
+            or self._output_buffer is None
+            or self.stages is None
+        ):
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
         if self._last_output_count != len(self._last_outputs):
             raise RuntimeError("Incomplete pipeline outputs before verification capture")
-        self.output = torch.cat(self._last_outputs, dim=0).detach()
+        torch.cat(self._last_outputs, dim=0, out=self._output_buffer)
+        self.output = self._output_buffer.detach()
         self._set_verification_payload(
             inputs={"inputs": self.inputs},
             output=self.output.float(),
@@ -139,6 +147,7 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output = None
         self.microbatches = None
         self._last_outputs = None
+        self._output_buffer = None
         self._last_output_count = 0
         torch.cuda.empty_cache()
     

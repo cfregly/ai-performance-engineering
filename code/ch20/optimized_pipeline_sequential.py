@@ -46,6 +46,7 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.stage_events: list[list[torch.cuda.Event]] = []
         self.output = None
         self._last_outputs: Optional[list[torch.Tensor]] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._stage_outputs: list[list[Optional[torch.Tensor]]] = []
         self._last_output_count: int = 0
         self.batch_size = 512
@@ -68,9 +69,10 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
             [SimpleStage(self.hidden_dim).to(self.device).half() for _ in range(self.num_stages)]
         ).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.stages.parameters())
-        
+
         self.inputs = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float16)
         self.microbatches = [chunk.contiguous() for chunk in self.inputs.chunk(self.num_microbatches, dim=0)]
+        self._output_buffer = torch.empty_like(self.inputs)
         self.stage_streams = [torch.cuda.Stream(device=self.device) for _ in range(self.num_stages)]
         self.stage_events = [
             [torch.cuda.Event(enable_timing=False) for _ in range(self.num_microbatches)]
@@ -139,11 +141,17 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
                     self._run_pipelined_once()
 
     def capture_verification_payload(self) -> None:
-        if self.inputs is None or self._last_outputs is None or self.stages is None:
+        if (
+            self.inputs is None
+            or self._last_outputs is None
+            or self._output_buffer is None
+            or self.stages is None
+        ):
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
         if self._last_output_count != len(self._last_outputs):
             raise RuntimeError("Incomplete pipeline outputs before verification capture")
-        self.output = torch.cat(self._last_outputs, dim=0).detach()
+        torch.cat(self._last_outputs, dim=0, out=self._output_buffer)
+        self.output = self._output_buffer.detach()
         self._set_verification_payload(
             inputs={"inputs": self.inputs},
             output=self.output.float(),
@@ -160,6 +168,7 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.stage_events = []
         self.output = None
         self._last_outputs = None
+        self._output_buffer = None
         self._stage_outputs = []
         self._last_output_count = 0
         torch.cuda.empty_cache()
