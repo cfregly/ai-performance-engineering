@@ -8731,6 +8731,10 @@ def test_ch16_synthetic_moe_benchmark_hoists_inference_mode() -> None:
 
 def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
     source = (REPO_ROOT / "ch16" / "gpt_large_benchmark.py").read_text(encoding="utf-8")
+    fp8_forward = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1].split(
+        "def convert_linear_layers_to_fp8",
+        maxsplit=1,
+    )[0]
     benchmark_function = source.split("def benchmark_model", maxsplit=1)[1].split(
         "def validate_multi_gpu_equivalence",
         maxsplit=1,
@@ -8751,6 +8755,9 @@ def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
     assert "module.bias_bf16.copy_(module.bias.detach().to(torch.bfloat16))" in source
     assert "weight_scale = self.weight_scale_t" in source
     assert "bias = self.bias_bf16 if self.bias_bf16 is not None else None" in source
+    assert "x2d = x.reshape(-1, self.in_features)" in fp8_forward
+    assert "x.reshape(-1, self.in_features).contiguous()" not in fp8_forward
+    assert "act_scale.contiguous()" not in fp8_forward
     assert "self.weight_scale.transpose(0, 1).contiguous()" not in source
     assert "bias = self.bias.to(torch.bfloat16)" not in source
     assert "x = x.to(self.devices[0])" not in source

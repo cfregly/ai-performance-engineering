@@ -158,7 +158,7 @@ class FP8Linear(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         original_shape = x.shape
-        x2d = x.reshape(-1, self.in_features).contiguous()
+        x2d = x.reshape(-1, self.in_features)
 
         # Row-wise activation scaling
         act_abs = x2d.abs().amax(dim=1, keepdim=True)
@@ -174,7 +174,7 @@ class FP8Linear(nn.Module):
         out = torch._scaled_mm(
             x_fp8,
             mat2,
-            act_scale.contiguous(),
+            act_scale,
             weight_scale,
             bias=bias,
             out_dtype=torch.bfloat16,
