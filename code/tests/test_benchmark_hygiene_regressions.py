@@ -8814,6 +8814,11 @@ def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
         "def convert_linear_layers_to_fp8",
         maxsplit=1,
     )[0]
+    model_section = source.split("class GPTModel", maxsplit=1)[1].split(
+        "# ---------------------------------------------------------------------------",
+        maxsplit=1,
+    )[0]
+    model_forward = model_section.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1]
     benchmark_function = source.split("def benchmark_model", maxsplit=1)[1].split(
         "def validate_multi_gpu_equivalence",
         maxsplit=1,
@@ -8825,9 +8830,15 @@ def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
 
     assert "@torch.inference_mode()" in source
     assert "@torch.no_grad()" not in source
+    assert "self.block_device_groups = self._build_block_device_groups()" in model_section
+    assert "def _build_block_device_groups(" in model_section
+    assert "for device, start, end in self.block_device_groups:" in model_forward
+    assert "for block in self.blocks[start:end]:" in model_forward
+    assert "for block, device in zip(self.blocks, self.block_devices):" not in model_forward
     assert "x = x.to(self.devices[0], non_blocking=True)" in source
     assert "x = x.to(device, non_blocking=True)" in source
-    assert "x = x.to(self.ln_f.weight.device, non_blocking=True)" in source
+    assert "x = x.to(self.ln_f.weight.device, non_blocking=True)" not in source
+    assert "if self._return_output_to_first_device:" in model_forward
     assert '"weight_scale_t"' in source
     assert '"bias_bf16"' in source
     assert "module.weight_scale_t.copy_(weight_scale.transpose(0, 1).contiguous())" in source

@@ -325,8 +325,11 @@ class GPTModel(nn.Module):
             block = GPTBlock(config).to(device, dtype=dtype)
             self.blocks.append(block)
             self.block_devices.append(device)
+        self.block_device_groups = self._build_block_device_groups()
 
         final_device = self.block_devices[-1] if self.block_devices else devices[0]
+        self.final_device = final_device
+        self._return_output_to_first_device = final_device != devices[0]
         self.ln_f = nn.LayerNorm(config.d_model).to(final_device, dtype=dtype)
         self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False).to(final_device, dtype=dtype)
 
@@ -346,19 +349,33 @@ class GPTModel(nn.Module):
                 torch.tensor(converted, device=devices[0]),
             )
 
+    def _build_block_device_groups(self) -> List[tuple[torch.device, int, int]]:
+        if not self.block_devices:
+            return []
+        groups: List[tuple[torch.device, int, int]] = []
+        start = 0
+        current_device = self.block_devices[0]
+        for idx, device in enumerate(self.block_devices[1:], start=1):
+            if device == current_device:
+                continue
+            groups.append((current_device, start, idx))
+            current_device = device
+            start = idx
+        groups.append((current_device, start, len(self.block_devices)))
+        return groups
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.device != self.devices[0]:
             x = x.to(self.devices[0], non_blocking=True)
         x = self.embed(x)
-        for block, device in zip(self.blocks, self.block_devices):
+        for device, start, end in self.block_device_groups:
             if x.device != device:
                 x = x.to(device, non_blocking=True)
-            x = block(x)
-        if x.device != self.ln_f.weight.device:
-            x = x.to(self.ln_f.weight.device, non_blocking=True)
+            for block in self.blocks[start:end]:
+                x = block(x)
         x = self.ln_f(x)
         x = self.lm_head(x)
-        if x.device != self.devices[0]:
+        if self._return_output_to_first_device:
             x = x.to(self.devices[0], non_blocking=True)
         return x
 
