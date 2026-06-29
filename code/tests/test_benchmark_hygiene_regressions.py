@@ -7461,7 +7461,8 @@ def test_ch16_inference_serving_reuses_sampled_token_buffers() -> None:
     assert "next_tokens_device = sampled_tokens_2d[:, 0]" in generate_batch_section
     assert "torch.multinomial(probs, num_samples=1, out=sampled_tokens_2d)" in generate_batch_section
     assert "generated_host = self._sampled_token_host_workspace[:batch_size]" in generate_batch_section
-    assert "generated_host.copy_(next_tokens_device)" in generate_batch_section
+    assert 'generated_host.copy_(next_tokens_device, non_blocking=self.device.type == "cuda")' in generate_batch_section
+    assert "torch.cuda.current_stream(self.device).synchronize()" in generate_batch_section
     assert "generated = generated_host.tolist()" in generate_batch_section
     assert "torch.empty(batch_size, dtype=torch.long, device=probs.device)" not in generate_batch_section
     assert "torch.multinomial(probs, num_samples=1).squeeze(-1)" not in generate_batch_section

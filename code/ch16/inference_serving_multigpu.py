@@ -1499,21 +1499,7 @@ class InferenceServerMultiGPU:
             dist.broadcast(next_tokens_device, src=0)
 
         generated_host = self._sampled_token_host_workspace[:batch_size]
-        generated_host.copy_(next_tokens_device)
-        generated = generated_host.tolist()
-
-        for (_pack_idx, (_orig_idx, state)), token in zip(enumerate(eligible), generated):
-            remaining = self.max_seq_len - state.current_position
-            if remaining <= 0:
-                state.is_complete = True
-                continue
-            state.generated_tokens.append(token)
-            state.current_position += 1
-
-            if token == 2:  # EOS token
-                state.is_complete = True
-            elif state.current_position >= self.max_seq_len:
-                state.is_complete = True
+        generated_host.copy_(next_tokens_device, non_blocking=self.device.type == "cuda")
 
         head_slice = self._head_slice(attn_keys.shape[2])
 
@@ -1549,6 +1535,7 @@ class InferenceServerMultiGPU:
                 self._write_stream.wait_stream(self._compute_stream)
                 _flush_to_cache()
             torch.cuda.current_stream(self.device).wait_stream(self._write_stream)
+            torch.cuda.current_stream(self.device).synchronize()
         else:
             _flush_to_cache()
 
@@ -1557,6 +1544,21 @@ class InferenceServerMultiGPU:
                 attn_module = getattr(layer, "attn", None)
                 if attn_module is not None and hasattr(attn_module, "complete_pending"):
                     attn_module.complete_pending()
+
+        generated = generated_host.tolist()
+
+        for (_pack_idx, (_orig_idx, state)), token in zip(enumerate(eligible), generated):
+            remaining = self.max_seq_len - state.current_position
+            if remaining <= 0:
+                state.is_complete = True
+                continue
+            state.generated_tokens.append(token)
+            state.current_position += 1
+
+            if token == 2:  # EOS token
+                state.is_complete = True
+            elif state.current_position >= self.max_seq_len:
+                state.is_complete = True
 
         return generated
     
