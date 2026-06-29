@@ -6743,6 +6743,12 @@ def test_remaining_benchmark_wrappers_cache_verification_parameter_count() -> No
         )
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "sum(p.numel()" not in capture_section
+        if "nanochat_fullstack" in relative:
+            assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+            assert "self._verify_output_buffer = torch.empty(" in setup_section
+            assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+            assert "output=self._verify_output_buffer" in capture_section
+            assert "self.output.detach().float().clone()" not in capture_section
 
     inherited_source = (
         REPO_ROOT / "labs" / "kv_cache_compression" / "optimized_kv_cache_nvfp4.py"

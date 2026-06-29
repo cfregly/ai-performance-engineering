@@ -38,6 +38,7 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.prompt: Optional[torch.Tensor] = None
         self.decode_tokens: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
         self.register_workload_metadata(
@@ -101,6 +102,11 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
             block_size=cfg.kv_block_size,
             page_size=cfg.kv_page_size,
         )
+        self._verify_output_buffer = torch.empty(
+            (self.batch_size, 1, self.vocab_size),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.kv_cache is None or self.prompt is None or self.decode_tokens is None:
@@ -118,12 +124,19 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
             self.output = logits
 
     def capture_verification_payload(self) -> None:
-        if self.prompt is None or self.decode_tokens is None or self.output is None or self.model is None:
+        if (
+            self.prompt is None
+            or self.decode_tokens is None
+            or self.output is None
+            or self.model is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
 
         self._set_verification_payload(
             inputs={"prompt": self.prompt, "decode_tokens": self.decode_tokens},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=self._payload_parameter_count,
             precision_flags={"fp16": False, "bf16": True, "fp8": False, "tf32": False},
@@ -148,6 +161,15 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
         if self.output is None:
             return "benchmark_fn() did not produce output"
         return None
+
+    def teardown(self) -> None:
+        self.model = None
+        self.kv_cache = None
+        self.prompt = None
+        self.decode_tokens = None
+        self.output = None
+        self._verify_output_buffer = None
+        super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=10, warmup=5)
