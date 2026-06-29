@@ -10938,11 +10938,19 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "nn.Sequential(" not in setup_section
     assert "self._fc1_buffer: Optional[torch.Tensor] = None" in model_section
     assert "self._fc2_buffer: Optional[torch.Tensor] = None" in model_section
+    assert "self._fc1_weight_t: Optional[torch.Tensor] = None" in model_section
+    assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in model_section
+    assert "def cache_weight_views(self) -> None:" in model_section
+    assert "self._fc1_weight_t = self.fc1.weight.t()" in model_section
+    assert "self._fc2_weight_t = self.fc2.weight.t()" in model_section
+    assert "self.model.cache_weight_views()" in setup_section
     assert "def _ensure_forward_buffers(" in model_section
     assert "if torch.is_grad_enabled():" in model_section
-    assert "torch.matmul(x, self.fc1.weight.t(), out=fc1_out)" in model_section
+    assert "torch.matmul(x, self._fc1_weight_t, out=fc1_out)" in model_section
     assert "self.relu(fc1_out)" in model_section
-    assert "torch.matmul(fc1_out, self.fc2.weight.t(), out=fc2_out)" in model_section
+    assert "torch.matmul(fc1_out, self._fc2_weight_t, out=fc2_out)" in model_section
+    assert "torch.matmul(x, self.fc1.weight.t(), out=fc1_out)" not in model_section
+    assert "torch.matmul(fc1_out, self.fc2.weight.t(), out=fc2_out)" not in model_section
     assert "self.copy_events = [torch.cuda.Event(blocking=False) for _ in range(2)]" in setup_section
     assert "self.buffers = [self.buffer_a, self.buffer_b]" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section

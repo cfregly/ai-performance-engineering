@@ -33,6 +33,12 @@ class BufferedMicrobatchMlp(nn.Module):
         self.fc2 = nn.Linear(hidden_dim * 4, hidden_dim)
         self._fc1_buffer: Optional[torch.Tensor] = None
         self._fc2_buffer: Optional[torch.Tensor] = None
+        self._fc1_weight_t: Optional[torch.Tensor] = None
+        self._fc2_weight_t: Optional[torch.Tensor] = None
+
+    def cache_weight_views(self) -> None:
+        self._fc1_weight_t = self.fc1.weight.t()
+        self._fc2_weight_t = self.fc2.weight.t()
 
     def _ensure_forward_buffers(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         prefix = tuple(x.shape[:-1])
@@ -59,12 +65,14 @@ class BufferedMicrobatchMlp(nn.Module):
             x = self.relu(self.fc1(x))
             return self.fc2(x)
 
+        if self._fc1_weight_t is None or self._fc2_weight_t is None:
+            self.cache_weight_views()
         fc1_out, fc2_out = self._ensure_forward_buffers(x)
-        torch.matmul(x, self.fc1.weight.t(), out=fc1_out)
+        torch.matmul(x, self._fc1_weight_t, out=fc1_out)
         if self.fc1.bias is not None:
             fc1_out.add_(self.fc1.bias)
         self.relu(fc1_out)
-        torch.matmul(fc1_out, self.fc2.weight.t(), out=fc2_out)
+        torch.matmul(fc1_out, self._fc2_weight_t, out=fc2_out)
         if self.fc2.bias is not None:
             fc2_out.add_(self.fc2.bias)
         return fc2_out
@@ -107,6 +115,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
             raise RuntimeError("CUDA required for optimized_memory_double_buffering benchmark")
         self.model = self.model.to(self.device).half()
         self.model.eval()
+        self.model.cache_weight_views()
         
         # Optimization: Double buffering (ping-pong buffers)
         # Two buffers allow overlapping copy and compute operations
