@@ -11367,6 +11367,11 @@ def test_ch12_llm_kernel_fusion_variants_cache_nvtx_enablement() -> None:
         )[0]
 
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+        if filename == "optimized_kernel_fusion_llm_dedicated_stream_and_prefetch_for_blackwell.py":
+            assert "self._prefetch_touch: Optional[torch.Tensor] = None" in source
+            assert "self._prefetch_touch = torch.empty((), device=self.device, dtype=self.data.dtype)" in setup_section
+            assert "torch.sum(self.data, dim=0, out=self._prefetch_touch)" in setup_section
+            assert "self.data.sum()" not in setup_section
         assert "get_config()" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert 'with nvtx_range("kernel_fusion", enable=self._enable_nvtx):' in benchmark_section

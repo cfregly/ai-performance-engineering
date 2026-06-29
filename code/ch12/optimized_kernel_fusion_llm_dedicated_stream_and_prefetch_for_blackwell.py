@@ -35,6 +35,7 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
             tokens_per_iteration=float(self.N * self.iterations),
         )
         self._stream = None
+        self._prefetch_touch: Optional[torch.Tensor] = None
         self._enable_nvtx = False
     
     def setup(self) -> None:
@@ -56,6 +57,7 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
         # Initialize deterministic input on the device.
         torch.manual_seed(42)
         self.data = torch.arange(self.N, dtype=torch.float32, device=self.device)
+        self._prefetch_touch = torch.empty((), device=self.device, dtype=self.data.dtype)
         self._verify_input = self.data.detach().clone()
 
         # Perform a dry run on the dedicated stream to pay compilation and
@@ -74,7 +76,7 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
         # Prefetch-style touch on the same stream to fault in pages and
         # encourage the driver to keep this region resident.
         with torch.cuda.stream(self._stream):
-            _ = self.data.sum()
+            torch.sum(self.data, dim=0, out=self._prefetch_touch)
 
         self._stream.synchronize()
     
@@ -117,6 +119,7 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
         """Teardown: Clean up resources and destroy the dedicated stream."""
         self.data = None
         self._verify_input = None
+        self._prefetch_touch = None
         # Explicitly delete the stream so that future benchmarks start from
         # a clean state and to avoid holding onto resources.
         self._stream = None
