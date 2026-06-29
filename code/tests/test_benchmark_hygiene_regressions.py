@@ -5953,6 +5953,33 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._final_output_buffer = None" in teardown_section
 
 
+def test_ch17_baseline_memory_reuses_transfer_staging_buffers() -> None:
+    source = (REPO_ROOT / "ch17" / "baseline_memory.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._host_float_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._device_batch_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._host_float_buffer = torch.empty(" in setup_section
+    assert "self._device_batch_buffer = torch.empty(" in setup_section
+    assert "host_batch.copy_(compressed)" in benchmark_section
+    assert "device_batch.copy_(host_batch, non_blocking=False)" in benchmark_section
+    assert "compressed.to(dtype=torch.float32)" not in benchmark_section
+    assert "host_batch.to(self.device" not in benchmark_section
+    assert "self._host_float_buffer = None" in teardown_section
+    assert "self._device_batch_buffer = None" in teardown_section
+
+
 def test_ch17_inference_wrappers_use_inference_mode() -> None:
     for relative in (
         "ch17/baseline_inference_full.py",

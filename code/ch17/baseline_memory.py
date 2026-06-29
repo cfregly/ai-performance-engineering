@@ -33,6 +33,8 @@ class BaselineMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.output = None
         self._last_input: Optional[torch.Tensor] = None
+        self._host_float_buffer: Optional[torch.Tensor] = None
+        self._device_batch_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self._verification_payload = None
         self.register_workload_metadata(
@@ -62,20 +64,34 @@ class BaselineMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             for _ in range(self.repetitions)
         ]
+        self._host_float_buffer = torch.empty(
+            (self.batch_size, self.input_dim),
+            device="cpu",
+            dtype=torch.float32,
+        )
+        self._device_batch_buffer = torch.empty(
+            (self.batch_size, self.input_dim),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self._synchronize()
     
     def benchmark_fn(self) -> None:
         if self.model is None:
             raise RuntimeError("Benchmark not configured")
+        if self._host_float_buffer is None or self._device_batch_buffer is None:
+            raise RuntimeError("Benchmark buffers not configured")
         with self._nvtx_range("baseline_memory"):
             with torch.inference_mode():
+                host_batch = self._host_float_buffer
+                device_batch = self._device_batch_buffer
                 for compressed in self.host_batches:
-                    host_batch = compressed.to(dtype=torch.float32)
+                    host_batch.copy_(compressed)
                     host_batch.mul_(1.0 / 255.0)
                     host_batch.add_(-0.5)
                     host_batch.mul_(2.0)
                     host_batch.tanh_()
-                    device_batch = host_batch.to(self.device, dtype=torch.float32, non_blocking=False)
+                    device_batch.copy_(host_batch, non_blocking=False)
                     self._last_input = device_batch
                     self.output = self.model(device_batch)
         if self.output is None or self._last_input is None:
@@ -94,6 +110,8 @@ class BaselineMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.model = None
         self.host_batches = []
+        self._host_float_buffer = None
+        self._device_batch_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
