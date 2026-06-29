@@ -110,8 +110,11 @@ def _measure_nccl_broadcast(bytes_per_rank: int, iterations: int) -> BenchmarkRe
     torch.cuda.synchronize(device)
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream()
 
-    start.record()
+    start.record(current_stream)
+    if comm_stream is not None:
+        comm_stream.wait_stream(current_stream)
     for _ in range(iterations):
         if overlap_compute and comm_stream is not None:
             with torch.cuda.stream(comm_stream):
@@ -119,12 +122,12 @@ def _measure_nccl_broadcast(bytes_per_rank: int, iterations: int) -> BenchmarkRe
             for _ in range(compute_passes):
                 compute.mul_(1.0001)
             work.wait()
-            torch.cuda.current_stream().wait_stream(comm_stream)
+            current_stream.wait_stream(comm_stream)
         else:
             dist.broadcast(tensor, src=0)
             for _ in range(compute_passes):
                 compute.mul_(1.0001)
-    end.record()
+    end.record(current_stream)
     torch.cuda.synchronize(device)
 
     elapsed_ms = start.elapsed_time(end)
@@ -171,20 +174,23 @@ def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Option
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
     torch.cuda.synchronize(device)
+    current_stream = torch.cuda.current_stream()
 
-    start.record()
+    start.record(current_stream)
+    if comm_stream is not None:
+        comm_stream.wait_stream(current_stream)
     for _ in range(iterations):
         if overlap_compute and comm_stream is not None and done is not None:
             if rank == 0:
                 with torch.cuda.stream(comm_stream):
                     for remote in remote_buffers:
                         remote.copy_(buffer, non_blocking=True)
-                    done.record()
+                    done.record(comm_stream)
             else:
-                done.record()
+                done.record(current_stream)
             for _ in range(compute_passes):
                 compute.mul_(1.0001)
-            torch.cuda.current_stream().wait_event(done)
+            current_stream.wait_event(done)
         else:
             if rank == 0:
                 for remote in remote_buffers:
@@ -192,7 +198,7 @@ def _measure_symmetric_broadcast(bytes_per_rank: int, iterations: int) -> Option
             torch.cuda.synchronize(device)
             for _ in range(compute_passes):
                 compute.mul_(1.0001)
-    end.record()
+    end.record(current_stream)
     torch.cuda.synchronize(device)
     dist.barrier()
 

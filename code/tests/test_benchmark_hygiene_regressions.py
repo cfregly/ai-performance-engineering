@@ -4377,6 +4377,29 @@ def test_ch04_nvshmem_symmetric_broadcast_overlap_defines_done_event() -> None:
     assert "if overlap_compute and comm_stream is not None and done is not None:" in symmetric_section
 
 
+def test_ch04_nvshmem_nccl_overlap_reuses_captured_current_stream() -> None:
+    source = (REPO_ROOT / "ch04" / "nvshmem_vs_nccl_benchmark.py").read_text(encoding="utf-8")
+    nccl_section = source.split("def _measure_nccl_broadcast", maxsplit=1)[1].split(
+        "def _measure_symmetric_broadcast", maxsplit=1
+    )[0]
+    symmetric_section = source.split("def _measure_symmetric_broadcast", maxsplit=1)[1].split(
+        "def sweep_sizes", maxsplit=1
+    )[0]
+
+    for benchmark_section in (nccl_section, symmetric_section):
+        assert "current_stream = torch.cuda.current_stream()" in benchmark_section
+        assert "start.record(current_stream)" in benchmark_section
+        assert "end.record(current_stream)" in benchmark_section
+        assert "comm_stream.wait_stream(current_stream)" in benchmark_section
+        assert "torch.cuda.current_stream().wait_" not in benchmark_section
+        assert ".record(torch.cuda.current_stream())" not in benchmark_section
+
+    assert "current_stream.wait_stream(comm_stream)" in nccl_section
+    assert "done.record(comm_stream)" in symmetric_section
+    assert "done.record(current_stream)" in symmetric_section
+    assert "current_stream.wait_event(done)" in symmetric_section
+
+
 def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
     baseline_source = (REPO_ROOT / "ch19" / "baseline_vectorization_memory.py").read_text(
         encoding="utf-8"
