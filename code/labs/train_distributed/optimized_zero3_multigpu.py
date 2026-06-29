@@ -98,6 +98,7 @@ def main():
     total_tokens = 0
     start = perf_counter()
     grad_clip = 1.0
+    loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
 
     for step in range(args.steps):
         optimizer.zero_grad(set_to_none=True)
@@ -115,7 +116,8 @@ def main():
         if rank == 0 and step % 10 == 0:
             elapsed = perf_counter() - start
             toks_per_sec = total_tokens / elapsed if elapsed > 0 else 0.0
-            loss_value = float(loss.detach())
+            loss_value_buffer[0].copy_(loss.detach())
+            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
             print(
                 f"[optimized-zero3] step {step}/{args.steps} "
                 f"loss={loss_value:.4f} tokens/s per rank={toks_per_sec:,.0f}"

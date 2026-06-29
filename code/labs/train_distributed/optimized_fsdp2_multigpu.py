@@ -263,6 +263,7 @@ def main():
     micro_step = 0
     epoch = 0
     is_main = rank == 0
+    loss_value_buffer = torch.empty(1, dtype=torch.float64, device=f"cuda:{local_rank}")
 
     while optimizer_step < total_updates:
         sampler.set_epoch(epoch)
@@ -290,7 +291,8 @@ def main():
                 and (optimizer_step % 5 == 0 or optimizer_step == total_updates)
             ):
                 metrics.update(gpu_memory_usage(local_rank))
-                loss_value = float(loss.detach()) * args.grad_accum
+                loss_value_buffer[0].copy_(loss.detach())
+                loss_value = loss_value_buffer.detach().cpu().tolist()[0] * args.grad_accum
                 msg = (
                     f"[optimized_fsdp2_multigpu] step {optimizer_step}/{total_updates} "
                     f"loss={loss_value:.4f}" + ThroughputTracker.format(metrics, include_memory=True)

@@ -106,6 +106,7 @@ def main():
     num_steps = min(args.steps, len(dataloader))
     total_tokens = 0
     start_time = perf_counter()
+    loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
 
     for step, batch in enumerate(dataloader):
         if step >= num_steps:
@@ -131,7 +132,8 @@ def main():
         total_tokens += batch["input_ids"].numel()
 
         if step % 10 == 0 and is_main:
-            loss_value = float(loss.detach())
+            loss_value_buffer[0].copy_(loss.detach())
+            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
             print(
                 f"[optimized-ddp] step {step}/{num_steps} "
                 f"loss={loss_value:.4f} "

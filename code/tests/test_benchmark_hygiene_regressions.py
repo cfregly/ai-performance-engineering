@@ -7649,8 +7649,14 @@ def test_train_distributed_optimized_fsdp_defers_loss_sync_until_logging() -> No
         )[0]
 
         assert "loss.item() * args.grad_accum" not in loop_section
+        assert "float(loss.detach())" not in loop_section
         assert "loss_value =" not in before_logging
-        assert "loss_value = float(loss.detach()) * args.grad_accum" in logging_section
+        assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in source
+        assert "loss_value_buffer[0].copy_(loss.detach())" in logging_section
+        assert (
+            "loss_value = loss_value_buffer.detach().cpu().tolist()[0] * args.grad_accum"
+            in logging_section
+        )
 
 
 def test_train_distributed_optimized_wrappers_log_detached_loss_values() -> None:
@@ -7671,7 +7677,10 @@ def test_train_distributed_optimized_wrappers_log_detached_loss_values() -> None
         )
 
         assert "loss.item()" not in source
-        assert "loss_value = float(loss.detach())" in source
+        assert "float(loss.detach())" not in source
+        assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in source
+        assert "loss_value_buffer[0].copy_(loss.detach())" in source
+        assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in source
         assert "loss={loss_value:.4f}" in source
 
 
