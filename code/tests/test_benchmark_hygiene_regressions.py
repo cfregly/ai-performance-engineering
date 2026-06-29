@@ -16943,13 +16943,21 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
 
         if path.name in {
             "baseline_persistent_decode.py",
+            "baseline_tma_prefill_decode.py",
+            "baseline_native_tma_prefill_decode.py",
             "optimized_persistent_decode_cuda.py",
             "optimized_persistent_decode_graphs.py",
             "optimized_persistent_decode_triton.py",
+            "optimized_tma_prefill_decode.py",
+            "optimized_native_tma_prefill_decode.py",
         }:
             setup_split = {
                 "baseline_persistent_decode.py": "def _decode_step",
+                "baseline_tma_prefill_decode.py": "def _prefill_sequential",
+                "baseline_native_tma_prefill_decode.py": "def _prefill_native",
                 "optimized_persistent_decode_graphs.py": "def _capture_graphs",
+                "optimized_tma_prefill_decode.py": "def _decode_body",
+                "optimized_native_tma_prefill_decode.py": "def _decode_body",
             }.get(path.name, "def benchmark_fn")
             setup_section = text.split("def setup", maxsplit=1)[1].split(
                 setup_split,

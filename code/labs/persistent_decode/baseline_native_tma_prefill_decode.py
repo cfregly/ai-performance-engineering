@@ -25,6 +25,7 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
         self.device = resolve_device()
         self.inputs = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.batch, self.seq_len, self.head_dim = resolve_shapes()
         self.batch_size = self.batch
         self.hidden_dim = self.head_dim
@@ -43,6 +44,13 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
         )
         self.prefill_dst = torch.empty_like(self.prefill_src)
         self._tma_ext = load_native_tma()  # raises if unsupported
+        self._verify_output_buffer = torch.empty(
+            1,
+            min(8, self.seq_len),
+            self.head_dim,
+            device=self.inputs.out.device,
+            dtype=torch.float32,
+        )
         self._synchronize()
 
     def _prefill_native(self) -> None:
@@ -72,13 +80,16 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
+        if self.inputs is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
                 "q": self.inputs.q.detach(),
                 "k": self.inputs.k.detach(),
                 "v": self.inputs.v.detach(),
             },
-            output=self.output.float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch,
             parameter_count=0,
             precision_flags={
@@ -93,6 +104,7 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
         torch.cuda.empty_cache()
         self.inputs = None
         self.output = None
+        self._verify_output_buffer = None
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(

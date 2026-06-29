@@ -319,6 +319,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.register_workload_metadata(tokens_per_iteration=tokens_per_iteration())
         self.output: torch.Tensor | None = None
         self._output_view: torch.Tensor | None = None
+        self._verify_output_buffer: torch.Tensor | None = None
 
     def setup(self) -> None:
         ensure_blackwell_tma_supported("optimized_tma_prefill_decode")
@@ -327,6 +328,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             torch.cuda.manual_seed_all(42)
         self.inputs = build_inputs(self.device)
         self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+        self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
         # Skip on GPUs without TMA support to avoid false regressions.
         supported, reason = tma_support_status()
         if not supported:
@@ -529,15 +531,16 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         return self._iteration_metric_payload
 
     def capture_verification_payload(self) -> None:
-        if self.inputs is None or self.output is None:
+        if self.inputs is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
                 "q": self.inputs.q,
                 "k": self.inputs.k,
                 "v": self.inputs.v,
             },
-            output=self.output.to(dtype=torch.float32),
+            output=self._verify_output_buffer,
             batch_size=self.batch,
             parameter_count=0,
             precision_flags={
@@ -560,6 +563,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.full_graph = None
         self.output = None
         self._output_view = None
+        self._verify_output_buffer = None
         self._prefill_events = []
         self._prefill_work = []
         self._pending_graph_path = None
