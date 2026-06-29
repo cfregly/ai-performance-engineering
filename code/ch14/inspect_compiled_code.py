@@ -129,39 +129,49 @@ def inspect_compiled_code():
         print(f"Compiled code location: {torch_compile_debug}")
         print()
         
-        # List generated files
-        generated_files = list(torch_compile_debug.rglob("*.py"))
-        triton_files = list(torch_compile_debug.rglob("*triton*"))
+        # Count generated files without retaining the full debug tree.
+        generated_file_count = 0
+        generated_file_preview = []
+        sample_kernel_file = None
+        sample_kernel_lines = None
+        sample_kernel_line_count = 0
+        for pyfile in torch_compile_debug.rglob("*.py"):
+            generated_file_count += 1
+            if len(generated_file_preview) < 5:
+                generated_file_preview.append(pyfile)
+            if sample_kernel_file is None:
+                content = pyfile.read_text()
+                content_lower = content.lower()
+                if 'triton' in content_lower and 'kernel' in content_lower:
+                    sample_kernel_file = pyfile
+                    all_lines = content.split('\n')
+                    sample_kernel_lines = all_lines[:50]
+                    sample_kernel_line_count = len(all_lines)
+        triton_file_count = sum(1 for _ in torch_compile_debug.rglob("*triton*"))
         
-        print(f"Found {len(generated_files)} Python files")
-        print(f"Found {len(triton_files)} Triton-related files")
+        print(f"Found {generated_file_count} Python files")
+        print(f"Found {triton_file_count} Triton-related files")
         print()
         
-        if generated_files:
+        if generated_file_preview:
             print("Generated kernel files (first 5):")
-            for f in generated_files[:5]:
+            for f in generated_file_preview:
                 print(f"  - {f.name}")
             print()
         
         # Find and display a sample Triton kernel
-        for pyfile in generated_files:
-            content = pyfile.read_text()
-            if 'triton' in content.lower() and 'kernel' in content.lower():
-                print("=" * 80)
-                print(f"SAMPLE TRITON KERNEL: {pyfile.name}")
-                print("=" * 80)
-                print()
-                
-                # Show first 50 lines
-                all_lines = content.split('\n')
-                lines = all_lines[:50]
-                for i, line in enumerate(lines, 1):
-                    print(f"{i:3}: {line}")
-                
-                if len(all_lines) > 50:
-                    print(f"\n... ({len(all_lines)} total lines)")
-                
-                break
+        if sample_kernel_file is not None and sample_kernel_lines is not None:
+            print("=" * 80)
+            print(f"SAMPLE TRITON KERNEL: {sample_kernel_file.name}")
+            print("=" * 80)
+            print()
+            
+            # Show first 50 lines
+            for i, line in enumerate(sample_kernel_lines, 1):
+                print(f"{i:3}: {line}")
+            
+            if sample_kernel_line_count > 50:
+                print(f"\n... ({sample_kernel_line_count} total lines)")
     else:
         print("WARNING: Generated code not found in expected location")
         print("    Set TORCH_COMPILE_DEBUG=1 to enable code dumps")

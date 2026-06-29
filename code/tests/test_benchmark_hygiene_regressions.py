@@ -7192,8 +7192,14 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert "_percentile(values, 95)" not in percentile_section
     assert "correct_by_task: Dict[str, int] = {}" in quality_section
     assert "total_by_task: Dict[str, int] = {}" in quality_section
+    assert "accuracy_total = 0.0" in quality_section
+    assert "for task, correct in correct_by_task.items():" in quality_section
+    assert "per_task_summary[task] = accuracy" in quality_section
+    assert "accuracy_total += accuracy" in quality_section
+    assert "avg_acc = accuracy_total / len(per_task_summary) if per_task_summary else 0.0" in quality_section
     assert "per_task_acc.setdefault" not in quality_section
     assert "sum(v) / len(v)" not in quality_section
+    assert "sum(per_task_summary.values())" not in quality_section
     assert "entropy_total += float(row[\"entropy\"])" in summarize_moe_section
     assert "margin_total += float(row.get(\"margin\", 0.0))" in summarize_moe_section
     assert '"entropy": entropy_total / entropy_count if entropy_count else 0.0' in summarize_moe_section
@@ -9910,6 +9916,24 @@ def test_ch14_compile_tools_use_inference_mode() -> None:
         source = (REPO_ROOT / "ch14" / filename).read_text(encoding="utf-8")
         assert "torch.inference_mode()" in source
         assert "torch.no_grad()" not in source
+
+
+def test_ch14_inspect_compiled_code_streams_debug_file_walks() -> None:
+    source = (REPO_ROOT / "ch14" / "inspect_compiled_code.py").read_text(encoding="utf-8")
+    debug_section = source.split("# Look for generated files", maxsplit=1)[1].split(
+        "else:",
+        maxsplit=1,
+    )[0]
+
+    assert "generated_file_count = 0" in debug_section
+    assert "generated_file_preview = []" in debug_section
+    assert "for pyfile in torch_compile_debug.rglob(\"*.py\"):" in debug_section
+    assert "if len(generated_file_preview) < 5:" in debug_section
+    assert "triton_file_count = sum(1 for _ in torch_compile_debug.rglob(\"*triton*\"))" in debug_section
+    assert "sample_kernel_file is not None" in debug_section
+    assert "generated_files = list(" not in debug_section
+    assert "triton_files = list(" not in debug_section
+    assert "generated_files[:5]" not in debug_section
 
 
 def test_ch14_flash_attention_sdpa_bench_defers_output_clone_and_host_sync() -> None:

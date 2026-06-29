@@ -157,12 +157,13 @@ def _summarize_quality_rows(rows: Sequence[Dict]) -> Dict:
         correct = 1 if row.get("correct") else 0
         correct_by_task[task] = correct_by_task.get(task, 0) + correct
         total_by_task[task] = total_by_task.get(task, 0) + 1
-    per_task_summary = {
-        task: correct_by_task[task] / total_by_task[task] for task in correct_by_task
-    }
-    avg_acc = (
-        sum(per_task_summary.values()) / len(per_task_summary) if per_task_summary else 0.0
-    )
+    per_task_summary: Dict[str, float] = {}
+    accuracy_total = 0.0
+    for task, correct in correct_by_task.items():
+        accuracy = correct / total_by_task[task]
+        per_task_summary[task] = accuracy
+        accuracy_total += accuracy
+    avg_acc = accuracy_total / len(per_task_summary) if per_task_summary else 0.0
     return {"per_task": per_task_summary, "avg_accuracy": avg_acc}
 
 
