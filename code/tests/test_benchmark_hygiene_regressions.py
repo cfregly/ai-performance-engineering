@@ -6632,6 +6632,11 @@ def test_dynamic_router_policy_avoids_candidate_list_churn() -> None:
     assert "scores = {" in migration_section
     assert "if gpu.is_decode" in migration_section
     assert "decode_gpus = [" not in migration_section
+    assert "import heapq" in source
+    assert "seq_heap = [" in migration_section
+    assert "heapq.heapify(seq_heap)" in migration_section
+    assert "heapq.heappop(seq_heap)" in migration_section
+    assert "seqs = sorted(" not in migration_section
 
     from labs.dynamic_router.router_policy import Router, SequenceInfo
 

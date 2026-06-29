@@ -13,6 +13,7 @@ serving harness (vLLM, SGLang, TensorRT-LLM).
 
 from __future__ import annotations
 
+import heapq
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -334,13 +335,13 @@ class Router:
                 break
             if src not in by_gpu:
                 continue
-            seqs = sorted(
-                by_gpu[src],
-                key=lambda s: (s.priority, -(s.expected_tokens_remaining or 0)),
-            )
-            for seq in seqs:
-                if budget <= 0:
-                    break
+            seq_heap = [
+                (s.priority, -(s.expected_tokens_remaining or 0), order, s)
+                for order, s in enumerate(by_gpu[src])
+            ]
+            heapq.heapify(seq_heap)
+            while seq_heap and budget > 0:
+                _, _, _, seq = heapq.heappop(seq_heap)
                 dst = self._choose_migration_target(seq, scores)
                 if dst is None or dst == src:
                     continue
