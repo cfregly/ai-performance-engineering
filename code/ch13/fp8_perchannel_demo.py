@@ -275,14 +275,18 @@ class FP8PerChannelLinear(nn.Module):
     
     def get_quantization_stats(self) -> dict:
         """Get statistics about the quantization."""
-        input_amax_mean, input_amax_std, weight_amax_mean, amax_counter = torch.stack(
+        stats_host = torch.stack(
             (
                 self.input_amax_history.mean(),
                 self.input_amax_history.std(),
                 self.weight_amax_history.mean(),
                 self.amax_counter.to(dtype=torch.float32),
             )
-        ).tolist()
+        ).detach().cpu()
+        input_amax_mean = float(stats_host[0])
+        input_amax_std = float(stats_host[1])
+        weight_amax_mean = float(stats_host[2])
+        amax_counter = float(stats_host[3])
         return {
             "scaling_mode": self.config.scaling_mode.value,
             "fp8_format": self.config.fp8_format,
@@ -384,7 +388,9 @@ class FP8PerChannelBenchmark:
             error_sums[0].add_(pt_error.detach())
             error_sums[1].add_(pc_error.detach())
 
-        pt_error_total, pc_error_total = error_sums.detach().cpu().tolist()
+        error_totals_host = error_sums.detach().cpu()
+        pt_error_total = float(error_totals_host[0])
+        pc_error_total = float(error_totals_host[1])
         
         return {
             "per_tensor_error_pct": 100 * pt_error_total / num_samples,
