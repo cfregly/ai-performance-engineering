@@ -62,7 +62,8 @@ def gather_recv_splits(send_splits: List[int], world_size: int, rank: int) -> Li
     gathered = [torch.empty_like(send_counts) for _ in range(world_size)]
     dist.all_gather(gathered, send_counts)
     recv_counts = torch.stack(gathered, dim=0)[:, rank]
-    return [int(count) for count in recv_counts.detach().cpu().tolist()]
+    recv_counts_host = recv_counts.detach().cpu()
+    return [int(recv_counts_host[src]) for src in range(recv_counts_host.numel())]
 
 
 def pack_tokens(

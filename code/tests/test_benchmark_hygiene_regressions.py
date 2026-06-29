@@ -9313,7 +9313,9 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
     )[0]
 
     for section in (local_section, distributed_section):
-        assert "overflow_flags = [bool(flag) for flag in mask_overflow.detach().cpu().tolist()]" in section
+        assert "overflow_flags_host = mask_overflow.detach().cpu()" in section
+        assert "mask_overflow.detach().cpu().tolist()" not in section
+        assert "if bool(overflow_flags_host[eid_int]):" in section
         assert "eid.item()" not in section
         assert "mask.any()" not in section
     assert "self._local_out_buffers: list[torch.Tensor] = []" in source
@@ -9374,8 +9376,14 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
     assert "torch.cat(send_tokens" not in distributed_section
     assert "torch.cat(send_expert_ids" not in distributed_section
     assert "torch.cat(send_indices" not in distributed_section
-    assert "unique_expert_ids = [int(eid) for eid in torch.unique(expert_ids).detach().cpu().tolist()]" in local_section
-    assert "for eid_int in [int(eid) for eid in torch.unique(recv_ids).detach().cpu().tolist()]" in distributed_section
+    assert "unique_expert_ids_host = torch.unique(expert_ids).detach().cpu()" in local_section
+    assert "for unique_idx in range(unique_expert_ids_host.numel()):" in local_section
+    assert "eid_int = int(unique_expert_ids_host[unique_idx])" in local_section
+    assert "torch.unique(expert_ids).detach().cpu().tolist()" not in local_section
+    assert "recv_unique_ids_host = torch.unique(recv_ids).detach().cpu()" in distributed_section
+    assert "for unique_idx in range(recv_unique_ids_host.numel()):" in distributed_section
+    assert "eid_int = int(recv_unique_ids_host[unique_idx])" in distributed_section
+    assert "torch.unique(recv_ids).detach().cpu().tolist()" not in distributed_section
 
 
 def test_ch15_parallel_demos_use_inference_mode() -> None:
@@ -9996,7 +10004,9 @@ def test_ch13_expert_parallel_batches_recv_split_materialization() -> None:
     )[0]
 
     assert "recv_counts = torch.stack(gathered, dim=0)[:, rank]" in split_section
-    assert "recv_counts.detach().cpu().tolist()" in split_section
+    assert "recv_counts_host = recv_counts.detach().cpu()" in split_section
+    assert "return [int(recv_counts_host[src]) for src in range(recv_counts_host.numel())]" in split_section
+    assert "recv_counts.detach().cpu().tolist()" not in split_section
     assert "gathered[src][rank].item()" not in split_section
 
 

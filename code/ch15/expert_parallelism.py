@@ -145,7 +145,7 @@ class Top2MoE(nn.Module):
         cap = int(self.capacity_factor * (batch * seq) / self.num_experts)
         counts = torch.bincount(flat_idx.view(-1), minlength=self.num_experts)
         mask_overflow = counts > cap
-        overflow_flags = [bool(flag) for flag in mask_overflow.detach().cpu().tolist()]
+        overflow_flags_host = mask_overflow.detach().cpu()
 
         local_buffers, local_accum = self._local_buffers(flat_tokens, len(self._local_streams))
         current = torch.cuda.current_stream(tokens.device)
@@ -154,11 +154,12 @@ class Top2MoE(nn.Module):
         for slot, stream in enumerate(self._local_streams):
             expert_ids = flat_idx[:, slot]
             local_out = local_buffers[slot]
-            unique_expert_ids = [int(eid) for eid in torch.unique(expert_ids).detach().cpu().tolist()]
+            unique_expert_ids_host = torch.unique(expert_ids).detach().cpu()
             with torch.cuda.stream(stream):
                 local_out.zero_()
-                for eid_int in unique_expert_ids:
-                    if overflow_flags[eid_int]:
+                for unique_idx in range(unique_expert_ids_host.numel()):
+                    eid_int = int(unique_expert_ids_host[unique_idx])
+                    if bool(overflow_flags_host[eid_int]):
                         continue
                     mask = expert_ids == eid_int
                     contrib = self.experts[eid_int](flat_tokens[mask]) * flat_w[mask, slot:slot + 1]
@@ -181,7 +182,7 @@ class Top2MoE(nn.Module):
         cap = int(self.capacity_factor * (batch * seq) / self.num_experts)
         counts = torch.bincount(flat_idx.view(-1), minlength=self.num_experts)
         mask_overflow = counts > cap
-        overflow_flags = [bool(flag) for flag in mask_overflow.detach().cpu().tolist()]
+        overflow_flags_host = mask_overflow.detach().cpu()
 
         world_size = ctx.world_size
         rank = ctx.rank
@@ -257,8 +258,10 @@ class Top2MoE(nn.Module):
             dtype=flat_tokens.dtype,
         )
         local_out.zero_()
-        for eid_int in [int(eid) for eid in torch.unique(recv_ids).detach().cpu().tolist()]:
-            if overflow_flags[eid_int]:
+        recv_unique_ids_host = torch.unique(recv_ids).detach().cpu()
+        for unique_idx in range(recv_unique_ids_host.numel()):
+            eid_int = int(recv_unique_ids_host[unique_idx])
+            if bool(overflow_flags_host[eid_int]):
                 continue
             if _expert_to_rank(eid_int, experts_per_rank) != rank:
                 continue
