@@ -4121,8 +4121,17 @@ def test_timed_loops_reuse_cuda_events() -> None:
         assert "for _ in range(scenario.repeats):\n        start_event = torch.cuda.Event" not in source
         assert "for _ in range(iters):\n        start = torch.cuda.Event" not in source
         if filename == "labs/moe_decode_blackwell_matrix/runner.py":
+            timing_section = source.split("elapsed_per_step_ms: list[float] = []", maxsplit=1)[1].split(
+                "max_abs_diff = _compare_outputs",
+                maxsplit=1,
+            )[0]
             assert "with torch.inference_mode():" in source
             assert "with torch.no_grad():" not in source
+            assert "current_stream = torch.cuda.current_stream(device)" in timing_section
+            assert "start_event.record(current_stream)" in timing_section
+            assert "end_event.record(current_stream)" in timing_section
+            assert "start_event.record()" not in timing_section
+            assert "end_event.record()" not in timing_section
         if filename == "labs/memory_bandwidth_patterns/bandwidth_patterns_common.py":
             timing_section = source.split("def measure_cuda_callable", maxsplit=1)[1].split(
                 "class BandwidthPatternsBenchmarkBase",

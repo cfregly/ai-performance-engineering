@@ -299,11 +299,12 @@ def measure_scenario(
     elapsed_per_step_ms: list[float] = []
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream(device)
     for _ in range(scenario.repeats):
-        start_event.record()
+        start_event.record(current_stream)
         for batch in batches:
             run_decode_step(experts, batch, scenario=scenario)
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
         elapsed_per_step_ms.append(start_event.elapsed_time(end_event) / len(batches))
 
