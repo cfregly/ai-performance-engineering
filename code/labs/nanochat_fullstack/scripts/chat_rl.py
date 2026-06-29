@@ -213,6 +213,8 @@ print0(f"Calculated examples per rank: {examples_per_rank}")
 
 # Kick off the training loop
 batch_iterator = get_batch()
+log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)
+summary_buffer = torch.empty(2, dtype=torch.float64, device=device)
 for step in range(num_steps):
 
     # Evaluate the model once in a while and log to wandb
@@ -270,10 +272,9 @@ for step in range(num_steps):
             # Finally, formulate the loss that we want to minimize (instead of objective we wish to maximize)
             loss = -pg_obj
             loss.backward()
-            loss_item, reward_item = torch.stack((
-                loss.detach().to(torch.float64),
-                rewards.mean().to(torch.float64),
-            )).detach().cpu().tolist()
+            log_value_buffer[0].copy_(loss.detach())
+            log_value_buffer[1].copy_(rewards.mean())
+            loss_item, reward_item = log_value_buffer.detach().cpu().tolist()
             print0(f"Step {step}/{num_steps} | Example step {example_step} | Pass {pass_idx} | loss: {loss_item:.6f} | Average reward: {reward_item}")
         # For logging
         rewards_list.append(rewards_all.mean())
@@ -282,13 +283,11 @@ for step in range(num_steps):
     # A bunch of logging for how the rollouts went this step
     mean_reward_tensor = torch.stack(rewards_list).mean()
     mean_sequence_length = sum(sequence_lengths) / len(sequence_lengths)
-    summary = torch.stack((
-        mean_reward_tensor.to(torch.float64),
-        torch.tensor(float(mean_sequence_length), dtype=torch.float64, device=device),
-    ))
+    summary_buffer[0].copy_(mean_reward_tensor)
+    summary_buffer[1] = float(mean_sequence_length)
     if ddp: # aggregate across ranks
-        dist.all_reduce(summary, op=dist.ReduceOp.AVG)
-    mean_reward, mean_sequence_length = summary.detach().cpu().tolist()
+        dist.all_reduce(summary_buffer, op=dist.ReduceOp.AVG)
+    mean_reward, mean_sequence_length = summary_buffer.detach().cpu().tolist()
     print0(f"Step {step}/{num_steps} | Average reward: {mean_reward} | Average sequence length: {mean_sequence_length:.2f}")
     wandb_run.log({
         "step": step,

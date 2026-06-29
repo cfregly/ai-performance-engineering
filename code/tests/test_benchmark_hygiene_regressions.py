@@ -7690,10 +7690,11 @@ def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
 
     assert eval_section.count("with torch.inference_mode(), autocast_ctx:") == 2
     assert "torch.no_grad()" not in eval_section
-    assert "torch.stack((" in logging_section
-    assert "train_loss.to(torch.float64)" in logging_section
-    assert "num_tokens.to(torch.float64)" in logging_section
-    assert ")).detach().cpu().tolist()" in logging_section
+    assert "log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)" in source
+    assert "log_value_buffer[0].copy_(train_loss.detach())" in logging_section
+    assert "log_value_buffer[1].copy_(num_tokens)" in logging_section
+    assert "train_loss_item, num_tokens_item = log_value_buffer.detach().cpu().tolist()" in logging_section
+    assert "torch.stack((" not in logging_section
     assert "num_tokens = torch.empty((), dtype=torch.int64, device=device)" in source
     assert "num_tokens.zero_()" in source
     assert "num_tokens = torch.tensor(0, device=device)" not in source
@@ -7841,11 +7842,18 @@ def test_nanochat_chat_rl_batches_eval_and_rollout_syncs() -> None:
     assert "dist.all_reduce(eval_totals, op=dist.ReduceOp.SUM)" in source
     assert "eval_values = eval_totals.detach().cpu().tolist()" in source
     assert "passk_values = [value / num_records for value in eval_values[1:]]" in source
-    assert "loss_item, reward_item = torch.stack((" in source
+    assert "log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)" in source
+    assert "summary_buffer = torch.empty(2, dtype=torch.float64, device=device)" in source
+    assert "log_value_buffer[0].copy_(loss.detach())" in source
+    assert "log_value_buffer[1].copy_(rewards.mean())" in source
+    assert "loss_item, reward_item = log_value_buffer.detach().cpu().tolist()" in source
     assert "rewards_list.append(rewards_all.mean())" in source
     assert "mean_reward_tensor = torch.stack(rewards_list).mean()" in source
-    assert "dist.all_reduce(summary, op=dist.ReduceOp.AVG)" in source
-    assert "mean_reward, mean_sequence_length = summary.detach().cpu().tolist()" in source
+    assert "summary_buffer[0].copy_(mean_reward_tensor)" in source
+    assert "summary_buffer[1] = float(mean_sequence_length)" in source
+    assert "dist.all_reduce(summary_buffer, op=dist.ReduceOp.AVG)" in source
+    assert "mean_reward, mean_sequence_length = summary_buffer.detach().cpu().tolist()" in source
+    assert "torch.tensor(float(mean_sequence_length)" not in source
     assert "num_records.item()" not in source
     assert "passk[k - 1].item()" not in source
     assert "loss.item()" not in source

@@ -169,6 +169,7 @@ def get_lr_multiplier(it):
 step = 0
 train_iter = iter(train_loader)
 num_tokens = torch.empty((), dtype=torch.int64, device=device)
+log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)
 for step in range(num_iterations):
     last_step = step == num_iterations - 1
 
@@ -237,10 +238,9 @@ for step in range(num_iterations):
     model.zero_grad(set_to_none=True)
 
     # logging
-    train_loss_item, num_tokens_item = torch.stack((
-        train_loss.to(torch.float64),
-        num_tokens.to(torch.float64),
-    )).detach().cpu().tolist()
+    log_value_buffer[0].copy_(train_loss.detach())
+    log_value_buffer[1].copy_(num_tokens)
+    train_loss_item, num_tokens_item = log_value_buffer.detach().cpu().tolist()
     num_tokens_item = int(num_tokens_item)
     print0(f"Step {step:05d}/{num_iterations:05d} | Training loss: {train_loss_item:.6f}| lrm: {lrm:.6f}| num_tokens: {num_tokens_item:,}")
     wandb_run.log({
