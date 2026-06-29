@@ -10318,8 +10318,14 @@ def test_ch04_symmetric_queue_batches_head_tail_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "torch.stack((self.tail[0], self.head[0])).tolist()" in queue_section
-    assert "torch.stack((self.head[0], self.tail[0])).tolist()" in queue_section
+    assert "self._head_tail_readback = torch.empty(" in queue_section
+    assert "2, dtype=torch.int64, device=self.head.device" in queue_section
+    assert "def _read_queue_pointer_pair(" in queue_section
+    assert "readback[0].copy_(first)" in queue_section
+    assert "readback[1].copy_(second)" in queue_section
+    assert "first_value, second_value = readback.detach().cpu().tolist()" in queue_section
+    assert "torch.stack((self.tail[0], self.head[0])).tolist()" not in queue_section
+    assert "torch.stack((self.head[0], self.tail[0])).tolist()" not in queue_section
     assert "self.tail.item()" not in queue_section
     assert "self.head.item()" not in queue_section
 

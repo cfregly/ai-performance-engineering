@@ -593,6 +593,19 @@ class LockFreeRingBuffer:
         if tail_handle is not None:
             self.tail_handle = tail_handle
             self.tail = tail_handle.buffer
+
+        self._head_tail_readback = torch.empty(
+            2, dtype=torch.int64, device=self.head.device
+        )
+
+    def _read_queue_pointer_pair(
+        self, first: torch.Tensor, second: torch.Tensor
+    ) -> tuple[int, int]:
+        readback = self._head_tail_readback
+        readback[0].copy_(first)
+        readback[1].copy_(second)
+        first_value, second_value = readback.detach().cpu().tolist()
+        return int(first_value), int(second_value)
     
     def enqueue(self, data: torch.Tensor) -> bool:
         """
@@ -604,8 +617,8 @@ class LockFreeRingBuffer:
             raise ValueError(f"Data size mismatch: {data.numel()} vs {self.element_size}")
         
         # Read current queue pointers in a single host transfer.
-        current_tail, current_head = (
-            int(value) for value in torch.stack((self.tail[0], self.head[0])).tolist()
+        current_tail, current_head = self._read_queue_pointer_pair(
+            self.tail[0], self.head[0]
         )
         next_tail = (current_tail + 1) % self.capacity
         
@@ -628,8 +641,8 @@ class LockFreeRingBuffer:
         Returns None if buffer is empty.
         """
         # Read current queue pointers in a single host transfer.
-        current_head, current_tail = (
-            int(value) for value in torch.stack((self.head[0], self.tail[0])).tolist()
+        current_head, current_tail = self._read_queue_pointer_pair(
+            self.head[0], self.tail[0]
         )
         
         # Check if empty
@@ -647,7 +660,7 @@ class LockFreeRingBuffer:
     
     def size(self) -> int:
         """Get current number of elements in buffer."""
-        head, tail = (int(value) for value in torch.stack((self.head[0], self.tail[0])).tolist())
+        head, tail = self._read_queue_pointer_pair(self.head[0], self.tail[0])
         if tail >= head:
             return tail - head
         else:
