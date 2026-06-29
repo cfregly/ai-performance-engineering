@@ -409,10 +409,11 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if len(request_events) != len(self.request_plans):
             raise RuntimeError("Request timing events not initialized")
 
+        current_stream = torch.cuda.current_stream()
         with torch.inference_mode():
             for event_idx, plan in enumerate(self.request_plans):
                 request_start, prefill_end, decode_end = request_events[event_idx]
-                request_start.record()
+                request_start.record(current_stream)
 
                 chunks = prompt_chunks[plan.request_idx]
                 seed = self.shared_seed_store.get(plan.request_idx)
@@ -465,11 +466,11 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     owners=owners,
                     metrics=metrics,
                 )
-                prefill_end.record()
+                prefill_end.record(current_stream)
                 if seed is None:
                     raise RuntimeError("Request finished without a decode seed")
                 output = self.decode_model.decode(seed, accumulated_kv, self.cfg.decode_tokens)
-                decode_end.record()
+                decode_end.record(current_stream)
                 outputs[output_idx] = output
                 output_idx += 1
 

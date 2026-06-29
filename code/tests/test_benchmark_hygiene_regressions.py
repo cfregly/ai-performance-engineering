@@ -7247,6 +7247,13 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
 
     assert "torch.cuda.Event(enable_timing=True)" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
+    assert "current_stream = torch.cuda.current_stream()" in benchmark_section
+    assert "request_start.record(current_stream)" in benchmark_section
+    assert "prefill_end.record(current_stream)" in benchmark_section
+    assert "decode_end.record(current_stream)" in benchmark_section
+    assert "request_start.record()" not in benchmark_section
+    assert "prefill_end.record()" not in benchmark_section
+    assert "decode_end.record()" not in benchmark_section
     assert "with torch.inference_mode():" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.stack(" not in benchmark_section
