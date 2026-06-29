@@ -10406,13 +10406,17 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "sum(p.numel()" not in capture_section
     assert "def forward_into(self, token_ids: torch.Tensor, logits_out: torch.Tensor)" in common_source
     assert "tuple[int, torch.device, torch.dtype]" in common_source
+    assert "self._linear_layers: tuple[nn.Linear, ...] = tuple(" in common_source
     assert "cache_key = (int(num_tokens), device, dtype)" in common_source
     assert "buffers = self._forward_buffers.get(cache_key)" in common_source
     assert "self._forward_buffers[cache_key] = buffers" in common_source
     assert "self._forward_buffers = [" not in common_source
     assert "torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)" in common_source
-    assert "torch.matmul(current, module.weight.t(), out=alternate)" in common_source
-    assert "F.gelu(current, approximate=\"tanh\", out=current)" in common_source
+    assert "for layer in self._linear_layers:" in common_source
+    assert "torch.matmul(current, layer.weight.t(), out=alternate)" in common_source
+    assert "F.gelu(alternate, approximate=\"tanh\", out=alternate)" in common_source
+    assert "for module in self.mlp:" not in common_source
+    assert "torch.matmul(current, module.weight.t(), out=alternate)" not in common_source
     assert "torch.matmul(current, self.out.weight.t(), out=flat_logits)" in common_source
     assert common_source.count("with torch.inference_mode():") >= 2
     assert "with torch.no_grad():" not in common_source
@@ -10461,13 +10465,17 @@ def test_ch15_speculative_decode_common_uses_inference_mode_for_setup_mutations(
 
     assert "def forward_into(self, token_ids: torch.Tensor, logits_out: torch.Tensor)" in source
     assert "tuple[int, torch.device, torch.dtype]" in source
+    assert "self._linear_layers: tuple[nn.Linear, ...] = tuple(" in source
     assert "cache_key = (int(num_tokens), device, dtype)" in source
     assert "buffers = self._forward_buffers.get(cache_key)" in source
     assert "self._forward_buffers[cache_key] = buffers" in source
     assert "self._forward_buffers = [" not in source
     assert "torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)" in source
-    assert "torch.matmul(current, module.weight.t(), out=alternate)" in source
-    assert "F.gelu(current, approximate=\"tanh\", out=current)" in source
+    assert "for layer in self._linear_layers:" in source
+    assert "torch.matmul(current, layer.weight.t(), out=alternate)" in source
+    assert "F.gelu(alternate, approximate=\"tanh\", out=alternate)" in source
+    assert "for module in self.mlp:" not in source
+    assert "torch.matmul(current, module.weight.t(), out=alternate)" not in source
     assert "torch.matmul(current, self.out.weight.t(), out=flat_logits)" in source
     assert source.count("with torch.inference_mode():") >= 2
     assert "with torch.no_grad():" not in source

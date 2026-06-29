@@ -74,6 +74,9 @@ class TokenMLP(nn.Module):
             layers.append(nn.Linear(self.hidden_size, self.hidden_size, device=device, dtype=dtype))
             layers.append(nn.GELU(approximate="tanh"))
         self.mlp = nn.Sequential(*layers)
+        self._linear_layers: tuple[nn.Linear, ...] = tuple(
+            module for module in self.mlp if isinstance(module, nn.Linear)
+        )
         self.out = nn.Linear(self.hidden_size, self.vocab_size, device=device, dtype=dtype)
         self._forward_buffers: dict[
             tuple[int, torch.device, torch.dtype],
@@ -136,16 +139,12 @@ class TokenMLP(nn.Module):
 
         current = hidden
         alternate = scratch
-        for module in self.mlp:
-            if isinstance(module, nn.Linear):
-                torch.matmul(current, module.weight.t(), out=alternate)
-                if module.bias is not None:
-                    alternate.add_(module.bias)
-                current, alternate = alternate, current
-            elif isinstance(module, nn.GELU):
-                F.gelu(current, approximate="tanh", out=current)
-            else:  # pragma: no cover - TokenMLP only builds Linear/GELU pairs.
-                current = module(current)
+        for layer in self._linear_layers:
+            torch.matmul(current, layer.weight.t(), out=alternate)
+            if layer.bias is not None:
+                alternate.add_(layer.bias)
+            F.gelu(alternate, approximate="tanh", out=alternate)
+            current, alternate = alternate, current
 
         flat_logits = logits_out.view(num_tokens, self.vocab_size)
         torch.matmul(current, self.out.weight.t(), out=flat_logits)
@@ -171,12 +170,11 @@ def scale_tail_dims_(target: TokenMLP, draft_hidden: int, tail_scale: float) -> 
     with torch.inference_mode():
         target.embed.weight[:, cutoff:].mul_(scale)
 
-        for module in target.mlp:
-            if isinstance(module, nn.Linear):
-                module.weight[cutoff:, :].mul_(scale)
-                module.weight[:, cutoff:].mul_(scale)
-                if module.bias is not None:
-                    module.bias[cutoff:].mul_(scale)
+        for layer in target._linear_layers:
+            layer.weight[cutoff:, :].mul_(scale)
+            layer.weight[:, cutoff:].mul_(scale)
+            if layer.bias is not None:
+                layer.bias[cutoff:].mul_(scale)
 
         target.out.weight[:, cutoff:].mul_(scale)
 
@@ -200,8 +198,8 @@ def build_draft_from_target(target: TokenMLP, draft_hidden: int) -> TokenMLP:
         dtype=dtype,
     ).eval()
 
-    target_linears = [m for m in target.mlp if isinstance(m, nn.Linear)]
-    draft_linears = [m for m in draft.mlp if isinstance(m, nn.Linear)]
+    target_linears = target._linear_layers
+    draft_linears = draft._linear_layers
     if len(target_linears) != len(draft_linears):
         raise RuntimeError("Target/draft layer mismatch (unexpected)")
 
