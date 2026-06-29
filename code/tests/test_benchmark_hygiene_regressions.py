@@ -7825,6 +7825,15 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def _attention", maxsplit=1
+    )[0]
+    optimized_attention = optimized_source.split("def _attention", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    optimized_teardown = optimized_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
 
     assert "float(stacked.sum())" not in baseline_benchmark
     assert "torch.stack(" not in baseline_benchmark
@@ -7842,6 +7851,16 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "output_idx += 1" in baseline_benchmark
     assert "stacked = torch.stack(self._last_outputs, dim=1)" in baseline_capture
     assert "float(out.sum())" not in optimized_benchmark
+    assert "self._q_bhsd: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._q_bhsd = self.q.transpose(0, 1).unsqueeze(0)" in optimized_setup
+    assert "self._k_bhsd = self.k.transpose(0, 1).unsqueeze(0)" in optimized_setup
+    assert "self._v_bhsd = self.v.transpose(0, 1).unsqueeze(0)" in optimized_setup
+    assert "def _attention_bhsd(" in optimized_attention
+    assert "return self._attention_bhsd(q_bhsd, k_bhsd, v_bhsd)" in optimized_attention
+    assert "out = self._attention_bhsd(self._q_bhsd, self._k_bhsd, self._v_bhsd)" in optimized_benchmark
+    assert "self._attention(self.q, self.k, self.v)" not in optimized_benchmark
+    assert ".transpose(0, 1).unsqueeze(0)" not in optimized_benchmark
+    assert "self._q_bhsd = None" in optimized_teardown
 
 
 def test_ch14_wrappers_cache_nvtx_enabled_outside_hot_loop() -> None:

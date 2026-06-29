@@ -45,6 +45,9 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
         self.q = None
         self.k = None
         self.v = None
+        self._q_bhsd: Optional[torch.Tensor] = None
+        self._k_bhsd: Optional[torch.Tensor] = None
+        self._v_bhsd: Optional[torch.Tensor] = None
         self._last = 0.0
         self.repeat_passes = 1
         tokens = self.seq_len * self.num_heads * self.repeat_passes
@@ -72,15 +75,26 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
         self.q = torch.randn(shape, device=self.device, dtype=self.dtype)
         self.k = torch.randn(shape, device=self.device, dtype=self.dtype)
         self.v = torch.randn(shape, device=self.device, dtype=self.dtype)
+        self._q_bhsd = self.q.transpose(0, 1).unsqueeze(0)
+        self._k_bhsd = self.k.transpose(0, 1).unsqueeze(0)
+        self._v_bhsd = self.v.transpose(0, 1).unsqueeze(0)
         for _ in range(3):
             with torch.inference_mode():
-                _ = self._attention(self.q, self.k, self.v)
+                _ = self._attention_bhsd(self._q_bhsd, self._k_bhsd, self._v_bhsd)
         torch.cuda.synchronize(self.device)
 
     def _attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        q_bhsd = q.transpose(0, 1).unsqueeze(0)  # [1, H, S, D]
+        q_bhsd = q.transpose(0, 1).unsqueeze(0)
         k_bhsd = k.transpose(0, 1).unsqueeze(0)
         v_bhsd = v.transpose(0, 1).unsqueeze(0)
+        return self._attention_bhsd(q_bhsd, k_bhsd, v_bhsd)
+
+    def _attention_bhsd(
+        self,
+        q_bhsd: torch.Tensor,
+        k_bhsd: torch.Tensor,
+        v_bhsd: torch.Tensor,
+    ) -> torch.Tensor:
         with _flash_sdp_context():
             out = F.scaled_dot_product_attention(q_bhsd, k_bhsd, v_bhsd, dropout_p=0.0, is_causal=False)
         out = out.transpose(1, 2).contiguous().view(1, self.seq_len, self.embed_dim)
@@ -94,9 +108,16 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
             torch.inference_mode(),
             nvtx_range("optimized_attention_eager_sdpa", enable=self._enable_nvtx),
         ):
-            if self.q is None or self.k is None or self.v is None:
+            if (
+                self.q is None
+                or self.k is None
+                or self.v is None
+                or self._q_bhsd is None
+                or self._k_bhsd is None
+                or self._v_bhsd is None
+            ):
                 raise RuntimeError("Tensors not initialized")
-            out = self._attention(self.q, self.k, self.v)
+            out = self._attention_bhsd(self._q_bhsd, self._k_bhsd, self._v_bhsd)
             self.output = out.detach()
         if self.q is None or self.k is None or self.v is None or self.output is None:
             raise RuntimeError("Verification input/output not initialized")
@@ -126,6 +147,9 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
         self.q = None
         self.k = None
         self.v = None
+        self._q_bhsd = None
+        self._k_bhsd = None
+        self._v_bhsd = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     
