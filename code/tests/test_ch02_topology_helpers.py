@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import inspect
 from unittest import mock
 from pathlib import Path
 from types import SimpleNamespace
@@ -143,3 +144,17 @@ def test_grace_coherent_memory_optimized_fails_fast_without_grace_support(
 
     with pytest.raises(RuntimeError, match="SKIPPED: grace_coherent_memory requires Grace-Blackwell coherent memory support"):
         optimized_grace_coherent_memory.OptimizedGraceCoherentMemory()
+
+
+def test_grace_coherent_memory_async_pinned_reuses_current_stream() -> None:
+    source = inspect.getsource(optimized_grace_coherent_memory.OptimizedGraceCoherentMemory.run_step)
+    async_section = source.split('elif self.strategy == "async_pinned":', maxsplit=1)[1].split(
+        "torch.cuda.synchronize()",
+        maxsplit=1,
+    )[0]
+
+    assert "current_stream = torch.cuda.current_stream()" in async_section
+    assert "current_stream.wait_stream(self.stream)" in async_section
+    assert "self.stream.wait_stream(current_stream)" in async_section
+    assert "torch.cuda.current_stream().wait_stream(self.stream)" not in async_section
+    assert "self.stream.wait_stream(torch.cuda.current_stream())" not in async_section

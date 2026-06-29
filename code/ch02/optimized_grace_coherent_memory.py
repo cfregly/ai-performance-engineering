@@ -211,11 +211,12 @@ class OptimizedGraceCoherentMemory:
             self.gpu_data.mul_(2.0).add_(1.0)
         
         elif self.strategy == "async_pinned":
+            current_stream = torch.cuda.current_stream()
             with torch.cuda.stream(self.stream):
                 self.gpu_data.copy_(self.cpu_data, non_blocking=True)
-            torch.cuda.current_stream().wait_stream(self.stream)
+            current_stream.wait_stream(self.stream)
             self.gpu_data.mul_(2.0).add_(1.0)
-            self.stream.wait_stream(torch.cuda.current_stream())
+            self.stream.wait_stream(current_stream)
             with torch.cuda.stream(self.stream):
                 self.cpu_data.copy_(self.gpu_data, non_blocking=True)
             self.stream.synchronize()
