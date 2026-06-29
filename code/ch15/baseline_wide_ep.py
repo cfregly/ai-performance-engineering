@@ -60,6 +60,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.expert: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
+        self._flat_inputs: Optional[torch.Tensor] = None
         self.expert_ids: Optional[torch.Tensor] = None
         self._dest_ranks: Optional[torch.Tensor] = None
         self._rank_indices: list[torch.Tensor] = []
@@ -90,6 +91,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.expert = ExpertMLP(self.hidden_size, self.ffn_size, device=self.device, dtype=self.dtype).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())
         self.inputs = torch.randn(self.batch, self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
+        self._flat_inputs = self.inputs.view(-1, self.hidden_size)
 
         token_ids = torch.arange(self.batch * self.seq, device=self.device, dtype=torch.int64)
         self.expert_ids = _pseudo_uniform_expert_ids(token_ids, self.num_experts).view(self.batch, self.seq)
@@ -110,7 +112,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not self._rank_indices:
             raise RuntimeError("Routing produced no tokens for any rank")
         self._perm = torch.cat(self._rank_indices, dim=0)
-        flat = self.inputs.view(-1, self.hidden_size)
+        flat = self._flat_inputs
         self._recv_buf = torch.empty_like(flat)
         self._out_flat = torch.empty_like(flat)
         self._rank_copy_groups = [
@@ -126,12 +128,13 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         for _ in range(3):
             with torch.inference_mode():
-                _ = self.expert(self.inputs.view(-1, self.hidden_size))
+                _ = self.expert(self._flat_inputs)
 
     def benchmark_fn(self) -> None:
         if (
             self.expert is None
             or self.inputs is None
+            or self._flat_inputs is None
             or self._perm is None
             or self._recv_buf is None
             or self._out_flat is None
@@ -139,7 +142,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        flat = self.inputs.view(-1, self.hidden_size)
+        flat = self._flat_inputs
 
         with self._nvtx_range("baseline_wide_ep"):
             with torch.inference_mode():
@@ -180,6 +183,7 @@ class BaselineWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.expert = None
         self.inputs = None
+        self._flat_inputs = None
         self.expert_ids = None
         self._dest_ranks = None
         self._rank_indices = []

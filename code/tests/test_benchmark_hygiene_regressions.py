@@ -9164,6 +9164,10 @@ def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
 
         assert "self._remote_buf_a = torch.empty(" in setup_section
         assert "self._remote_buf_b = torch.empty(" in setup_section
+        assert "self._flat_inputs: Optional[torch.Tensor] = None" in source
+        assert "self._flat_inputs = self.inputs.view(-1, self.hidden_size)" in setup_section
+        assert "flat = self._flat_inputs" in benchmark_section
+        assert "self.inputs.view(-1, self.hidden_size)" not in benchmark_section
         assert "self._remote_buf_a = torch.zeros(" not in setup_section
         assert "self._remote_buf_b = torch.zeros(" not in setup_section
         if relative.endswith("optimized_moe_router_uniform_topology.py"):
@@ -11317,12 +11321,20 @@ def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
             "def benchmark_fn",
             maxsplit=1,
         )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown",
             maxsplit=1,
         )[0]
         assert "self._payload_parameter_count = 0" in source
         assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
+        assert "self._flat_inputs: Optional[torch.Tensor] = None" in source
+        assert "self._flat_inputs = self.inputs.view(-1, self.hidden_size)" in setup_section
+        assert "flat = self._flat_inputs" in benchmark_section
+        assert "self.inputs.view(-1, self.hidden_size)" not in benchmark_section
         assert "param_count = sum(" not in capture_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
 

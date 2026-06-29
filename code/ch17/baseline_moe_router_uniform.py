@@ -62,6 +62,7 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
         self.expert: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
+        self._flat_inputs: Optional[torch.Tensor] = None
         self.expert_ids: Optional[torch.Tensor] = None
         self.local_island: Optional[torch.Tensor] = None
         self._remote_idx: Optional[torch.Tensor] = None
@@ -89,6 +90,7 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.expert = ExpertMLP(self.hidden_size, self.ffn_size, device=self.device, dtype=self.dtype).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())
         self.inputs = torch.randn(self.batch, self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
+        self._flat_inputs = self.inputs.view(-1, self.hidden_size)
 
         token_ids = torch.arange(self.batch * self.seq, device=self.device, dtype=torch.int64)
         self.local_island = (token_ids % int(self.num_islands)).to(torch.int64).view(self.batch, self.seq)
@@ -113,20 +115,21 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
         for _ in range(3):
             with torch.inference_mode():
-                _ = self.expert(self.inputs.view(-1, self.hidden_size))
+                _ = self.expert(self._flat_inputs)
         self._synchronize()
 
     def benchmark_fn(self) -> None:
         if (
             self.expert is None
             or self.inputs is None
+            or self._flat_inputs is None
             or self.expert_ids is None
             or self.local_island is None
             or self._remote_idx is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        flat = self.inputs.view(-1, self.hidden_size)
+        flat = self._flat_inputs
 
         with self._nvtx_range("baseline_moe_router_uniform"):
             with torch.inference_mode():
@@ -162,6 +165,7 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def teardown(self) -> None:
         self.expert = None
         self.inputs = None
+        self._flat_inputs = None
         self.expert_ids = None
         self.local_island = None
         self._remote_idx = None
