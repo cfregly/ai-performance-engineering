@@ -14706,3 +14706,22 @@ def test_timeout_prone_pairs_publish_static_input_signatures_without_execution()
         assert signature.batch_size == expected_batch_size
         assert signature.dtypes["workload"] == expected_dtype
         assert signature.shapes["workload"] == expected_shape
+
+
+def test_nanochat_tokenizer_prepends_without_front_inserts() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "tokenizer.py"
+    ).read_text(encoding="utf-8")
+    encode_section = source.split(
+        "def encode(self, text, prepend=None, append=None, num_threads=8):",
+        maxsplit=1,
+    )[1].split("def __call__", maxsplit=1)[0]
+
+    assert ".insert(0," not in encode_section
+    assert "ids = [prepend_id, *ids, append_id]" in encode_section
+    assert "ids = [prepend_id, *ids]" in encode_section
+    assert (
+        "ids = [[prepend_id, *ids_row, append_id] for ids_row in ids]"
+        in encode_section
+    )
+    assert "ids = [[prepend_id, *ids_row] for ids_row in ids]" in encode_section
