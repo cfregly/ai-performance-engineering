@@ -850,6 +850,7 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     assert "self._latency_count = 0" in source
     assert "self._error_total = 0.0" in source
     assert "self._error_count = 0" in source
+    assert "self._empty_iteration_result: Dict[str, List[float]] = {}" in source
     assert '"latency_ms": []' not in source
     assert '"error": []' not in source
     assert "self._packed_dst_bytes_cpu = torch.empty(" in setup_section
@@ -860,6 +861,8 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     assert "end_event.record(current_stream)" in benchmark_section
     assert "start_event.record()" not in benchmark_section
     assert "end_event.record()" not in benchmark_section
+    assert "return self._empty_iteration_result" in benchmark_section
+    assert "return {}" not in benchmark_section
     assert "dequantized = self._dequantized_cpu" in finalize_section
     assert "scale_cpu.copy_(self._last_scale" in finalize_section
     assert "packed_view = packed_cpu" in finalize_section
@@ -4659,6 +4662,34 @@ def test_ch19_fp4_weight_quantization_caches_parameter_count() -> None:
         assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "sum(p.numel()" not in capture_section
+
+
+def test_ch19_optimized_fp4_reuses_precision_flag_payload() -> None:
+    source = (REPO_ROOT / "ch19" / "optimized_fp4_weight_quantization.py").read_text(
+        encoding="utf-8"
+    )
+    init_section = source.split("def __init__", maxsplit=1)[1].split(
+        "def setup",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+
+    assert "self._payload_precision_flags = {" in init_section
+    assert "precision_flags = self._payload_precision_flags" in benchmark_section
+    assert 'precision_flags["fp16"] = dtype == torch.float16' in benchmark_section
+    assert 'precision_flags["bf16"] = dtype == torch.bfloat16' in benchmark_section
+    assert 'precision_flags["fp8"] = False' in benchmark_section
+    assert 'precision_flags["tf32"] = False' in benchmark_section
+    assert "precision_flags = {" not in benchmark_section
+    assert "self._payload_precision_flags = precision_flags" not in benchmark_section
+    assert "precision_flags = self._payload_precision_flags" in capture_section
 
 
 def test_ch19_optimized_fp4_fp8_bridge_reuses_activation_and_scale_buffers() -> None:

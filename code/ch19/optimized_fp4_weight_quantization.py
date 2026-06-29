@@ -416,6 +416,12 @@ class OptimizedFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBenc
         
         self.input: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
+        self._payload_precision_flags = {
+            "fp16": False,
+            "bf16": False,
+            "fp8": False,
+            "tf32": False,
+        }
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -474,13 +480,11 @@ class OptimizedFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBenc
         if self.output is None or self.input is None or self.model is None:
             raise RuntimeError("benchmark_fn() must produce output")
         dtype = self.output.dtype
-        precision_flags = {
-            "fp16": dtype == torch.float16,
-            "bf16": dtype == torch.bfloat16,
-            "fp8": False,
-            "tf32": False,
-        }
-        self._payload_precision_flags = precision_flags
+        precision_flags = self._payload_precision_flags
+        precision_flags["fp16"] = dtype == torch.float16
+        precision_flags["bf16"] = dtype == torch.bfloat16
+        precision_flags["fp8"] = False
+        precision_flags["tf32"] = False
 
     def capture_verification_payload(self) -> None:
         precision_flags = self._payload_precision_flags

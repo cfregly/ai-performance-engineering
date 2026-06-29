@@ -131,6 +131,7 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verification_payload = None
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
+        self._empty_iteration_result: Dict[str, List[float]] = {}
         self._last_bits = schedule_bits[-1]
 
     def setup(self) -> None:
@@ -330,7 +331,7 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         end_event.record(current_stream)
         self._pending_timing_pair = timing_pair
-        return {}
+        return self._empty_iteration_result
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, List[float]]]:
         if self._pending_timing_pair is None:
