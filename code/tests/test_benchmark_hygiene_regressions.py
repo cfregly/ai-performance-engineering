@@ -6502,8 +6502,13 @@ def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None
 
     assert "torch.stack(" not in ch20_benchmark
     assert "self.outputs = [None for _ in range(self.num_batches)]" in ch20_source
+    assert "self.stacked_inputs = torch.stack(self.inputs, dim=0)" in ch20_source
+    assert "self._output_buffer = torch.empty_like(self.stacked_inputs)" in ch20_source
     assert "self.outputs[batch_idx] = out" in ch20_benchmark
-    assert "self.output = torch.stack([out.detach() for out in outputs], dim=0)" in ch20_capture
+    assert "torch.stack(outputs, dim=0, out=self._output_buffer)" in ch20_capture
+    assert "self.output = self._output_buffer.detach()" in ch20_capture
+    assert "stacked_inputs = torch.stack(self.inputs)" not in ch20_capture
+    assert "self.output = torch.stack([out.detach() for out in outputs], dim=0)" not in ch20_capture
 
 
 def test_ch20_kernel_verifiers_defer_contiguous_payload_slice_outside_hot_loop() -> None:
