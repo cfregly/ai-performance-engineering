@@ -3068,6 +3068,14 @@ def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
         maxsplit=1,
     )[0]
     dual_nvfp4_rel = dual_nvfp4.split("def rel_err", maxsplit=1)[1].split("def report", maxsplit=1)[0]
+    dual_fp8_interleave = dual_fp8.split("if args.interleave > 0:", maxsplit=1)[1].split(
+        "else:",
+        maxsplit=1,
+    )[0]
+    dual_nvfp4_interleave = dual_nvfp4.split("if args.interleave > 0:", maxsplit=1)[1].split(
+        "else:",
+        maxsplit=1,
+    )[0]
 
     for section in (dual_cta_check, dual_fp8_check, dual_fp8_main, dual_nvfp4_rel):
         assert "error_stats = torch.stack(" in section
@@ -3084,6 +3092,10 @@ def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
         assert "end.record(current_stream)" in bench_section
         assert "start.record()" not in bench_section
         assert "end.record()" not in bench_section
+
+    for interleave_section in (dual_fp8_interleave, dual_nvfp4_interleave):
+        assert "statistics.median(y / x for x, y in zip(" in interleave_section
+        assert "statistics.median([y / x for x, y in zip(" not in interleave_section
 
 
 def test_custom_vs_cublas_dual_benches_cache_device_constants() -> None:

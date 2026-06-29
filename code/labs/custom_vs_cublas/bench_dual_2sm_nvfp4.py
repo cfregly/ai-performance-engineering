@@ -343,14 +343,14 @@ def main():
         base = samples[arms[0][0]]
         for name, *_ in arms[1:]:
             wins = sum(1 for x, y in zip(samples[name], base) if x < y)
-            ratio = statistics.median([y / x for x, y in zip(samples[name], base)])
+            ratio = statistics.median(y / x for x, y in zip(samples[name], base))
             print(f"  paired {name} vs cuBLASLt NVFP4: median speedup {ratio:.4f}x, wins {wins}/{len(base)}")
         if len(arms) > 2:
             champ_name = arms[1][0]
             champ = samples[champ_name]
             for name, *_ in arms[2:]:
                 wins = sum(1 for x, y in zip(samples[name], champ) if x < y)
-                ratio = statistics.median([y / x for x, y in zip(samples[name], champ)])
+                ratio = statistics.median(y / x for x, y in zip(samples[name], champ))
                 print(f"  paired {name} vs {champ_name}: median speedup {ratio:.4f}x, wins {wins}/{len(champ)}")
     else:
         print()
