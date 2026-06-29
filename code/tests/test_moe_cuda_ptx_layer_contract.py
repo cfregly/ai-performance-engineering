@@ -172,6 +172,9 @@ def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
     assert "starts = torch.cat(" not in source
     assert "starts = torch.empty_like(counts)" in source
     assert "counts_cpu: Optional[Sequence[int]] = None" in source
+    assert "counts_host = counts.detach().cpu()" in source
+    assert "counts_cpu = tuple(int(counts_host[idx]) for idx in range(counts_host.numel()))" in source
+    assert "counts.detach().cpu().tolist()" not in source
     assert "counts = torch.tensor(counts_cpu, device=x.device, dtype=torch.long)" in source
     assert "repeat_interleave(top_k)" not in source
     assert "def _flat_topk_token_ids" in module_source

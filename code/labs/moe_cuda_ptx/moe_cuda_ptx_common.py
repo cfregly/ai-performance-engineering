@@ -357,7 +357,8 @@ def pack_topk_routes(
 
     if counts_cpu is None:
         counts = torch.bincount(sorted_expert_ids, minlength=num_experts)
-        counts_cpu = tuple(int(count) for count in counts.detach().cpu().tolist())
+        counts_host = counts.detach().cpu()
+        counts_cpu = tuple(int(counts_host[idx]) for idx in range(counts_host.numel()))
     else:
         counts_cpu = tuple(int(count) for count in counts_cpu)
         counts = torch.tensor(counts_cpu, device=x.device, dtype=torch.long)
