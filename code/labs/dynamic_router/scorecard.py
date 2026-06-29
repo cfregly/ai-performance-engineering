@@ -18,7 +18,7 @@ import argparse
 import json
 import math
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 
 def _read_json(path: Path) -> Dict:
@@ -29,11 +29,12 @@ def _read_jsonl(path: Path) -> List[Dict]:
     if not path.exists():
         return []
     rows: List[Dict] = []
-    for line in path.read_text().splitlines():
-        try:
-            rows.append(json.loads(line))
-        except Exception:
-            continue
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            try:
+                rows.append(json.loads(line))
+            except Exception:
+                continue
     return rows
 
 

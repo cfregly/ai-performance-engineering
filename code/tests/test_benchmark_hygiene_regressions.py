@@ -6698,13 +6698,16 @@ def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
     assert "ttft_samples.extend([sample" not in routing_section
 
 
-def test_dynamic_router_percentiles_reuse_sorted_samples() -> None:
+def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None:
     runner_source = (REPO_ROOT / "labs" / "dynamic_router" / "vllm_runner.py").read_text(
         encoding="utf-8"
     )
     driver_source = (REPO_ROOT / "labs" / "dynamic_router" / "driver.py").read_text(
         encoding="utf-8"
     )
+    scorecard_source = (
+        REPO_ROOT / "labs" / "dynamic_router" / "scorecard.py"
+    ).read_text(encoding="utf-8")
     runner_percentiles = runner_source.split("def _percentiles", maxsplit=1)[1].split(
         "def _mean",
         maxsplit=1,
@@ -6751,6 +6754,20 @@ def test_dynamic_router_percentiles_reuse_sorted_samples() -> None:
     assert "statistics.mean(" not in simulate_section
     assert "_percentile(completed_ttfts, 50.0)" not in simulate_section
     assert "_percentile(completed_ttfts, 95.0)" not in simulate_section
+
+    scorecard_read_jsonl = scorecard_source.split("def _read_jsonl", maxsplit=1)[1].split(
+        "def _pct",
+        maxsplit=1,
+    )[0]
+    assert 'with path.open(encoding="utf-8") as f:' in scorecard_read_jsonl
+    assert "for line in f:" in scorecard_read_jsonl
+    assert "path.read_text().splitlines()" not in scorecard_read_jsonl
+
+    from labs.dynamic_router.scorecard import _read_jsonl
+
+    jsonl_path = tmp_path / "rows.jsonl"
+    jsonl_path.write_text('{"a": 1}\nnot json\n{"b": 2}\n', encoding="utf-8")
+    assert _read_jsonl(jsonl_path) == [{"a": 1}, {"b": 2}]
 
 
 def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
