@@ -63,6 +63,7 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._perm: Optional[torch.Tensor] = None
         self._recv_buf: Optional[torch.Tensor] = None
         self._out_flat: Optional[torch.Tensor] = None
+        self._output_view: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._verify_probe: Optional[torch.Tensor] = None
         self._verify_meta: Optional[torch.Tensor] = None
@@ -95,6 +96,7 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         flat = self._flat_inputs
         self._recv_buf = torch.empty_like(flat)
         self._out_flat = torch.empty_like(flat)
+        self._output_view = self._out_flat.view(self.batch, self.seq, self.hidden_size)
 
         self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
         self._verify_meta = torch.tensor(
@@ -114,6 +116,7 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._perm is None
             or self._recv_buf is None
             or self._out_flat is None
+            or self._output_view is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
@@ -129,7 +132,7 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
                 out_flat = self._out_flat
                 out_flat.index_copy_(0, perm, recv_out)
-                self.output = out_flat.view(self.batch, self.seq, self.hidden_size)
+                self.output = self._output_view
 
 
     def capture_verification_payload(self) -> None:
@@ -163,6 +166,7 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._perm = None
         self._recv_buf = None
         self._out_flat = None
+        self._output_view = None
         self.output = None
         super().teardown()
 

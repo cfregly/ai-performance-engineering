@@ -11405,11 +11405,22 @@ def test_ch15_moe_overlap_and_routing_use_inference_mode() -> None:
             assert "self._payload_parameter_count = 0" in source
             assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
             assert "self._active_dispatch_indices: Optional[list[torch.Tensor]] = None" in source
+            assert "self._flat_inputs: Optional[torch.Tensor] = None" in source
+            assert "self._flat_inputs = self.inputs.view(-1, self.hidden_size)" in setup_section
+            assert "flat = self._flat_inputs" in benchmark_section
+            assert "self._expert_ids_flat: Optional[torch.Tensor] = None" in source
+            assert "self._expert_ids_flat = self.expert_ids.reshape(-1)" in setup_section
+            assert "expert_ids_flat = self._expert_ids_flat" in benchmark_section
+            assert "self._output_view: Optional[torch.Tensor] = None" in source
+            assert "self._output_view = self._out_flat.view(self.batch, self.seq, self.hidden_size)" in setup_section
+            assert "self.output = self._output_view" in benchmark_section
             assert "def active_expert_ids_for_static_route(" in source
             assert "active_experts = active_expert_ids_for_static_route(" in setup_section
             assert "torch.unique(expert_ids_flat).detach().cpu().tolist()" not in setup_section
             assert "self._active_dispatch_indices = [" in setup_section
             assert "(expert_ids_flat == int(expert_id)).nonzero(as_tuple=False).squeeze(-1)" in setup_section
+            assert "self.inputs.view(-1, self.hidden_size)" not in benchmark_section
+            assert "self.expert_ids.reshape(-1)" not in benchmark_section
             assert "dispatch_shared_expert_precomputed_indices(" in benchmark_section
             assert "index_groups=self._active_dispatch_indices" in benchmark_section
             assert "param_count = sum(" not in capture_section
@@ -11508,6 +11519,17 @@ def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
     assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
     assert "param_count = sum(" not in capture_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "self._flat_inputs: Optional[torch.Tensor] = None" in source
+    assert "self._flat_inputs = self.inputs.view(-1, self.hidden_size)" in setup_section
+    assert "flat = self._flat_inputs" in baseline_section
+    assert "flat = self._flat_inputs" in overlap_section
+    assert "self.inputs.view(-1, self.hidden_size)" not in baseline_section
+    assert "self.inputs.view(-1, self.hidden_size)" not in overlap_section
+    assert "self._output_view: Optional[torch.Tensor] = None" in source
+    assert "self._output_view = self._out_flat.view(self.batch, self.seq, self.hidden_size)" in setup_section
+    assert "self.output = self._output_view" in baseline_section
+    assert "self.output = self._output_view" in overlap_section
+    assert "self.output = self._output_view" in hierarchical_section
     for run_section in (baseline_section, overlap_section, hierarchical_section):
         assert "with torch.inference_mode():" in run_section
         assert "with torch.no_grad():" not in run_section

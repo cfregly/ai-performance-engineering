@@ -83,9 +83,12 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
 
         self.expert: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
+        self._flat_inputs: Optional[torch.Tensor] = None
         self.expert_ids: Optional[torch.Tensor] = None
+        self._expert_ids_flat: Optional[torch.Tensor] = None
         self._active_dispatch_indices: Optional[list[torch.Tensor]] = None
         self._out_flat: Optional[torch.Tensor] = None
+        self._output_view: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._verify_probe: Optional[torch.Tensor] = None
         self._verify_meta: Optional[torch.Tensor] = None
@@ -110,10 +113,12 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.expert = ExpertMLP(self.hidden_size, self.ffn_size, device=self.device, dtype=self.dtype).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())
         self.inputs = torch.randn(self.batch, self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
+        self._flat_inputs = self.inputs.view(-1, self.hidden_size)
 
         token_ids = torch.arange(self.batch * self.seq, device=self.device, dtype=torch.int64)
         self.expert_ids = self._build_expert_ids(token_ids).view(self.batch, self.seq)
-        expert_ids_flat = self.expert_ids.reshape(-1)
+        self._expert_ids_flat = self.expert_ids.reshape(-1)
+        expert_ids_flat = self._expert_ids_flat
         if self.dispatch_mode == "active_experts":
             active_experts = active_expert_ids_for_static_route(
                 route_mode=self.route_mode,
@@ -128,19 +133,28 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         else:
             self._active_dispatch_indices = None
         self._out_flat = torch.empty(self.batch * self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
+        self._output_view = self._out_flat.view(self.batch, self.seq, self.hidden_size)
         self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
         self._verify_meta = torch.zeros(self.num_experts, dtype=torch.int8)
 
         for _ in range(3):
             with torch.inference_mode():
-                _ = self.expert(self.inputs.view(-1, self.hidden_size))
+                _ = self.expert(self._flat_inputs)
 
     def benchmark_fn(self) -> None:
-        if self.expert is None or self.inputs is None or self.expert_ids is None or self._out_flat is None:
+        if (
+            self.expert is None
+            or self.inputs is None
+            or self._flat_inputs is None
+            or self.expert_ids is None
+            or self._expert_ids_flat is None
+            or self._out_flat is None
+            or self._output_view is None
+        ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        flat = self.inputs.view(-1, self.hidden_size)
-        expert_ids_flat = self.expert_ids.reshape(-1)
+        flat = self._flat_inputs
+        expert_ids_flat = self._expert_ids_flat
 
         with self._nvtx_range(self.nvtx_label):
             with torch.inference_mode():
@@ -169,7 +183,7 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
                         )
                 else:
                     raise ValueError(f"Unknown dispatch mode: {self.dispatch_mode}")
-                self.output = self._out_flat.view(self.batch, self.seq, self.hidden_size)
+                self.output = self._output_view
 
     def capture_verification_payload(self) -> None:
         if self.output is None or self._verify_probe is None or self._verify_meta is None:
@@ -192,9 +206,12 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.expert = None
         self.inputs = None
+        self._flat_inputs = None
         self.expert_ids = None
+        self._expert_ids_flat = None
         self._active_dispatch_indices = None
         self._out_flat = None
+        self._output_view = None
         self.output = None
         super().teardown()
 

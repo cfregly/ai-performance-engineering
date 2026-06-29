@@ -51,11 +51,13 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.expert: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
+        self._flat_inputs: Optional[torch.Tensor] = None
         self.expert_ids: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._dest_ranks: Optional[torch.Tensor] = None
         self._dest_groups: Optional[torch.Tensor] = None
         self._out_flat: Optional[torch.Tensor] = None
+        self._output_view: Optional[torch.Tensor] = None
         self._baseline_perm: Optional[torch.Tensor] = None
         self._baseline_packed: Optional[torch.Tensor] = None
         self._local_perm: Optional[torch.Tensor] = None
@@ -85,12 +87,14 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.expert = ExpertMLP(self.hidden_size, self.ffn_size, device=self.device, dtype=self.dtype).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())
         self.inputs = torch.randn(self.batch, self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
-        flat = self.inputs.view(-1, self.hidden_size)
+        self._flat_inputs = self.inputs.view(-1, self.hidden_size)
+        flat = self._flat_inputs
         token_ids = torch.arange(flat.shape[0], device=self.device, dtype=torch.int64)
         self.expert_ids = _pseudo_uniform_expert_ids(token_ids, self.num_experts).view(self.batch, self.seq)
         self._dest_ranks = torch.div(self.expert_ids.reshape(-1), self.experts_per_rank, rounding_mode="floor")
         self._dest_groups = torch.div(self._dest_ranks, self.ranks_per_group, rounding_mode="floor")
         self._out_flat = torch.empty_like(flat)
+        self._output_view = self._out_flat.view(self.batch, self.seq, self.hidden_size)
 
         baseline_perm_parts: list[torch.Tensor] = []
         for rank in range(self.logical_world_size):
@@ -168,7 +172,9 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if (
             self.expert is None
             or self.inputs is None
+            or self._flat_inputs is None
             or self._out_flat is None
+            or self._output_view is None
             or self._dest_ranks is None
             or self._dest_groups is None
         ):
@@ -185,26 +191,30 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if (
             self.expert is None
             or self.inputs is None
+            or self._flat_inputs is None
             or self._out_flat is None
+            or self._output_view is None
             or self._baseline_perm is None
             or self._baseline_packed is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        flat = self.inputs.view(-1, self.hidden_size)
+        flat = self._flat_inputs
 
         with self._nvtx_range(self.label):
             with torch.inference_mode():
                 torch.index_select(flat, 0, self._baseline_perm, out=self._baseline_packed)
                 baseline_out = self.expert(self._baseline_packed)
                 self._out_flat.index_copy_(0, self._baseline_perm, baseline_out)
-                self.output = self._out_flat.view(self.batch, self.seq, self.hidden_size)
+                self.output = self._output_view
 
     def _run_overlap(self) -> None:
         if (
             self.expert is None
             or self.inputs is None
+            or self._flat_inputs is None
             or self._out_flat is None
+            or self._output_view is None
             or self._local_perm is None
             or (self._local_perm.numel() > 0 and self._local_packed is None)
             or self._remote_perm is None
@@ -214,7 +224,7 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        flat = self.inputs.view(-1, self.hidden_size)
+        flat = self._flat_inputs
 
         with self._nvtx_range(self.label):
             with torch.inference_mode():
@@ -229,12 +239,13 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     torch.cuda.current_stream(self.device).wait_stream(self._comm_stream)
                     remote_out = self.expert(self._remote_packed)
                     self._out_flat.index_copy_(0, self._remote_perm, remote_out)
-                self.output = self._out_flat.view(self.batch, self.seq, self.hidden_size)
+                self.output = self._output_view
 
     def _run_hierarchical(self) -> None:
         if (
             self.expert is None
             or self._out_flat is None
+            or self._output_view is None
             or self._hierarchical_perm is None
             or self._hierarchical_cpu_sorted is None
             or self._hierarchical_packed is None
@@ -250,7 +261,7 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         continue
                     group_out = self.expert(self._hierarchical_packed[start:end])
                     self._out_flat.index_copy_(0, self._hierarchical_perm[start:end], group_out)
-                self.output = self._out_flat.view(self.batch, self.seq, self.hidden_size)
+                self.output = self._output_view
 
     def capture_verification_payload(self) -> None:
         if self.output is None or self._verify_probe is None or self._verify_meta is None:
@@ -278,11 +289,13 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.expert = None
         self.inputs = None
+        self._flat_inputs = None
         self.expert_ids = None
         self.output = None
         self._dest_ranks = None
         self._dest_groups = None
         self._out_flat = None
+        self._output_view = None
         self._baseline_perm = None
         self._baseline_packed = None
         self._local_perm = None
