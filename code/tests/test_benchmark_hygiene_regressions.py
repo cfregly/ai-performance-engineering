@@ -8659,11 +8659,15 @@ def test_ch16_blackwell_decoder_reuses_attention_projection_buffers() -> None:
 
     assert "self._attn_merge_buffer: Optional[torch.Tensor] = None" in decoder_section
     assert "self._attn_project_buffer: Optional[torch.Tensor] = None" in decoder_section
+    assert "self._o_proj_weight_t: Optional[torch.Tensor] = None" in decoder_section
+    assert "def cache_weight_views(self) -> None:" in decoder_section
+    assert "def _o_proj_weight_view(self) -> torch.Tensor:" in decoder_section
     assert "def _attention_project_workspace(" in decoder_section
     assert "self._attn_merge_buffer = torch.empty(shape" in decoder_section
     assert "self._attn_project_buffer = torch.empty(shape" in decoder_section
     assert "merge_view.copy_(attn_output.transpose(1, 2))" in forward_section
-    assert "torch.mm(merge_2d, self.o_proj.weight.t(), out=output_2d)" in forward_section
+    assert "torch.mm(merge_2d, self._o_proj_weight_view(), out=output_2d)" in forward_section
+    assert "self.o_proj.weight.t()" not in forward_section
     assert "output_2d.add_(self.o_proj.bias)" in forward_section
     assert "attn_output.transpose(1, 2).contiguous()" in forward_section
 
@@ -8680,12 +8684,14 @@ def test_ch16_blackwell_decoder_reuses_attention_projection_buffers() -> None:
         out = layer(x)
         merge_ptr = layer._attn_merge_buffer.data_ptr()
         output_ptr = layer._attn_project_buffer.data_ptr()
+        weight_view_ptr = layer._o_proj_weight_t.data_ptr()
         out_again = layer(x)
 
     assert out.shape == x.shape
     assert out_again.shape == x.shape
     assert layer._attn_merge_buffer.data_ptr() == merge_ptr
     assert layer._attn_project_buffer.data_ptr() == output_ptr
+    assert layer._o_proj_weight_t.data_ptr() == weight_view_ptr
 
 
 def test_ch16_blackwell_generate_reuses_output_token_buffer() -> None:

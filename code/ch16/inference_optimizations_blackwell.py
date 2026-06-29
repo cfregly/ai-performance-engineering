@@ -396,6 +396,7 @@ class OptimizedDecoderLayer(nn.Module):
         self._attn_merge_2d: Optional[torch.Tensor] = None
         self._attn_project_buffer: Optional[torch.Tensor] = None
         self._attn_project_2d: Optional[torch.Tensor] = None
+        self._o_proj_weight_t: Optional[torch.Tensor] = None
         
         # FlexAttention block mask (sliding window)
         def sliding_window(b, h, q_idx, kv_idx):
@@ -403,6 +404,20 @@ class OptimizedDecoderLayer(nn.Module):
         
         self.block_mask_fn = sliding_window
         self.flex_attention_fn = _FLEX_ATTENTION_FN if self.use_flex_attention else None
+
+    def cache_weight_views(self) -> None:
+        self._o_proj_weight_t = self.o_proj.weight.t()
+
+    def _o_proj_weight_view(self) -> torch.Tensor:
+        if (
+            self._o_proj_weight_t is None
+            or self._o_proj_weight_t.data_ptr() != self.o_proj.weight.data_ptr()
+            or self._o_proj_weight_t.device != self.o_proj.weight.device
+            or self._o_proj_weight_t.dtype != self.o_proj.weight.dtype
+        ):
+            self.cache_weight_views()
+        assert self._o_proj_weight_t is not None
+        return self._o_proj_weight_t
 
     def _attention_project_workspace(
         self,
@@ -501,7 +516,7 @@ class OptimizedDecoderLayer(nn.Module):
             attn_output.dtype,
         )
         merge_view.copy_(attn_output.transpose(1, 2))
-        torch.mm(merge_2d, self.o_proj.weight.t(), out=output_2d)
+        torch.mm(merge_2d, self._o_proj_weight_view(), out=output_2d)
         if self.o_proj.bias is not None:
             output_2d.add_(self.o_proj.bias)
         return output
