@@ -8385,14 +8385,25 @@ def test_ch15_moe_validation_batches_report_loss_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "self._overflow_tensors.append(overflow_mask.detach().sum())" in stats_logger_section
+    assert "self._overflow_pending: Optional[torch.Tensor] = None" in stats_logger_section
+    assert "self._entropy_pending: Optional[torch.Tensor] = None" in stats_logger_section
+    assert "self._entropy_pending_count = 0" in stats_logger_section
+    assert "self.entropy_sum = 0.0" in stats_logger_section
+    assert "self.entropy_count = 0" in stats_logger_section
+    assert "def _accumulate_overflow(self, overflow_mask: torch.Tensor)" in stats_logger_section
+    assert "def _accumulate_entropy_tensor(self, entropy_val: torch.Tensor)" in stats_logger_section
+    assert "self._accumulate_overflow(overflow_mask)" in stats_logger_section
+    assert "self._accumulate_entropy_tensor(entropy_val)" in stats_logger_section
+    assert "if torch.is_tensor(entropy_val):" in stats_logger_section
+    assert "self.entropy_sum += float(entropy_val)" in stats_logger_section
+    assert "self.entropy_count += 1" in stats_logger_section
+    assert "torch.stack(self._overflow_tensors)" not in stats_logger_section
+    assert "torch.stack(self._entropy_tensors)" not in stats_logger_section
+    assert "self.entropy.append(" not in stats_logger_section
     assert (
-        "self._entropy_tensors.append(entropy_val.detach().to(dtype=torch.float32).reshape(()))"
+        "entropy = self.entropy_sum / self.entropy_count if self.entropy_count else 0.0"
         in stats_logger_section
     )
-    assert "if torch.is_tensor(entropy_val):" in stats_logger_section
-    assert "self.entropy.append(float(entropy_val))" in stats_logger_section
-    assert "torch.stack(self._overflow_tensors).sum().detach().cpu().tolist()" in stats_logger_section
     assert "if valid.any()" not in stats_logger_section
     assert "overflow_mask.sum().item()" not in stats_logger_section
     assert "loss_values = loss_readback.detach().cpu().tolist()" in report_section
