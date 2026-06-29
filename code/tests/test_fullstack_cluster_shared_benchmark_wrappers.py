@@ -176,6 +176,28 @@ def test_moe_hybrid_ep_run_cli_discards_multigpu_warmup_steps() -> None:
     assert result == {"moe.step.total_ms": 4.0}
 
 
+def test_moe_hybrid_ep_report_aggregates_step_history_once() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "labs"
+        / "fullstack_cluster"
+        / "moe_hybrid_ep_common.py"
+    ).read_text(encoding="utf-8")
+    summary_section = source.split("def summarize_and_write_report", maxsplit=1)[1].split(
+        "def build_parser",
+        maxsplit=1,
+    )[0]
+
+    assert "metric_keys = sorted(step_history[0].metrics.keys())" in summary_section
+    assert "metric_totals = {key: 0.0 for key in metric_keys}" in summary_section
+    assert "loss_total = 0.0" in summary_section
+    assert "loss_total += step.loss" in summary_section
+    assert "metric_totals[key] += step.metrics[key]" in summary_section
+    assert "step_count = len(step_history)" in summary_section
+    assert "sum(step.metrics" not in summary_section
+    assert "sum(step.loss" not in summary_section
+
+
 def test_moe_hybrid_ep_metric_reduction_batches_all_reduce_and_reuses_buffers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

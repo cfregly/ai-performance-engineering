@@ -1021,8 +1021,16 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     matrix_section = source.split("def measure_p2p_matrix", maxsplit=1)[1].split(
         "def benchmark_collective", maxsplit=1
     )[0]
+    summary_section = source.split("def _bandwidth_summary", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
     collective_section = source.split("def benchmark_collective", maxsplit=1)[1].split(
         "def measure_collectives", maxsplit=1
+    )[0]
+    topology_section = source.split("def visualize_topology", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
     )[0]
     curve_section = source.split("def measure_latency_bandwidth_curve", maxsplit=1)[1].split(
         "def visualize_topology", maxsplit=1
@@ -1035,6 +1043,11 @@ def test_ch04_bandwidth_suite_reuses_comm_buffers() -> None:
     assert "bw_tensor = torch.empty(1, device=torch.cuda.current_device()" in matrix_section
     assert "bw_tensor[0].item()" not in matrix_section
     assert "bw = scalar_tensor_to_float(bw_tensor[0])" in matrix_section
+    assert "def _bandwidth_summary" in source
+    assert "values = iter(bandwidth_matrix.values())" in summary_section
+    assert "avg_bw, min_bw, max_bw = _bandwidth_summary(bandwidth_matrix)" in matrix_section
+    assert "avg_bw, _, _ = _bandwidth_summary(bandwidth_matrix)" in topology_section
+    assert "list(bandwidth_matrix.values())" not in source
     assert "dist.all_reduce(tensor.clone())" not in collective_section
     assert "dist.all_reduce(tensor.clone())" not in curve_section
     assert "tensor = torch.empty(size, device=device, dtype=torch.float32)" in collective_section
@@ -6706,7 +6719,12 @@ def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
     assert "requests[rid] = rt" not in routing_section
     assert "completed = sum(1 for r in requests.values() if r.finished)" not in routing_section
     assert "list(engines.keys())" not in routing_section
-    assert "ttft_samples.extend(sample for _, sample in ttft_new)" in routing_section
+    assert "ttft_total_ms = 0.0" in routing_section
+    assert "ttft_samples.append(sample)" in routing_section
+    assert "ttft_total_ms += sample" in routing_section
+    assert '"ttft_ms_mean": float(ttft_total_ms / len(ttft_samples))' in routing_section
+    assert "sum(ttft_samples)" not in routing_section
+    assert "ttft_samples.extend(sample for _, sample in ttft_new)" not in routing_section
     assert "ttft_samples.extend([sample" not in routing_section
     assert "output_token_count = sum(len(o.token_ids) for o in ro.outputs)" in wrapper_section
     assert "tokens_emitted += output_token_count" in wrapper_section

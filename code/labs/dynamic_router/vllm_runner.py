@@ -484,6 +484,7 @@ def run_vllm_routing_with_topology(
             )
 
     ttft_samples: List[float] = []
+    ttft_total_ms = 0.0
     completed = 0
     tpot_ema: Dict[str, float] = {gid: 0.0 for gid in engines}
     alpha = 0.3
@@ -512,7 +513,9 @@ def run_vllm_routing_with_topology(
                 active = True
             completed += len(finished_ids)
             if ttft_new:
-                ttft_samples.extend(sample for _, sample in ttft_new)
+                for _, sample in ttft_new:
+                    ttft_samples.append(sample)
+                    ttft_total_ms += sample
             # Update simple TPOT EMA
             if tokens > 0:
                 tpot_ema[gid] = alpha * (tokens) + (1.0 - alpha) * tpot_ema[gid]
@@ -527,7 +530,7 @@ def run_vllm_routing_with_topology(
         "mode": mode,
         "requests": req_count_val,
         "completed": completed,
-        "ttft_ms_mean": float(sum(ttft_samples) / len(ttft_samples)) if ttft_samples else 0.0,
+        "ttft_ms_mean": float(ttft_total_ms / len(ttft_samples)) if ttft_samples else 0.0,
     }
     summary["ttft_ms_p50"], summary["ttft_ms_p95"] = _percentiles(ttft_samples, (50.0, 95.0))
     for gid in engines:

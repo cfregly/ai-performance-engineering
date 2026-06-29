@@ -1184,10 +1184,17 @@ def summarize_and_write_report(
 ) -> Dict[str, float]:
     mean_metrics: Dict[str, float] = {}
     if step_history:
-        keys = sorted(step_history[0].metrics.keys())
-        for key in keys:
-            mean_metrics[key] = float(sum(step.metrics[key] for step in step_history) / len(step_history))
-        mean_metrics["moe.step.loss"] = float(sum(step.loss for step in step_history) / len(step_history))
+        metric_keys = sorted(step_history[0].metrics.keys())
+        metric_totals = {key: 0.0 for key in metric_keys}
+        loss_total = 0.0
+        for step in step_history:
+            loss_total += step.loss
+            for key in metric_keys:
+                metric_totals[key] += step.metrics[key]
+        step_count = len(step_history)
+        for key, total in metric_totals.items():
+            mean_metrics[key] = float(total / step_count)
+        mean_metrics["moe.step.loss"] = float(loss_total / step_count)
 
     payload = {
         "benchmark": "optimized_moe_hybrid_ep" if optimized else "baseline_moe_hybrid_ep",

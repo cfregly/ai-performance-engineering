@@ -60,6 +60,26 @@ def setup_distributed():
     return dist.get_rank(), dist.get_world_size()
 
 
+def _bandwidth_summary(bandwidth_matrix: Dict[Tuple[int, int], float]) -> Tuple[float, float, float]:
+    """Return average, min, and max bandwidth without materializing values."""
+    values = iter(bandwidth_matrix.values())
+    try:
+        first = next(values)
+    except StopIteration:
+        return 0.0, 0.0, 0.0
+
+    total = first
+    min_bw = first
+    max_bw = first
+    count = 1
+    for bw in values:
+        total += bw
+        min_bw = min(min_bw, bw)
+        max_bw = max(max_bw, bw)
+        count += 1
+    return total / count, min_bw, max_bw
+
+
 # ============================================================================
 # P2P Bandwidth Matrix
 # ============================================================================
@@ -169,10 +189,7 @@ def measure_p2p_matrix(
     
     if rank == 0:
         # Calculate statistics
-        bandwidths = list(bandwidth_matrix.values())
-        avg_bw = sum(bandwidths) / len(bandwidths)
-        min_bw = min(bandwidths)
-        max_bw = max(bandwidths)
+        avg_bw, min_bw, max_bw = _bandwidth_summary(bandwidth_matrix)
         
         print(f"\nStatistics:")
         print(f"  Average: {avg_bw:.2f} GB/s")
@@ -439,8 +456,7 @@ def visualize_topology(rank: int, world_size: int, bandwidth_matrix: Dict[Tuple[
     
     # Topology detection
     print("\nTopology Analysis:")
-    bandwidths = list(bandwidth_matrix.values())
-    avg_bw = sum(bandwidths) / len(bandwidths)
+    avg_bw, _, _ = _bandwidth_summary(bandwidth_matrix)
     
     if avg_bw > 700:
         print("  NVSwitch all-to-all topology detected")
