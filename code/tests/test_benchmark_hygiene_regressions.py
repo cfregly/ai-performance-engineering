@@ -1076,11 +1076,17 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
     x = torch.arange(6, dtype=torch.float32).view(2, 3)
     with torch.inference_mode():
         expected = layer(x)
+        cached_weight_ptr = None
         for helper in (async_linear_into, multigpu_linear_into):
             out = torch.empty(2, 2)
             result = helper(layer, x, out)
             assert result is out
             torch.testing.assert_close(out, expected)
+            cached_weight = getattr(layer, "_cached_weight_t")
+            if cached_weight_ptr is None:
+                cached_weight_ptr = cached_weight.data_ptr()
+            else:
+                assert cached_weight.data_ptr() == cached_weight_ptr
 
     files = [
         "baseline_tensor_parallel.py",
@@ -1151,7 +1157,15 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
             assert "x = proj_out + aux_out" not in worker_section
             assert "x = proj_out + aux_out" not in benchmark_section
         if filename in {"optimized_tensor_parallel_async.py", "optimized_tensor_parallel_multigpu.py"}:
+            linear_helper_section = source.split("def _linear_no_bias_into", maxsplit=1)[1].split(
+                "def _replicate_tensor_parallel_shard",
+                maxsplit=1,
+            )[0]
+            assert "def _cached_weight_t(layer: nn.Linear) -> torch.Tensor:" in source
+            assert "layer._cached_weight_t = weight_t" in source
             assert "def _linear_no_bias_into(layer: nn.Linear, x: torch.Tensor, out: torch.Tensor)" in source
+            assert "torch.matmul(x, _cached_weight_t(layer), out=out)" in linear_helper_section
+            assert "layer.weight.t()" not in linear_helper_section
             assert "self._local_out: Optional[torch.Tensor] = None" in source
             assert "self._proj_out: Optional[torch.Tensor] = None" in source
             assert "with torch.inference_mode():" in benchmark_section

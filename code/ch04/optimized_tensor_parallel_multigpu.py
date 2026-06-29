@@ -91,8 +91,21 @@ def _build_layers(hidden: int, hidden_per_rank: int, num_layers: int, device: to
     return shard, proj, aux
 
 
+def _cached_weight_t(layer: nn.Linear) -> torch.Tensor:
+    weight_t = getattr(layer, "_cached_weight_t", None)
+    if (
+        weight_t is None
+        or weight_t.data_ptr() != layer.weight.data_ptr()
+        or weight_t.device != layer.weight.device
+        or weight_t.dtype != layer.weight.dtype
+    ):
+        weight_t = layer.weight.t()
+        layer._cached_weight_t = weight_t
+    return weight_t
+
+
 def _linear_no_bias_into(layer: nn.Linear, x: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
-    torch.matmul(x, layer.weight.t(), out=out)
+    torch.matmul(x, _cached_weight_t(layer), out=out)
     return out
 
 
