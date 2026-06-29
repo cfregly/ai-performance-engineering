@@ -6947,7 +6947,11 @@ def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None
     assert "self.output = self.graph_output.clone()" not in ch17_benchmark
     assert "self.output = self.graph_output" in ch17_benchmark
     assert ".floor_()" not in ch17_benchmark
-    assert "output=self.output.detach().clone()" in ch17_capture
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in ch17_source
+    assert "self._verify_output_buffer = torch.empty_like(self.device_buffer)" in ch17_setup
+    assert "self._verify_output_buffer.copy_(self.output)" in ch17_capture
+    assert "output=self._verify_output_buffer" in ch17_capture
+    assert "self.output.detach().clone()" not in ch17_capture
     probe = torch.empty(128, dtype=torch.float32)
     probe.random_(0, 256)
     torch.testing.assert_close(probe, probe.floor())

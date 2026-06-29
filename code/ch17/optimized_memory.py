@@ -107,6 +107,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.transform_buffer: Optional[torch.Tensor] = None
         self.graph: Optional[torch.cuda.CUDAGraph] = None
         self.graph_output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.repetitions = REPETITIONS
         tokens = self.batch_size * self.input_dim * self.repetitions
         self._workload = WorkloadMetadata(
@@ -136,6 +137,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.transform_buffer = torch.empty_like(self.device_buffer)
         self.graph_output = torch.empty_like(self.device_buffer)
+        self._verify_output_buffer = torch.empty_like(self.device_buffer)
         self._synchronize()
 
         with torch.inference_mode():
@@ -178,11 +180,12 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.device_buffer is None or self.output is None:
+        if self.device_buffer is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.device_buffer},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={"fp16": False, "bf16": False, "fp8": False, "tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -194,6 +197,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.device_buffer = None
         self.transform_buffer = None
         self.graph_output = None
+        self._verify_output_buffer = None
         self.graph = None
         super().teardown()
     
