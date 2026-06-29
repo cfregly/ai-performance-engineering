@@ -40,6 +40,7 @@ class BaselineDualPipelineBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input_a: torch.Tensor | None = None
         self.input_b: torch.Tensor | None = None
         self.output: torch.Tensor | None = None
+        self._verify_output_buffer: torch.Tensor | None = None
 
         # Match constants from baseline_warp_specialized_two_pipelines_common.cuh
         self.tile_elems = 1024
@@ -60,6 +61,7 @@ class BaselineDualPipelineBenchmark(VerificationPayloadMixin, BaseBenchmark):
         total_elems = self.tiles * self.tile_elems
         self.input_a = torch.randn(total_elems, device=self.device, dtype=torch.float32)
         self.input_b = torch.randn(total_elems, device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty(total_elems, device=self.device, dtype=torch.float32)
         self.output = None
         self._synchronize()
         tokens = float(total_elems * 2)  # two inputs processed per iteration
@@ -81,9 +83,12 @@ class BaselineDualPipelineBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input_a": self.input_a, "input_b": self.input_b},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=int(self.tiles),
             precision_flags={
                 "fp16": False,
@@ -98,6 +103,7 @@ class BaselineDualPipelineBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input_a = None
         self.input_b = None
         self.output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

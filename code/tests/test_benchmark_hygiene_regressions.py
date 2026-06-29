@@ -16680,6 +16680,33 @@ def test_ch11_stream_benchmarks_use_cached_nvtx_range() -> None:
         assert "with nvtx_range(" not in source
 
 
+def test_ch11_dual_pipeline_multistream_reuses_verification_buffers() -> None:
+    for name in (
+        "baseline_warp_specialized_two_pipelines_multistream.py",
+        "optimized_warp_specialized_two_pipelines_multistream.py",
+    ):
+        source = (REPO_ROOT / "ch11" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: torch.Tensor | None = None" in source
+        assert "self._verify_output_buffer = torch.empty(total_elems, device=self.device, dtype=torch.float32)" in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.output.detach().float().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch11_stream_overlap_base_reuses_chunk_groups() -> None:
     source = (REPO_ROOT / "ch11" / "stream_overlap_base.py").read_text(encoding="utf-8")
     baseline_setup = source.split("class StridedStreamBaseline", maxsplit=1)[1].split(
