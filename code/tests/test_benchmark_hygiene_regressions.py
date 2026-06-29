@@ -14213,11 +14213,17 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
 
     for name, output_assignment in kv_targets.items():
         source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
         )[0]
 
         assert ".detach().clone()" not in benchmark_section
@@ -14225,7 +14231,14 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
         if name.startswith("optimized_kv_cache_naive"):
             assert "hidden.detach()" not in benchmark_section
             assert "hidden[:, -1:, :].detach()" not in benchmark_section
-        assert "output=self.output.float()" in capture_section
+        assert "self._verify_output_buffer" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "dtype=torch.float32" in setup_section
+        assert "with torch.no_grad():" in capture_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.output.float()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
     flash_source = (
         REPO_ROOT / "ch13" / "optimized_kv_cache_naive_flash_blockwise.py"

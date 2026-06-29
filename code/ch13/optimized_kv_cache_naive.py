@@ -217,6 +217,7 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.output = None
         self._verify_input = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count = 0
         self.register_workload_metadata(
             requests_per_iteration=float(len(self.sequence_lengths)),
@@ -252,6 +253,13 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         for seq_len in self.sequence_lengths:
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=self.workload.dtype)
             self.inputs.append(x)
+        self._verify_output_buffer = torch.empty(
+            self.batch_size,
+            1,
+            self.hidden_dim,
+            device=self.device,
+            dtype=torch.float32,
+        )
         self._request_ids = [f"req_{seq_idx}" for seq_idx in range(len(self.inputs))]
         self._input_token_views = [
             list(x.split(1, dim=1))
@@ -294,9 +302,13 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input not initialized")
 
     def capture_verification_payload(self) -> None:
+        if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("Verification input/output not initialized")
+        with torch.no_grad():
+            self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.float(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -318,6 +330,9 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._input_token_views = []
         self._request_token_groups = []
         self._layer_groups = []
+        self.output = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:

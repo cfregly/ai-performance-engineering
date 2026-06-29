@@ -135,6 +135,7 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.output = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self.register_workload_metadata(
             requests_per_iteration=float(len(self.sequence_lengths)),
@@ -167,6 +168,13 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         for seq_len in self.sequence_lengths:
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=self.workload.dtype)
             self.inputs.append(x)
+        self._verify_output_buffer = torch.empty(
+            self.batch_size,
+            1,
+            self.hidden_dim,
+            device=self.device,
+            dtype=torch.float32,
+        )
         if self.inputs:
             self._verify_input = self.inputs[0].detach().clone()
         self._synchronize()
@@ -193,9 +201,13 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input not initialized")
 
     def capture_verification_payload(self) -> None:
+        if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("Verification input/output not initialized")
+        with torch.no_grad():
+            self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.float(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -212,6 +224,9 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.kv_cache = None
         self.inputs = None
+        self.output = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
         super().teardown()
     
