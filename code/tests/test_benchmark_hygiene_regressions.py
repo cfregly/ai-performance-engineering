@@ -16652,10 +16652,29 @@ def test_ch17_prefill_decode_disagg_records_timing_on_explicit_streams() -> None
     assert "prefill_end.record()" not in baseline_section
     assert "token_start.record()" not in baseline_section
     assert "token_end.record()" not in baseline_section
+    assert "self._empty_iteration_result: Dict[str, List[float]] = {}" in baseline_source
+    assert "self._empty_tpot_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []" in baseline_source
+    assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in baseline_source
+    assert "def _ensure_timing_payload(self, num_tokens: int) -> List[float]:" in baseline_source
+    assert "return self._empty_iteration_result" in baseline_section
+    assert "return {}" not in baseline_section
     assert "self._ttft_total_ms = 0.0" in baseline_setup
     assert "self._tpot_total_ms = 0.0" in baseline_setup
+    assert "elapsed_ms_list" not in baseline_source
+    assert "self._history" not in baseline_source
+    assert "self._pending_tpot_pairs = []" not in baseline_source
+    assert "pending_tpot_pairs = self._pending_tpot_pairs" in baseline_finalize
+    assert "tpot_times_ms = self._ensure_timing_payload(len(pending_tpot_pairs))" in baseline_finalize
+    assert "for idx, event_pair in enumerate(pending_tpot_pairs):" in baseline_finalize
+    assert "tpot_times_ms[idx] = token_ms" in baseline_finalize
+    assert "self._pending_tpot_pairs = self._empty_tpot_pairs" in baseline_finalize
     assert "self._ttft_total_ms += ttft_ms" in baseline_finalize
-    assert "self._tpot_total_ms += sum(tpot_times_ms)" in baseline_finalize
+    assert "self._tpot_total_ms += tpot_total_ms" in baseline_finalize
+    assert "self._ttft_metric_values[0] = ttft_ms" in baseline_finalize
+    assert "return self._iteration_metric_payload" in baseline_finalize
+    assert '"ttft_times_ms": [ttft_ms]' not in baseline_finalize
+    assert '"tpot_times_ms": tpot_times_ms' not in baseline_finalize
+    assert "sum(tpot_times_ms)" not in baseline_finalize
     assert '"monolithic.ttft_ms": float(self._ttft_total_ms / self._ttft_count)' in baseline_metrics
     assert "self._tpot_total_ms / self._tpot_count" in baseline_metrics
     assert 'sum(self._history["ttft"])' not in baseline_metrics
@@ -16668,6 +16687,10 @@ def test_ch17_prefill_decode_disagg_records_timing_on_explicit_streams() -> None
         "def finalize_iteration_metrics",
         maxsplit=1,
     )[0]
+    optimized_finalize = optimized_source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
 
     assert "default_stream = torch.cuda.current_stream(device=self.device)" in optimized_section
     assert "request_start.record(default_stream)" in optimized_section
@@ -16678,6 +16701,26 @@ def test_ch17_prefill_decode_disagg_records_timing_on_explicit_streams() -> None
     assert "prefill_end.record()" not in optimized_section
     assert "token_start.record()" not in optimized_section
     assert "token_end.record()" not in optimized_section
+    assert "self._empty_iteration_result: Dict[str, list[float]] = {}" in optimized_source
+    assert "self._empty_tpot_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []" in optimized_source
+    assert "self._iteration_metric_payload: Dict[str, list[float]] = {" in optimized_source
+    assert "def _ensure_timing_payload(self, num_tokens: int) -> list[float]:" in optimized_source
+    assert "return self._empty_iteration_result" in optimized_section
+    assert "return {}" not in optimized_section
+    assert "elapsed_ms_list" not in optimized_source
+    assert "self._history" not in optimized_source
+    assert "self._pending_tpot_pairs = []" not in optimized_source
+    assert "pending_tpot_pairs = self._pending_tpot_pairs" in optimized_finalize
+    assert "tpot_times_ms = self._ensure_timing_payload(len(pending_tpot_pairs))" in optimized_finalize
+    assert "for idx, event_pair in enumerate(pending_tpot_pairs):" in optimized_finalize
+    assert "tpot_times_ms[idx] = token_ms" in optimized_finalize
+    assert "self._pending_tpot_pairs = self._empty_tpot_pairs" in optimized_finalize
+    assert "self._tpot_ms = float(tpot_total_ms / len(pending_tpot_pairs))" in optimized_finalize
+    assert "self._ttft_metric_values[0] = ttft_ms" in optimized_finalize
+    assert "return self._iteration_metric_payload" in optimized_finalize
+    assert '"ttft_times_ms": [ttft_ms]' not in optimized_finalize
+    assert '"tpot_times_ms": tpot_times_ms' not in optimized_finalize
+    assert "sum(tpot_times_ms)" not in optimized_finalize
 
 
 def test_ch17_optimized_disaggregated_waits_once_before_decode_loop() -> None:

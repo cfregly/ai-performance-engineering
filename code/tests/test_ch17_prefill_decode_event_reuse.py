@@ -47,12 +47,23 @@ def test_ch17_monolithic_prefill_decode_reuses_timing_events() -> None:
     assert fake_model.prefill_calls == 1
     assert fake_model.decode_calls == bench.decode_seq
 
-    bench.finalize_iteration_metrics()
+    metrics_payload = bench.finalize_iteration_metrics()
+    assert metrics_payload is not None
+    ttft_times = metrics_payload["ttft_times_ms"]
+    tpot_times = metrics_payload["tpot_times_ms"]
+    assert bench._pending_tpot_pairs is bench._empty_tpot_pairs
+
     bench.benchmark_fn()
     torch.cuda.synchronize(bench.device)
+    next_metrics_payload = bench.finalize_iteration_metrics()
 
     assert bench._ttft_events is ttft_events
     assert bench._tpot_events is tpot_events
+    assert next_metrics_payload is metrics_payload
+    assert next_metrics_payload is not None
+    assert next_metrics_payload["ttft_times_ms"] is ttft_times
+    assert next_metrics_payload["tpot_times_ms"] is tpot_times
+    assert bench._pending_tpot_pairs is bench._empty_tpot_pairs
 
 
 @CUDA_REQUIRED
@@ -89,9 +100,20 @@ def test_ch17_disaggregated_prefill_decode_reuses_timing_events() -> None:
     assert fake_model.prefill_calls == 1
     assert fake_model.decode_calls == bench.decode_seq
 
-    bench.finalize_iteration_metrics()
+    metrics_payload = bench.finalize_iteration_metrics()
+    assert metrics_payload is not None
+    ttft_times = metrics_payload["ttft_times_ms"]
+    tpot_times = metrics_payload["tpot_times_ms"]
+    assert bench._pending_tpot_pairs is bench._empty_tpot_pairs
+
     bench.benchmark_fn()
     torch.cuda.synchronize(bench.device)
+    next_metrics_payload = bench.finalize_iteration_metrics()
 
     assert bench._ttft_events is ttft_events
     assert bench._tpot_events is tpot_events
+    assert next_metrics_payload is metrics_payload
+    assert next_metrics_payload is not None
+    assert next_metrics_payload["ttft_times_ms"] is ttft_times
+    assert next_metrics_payload["tpot_times_ms"] is tpot_times
+    assert bench._pending_tpot_pairs is bench._empty_tpot_pairs

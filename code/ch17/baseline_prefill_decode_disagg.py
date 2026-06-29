@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 import torch
 
 from ch17.prefill_decode_disagg_monolithic_common import SimpleLLM
-from core.benchmark.cuda_event_timing import elapsed_ms, elapsed_ms_list
+from core.benchmark.cuda_event_timing import elapsed_ms
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
@@ -25,7 +25,7 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
         self.model: Optional[SimpleLLM] = None
         self.prompt: Optional[torch.Tensor] = None
         self.kv_cache: Optional[torch.Tensor] = None
-        self._history: Dict[str, List[float]] = {"ttft": [], "tpot": []}
+        self._empty_iteration_result: Dict[str, List[float]] = {}
         # Workload dimensions for signature matching
         self.batch_size = 1
         self.prefill_seq = 256
@@ -38,9 +38,16 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
         self.parameter_count: int = 0
         self._verification_payload = None
         self._pending_ttft_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
+        self._empty_tpot_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_tpot_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._ttft_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._tpot_events: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._ttft_metric_values = [0.0]
+        self._tpot_metric_values = [0.0] * self.decode_seq
+        self._iteration_metric_payload: Dict[str, List[float]] = {
+            "ttft_times_ms": self._ttft_metric_values,
+            "tpot_times_ms": self._tpot_metric_values,
+        }
         self._enable_nvtx = False
         self._ttft_total_ms = 0.0
         self._tpot_total_ms = 0.0
@@ -58,7 +65,6 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
             self.kv_cache = self.model.prefill(self.prompt)
         torch.cuda.synchronize(self.device)
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
-        self._history = {"ttft": [], "tpot": []}
         self._ttft_total_ms = 0.0
         self._tpot_total_ms = 0.0
         self._ttft_count = 0
@@ -74,6 +80,12 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
             )
             for _ in range(self.decode_seq)
         ]
+
+    def _ensure_timing_payload(self, num_tokens: int) -> List[float]:
+        if len(self._tpot_metric_values) != num_tokens:
+            self._tpot_metric_values = [0.0] * num_tokens
+            self._iteration_metric_payload["tpot_times_ms"] = self._tpot_metric_values
+        return self._tpot_metric_values
 
     def _get_ttft_events(self) -> tuple[torch.cuda.Event, torch.cuda.Event]:
         if self._ttft_events is None:
@@ -118,25 +130,27 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
 
                 self._pending_ttft_pair = ttft_events
                 self._pending_tpot_pairs = token_event_pairs
-                return {}
+                return self._empty_iteration_result
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, List[float]]]:
         if self._pending_ttft_pair is None:
             return None
         ttft_ms = elapsed_ms(self._pending_ttft_pair)
-        tpot_times_ms = elapsed_ms_list(self._pending_tpot_pairs)
+        pending_tpot_pairs = self._pending_tpot_pairs
+        tpot_times_ms = self._ensure_timing_payload(len(pending_tpot_pairs))
+        tpot_total_ms = 0.0
+        for idx, event_pair in enumerate(pending_tpot_pairs):
+            token_ms = elapsed_ms(event_pair)
+            tpot_times_ms[idx] = token_ms
+            tpot_total_ms += token_ms
         self._pending_ttft_pair = None
-        self._pending_tpot_pairs = []
-        self._history["ttft"].append(ttft_ms)
-        self._history["tpot"].extend(tpot_times_ms)
+        self._pending_tpot_pairs = self._empty_tpot_pairs
         self._ttft_total_ms += ttft_ms
-        self._tpot_total_ms += sum(tpot_times_ms)
+        self._tpot_total_ms += tpot_total_ms
         self._ttft_count += 1
-        self._tpot_count += len(tpot_times_ms)
-        return {
-            "ttft_times_ms": [ttft_ms],
-            "tpot_times_ms": tpot_times_ms,
-        }
+        self._tpot_count += len(pending_tpot_pairs)
+        self._ttft_metric_values[0] = ttft_ms
+        return self._iteration_metric_payload
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
@@ -165,7 +179,7 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
         self._ttft_events = None
         self._tpot_events = []
         self._pending_ttft_pair = None
-        self._pending_tpot_pairs = []
+        self._pending_tpot_pairs = self._empty_tpot_pairs
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -188,9 +202,9 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
 
     def validate_result(self) -> Optional[str]:
         self.finalize_iteration_metrics()
-        if not self._history["ttft"]:
+        if self._ttft_count <= 0:
             return "No TTFT samples recorded"
-        if not self._history["tpot"]:
+        if self._tpot_count <= 0:
             return "No TPOT samples recorded"
         return None
 
