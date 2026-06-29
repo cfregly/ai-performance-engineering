@@ -5765,8 +5765,11 @@ def test_ch18_flexattention_demos_use_cuda_event_timing() -> None:
         )[0]
 
         assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
-        assert "start.record()" in helper_section
-        assert "end.record()" in helper_section
+        assert "current_stream = torch.cuda.current_stream(device)" in helper_section
+        assert "start.record(current_stream)" in helper_section
+        assert "end.record(current_stream)" in helper_section
+        assert "start.record()" not in helper_section
+        assert "end.record()" not in helper_section
         assert "start.elapsed_time(end)" in helper_section
         assert "_time_region_ms(" in run_section
         assert "torch.cuda.synchronize()" not in run_section

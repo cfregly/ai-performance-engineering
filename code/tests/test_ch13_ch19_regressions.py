@@ -301,8 +301,11 @@ def test_native_fp4_fp6_demo_timing_uses_cuda_events() -> None:
     for module in (native_fp4, native_fp6):
         source = inspect.getsource(module._benchmark_forward)
         assert source.count("torch.cuda.Event(enable_timing=True)") == 2
-        assert "start.record()" in source
-        assert "end.record()" in source
+        assert "current_stream = torch.cuda.current_stream()" in source
+        assert "start.record(current_stream)" in source
+        assert "end.record(current_stream)" in source
+        assert "start.record()" not in source
+        assert "end.record()" not in source
         assert "start.elapsed_time(end) / (count * 1000.0)" in source
         assert "time.time()" not in source
 

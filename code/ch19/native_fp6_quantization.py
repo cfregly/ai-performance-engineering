@@ -51,10 +51,11 @@ def _benchmark_forward(module: nn.Module, x: torch.Tensor, warmup_iters: int, be
         torch.cuda.synchronize()
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        start.record()
+        current_stream = torch.cuda.current_stream()
+        start.record(current_stream)
         for _ in range(count):
             output = module(x)
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         return output, start.elapsed_time(end) / (count * 1000.0)
 

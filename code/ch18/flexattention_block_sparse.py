@@ -6,8 +6,7 @@ long-context processing on Blackwell.
 """
 
 import torch
-import torch.nn as nn
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Callable
 import math
 import time
 
@@ -24,9 +23,10 @@ def _time_region_ms(
     if device.type == "cuda":
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        start.record()
+        current_stream = torch.cuda.current_stream(device)
+        start.record(current_stream)
         output = fn()
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         return start.elapsed_time(end), output
 
