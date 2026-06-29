@@ -71,6 +71,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._seq_lengths_host: list[int] = [0] * batch_size
         self._batch_size_tensor: Optional[torch.Tensor] = None
+        self._seq_lengths_payload: Optional[torch.Tensor] = None
         self._active_layer_slice = slice(0, active_layers)
         self.register_workload_metadata(requests_per_iteration=1.0)
 
@@ -156,6 +157,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         )
         self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")
         self._batch_size_tensor[0] = self.batch_size
+        self._seq_lengths_payload = torch.empty_like(self.seq_lengths)
 
         logger.debug(f"Optimized KV Cache ({self.cache_dtype})")
         logger.debug(f"  Compression: {self._compression_ratio}x")
@@ -318,12 +320,13 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
-        if self._batch_size_tensor is None:
+        if self._batch_size_tensor is None or self._seq_lengths_payload is None:
             raise RuntimeError("setup() must initialize verification metadata tensors")
+        self._seq_lengths_payload.copy_(self.seq_lengths)
         self._set_verification_payload(
             inputs={
                 "batch_size": self._batch_size_tensor,
-                "seq_lengths": self.seq_lengths.detach().clone(),
+                "seq_lengths": self._seq_lengths_payload,
             },
             output=self._build_verification_output(),
             batch_size=self.batch_size,
@@ -384,6 +387,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer = None
         self.output = None
         self._batch_size_tensor = None
+        self._seq_lengths_payload = None
         self._seq_lengths_host = [0] * self.batch_size
         self._timing_pair = None
         self._pending_timing_pair = None

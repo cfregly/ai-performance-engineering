@@ -62,8 +62,10 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._generated_step_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._generated_step_layer_view_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._output_view: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._seq_lengths_host: list[int] = [0] * batch_size
         self._batch_size_tensor: Optional[torch.Tensor] = None
+        self._seq_lengths_payload: Optional[torch.Tensor] = None
         self._active_layer_slice = slice(0, active_layers)
         self.register_workload_metadata(requests_per_iteration=1.0)
 
@@ -110,8 +112,19 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
             for k_step, v_step in self._generated_step_pairs
         ]
         self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]
+        self._verify_output_buffer = torch.empty(
+            1,
+            1,
+            2,
+            self.num_heads,
+            1,
+            min(8, self.head_dim),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")
         self._batch_size_tensor[0] = self.batch_size
+        self._seq_lengths_payload = torch.empty_like(self.seq_lengths)
 
         logger.debug("Baseline KV Cache (BF16)")
         logger.debug(f"  Estimated memory: {self._estimated_memory_gb:.2f} GB")
@@ -208,14 +221,22 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
-        if self._batch_size_tensor is None:
+        if self.output is None:
+            raise RuntimeError("benchmark_fn() must run before verification capture")
+        if (
+            self._batch_size_tensor is None
+            or self._seq_lengths_payload is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("setup() must initialize verification metadata tensors")
+        self._seq_lengths_payload.copy_(self.seq_lengths)
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
                 "batch_size": self._batch_size_tensor,
-                "seq_lengths": self.seq_lengths.detach().clone(),
+                "seq_lengths": self._seq_lengths_payload,
             },
-            output=self.output.float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=0,
             precision_flags={"fp16": False, "bf16": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -263,8 +284,10 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._generated_step_pairs = []
         self._generated_step_layer_view_pairs = []
         self._output_view = None
+        self._verify_output_buffer = None
         self.output = None
         self._batch_size_tensor = None
+        self._seq_lengths_payload = None
         self._seq_lengths_host = [0] * self.batch_size
         self._timing_pair = None
         self._pending_timing_pair = None

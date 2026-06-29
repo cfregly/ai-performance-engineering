@@ -28,6 +28,7 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         assert "self._generated_step_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in init_source
         assert "self._output_view: Optional[torch.Tensor] = None" in init_source
         assert "self._batch_size_tensor: Optional[torch.Tensor] = None" in init_source
+        assert "self._seq_lengths_payload: Optional[torch.Tensor] = None" in init_source
         assert "self._active_layer_slice = slice(0, active_layers)" in init_source
         assert "self._generated_step_pairs = list(" in setup_source
         assert "zip(self._generated_k_steps, self._generated_v_steps, strict=True)" in setup_source
@@ -35,6 +36,11 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
             assert "self._generated_step_layer_view_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in init_source
             assert "self._generated_step_layer_view_pairs = [" in setup_source
             assert "(k_step.unsqueeze(1), v_step.unsqueeze(1))" in setup_source
+            assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in init_source
+            assert "self._verify_output_buffer = torch.empty(" in setup_source
+            assert "self._verify_output_buffer.copy_(self.output)" in capture_source
+            assert "output=self._verify_output_buffer" in capture_source
+            assert "self.output.float().clone()" not in capture_source
         else:
             build_source = inspect.getsource(benchmark_cls._build_verification_output)
             assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in init_source
@@ -47,8 +53,12 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         assert "self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]" in setup_source
         assert 'self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")' in setup_source
         assert "self._batch_size_tensor[0] = self.batch_size" in setup_source
+        assert "self._seq_lengths_payload = torch.empty_like(self.seq_lengths)" in setup_source
         assert '"batch_size": self._batch_size_tensor' in capture_source
+        assert "self._seq_lengths_payload.copy_(self.seq_lengths)" in capture_source
+        assert '"seq_lengths": self._seq_lengths_payload' in capture_source
         assert "torch.tensor([self.batch_size]" not in capture_source
+        assert "self.seq_lengths.detach().clone()" not in capture_source
         assert "seq_len = self._seq_lengths_host[batch_idx]" in get_kv_source
         assert ".item()" not in get_kv_source
         assert "self.seq_lengths += 1" not in benchmark_source
@@ -81,6 +91,7 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
             assert "self._verify_output_buffer = None" in teardown_source
         assert "self._output_view = None" in teardown_source
         assert "self._batch_size_tensor = None" in teardown_source
+        assert "self._seq_lengths_payload = None" in teardown_source
         assert "metrics = self._last_metrics" in finalize_source
         assert 'metrics["latency_ms"] = elapsed_ms_value' in finalize_source
         assert 'metrics["tokens_per_sec"] = tokens_per_sec' in finalize_source
