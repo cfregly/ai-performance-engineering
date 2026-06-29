@@ -11931,11 +11931,21 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "torch.tensor(" not in benchmark_section
     assert "self._output_values: list[float] = [0.0, 0.0, 0.0]" in source
     assert "self._output_values_ready = False" in source
+    assert '"requests": 0.0' in source
+    assert '"served": 0.0' in source
+    assert '"rejected": 0.0' in source
+    assert '"offloaded": 0.0' in source
     assert "self._output_values = [float(served), float(rejects), float(offloaded)]" not in benchmark_section
     assert "self._output_values[0] = float(served)" in benchmark_section
     assert "self._output_values[1] = float(rejects)" in benchmark_section
     assert "self._output_values[2] = float(offloaded)" in benchmark_section
     assert "self._output_values_ready = True" in benchmark_section
+    assert 'self._result_metrics["requests"] = float(len(requests))' in benchmark_section
+    assert 'self._result_metrics["served"] = float(served)' in benchmark_section
+    assert 'self._result_metrics["rejected"] = float(rejects)' in benchmark_section
+    assert 'self._result_metrics["offloaded"] = float(offloaded)' in benchmark_section
+    assert "return self._result_metrics" in benchmark_section
+    assert '"requests": float(len(requests))' not in benchmark_section
     assert "if not self._output_values_ready:" in capture_section
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
