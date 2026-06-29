@@ -8,7 +8,6 @@ or report SKIPPED with a clear message.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -31,6 +30,7 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._trt_runner = None
         self._verification_payload = None
         self._enable_nvtx = False
+        self._empty_iteration_result = {}
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
@@ -41,7 +41,6 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
         engine_path = os.getenv("TRT_LLM_ENGINE")
         trt_exc: Optional[Exception] = None
         try:
-            import tensorrt_llm  # type: ignore
             from tensorrt_llm.runtime import ModelRunner  # type: ignore
             if engine_path is not None:
                 self._stack_available = True
@@ -96,7 +95,7 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     ) from exc
             if self.output is None:
                 raise RuntimeError("TRT-LLM generate did not produce output")
-            return {}
+            return self._empty_iteration_result
 
         if self.linear is None or self.inputs is None:
             raise RuntimeError("SKIPPED: NVFP4 linear model not initialized")
@@ -113,7 +112,7 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 ) from exc
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output")
-        return {}
+        return self._empty_iteration_result
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(

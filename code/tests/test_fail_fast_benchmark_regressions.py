@@ -41,8 +41,11 @@ def test_ch18_nvfp4_trtllm_tool_no_longer_uses_placeholder_outputs_or_eager_fall
     assert "FAIL FAST: TRT-LLM generate returned an unsupported output payload" in source
     assert "FAIL FAST: Transformer Engine FP8 path failed in nvfp4_trtllm_tool" in source
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
+    assert "self._empty_iteration_result = {}" in source
     assert "get_nvtx_enabled(" not in benchmark_section
     assert "self.get_config()" not in benchmark_section
     assert "torch.as_tensor(" not in benchmark_section
     assert 'first = outputs.get("output_ids")' in benchmark_section
     assert 'raise TypeError(f"expected Tensor output, got {type(first).__name__}")' in benchmark_section
+    assert benchmark_section.count("return self._empty_iteration_result") == 2
+    assert "return {}" not in benchmark_section
