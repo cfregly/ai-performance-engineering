@@ -274,12 +274,13 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
 
         timing_pair = self._get_timing_pair()
         start_event, end_event = timing_pair
-        start_event.record()
+        current_stream = torch.cuda.current_stream(self.device)
+        start_event.record(current_stream)
 
         for pos, (new_k, new_v) in enumerate(self._generated_step_pairs):
             self.append_active_layers(new_k, new_v, pos=pos)
 
-        end_event.record()
+        end_event.record(current_stream)
         self.seq_lengths.fill_(num_decode_steps)
         self._set_host_seq_lengths(num_decode_steps)
         self._pending_timing_pair = timing_pair

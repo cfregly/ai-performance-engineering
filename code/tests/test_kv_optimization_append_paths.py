@@ -46,6 +46,11 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         assert "self.seq_lengths.fill_(num_decode_steps)" in benchmark_source
         assert "self._set_host_seq_lengths(0)" in benchmark_source
         assert "self._set_host_seq_lengths(num_decode_steps)" in benchmark_source
+        assert "current_stream = torch.cuda.current_stream(self.device)" in benchmark_source
+        assert "start_event.record(current_stream)" in benchmark_source
+        assert "end_event.record(current_stream)" in benchmark_source
+        assert "start_event.record()" not in benchmark_source
+        assert "end_event.record()" not in benchmark_source
         assert "self.output = self._output_view" in benchmark_source
         assert "self._output_view.detach()" not in benchmark_source
         assert "new_k = self._generated_k_steps[pos]" not in benchmark_source
