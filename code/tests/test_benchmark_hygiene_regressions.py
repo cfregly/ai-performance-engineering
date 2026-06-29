@@ -12458,8 +12458,21 @@ def test_ch06_roofline_ilp_defers_verification_tensors_outside_hot_loop() -> Non
     )[0]
 
     assert "torch.tensor(" not in benchmark_section
-    assert "self._output_values = [" in benchmark_section
+    assert "self.results: Dict[str, object] = {" in source
+    assert "self._results_ready = False" in source
+    assert "self._output_values: list[float] = [0.0] * 5" in source
+    assert "results = self.results" in benchmark_section
+    assert 'results["baseline"] = baseline_result' in benchmark_section
+    assert 'results["optimized"] = optimized_result' in benchmark_section
+    assert 'results["ridge_point"] = self.analyzer.ridge_point' in benchmark_section
+    assert "output_values = self._output_values" in benchmark_section
+    assert 'output_values[0] = baseline_result.get("achieved_tflops", 0.0)' in benchmark_section
+    assert 'output_values[4] = self.analyzer.ridge_point' in benchmark_section
     assert "self._ridge_point_value = self.analyzer.ridge_point" in benchmark_section
+    assert "self._results_ready = True" in benchmark_section
+    assert "self._output_values = [" not in benchmark_section
+    assert "self.results = {" not in benchmark_section
+    assert "if not self._results_ready:" in capture_section
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
     assert "self._verify_input = torch.tensor([self._ridge_point_value], dtype=torch.float32)" in capture_section
 

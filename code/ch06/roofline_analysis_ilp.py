@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Dict, Optional
 
 import torch
@@ -87,11 +86,16 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def __init__(self):
         super().__init__()
         self.analyzer: Optional[RooflineAnalyzer] = None
-        self.results: Optional[Dict] = None
+        self.results: Dict[str, object] = {
+            "baseline": None,
+            "optimized": None,
+            "ridge_point": 0.0,
+        }
+        self._results_ready = False
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
-        self._output_values: Optional[list[float]] = None
-        self._ridge_point_value: Optional[float] = None
+        self._output_values: list[float] = [0.0] * 5
+        self._ridge_point_value = 0.0
     
     def setup(self) -> None:
         """Setup: Initialize roofline analyzer."""
@@ -114,25 +118,24 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             optimized.setup()
             optimized_result = self.analyzer.analyze_kernel(optimized)
             optimized.teardown()
-            
-            self.results = {
-                "baseline": baseline_result,
-                "optimized": optimized_result,
-                "ridge_point": self.analyzer.ridge_point,
-            }
-            self._output_values = [
-                baseline_result.get("achieved_tflops", 0.0),
-                baseline_result.get("efficiency", 0.0),
-                optimized_result.get("achieved_tflops", 0.0),
-                optimized_result.get("efficiency", 0.0),
-                self.analyzer.ridge_point,
-            ]
+
+            results = self.results
+            results["baseline"] = baseline_result
+            results["optimized"] = optimized_result
+            results["ridge_point"] = self.analyzer.ridge_point
+            output_values = self._output_values
+            output_values[0] = baseline_result.get("achieved_tflops", 0.0)
+            output_values[1] = baseline_result.get("efficiency", 0.0)
+            output_values[2] = optimized_result.get("achieved_tflops", 0.0)
+            output_values[3] = optimized_result.get("efficiency", 0.0)
+            output_values[4] = self.analyzer.ridge_point
             self._ridge_point_value = self.analyzer.ridge_point
+            self._results_ready = True
             self.output = None
             self._verify_input = None
 
     def capture_verification_payload(self) -> None:
-        if self._output_values is None or self._ridge_point_value is None:
+        if not self._results_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self.output = torch.tensor(self._output_values, dtype=torch.float32)
         self._verify_input = torch.tensor([self._ridge_point_value], dtype=torch.float32)
@@ -152,11 +155,13 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
-        self.results = None
+        self.results["baseline"] = None
+        self.results["optimized"] = None
+        self.results["ridge_point"] = 0.0
+        self._results_ready = False
         self.output = None
         self._verify_input = None
-        self._output_values = None
-        self._ridge_point_value = None
+        self._ridge_point_value = 0.0
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
@@ -171,7 +176,7 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def validate_result(self) -> Optional[str]:
         """Validate benchmark result."""
-        if self.results is None:
+        if not self._results_ready:
             return "Results not generated"
         if "baseline" not in self.results or "optimized" not in self.results:
             return "Incomplete results"
@@ -179,10 +184,10 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return roofline analysis metrics for ILP optimization comparison."""
-        if self.results is None:
+        if not self._results_ready:
             return None
-        baseline = self.results.get("baseline", {})
-        optimized = self.results.get("optimized", {})
+        baseline = self.results.get("baseline") or {}
+        optimized = self.results.get("optimized") or {}
         baseline_time = baseline.get("time_ms", 0.0)
         optimized_time = optimized.get("time_ms", 0.0)
         speedup = baseline_time / optimized_time if optimized_time > 0 else 0.0
@@ -199,7 +204,7 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def print_results(self) -> None:
         """Print roofline analysis results."""
-        if self.results is None:
+        if not self._results_ready:
             return
         
         print("\n" + "=" * 80)
