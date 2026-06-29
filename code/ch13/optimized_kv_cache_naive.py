@@ -289,7 +289,7 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
                 self.kv_cache.free(request_id)
-            self.output = hidden.detach()
+            self.output = hidden
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
 

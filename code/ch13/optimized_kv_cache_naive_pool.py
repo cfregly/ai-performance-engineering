@@ -226,7 +226,7 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
 
                 self.kv_cache.free(request_id)
         # Capture output from the final forward for verification
-        self.output = hidden.detach()
+        self.output = hidden
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
 

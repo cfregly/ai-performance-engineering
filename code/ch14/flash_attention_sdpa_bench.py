@@ -120,7 +120,7 @@ class FlashAttentionSdpaBenchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: Flash Attention."""
         with torch.inference_mode():
             output = self.model(self.x)
-            self.output = output.detach()
+            self.output = output
         if self.output is None or self.x is None:
             raise RuntimeError("benchmark_fn() must produce output")
 

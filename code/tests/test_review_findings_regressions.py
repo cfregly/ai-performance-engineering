@@ -537,17 +537,21 @@ def test_reviewed_pair_fixes_remain_applied() -> None:
 
     assert "_ = weight.sum()" not in fp4_baseline
 
-    assert "for pos in range(seq_len):" in baseline_kv
-    assert "token = x[:, pos:pos+1, :]" in baseline_kv
-    assert "range(0, seq_len, self.block_size)" in optimized_kv
-    assert "token_block = x[:, pos:pos + self.block_size, :]" in optimized_kv
-    assert "self.output = hidden[:, -1:, :].detach()" in optimized_kv
+    assert "self._request_token_groups = [" in baseline_kv
+    assert "for request_id, token_views in self._request_token_groups:" in baseline_kv
+    assert "for pos, token in token_views:" in baseline_kv
+    assert "self._request_block_groups = [" in optimized_kv
+    assert "for request_id, seq_len, block_views in self._request_block_groups:" in optimized_kv
+    assert "for pos, block_view in block_views:" in optimized_kv
+    assert "self.output = hidden[:, -1:, :] if hidden is not None else None" in optimized_kv
+    assert "hidden[:, -1:, :].detach()" not in optimized_kv
 
     assert "class OptimizedMemoryStandardBenchmark" in optimized_memory_standard
     assert "OptimizedMemoryHBM3eBenchmark" not in optimized_memory_standard
     assert "HBM3e" not in baseline_memory_standard
 
-    assert "with torch.no_grad():" in baseline_pipeline_bench
+    assert "with torch.inference_mode():" in baseline_pipeline_bench
+    assert "with torch.no_grad():" not in baseline_pipeline_bench
 
 
 def test_ch04_torchrun_wrappers_keep_entrypoints_and_side_effect_free_specs() -> None:
@@ -610,12 +614,18 @@ def test_ch13_pair_remediations_keep_canonical_and_informational_targets_split()
     assert '"tf32": False' in baseline_quant
     assert '"tf32": False' in canonical_quant
 
-    assert "for pos in range(seq_len):" in canonical_kv
+    assert "self._request_token_groups = [" in canonical_kv
+    assert "for request_id, seq_len, token_views in self._request_token_groups:" in canonical_kv
+    assert "self.output = hidden" in canonical_kv
+    assert "self.output = hidden.detach()" not in canonical_kv
     assert "range(0, seq_len, self.block_size)" not in canonical_kv
     assert 'return "memory"' in canonical_kv
     assert 'return "memory"' in memory_baseline
     assert 'return "memory"' in memory_optimized
-    assert "range(0, seq_len, self.block_size)" in flash_kv
+    assert "self._request_block_groups = [" in flash_kv
+    assert "for request_id, seq_len, block_views in self._request_block_groups:" in flash_kv
+    assert "self.output = hidden[:, -1:, :]" in flash_kv
+    assert "hidden[:, -1:, :].detach()" not in flash_kv
     assert "kv_cache_naive_flash_blockwise" in INFORMATIONAL_BENCHMARKS["ch13"]
 
 

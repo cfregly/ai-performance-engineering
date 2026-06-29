@@ -3806,6 +3806,8 @@ def test_ch19_fp4_weight_quantization_uses_inference_mode() -> None:
     assert "with torch.no_grad():" not in benchmark_section
     assert "with torch.inference_mode():" in validate_section
     assert "with torch.no_grad():" not in validate_section
+    assert "self.output = output" in benchmark_section
+    assert "self.output = output.detach()" not in benchmark_section
 
 
 def test_ch19_fp4_weight_quantization_caches_parameter_count() -> None:
@@ -4277,6 +4279,8 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     assert "q = self._q_bf16" in benchmark_section
     assert "k = self._k_bf16" in benchmark_section
     assert "v = self._v_bf16" in benchmark_section
+    assert "self.output = attn_out" in benchmark_section
+    assert "attn_out.detach()" not in benchmark_section
     assert "self._k_t = self.k.transpose(-2, -1)" in baseline_setup
     assert "self._scale = 1.0 / math.sqrt(self.head_dim)" in baseline_setup
     assert "scores = torch.matmul(q, self._k_t)" in baseline_benchmark
@@ -5097,6 +5101,8 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     assert "if len(self._request_block_groups) != len(self.inputs):" in benchmark_section
     assert "for request_id, seq_len, block_views in self._request_block_groups:" in benchmark_section
     assert "for layer_idx, layer in self._layer_groups:" in benchmark_section
+    assert "self.output = hidden[:, -1:, :] if hidden is not None else None" in benchmark_section
+    assert "hidden[:, -1:, :].detach()" not in benchmark_section
     assert "zip(self.request_ids, self._input_block_views)" not in benchmark_section
     assert "enumerate(self.layers)" not in benchmark_section
     assert "for pos, block_view in block_views:" in benchmark_section
@@ -8125,7 +8131,8 @@ def test_ch14_flash_attention_sdpa_bench_defers_output_clone_and_host_sync() -> 
 
     assert "float(output" not in benchmark_section
     assert ".detach().clone()" not in benchmark_section
-    assert "self.output = output.detach()" in benchmark_section
+    assert "self.output = output" in benchmark_section
+    assert "self.output = output.detach()" not in benchmark_section
     assert "output=self.output.detach().clone()" in capture_section
 
 
@@ -10331,9 +10338,9 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
     }
     kv_targets = {
         "baseline_kv_cache_naive.py": "self.output = token.detach()",
-        "optimized_kv_cache_naive.py": "self.output = hidden.detach()",
-        "optimized_kv_cache_naive_flash_blockwise.py": "self.output = hidden[:, -1:, :].detach()",
-        "optimized_kv_cache_naive_pool.py": "self.output = hidden.detach()",
+        "optimized_kv_cache_naive.py": "self.output = hidden",
+        "optimized_kv_cache_naive_flash_blockwise.py": "self.output = hidden[:, -1:, :]",
+        "optimized_kv_cache_naive_pool.py": "self.output = hidden",
     }
 
     for name, capture_materialization in precision_targets.items():
@@ -10360,6 +10367,9 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
 
         assert ".detach().clone()" not in benchmark_section
         assert output_assignment in benchmark_section
+        if name.startswith("optimized_kv_cache_naive"):
+            assert "hidden.detach()" not in benchmark_section
+            assert "hidden[:, -1:, :].detach()" not in benchmark_section
         assert "output=self.output.float()" in capture_section
 
     flash_source = (
@@ -12021,7 +12031,7 @@ def test_ch19_nvfp4_training_defers_verification_forward_outside_hot_loop() -> N
 def test_ch13_regional_compile_moves_verification_materialization_out_of_hot_loop() -> None:
     targets = {
         "baseline_regional_compile.py": "self.output = self.compiled_model(x).detach()",
-        "optimized_regional_compile.py": "self.output = self.model(x).detach()",
+        "optimized_regional_compile.py": "self.output = self.model(x)",
     }
 
     for name, output_assignment in targets.items():
@@ -12036,6 +12046,8 @@ def test_ch13_regional_compile_moves_verification_materialization_out_of_hot_loo
         assert ".detach().float().clone()" not in benchmark_section
         assert ".detach().clone()" not in benchmark_section
         assert output_assignment in benchmark_section
+        if name == "optimized_regional_compile.py":
+            assert "self.output = self.model(x).detach()" not in benchmark_section
         assert "self._verify_output = self.output" in benchmark_section
         assert "output=self._verify_output.float().clone()" in capture_section
 
@@ -13085,6 +13097,8 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
     for source in (baseline_pipeline, optimized_pipeline, baseline_gluon, optimized_gluon):
         assert "iterations=10" in source
         assert "warmup=5" in source
+    assert "self.output = result" in optimized_gluon
+    assert "self.output = result.detach()" not in optimized_gluon
 
     assert "torch.manual_seed(42)" in blackwell
     assert "torch.cuda.manual_seed_all(42)" in blackwell

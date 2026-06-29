@@ -285,7 +285,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
                             hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
                     self.kv_cache.free(request_id)
-        self.output = hidden[:, -1:, :].detach() if hidden is not None else None
+        self.output = hidden[:, -1:, :] if hidden is not None else None
 
     def capture_verification_payload(self) -> None:
         if self.layers is None or self._verify_input is None or self.output is None:

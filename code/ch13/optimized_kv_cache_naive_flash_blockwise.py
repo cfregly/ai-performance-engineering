@@ -256,7 +256,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
                 self.kv_cache.free(request_id)
-            self.output = hidden[:, -1:, :].detach()
+            self.output = hidden[:, -1:, :]
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
 

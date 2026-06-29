@@ -63,7 +63,7 @@ class OptimizedFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchm
                     k = self.inputs.k
                     v = self.inputs.v
                     result = self.kernel.fn(q, k, v)
-                    self.output = result.detach()
+                    self.output = result
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
         self._payload_k = k
