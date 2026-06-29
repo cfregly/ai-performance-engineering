@@ -150,10 +150,11 @@ def benchmark_attention(model, Q, K, V, name, num_warmup=50, num_iters=200):
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
     with torch.inference_mode():
-        start.record()
+        current_stream = torch.cuda.current_stream(Q.device)
+        start.record(current_stream)
         for _ in range(count):
             _ = model(Q, K, V)
-        end.record()
+        end.record(current_stream)
     end.synchronize()
     
     avg_time_ms = start.elapsed_time(end) / count

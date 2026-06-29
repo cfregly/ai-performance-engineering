@@ -58,11 +58,12 @@ def _benchmark(label: str, fn, iters: int) -> float:
     if torch.cuda.is_available():
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        start.record()
+        current_stream = torch.cuda.current_stream()
+        start.record(current_stream)
         with torch.inference_mode():
             for _ in range(iters):
                 fn()
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         elapsed = start.elapsed_time(end) / iters
     else:

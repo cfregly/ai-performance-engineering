@@ -5905,6 +5905,11 @@ def test_ch18_flexattention_demos_use_cuda_event_timing() -> None:
         maxsplit=1,
     )[0]
     assert flexdecoding_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "current_stream = torch.cuda.current_stream()" in flexdecoding_benchmark
+    assert "start.record(current_stream)" in flexdecoding_benchmark
+    assert "end.record(current_stream)" in flexdecoding_benchmark
+    assert "start.record()" not in flexdecoding_benchmark
+    assert "end.record()" not in flexdecoding_benchmark
     assert "start.elapsed_time(end) / iters" in flexdecoding_benchmark
     assert "position_index = torch.arange(max_kv_len, device=device)" in flexdecoding_sdpa
     assert "q_position_column = position_index.view(max_kv_len, 1)" in flexdecoding_sdpa
@@ -5939,6 +5944,37 @@ def test_ch18_flexattention_demos_use_cuda_event_timing() -> None:
         assert "_time_region_ms(" in run_section
         assert "torch.cuda.synchronize()" not in run_section
         assert "time.perf_counter()" not in run_section
+
+    attention_benchmark_cases = {
+        "flex_attention_native.py": (
+            "def benchmark_attention",
+            "def main",
+            "current_stream = torch.cuda.current_stream(Q.device)",
+        ),
+        "flex_attention_enhanced.py": (
+            "def benchmark_attention",
+            "def main",
+            "current_stream = torch.cuda.current_stream(Q.device)",
+        ),
+        "flex_attention_large_model.py": (
+            "def benchmark_model",
+            "def test_configuration",
+            "current_stream = torch.cuda.current_stream(x.device)",
+        ),
+    }
+    for filename, (start_marker, end_marker, stream_capture) in attention_benchmark_cases.items():
+        source = (REPO_ROOT / "ch18" / filename).read_text(encoding="utf-8")
+        timing_section = source.split(start_marker, maxsplit=1)[1].split(
+            end_marker,
+            maxsplit=1,
+        )[0]
+
+        assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
+        assert stream_capture in timing_section
+        assert "start.record(current_stream)" in timing_section
+        assert "end.record(current_stream)" in timing_section
+        assert "start.record()" not in timing_section
+        assert "end.record()" not in timing_section
 
 
 def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None:
