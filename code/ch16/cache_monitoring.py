@@ -25,12 +25,12 @@ Usage:
 """
 
 import time
-from typing import Dict, Optional, List
-from dataclasses import dataclass, field
-from collections import defaultdict, deque
+from typing import Dict, Optional
+from dataclasses import dataclass
+from collections import OrderedDict, defaultdict
 from enum import Enum
 import threading
-from prometheus_client import Counter, Gauge, Histogram, Summary, start_http_server
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 
 class CacheType(Enum):
@@ -345,7 +345,7 @@ class SimpleCache:
         self.eviction_policy = eviction_policy
         
         self.cache: Dict[str, bytes] = {}
-        self.access_order: deque = deque()  # For LRU
+        self.access_order: OrderedDict[str, None] = OrderedDict()  # For LRU
         self.access_count: Dict[str, int] = defaultdict(int)  # For LFU
         self.size_bytes = 0
     
@@ -359,20 +359,20 @@ class SimpleCache:
         Returns:
             Cached value or None if not found
         """
-        start_time = time.time()
+        start_time = time.perf_counter()
         
         if key in self.cache:
             # Cache hit
             value = self.cache[key]
             self._update_access(key)
             
-            latency = time.time() - start_time
+            latency = time.perf_counter() - start_time
             self.monitor.record_cache_access(self.cache_type, hit=True, latency_seconds=latency)
             
             return value
         else:
             # Cache miss
-            latency = time.time() - start_time
+            latency = time.perf_counter() - start_time
             self.monitor.record_cache_access(self.cache_type, hit=False, latency_seconds=latency)
             
             return None
@@ -408,9 +408,8 @@ class SimpleCache:
     def _update_access(self, key: str):
         """Update access tracking for eviction policy."""
         if self.eviction_policy == EvictionPolicy.LRU:
-            if key in self.access_order:
-                self.access_order.remove(key)
-            self.access_order.append(key)
+            self.access_order.pop(key, None)
+            self.access_order[key] = None
         elif self.eviction_policy == EvictionPolicy.LFU:
             self.access_count[key] += 1
     
@@ -420,7 +419,7 @@ class SimpleCache:
             return
         
         if self.eviction_policy == EvictionPolicy.LRU:
-            key = self.access_order.popleft()
+            key, _ = self.access_order.popitem(last=False)
         elif self.eviction_policy == EvictionPolicy.LFU:
             key = min(self.access_count.items(), key=lambda x: x[1])[0]
             del self.access_count[key]
@@ -461,8 +460,8 @@ def _run_demo(serve_metrics: bool = False, duration: float = 5.0):
     keys = [f"key_{i}" for i in range(256)]
     payload_sizes = [512, 1024, 2048, 4096]
     
-    end_time = time.time() + duration
-    while time.time() < end_time:
+    end_time = time.perf_counter() + duration
+    while time.perf_counter() < end_time:
         key = rng.choice(keys)
         cached_value = cache.get(key)
         if cached_value is None:

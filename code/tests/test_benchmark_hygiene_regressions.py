@@ -3886,6 +3886,45 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert "np.mean([r['prompt_length'] for r in recent_routes])" not in cascader_section
 
 
+def test_ch16_cache_monitoring_uses_ordered_lru_and_monotonic_latency() -> None:
+    source = (REPO_ROOT / "ch16" / "cache_monitoring.py").read_text(encoding="utf-8")
+    simple_cache_section = source.split("class SimpleCache", maxsplit=1)[1].split(
+        "def _run_demo",
+        maxsplit=1,
+    )[0]
+    get_section = simple_cache_section.split("def get", maxsplit=1)[1].split(
+        "def put",
+        maxsplit=1,
+    )[0]
+    update_access_section = simple_cache_section.split(
+        "def _update_access",
+        maxsplit=1,
+    )[1].split("def _evict_one", maxsplit=1)[0]
+    evict_section = simple_cache_section.split("def _evict_one", maxsplit=1)[1]
+    demo_section = source.split("def _run_demo", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+
+    assert "from collections import OrderedDict, defaultdict" in source
+    assert "deque" not in simple_cache_section
+    assert (
+        "self.access_order: OrderedDict[str, None] = OrderedDict()"
+        in simple_cache_section
+    )
+    assert "start_time = time.perf_counter()" in get_section
+    assert "latency = time.perf_counter() - start_time" in get_section
+    assert "time.time()" not in get_section
+    assert "self.access_order.pop(key, None)" in update_access_section
+    assert "self.access_order[key] = None" in update_access_section
+    assert "self.access_order.remove(" not in update_access_section
+    assert "key, _ = self.access_order.popitem(last=False)" in evict_section
+    assert "popleft()" not in evict_section
+    assert "end_time = time.perf_counter() + duration" in demo_section
+    assert "while time.perf_counter() < end_time:" in demo_section
+    assert "time.time()" not in demo_section
+
+
 def test_ch16_runtime_schedulers_cache_nvtx_and_verification_dummy() -> None:
     common_source = (REPO_ROOT / "ch16" / "runtime_scheduler_common.py").read_text(
         encoding="utf-8"
