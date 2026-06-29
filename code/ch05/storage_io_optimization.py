@@ -17,12 +17,12 @@ class DummyDataset(Dataset):
     def __len__(self) -> int:
         return self.length
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
         # Use empty + fill for better performance than randn
         image = torch.empty(3, 224, 224)
         # Simple deterministic pattern based on index for reproducibility
         image.fill_(float((index % 256) / 255.0))
-        label = torch.tensor(index % 10, dtype=torch.long)
+        label = index % 10
         return image, label
 
 
@@ -31,10 +31,11 @@ def make_dataloader(dataset: Dataset,
                     num_workers: int = 4,
                     *,
                     pin_memory: bool = True,
-                    prefetch_factor: int = 4,
+                    prefetch_factor: int | None = 4,
                     persistent_workers: bool = True) -> DataLoader:
     if num_workers == 0:
-        prefetch_factor = 2
+        prefetch_factor = None
+        persistent_workers = False
     return DataLoader(
         dataset,
         batch_size=batch_size,

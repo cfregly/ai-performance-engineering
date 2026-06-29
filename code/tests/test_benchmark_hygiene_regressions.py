@@ -639,6 +639,33 @@ def test_ch05_optimized_storage_cpu_opens_mmap_outside_hot_loop() -> None:
     assert "self._output_buffer = None" in teardown_section
 
 
+def test_ch05_storage_io_dataset_defers_label_tensor_to_collate() -> None:
+    source = (REPO_ROOT / "ch05" / "storage_io_optimization.py").read_text(encoding="utf-8")
+    getitem_section = source.split("def __getitem__", maxsplit=1)[1].split(
+        "def make_dataloader",
+        maxsplit=1,
+    )[0]
+
+    assert "def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:" in source
+    assert "label = index % 10" in getitem_section
+    assert "torch.tensor(index % 10" not in getitem_section
+    assert "prefetch_factor: int | None = 4" in source
+    assert "prefetch_factor = None" in source
+    assert "persistent_workers = False" in source
+
+    from ch05.storage_io_optimization import DummyDataset, make_dataloader
+
+    image, label = DummyDataset(length=2)[1]
+    assert image.shape == (3, 224, 224)
+    assert label == 1
+
+    batch_images, batch_labels = next(
+        iter(make_dataloader(DummyDataset(length=4), batch_size=2, num_workers=0, pin_memory=False))
+    )
+    assert batch_images.shape == (2, 3, 224, 224)
+    assert batch_labels.dtype == torch.long
+
+
 def test_ch03_pageable_copy_reuses_reduction_output_buffer() -> None:
     for relative, label in (
         ("ch03/baseline_pageable_copy.py", "baseline_pageable_copy"),
