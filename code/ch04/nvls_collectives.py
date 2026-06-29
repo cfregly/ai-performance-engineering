@@ -32,6 +32,7 @@ class NVLSCollectivesBenchmark(VerificationPayloadMixin, BaseBenchmark):
             bytes_per_iteration=float(32 * 32 * 4),
         )
         self._enable_nvtx = False
+        self._empty_iteration_result = {}
 
     def setup(self) -> None:
         if torch.cuda.device_count() < 2:
@@ -61,7 +62,7 @@ class NVLSCollectivesBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         with nvtx_range("nvls_allreduce", enable=self._enable_nvtx):
             dist.all_reduce(self.tensor)
-        return {}
+        return self._empty_iteration_result
 
     def capture_verification_payload(self) -> None:
         if not self._initialized or self.tensor is None:

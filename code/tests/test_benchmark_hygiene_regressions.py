@@ -3182,6 +3182,10 @@ def test_ch01_fp16_and_ch04_nvls_cache_nvtx_enablement() -> None:
         assert "get_nvtx_enabled(" not in benchmark_section
         assert "enable=self._enable_nvtx" in benchmark_section
 
+    assert "self._empty_iteration_result = {}" in nvls_source
+    assert "return self._empty_iteration_result" in nvls_benchmark
+    assert "return {}" not in nvls_benchmark
+
 
 def test_ch04_optimized_gpu_reduction_uses_single_gpu_sum_kernel() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_cpu_reduction.py").read_text(encoding="utf-8")
@@ -16232,6 +16236,9 @@ def test_ch13_dtensor_mesh_caches_nvtx_enablement() -> None:
     assert "get_config()" not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
     assert 'with nvtx_range("dtensor_mesh", enable=self._enable_nvtx):' in benchmark_section
+    assert "self._empty_iteration_result = {}" in source
+    assert "return self._empty_iteration_result" in benchmark_section
+    assert "return {}" not in benchmark_section
 
 
 def test_ch13_multigpu_surrogates_cache_verification_parameter_counts() -> None:

@@ -6,7 +6,6 @@ SKIPPED so the docs target stays runnable without exotic dependencies.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 import torch
@@ -24,6 +23,7 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.tensor: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._enable_nvtx = False
+        self._empty_iteration_result = {}
 
     def setup(self) -> None:
         try:
@@ -53,7 +53,7 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
         output_local = self.output.to_local() if hasattr(self.output, "to_local") else self.output
         self.output = output_local
         self._payload_input_local = input_local
-        return {}
+        return self._empty_iteration_result
 
     def capture_verification_payload(self) -> None:
         input_local = self._payload_input_local
