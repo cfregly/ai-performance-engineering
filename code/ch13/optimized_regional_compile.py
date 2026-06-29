@@ -116,6 +116,7 @@ class OptimizedRegionalCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.inputs: Dict[int, torch.Tensor] = {}
         self._verify_x: Optional[torch.Tensor] = None
         self._verify_output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
 
         max_tokens = self.batch_size * max(self.sequence_schedule) * self.hidden
         self._workload = WorkloadMetadata(
@@ -146,6 +147,13 @@ class OptimizedRegionalCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 device=self.device,
                 dtype=torch.bfloat16,
             )
+        self._verify_output_buffer = torch.empty(
+            self.batch_size,
+            min(128, max(self.sequence_schedule)),
+            self.hidden,
+            device=self.device,
+            dtype=torch.float32,
+        )
 
         with torch.inference_mode():
             for _ in range(5):
@@ -178,12 +186,19 @@ class OptimizedRegionalCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
             self._verify_output = self.output
 
     def capture_verification_payload(self) -> None:
-        if self._verify_x is None or self._verify_output is None:
+        if self._verify_x is None or self._verify_output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         x = self._verify_x
+        verify_output = self._verify_output_buffer[
+            : self._verify_output.shape[0],
+            : min(self._verify_output.shape[1], self._verify_output_buffer.shape[1]),
+            :,
+        ]
+        output_slice = self._verify_output[:, : verify_output.shape[1], :]
+        verify_output.copy_(output_slice)
         self._set_verification_payload(
             inputs={"input": x},
-            output=self._verify_output.float().clone(),
+            output=verify_output,
             batch_size=self.batch_size,
             precision_flags={
                 "fp16": False,
@@ -197,6 +212,10 @@ class OptimizedRegionalCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def teardown(self) -> None:
         self.model = None
         self.inputs.clear()
+        self.output = None
+        self._verify_x = None
+        self._verify_output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

@@ -16373,7 +16373,15 @@ def test_ch13_regional_compile_moves_verification_materialization_out_of_hot_loo
         if name == "optimized_regional_compile.py":
             assert "self.output = self.model(x).detach()" not in benchmark_section
         assert "self._verify_output = self.output" in benchmark_section
-        assert "output=self._verify_output.float().clone()" in capture_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in source
+        assert "min(128, max(self.sequence_schedule))" in source
+        assert "verify_output = self._verify_output_buffer[" in capture_section
+        assert "min(self._verify_output.shape[1], self._verify_output_buffer.shape[1])" in capture_section
+        assert "output_slice = self._verify_output[:, : verify_output.shape[1], :]" in capture_section
+        assert "verify_output.copy_(output_slice)" in capture_section
+        assert "output=verify_output" in capture_section
+        assert "output=self._verify_output.float().clone()" not in capture_section
 
     optimized_source = (REPO_ROOT / "ch13" / "optimized_regional_compile.py").read_text(encoding="utf-8")
     optimized_forward = optimized_source.split("class TinyTransformerBlock", maxsplit=1)[1].split(
