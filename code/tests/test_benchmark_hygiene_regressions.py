@@ -11891,6 +11891,9 @@ def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
     assert "self._group_offsets = torch.empty(" in setup_section
     assert "self._group_offsets = torch.zeros(" not in setup_section
     assert "torch.cumsum(group_counts, dim=0, out=self._group_offsets[1:])" in setup_section
+    assert "group_offsets_host = self._group_offsets.detach().cpu()" in setup_section
+    assert "for idx in range(group_offsets_host.numel() - 1)" in setup_section
+    assert "self._group_offsets.detach().cpu().tolist()" not in setup_section
     assert "with torch.inference_mode():" in setup_section
     assert "with torch.no_grad():" not in setup_section
     assert "self._payload_parameter_count = 0" in source

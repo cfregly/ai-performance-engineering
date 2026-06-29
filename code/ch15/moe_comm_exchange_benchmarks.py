@@ -145,10 +145,10 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._group_offsets = torch.empty(group_counts.numel() + 1, device=self.device, dtype=torch.int64)
         self._group_offsets[0] = 0
         torch.cumsum(group_counts, dim=0, out=self._group_offsets[1:])
-        group_offsets_host = self._group_offsets.detach().cpu().tolist()
+        group_offsets_host = self._group_offsets.detach().cpu()
         self._group_ranges = [
-            (int(start), int(end))
-            for start, end in zip(group_offsets_host[:-1], group_offsets_host[1:])
+            (int(group_offsets_host[idx]), int(group_offsets_host[idx + 1]))
+            for idx in range(group_offsets_host.numel() - 1)
         ]
         self._comm_stream = torch.cuda.Stream(device=self.device)
 
