@@ -38,6 +38,10 @@ class FlashAttentionModule(nn.Module):
         self.qkv = nn.Linear(hidden_dim, hidden_dim * 3, bias=False)
         self._flash_backends = [SDPBackend.FLASH_ATTENTION]
         self._qkv_buffer: Optional[torch.Tensor] = None
+        self._qkv_weight_t: Optional[torch.Tensor] = None
+
+    def cache_weight_views(self) -> None:
+        self._qkv_weight_t = self.qkv.weight.t()
 
     def _ensure_qkv_buffer(self, x: torch.Tensor, batch_size: int, seq_len: int) -> torch.Tensor:
         shape = (batch_size, seq_len, self.hidden_dim * 3)
@@ -55,8 +59,10 @@ class FlashAttentionModule(nn.Module):
         if torch.is_grad_enabled():
             qkv = self.qkv(x)
         else:
+            if self._qkv_weight_t is None:
+                self.cache_weight_views()
             qkv_buffer = self._ensure_qkv_buffer(x, B, T)
-            qkv = torch.matmul(x, self.qkv.weight.t(), out=qkv_buffer)
+            qkv = torch.matmul(x, self._qkv_weight_t, out=qkv_buffer)
         qkv = qkv.view(B, T, 3, self.num_heads, self.hidden_dim // self.num_heads)
         qkv = qkv.permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
@@ -101,6 +107,7 @@ class OptimizedFlashSDPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = FlashAttentionModule(hidden_dim=self.hidden, num_heads=8).to(
             self.device, dtype=torch.float16
         )
+        self.model.cache_weight_views()
         self.inputs = torch.randn(self.batch, self.seq_len, self.hidden, device=self.device, dtype=torch.float16)
         self._verify_input = self.inputs.detach().clone()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())

@@ -2892,8 +2892,12 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "with sdpa_kernel(self._flash_backends):" in flash_module_section
     assert "with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):" not in flash_module_section
     assert "self._qkv_buffer: Optional[torch.Tensor] = None" in flash_module_section
+    assert "self._qkv_weight_t: Optional[torch.Tensor] = None" in flash_module_section
+    assert "def cache_weight_views(self) -> None:" in flash_module_section
+    assert "self._qkv_weight_t = self.qkv.weight.t()" in flash_module_section
     assert "def _ensure_qkv_buffer(" in flash_module_section
-    assert "qkv = torch.matmul(x, self.qkv.weight.t(), out=qkv_buffer)" in flash_module_section
+    assert "qkv = torch.matmul(x, self._qkv_weight_t, out=qkv_buffer)" in flash_module_section
+    assert "qkv = torch.matmul(x, self.qkv.weight.t(), out=qkv_buffer)" not in flash_module_section
     assert "if torch.is_grad_enabled():" in flash_module_section
 
     baseline_flash_setup = (REPO_ROOT / "ch16" / "baseline_flash_sdp.py").read_text(
@@ -2903,6 +2907,7 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         encoding="utf-8"
     ).split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]
     assert "with torch.inference_mode():" in baseline_flash_setup
+    assert "self.model.cache_weight_views()" in optimized_flash_setup
     assert "with torch.no_grad():" not in baseline_flash_setup
     assert "with torch.inference_mode():" in optimized_flash_setup
 
