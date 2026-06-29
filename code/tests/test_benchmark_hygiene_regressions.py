@@ -4714,6 +4714,31 @@ def test_nvfp4_local_eval_sample_stats_reuse_sorted_samples() -> None:
         assert "math.sqrt(" in stats_section
 
 
+def test_nvfp4_sweeps_accumulate_report_buckets() -> None:
+    case0_source = (REPO_ROOT / "labs" / "nvfp4_gemm" / "sweep_case0_official.py").read_text(
+        encoding="utf-8"
+    )
+    dual_source = (
+        REPO_ROOT / "labs" / "nvfp4_dual_gemm" / "focused_param_sweep.py"
+    ).read_text(encoding="utf-8")
+    case0_main = case0_source.split("def main", maxsplit=1)[1]
+    dual_main = dual_source.split("def main", maxsplit=1)[1]
+
+    assert "ok_rows = []" in case0_main
+    assert "failed = []" in case0_main
+    assert "row = _run_variant(" in case0_main
+    assert 'if row.get("ok"):' in case0_main
+    assert "ok_rows.append(row)" in case0_main
+    assert "failed.append(row)" in case0_main
+    assert "ok_rows = [r for r in rows if r.get(\"ok\")]" not in case0_main
+    assert "failed = [r for r in rows if not r.get(\"ok\")]" not in case0_main
+    assert "verify_green = []" in dual_main
+    assert "result = _run_candidate(" in dual_main
+    assert 'if result.get("status") == "ok":' in dual_main
+    assert "verify_green.append(result)" in dual_main
+    assert "verify_green = [r for r in results if r.get(\"status\") == \"ok\"]" not in dual_main
+
+
 def test_nvfp4_strict_ab_summarizes_pair_rows_incrementally() -> None:
     source = (REPO_ROOT / "labs" / "nvfp4_dual_gemm" / "strict_ab_validation.py").read_text(
         encoding="utf-8"

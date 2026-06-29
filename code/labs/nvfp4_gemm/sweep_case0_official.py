@@ -117,17 +117,21 @@ def main() -> int:
         raise ValueError("No variants provided")
 
     rows = []
+    ok_rows = []
+    failed = []
     for variant in variants:
-        rows.append(
-            _run_variant(
-                submission_file=args.submission_file.resolve(),
-                variant=variant,
-                sm_clock_mhz=args.sm_clock_mhz,
-                mem_clock_mhz=args.mem_clock_mhz,
-            )
+        row = _run_variant(
+            submission_file=args.submission_file.resolve(),
+            variant=variant,
+            sm_clock_mhz=args.sm_clock_mhz,
+            mem_clock_mhz=args.mem_clock_mhz,
         )
+        rows.append(row)
+        if row.get("ok"):
+            ok_rows.append(row)
+        else:
+            failed.append(row)
 
-    ok_rows = [r for r in rows if r.get("ok")]
     ok_rows.sort(key=lambda r: r["mean_us"])
 
     out = {
@@ -147,7 +151,6 @@ def main() -> int:
             f"{i}. {row['variant']}: {row['mean_us']:.6f} us "
             f"(runs={row['runs']} stop={row['stop_reason']})"
         )
-    failed = [r for r in rows if not r.get("ok")]
     if failed:
         print("failed variants:")
         for row in failed:

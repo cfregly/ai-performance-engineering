@@ -213,21 +213,22 @@ def main() -> int:
     ]
 
     results = []
+    verify_green = []
     for i, cand in enumerate(candidates, start=1):
         print(f"[{i}/{len(candidates)}] {cand.tag}", flush=True)
-        results.append(
-            _run_candidate(
-                cand,
-                src,
-                owner_pid=owner_pid,
-                require_idle_gpu=bool(args.require_idle_gpu),
-                kill_foreign_gpu_jobs=bool(args.kill_foreign_gpu_jobs),
-                isolation_settle_seconds=float(args.isolation_settle_seconds),
-                isolation_allow_cmd_substring=list(args.isolation_allow_cmd_substring),
-            )
+        result = _run_candidate(
+            cand,
+            src,
+            owner_pid=owner_pid,
+            require_idle_gpu=bool(args.require_idle_gpu),
+            kill_foreign_gpu_jobs=bool(args.kill_foreign_gpu_jobs),
+            isolation_settle_seconds=float(args.isolation_settle_seconds),
+            isolation_allow_cmd_substring=list(args.isolation_allow_cmd_substring),
         )
+        results.append(result)
+        if result.get("status") == "ok":
+            verify_green.append(result)
 
-    verify_green = [r for r in results if r.get("status") == "ok"]
     verify_green.sort(key=lambda r: r["score_us"])
 
     payload = {
