@@ -143,8 +143,8 @@ def run_benchmark(args):
             engine = Engine(model, tokenizer, enable_batch_decode=False)
         # Warmup
         _ = bench_once(model, args.batch_size, args.prompt_len, args.decode_len, device, engine=engine)
-        prefill_accum = []
-        decode_accum = []
+        prefill_total = 0.0
+        decode_total = 0.0
         for _ in range(args.iters):
             prefill_tok_s, decode_tok_s = bench_once(
                 model,
@@ -154,14 +154,14 @@ def run_benchmark(args):
                 device,
                 engine=engine,
             )
-            prefill_accum.append(prefill_tok_s)
-            decode_accum.append(decode_tok_s)
+            prefill_total += prefill_tok_s
+            decode_total += decode_tok_s
         results.append(
             dict(
                 mode=mode,
                 enabled=enabled,
-                prefill_tok_s=sum(prefill_accum) / len(prefill_accum),
-                decode_tok_s=sum(decode_accum) / len(decode_accum),
+                prefill_tok_s=prefill_total / args.iters,
+                decode_tok_s=decode_total / args.iters,
             )
         )
     return results

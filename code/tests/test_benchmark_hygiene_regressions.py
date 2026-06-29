@@ -8027,6 +8027,16 @@ def test_nanochat_incremental_benchmark_uses_cuda_event_timing() -> None:
     assert "start.elapsed_time(end) / 1000.0" in helper_section
     assert "decode_token_steps = tuple(" in benchmark_section
     assert "decode_tokens[:, t:t + 1]" in benchmark_section
+    assert "prefill_time_total = 0.0" in benchmark_section
+    assert "prefill_time_total += self._time_region_seconds(_run_prefill)" in benchmark_section
+    assert "prefill_time = prefill_time_total / self.iterations" in benchmark_section
+    assert "decode_time_total = 0.0" in benchmark_section
+    assert "decode_time_total += self._time_region_seconds(_run_decode)" in benchmark_section
+    assert "decode_time = decode_time_total / self.iterations" in benchmark_section
+    assert "prefill_times = []" not in benchmark_section
+    assert "decode_times = []" not in benchmark_section
+    assert "sum(prefill_times)" not in benchmark_section
+    assert "sum(decode_times)" not in benchmark_section
     assert "for step_ids in decode_token_steps[: min(8, self.decode_len)]:" in benchmark_section
     assert "for step_ids in decode_token_steps:" in timed_section
     assert "decode_tokens[:, t:t+1]" not in timed_section
@@ -8048,6 +8058,10 @@ def test_nanochat_b200_flag_benchmark_uses_cuda_event_timing() -> None:
         "def run_benchmark",
         maxsplit=1,
     )[0]
+    run_benchmark_section = source.split("def run_benchmark", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
 
     assert helper_section.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "current_stream = torch.cuda.current_stream()" in helper_section
@@ -8063,6 +8077,16 @@ def test_nanochat_b200_flag_benchmark_uses_cuda_event_timing() -> None:
     assert run_once_section.count("_time_cuda_region_seconds(") == 2
     assert "time.time()" not in run_once_section
     assert "torch.cuda.synchronize()" not in run_once_section
+    assert "prefill_total = 0.0" in run_benchmark_section
+    assert "decode_total = 0.0" in run_benchmark_section
+    assert "prefill_total += prefill_tok_s" in run_benchmark_section
+    assert "decode_total += decode_tok_s" in run_benchmark_section
+    assert "prefill_tok_s=prefill_total / args.iters" in run_benchmark_section
+    assert "decode_tok_s=decode_total / args.iters" in run_benchmark_section
+    assert "prefill_accum = []" not in run_benchmark_section
+    assert "decode_accum = []" not in run_benchmark_section
+    assert "sum(prefill_accum)" not in run_benchmark_section
+    assert "sum(decode_accum)" not in run_benchmark_section
 
 
 def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
@@ -8618,6 +8642,13 @@ def test_ch15_moe_router_ranks_topk_without_score_list_materialization() -> None
     assert "return np.random.random(self.num_experts)" in router_section
     assert "scores.tolist()" not in router_section
     assert "sorted(" not in router_section
+    assert "load_count = len(self.expert_loads)" in router_section
+    assert "for load in self.expert_loads.values():" in router_section
+    assert "load_total += load_value" in router_section
+    assert "variance += delta * delta" in router_section
+    assert "loads = list(self.expert_loads.values())" not in router_section
+    assert "np.mean(loads)" not in router_section
+    assert "np.std(loads)" not in router_section
 
 
 def test_python_concurrency_summaries_reuse_sorted_latency_samples() -> None:
@@ -9974,9 +10005,21 @@ def test_ch16_load_test_batches_percentile_calculations() -> None:
         maxsplit=1,
     )[0]
 
+    assert "def _summarize_samples(values: List[int], total: Optional[float] = None)" in source
     assert "p50, p95 = np.percentile(array, (50, 95))" in sample_summary
+    assert '"avg": float((sum(values) if total is None else total) / len(values))' in sample_summary
+    assert "array.mean()" not in sample_summary
     assert "np.percentile(array, 50)" not in sample_summary
     assert "np.percentile(array, 95)" not in sample_summary
+    assert "prompt_token_total = 0.0" in aggregate_section
+    assert "generated_token_total = 0.0" in aggregate_section
+    assert "prompt_token_total += prompt_tokens" in aggregate_section
+    assert "generated_token_total += generated_tokens" in aggregate_section
+    assert "prompt_stats = _summarize_samples(prompt_lengths, prompt_token_total)" in aggregate_section
+    assert "generated_stats = _summarize_samples(generated_lengths, generated_token_total)" in aggregate_section
+    assert 'latencies = [rec["latency_ms"]' not in aggregate_section
+    assert 'prompt_lengths = [rec["prompt_tokens"]' not in aggregate_section
+    assert 'generated_lengths = [rec["generated_tokens"]' not in aggregate_section
     assert "latency_array = np.asarray(latencies, dtype=np.float64)" in aggregate_section
     assert "np.percentile(latency_array, (50, 90, 99))" in aggregate_section
     assert "np.percentile(latencies, 50)" not in aggregate_section

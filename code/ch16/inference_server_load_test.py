@@ -254,13 +254,13 @@ def run_load_test(
     }
 
 
-def _summarize_samples(values: List[int]) -> Dict[str, float]:
+def _summarize_samples(values: List[int], total: Optional[float] = None) -> Dict[str, float]:
     if not values:
         return {"p50": 0.0, "p95": 0.0, "avg": 0.0}
     array = np.asarray(values, dtype=np.float64)
     p50, p95 = np.percentile(array, (50, 95))
     return {
-        "avg": float(array.mean()),
+        "avg": float((sum(values) if total is None else total) / len(values)),
         "p50": float(p50),
         "p95": float(p95),
     }
@@ -275,9 +275,20 @@ def aggregate_results(local_result: Dict) -> Dict:
     rejected_requests = sum(item["stats"]["rejected_requests"] for item in gathered)
     tokens_generated = sum(item["stats"]["total_tokens_generated"] for item in gathered)
     elapsed = max(item["elapsed"] for item in gathered)
-    latencies = [rec["latency_ms"] for item in gathered for rec in item["completions"]]
-    prompt_lengths = [rec["prompt_tokens"] for item in gathered for rec in item["completions"]]
-    generated_lengths = [rec["generated_tokens"] for item in gathered for rec in item["completions"]]
+    latencies: List[float] = []
+    prompt_lengths: List[int] = []
+    generated_lengths: List[int] = []
+    prompt_token_total = 0.0
+    generated_token_total = 0.0
+    for item in gathered:
+        for rec in item["completions"]:
+            latencies.append(rec["latency_ms"])
+            prompt_tokens = rec["prompt_tokens"]
+            generated_tokens = rec["generated_tokens"]
+            prompt_lengths.append(prompt_tokens)
+            generated_lengths.append(generated_tokens)
+            prompt_token_total += prompt_tokens
+            generated_token_total += generated_tokens
 
     throughput = tokens_generated / elapsed if elapsed > 0 else 0.0
     if latencies:
@@ -286,8 +297,8 @@ def aggregate_results(local_result: Dict) -> Dict:
     else:
         p50 = p90 = p99 = 0.0
 
-    prompt_stats = _summarize_samples(prompt_lengths)
-    generated_stats = _summarize_samples(generated_lengths)
+    prompt_stats = _summarize_samples(prompt_lengths, prompt_token_total)
+    generated_stats = _summarize_samples(generated_lengths, generated_token_total)
     world_size = gathered[0]["world_size"] if gathered else 1
 
     return {

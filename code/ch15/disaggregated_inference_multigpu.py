@@ -748,13 +748,30 @@ class MoERouter:
         
     def get_load_balance_metrics(self) -> Dict:
         """Get load balancing metrics."""
-        loads = list(self.expert_loads.values())
+        load_count = len(self.expert_loads)
+        if load_count == 0:
+            mean_load = std_load = max_load = min_load = 0.0
+        else:
+            load_total = 0.0
+            max_load = float("-inf")
+            min_load = float("inf")
+            for load in self.expert_loads.values():
+                load_value = float(load)
+                load_total += load_value
+                max_load = max(max_load, load_value)
+                min_load = min(min_load, load_value)
+            mean_load = load_total / load_count
+            variance = 0.0
+            for load in self.expert_loads.values():
+                delta = float(load) - mean_load
+                variance += delta * delta
+            std_load = float(np.sqrt(variance / load_count))
         metrics = {
-            "mean_load": float(np.mean(loads)),
-            "std_load": float(np.std(loads)),
-            "max_load": float(max(loads)),
-            "min_load": float(min(loads)),
-            "load_imbalance": float(max(loads) - min(loads)),
+            "mean_load": mean_load,
+            "std_load": std_load,
+            "max_load": max_load,
+            "min_load": min_load,
+            "load_imbalance": max_load - min_load,
         }
         if self.compression_stats:
             metrics.update(self.compression_stats)

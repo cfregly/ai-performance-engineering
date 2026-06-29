@@ -137,7 +137,7 @@ class IncrementalBenchmark:
             torch.cuda.synchronize()
         
         # Benchmark prefill
-        prefill_times = []
+        prefill_time_total = 0.0
 
         def _run_prefill() -> None:
             with torch.inference_mode():
@@ -145,13 +145,13 @@ class IncrementalBenchmark:
 
         for _ in range(self.iterations):
             kv_cache.reset()
-            prefill_times.append(self._time_region_seconds(_run_prefill))
+            prefill_time_total += self._time_region_seconds(_run_prefill)
         
-        prefill_time = sum(prefill_times) / len(prefill_times)
+        prefill_time = prefill_time_total / self.iterations
         prefill_tok_s = (self.batch_size * self.prompt_len) / prefill_time
         
         # Benchmark decode
-        decode_times = []
+        decode_time_total = 0.0
 
         def _run_decode() -> None:
             with torch.inference_mode():
@@ -164,9 +164,9 @@ class IncrementalBenchmark:
             with torch.inference_mode():
                 _ = model(prompt, kv_cache=kv_cache)
 
-            decode_times.append(self._time_region_seconds(_run_decode))
+            decode_time_total += self._time_region_seconds(_run_decode)
         
-        decode_time = sum(decode_times) / len(decode_times)
+        decode_time = decode_time_total / self.iterations
         decode_tok_s = (self.batch_size * self.decode_len) / decode_time
         
         total_time = prefill_time + decode_time
