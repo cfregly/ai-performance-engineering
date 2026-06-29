@@ -12790,11 +12790,27 @@ def test_ch17_monolithic_decode_fast_paths_single_token() -> None:
     )
     decode_section = source.split("def decode", maxsplit=1)[1]
 
+    assert "output_buffer: torch.Tensor | None = None" in decode_section
+    assert "return kv_cache[:, :0, :]" in decode_section
     assert "if token_count == 1:" in decode_section
     assert "return x" in decode_section
-    assert "output = kv_cache.new_empty(" in decode_section
+    assert "output = torch.empty(output_shape" in decode_section
+    assert "output = output_buffer" in decode_section
+    assert "kv_cache.new_empty(" not in decode_section
     assert "output[:, token_idx : token_idx + 1, :].copy_(x)" in decode_section
     assert "torch.cat(outputs" not in decode_section
+
+    from ch17.prefill_decode_disagg_monolithic_common import SimpleLLM
+
+    model = SimpleLLM(hidden_dim=4, num_layers=1).to(dtype=torch.bfloat16).eval()
+    kv_cache = torch.randn(2, 1, 4, dtype=torch.bfloat16)
+    out = torch.empty(2, 3, 4, dtype=torch.bfloat16)
+    with torch.inference_mode():
+        decoded = model.decode(kv_cache, num_tokens=3, output_buffer=out)
+        empty = model.decode(kv_cache, num_tokens=0)
+
+    assert decoded.data_ptr() == out.data_ptr()
+    assert empty.shape == (2, 0, 4)
 
 
 def test_ch03_pageable_copy_is_not_marked_informational() -> None:
