@@ -59,6 +59,7 @@ class DensePagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
         self.head_dim = 64
         self.block_size = 128
         self.chunk_size = 2048
+        self._empty_iteration_result = {}
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(self.batch_size * self.seq_len),
@@ -102,7 +103,7 @@ class DensePagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
             self.output = F.scaled_dot_product_attention(q, k, v)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output")
-        return {}
+        return self._empty_iteration_result
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
@@ -175,6 +176,7 @@ class LayoutPagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
         self.local_blocks = 4
         self.chunk_size = self.block_size * self.local_blocks
         self.q_offset = self.seq_len - self.decode_tokens
+        self._empty_iteration_result = {}
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(self.batch_size * self.decode_tokens),
@@ -295,7 +297,7 @@ class LayoutPagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
             self.output = self._run_attention()
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output")
-        return {}
+        return self._empty_iteration_result
 
     def capture_verification_payload(self) -> None:
         if self.q is None or self.k_dense is None or self.v_dense is None or self.block_table is None or self.output is None:

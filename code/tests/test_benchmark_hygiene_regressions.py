@@ -5628,6 +5628,14 @@ def test_ch10_flash_attention_prefers_external_flash_engines_before_sdpa_fallbac
 def test_ch18_paged_attention_uses_real_block_table_sparse_kernel() -> None:
     common_source = (REPO_ROOT / "ch18" / "paged_attn_split_common.py").read_text(encoding="utf-8")
     optimized_source = (REPO_ROOT / "ch18" / "optimized_paged_attn_layout.py").read_text(encoding="utf-8")
+    dense_benchmark = common_source.split("class DensePagedAttnBase", maxsplit=1)[1].split(
+        "class MathPagedAttentionBenchmark",
+        maxsplit=1,
+    )[0]
+    layout_benchmark = common_source.split("class LayoutPagedAttnBase", maxsplit=1)[1].split(
+        "class BaselinePagedAttnLayoutBenchmark",
+        maxsplit=1,
+    )[0]
 
     assert "self.block_table" in common_source
     assert "torch.roll(block_ids" not in common_source
@@ -5644,6 +5652,11 @@ def test_ch18_paged_attention_uses_real_block_table_sparse_kernel() -> None:
     assert "get_nvtx_enabled(self.get_config())" not in common_source
     assert "enable=enable_nvtx" not in common_source
     assert common_source.count("enable=self._enable_nvtx") == 2
+    assert common_source.count("self._empty_iteration_result = {}") == 2
+    assert "return self._empty_iteration_result" in dense_benchmark
+    assert "return self._empty_iteration_result" in layout_benchmark
+    assert "return {}" not in dense_benchmark
+    assert "return {}" not in layout_benchmark
 
 
 def test_ch18_tiny_gemm_fused_accumulates_split_views_in_place() -> None:
