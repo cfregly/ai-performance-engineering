@@ -4717,6 +4717,29 @@ def test_ch20_integrated_kv_cache_reuses_cache_touch_scalar() -> None:
         assert "cached_v.sum()" not in attention_section
 
 
+def test_ch20_integrated_kv_cache_appends_single_tokens_without_unsqueeze() -> None:
+    cases = (
+        ("ch20/baseline_integrated_kv_cache.py", "class NaiveKVCache", "class AttentionLayer"),
+        ("ch20/optimized_integrated_kv_cache.py", "class PagedKVCache", "class AttentionLayer"),
+    )
+
+    for relative, start_marker, end_marker in cases:
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        cache_section = source.split(start_marker, maxsplit=1)[1].split(
+            end_marker,
+            maxsplit=1,
+        )[0]
+        append_section = cache_section.split("def append", maxsplit=1)[1].split(
+            "def ",
+            maxsplit=1,
+        )[0]
+
+        assert "cache_k[pos].copy_(k)" in append_section or "buffer_k[pos].copy_(k)" in append_section
+        assert "cache_v[pos].copy_(v)" in append_section or "buffer_v[pos].copy_(v)" in append_section
+        assert "pos:pos+1" not in append_section
+        assert "unsqueeze(0)" not in append_section
+
+
 def test_ch20_baseline_integrated_kv_cache_precomputes_hot_loop_views() -> None:
     source = (REPO_ROOT / "ch20" / "baseline_integrated_kv_cache.py").read_text(
         encoding="utf-8"

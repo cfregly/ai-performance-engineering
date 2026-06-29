@@ -50,8 +50,8 @@ class NaiveKVCache:
         if request_id not in self.cache:
             self.allocate(request_id)
         cache_k, cache_v = self.cache[request_id][layer_idx]
-        cache_k[pos:pos+1] = k.unsqueeze(0)
-        cache_v[pos:pos+1] = v.unsqueeze(0)
+        cache_k[pos].copy_(k)
+        cache_v[pos].copy_(v)
     
     def get(self, request_id: str, layer_idx: int, start: int, end: int) -> tuple[torch.Tensor, torch.Tensor]:
         cache_k, cache_v = self.cache[request_id][layer_idx]

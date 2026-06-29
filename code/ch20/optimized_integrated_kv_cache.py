@@ -102,8 +102,8 @@ class PagedKVCache:
         entry = self.allocations[request_id][layer_idx]
         self._ensure_capacity(entry, pos)
         buffer_k, buffer_v = entry["buffer"]  # type: ignore[assignment]
-        buffer_k[pos:pos+1].copy_(k.unsqueeze(0))
-        buffer_v[pos:pos+1].copy_(v.unsqueeze(0))
+        buffer_k[pos].copy_(k)
+        buffer_v[pos].copy_(v)
         entry["length"] = max(int(entry["length"]), pos + 1)
     
     def append_block(
