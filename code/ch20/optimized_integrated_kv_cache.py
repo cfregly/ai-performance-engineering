@@ -154,6 +154,7 @@ class AttentionLayer(nn.Module):
         self.head_dim = head_dim
         self.qkv = nn.Linear(hidden_dim, hidden_dim * 3, dtype=dtype)
         self.proj = nn.Linear(hidden_dim, hidden_dim, dtype=dtype)
+        self.register_buffer("_cache_touch", torch.empty((), dtype=dtype), persistent=False)
     
     def forward(self, x: torch.Tensor, kv_cache: PagedKVCache, request_id: str, layer_idx: int, cache_pos: int) -> torch.Tensor:
         batch_size, seq_len, hidden_dim = x.shape
@@ -175,8 +176,8 @@ class AttentionLayer(nn.Module):
         
         if cache_pos > 0:
             cached_k, cached_v = kv_cache.get(request_id, layer_idx, 0, cache_pos)
-            _ = cached_k.sum()
-            _ = cached_v.sum()
+            torch.sum(cached_k, dim=(0, 1, 2), out=self._cache_touch)
+            torch.sum(cached_v, dim=(0, 1, 2), out=self._cache_touch)
 
         return self.proj(x)
 
@@ -266,24 +267,25 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - integrated KV cache pipeline."""
-        with nvtx_range("integrated_kv_cache", enable=self._enable_nvtx):
-            if len(self.request_ids) != len(self.inputs):
-                raise RuntimeError("Request IDs not initialized")
-            if len(self._input_block_views) != len(self.inputs):
-                raise RuntimeError("Input block views not initialized")
-            if len(self._request_block_groups) != len(self.inputs):
-                raise RuntimeError("Request block groups not initialized")
-            if not self._layer_groups:
-                raise RuntimeError("Layer groups not initialized")
-            for request_id, seq_len, block_views in self._request_block_groups:
-                self.kv_cache.allocate(request_id, seq_len)
+        with torch.inference_mode():
+            with nvtx_range("integrated_kv_cache", enable=self._enable_nvtx):
+                if len(self.request_ids) != len(self.inputs):
+                    raise RuntimeError("Request IDs not initialized")
+                if len(self._input_block_views) != len(self.inputs):
+                    raise RuntimeError("Input block views not initialized")
+                if len(self._request_block_groups) != len(self.inputs):
+                    raise RuntimeError("Request block groups not initialized")
+                if not self._layer_groups:
+                    raise RuntimeError("Layer groups not initialized")
+                for request_id, seq_len, block_views in self._request_block_groups:
+                    self.kv_cache.allocate(request_id, seq_len)
 
-                for pos, block_view in block_views:
-                    hidden = block_view
-                    for layer_idx, layer in self._layer_groups:
-                        hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
+                    for pos, block_view in block_views:
+                        hidden = block_view
+                        for layer_idx, layer in self._layer_groups:
+                            hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
 
-                self.kv_cache.free(request_id)
+                    self.kv_cache.free(request_id)
         self.output = hidden[:, -1:, :].detach() if hidden is not None else None
 
     def capture_verification_payload(self) -> None:

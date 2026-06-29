@@ -72,6 +72,7 @@ class AttentionLayer(nn.Module):
         self.head_dim = head_dim
         self.qkv = nn.Linear(hidden_dim, hidden_dim * 3, dtype=dtype)
         self.proj = nn.Linear(hidden_dim, hidden_dim, dtype=dtype)
+        self.register_buffer("_cache_touch", torch.empty((), dtype=dtype), persistent=False)
     
     def forward(self, x: torch.Tensor, kv_cache: NaiveKVCache, request_id: str, layer_idx: int, cache_pos: int) -> torch.Tensor:
         batch_size, seq_len, hidden_dim = x.shape
@@ -91,8 +92,8 @@ class AttentionLayer(nn.Module):
         if cache_pos > 0:
             cached_k, cached_v = kv_cache.get(request_id, layer_idx, 0, cache_pos)
             # Touch cached tensors to simulate reads without rebuilding large attention matrices
-            _ = cached_k.sum()
-            _ = cached_v.sum()
+            torch.sum(cached_k, dim=(0, 1, 2), out=self._cache_touch)
+            torch.sum(cached_v, dim=(0, 1, 2), out=self._cache_touch)
         
         return self.proj(x)
 
@@ -158,15 +159,16 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - baseline integrated KV cache."""
-        with nvtx_range("baseline_integrated_kv_cache", enable=self._enable_nvtx):
-            for request_id, x in zip(self.request_ids, self.inputs):
-                seq_len = x.size(1)
-                
-                for pos in range(seq_len):
-                    token = x[:, pos:pos+1, :]
-                    hidden = token
-                    for layer_idx, layer in enumerate(self.model):
-                        hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
+        with torch.inference_mode():
+            with nvtx_range("baseline_integrated_kv_cache", enable=self._enable_nvtx):
+                for request_id, x in zip(self.request_ids, self.inputs):
+                    seq_len = x.size(1)
+
+                    for pos in range(seq_len):
+                        token = x[:, pos:pos+1, :]
+                        hidden = token
+                        for layer_idx, layer in enumerate(self.model):
+                            hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
         # Capture last hidden state for verification (no cloning in the hot path).
         self.output = hidden.detach() if hidden is not None else None
 

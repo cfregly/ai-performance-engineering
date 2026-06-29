@@ -4518,7 +4518,26 @@ def test_ch20_integrated_and_pipeline_cache_nvtx_enablement() -> None:
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
         assert "get_config()" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
+        assert "with torch.inference_mode():" in benchmark_section
         assert f'with nvtx_range("{label}", enable=self._enable_nvtx):' in benchmark_section
+
+
+def test_ch20_integrated_kv_cache_reuses_cache_touch_scalar() -> None:
+    for relative in (
+        "ch20/baseline_integrated_kv_cache.py",
+        "ch20/optimized_integrated_kv_cache.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        attention_section = source.split("class AttentionLayer", maxsplit=1)[1].split(
+            "class ",
+            maxsplit=1,
+        )[0]
+
+        assert 'self.register_buffer("_cache_touch", torch.empty((), dtype=dtype), persistent=False)' in attention_section
+        assert "torch.sum(cached_k, dim=(0, 1, 2), out=self._cache_touch)" in attention_section
+        assert "torch.sum(cached_v, dim=(0, 1, 2), out=self._cache_touch)" in attention_section
+        assert "cached_k.sum()" not in attention_section
+        assert "cached_v.sum()" not in attention_section
 
 
 def test_remaining_benchmark_wrappers_cache_verification_parameter_count() -> None:
