@@ -259,12 +259,32 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
         "def _split_list",
         maxsplit=1,
     )[0]
+    route_reduce_section = source.split("def _reduce_route_counts", maxsplit=1)[1].split(
+        "def _token_indices",
+        maxsplit=1,
+    )[0]
     token_indices_section = source.split("def _token_indices", maxsplit=1)[1].split(
         "def _apply_local_experts",
         maxsplit=1,
     )[0]
     route_tokens_section = source.split("def _route_tokens", maxsplit=1)[1].split(
         "def forward_loss",
+        maxsplit=1,
+    )[0]
+    local_count_section = source.split("def _local_expert_count_list", maxsplit=1)[1].split(
+        "def _route_type_count_list",
+        maxsplit=1,
+    )[0]
+    route_type_count_section = source.split("def _route_type_count_list", maxsplit=1)[1].split(
+        "def _route_counts_list",
+        maxsplit=1,
+    )[0]
+    route_counts_section = source.split("def _route_counts_list", maxsplit=1)[1].split(
+        "def _aux_metric_values",
+        maxsplit=1,
+    )[0]
+    aux_metric_section = source.split("def _aux_metric_values", maxsplit=1)[1].split(
+        "def _apply_local_experts",
         maxsplit=1,
     )[0]
 
@@ -296,9 +316,13 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "expert_count_list = self._local_expert_count_list(expert_ids)" in apply_local_section
     assert "torch.bincount(expert_ids, minlength=self.local_experts).detach().cpu().tolist()" not in apply_local_section
     assert "self._local_expert_count_host_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._local_expert_count_list_buffer = [0] * local_experts" in source
     assert "def _local_expert_count_list(self, expert_ids: torch.Tensor)" in source
     assert "counts = torch.bincount(expert_ids, minlength=self.local_experts)" in source
     assert "host_counts.copy_(counts)" in source
+    assert "count_list = self._local_expert_count_list_buffer" in source
+    assert "count_list[expert_idx] = int(host_counts[expert_idx])" in source
+    assert "host_counts.tolist()" not in local_count_section
     assert ".nonzero(" not in apply_local_section
     assert "bool(mask.any())" not in apply_local_section
     assert "out_slice = sorted_outputs[offset:next_offset]" in apply_local_section
@@ -343,10 +367,14 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "route_type_counts = self._route_type_count_list(" in forward_section
     assert "same_rank_count_int, same_node_count_int, remote_count_int" in forward_section
     assert "def _route_type_count_list(" in source
+    assert "self._route_type_count_list_buffer = [0] * 3" in source
     assert "torch.sum(same_rank_mask, dim=None, out=count_buffer[0])" in source
     assert "torch.sum(same_node_mask, dim=None, out=count_buffer[1])" in source
     assert "torch.sum(remote_node_mask, dim=None, out=count_buffer[2])" in source
     assert "host_buffer.copy_(count_buffer)" in source
+    assert "count_list = self._route_type_count_list_buffer" in source
+    assert "count_list[route_idx] = int(host_buffer[route_idx])" in source
+    assert "host_buffer.tolist()" not in route_type_count_section
     assert "bool(same_rank_mask.any())" not in forward_section
     assert "bool(same_node_mask.any())" not in forward_section
     assert "bool(remote_node_mask.any())" not in forward_section
@@ -354,15 +382,25 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "same_node_mask.sum().item()" not in forward_section
     assert "remote_node_mask.sum().item()" not in forward_section
     assert "self._reduce_route_counts(" in forward_section
+    assert "return float(host_buffer[0]), float(host_buffer[1]), float(host_buffer[2])" in route_reduce_section
+    assert "host_buffer.tolist()" not in route_reduce_section
     assert "route_counts_cpu = self._route_counts_list(route_counts_global)" in forward_section
     assert "tokens_per_expert=[int(x) for x in route_counts_cpu]" in forward_section
     assert "def _route_counts_list(self, route_counts: torch.Tensor)" in source
-    assert "self._route_counts_host_buffer.copy_(route_counts)" in source
+    assert "self._route_counts_list_buffer: List[int] = []" in source
+    assert "host_buffer.copy_(route_counts)" in source
+    assert "if len(self._route_counts_list_buffer) != count:" in source
+    assert "count_list[expert_idx] = int(host_buffer[expert_idx])" in source
+    assert "self._route_counts_host_buffer.tolist()" not in route_counts_section
     assert "def _aux_metric_values(self, aux: Dict[str, torch.Tensor])" in source
+    assert "self._aux_metric_list_buffer = [0.0] * 4" in source
     assert "metric_buffer[0].copy_(aux[\"balance_loss\"])" in source
     assert "metric_buffer[1].copy_(aux[\"router_entropy\"])" in source
     assert "metric_buffer[2].copy_(aux[\"gini_coefficient\"])" in source
     assert "metric_buffer[3].copy_(aux[\"expert_usage_variance\"])" in source
+    assert "metric_list = self._aux_metric_list_buffer" in source
+    assert "metric_list[metric_idx] = float(host_buffer[metric_idx])" in source
+    assert "host_buffer.tolist()" not in aux_metric_section
     assert ") = self._aux_metric_values(aux)" in forward_section
     assert "route_type_counts = torch.stack(" not in forward_section
     assert "route_counts_global.detach().cpu().tolist()" not in forward_section
@@ -372,6 +410,8 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "aux[\"balance_loss\"].detach().item()" not in forward_section
     assert "same_rank_tensor = torch.tensor" not in forward_section
     assert "dist.all_reduce(device_buffer, op=dist.ReduceOp.SUM)" in reduce_section
+    assert "value = float(host_buffer[index])" in reduce_section
+    assert "host_buffer.tolist()" not in reduce_section
     assert "for key, value in metrics.items()" not in reduce_section
 
 

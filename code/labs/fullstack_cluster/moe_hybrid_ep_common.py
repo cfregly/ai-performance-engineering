@@ -330,11 +330,15 @@ class DeepSeekHybridEPModule(nn.Module):
         self._exchange_count_host_buffer: Optional[torch.Tensor] = None
         self._destination_count_host_buffer: Optional[torch.Tensor] = None
         self._local_expert_count_host_buffer: Optional[torch.Tensor] = None
+        self._local_expert_count_list_buffer = [0] * local_experts
         self._route_type_count_buffer: Optional[torch.Tensor] = None
         self._route_type_count_host_buffer: Optional[torch.Tensor] = None
+        self._route_type_count_list_buffer = [0] * 3
         self._route_counts_host_buffer: Optional[torch.Tensor] = None
+        self._route_counts_list_buffer: List[int] = []
         self._aux_metric_buffer: Optional[torch.Tensor] = None
         self._aux_metric_host_buffer: Optional[torch.Tensor] = None
+        self._aux_metric_list_buffer = [0.0] * 4
         self._comm_stream = torch.cuda.Stream() if optimized else None
 
     @property
@@ -423,8 +427,7 @@ class DeepSeekHybridEPModule(nn.Module):
         reduce_buffer.copy_(host_buffer, non_blocking=False)
         dist.all_reduce(reduce_buffer, op=dist.ReduceOp.SUM)
         host_buffer.copy_(reduce_buffer, non_blocking=False)
-        reduced = host_buffer.tolist()
-        return float(reduced[0]), float(reduced[1]), float(reduced[2])
+        return float(host_buffer[0]), float(host_buffer[1]), float(host_buffer[2])
 
     def _token_indices(self, num_tokens: int, device: torch.device) -> torch.Tensor:
         key = (num_tokens, device)
@@ -462,7 +465,10 @@ class DeepSeekHybridEPModule(nn.Module):
             )
         host_counts = self._local_expert_count_host_buffer
         host_counts.copy_(counts)
-        return [int(count) for count in host_counts.tolist()]
+        count_list = self._local_expert_count_list_buffer
+        for expert_idx in range(self.local_experts):
+            count_list[expert_idx] = int(host_counts[expert_idx])
+        return count_list
 
     def _route_type_count_list(
         self,
@@ -486,7 +492,10 @@ class DeepSeekHybridEPModule(nn.Module):
         torch.sum(same_node_mask, dim=None, out=count_buffer[1])
         torch.sum(remote_node_mask, dim=None, out=count_buffer[2])
         host_buffer.copy_(count_buffer)
-        return [int(count) for count in host_buffer.tolist()]
+        count_list = self._route_type_count_list_buffer
+        for route_idx in range(3):
+            count_list[route_idx] = int(host_buffer[route_idx])
+        return count_list
 
     def _route_counts_list(self, route_counts: torch.Tensor) -> List[int]:
         needs_pinned = route_counts.device.type == "cuda"
@@ -501,8 +510,15 @@ class DeepSeekHybridEPModule(nn.Module):
                 device="cpu",
                 pin_memory=needs_pinned,
             )
-        self._route_counts_host_buffer.copy_(route_counts)
-        return [int(count) for count in self._route_counts_host_buffer.tolist()]
+        host_buffer = self._route_counts_host_buffer
+        host_buffer.copy_(route_counts)
+        count = route_counts.numel()
+        if len(self._route_counts_list_buffer) != count:
+            self._route_counts_list_buffer = [0] * count
+        count_list = self._route_counts_list_buffer
+        for expert_idx in range(count):
+            count_list[expert_idx] = int(host_buffer[expert_idx])
+        return count_list
 
     def _aux_metric_values(self, aux: Dict[str, torch.Tensor]) -> List[float]:
         first = aux["balance_loss"]
@@ -526,7 +542,10 @@ class DeepSeekHybridEPModule(nn.Module):
         metric_buffer[2].copy_(aux["gini_coefficient"])
         metric_buffer[3].copy_(aux["expert_usage_variance"])
         host_buffer.copy_(metric_buffer)
-        return [float(value) for value in host_buffer.tolist()]
+        metric_list = self._aux_metric_list_buffer
+        for metric_idx in range(4):
+            metric_list[metric_idx] = float(host_buffer[metric_idx])
+        return metric_list
 
     def _apply_local_experts(self, tokens: torch.Tensor, expert_ids: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
         if tokens.numel() == 0:
@@ -1144,10 +1163,9 @@ class HybridEPTrainer:
         host_buffer.copy_(device_buffer, non_blocking=False)
 
         world_size = float(self.topology.world_size)
-        values = host_buffer.tolist()
         reduced: Dict[str, float] = {}
         for index, key in enumerate(keys):
-            value = float(values[index])
+            value = float(host_buffer[index])
             if _metric_should_average(key):
                 value /= world_size
             reduced[key] = value
