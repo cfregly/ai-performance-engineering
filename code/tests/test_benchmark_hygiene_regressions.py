@@ -14140,6 +14140,61 @@ def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() 
     assert "Timing events not initialized" in benchmark_section
 
 
+def test_labs_nccl_nixl_nvshmem_reuses_metric_state() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nccl_nixl_nvshmem" / "comm_stack_common.py"
+    ).read_text(encoding="utf-8")
+    init_section = source.split("def __init__", maxsplit=1)[1].split(
+        "def _refresh_workload_metadata",
+        maxsplit=1,
+    )[0]
+    refresh_section = source.split("def _refresh_workload_metadata", maxsplit=1)[1].split(
+        "def _reset_metrics",
+        maxsplit=1,
+    )[0]
+    reset_section = source.split("def _reset_metrics", maxsplit=1)[1].split(
+        "def set_workload",
+        maxsplit=1,
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert '"tier_handoff.selected_blocks": 0.0' in init_section
+    assert '"tier_handoff.block_kib": 0.0' in init_section
+    assert '"tier_handoff.inner_iterations": 0.0' in init_section
+    assert '"tier_handoff.copy_calls": 0.0' in init_section
+    assert '"tier_handoff.uses_copy_stream": 0.0' in init_section
+    assert '"tier_handoff.bytes_per_iteration_mb": 0.0' in init_section
+    assert "bytes_per_iteration = float(self.workload.bytes_per_iteration)" in refresh_section
+    assert "self._selected_blocks_metric = float(self.workload.selected_blocks)" in refresh_section
+    assert "self._block_kib_metric = float(self.workload.block_kib)" in refresh_section
+    assert "self._inner_iterations_metric = float(self.workload.inner_iterations)" in refresh_section
+    assert "self._bytes_per_iteration_mb = bytes_per_iteration / (1024.0 * 1024.0)" in refresh_section
+    assert "for key in self._metrics:" in reset_section
+    assert "self._metrics[key] = 0.0" in reset_section
+    assert "self._reset_metrics()" in setup_section
+    assert "self._reset_metrics()" in teardown_section
+    assert "metrics = self._metrics" in benchmark_section
+    assert 'metrics["tier_handoff.selected_blocks"] = self._selected_blocks_metric' in benchmark_section
+    assert 'metrics["tier_handoff.block_kib"] = self._block_kib_metric' in benchmark_section
+    assert 'metrics["tier_handoff.inner_iterations"] = self._inner_iterations_metric' in benchmark_section
+    assert 'metrics["tier_handoff.copy_calls"] = copy_calls' in benchmark_section
+    assert 'metrics["tier_handoff.uses_copy_stream"] = uses_copy_stream' in benchmark_section
+    assert 'metrics["tier_handoff.bytes_per_iteration_mb"] = self._bytes_per_iteration_mb' in benchmark_section
+    assert "self._metrics = {" not in benchmark_section
+    assert "float(self.workload.bytes_per_iteration) /" not in benchmark_section
+
+
 def test_ch04_nvshmem_microbench_defers_output_tensor_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch04" / "nvshmem_ibgda_microbench_multigpu.py").read_text(
         encoding="utf-8"

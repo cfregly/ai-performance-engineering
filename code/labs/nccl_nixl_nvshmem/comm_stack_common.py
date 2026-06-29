@@ -210,14 +210,34 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.copy_ready: Optional[torch.cuda.Event] = None
         self.baseline_copy_ready: Optional[torch.cuda.Event] = None
         self.output: Optional[torch.Tensor] = None
-        self._metrics: dict[str, float] = {}
+        self._selected_blocks_metric = 0.0
+        self._block_kib_metric = 0.0
+        self._inner_iterations_metric = 0.0
+        self._bytes_per_iteration_mb = 0.0
+        self._metrics: dict[str, float] = {
+            "tier_handoff.selected_blocks": 0.0,
+            "tier_handoff.block_kib": 0.0,
+            "tier_handoff.inner_iterations": 0.0,
+            "tier_handoff.copy_calls": 0.0,
+            "tier_handoff.uses_copy_stream": 0.0,
+            "tier_handoff.bytes_per_iteration_mb": 0.0,
+        }
         self._refresh_workload_metadata()
 
     def _refresh_workload_metadata(self) -> None:
+        bytes_per_iteration = float(self.workload.bytes_per_iteration)
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
-            bytes_per_iteration=float(self.workload.bytes_per_iteration),
+            bytes_per_iteration=bytes_per_iteration,
         )
+        self._selected_blocks_metric = float(self.workload.selected_blocks)
+        self._block_kib_metric = float(self.workload.block_kib)
+        self._inner_iterations_metric = float(self.workload.inner_iterations)
+        self._bytes_per_iteration_mb = bytes_per_iteration / (1024.0 * 1024.0)
+
+    def _reset_metrics(self) -> None:
+        for key in self._metrics:
+            self._metrics[key] = 0.0
 
     def set_workload(self, workload: TierHandoffWorkload) -> None:
         self.workload = workload
@@ -260,7 +280,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.copy_ready = torch.cuda.Event() if self.optimized else None
         self.baseline_copy_ready = torch.cuda.Event() if not self.optimized else None
         self.output = None
-        self._metrics = {}
+        self._reset_metrics()
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -316,14 +336,13 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         torch.index_select(self.dst, 0, self.selected_idx, out=self._output_buffer)
         self.output = self._output_buffer
-        self._metrics = {
-            "tier_handoff.selected_blocks": float(self.workload.selected_blocks),
-            "tier_handoff.block_kib": float(self.workload.block_kib),
-            "tier_handoff.inner_iterations": float(self.workload.inner_iterations),
-            "tier_handoff.copy_calls": copy_calls,
-            "tier_handoff.uses_copy_stream": uses_copy_stream,
-            "tier_handoff.bytes_per_iteration_mb": float(self.workload.bytes_per_iteration) / (1024.0 * 1024.0),
-        }
+        metrics = self._metrics
+        metrics["tier_handoff.selected_blocks"] = self._selected_blocks_metric
+        metrics["tier_handoff.block_kib"] = self._block_kib_metric
+        metrics["tier_handoff.inner_iterations"] = self._inner_iterations_metric
+        metrics["tier_handoff.copy_calls"] = copy_calls
+        metrics["tier_handoff.uses_copy_stream"] = uses_copy_stream
+        metrics["tier_handoff.bytes_per_iteration_mb"] = self._bytes_per_iteration_mb
 
     def capture_verification_payload(self) -> None:
         if self.src is None or self.output is None or self.selected_idx is None or self._expected_buffer is None:
@@ -359,7 +378,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.copy_ready = None
         self.baseline_copy_ready = None
         self.output = None
-        self._metrics = {}
+        self._reset_metrics()
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
