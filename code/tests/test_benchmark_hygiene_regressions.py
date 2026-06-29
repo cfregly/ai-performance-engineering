@@ -7757,12 +7757,33 @@ def test_train_distributed_pipeline_defers_microbatch_loss_syncs() -> None:
     source = (REPO_ROOT / "labs" / "train_distributed" / "pipeline.py").read_text(
         encoding="utf-8"
     )
+    finish_section = source.split("def _finish_pipeline_loss", maxsplit=1)[1].split(
+        "@dataclass",
+        maxsplit=1,
+    )[0]
     schedule_section = source.split("class PipelineExperiment", maxsplit=1)[1]
 
     assert "def _finish_pipeline_loss" in source
+    assert "total = loss_values[0].detach().clone()" in finish_section
+    assert "total.add_(loss.detach())" in finish_section
+    assert "torch.stack(loss_values)" not in finish_section
     assert "loss_values.append(loss.detach())" in schedule_section
     assert "_finish_pipeline_loss(loss_values, n_micro)" in schedule_section
     assert "loss_total += loss.item()" not in schedule_section
+
+
+def test_train_distributed_pipeline_loss_finish_averages_without_stack() -> None:
+    from labs.train_distributed.pipeline import _finish_pipeline_loss
+
+    losses = [
+        torch.tensor(1.0),
+        torch.tensor(3.0),
+        torch.tensor(5.0),
+    ]
+
+    assert _finish_pipeline_loss(losses, 3) == pytest.approx(3.0)
+    assert _finish_pipeline_loss([], 3) == 0.0
+    assert _finish_pipeline_loss(losses, 0) == 0.0
 
 
 def test_nanochat_chat_eval_batches_count_reductions() -> None:

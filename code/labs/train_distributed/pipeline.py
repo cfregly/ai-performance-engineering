@@ -17,7 +17,10 @@ Tensor = torch.Tensor
 def _finish_pipeline_loss(loss_values: List[Tensor], n_micro: int) -> float:
     if not loss_values or n_micro <= 0:
         return 0.0
-    return float(torch.stack(loss_values).sum().detach().cpu().item() / n_micro)
+    total = loss_values[0].detach().clone()
+    for loss in loss_values[1:]:
+        total.add_(loss.detach())
+    return float(total.detach().cpu().item() / n_micro)
 
 
 @dataclass
