@@ -361,12 +361,14 @@ def verify_correctness(A, B_T, verbose=True):
             result = fn(A, B_T)
             ref_fp32 = ref.float()
             result_fp32 = result.float()
-            max_diff, ref_abs_max = torch.stack(
+            error_stats = torch.stack(
                 (
                     (ref_fp32 - result_fp32).abs().max(),
                     ref_fp32.abs().max(),
                 )
-            ).tolist()
+            ).detach().cpu()
+            max_diff = float(error_stats[0])
+            ref_abs_max = float(error_stats[1])
             rel_err = max_diff / ref_abs_max
             passed = rel_err < 0.01
             if verbose:

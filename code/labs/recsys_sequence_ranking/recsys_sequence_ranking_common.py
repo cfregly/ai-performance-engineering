@@ -235,7 +235,7 @@ def build_inputs(workload: SequenceRankingWorkload, device: torch.device) -> Ran
             lengths.to(torch.float32).mean(),
             (candidate_ids < hot_threshold).to(torch.float32).mean() * 100.0,
         )
-    ).tolist()
+    ).detach().cpu()
     avg_sequence_length = float(input_stats[0])
     hot_candidate_share_pct = float(input_stats[1])
 

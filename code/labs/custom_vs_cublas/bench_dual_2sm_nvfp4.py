@@ -202,12 +202,14 @@ def bench(fn, args, warmup=10, iters=50):
 
 def rel_err(out: torch.Tensor, ref_f32: torch.Tensor) -> float:
     ref16 = ref_f32.to(torch.float16).float()
-    max_diff, denom = torch.stack(
+    error_stats = torch.stack(
         (
             (ref16 - out.float()).abs().max(),
             ref16.abs().max(),
         )
-    ).tolist()
+    ).detach().cpu()
+    max_diff = float(error_stats[0])
+    denom = float(error_stats[1])
     return max_diff / denom if denom else max_diff
 
 

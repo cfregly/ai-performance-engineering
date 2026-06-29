@@ -70,6 +70,10 @@ def test_build_inputs_is_deterministic() -> None:
     inputs_b = build_inputs(workload, torch.device("cpu"))
 
     assert "input_stats = torch.stack(" in source
+    assert ").detach().cpu()" in source
+    assert "avg_sequence_length = float(input_stats[0])" in source
+    assert "hot_candidate_share_pct = float(input_stats[1])" in source
+    assert ".tolist()" not in source
     assert ".mean().item()" not in source
     assert torch.equal(inputs_a.sequence_ids, inputs_b.sequence_ids)
     assert torch.equal(inputs_a.sequence_mask, inputs_b.sequence_mask)

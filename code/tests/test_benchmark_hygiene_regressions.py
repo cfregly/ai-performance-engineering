@@ -1727,7 +1727,10 @@ def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "max_diff, ref_abs_max = torch.stack(" in verify_section
+    assert "error_stats = torch.stack(" in verify_section
+    assert "max_diff = float(error_stats[0])" in verify_section
+    assert "ref_abs_max = float(error_stats[1])" in verify_section
+    assert ".tolist()" not in verify_section
     assert "(ref_fp32 - result_fp32).abs().max()" in verify_section
     assert "ref_fp32.abs().max()" in verify_section
     assert ".abs().max().item()" not in verify_section
@@ -2718,7 +2721,10 @@ def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
     dual_nvfp4_rel = dual_nvfp4.split("def rel_err", maxsplit=1)[1].split("def report", maxsplit=1)[0]
 
     for section in (dual_cta_check, dual_fp8_check, dual_fp8_main, dual_nvfp4_rel):
-        assert "torch.stack(" in section
+        assert "error_stats = torch.stack(" in section
+        assert "max_diff = float(error_stats[0])" in section
+        assert "denom = float(error_stats[1])" in section or "ref_abs_max = float(error_stats[1])" in section
+        assert ".tolist()" not in section
         assert ".abs().max().item()" not in section
         assert ".abs().max().item() /" not in section
 
@@ -3633,7 +3639,10 @@ def test_ch19_native_fp4_batches_accuracy_metric_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "mean_err, fp16_abs_mean = torch.stack(" in accuracy_section
+    assert "error_stats = torch.stack(" in accuracy_section
+    assert "mean_err = float(error_stats[0])" in accuracy_section
+    assert "fp16_abs_mean = float(error_stats[1])" in accuracy_section
+    assert ".tolist()" not in accuracy_section
     assert "with torch.inference_mode():" in accuracy_section
     assert "with torch.no_grad():" not in accuracy_section
     assert "error.mean().item()" not in accuracy_section

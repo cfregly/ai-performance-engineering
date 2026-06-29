@@ -50,12 +50,14 @@ def bench(fn, a, b, warmup=10, iters=50):
 
 def check(fn, a, b, ref):
     out = fn(a, b).float()
-    max_diff, ref_abs_max = torch.stack(
+    error_stats = torch.stack(
         (
             (ref - out).abs().max(),
             ref.abs().max(),
         )
-    ).tolist()
+    ).detach().cpu()
+    max_diff = float(error_stats[0])
+    ref_abs_max = float(error_stats[1])
     rel = max_diff / ref_abs_max
     return rel
 

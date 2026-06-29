@@ -96,7 +96,10 @@ def test_block_scaling_verify_close_batches_error_materialization() -> None:
     assert "error_stats = torch.empty(2, device=diff.device, dtype=diff.dtype)" in source
     assert "error_stats[0].copy_(diff.max())" in source
     assert "error_stats[1].copy_(diff.mean())" in source
-    assert "max_abs_error, mean_abs_error = error_stats.detach().cpu().tolist()" in source
+    assert "error_stats_host = error_stats.detach().cpu()" in source
+    assert "max_abs_error = float(error_stats_host[0])" in source
+    assert "mean_abs_error = float(error_stats_host[1])" in source
+    assert "error_stats.detach().cpu().tolist()" not in source
     assert "torch.stack((diff.max(), diff.mean())).tolist()" not in source
     assert "diff.max().item()" not in source
     assert "diff.mean().item()" not in source

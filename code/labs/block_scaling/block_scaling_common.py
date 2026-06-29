@@ -179,10 +179,12 @@ class BlockScalingProblem:
         error_stats = torch.empty(2, device=diff.device, dtype=diff.dtype)
         error_stats[0].copy_(diff.max())
         error_stats[1].copy_(diff.mean())
-        max_abs_error, mean_abs_error = error_stats.detach().cpu().tolist()
+        error_stats_host = error_stats.detach().cpu()
+        max_abs_error = float(error_stats_host[0])
+        mean_abs_error = float(error_stats_host[1])
         return {
-            "max_abs_error": float(max_abs_error),
-            "mean_abs_error": float(mean_abs_error),
+            "max_abs_error": max_abs_error,
+            "mean_abs_error": mean_abs_error,
         }
 
 

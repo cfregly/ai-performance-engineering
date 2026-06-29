@@ -554,12 +554,14 @@ def benchmark_fp4():
     with torch.inference_mode():
         for name, data in [('Cached', out_cached)]:
             error = (out_fp16 - data).abs()
-            mean_err, fp16_abs_mean = torch.stack(
+            error_stats = torch.stack(
                 (
                     error.mean(),
                     out_fp16.abs().mean(),
                 )
-            ).tolist()
+            ).detach().cpu()
+            mean_err = float(error_stats[0])
+            fp16_abs_mean = float(error_stats[1])
             rel_err = mean_err / fp16_abs_mean * 100
             print(f"  {name}: Mean abs error = {mean_err:.6f}, Relative = {rel_err:.2f}%")
     

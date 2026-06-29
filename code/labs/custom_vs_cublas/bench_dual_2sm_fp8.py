@@ -107,12 +107,14 @@ def bench(fn, a, b, warmup=10, iters=50):
 def check(fn, a, b, ref_f32):
     out = fn(a, b).float()
     ref16 = ref_f32.to(torch.float16).float()
-    max_diff, denom = torch.stack(
+    error_stats = torch.stack(
         (
             (ref16 - out).abs().max(),
             ref16.abs().max(),
         )
-    ).tolist()
+    ).detach().cpu()
+    max_diff = float(error_stats[0])
+    denom = float(error_stats[1])
     return max_diff / denom if denom else max_diff
 
 
@@ -190,12 +192,14 @@ def main():
         ref16 = fp32_ref(a16, b16)
         out = matmul_tcgen05_dual_cta_2sm(a16, b16).float()
         ref16_for_check = ref16.to(torch.float16).float()
-        max_diff, denom = torch.stack(
+        error_stats = torch.stack(
             (
                 (ref16_for_check - out).abs().max(),
                 ref16.abs().max(),
             )
-        ).tolist()
+        ).detach().cpu()
+        max_diff = float(error_stats[0])
+        denom = float(error_stats[1])
         rel16 = max_diff / denom if denom else max_diff
         arms.append(("fp16_2sm champion (own data)", matmul_tcgen05_dual_cta_2sm, rel16, (a16, b16)))
 
