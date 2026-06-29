@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import inspect
 import importlib
+import json
 import math
 import re
 import signal
@@ -4597,6 +4598,60 @@ def test_cutlass_profiler_sweep_streaming_csv_parser(tmp_path: Path) -> None:
     empty_path.write_text("Kernel,Runtime,GFLOPs\n", encoding="utf-8")
     with pytest.raises(ValueError, match="No rows found"):
         parse_best_result(empty_path)
+
+
+def test_cutlass_comparison_cli_reuses_loaded_provider_results(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from labs.cutlass_profiler_kernel_selector import compare_against_baselines as compare_module
+    from labs.cutlass_profiler_kernel_selector.shapes import transformer_gemm_shapes
+
+    shape_name = transformer_gemm_shapes()[0].name
+    baseline_path = tmp_path / "baseline.json"
+    provider_path = tmp_path / "provider.json"
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "provider": "cutlass_profiler",
+                "results": [
+                    {"name": shape_name, "tflops": 100.0, "runtime_ms": 2.0, "kernel": "cutlass"}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    provider_path.write_text(
+        json.dumps(
+            {
+                "provider": "triton",
+                "results": [
+                    {"name": shape_name, "tflops": 125.0, "runtime_ms": 1.5, "kernel": "triton"}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    original_load_results = compare_module.load_results
+    load_calls: list[Path] = []
+
+    def counting_load_results(path: Path, fallback_provider: str | None = None):
+        load_calls.append(path)
+        return original_load_results(path, fallback_provider)
+
+    monkeypatch.setattr(compare_module, "ARTIFACT_DIR", tmp_path)
+    monkeypatch.setattr(compare_module, "load_results", counting_load_results)
+
+    rc = compare_module.main(
+        ["--baseline", str(baseline_path), "--providers", str(provider_path)]
+    )
+
+    assert rc == 0
+    assert load_calls.count(baseline_path) == 1
+    assert load_calls.count(provider_path) == 1
+    comparison = json.loads((tmp_path / "comparison.json").read_text(encoding="utf-8"))
+    assert comparison[shape_name]["competitors"][0]["speedup_vs_cutlass"] == 1.25
 
 
 def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:
@@ -11364,6 +11419,33 @@ def test_ch17_early_rejection_uses_targeted_ttft_quantiles() -> None:
         _append_ttft_sample(metrics, float(value))
     assert len(metrics.recent_ttft_samples) == 100
     assert _ordered_ttft_samples(metrics) == sorted(metrics.recent_ttft_samples)
+
+
+def test_ch17_early_rejection_print_stats_accumulates_totals_once(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = (REPO_ROOT / "ch17" / "early_rejection.py").read_text(encoding="utf-8")
+    print_section = source.split("def print_stats", maxsplit=1)[1].split(
+        "def simulate_load_spike",
+        maxsplit=1,
+    )[0]
+
+    assert "for stats in self.rejection_stats.values():" in print_section
+    assert "total_requests += stats[\"total\"]" in print_section
+    assert "total_rejected += stats[\"rejected\"]" in print_section
+    assert "overall_rejection_rate = (total_rejected / total_requests * 100) if total_requests else 0.0" in print_section
+    assert "total_requests = sum(stats[\"total\"] for stats in self.rejection_stats.values())" not in print_section
+    assert "total_rejected = sum(stats[\"rejected\"] for stats in self.rejection_stats.values())" not in print_section
+
+    from ch17.early_rejection import QoSController
+
+    qos = QoSController()
+    qos.print_stats()
+
+    captured = capsys.readouterr().out
+    assert "Total requests: 0" in captured
+    assert "Total rejected: 0" in captured
+    assert "Overall rejection rate: 0.0%" in captured
 
 
 def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:

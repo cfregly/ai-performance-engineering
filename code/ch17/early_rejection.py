@@ -330,12 +330,16 @@ class QoSController:
         """Print current QoS statistics."""
         print("\n=== QoS Statistics ===")
         
-        total_requests = sum(stats["total"] for stats in self.rejection_stats.values())
-        total_rejected = sum(stats["rejected"] for stats in self.rejection_stats.values())
+        total_requests = 0
+        total_rejected = 0
+        for stats in self.rejection_stats.values():
+            total_requests += stats["total"]
+            total_rejected += stats["rejected"]
+        overall_rejection_rate = (total_rejected / total_requests * 100) if total_requests else 0.0
         
         print(f"Total requests: {total_requests}")
         print(f"Total rejected: {total_rejected}")
-        print(f"Overall rejection rate: {total_rejected/total_requests*100:.1f}%")
+        print(f"Overall rejection rate: {overall_rejection_rate:.1f}%")
         
         print(f"\nBy priority:")
         for priority in Priority:

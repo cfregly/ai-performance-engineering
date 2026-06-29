@@ -25,16 +25,11 @@ def load_results(path: Path, fallback_provider: str | None = None) -> Tuple[str,
     return provider, results
 
 
-def compare(
-    baseline_path: Path,
-    competitor_paths: List[Path],
+def _compare_loaded(
+    baseline_provider: str,
+    baseline: Dict[str, dict],
+    providers: List[Tuple[str, Dict[str, dict]]],
 ) -> Dict[str, dict]:
-    baseline_provider, baseline = load_results(baseline_path, "cutlass_profiler")
-    providers: List[Tuple[str, Dict[str, dict]]] = []
-    for path in competitor_paths:
-        prov, res = load_results(path)
-        providers.append((prov, res))
-
     shapes_of_interest = {s.name for s in transformer_gemm_shapes()}
     comparison: Dict[str, dict] = {}
 
@@ -69,6 +64,15 @@ def compare(
         comparison[name] = entry
 
     return comparison
+
+
+def compare(
+    baseline_path: Path,
+    competitor_paths: List[Path],
+) -> Dict[str, dict]:
+    baseline_provider, baseline = load_results(baseline_path, "cutlass_profiler")
+    providers = [load_results(path) for path in competitor_paths]
+    return _compare_loaded(baseline_provider, baseline, providers)
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -117,9 +121,10 @@ def main(argv: List[str] | None = None) -> int:
         print("No valid competitor results to compare.", file=sys.stderr)
         return 1
 
+    baseline_provider, baseline = load_results(args.baseline, "cutlass_profiler")
     loaded_providers = [load_results(path) for path in resolved_paths]
 
-    comparison = compare(args.baseline, resolved_paths)
+    comparison = _compare_loaded(baseline_provider, baseline, loaded_providers)
     output_path = ARTIFACT_DIR / "comparison.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as f:
