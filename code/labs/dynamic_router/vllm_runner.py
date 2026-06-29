@@ -483,7 +483,6 @@ def run_vllm_routing_with_topology(
                 numa_node=gpu_numa.get(int(gid.replace("gpu", ""))),
             )
 
-    requests: Dict[str, _RequestRuntime] = {}
     ttft_samples: List[float] = []
     completed = 0
     tpot_ema: Dict[str, float] = {gid: 0.0 for gid in engines}
@@ -502,7 +501,6 @@ def run_vllm_routing_with_topology(
             gid = engine_ids[i % len(engine_ids)]
         rt = _RequestRuntime(req=req, gpu_id=gid, admitted_at=admitted)
         engines[gid].add_request(rt)
-        requests[rid] = rt
 
     active = True
     while active:
@@ -512,6 +510,7 @@ def run_vllm_routing_with_topology(
             finished_ids, ttft_new, tokens = eng.step(now)
             if finished_ids or eng.queue_depth() > 0:
                 active = True
+            completed += len(finished_ids)
             if ttft_new:
                 ttft_samples.extend(sample for _, sample in ttft_new)
             # Update simple TPOT EMA
@@ -521,8 +520,6 @@ def run_vllm_routing_with_topology(
             if router:
                 router.update_metrics(gid, eng.snapshot_metrics(ttft_ema=tpot_ema[gid], tpot_ema=tpot_ema[gid]))
         time.sleep(0.01)
-        # Count completed
-        completed = sum(1 for r in requests.values() if r.finished)
         if completed >= req_count_val:
             break
 

@@ -6701,6 +6701,10 @@ def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
 
     assert "engine_ids = tuple(engines)" in routing_section
     assert "gid = engine_ids[i % len(engine_ids)]" in routing_section
+    assert "completed += len(finished_ids)" in routing_section
+    assert "requests: Dict[str, _RequestRuntime]" not in routing_section
+    assert "requests[rid] = rt" not in routing_section
+    assert "completed = sum(1 for r in requests.values() if r.finished)" not in routing_section
     assert "list(engines.keys())" not in routing_section
     assert "ttft_samples.extend(sample for _, sample in ttft_new)" in routing_section
     assert "ttft_samples.extend([sample" not in routing_section
