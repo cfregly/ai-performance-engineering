@@ -6998,11 +6998,20 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
             assert "return self._result_metrics" in benchmark_section
             assert "self._output_values = [" not in benchmark_section
             assert "return {\"served_tokens\": served, \"batched_tokens\": batch_tokens}" not in benchmark_section
+            assert "self._request_lengths_tensor: Optional[torch.Tensor] = None" in source
+            assert "self._request_lengths_tensor[idx] = tokens" in setup_section
+            assert '"request_lengths": self._request_lengths_tensor' in capture_section
+            assert "torch.tensor(self.request_lengths" not in capture_section
         else:
             assert "self._output_values = self._payload_output_values" in benchmark_section
-        assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
+        assert "self._output_tensor" in source
+        assert "self.output = self._output_tensor" in capture_section
+        assert "torch.tensor(self._output_values" not in capture_section
         if relative.endswith(("baseline_vllm_decode_graphs.py", "optimized_vllm_decode_graphs.py")):
             assert "self._payload_output_values = [float(len(self._trace)), float(sum(self._trace))]" in source
+            assert "self._trace_tensor: Optional[torch.Tensor] = None" in source
+            assert "inputs={\"trace\": self._trace_tensor}" in capture_section
+            assert "torch.tensor(self._trace" not in capture_section
             assert "sum(self._trace)" not in benchmark_section
             assert "[float(len(self._trace))" not in benchmark_section
         if relative.endswith(("baseline_cudagraph_bucketing.py", "optimized_cudagraph_bucketing.py")):
@@ -7010,6 +7019,10 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
             assert "traffic = getattr(" not in benchmark_section
             assert "sum(batch * seqlen for batch, seqlen in traffic)" not in benchmark_section
             assert "traffic = self._payload_traffic" in capture_section
+            assert "self._traffic_shape_tensor" in source
+            assert "self._traffic_shape_tensor[0] = len(traffic)" in capture_section
+            assert '"traffic_shape": self._traffic_shape_tensor' in capture_section
+            assert "torch.tensor([len(traffic)" not in capture_section
         if relative.endswith("baseline_cudagraph_bucketing.py"):
             build_section = source.split("def _build_baseline_runner", maxsplit=1)[1].split(
                 "def _baseline_simulator_runner", maxsplit=1
@@ -12696,6 +12709,9 @@ def test_continuous_batching_reuses_state_buffers() -> None:
 
 def test_ch06_roofline_ilp_defers_verification_tensors_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch06" / "roofline_analysis_ilp.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -12707,6 +12723,13 @@ def test_ch06_roofline_ilp_defers_verification_tensors_outside_hot_loop() -> Non
     assert "self.results: Dict[str, object] = {" in source
     assert "self._results_ready = False" in source
     assert "self._output_values: list[float] = [0.0] * 5" in source
+    assert "self._output_tensor: Optional[torch.Tensor] = None" in source
+    assert "self._verify_input_tensor: Optional[torch.Tensor] = None" in source
+    assert (
+        "self._output_tensor = torch.empty(len(self._output_values), dtype=torch.float32)"
+        in setup_section
+    )
+    assert "self._verify_input_tensor = torch.empty(1, dtype=torch.float32)" in setup_section
     assert "results = self.results" in benchmark_section
     assert 'results["baseline"] = baseline_result' in benchmark_section
     assert 'results["optimized"] = optimized_result' in benchmark_section
@@ -12719,8 +12742,11 @@ def test_ch06_roofline_ilp_defers_verification_tensors_outside_hot_loop() -> Non
     assert "self._output_values = [" not in benchmark_section
     assert "self.results = {" not in benchmark_section
     assert "if not self._results_ready:" in capture_section
-    assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
-    assert "self._verify_input = torch.tensor([self._ridge_point_value], dtype=torch.float32)" in capture_section
+    assert "self.output = self._output_tensor" in capture_section
+    assert "self._verify_input = self._verify_input_tensor" in capture_section
+    assert "self._verify_input_tensor[0] = self._ridge_point_value" in capture_section
+    assert "torch.tensor(self._output_values" not in capture_section
+    assert "torch.tensor([self._ridge_point_value]" not in capture_section
 
 
 def test_ch06_warp_divergence_baseline_reuses_result_buffer() -> None:

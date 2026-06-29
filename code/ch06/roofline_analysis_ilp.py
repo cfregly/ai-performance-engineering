@@ -95,6 +95,8 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
         self._output_values: list[float] = [0.0] * 5
+        self._output_tensor: Optional[torch.Tensor] = None
+        self._verify_input_tensor: Optional[torch.Tensor] = None
         self._ridge_point_value = 0.0
     
     def setup(self) -> None:
@@ -104,6 +106,8 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             peak_bandwidth_gbs=8000,
             peak_compute_tflops=2000,
         )
+        self._output_tensor = torch.empty(len(self._output_values), dtype=torch.float32)
+        self._verify_input_tensor = torch.empty(1, dtype=torch.float32)
     
     def benchmark_fn(self) -> None:
         """Benchmark: Run roofline analysis."""
@@ -137,8 +141,13 @@ class RooflineAnalysisILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if not self._results_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self.output = torch.tensor(self._output_values, dtype=torch.float32)
-        self._verify_input = torch.tensor([self._ridge_point_value], dtype=torch.float32)
+        if self._output_tensor is None or self._verify_input_tensor is None:
+            raise RuntimeError("setup() must initialize verification tensors")
+        for idx, value in enumerate(self._output_values):
+            self._output_tensor[idx] = value
+        self._verify_input_tensor[0] = self._ridge_point_value
+        self.output = self._output_tensor
+        self._verify_input = self._verify_input_tensor
         self._set_verification_payload(
             inputs={"ridge_point": self._verify_input},
             output=self.output,

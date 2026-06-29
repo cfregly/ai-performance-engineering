@@ -24,6 +24,8 @@ class SchedulingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.request_lengths: list[int] = []
         self.output: Optional[torch.Tensor] = None
         self._output_values: list[float] = [0.0, 0.0]
+        self._output_tensor: Optional[torch.Tensor] = None
+        self._request_lengths_tensor: Optional[torch.Tensor] = None
         self._output_ready = False
         self._result_metrics: Dict[str, int] = {"served_tokens": 0, "batched_tokens": 0}
         self._enable_nvtx = False
@@ -34,6 +36,15 @@ class SchedulingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.queue.clear()
         self.request_lengths = [random.randint(4, 32) for _ in range(8)]
+        if (
+            self._request_lengths_tensor is None
+            or self._request_lengths_tensor.numel() != len(self.request_lengths)
+        ):
+            self._request_lengths_tensor = torch.empty(len(self.request_lengths), dtype=torch.int64)
+        for idx, tokens in enumerate(self.request_lengths):
+            self._request_lengths_tensor[idx] = tokens
+        if self._output_tensor is None:
+            self._output_tensor = torch.empty(len(self._output_values), dtype=torch.float32)
         self.output = None
         self._output_ready = False
         self._history.clear()
@@ -69,10 +80,14 @@ class SchedulingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if not self._output_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self.output = torch.tensor(self._output_values, dtype=torch.float32)
+        if self._output_tensor is None or self._request_lengths_tensor is None:
+            raise RuntimeError("setup() must initialize verification tensors")
+        for idx, value in enumerate(self._output_values):
+            self._output_tensor[idx] = value
+        self.output = self._output_tensor
         self._set_verification_payload(
             inputs={
-                "request_lengths": torch.tensor(self.request_lengths, dtype=torch.int64),
+                "request_lengths": self._request_lengths_tensor,
             },
             output=self.output,
             batch_size=1,

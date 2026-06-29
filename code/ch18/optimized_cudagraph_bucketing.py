@@ -373,6 +373,8 @@ class OptimizedCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchma
         self._output_values: Optional[list[float]] = None
         self._payload_traffic: list[Tuple[int, int]] = []
         self._payload_output_values: list[float] = []
+        self._output_tensor: Optional[torch.Tensor] = None
+        self._traffic_shape_tensor: Optional[torch.Tensor] = None
         self._verification_payload = None
         
         # Simulator-only workload metadata (one traffic replay per iteration).
@@ -401,6 +403,8 @@ class OptimizedCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchma
         self._payload_traffic = traffic
         self._payload_output_values = [float(len(traffic)), float(total_tokens)]
         self._optimized_runner = None
+        self._output_tensor = None
+        self._traffic_shape_tensor = None
 
     def _build_optimized_runner(self) -> OptimizedCUDAGraphBucketing:
         return OptimizedCUDAGraphBucketing(
@@ -420,6 +424,8 @@ class OptimizedCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchma
 
     def setup(self) -> None:
         self._optimized_runner = self._build_optimized_runner()
+        self._output_tensor = torch.empty(len(self._payload_output_values), dtype=torch.float32)
+        self._traffic_shape_tensor = torch.empty(1, dtype=torch.int64, device=self.device)
 
     def benchmark_fn(self) -> None:
         # NOTE: Keep benchmark_fn() focused on the simulator path so timing
@@ -435,9 +441,14 @@ class OptimizedCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchma
         traffic = self._payload_traffic
         if self._output_values is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self.output = torch.tensor(self._output_values, dtype=torch.float32)
+        if self._output_tensor is None or self._traffic_shape_tensor is None:
+            raise RuntimeError("setup() must initialize verification tensors")
+        for idx, value in enumerate(self._output_values):
+            self._output_tensor[idx] = value
+        self._traffic_shape_tensor[0] = len(traffic)
+        self.output = self._output_tensor
         self._set_verification_payload(
-            inputs={"traffic_shape": torch.tensor([len(traffic)], device=self.device)},
+            inputs={"traffic_shape": self._traffic_shape_tensor},
             output=self.output,
             batch_size=len(traffic) if len(traffic) > 0 else 1,
             parameter_count=0,

@@ -250,6 +250,8 @@ class VLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._output_values: Optional[list[float]] = None
         self._payload_output_values = [float(len(self._trace)), float(sum(self._trace))]
+        self._output_tensor: Optional[torch.Tensor] = None
+        self._trace_tensor: Optional[torch.Tensor] = None
         self._verification_payload = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
@@ -264,6 +266,8 @@ class VLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         torch.manual_seed(self.seed)
         self._driver = BaselineDecodeDriver(trace=self._trace, hidden=self.hidden)
+        self._output_tensor = torch.empty(len(self._payload_output_values), dtype=torch.float32)
+        self._trace_tensor = torch.tensor(self._trace, device=DEVICE)
 
     def benchmark_fn(self) -> None:
         if self._driver is None:
@@ -274,9 +278,13 @@ class VLLMDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self._output_values is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        self.output = torch.tensor(self._output_values, dtype=torch.float32)
+        if self._output_tensor is None or self._trace_tensor is None:
+            raise RuntimeError("setup() must initialize verification tensors")
+        for idx, value in enumerate(self._output_values):
+            self._output_tensor[idx] = value
+        self.output = self._output_tensor
         self._set_verification_payload(
-            inputs={"trace": torch.tensor(self._trace, device=DEVICE)},
+            inputs={"trace": self._trace_tensor},
             output=self.output,
             batch_size=1,
             parameter_count=0,
