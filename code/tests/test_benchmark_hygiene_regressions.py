@@ -6625,6 +6625,33 @@ def test_remaining_benchmark_wrappers_cache_verification_parameter_count() -> No
     assert "sum(p.numel()" not in inherited_capture
 
 
+def test_kv_cache_compression_reuses_capture_metadata_tensors() -> None:
+    baseline_source = (
+        REPO_ROOT / "labs" / "kv_cache_compression" / "baseline_kv_cache.py"
+    ).read_text(encoding="utf-8")
+    optimized_source = (
+        REPO_ROOT / "labs" / "kv_cache_compression" / "optimized_kv_cache_nvfp4.py"
+    ).read_text(encoding="utf-8")
+    setup_section = baseline_source.split("def _setup_with_recipe", maxsplit=1)[1].split(
+        "def _calibrate_fp8", maxsplit=1
+    )[0]
+    baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[
+        1
+    ].split("def finalize_iteration_metrics", maxsplit=1)[0]
+    optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[
+        1
+    ].split("def get_custom_metrics", maxsplit=1)[0]
+
+    assert "self._batch_size_tensor: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._seq_meta_tensor: Optional[torch.Tensor] = None" in baseline_source
+    assert 'self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")' in setup_section
+    assert 'self._seq_meta_tensor = torch.empty(3, dtype=torch.int64, device="cpu")' in setup_section
+    for capture_section in (baseline_capture, optimized_capture):
+        assert '"batch_size": self._batch_size_tensor' in capture_section
+        assert '"seq_meta": self._seq_meta_tensor' in capture_section
+        assert "torch.tensor(" not in capture_section
+
+
 def test_ch20_optimized_memory_standard_uses_scalar_addcmul_constants() -> None:
     source = (REPO_ROOT / "ch20" / "optimized_memory_standard.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split("def benchmark_fn", maxsplit=1)[0]

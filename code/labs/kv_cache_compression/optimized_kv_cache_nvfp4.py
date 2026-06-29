@@ -61,12 +61,12 @@ class OptimizedKVCacheNVFP4Benchmark(BaselineKVCacheBenchmark):
 
     def capture_verification_payload(self) -> None:
         self.output = self._build_verification_output()
+        if self._batch_size_tensor is None or self._seq_meta_tensor is None:
+            raise RuntimeError("setup() must initialize verification metadata tensors")
         self._set_verification_payload(
             inputs={
-                "batch_size": torch.tensor([self.batch_size], dtype=torch.int64, device="cpu"),
-                "seq_meta": torch.tensor(
-                    [self.prefill_seq, self.decode_seq, self.decode_steps], dtype=torch.int64, device="cpu"
-                ),
+                "batch_size": self._batch_size_tensor,
+                "seq_meta": self._seq_meta_tensor,
             },
             output=self.output,
             batch_size=self.batch_size,

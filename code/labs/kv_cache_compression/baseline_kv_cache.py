@@ -86,6 +86,8 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_parameter_count = 0
         self._prefill_groups: list[tuple[torch.Tensor, int]] = []
         self._decode_groups: list[tuple[torch.Tensor, int]] = []
+        self._batch_size_tensor: Optional[torch.Tensor] = None
+        self._seq_meta_tensor: Optional[torch.Tensor] = None
 
     def _resolve_device(self) -> torch.device:
         return resolve_device()
@@ -140,6 +142,12 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.runtime_recipe = recipe
         self.register_workload_metadata(tokens_per_iteration=float(tokens_per_iteration))
+        self._batch_size_tensor = torch.empty(1, dtype=torch.int64, device="cpu")
+        self._seq_meta_tensor = torch.empty(3, dtype=torch.int64, device="cpu")
+        self._batch_size_tensor[0] = self.batch_size
+        self._seq_meta_tensor[0] = self.prefill_seq
+        self._seq_meta_tensor[1] = self.decode_seq
+        self._seq_meta_tensor[2] = self.decode_steps
         self._calibrate_fp8(recipe)
         self._warmup_runtime(recipe)
         self._cache_output_ready = False
@@ -204,12 +212,12 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         self.output = self._build_verification_output()
+        if self._batch_size_tensor is None or self._seq_meta_tensor is None:
+            raise RuntimeError("setup() must initialize verification metadata tensors")
         self._set_verification_payload(
             inputs={
-                "batch_size": torch.tensor([self.batch_size], dtype=torch.int64, device="cpu"),
-                "seq_meta": torch.tensor(
-                    [self.prefill_seq, self.decode_seq, self.decode_steps], dtype=torch.int64, device="cpu"
-                ),
+                "batch_size": self._batch_size_tensor,
+                "seq_meta": self._seq_meta_tensor,
             },
             output=self.output,
             batch_size=self.batch_size,
@@ -230,6 +238,8 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cache = None
         self.model = None
         self.output = None
+        self._batch_size_tensor = None
+        self._seq_meta_tensor = None
         self._cache_output_ready = False
         torch.cuda.empty_cache()
 
