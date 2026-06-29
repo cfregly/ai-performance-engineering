@@ -200,7 +200,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._set_host_seq_lengths(num_decode_steps)
         self._pending_timing_pair = timing_pair
 
-        self.output = self._output_view.detach()
+        self.output = self._output_view
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()

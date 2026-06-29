@@ -12975,6 +12975,7 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
             assert "_output_view" in text
             assert "self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" in setup_section
             assert "self.output = self._output_view" in hot_section
+            assert "self._output_view.detach()" not in hot_section
             assert "self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" not in hot_section
             assert "self._output_view = None" in teardown_section
 

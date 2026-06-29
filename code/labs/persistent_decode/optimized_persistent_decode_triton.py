@@ -129,7 +129,7 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
                 num_warps=2,
                 num_stages=1,
             )
-        self.output = self._output_view.detach()
+        self.output = self._output_view
         if self.inputs is None or self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 

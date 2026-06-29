@@ -152,7 +152,7 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
                 torch.cuda.current_stream().wait_event(evt)
         torch.cuda.current_stream().wait_stream(self.decode_stream)
         if self.inputs is not None:
-            self.output = self._output_view.detach()
+            self.output = self._output_view
         if self.inputs is None or self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 

@@ -102,7 +102,7 @@ class OptimizedPersistentDecodeCUDABenchmark(VerificationPayloadMixin, BaseBench
                 self.blocks,
             )
         # Capture a representative slice of the output
-        self.output = self._output_view.detach()
+        self.output = self._output_view
         if self.inputs is None or self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 

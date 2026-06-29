@@ -284,7 +284,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._set_host_seq_lengths(num_decode_steps)
         self._pending_timing_pair = timing_pair
 
-        self.output = self._output_view.detach()
+        self.output = self._output_view
 
     def _build_verification_output(self) -> torch.Tensor:
         if self.output is None:
