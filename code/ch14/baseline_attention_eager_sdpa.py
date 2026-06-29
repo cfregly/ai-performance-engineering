@@ -38,6 +38,7 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         )
         self.output = None
         self._last_outputs: Optional[list[torch.Tensor]] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._head_inputs: Optional[list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]] = None
         self._attention_scale = 0.0
         self.parameter_count: int = 0
@@ -69,6 +70,11 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
             torch.empty(0, device=self.device, dtype=self.dtype)
             for _ in range(self.num_heads * self.repeat_passes)
         ]
+        self._output_buffer = torch.empty(
+            (1, self.seq_len, self.embed_dim * self.repeat_passes),
+            device=self.device,
+            dtype=self.dtype,
+        )
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -97,11 +103,18 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
     def capture_verification_payload(self) -> None:
         if self._last_outputs is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        stacked = torch.stack(self._last_outputs, dim=1)
-        # Flatten heads into the embedding dimension to match optimized output
-        self.output = stacked.permute(1, 0, 2).reshape(
-            1, self.seq_len, self.embed_dim * self.repeat_passes
-        ).contiguous()
+        if self._output_buffer is None:
+            raise RuntimeError("setup() must initialize verification output buffer")
+        output_flat = self._output_buffer.view(-1)
+        write_offset = 0
+        for head_output in self._last_outputs:
+            values = head_output.reshape(-1)
+            next_offset = write_offset + values.numel()
+            output_flat[write_offset:next_offset].copy_(values)
+            write_offset = next_offset
+        if write_offset != output_flat.numel():
+            raise RuntimeError("unexpected attention output shape")
+        self.output = self._output_buffer
         self._set_verification_payload(
             inputs={
                 "q": self.q.detach(),
@@ -128,6 +141,7 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         self.v = None
         self.output = None
         self._last_outputs = None
+        self._output_buffer = None
         self._head_inputs = None
         torch.cuda.empty_cache()
 

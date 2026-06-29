@@ -10734,6 +10734,8 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "outputs.append(" not in baseline_benchmark
     assert "self._attention_scale = 1.0 / math.sqrt(self.head_dim)" in baseline_setup
     assert "self._head_inputs = [" in baseline_setup
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._output_buffer = torch.empty(" in baseline_setup
     assert "(self.q[:, head, :], self.k[:, head, :].transpose(0, 1), self.v[:, head, :])" in baseline_setup
     assert "for qh, kh_t, vh in self._head_inputs:" in baseline_benchmark
     assert "self.q[:, head, :]" not in baseline_benchmark
@@ -10742,7 +10744,10 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "math.sqrt(self.head_dim)" not in baseline_benchmark
     assert "self._last_outputs[output_idx] = torch.matmul(attn, vh)" in baseline_benchmark
     assert "output_idx += 1" in baseline_benchmark
-    assert "stacked = torch.stack(self._last_outputs, dim=1)" in baseline_capture
+    assert "torch.stack(" not in baseline_capture
+    assert "output_flat = self._output_buffer.view(-1)" in baseline_capture
+    assert "output_flat[write_offset:next_offset].copy_(values)" in baseline_capture
+    assert "self.output = self._output_buffer" in baseline_capture
     assert "float(out.sum())" not in optimized_benchmark
     assert "self._q_bhsd: Optional[torch.Tensor] = None" in optimized_source
     assert "self._q_bhsd = self.q.transpose(0, 1).unsqueeze(0)" in optimized_setup
