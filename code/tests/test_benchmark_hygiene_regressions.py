@@ -17051,6 +17051,20 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
     for source in (baseline_pipeline, optimized_pipeline, baseline_gluon, optimized_gluon):
         assert "iterations=10" in source
         assert "warmup=5" in source
+    for gluon_source in (baseline_gluon, optimized_gluon):
+        gluon_setup = gluon_source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        gluon_capture = gluon_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in gluon_source
+        assert "self._verify_output_buffer = torch.empty_like(self.inputs.q, dtype=torch.float32)" in gluon_setup
+        assert "self._verify_output_buffer.copy_(self.output)" in gluon_capture
+        assert "output=self._verify_output_buffer" in gluon_capture
+        assert "self.output.float().clone()" not in gluon_capture
     assert "self.output = result" in optimized_gluon
     assert "self.output = result.detach()" not in optimized_gluon
 

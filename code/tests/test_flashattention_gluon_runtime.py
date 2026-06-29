@@ -34,6 +34,7 @@ def _assert_deferred_verification_clone(bench) -> None:
     payload = bench._verification_payload
     assert payload.output.dtype == torch.float32
     assert payload.output.data_ptr() != output_ptr
+    assert payload.output.data_ptr() == bench._verify_output_buffer.data_ptr()
 
 
 @CUDA_REQUIRED
