@@ -20,6 +20,7 @@ class OptimizedTrainingSpeedBenchmark(BaselineTrainingSpeedBenchmark):
         self.capture_stream: Optional[torch.cuda.Stream] = None
         self.static_input: Optional[torch.Tensor] = None
         self.static_target: Optional[torch.Tensor] = None
+        self.static_target_flat: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         super().setup()
@@ -29,19 +30,23 @@ class OptimizedTrainingSpeedBenchmark(BaselineTrainingSpeedBenchmark):
         saved_model_state = copy.deepcopy(self.model.state_dict())
         saved_opt_state = copy.deepcopy(self.optimizer.state_dict())
 
+        if self.targets_flat is None:
+            raise RuntimeError("Benchmark target view not configured")
+
         for _ in range(3):
-            self._train_step(self.input_ids, self.targets)
+            self._train_step(self.input_ids, self.targets_flat)
         self._synchronize()
         self.model.load_state_dict(saved_model_state)
         self.optimizer.load_state_dict(saved_opt_state)
 
         self.static_input = self.input_ids.clone()
         self.static_target = self.targets.clone()
+        self.static_target_flat = self.static_target.view(-1)
         self.graph = torch.cuda.CUDAGraph()
         self.capture_stream = torch.cuda.Stream()
 
         def _captured_step() -> None:
-            self._train_step(self.static_input, self.static_target)
+            self._train_step(self.static_input, self.static_target_flat)
 
         with torch.cuda.stream(self.capture_stream):
             with torch.cuda.graph(self.graph, stream=self.capture_stream):
@@ -53,7 +58,18 @@ class OptimizedTrainingSpeedBenchmark(BaselineTrainingSpeedBenchmark):
         self.output = None
 
     def benchmark_fn(self) -> None:
-        if any(v is None for v in (self.graph, self.capture_stream, self.input_ids, self.targets, self.static_input, self.static_target)):
+        if any(
+            v is None
+            for v in (
+                self.graph,
+                self.capture_stream,
+                self.input_ids,
+                self.targets,
+                self.static_input,
+                self.static_target,
+                self.static_target_flat,
+            )
+        ):
             raise RuntimeError("CUDA graph not initialized")
 
         with self._nvtx_range("optimized_training_speed"):
@@ -68,6 +84,7 @@ class OptimizedTrainingSpeedBenchmark(BaselineTrainingSpeedBenchmark):
         self.capture_stream = None
         self.static_input = None
         self.static_target = None
+        self.static_target_flat = None
         super().teardown()
 
     def get_custom_streams(self) -> list["torch.cuda.Stream"]:

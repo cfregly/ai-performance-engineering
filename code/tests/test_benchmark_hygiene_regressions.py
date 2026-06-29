@@ -9560,6 +9560,10 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
             assert "self._targets_flat = self.targets.view(-1)" in setup_section
             assert "self._targets_flat" in benchmark_section
             assert "self.targets.view(-1)" not in benchmark_section
+        if name == "baseline_training_speed.py":
+            assert "self.targets_flat = self.targets.view(-1)" in setup_section
+            assert "self.targets_flat" in benchmark_section
+            assert "targets.view(-1)" not in benchmark_section
 
     optimized_speed = (REPO_ROOT / "ch13" / "optimized_training_speed.py").read_text(encoding="utf-8")
     optimized_benchmark = optimized_speed.split("def benchmark_fn", maxsplit=1)[1].split(
@@ -9568,6 +9572,8 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
 
     assert "output_buffer" not in optimized_speed
     assert "logits[:1, :1, :8]" not in optimized_speed
+    assert "self.static_target_flat = self.static_target.view(-1)" in optimized_speed
+    assert "self._train_step(self.static_input, self.static_target_flat)" in optimized_speed
     assert "self.output = None" in optimized_benchmark
 
 

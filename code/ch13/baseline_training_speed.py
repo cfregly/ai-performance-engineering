@@ -21,6 +21,7 @@ class BaselineTrainingSpeedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model: Optional[nn.Module] = None
         self.input_ids: Optional[torch.Tensor] = None
         self.targets: Optional[torch.Tensor] = None
+        self.targets_flat: Optional[torch.Tensor] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.criterion: Optional[nn.Module] = None
         self.output: Optional[torch.Tensor] = None
@@ -43,27 +44,38 @@ class BaselineTrainingSpeedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.model = TrainingSpeedModel(self.cfg).to(self.device).train()
         self.input_ids, self.targets = make_training_batch(self.cfg, self.device)
+        self.targets_flat = self.targets.view(-1)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-2)
         self.criterion = nn.CrossEntropyLoss()
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
         self.output = None
         self._synchronize()
 
-    def _train_step(self, input_ids: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    def _train_step(self, input_ids: torch.Tensor, targets_flat: torch.Tensor) -> torch.Tensor:
         assert self.model is not None and self.optimizer is not None and self.criterion is not None
         self.optimizer.zero_grad(set_to_none=False)
         with torch.autocast(device_type="cuda", dtype=self.autocast_dtype):
             logits = self.model(input_ids)
-        loss = self.criterion(logits.float().view(-1, self.cfg.vocab_size), targets.view(-1))
+        loss = self.criterion(logits.float().view(-1, self.cfg.vocab_size), targets_flat)
         loss.backward()
         self.optimizer.step()
         return logits
 
     def benchmark_fn(self) -> None:
-        if any(v is None for v in (self.model, self.input_ids, self.targets, self.optimizer, self.criterion)):
+        if any(
+            v is None
+            for v in (
+                self.model,
+                self.input_ids,
+                self.targets,
+                self.targets_flat,
+                self.optimizer,
+                self.criterion,
+            )
+        ):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_training_speed"):
-            self._train_step(self.input_ids, self.targets)
+            self._train_step(self.input_ids, self.targets_flat)
             self.output = None
         if self.input_ids is None:
             raise RuntimeError("benchmark_fn() requires input_ids for verification")
@@ -92,6 +104,7 @@ class BaselineTrainingSpeedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.input_ids = None
         self.targets = None
+        self.targets_flat = None
         self.optimizer = None
         self.criterion = None
         self.output = None
