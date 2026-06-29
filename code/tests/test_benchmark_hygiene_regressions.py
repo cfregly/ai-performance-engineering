@@ -4466,6 +4466,10 @@ def test_occupancy_tuning_variants_match_their_filenames() -> None:
     schedule_source = (
         REPO_ROOT / "labs" / "occupancy_tuning" / "triton_matmul_schedules.py"
     ).read_text(encoding="utf-8")
+    validate_section = schedule_source.split("def validate_result", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
 
     assert wide_n.schedule.name == "bm64_bn256_bk32"
     assert wide_n.schedule.block_m == 64
@@ -4479,6 +4483,12 @@ def test_occupancy_tuning_variants_match_their_filenames() -> None:
     assert latency.schedule.num_warps == 2
     assert "with torch.inference_mode():\n            self._reference = torch.matmul(self._a, self._b)" in schedule_source
     assert "with torch.no_grad():\n            self._reference = torch.matmul(self._a, self._b)" not in schedule_source
+    assert "validation_scalars = torch.stack(" in validate_section
+    assert "(self._output - self._reference).abs().max().float()" in validate_section
+    assert "torch.isnan(self._output).any().to(torch.float32)" in validate_section
+    assert ".detach().cpu().tolist()" in validate_section
+    assert ".abs().max().item()" not in validate_section
+    assert "if torch.isnan(self._output).any():" not in validate_section
 
 
 def test_real_world_model_entrypoints_return_harness_benchmarks() -> None:

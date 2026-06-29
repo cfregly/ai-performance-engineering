@@ -233,8 +233,15 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def validate_result(self) -> Optional[str]:
         if self._reference is None or self._output is None:
             return None
-        diff = (self._output - self._reference).abs().max().item()
-        if torch.isnan(self._output).any():
+        validation_scalars = torch.stack(
+            (
+                (self._output - self._reference).abs().max().float(),
+                torch.isnan(self._output).any().to(torch.float32),
+            )
+        ).detach().cpu().tolist()
+        diff = float(validation_scalars[0])
+        has_nan = bool(validation_scalars[1])
+        if has_nan:
             return "NaNs detected in Triton output"
         if diff > 2.0:
             return f"Max diff {diff:.4f} exceeds tolerance"
