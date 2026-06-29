@@ -11,6 +11,7 @@ from labs.block_scaling.block_scaling_common import (
     DEFAULT_MMA_TILER_MN,
     DEFAULT_MNKL,
     load_lab_config_from_env,
+    measure_cuda_callable,
     override_config,
     parse_int_tuple,
     parse_software_dtype,
@@ -103,3 +104,14 @@ def test_block_scaling_verify_close_batches_error_materialization() -> None:
     assert "torch.stack((diff.max(), diff.mean())).tolist()" not in source
     assert "diff.max().item()" not in source
     assert "diff.mean().item()" not in source
+
+
+def test_block_scaling_cuda_timing_records_on_current_stream() -> None:
+    source = inspect.getsource(measure_cuda_callable)
+
+    assert source.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert source.count("current_stream = torch.cuda.current_stream()") == 1
+    assert "start.record(current_stream)" in source
+    assert "end.record(current_stream)" in source
+    assert "start.record()" not in source
+    assert "end.record()" not in source

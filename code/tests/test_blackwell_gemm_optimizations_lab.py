@@ -178,6 +178,23 @@ def test_blackwell_grouped_gemm_reuses_packed_token_view() -> None:
     assert gathered.data_ptr() == flat.data_ptr()
 
 
+def test_blackwell_grouped_gemm_matrix_runner_records_timing_on_current_stream() -> None:
+    source = (LAB_DIR / "compare_blackwell_grouped_gemm_matrix.py").read_text(
+        encoding="utf-8"
+    )
+    timing_section = source.split("def _measure_variant", maxsplit=1)[1].split(
+        "def _iter_variant_rows",
+        maxsplit=1,
+    )[0]
+
+    assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "current_stream = torch.cuda.current_stream(device)" in timing_section
+    assert "start.record(current_stream)" in timing_section
+    assert "end.record(current_stream)" in timing_section
+    assert "start.record()" not in timing_section
+    assert "end.record()" not in timing_section
+
+
 @pytest.mark.parametrize("histogram", ["balanced", "skewed"])
 def test_blackwell_grouped_gemm_build_state_packs_routes_on_cpu(
     histogram: str,

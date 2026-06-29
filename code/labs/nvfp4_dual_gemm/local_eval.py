@@ -115,15 +115,16 @@ def _run_case(
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream()
     samples_us: list[float] = []
     for _ in range(int(repeats)):
         if flush_l2 and flush_buffer is not None:
             flush_l2_cache(buffer=flush_buffer)
 
-        start.record()
+        start.record(current_stream)
         for data in data_batch:
             submission_mod.custom_kernel(data)
-        end.record()
+        end.record(current_stream)
         end.synchronize()
 
         per_call_us = (start.elapsed_time(end) * 1000.0) / float(inputs_per_repeat)

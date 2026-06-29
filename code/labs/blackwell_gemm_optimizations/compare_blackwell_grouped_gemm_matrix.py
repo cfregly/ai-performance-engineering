@@ -57,7 +57,8 @@ def _measure_variant(
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
-    start.record()
+    current_stream = torch.cuda.current_stream(device)
+    start.record(current_stream)
     for _ in range(repeats):
         run_variant(
             state,
@@ -66,7 +67,7 @@ def _measure_variant(
             packed_tokens_flat=packed,
             output_buffer=out,
         )
-    end.record()
+    end.record(current_stream)
     end.synchronize()
     mean_ms = float(start.elapsed_time(end) / repeats)
     flops = 2.0 * workload.num_tokens * workload.hidden_dim * workload.expert_ffn_dim

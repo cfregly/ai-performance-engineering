@@ -4112,10 +4112,20 @@ def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:
     assert "torch.tensor(times_ms" not in timing_section
     assert "std_ms=statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0" in timing_section
     assert microbench_timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert timing_section.count("current_stream = torch.cuda.current_stream()") == 1
+    assert timing_section.count("start.record(current_stream)") == 1
+    assert timing_section.count("end.record(current_stream)") == 1
     assert (
         "for _ in range(iterations):\n        start = torch.cuda.Event"
         not in microbench_timing_section
     )
+    assert microbench_timing_section.count("current_stream = torch.cuda.current_stream()") == 1
+    assert microbench_timing_section.count("start.record(current_stream)") == 1
+    assert microbench_timing_section.count("end.record(current_stream)") == 1
+    assert "start.record()" not in timing_section
+    assert "end.record()" not in timing_section
+    assert "start.record()" not in microbench_timing_section
+    assert "end.record()" not in microbench_timing_section
     assert "end.synchronize()" in microbench_timing_section
 
 
@@ -4211,6 +4221,30 @@ def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:
         source = (REPO_ROOT / filename).read_text(encoding="utf-8")
         assert expected_sync in source
         assert global_wait_after_event.search(source) is None
+
+
+def test_nvfp4_dual_gemm_timing_records_on_current_stream() -> None:
+    timing_splits = {
+        "labs/nvfp4_dual_gemm/env_probe_b200.py": ("clocks_before", "clocks_after"),
+        "labs/nvfp4_dual_gemm/local_eval.py": ("torch.cuda.synchronize()", "per_call_us"),
+        "labs/nvfp4_dual_gemm/official_semantics_eval.py": (
+            "outputs_iter = []",
+            "duration_ns",
+        ),
+    }
+
+    for filename, (start_marker, end_marker) in timing_splits.items():
+        source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        timing_section = source.split(start_marker, maxsplit=1)[1].split(
+            end_marker,
+            maxsplit=1,
+        )[0]
+        assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
+        assert "current_stream = torch.cuda.current_stream()" in timing_section
+        assert "start.record(current_stream)" in timing_section
+        assert "end.record(current_stream)" in timing_section
+        assert "start.record()" not in timing_section
+        assert "end.record()" not in timing_section
 
 
 def test_occupancy_tuning_variants_match_their_filenames() -> None:

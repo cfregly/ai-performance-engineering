@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-from pathlib import Path
 from typing import Any
 
 import torch
@@ -66,10 +65,11 @@ def _gemm_tflops(size: int, iters: int, warmup: int, dtype: torch.dtype) -> dict
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
-    start.record()
+    current_stream = torch.cuda.current_stream()
+    start.record(current_stream)
     for _ in range(iters):
         _ = a @ b
-    end.record()
+    end.record(current_stream)
     end.synchronize()
 
     clocks_after = _nvml_clocks(0)

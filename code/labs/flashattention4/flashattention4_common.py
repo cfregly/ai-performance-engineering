@@ -602,10 +602,11 @@ def measure_flashattention4_latency(
     times_ms: list[float] = []
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream()
     for _ in range(iterations):
-        start.record()
+        start.record(current_stream)
         _ = fn()
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         times_ms.append(float(start.elapsed_time(end)))
 

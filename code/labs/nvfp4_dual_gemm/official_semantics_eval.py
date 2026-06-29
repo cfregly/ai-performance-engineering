@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -144,11 +143,12 @@ def _run_single_benchmark_case(
         outputs_iter = []
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
+        current_stream = torch.cuda.current_stream()
 
-        start.record()
+        start.record(current_stream)
         for data in data_list:
             outputs_iter.append(submission_mod.custom_kernel(data))
-        end.record()
+        end.record(current_stream)
         end.synchronize()
 
         duration_ns = (start.elapsed_time(end) / float(num_iterations)) * 1e6
