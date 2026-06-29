@@ -1984,6 +1984,45 @@ def test_ch14_benchmarks_do_not_force_output_sum_syncs() -> None:
         assert "float(self.output.detach().sum())" not in benchmark_section
 
 
+def test_ch14_flex_attention_sparse_demo_reuses_payload_inputs() -> None:
+    source = (REPO_ROOT / "ch14" / "flex_attention_sparse_demo.py").read_text(encoding="utf-8")
+    class_section = source.split("class FlexAttentionSparseDemoBenchmark", maxsplit=1)[1]
+    init_section = class_section.split("def __init__", maxsplit=1)[1].split(
+        "def setup",
+        maxsplit=1,
+    )[0]
+    setup_section = class_section.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = class_section.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    capture_section = class_section.split("def capture_verification_payload", maxsplit=1)[
+        1
+    ].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    teardown_section = class_section.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._payload_inputs = {}" in init_section
+    assert "payload_inputs = self._payload_inputs" in setup_section
+    assert "payload_inputs.clear()" in setup_section
+    assert 'payload_inputs["q"] = self.demo_benchmark.q' in setup_section
+    assert 'payload_inputs["k"] = self.demo_benchmark.k' in setup_section
+    assert 'payload_inputs["v"] = self.demo_benchmark.v' in setup_section
+    assert 'payload_inputs["block_mask"] = self._block_mask' in setup_section
+    assert "inputs = {" not in benchmark_section
+    assert "self._payload_inputs = inputs" not in benchmark_section
+    assert "inputs = self._payload_inputs" in capture_section
+    assert "self._payload_inputs.clear()" in teardown_section
+
+
 def test_ch14_optimized_attention_modules_reuse_projection_buffers() -> None:
     for filename in (
         "optimized_sliding_window.py",

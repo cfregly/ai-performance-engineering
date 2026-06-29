@@ -422,6 +422,7 @@ class FlexAttentionSparseDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._last = 0.0
         self.output = None
         self._block_mask = None
+        self._payload_inputs = {}
         self._verification_payload = None
         
         tokens = self.batch_size * self.seq_len
@@ -460,6 +461,13 @@ class FlexAttentionSparseDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         self.demo_benchmark.v,
                         block_mask=self._block_mask,
                     )
+        payload_inputs = self._payload_inputs
+        payload_inputs.clear()
+        payload_inputs["q"] = self.demo_benchmark.q
+        payload_inputs["k"] = self.demo_benchmark.k
+        payload_inputs["v"] = self.demo_benchmark.v
+        if self._block_mask is not None:
+            payload_inputs["block_mask"] = self._block_mask
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -478,14 +486,6 @@ class FlexAttentionSparseDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
-        inputs = {
-            "q": self.demo_benchmark.q,
-            "k": self.demo_benchmark.k,
-            "v": self.demo_benchmark.v,
-        }
-        if self._block_mask is not None:
-            inputs["block_mask"] = self._block_mask
-        self._payload_inputs = inputs
 
     def capture_verification_payload(self) -> None:
         inputs = self._payload_inputs
@@ -507,6 +507,7 @@ class FlexAttentionSparseDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.demo_benchmark = None
         self._block_mask = None
+        self._payload_inputs.clear()
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
