@@ -11005,6 +11005,19 @@ def test_ch10_optimized_tcgen05_vs_cublas_reuses_output_buffer() -> None:
     assert "self.output = None" in teardown_section
 
 
+def test_ch10_tcgen05_base_uses_dtype_metadata_for_element_size() -> None:
+    source = (REPO_ROOT / "core" / "benchmark" / "tcgen05_matmul_base.py").read_text(
+        encoding="utf-8"
+    )
+    init_section = source.split("def __init__(self) -> None:", maxsplit=1)[1].split(
+        "def setup(self) -> None:",
+        maxsplit=1,
+    )[0]
+
+    assert "element_size = torch.finfo(self.tensor_dtype).bits // 8" in init_section
+    assert "torch.tensor([], dtype=self.tensor_dtype).element_size()" not in init_section
+
+
 def test_ch11_stream_benchmarks_use_cached_nvtx_range() -> None:
     stream_base = (REPO_ROOT / "ch11" / "stream_overlap_base.py").read_text(encoding="utf-8")
     baseline_tensor_cores = (

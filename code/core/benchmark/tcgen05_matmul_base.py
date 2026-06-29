@@ -30,7 +30,7 @@ class Tcgen05MatmulBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.matrix_b: Optional[torch.Tensor] = None  # B is N x K (pre-transposed).
         self.output: Optional[torch.Tensor] = None
         self.parameter_count = 0
-        element_size = torch.tensor([], dtype=self.tensor_dtype).element_size()
+        element_size = torch.finfo(self.tensor_dtype).bits // 8
         bytes_per_iter = (
             (self.matrix_rows * self.shared_dim)
             + (self.matrix_cols * self.shared_dim)

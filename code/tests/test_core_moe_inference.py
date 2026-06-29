@@ -11,6 +11,7 @@ from core.optimization.moe_inference import (
     MoEFeedForwardSortedDispatch,
     SimpleMoEBlock,
     allocate_kv_cache,
+    dtype_bytes,
 )
 
 
@@ -22,6 +23,18 @@ def test_allocate_kv_cache_avoids_zero_fill() -> None:
     cache = allocate_kv_cache(2, 3, 4, torch.float32, torch.device("cpu"))
     assert cache.shape == (2, 3, 4)
     assert cache.dtype == torch.float32
+
+
+def test_dtype_bytes_uses_dtype_metadata_without_tensor_materialization() -> None:
+    source = inspect.getsource(moe_inference.dtype_bytes)
+
+    assert "torch.finfo(dt).bits // 8" in source
+    assert "torch.iinfo(dt).bits // 8" in source
+    assert "torch.tensor([], dtype=dt)" not in source
+    assert dtype_bytes("float32") == 4
+    assert dtype_bytes(torch.bfloat16) == 2
+    assert dtype_bytes(torch.int64) == 8
+    assert dtype_bytes(torch.bool) == 1
 
 
 def test_simple_moe_block_reuses_attention_norm_once() -> None:

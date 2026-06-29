@@ -38,13 +38,12 @@ def resolve_dtype(dtype: torch.dtype | str) -> torch.dtype:
 def dtype_bytes(dtype: torch.dtype | str) -> int:
     """Return element size (bytes) for the dtype."""
     dt = resolve_dtype(dtype)
-    if dt == torch.float32:
-        return 4
-    if dt in (torch.float16, torch.bfloat16):
-        return 2
-    if dt == torch.float64:
-        return 8
-    return torch.tensor([], dtype=dt).element_size()
+    try:
+        return torch.finfo(dt).bits // 8
+    except TypeError:
+        if dt == torch.bool:
+            return 1
+        return torch.iinfo(dt).bits // 8
 
 
 def allocate_kv_cache(
