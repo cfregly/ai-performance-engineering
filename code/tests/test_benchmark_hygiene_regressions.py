@@ -4401,6 +4401,24 @@ def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:
     assert "end.synchronize()" in microbench_timing_section
 
 
+def test_flashattention4_nonmasked_count_uses_closed_form_arithmetic() -> None:
+    source = (REPO_ROOT / "labs" / "flashattention4" / "flashattention4_common.py").read_text(
+        encoding="utf-8"
+    )
+    count_section = source.split("def count_nonmasked_attention_elements", maxsplit=1)[
+        1
+    ].split("def estimate_attention_forward_flops", maxsplit=1)[0]
+
+    assert "diagonal_rows = min(q_seq_len, kv_seq_len)" in count_section
+    assert "triangular = diagonal_rows * (diagonal_rows + 1) // 2" in count_section
+    assert "full_kv_rows = max(q_seq_len - kv_seq_len, 0)" in count_section
+    assert "active_kv = min(kv_seq_len, q_seq_len)" in count_section
+    assert "full_window_cols = min(active_kv, max(q_seq_len - window_size + 1, 0))" in count_section
+    assert "tail_total = tail_cols * (2 * q_seq_len - tail_first - tail_last) // 2" in count_section
+    assert "for q_idx in range(q_seq_len)" not in count_section
+    assert "sum(min(kv_seq_len, q_idx + 1)" not in count_section
+
+
 def test_timed_loops_reuse_cuda_events() -> None:
     files = [
         "labs/moe_decode_blackwell_matrix/runner.py",

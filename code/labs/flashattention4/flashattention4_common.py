@@ -655,17 +655,23 @@ def count_nonmasked_attention_elements(
         return q_seq_len * kv_seq_len
 
     if mode == "causal":
-        return sum(min(kv_seq_len, q_idx + 1) for q_idx in range(q_seq_len))
+        diagonal_rows = min(q_seq_len, kv_seq_len)
+        triangular = diagonal_rows * (diagonal_rows + 1) // 2
+        full_kv_rows = max(q_seq_len - kv_seq_len, 0)
+        return triangular + full_kv_rows * kv_seq_len
 
     if mode in {"windowed", "alibi_windowed"}:
         if window_size < 1:
             raise ValueError("window_size must be >= 1 for windowed modes")
-        total = 0
-        for q_idx in range(q_seq_len):
-            upper = min(kv_seq_len - 1, q_idx)
-            lower = max(0, q_idx - window_size + 1)
-            total += max(0, upper - lower + 1)
-        return total
+        active_kv = min(kv_seq_len, q_seq_len)
+        full_window_cols = min(active_kv, max(q_seq_len - window_size + 1, 0))
+        tail_cols = active_kv - full_window_cols
+        if tail_cols == 0:
+            return full_window_cols * window_size
+        tail_first = full_window_cols
+        tail_last = active_kv - 1
+        tail_total = tail_cols * (2 * q_seq_len - tail_first - tail_last) // 2
+        return full_window_cols * window_size + tail_total
 
     raise ValueError(f"Unsupported mode {mode!r}; expected one of {SUPPORTED_MODES}")
 
