@@ -8,6 +8,8 @@ from typing import Dict, Optional
 
 import torch
 
+from core.benchmark.utils import scalar_tensor_to_float
+
 if torch.cuda.is_available():
     try:
         _CC_MAJOR, _CC_MINOR = torch.cuda.get_device_capability()
@@ -114,7 +116,7 @@ def demo_quantized_cache(device: torch.device, bits: int = 8) -> None:
     scale = vocab_proj.abs().amax(dim=-1, keepdim=True).clamp(min=1e-6) / qmax
     quant = torch.clamp((vocab_proj / scale).round(), -qmax, qmax)
     dequant = quant * scale
-    max_error = (vocab_proj - dequant).abs().max().item()
+    max_error = scalar_tensor_to_float((vocab_proj - dequant).abs().max())
     print(f"[demo] {bits}-bit cache emulation max error: {max_error:.4f}")
 
 

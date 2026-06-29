@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 
+from core.benchmark.utils import scalar_tensor_to_float
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -302,7 +303,7 @@ def run_benchmark(
     
     benchmark.run()
     if benchmark._last_output is not None:
-        benchmark.output_mean = float(benchmark._last_output.abs().mean().item())
+        benchmark.output_mean = scalar_tensor_to_float(benchmark._last_output.abs().mean())
     benchmark.cleanup()
     
     return {

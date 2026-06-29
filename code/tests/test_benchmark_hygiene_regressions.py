@@ -811,6 +811,20 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     assert "self._dequantized_cpu = None" in teardown_section
 
 
+def test_ch19_dynamic_quantized_cache_demo_uses_shared_scalar_readback() -> None:
+    source = (REPO_ROOT / "ch19" / "dynamic_quantized_cache.py").read_text(
+        encoding="utf-8"
+    )
+    demo_section = source.split("def demo_quantized_cache", maxsplit=1)[1].split(
+        "def parse_args",
+        maxsplit=1,
+    )[0]
+
+    assert "from core.benchmark.utils import scalar_tensor_to_float" in source
+    assert "max_error = scalar_tensor_to_float((vocab_proj - dequant).abs().max())" in demo_section
+    assert ".abs().max().item()" not in demo_section
+
+
 def test_ch07_and_ch08_sources_do_not_ship_artificial_baseline_penalties() -> None:
     hbm_copy_source = (REPO_ROOT / "ch07" / "baseline_hbm_copy.cu").read_text(encoding="utf-8")
     threshold_source = (REPO_ROOT / "ch08" / "threshold_common.cuh").read_text(encoding="utf-8")
@@ -12672,6 +12686,9 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
 
     assert ".detach().clone()" not in run_section
     assert ".item()" not in run_section
+    assert "from core.benchmark.utils import scalar_tensor_to_float" in source
+    assert "benchmark.output_mean = scalar_tensor_to_float(benchmark._last_output.abs().mean())" in source
+    assert "benchmark._last_output.abs().mean().item()" not in source
     assert "self.output_slice = x[:1, :1, : min(16, x.shape[-1])]" in run_section
     assert "self._nan_output: Optional[torch.Tensor] = None" in source
     assert "self._nan_output.fill_(float(\"inf\"))" in source
