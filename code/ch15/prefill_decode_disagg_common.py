@@ -65,6 +65,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_groups: list[tuple[torch.device, nn.Module, nn.Module, torch.Tensor]] = []
         self._verify_probe: Optional[torch.Tensor] = None
         self._output_shards: Optional[list[torch.Tensor]] = None
+        self._verify_output_stack: Optional[torch.Tensor] = None
         self._parameter_count = 0
 
     def _refresh_workload_metadata(self) -> None:
@@ -148,6 +149,10 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._handoff_staging = {}
         self._request_groups = []
         self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]
+        self._verify_output_stack = self._empty_cpu_staging(
+            torch.Size((min(2, self.batch_size), min(256, self.hidden_size))),
+            torch.bfloat16,
+        )
         self._parameter_count = 0
 
         offset = 0
@@ -239,10 +244,17 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self._output_shards is None or self._verify_probe is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
+        if self._verify_output_stack is None:
+            raise RuntimeError("Verification output stack not initialized")
 
-        selected = self._output_shards[:2]
-        output_cpu = torch.stack([tensor.detach().cpu() for tensor in selected], dim=0)
-        output_slice = output_cpu[:, :256].float().clone()
+        selected_count = min(2, len(self._output_shards))
+        verify_width = self._verify_output_stack.shape[1]
+        for output_idx in range(selected_count):
+            self._verify_output_stack[output_idx].copy_(
+                self._output_shards[output_idx][:verify_width],
+                non_blocking=False,
+            )
+        output_slice = self._verify_output_stack[:selected_count].float().clone()
         self._set_verification_payload(
             inputs={"probe": self._verify_probe.detach().cpu()},
             output=output_slice,
@@ -267,6 +279,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_groups = []
         self._verify_probe = None
         self._output_shards = None
+        self._verify_output_stack = None
         self._parameter_count = 0
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

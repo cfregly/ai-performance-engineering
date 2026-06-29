@@ -91,6 +91,12 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
 
     assert "self._host_staging = {}" in setup_section
     assert "self._handoff_staging = {}" in setup_section
@@ -98,6 +104,9 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "self._request_groups.extend(" in setup_section
     assert "batch_slice[idx : idx + 1]" in setup_section
     assert "self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]" in setup_section
+    assert "self._verify_output_stack: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_stack = self._empty_cpu_staging(" in setup_section
+    assert "torch.Size((min(2, self.batch_size), min(256, self.hidden_size)))" in setup_section
     assert "self._handoff_staging[staging_key] = torch.empty(" in setup_section
     assert "prefill_out.cpu()" not in handoff_section
     assert "kv_cpu.to(decode_device)" not in handoff_section
@@ -116,3 +125,9 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "batch[idx : idx + 1]" not in benchmark_section
     assert "outputs: list[torch.Tensor] = []" not in benchmark_section
     assert "outputs.append(" not in benchmark_section
+    assert "for output_idx in range(selected_count):" in capture_section
+    assert "self._verify_output_stack[output_idx].copy_(" in capture_section
+    assert "self._output_shards[output_idx][:verify_width]" in capture_section
+    assert "torch.stack([tensor.detach().cpu() for tensor in selected], dim=0)" not in capture_section
+    assert "output_cpu[:, :256]" not in capture_section
+    assert "self._verify_output_stack = None" in teardown_section
