@@ -7,7 +7,7 @@ import os
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -619,8 +619,10 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.label = label
         self._pairs: List[_LocalPair] = []
         self._output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
         self._verify_prompt: Optional[torch.Tensor] = None
+        self._metadata_inputs: Dict[str, torch.Tensor] = {}
         self._param_count: int = 0
 
         total_requests = self.cfg.requests_per_rank * self.prefill_ranks * self.cfg.batch_size
@@ -629,6 +631,17 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(total_requests),
             tokens_per_iteration=float(tokens_per_iter),
         )
+
+    def _allocate_output_buffer(self) -> torch.Tensor:
+        shape = (
+            len(self._pairs) * self.cfg.requests_per_rank,
+            self.cfg.batch_size,
+            self.cfg.hidden_size,
+        )
+        try:
+            return torch.empty(shape, device="cpu", dtype=self.cfg.dtype, pin_memory=True)
+        except RuntimeError:
+            return torch.empty(shape, device="cpu", dtype=self.cfg.dtype)
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -732,6 +745,13 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         expected_outputs = len(self._pairs) * self.cfg.requests_per_rank
         self._pending_outputs = [torch.empty(0) for _ in range(expected_outputs)]
         self._verify_prompt = self._pairs[0].prompts[0]
+        self._output_buffer = self._allocate_output_buffer()
+        meta_dtype = torch.float32
+        self._metadata_inputs = {
+            "decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype),
+            "hidden_size": torch.zeros((self.cfg.hidden_size,), dtype=meta_dtype),
+            "num_layers": torch.zeros((self.cfg.num_layers,), dtype=meta_dtype),
+        }
         for pair in self._pairs:
             torch.cuda.synchronize(pair.prefill_device)
             torch.cuda.synchronize(pair.decode_device)
@@ -802,18 +822,20 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._verify_prompt is None or (self._output is None and not self._pending_outputs):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         if self._output is None:
-            self._output = torch.stack(
-                [out.detach().cpu() for out in self._pending_outputs],
-                dim=0,
-            )
+            if self._output_buffer is None:
+                raise RuntimeError("Output buffer not initialized")
+            for output_idx, output in enumerate(self._pending_outputs):
+                self._output_buffer[output_idx].copy_(output, non_blocking=False)
+            self._output = self._output_buffer
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
-        meta_dtype = torch.float32
+        if not self._metadata_inputs:
+            raise RuntimeError("setup() must initialize verification metadata tensors")
         self._set_verification_payload(
             inputs={
                 "prompt": self._verify_prompt,
-                "decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype),
-                "hidden_size": torch.zeros((self.cfg.hidden_size,), dtype=meta_dtype),
-                "num_layers": torch.zeros((self.cfg.num_layers,), dtype=meta_dtype),
+                "decode_tokens": self._metadata_inputs["decode_tokens"],
+                "hidden_size": self._metadata_inputs["hidden_size"],
+                "num_layers": self._metadata_inputs["num_layers"],
             },
             output=self._output,
             batch_size=int(self._output.shape[0]),
@@ -848,8 +870,10 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self._pairs = []
         self._output = None
+        self._output_buffer = None
         self._pending_outputs = []
         self._verify_prompt = None
+        self._metadata_inputs = {}
         torch.cuda.empty_cache()
 
     def validate_result(self) -> Optional[str]:

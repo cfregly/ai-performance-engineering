@@ -16,7 +16,7 @@ import inspect
 import os
 import time
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -477,6 +477,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         self._output_buffer: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
         self._verify_prompt: Optional[torch.Tensor] = None
+        self._metadata_inputs: Dict[str, torch.Tensor] = {}
         self._param_count: int = 0
 
         total_requests = self.cfg.requests_per_rank * self.num_pairs * self.cfg.batch_size
@@ -594,6 +595,13 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
             torch.empty(0) for _ in range(self.num_pairs * self.cfg.requests_per_rank)
         ]
         self._output_buffer = self._allocate_output_buffer()
+        meta_dtype = torch.float32
+        self._metadata_inputs = {
+            "decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype),
+            "hidden_size": torch.zeros((self.cfg.hidden_size,), dtype=meta_dtype),
+            "num_layers": torch.zeros((self.cfg.num_layers,), dtype=meta_dtype),
+            "num_experts": torch.zeros((self.cfg.num_experts,), dtype=meta_dtype),
+        }
         for pair in self._pairs:
             torch.cuda.synchronize(pair.prefill_device)
             torch.cuda.synchronize(pair.decode_device)
@@ -664,14 +672,15 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                 output_offset += output_rows
             self._output = self._output_buffer
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
-        meta_dtype = torch.float32
+        if not self._metadata_inputs:
+            raise RuntimeError("setup() must initialize verification metadata tensors")
         self._set_verification_payload(
             inputs={
                 "prompt": self._verify_prompt,
-                "decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype),
-                "hidden_size": torch.zeros((self.cfg.hidden_size,), dtype=meta_dtype),
-                "num_layers": torch.zeros((self.cfg.num_layers,), dtype=meta_dtype),
-                "num_experts": torch.zeros((self.cfg.num_experts,), dtype=meta_dtype),
+                "decode_tokens": self._metadata_inputs["decode_tokens"],
+                "hidden_size": self._metadata_inputs["hidden_size"],
+                "num_layers": self._metadata_inputs["num_layers"],
+                "num_experts": self._metadata_inputs["num_experts"],
             },
             output=self._output,
             batch_size=int(self._output.shape[0]),
@@ -709,6 +718,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         self._output_buffer = None
         self._pending_outputs = []
         self._verify_prompt = None
+        self._metadata_inputs = {}
         torch.cuda.empty_cache()
 
     def validate_result(self) -> Optional[str]:

@@ -9758,6 +9758,9 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "transfer_kv_chunks=transfer_kv_chunks" in setup_section
     assert "transfer_seed_chunks=transfer_seed_chunks" in setup_section
     assert "self._pending_outputs = [" in setup_section
+    assert "self._metadata_inputs: Dict[str, torch.Tensor] = {}" in source
+    assert '"decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype)' in setup_section
+    assert '"num_experts": torch.zeros((self.cfg.num_experts,), dtype=meta_dtype)' in setup_section
     assert "out.detach().cpu()" not in benchmark_section
     assert "torch.cat([out.detach().cpu()" not in benchmark_section
     assert "outputs: List[torch.Tensor] = []" not in benchmark_section
@@ -9783,7 +9786,10 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "for output in self._pending_outputs:" in capture_section
     assert "self._output_buffer[output_offset : output_offset + output_rows].copy_(" in capture_section
     assert "self._output = self._output_buffer" in capture_section
+    assert '"decode_tokens": self._metadata_inputs["decode_tokens"]' in capture_section
+    assert '"num_experts": self._metadata_inputs["num_experts"]' in capture_section
     assert "torch.cat([out.detach().cpu() for out in self._pending_outputs], dim=0)" not in capture_section
+    assert "torch.zeros(" not in capture_section
 
 
 def test_ch15_sdpa_attention_reuses_kv_concat_buffers() -> None:
@@ -10477,6 +10483,10 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "seed_buf = torch.empty(" not in run_iteration_section
     assert "expected_outputs = len(self._pairs) * self.cfg.requests_per_rank" in setup_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(expected_outputs)]" in setup_section
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in class_section
+    assert "self._output_buffer = self._allocate_output_buffer()" in setup_section
+    assert "self._metadata_inputs: Dict[str, torch.Tensor] = {}" in class_section
+    assert '"decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype)' in setup_section
     assert "prefill_kv_chunks=[" in setup_section
     assert "prefill_seed_chunks=[" in setup_section
     assert "transfer_kv_chunks=[" in setup_section
@@ -10511,8 +10521,14 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert ".to(pair.decode_device)" not in benchmark_section
     assert "outputs.append(" not in benchmark_section
     assert "outputs.extend(" not in benchmark_section
-    assert "self._output = torch.stack(" in capture_section
-    assert "[out.detach().cpu() for out in self._pending_outputs]" in capture_section
+    assert "if self._output_buffer is None:" in capture_section
+    assert "for output_idx, output in enumerate(self._pending_outputs):" in capture_section
+    assert "self._output_buffer[output_idx].copy_(output, non_blocking=False)" in capture_section
+    assert "self._output = self._output_buffer" in capture_section
+    assert '"decode_tokens": self._metadata_inputs["decode_tokens"]' in capture_section
+    assert "torch.stack(" not in capture_section
+    assert "[out.detach().cpu() for out in self._pending_outputs]" not in capture_section
+    assert "torch.zeros(" not in capture_section
 
 
 def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> None:
