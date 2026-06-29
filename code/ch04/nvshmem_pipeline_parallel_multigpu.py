@@ -377,6 +377,15 @@ class NVSHMEMPipelineEngine:
         # Track activations for backward pass
         self.saved_activations: Deque[torch.Tensor] = deque()
         self._loss_buffer = torch.empty(num_microbatches, dtype=torch.float64, device=device)
+        try:
+            self._loss_host_buffer = torch.empty(
+                num_microbatches,
+                dtype=torch.float64,
+                device="cpu",
+                pin_memory=True,
+            )
+        except RuntimeError:
+            self._loss_host_buffer = torch.empty(num_microbatches, dtype=torch.float64, device="cpu")
     
     def forward_microbatch(
         self,
@@ -507,7 +516,9 @@ class NVSHMEMPipelineEngine:
         
         if loss_count == 0:
             return []
-        return self._loss_buffer[:loss_count].detach().cpu().tolist()
+        host_losses = self._loss_host_buffer[:loss_count]
+        host_losses.copy_(self._loss_buffer[:loss_count], non_blocking=False)
+        return [float(host_losses[idx]) for idx in range(loss_count)]
 
     def close(self) -> None:
         """Release pipeline buffers to avoid teardown hangs."""

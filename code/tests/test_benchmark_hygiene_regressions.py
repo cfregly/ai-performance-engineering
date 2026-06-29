@@ -1570,6 +1570,8 @@ def test_ch04_nvshmem_pipeline_defers_loss_materialization() -> None:
     assert "loss_tensors.append(loss.detach())" not in schedule_section
     assert "torch.stack(loss_tensors)" not in schedule_section
     assert "self._loss_buffer = torch.empty(num_microbatches, dtype=torch.float64" in source
+    assert "self._loss_host_buffer = torch.empty(" in source
+    assert "pin_memory=True" in source
     assert "from collections import deque" in source
     assert "self.saved_activations: Deque[torch.Tensor] = deque()" in source
     assert "activation = self.saved_activations.popleft()" in source
@@ -1577,7 +1579,10 @@ def test_ch04_nvshmem_pipeline_defers_loss_materialization() -> None:
     assert "loss_count = 0" in schedule_section
     assert "self._loss_buffer[loss_count].copy_(loss.detach())" in schedule_section
     assert "loss_count += 1" in schedule_section
-    assert "return self._loss_buffer[:loss_count].detach().cpu().tolist()" in schedule_section
+    assert "host_losses = self._loss_host_buffer[:loss_count]" in schedule_section
+    assert "host_losses.copy_(self._loss_buffer[:loss_count], non_blocking=False)" in schedule_section
+    assert "return [float(host_losses[idx]) for idx in range(loss_count)]" in schedule_section
+    assert "return self._loss_buffer[:loss_count].detach().cpu().tolist()" not in schedule_section
 
 
 def test_ch04_nvshmem_and_symmem_demos_buffer_loss_logging() -> None:
