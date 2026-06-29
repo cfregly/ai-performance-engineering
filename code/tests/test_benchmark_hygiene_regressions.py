@@ -6802,6 +6802,14 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
         "(run_dir / \"summary.json\")",
         maxsplit=1,
     )[0]
+    run_quality_section = source.split("def _run_quality", maxsplit=1)[1].split(
+        "def _run_quality_with_llm",
+        maxsplit=1,
+    )[0]
+    llm_quality_section = source.split("def _run_quality_with_llm", maxsplit=1)[1].split(
+        "# ----------------------------------------------------------------- Latency",
+        maxsplit=1,
+    )[0]
 
     assert "def _percentile_from_ordered" in source
     assert "ordered = sorted(values)" in percentile_section
@@ -6827,6 +6835,14 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert "\"decode_p95_ms\": decode_summary[\"p95\"]" in run_summary_section
     assert "_percentile([r[\"ttft_ms\"] for r in latency_rows]" not in run_summary_section
     assert "_percentile([r[\"decode_ms\"] for r in latency_rows]" not in run_summary_section
+    assert "rows = self._run_quality_with_llm()" in run_quality_section
+    assert "return rows, _summarize_quality_rows(rows)" in run_quality_section
+    assert "per_task_acc" not in run_quality_section
+    assert "sum(v) / len(v)" not in run_quality_section
+    assert "return []" in llm_quality_section
+    assert "return rows" in llm_quality_section
+    assert "per_task_acc" not in llm_quality_section
+    assert "return [], {}" not in llm_quality_section
     assert "experts = self.cfg.experts" in moe_section
     assert "top_k = self.cfg.top_k" in moe_section
     assert "ranked_count = min(experts, max(top_k, 2))" in moe_section

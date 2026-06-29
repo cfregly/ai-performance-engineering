@@ -450,18 +450,16 @@ class CheapEvalStack:
     # ------------------------------------------------------------------ Quality
     def _run_quality(self, optimized: bool) -> Tuple[List[Dict], Dict]:
         rows: List[Dict] = []
-        per_task_acc: Dict[str, List[int]] = {k: [] for k in QUALITY_TASKS}
         base_acc = 0.62 if not optimized else 0.74
         consistency_bonus = 0.0 if not optimized else 0.03
 
         if self._llm_available and self.cfg.use_vllm:
-            rows, per_task_acc = self._run_quality_with_llm()
+            rows = self._run_quality_with_llm()
         else:
             # Synthetic fallback when vLLM is unavailable in the current environment.
             for task, qas in QUALITY_TASKS.items():
                 for _, expected in qas:
                     correct = self._rng.random() < (base_acc + consistency_bonus)
-                    per_task_acc[task].append(1 if correct else 0)
                     rows.append(
                         {
                             "task": task,
@@ -472,15 +470,11 @@ class CheapEvalStack:
                         }
                     )
 
-        per_task_summary = {t: (sum(v) / len(v) if v else 0.0) for t, v in per_task_acc.items()}
-        avg_acc = (
-            sum(per_task_summary.values()) / len(per_task_summary) if per_task_summary else 0.0
-        )
-        return rows, {"per_task": per_task_summary, "avg_accuracy": avg_acc}
+        return rows, _summarize_quality_rows(rows)
 
-    def _run_quality_with_llm(self) -> Tuple[List[Dict], Dict[str, List[int]]]:
+    def _run_quality_with_llm(self) -> List[Dict]:
         if self._llm is None:
-            return [], {}
+            return []
 
         prompts: List[Tuple[str, str, str]] = []  # (task, prompt, expected)
         for task, qas in QUALITY_TASKS.items():
@@ -498,7 +492,6 @@ class CheapEvalStack:
         )
 
         rows: List[Dict] = []
-        per_task_acc: Dict[str, List[int]] = {k: [] for k in QUALITY_TASKS}
         for meta, out in zip(prompts, outputs):
             task, prompt, expected = meta
             completion = out.outputs[0].text if out.outputs else ""
@@ -515,8 +508,7 @@ class CheapEvalStack:
                     "source": "vllm",
                 }
             )
-            per_task_acc[task].append(int(correct))
-        return rows, per_task_acc
+        return rows
 
     # ----------------------------------------------------------------- Latency
     def _simulate_latency(self, optimized: bool) -> List[Dict]:
