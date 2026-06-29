@@ -238,6 +238,10 @@ def test_decode_iteration_metrics_reuse_tuple_event_state() -> None:
         "# Model + buffer init",
         maxsplit=1,
     )[0]
+    init_section = source.split("def __init__", maxsplit=1)[1].split(
+        "def setup",
+        maxsplit=1,
+    )[0]
     prefetch_section = source.split("def _benchmark_prefetch_batches", maxsplit=1)[1].split(
         "def benchmark_fn",
         maxsplit=1,
@@ -252,11 +256,28 @@ def test_decode_iteration_metrics_reuse_tuple_event_state() -> None:
     )[0]
 
     assert "self._timing_event_tuple = (" in setup_section
+    assert "self._iteration_ttft_times = [0.0]" in init_section
+    assert "self._iteration_tpot_times = [0.0] * self.cfg.decode_tokens" in init_section
+    assert '"ttft_times_ms": self._iteration_ttft_times' in init_section
+    assert '"tpot_times_ms": self._iteration_tpot_times' in init_section
+    assert "def _refresh_static_custom_metrics" in source
+    assert "self._refresh_static_custom_metrics()" in setup_section
     assert "iter_start, batch0_end, _, iter_end = self._timing_event_tuple" in prefetch_section
     assert "prefill_start, prefill_end, decode_start, decode_end = self._timing_event_tuple" in benchmark_section
     assert "self._pending_iteration_events = (iter_start, batch0_end, batch0_end, iter_end)" in prefetch_section
     assert "self._pending_iteration_events = (prefill_start, prefill_end, decode_start, decode_end)" in benchmark_section
     assert "prefill_start, prefill_end, decode_start, decode_end = self._pending_iteration_events" in finalize_section
+    assert "metrics = self._custom_metrics" in finalize_section
+    assert 'metrics["ttft_ms"] = float(ttft_ms)' in finalize_section
+    assert 'metrics["decode_time_ms"] = float(decode_ms)' in finalize_section
+    assert 'metrics["tpot_mean_ms"] = float(tpot_ms)' in finalize_section
+    assert "self._iteration_ttft_times[0] = ttft_ms" in finalize_section
+    assert "for idx in range(len(tpot_times)):" in finalize_section
+    assert "tpot_times[idx] = tpot_ms" in finalize_section
+    assert "return self._iteration_metric_payload" in finalize_section
+    assert "self._custom_metrics = {" not in finalize_section
+    assert '"ttft_times_ms": [ttft_ms]' not in finalize_section
+    assert "[tpot_ms] * self.cfg.decode_tokens" not in finalize_section
     assert "self._pending_iteration_events = {" not in source
     assert 'self._pending_iteration_events["' not in source
 
@@ -362,13 +383,23 @@ def test_decode_benchmark_reuses_timing_events() -> None:
         tuple_ids = tuple(id(event) for event in bench._timing_event_tuple)
 
         bench.benchmark_fn()
-        bench.finalize_iteration_metrics()
+        metrics_payload = bench.finalize_iteration_metrics()
+        custom_metrics = bench.get_custom_metrics()
+        assert metrics_payload is not None
+        ttft_times = metrics_payload["ttft_times_ms"]
+        tpot_times = metrics_payload["tpot_times_ms"]
+
         bench.benchmark_fn()
-        bench.finalize_iteration_metrics()
+        next_metrics_payload = bench.finalize_iteration_metrics()
 
         assert set(event_ids) == {"prefill_start", "prefill_end", "decode_start", "decode_end"}
         assert {name: id(event) for name, event in bench._timing_events.items()} == event_ids
         assert bench._timing_event_tuple is not None
         assert tuple(id(event) for event in bench._timing_event_tuple) == tuple_ids
+        assert next_metrics_payload is metrics_payload
+        assert next_metrics_payload is not None
+        assert next_metrics_payload["ttft_times_ms"] is ttft_times
+        assert next_metrics_payload["tpot_times_ms"] is tpot_times
+        assert bench.get_custom_metrics() is custom_metrics
     finally:
         bench.teardown()

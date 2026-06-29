@@ -126,6 +126,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._decode_next_token_values: Optional[torch.Tensor] = None
         self._decode_next_token: Optional[torch.Tensor] = None
         self._custom_metrics: Dict[str, float] = {}
+        self._iteration_ttft_times = [0.0]
+        self._iteration_tpot_times = [0.0] * self.cfg.decode_tokens
+        self._iteration_metric_payload: Dict[str, list[float]] = {
+            "ttft_times_ms": self._iteration_ttft_times,
+            "tpot_times_ms": self._iteration_tpot_times,
+        }
         self._timing_event_tuple: Optional[
             tuple[torch.cuda.Event, torch.cuda.Event, torch.cuda.Event, torch.cuda.Event]
         ] = None
@@ -299,6 +305,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._maybe_compile()
         if self.cfg.use_cuda_graphs:
             self._capture_decode_graph()
+        self._refresh_static_custom_metrics()
         total_tokens = (
             self.cfg.prefetch_batches
             * self.cfg.batch_size
@@ -308,6 +315,39 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=float(self.cfg.batch_size * self.cfg.prefetch_batches),
             tokens_per_iteration=float(total_tokens),
         )
+
+    def _refresh_static_custom_metrics(self) -> None:
+        metrics = self._custom_metrics
+        metrics["tokens_per_iteration"] = float(
+            self.cfg.prefetch_batches
+            * self.cfg.batch_size
+            * (self.cfg.prompt_tokens + self.cfg.decode_tokens)
+        )
+        metrics["prompt_tokens"] = float(self.cfg.prompt_tokens)
+        metrics["decode_tokens"] = float(self.cfg.decode_tokens)
+        metrics["hidden_size"] = float(self.cfg.hidden_size)
+        metrics["prefetch_batches"] = float(self.cfg.prefetch_batches)
+        metrics["host_payload_mb"] = float(self.cfg.host_payload_mb)
+        metrics["use_pinned_host"] = float(self.cfg.use_pinned_host)
+        metrics["use_copy_stream"] = float(self.cfg.use_copy_stream)
+        metrics["use_compute_stream"] = float(self.cfg.use_compute_stream)
+        metrics["use_cuda_graphs"] = float(self.decode_graph is not None)
+        metrics["graph_full_iteration"] = float(self.graph_includes_prefill)
+        metrics["use_torch_compile"] = float(
+            self.cfg.use_torch_compile and not self._compile_error
+        )
+        metrics["use_fp8"] = float(self._fp8_enabled)
+        metrics["fp8_fallback"] = float(1.0 if (self.cfg.use_fp8 and not self._fp8_enabled) else 0.0)
+        metrics["use_fp4"] = float(self._fp4_enabled)
+        metrics["use_te_mlp"] = float(self.cfg.use_te_mlp)
+        if self._compile_error:
+            metrics["compile_error"] = 1.0
+        else:
+            metrics.pop("compile_error", None)
+        if self._graph_error:
+            metrics["graph_capture_failed"] = 1.0
+        else:
+            metrics.pop("graph_capture_failed", None)
 
     # Model + buffer init
     def _init_model(self) -> None:
@@ -796,38 +836,19 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         tokens_per_s = tokens_per_iter / max(total_ms / 1000.0, 1e-6)
 
-        self._custom_metrics = {
-            "tokens_per_iteration": tokens_per_iter,
-            "prompt_tokens": float(self.cfg.prompt_tokens),
-            "decode_tokens": float(self.cfg.decode_tokens),
-            "hidden_size": float(self.cfg.hidden_size),
-            "prefetch_batches": float(self.cfg.prefetch_batches),
-            "host_payload_mb": float(self.cfg.host_payload_mb),
-            "use_pinned_host": float(self.cfg.use_pinned_host),
-            "use_copy_stream": float(self.cfg.use_copy_stream),
-            "use_compute_stream": float(self.cfg.use_compute_stream),
-            "use_cuda_graphs": float(self.decode_graph is not None),
-            "graph_full_iteration": float(self.graph_includes_prefill),
-            "use_torch_compile": float(self.cfg.use_torch_compile and not self._compile_error),
-            "use_fp8": float(self._fp8_enabled),
-            "fp8_fallback": float(1.0 if (self.cfg.use_fp8 and not self._fp8_enabled) else 0.0),
-            "use_fp4": float(self._fp4_enabled),
-            "use_te_mlp": float(self.cfg.use_te_mlp),
-            "ttft_ms": float(ttft_ms),
-            "decode_time_ms": float(decode_ms),
-            "tpot_mean_ms": float(tpot_ms),
-            "tokens_per_s": float(tokens_per_s),
-            "total_time_ms": float(total_ms),
-        }
-        if self._compile_error:
-            self._custom_metrics["compile_error"] = 1.0
-        if self._graph_error:
-            self._custom_metrics["graph_capture_failed"] = 1.0
+        metrics = self._custom_metrics
+        metrics["tokens_per_iteration"] = tokens_per_iter
+        metrics["ttft_ms"] = float(ttft_ms)
+        metrics["decode_time_ms"] = float(decode_ms)
+        metrics["tpot_mean_ms"] = float(tpot_ms)
+        metrics["tokens_per_s"] = float(tokens_per_s)
+        metrics["total_time_ms"] = float(total_ms)
 
-        return {
-            "ttft_times_ms": [ttft_ms],
-            "tpot_times_ms": [tpot_ms] * self.cfg.decode_tokens,
-        }
+        self._iteration_ttft_times[0] = ttft_ms
+        tpot_times = self._iteration_tpot_times
+        for idx in range(len(tpot_times)):
+            tpot_times[idx] = tpot_ms
+        return self._iteration_metric_payload
 
     def _finalize_output(self) -> None:
         """Capture a slice of model state for verification."""
@@ -960,6 +981,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "_copy_done_events",
             "_timing_events",
             "_timing_event_tuple",
+            "_pending_iteration_events",
         ):
             if hasattr(self, attr):
                 setattr(self, attr, None)
