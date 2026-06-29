@@ -1,13 +1,5 @@
-import os
-import torch.profiler as profiler
-from torch.profiler import profile, record_function, ProfilerActivity, schedule
-import torch.cuda.nvtx as nvtx
 import torch
-from core.utils.architecture_runtime import (
-    get_arch_config,
-    get_architecture,
-    get_architecture_info,
-)
+from core.utils.architecture_runtime import get_arch_config
 
 _ARCH_CFG = get_arch_config()
 
@@ -18,9 +10,9 @@ Implementation of dynamic routing algorithms that decide whether to offload
 prefill computation to dedicated prefill workers or handle it locally on
 decode workers."""
 
+import heapq
 import time
 import random
-import threading
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
@@ -423,13 +415,16 @@ def main():
     print(f"\n=== Latency Cost Analysis ===")
     print("Worker latency costs (lower is better):")
     
-    all_workers = [(f"prefill-{k}", v) for k, v in router.prefill_workers.items()] + \
-                  [(f"decode-{k}", v) for k, v in router.decode_workers.items()]
+    all_worker_costs = [
+        (f"prefill-{worker_id}", metrics, router.calculate_latency_cost(metrics))
+        for worker_id, metrics in router.prefill_workers.items()
+    ] + [
+        (f"decode-{worker_id}", metrics, router.calculate_latency_cost(metrics))
+        for worker_id, metrics in router.decode_workers.items()
+    ]
+    top_workers = heapq.nsmallest(5, all_worker_costs, key=lambda row: row[2])
     
-    all_workers.sort(key=lambda x: router.calculate_latency_cost(x[1]))
-    
-    for worker_id, metrics in all_workers[:5]:  # Show top 5
-        cost = router.calculate_latency_cost(metrics)
+    for worker_id, metrics, cost in top_workers:
         print(f"  {worker_id}: cost={cost:.3f} "
               f"(mem={metrics.memory_usage:.1f}%, active={metrics.active_requests})")
     

@@ -10358,6 +10358,27 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "self.output = torch.tensor(self._output_values, dtype=torch.float32)" in capture_section
 
 
+def test_ch17_dynamic_routing_latency_report_uses_heap_selection() -> None:
+    source = (REPO_ROOT / "ch17" / "dynamic_routing.py").read_text(encoding="utf-8")
+    latency_section = source.split(
+        "# Demonstrate latency cost calculation",
+        maxsplit=1,
+    )[1].split("print(f\"\\n=== Configuration Summary ===\")", maxsplit=1)[0]
+
+    assert "import heapq" in source
+    assert "torch.profiler" not in source
+    assert "torch.cuda.nvtx" not in source
+    assert "import threading" not in source
+    assert "all_worker_costs = [" in latency_section
+    assert "router.calculate_latency_cost(metrics)" in latency_section
+    assert "top_workers = heapq.nsmallest(5, all_worker_costs, key=lambda row: row[2])" in latency_section
+    assert "for worker_id, metrics, cost in top_workers:" in latency_section
+    assert "all_workers.sort" not in latency_section
+    assert "all_workers[:5]" not in latency_section
+    print_section = latency_section.split("for worker_id, metrics, cost in top_workers:", maxsplit=1)[1]
+    assert "router.calculate_latency_cost(metrics)" not in print_section
+
+
 def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
     for relative in (
         "ch17/baseline_moe_router_uniform.py",
