@@ -276,12 +276,15 @@ class GroupedMoEExperts(nn.Module):
         expert_offsets.sub_(expert_counts)
         expert_metadata[1].copy_(expert_counts)
         expert_metadata_host.copy_(expert_metadata)
-        expert_offsets_cpu, expert_counts_cpu = expert_metadata_host.tolist()
+        expert_offsets_cpu = expert_metadata_host[0]
+        expert_counts_cpu = expert_metadata_host[1]
         
         # Process each expert's tokens (grouped by expert for coalescing)
         output = self._sorted_output_like(sorted_x)
         
-        for expert_id, (start, count) in enumerate(zip(expert_offsets_cpu, expert_counts_cpu)):
+        for expert_id in range(self.num_experts):
+            start = int(expert_offsets_cpu[expert_id])
+            count = int(expert_counts_cpu[expert_id])
             if count == 0:
                 continue
             end = start + count

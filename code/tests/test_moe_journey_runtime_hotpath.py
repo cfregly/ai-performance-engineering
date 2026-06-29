@@ -68,8 +68,13 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
     assert "expert_offsets.sub_(expert_counts)" in grouped_section
     assert "expert_metadata[1].copy_(expert_counts)" in grouped_section
     assert "expert_metadata_host.copy_(expert_metadata)" in grouped_section
-    assert "expert_offsets_cpu, expert_counts_cpu = expert_metadata_host.tolist()" in grouped_section
-    assert "for expert_id, (start, count) in enumerate(zip(expert_offsets_cpu, expert_counts_cpu))" in grouped_section
+    assert "expert_offsets_cpu = expert_metadata_host[0]" in grouped_section
+    assert "expert_counts_cpu = expert_metadata_host[1]" in grouped_section
+    assert "for expert_id in range(self.num_experts):" in grouped_section
+    assert "start = int(expert_offsets_cpu[expert_id])" in grouped_section
+    assert "count = int(expert_counts_cpu[expert_id])" in grouped_section
+    assert "expert_metadata_host.tolist()" not in grouped_section
+    assert "zip(expert_offsets_cpu, expert_counts_cpu)" not in grouped_section
     assert "expert_counts.detach().cpu().tolist()" not in grouped_section
     assert "expert_offsets.detach().cpu().tolist()" not in grouped_section
     assert "expert_offsets = torch.cumsum(expert_counts, dim=0) - expert_counts" not in grouped_section
