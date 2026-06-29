@@ -10688,6 +10688,10 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
 
 def test_ch17_dynamic_routing_latency_report_uses_heap_selection() -> None:
     source = (REPO_ROOT / "ch17" / "dynamic_routing.py").read_text(encoding="utf-8")
+    processing_section = source.split(
+        "print(f\"\\n=== Processing {len(requests)} Requests ===\")",
+        maxsplit=1,
+    )[1].split("# Print routing statistics", maxsplit=1)[0]
     latency_section = source.split(
         "# Demonstrate latency cost calculation",
         maxsplit=1,
@@ -10697,6 +10701,10 @@ def test_ch17_dynamic_routing_latency_report_uses_heap_selection() -> None:
     assert "torch.profiler" not in source
     assert "torch.cuda.nvtx" not in source
     assert "import threading" not in source
+    assert "worker_update_ids = tuple(router.prefill_workers) + tuple(router.decode_workers)" in source
+    assert "random.choice(worker_update_ids)" in processing_section
+    assert "list(router.prefill_workers.keys())" not in processing_section
+    assert "list(router.decode_workers.keys())" not in processing_section
     assert "all_worker_costs = [" in latency_section
     assert "router.calculate_latency_cost(metrics)" in latency_section
     assert "top_workers = heapq.nsmallest(5, all_worker_costs, key=lambda row: row[2])" in latency_section

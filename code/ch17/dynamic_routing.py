@@ -353,6 +353,7 @@ def main():
     
     # Generate request stream
     requests = simulate_request_stream()
+    worker_update_ids = tuple(router.prefill_workers) + tuple(router.decode_workers)
     
     print(f"\n=== Processing {len(requests)} Requests ===")
     
@@ -384,9 +385,8 @@ def main():
         time.sleep(0.05)
         
         # Occasionally update worker metrics to simulate changing load
-        if random.random() < 0.3:
-            worker_to_update = random.choice(list(router.prefill_workers.keys()) + 
-                                           list(router.decode_workers.keys()))
+        if worker_update_ids and random.random() < 0.3:
+            worker_to_update = random.choice(worker_update_ids)
             if worker_to_update.startswith("prefill"):
                 current = router.prefill_workers[worker_to_update]
                 current.queue_length = max(0, current.queue_length + random.randint(-1, 2))
