@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import torch
 
@@ -43,6 +43,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self._output: Optional[torch.Tensor] = None
         self._output_stack: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
+        self._metadata_inputs: Dict[str, torch.Tensor] = {}
         self._param_count = 0
 
     def setup(self) -> None:
@@ -78,6 +79,12 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
+        meta_dtype = torch.float32
+        self._metadata_inputs = {
+            "decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype),
+            "hidden_size": torch.zeros((self.cfg.hidden_size,), dtype=meta_dtype),
+            "num_layers": torch.zeros((self.cfg.num_layers,), dtype=meta_dtype),
+        }
         self._output = None
         torch.cuda.synchronize(self.device)
 
@@ -100,13 +107,14 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         if self._output is None or self.prompts is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
-        meta_dtype = torch.float32
+        if not self._metadata_inputs:
+            raise RuntimeError("setup() must initialize verification metadata tensors")
         self._set_verification_payload(
             inputs={
                 "prompt": self.prompts[0].detach().cpu(),
-                "decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype),
-                "hidden_size": torch.zeros((self.cfg.hidden_size,), dtype=meta_dtype),
-                "num_layers": torch.zeros((self.cfg.num_layers,), dtype=meta_dtype),
+                "decode_tokens": self._metadata_inputs["decode_tokens"],
+                "hidden_size": self._metadata_inputs["hidden_size"],
+                "num_layers": self._metadata_inputs["num_layers"],
             },
             output=self._output,
             batch_size=int(self._output.shape[0]),
@@ -132,6 +140,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self._output = None
         self._output_stack = None
         self._pending_outputs = []
+        self._metadata_inputs = {}
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

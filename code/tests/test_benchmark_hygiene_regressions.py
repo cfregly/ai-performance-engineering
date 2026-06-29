@@ -14862,6 +14862,9 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "self._output_buffer: Optional[torch.Tensor] = None" in source
     assert "output_buffer_shape = (" in setup_section
     assert "self._output_buffer = torch.empty(output_buffer_shape, dtype=torch.long, device=self.device)" in setup_section
+    assert "self._metadata_inputs: Dict[str, torch.Tensor] = {}" in source
+    assert '"decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype)' in setup_section
+    assert '"num_experts": torch.zeros((self.cfg.num_experts,), dtype=meta_dtype)' in setup_section
     assert "self._next_token_buffer = torch.empty((self.cfg.batch_size, 1), dtype=torch.long, device=self.device)" in setup_section
     assert "self._next_token_values = torch.empty((self.cfg.batch_size, 1), dtype=self.cfg.dtype, device=self.device)" in setup_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" not in setup_section
@@ -14886,6 +14889,9 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "for output in self._pending_outputs:" in capture_section
     assert "self._output_buffer[output_offset : output_offset + output_rows].copy_(output)" in capture_section
     assert "self._output = self._output_buffer" in capture_section
+    assert '"decode_tokens": self._metadata_inputs["decode_tokens"]' in capture_section
+    assert '"num_experts": self._metadata_inputs["num_experts"]' in capture_section
+    assert "torch.zeros(" not in capture_section
 
 
 def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache() -> None:
@@ -14904,12 +14910,16 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
 
     assert "self._pending_outputs: List[torch.Tensor] = []" in base_section
     assert "self._output_stack: Optional[torch.Tensor] = None" in base_section
+    assert "self._metadata_inputs: Dict[str, torch.Tensor] = {}" in base_section
     assert "self._flat_prompts: Optional[torch.Tensor] = None" in base_section
     assert "self._flat_prompts = self.prompts.view(" in base_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in base_section
     assert "self._output_stack = torch.empty(" in base_section
+    assert '"decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype)' in base_section
     assert "torch.stack(self._pending_outputs, dim=0, out=self._output_stack)" in base_section
     assert "self._output = self._output_stack" in base_section
+    assert '"decode_tokens": self._metadata_inputs["decode_tokens"]' in base_section
+    assert "torch.zeros(" not in base_section.split("def capture_verification_payload", maxsplit=1)[1].split("def teardown", maxsplit=1)[0]
     assert "kv_cache = kv_cpu.to(self.device)" not in baseline_benchmark
     assert "kv_cache.cpu()" not in baseline_benchmark
     assert "self._kv_host_staging.copy_(kv_cache, non_blocking=False)" in baseline_benchmark

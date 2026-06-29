@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import torch
 
@@ -129,6 +129,7 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._pending_outputs: List[torch.Tensor] = []
         self._next_token_buffer: Optional[torch.Tensor] = None
         self._next_token_values: Optional[torch.Tensor] = None
+        self._metadata_inputs: Dict[str, torch.Tensor] = {}
         self._param_count = 0
 
     def setup(self) -> None:
@@ -163,6 +164,13 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._output_buffer = torch.empty(output_buffer_shape, dtype=torch.long, device=self.device)
         self._next_token_buffer = torch.empty((self.cfg.batch_size, 1), dtype=torch.long, device=self.device)
         self._next_token_values = torch.empty((self.cfg.batch_size, 1), dtype=self.cfg.dtype, device=self.device)
+        meta_dtype = torch.float32
+        self._metadata_inputs = {
+            "decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype),
+            "hidden_size": torch.zeros((self.cfg.hidden_size,), dtype=meta_dtype),
+            "num_layers": torch.zeros((self.cfg.num_layers,), dtype=meta_dtype),
+            "num_experts": torch.zeros((self.cfg.num_experts,), dtype=meta_dtype),
+        }
         self._output = None
         torch.cuda.synchronize(self.device)
 
@@ -242,14 +250,15 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
                 raise RuntimeError("unexpected decode output shape")
             self._output = self._output_buffer
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
-        meta_dtype = torch.float32
+        if not self._metadata_inputs:
+            raise RuntimeError("setup() must initialize verification metadata tensors")
         self._set_verification_payload(
             inputs={
                 "prompt": self.prompts[0].detach().cpu(),
-                "decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype),
-                "hidden_size": torch.zeros((self.cfg.hidden_size,), dtype=meta_dtype),
-                "num_layers": torch.zeros((self.cfg.num_layers,), dtype=meta_dtype),
-                "num_experts": torch.zeros((self.cfg.num_experts,), dtype=meta_dtype),
+                "decode_tokens": self._metadata_inputs["decode_tokens"],
+                "hidden_size": self._metadata_inputs["hidden_size"],
+                "num_layers": self._metadata_inputs["num_layers"],
+                "num_experts": self._metadata_inputs["num_experts"],
             },
             output=self._output,
             batch_size=int(self._output.shape[0]),
@@ -278,6 +287,7 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._pending_outputs = []
         self._next_token_buffer = None
         self._next_token_values = None
+        self._metadata_inputs = {}
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
