@@ -44,12 +44,13 @@ def _measure(bench: Any, *, warmup: int, iterations: int) -> float:
         end.synchronize()
         return float(start.elapsed_time(end) / max(iterations, 1))
 
-    timings = []
-    for _ in range(max(iterations, 1)):
+    sample_count = max(iterations, 1)
+    total_ms = 0.0
+    for _ in range(sample_count):
         t0 = time.perf_counter()
         bench.benchmark_fn()
-        timings.append((time.perf_counter() - t0) * 1000.0)
-    return float(sum(timings) / len(timings))
+        total_ms += (time.perf_counter() - t0) * 1000.0
+    return float(total_ms / sample_count)
 
 
 def _run_compare(workload: TierHandoffWorkload, *, warmup: int, iterations: int) -> dict[str, Any]:

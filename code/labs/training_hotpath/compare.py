@@ -35,12 +35,12 @@ def _measure(bench, *, warmup: int, iterations: int) -> float:
         end.synchronize()
         return float(start.elapsed_time(end) / iterations)
 
-    timings = []
+    total_ms = 0.0
     for _ in range(iterations):
         t0 = time.perf_counter()
         bench.benchmark_fn()
-        timings.append((time.perf_counter() - t0) * 1000.0)
-    return float(sum(timings) / len(timings))
+        total_ms += (time.perf_counter() - t0) * 1000.0
+    return float(total_ms / iterations)
 
 
 def _pair_for_example(example: str):

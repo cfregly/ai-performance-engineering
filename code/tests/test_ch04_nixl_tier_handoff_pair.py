@@ -75,7 +75,7 @@ def test_ch04_nixl_tier_handoff_optimized_reuses_pack_buffer() -> None:
 def test_nccl_nixl_runner_measure_cuda_path_uses_single_event_bracket() -> None:
     source = inspect.getsource(_measure)
     cuda_section = source.split("if torch.cuda.is_available():", maxsplit=1)[1].split(
-        "timings = []",
+        "sample_count = max(iterations, 1)",
         maxsplit=1,
     )[0]
 
@@ -87,6 +87,12 @@ def test_nccl_nixl_runner_measure_cuda_path_uses_single_event_bracket() -> None:
     assert "end.record()" not in cuda_section
     assert cuda_section.count("end.synchronize()") == 1
     assert "timings.append(start.elapsed_time(end))" not in cuda_section
+    assert "timings = []" not in source
+    assert "timings.append(" not in source
+    assert "sum(timings)" not in source
+    assert "sample_count = max(iterations, 1)" in source
+    assert "total_ms += (time.perf_counter() - t0) * 1000.0" in source
+    assert "return float(total_ms / sample_count)" in source
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for ch04 nixl tier handoff benchmark")

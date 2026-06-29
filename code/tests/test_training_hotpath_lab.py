@@ -67,7 +67,7 @@ def test_training_hotpath_discovery_finds_all_three_pairs() -> None:
 def test_training_hotpath_compare_measure_cuda_path_uses_single_event_bracket() -> None:
     source = inspect.getsource(_measure)
     cuda_section = source.split("if torch.cuda.is_available():", maxsplit=1)[1].split(
-        "timings = []",
+        "total_ms = 0.0",
         maxsplit=1,
     )[0]
 
@@ -79,6 +79,11 @@ def test_training_hotpath_compare_measure_cuda_path_uses_single_event_bracket() 
     assert "end.record()" not in cuda_section
     assert cuda_section.count("end.synchronize()") == 1
     assert "timings.append(start.elapsed_time(end))" not in cuda_section
+    assert "timings = []" not in source
+    assert "timings.append(" not in source
+    assert "sum(timings)" not in source
+    assert "total_ms += (time.perf_counter() - t0) * 1000.0" in source
+    assert "return float(total_ms / iterations)" in source
 
 
 @pytest.mark.parametrize(
