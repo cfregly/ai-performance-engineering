@@ -1979,10 +1979,15 @@ def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
         maxsplit=1,
     )[0]
 
-    assert "self.copy_stream.wait_stream(torch.cuda.current_stream())" in enqueue_section
-    assert benchmark_section.index("self._enqueue_copy(next_slot)") < benchmark_section.index(
-        "out = self.block(current_input)"
-    )
+    assert "producer_stream = wait_stream or torch.cuda.current_stream()" in enqueue_section
+    assert "self.copy_stream.wait_stream(producer_stream)" in enqueue_section
+    assert "current_stream = torch.cuda.current_stream() if self.copy_stream is not None else None" in benchmark_section
+    assert "self._enqueue_copy(0, wait_stream=current_stream)" in benchmark_section
+    assert "self._wait_for_copy(current_stream)" in benchmark_section
+    assert "self._enqueue_copy(next_slot, wait_stream=current_stream)" in benchmark_section
+    assert benchmark_section.index(
+        "self._enqueue_copy(next_slot, wait_stream=current_stream)"
+    ) < benchmark_section.index("out = self.block(current_input)")
     assert "last_input = current_input" in benchmark_section
     assert "self.block = BufferedTinyBlock(self.hidden).to(self.device).eval()" in source
     assert "class BufferedTinyBlock(nn.Module):" in helper_source

@@ -77,22 +77,25 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.mapped_inputs is not None
         np.copyto(self.host_views[slot], self.mapped_inputs[step])
 
-    def _enqueue_copy(self, slot: int) -> None:
+    def _enqueue_copy(self, slot: int, wait_stream: Optional[torch.cuda.Stream] = None) -> None:
         if self.copy_stream is None:
             self.device_buffers[slot].copy_(self.host_buffers[slot], non_blocking=False)
             return
+        producer_stream = wait_stream or torch.cuda.current_stream()
         with torch.cuda.stream(self.copy_stream):
-            self.copy_stream.wait_stream(torch.cuda.current_stream())
+            self.copy_stream.wait_stream(producer_stream)
             self.device_buffers[slot].copy_(self.host_buffers[slot], non_blocking=True)
 
-    def _wait_for_copy(self) -> None:
+    def _wait_for_copy(self, wait_stream: Optional[torch.cuda.Stream] = None) -> None:
         if self.copy_stream is not None:
-            torch.cuda.current_stream().wait_stream(self.copy_stream)
+            consumer_stream = wait_stream or torch.cuda.current_stream()
+            consumer_stream.wait_stream(self.copy_stream)
 
     def benchmark_fn(self) -> None:
         assert self.block is not None and self.mapped_inputs is not None
+        current_stream = torch.cuda.current_stream() if self.copy_stream is not None else None
         self._stage_to_host(0, 0)
-        self._enqueue_copy(0)
+        self._enqueue_copy(0, wait_stream=current_stream)
 
         out: Optional[torch.Tensor] = None
         last_input: Optional[torch.Tensor] = None
@@ -101,11 +104,11 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 for step in range(self.num_blocks):
                     current = step & 1
                     next_slot = current ^ 1
-                    self._wait_for_copy()
+                    self._wait_for_copy(current_stream)
                     current_input = self.device_buffers[current]
                     if step + 1 < self.num_blocks:
                         self._stage_to_host(next_slot, step + 1)
-                        self._enqueue_copy(next_slot)
+                        self._enqueue_copy(next_slot, wait_stream=current_stream)
                     out = self.block(current_input)
                     last_input = current_input
         if out is None or last_input is None:
