@@ -42,6 +42,10 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
         self._ttft_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._tpot_events: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._enable_nvtx = False
+        self._ttft_total_ms = 0.0
+        self._tpot_total_ms = 0.0
+        self._ttft_count = 0
+        self._tpot_count = 0
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -54,6 +58,11 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
             self.kv_cache = self.model.prefill(self.prompt)
         torch.cuda.synchronize(self.device)
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
+        self._history = {"ttft": [], "tpot": []}
+        self._ttft_total_ms = 0.0
+        self._tpot_total_ms = 0.0
+        self._ttft_count = 0
+        self._tpot_count = 0
         self._ttft_events = (
             torch.cuda.Event(enable_timing=True),
             torch.cuda.Event(enable_timing=True),
@@ -120,6 +129,10 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
         self._pending_tpot_pairs = []
         self._history["ttft"].append(ttft_ms)
         self._history["tpot"].extend(tpot_times_ms)
+        self._ttft_total_ms += ttft_ms
+        self._tpot_total_ms += sum(tpot_times_ms)
+        self._ttft_count += 1
+        self._tpot_count += len(tpot_times_ms)
         return {
             "ttft_times_ms": [ttft_ms],
             "tpot_times_ms": tpot_times_ms,
@@ -164,11 +177,13 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
         self.finalize_iteration_metrics()
-        if not self._history["ttft"]:
+        if self._ttft_count <= 0:
             return None
         return {
-            "monolithic.ttft_ms": float(sum(self._history["ttft"]) / len(self._history["ttft"])),
-            "monolithic.tpot_mean_ms": float(sum(self._history["tpot"]) / len(self._history["tpot"])),
+            "monolithic.ttft_ms": float(self._ttft_total_ms / self._ttft_count),
+            "monolithic.tpot_mean_ms": float(
+                self._tpot_total_ms / self._tpot_count if self._tpot_count else 0.0
+            ),
         }
 
     def validate_result(self) -> Optional[str]:

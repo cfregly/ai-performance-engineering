@@ -14971,6 +14971,18 @@ def test_ch17_prefill_decode_disagg_records_timing_on_explicit_streams() -> None
         "def finalize_iteration_metrics",
         maxsplit=1,
     )[0]
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def _get_ttft_events",
+        maxsplit=1,
+    )[0]
+    baseline_finalize = baseline_source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    baseline_metrics = baseline_source.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "def validate_result",
+        maxsplit=1,
+    )[0]
 
     assert "current_stream = torch.cuda.current_stream(device=self.device)" in baseline_section
     assert "request_start.record(current_stream)" in baseline_section
@@ -14981,6 +14993,14 @@ def test_ch17_prefill_decode_disagg_records_timing_on_explicit_streams() -> None
     assert "prefill_end.record()" not in baseline_section
     assert "token_start.record()" not in baseline_section
     assert "token_end.record()" not in baseline_section
+    assert "self._ttft_total_ms = 0.0" in baseline_setup
+    assert "self._tpot_total_ms = 0.0" in baseline_setup
+    assert "self._ttft_total_ms += ttft_ms" in baseline_finalize
+    assert "self._tpot_total_ms += sum(tpot_times_ms)" in baseline_finalize
+    assert '"monolithic.ttft_ms": float(self._ttft_total_ms / self._ttft_count)' in baseline_metrics
+    assert "self._tpot_total_ms / self._tpot_count" in baseline_metrics
+    assert 'sum(self._history["ttft"])' not in baseline_metrics
+    assert 'sum(self._history["tpot"])' not in baseline_metrics
 
     optimized_source = (REPO_ROOT / "ch17" / "optimized_prefill_decode_disagg.py").read_text(
         encoding="utf-8"
