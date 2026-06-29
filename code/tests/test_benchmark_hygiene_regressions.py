@@ -4015,6 +4015,30 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch14_demo_source
 
 
+def test_ch10_attention_reuses_verification_buffers() -> None:
+    for name in ("baseline_attention.py", "optimized_attention.py"):
+        source = (REPO_ROOT / "ch10" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(self.query, dtype=torch.float32)" in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.output.detach().float().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_dense_attention_baselines_cache_key_transpose_and_scale() -> None:
     cases = (
         (

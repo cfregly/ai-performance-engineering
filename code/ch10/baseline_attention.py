@@ -40,6 +40,7 @@ class BaselineAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.head_dim = self.hidden_dim // self.num_heads
         self.scale = 1.0 / (self.head_dim ** 0.5)
         self.output = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -60,6 +61,7 @@ class BaselineAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device, dtype=torch.float16
         )
         self._key_t = self.key.transpose(-2, -1)
+        self._verify_output_buffer = torch.empty_like(self.query, dtype=torch.float32)
         self.scale = 1.0 / (self.head_dim ** 0.5)
         
         self._synchronize()
@@ -100,13 +102,16 @@ class BaselineAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
                 "query": self.query,
                 "key": self.key,
                 "value": self.value,
             },
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=0,
             precision_flags={
@@ -123,6 +128,8 @@ class BaselineAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.key = None
         self._key_t = None
         self.value = None
+        self.output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
