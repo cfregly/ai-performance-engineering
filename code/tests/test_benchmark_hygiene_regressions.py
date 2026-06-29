@@ -8470,13 +8470,32 @@ def test_nanochat_dist_muon_reuses_padding_buffers() -> None:
     source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "muon.py").read_text(
         encoding="utf-8"
     )
+    muon_source = source.split("class Muon", maxsplit=1)[1].split(
+        "class DistMuon",
+        maxsplit=1,
+    )[0]
     dist_muon_source = source.split("class DistMuon", maxsplit=1)[1]
+    muon_init_section = muon_source.split("def __init__", maxsplit=1)[1].split(
+        "def step",
+        maxsplit=1,
+    )[0]
     init_section = dist_muon_source.split("def __init__", maxsplit=1)[1].split(
         "def step",
         maxsplit=1,
     )[0]
     step_section = dist_muon_source.split("def step", maxsplit=1)[1]
 
+    assert "groups_by_size = {}" in muon_init_section
+    assert "for p in params:" in muon_init_section
+    assert "groups_by_size.setdefault(p.numel(), []).append(p)" in muon_init_section
+    assert "for size in sorted(groups_by_size):" in muon_init_section
+    assert "params=[p for p in params if p.numel() == size]" not in muon_init_section
+    assert "groups_by_shape = {}" in init_section
+    assert "groups_by_shape.setdefault(p.shape, []).append(p)" in init_section
+    assert "for shape in sorted(groups_by_shape):" in init_section
+    assert "group_params = groups_by_shape[shape]" in init_section
+    assert "shapes = sorted({p.shape for p in params})" not in init_section
+    assert "group_params = [p for p in params if p.shape == shape]" not in init_section
     assert "scatter_pad_buffer=torch.empty_like(group_params[0])" in init_section
     assert "gather_pad_buffers=[" in init_section
     assert "rs_output = params[owner_idx].grad if owner_idx < len(params) else scatter_pad_buffer" in step_section
@@ -10227,6 +10246,16 @@ def test_nanochat_chat_rl_batches_eval_and_rollout_syncs() -> None:
     ).read_text(encoding="utf-8")
 
     assert "eval_totals = torch.empty(device_batch_size + 1" in source
+    assert "first_correct_counts = [0.0] * device_batch_size" in source
+    assert "for record in records:" in source
+    assert "for outcome_idx, outcome in enumerate(record[\"outcomes\"]):" in source
+    assert "if outcome_idx >= device_batch_size:" in source
+    assert "first_correct_counts[first_correct_idx] += 1.0" in source
+    assert "running_pass = 0.0" in source
+    assert "for idx, count in enumerate(first_correct_counts):" in source
+    assert "passk[idx] = running_pass" in source
+    assert "record[\"outcomes\"][:device_batch_size]" not in source
+    assert "sum(any(o[\"is_correct\"] for o in r[\"outcomes\"][:k]) for r in records)" not in source
     assert "dist.all_reduce(eval_totals, op=dist.ReduceOp.SUM)" in source
     assert "eval_values_host = eval_totals.detach().cpu()" in source
     assert "num_records = max(float(eval_values_host[0]), 1.0)" in source

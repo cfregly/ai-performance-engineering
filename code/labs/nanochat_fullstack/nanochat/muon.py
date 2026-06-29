@@ -60,10 +60,12 @@ class Muon(torch.optim.Optimizer):
     def __init__(self, params, lr=0.02, momentum=0.95, nesterov=True, ns_steps=5):
         defaults = dict(lr=lr, momentum=momentum, nesterov=nesterov, ns_steps=ns_steps)
         params: list[Tensor] = [*params]
+        groups_by_size = {}
+        for p in params:
+            groups_by_size.setdefault(p.numel(), []).append(p)
         param_groups = []
-        for size in {p.numel() for p in params}:
-            group = dict(params=[p for p in params if p.numel() == size])
-            param_groups.append(group)
+        for size in sorted(groups_by_size):
+            param_groups.append(dict(params=groups_by_size[size]))
         super().__init__(param_groups, defaults)
 
     @torch.no_grad()
@@ -111,11 +113,13 @@ class DistMuon(torch.optim.Optimizer):
         assert all(p.ndim == 2 for p in params), "Muon expects 2D parameters only"
         rank = dist.get_rank()
         # Group all parameters by their shape
-        shapes = sorted({p.shape for p in params}) # sort to ensure consistent / deterministic ordering
+        groups_by_shape = {}
+        for p in params:
+            groups_by_shape.setdefault(p.shape, []).append(p)
         param_groups = []
         world_size = dist.get_world_size()
-        for shape in shapes:
-            group_params = [p for p in params if p.shape == shape]
+        for shape in sorted(groups_by_shape): # sort to ensure consistent / deterministic ordering
+            group_params = groups_by_shape[shape]
             device, dtype = group_params[0].device, group_params[0].dtype
             assert all(p.device == device for p in group_params)
             assert all(p.dtype == dtype for p in group_params)

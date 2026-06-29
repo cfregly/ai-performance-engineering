@@ -225,8 +225,21 @@ for step in range(num_steps):
         with autocast_ctx:
             records_iter = run_gsm8k_eval(val_task, tokenizer, engine, num_samples=device_batch_size, max_examples=eval_examples, temperature=1.0)
             records = list(records_iter) # collect all records
-        for k in range(1, device_batch_size + 1):
-            passk[k - 1] = sum(any(o["is_correct"] for o in r["outcomes"][:k]) for r in records)
+        first_correct_counts = [0.0] * device_batch_size
+        for record in records:
+            first_correct_idx = None
+            for outcome_idx, outcome in enumerate(record["outcomes"]):
+                if outcome_idx >= device_batch_size:
+                    break
+                if outcome["is_correct"]:
+                    first_correct_idx = outcome_idx
+                    break
+            if first_correct_idx is not None:
+                first_correct_counts[first_correct_idx] += 1.0
+        running_pass = 0.0
+        for idx, count in enumerate(first_correct_counts):
+            running_pass += count
+            passk[idx] = running_pass
         eval_totals = torch.empty(device_batch_size + 1, dtype=torch.float64, device=device)
         eval_totals[0] = float(len(records))
         eval_totals[1:].copy_(passk.to(torch.float64))
