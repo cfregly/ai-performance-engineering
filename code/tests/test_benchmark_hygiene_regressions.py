@@ -13376,16 +13376,34 @@ def test_ch13_dataloader_payload_inputs_reuse_dict() -> None:
 
         assert 'self._payload_inputs: dict[str, Optional[torch.Tensor]] = {"data": None, "labels": None}' in source
         assert "self._payload_inputs_ready = False" in source
+        assert 'self._payload_input_buffers: dict[str, Optional[torch.Tensor]] = {"data": None, "labels": None}' in source
+        assert 'self._verification_payload_inputs: dict[str, Optional[torch.Tensor]] = {"data": None, "labels": None}' in source
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._payload_inputs_ready = False" in setup_section
+        assert 'self._payload_input_buffers["data"] = torch.empty(' in setup_section
+        assert 'self._payload_input_buffers["labels"] = torch.empty(' in setup_section
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
         assert 'self._payload_inputs["data"] = data.detach()' in benchmark_section
         assert 'self._payload_inputs["labels"] = labels.detach()' in benchmark_section
         assert "self._payload_inputs_ready = True" in benchmark_section
         assert 'self._payload_inputs = {"data": data.detach(), "labels": labels.detach()}' not in benchmark_section
         assert "if not self._payload_inputs_ready or self.output is None:" in capture_section
-        assert 'inputs = {"data": data.detach().clone(), "labels": labels.detach().clone()}' in capture_section
+        assert 'payload_data = data_buffer[: data.shape[0]]' in capture_section
+        assert 'payload_labels = labels_buffer[: labels.shape[0]]' in capture_section
+        assert "payload_output = self._verify_output_buffer[: self.output.shape[0]]" in capture_section
+        assert "payload_data.copy_(data)" in capture_section
+        assert "payload_labels.copy_(labels)" in capture_section
+        assert "payload_output.copy_(self.output)" in capture_section
+        assert "inputs = self._verification_payload_inputs" in capture_section
+        assert 'inputs = {"data": data.detach().clone(), "labels": labels.detach().clone()}' not in capture_section
+        assert "output=self.output.detach().clone()" not in capture_section
+        assert "output=payload_output" in capture_section
         assert "{k: v.detach().clone() for k, v in self._payload_inputs.items()}" not in capture_section
         assert 'self._payload_inputs["data"] = None' in teardown_section
         assert 'self._payload_inputs["labels"] = None' in teardown_section
+        assert 'self._payload_input_buffers["data"] = None' in teardown_section
+        assert 'self._payload_input_buffers["labels"] = None' in teardown_section
+        assert "self._verify_output_buffer = None" in teardown_section
         assert "self._payload_inputs_ready = False" in teardown_section
 
 
