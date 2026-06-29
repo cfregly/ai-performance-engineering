@@ -10826,13 +10826,20 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "buffers = self._forward_buffers.get(cache_key)" in common_source
     assert "self._forward_buffers[cache_key] = buffers" in common_source
     assert "self._forward_buffers = [" not in common_source
+    assert "self._linear_weight_t_views: tuple[torch.Tensor, ...] = ()" in common_source
+    assert "self._out_weight_t: torch.Tensor | None = None" in common_source
+    assert "def cache_weight_views(self) -> None:" in common_source
+    assert "self._linear_weight_t_views = tuple(layer.weight.t() for layer in self._linear_layers)" in common_source
+    assert "self._out_weight_t = self.out.weight.t()" in common_source
     assert "torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)" in common_source
-    assert "for layer in self._linear_layers:" in common_source
-    assert "torch.matmul(current, layer.weight.t(), out=alternate)" in common_source
+    assert "for layer, weight_t in zip(self._linear_layers, self._linear_weight_t_views, strict=True):" in common_source
+    assert "torch.matmul(current, weight_t, out=alternate)" in common_source
     assert "F.gelu(alternate, approximate=\"tanh\", out=alternate)" in common_source
     assert "for module in self.mlp:" not in common_source
     assert "torch.matmul(current, module.weight.t(), out=alternate)" not in common_source
-    assert "torch.matmul(current, self.out.weight.t(), out=flat_logits)" in common_source
+    assert "torch.matmul(current, layer.weight.t(), out=alternate)" not in common_source
+    assert "torch.matmul(current, self._out_weight_t, out=flat_logits)" in common_source
+    assert "torch.matmul(current, self.out.weight.t(), out=flat_logits)" not in common_source
     assert common_source.count("with torch.inference_mode():") >= 2
     assert "with torch.no_grad():" not in common_source
 
@@ -10889,13 +10896,20 @@ def test_ch15_speculative_decode_common_uses_inference_mode_for_setup_mutations(
     assert "buffers = self._forward_buffers.get(cache_key)" in source
     assert "self._forward_buffers[cache_key] = buffers" in source
     assert "self._forward_buffers = [" not in source
+    assert "self._linear_weight_t_views: tuple[torch.Tensor, ...] = ()" in source
+    assert "self._out_weight_t: torch.Tensor | None = None" in source
+    assert "def cache_weight_views(self) -> None:" in source
+    assert "self._linear_weight_t_views = tuple(layer.weight.t() for layer in self._linear_layers)" in source
+    assert "self._out_weight_t = self.out.weight.t()" in source
     assert "torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)" in source
-    assert "for layer in self._linear_layers:" in source
-    assert "torch.matmul(current, layer.weight.t(), out=alternate)" in source
+    assert "for layer, weight_t in zip(self._linear_layers, self._linear_weight_t_views, strict=True):" in source
+    assert "torch.matmul(current, weight_t, out=alternate)" in source
     assert "F.gelu(alternate, approximate=\"tanh\", out=alternate)" in source
     assert "for module in self.mlp:" not in source
     assert "torch.matmul(current, module.weight.t(), out=alternate)" not in source
-    assert "torch.matmul(current, self.out.weight.t(), out=flat_logits)" in source
+    assert "torch.matmul(current, layer.weight.t(), out=alternate)" not in source
+    assert "torch.matmul(current, self._out_weight_t, out=flat_logits)" in source
+    assert "torch.matmul(current, self.out.weight.t(), out=flat_logits)" not in source
     assert source.count("with torch.inference_mode():") >= 2
     assert "with torch.no_grad():" not in source
 

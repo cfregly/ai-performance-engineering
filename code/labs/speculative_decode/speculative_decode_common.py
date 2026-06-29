@@ -83,10 +83,17 @@ class TokenMLP(nn.Module):
             module for module in self.mlp if isinstance(module, nn.Linear)
         )
         self.out = nn.Linear(self.hidden_size, self.vocab_size, device=device, dtype=dtype)
+        self._linear_weight_t_views: tuple[torch.Tensor, ...] = ()
+        self._out_weight_t: torch.Tensor | None = None
         self._forward_buffers: dict[
             tuple[int, torch.device, torch.dtype],
             tuple[torch.Tensor, torch.Tensor],
         ] = {}
+        self.cache_weight_views()
+
+    def cache_weight_views(self) -> None:
+        self._linear_weight_t_views = tuple(layer.weight.t() for layer in self._linear_layers)
+        self._out_weight_t = self.out.weight.t()
 
     def _ensure_forward_buffers(
         self,
@@ -144,15 +151,17 @@ class TokenMLP(nn.Module):
 
         current = hidden
         alternate = scratch
-        for layer in self._linear_layers:
-            torch.matmul(current, layer.weight.t(), out=alternate)
+        if len(self._linear_weight_t_views) != len(self._linear_layers) or self._out_weight_t is None:
+            self.cache_weight_views()
+        for layer, weight_t in zip(self._linear_layers, self._linear_weight_t_views, strict=True):
+            torch.matmul(current, weight_t, out=alternate)
             if layer.bias is not None:
                 alternate.add_(layer.bias)
             F.gelu(alternate, approximate="tanh", out=alternate)
             current, alternate = alternate, current
 
         flat_logits = logits_out.view(num_tokens, self.vocab_size)
-        torch.matmul(current, self.out.weight.t(), out=flat_logits)
+        torch.matmul(current, self._out_weight_t, out=flat_logits)
         if self.out.bias is not None:
             flat_logits.add_(self.out.bias)
         return logits_out
