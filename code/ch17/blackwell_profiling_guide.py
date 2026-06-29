@@ -12,6 +12,7 @@ import csv
 import heapq
 import re
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -189,10 +190,10 @@ class NsightSystemsProfiler:
         kernel_regex: Optional[str],
         top_k: int,
     ) -> List[Dict[str, str]]:
-        rows = kernel_rows
+        rows: Iterable[Dict[str, str]] = kernel_rows
         if kernel_regex:
             pattern = re.compile(kernel_regex)
-            rows = [row for row in rows if pattern.search(row.get("Name", ""))]
+            rows = (row for row in kernel_rows if pattern.search(row.get("Name", "")))
 
         def parse_pct(row: Dict[str, str]) -> float:
             value = row.get("Time (%)") or row.get("Time (%) [sum]", "0")

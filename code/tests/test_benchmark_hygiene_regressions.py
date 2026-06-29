@@ -11231,22 +11231,30 @@ def test_ch17_early_rejection_uses_targeted_ttft_quantiles() -> None:
     assert "statistics.quantiles(" not in source
     assert "torch.profiler" not in source
     assert "torch.cuda.nvtx" not in source
-    assert "from bisect import bisect_left, insort" in source
+    assert "from bisect import bisect_left, bisect_right, insort" in source
     assert "recent_ttft_ordered: List[float] = field(default_factory=list)" in source
     assert "def _ordered_ttft_samples" in source
     assert "def _append_ttft_sample" in source
+    assert "def _ttft_p95_p99_from_ordered" in source
+    assert "def _count_ttft_violations_from_ordered" in source
     assert "recent_p95_ttft = _exclusive_quantile_from_sorted(" in health_section
     assert "_ordered_ttft_samples(self.metrics), 20, 19" in health_section
     assert "sorted(recent_samples)" not in health_section
-    assert "ttft_p95, ttft_p99 = _ttft_p95_p99(ttft_samples)" in slo_section
+    assert "ttft_ordered = _ordered_ttft_samples(qos.metrics)" in slo_section
+    assert "ttft_p95, ttft_p99 = _ttft_p95_p99_from_ordered(ttft_ordered)" in slo_section
+    assert "violations = _count_ttft_violations_from_ordered(ttft_ordered, slo_limit)" in source
+    assert "ttft_samples = list(qos.metrics.recent_ttft_samples)" not in source
+    assert "sum(1 for ttft in ttft_samples if ttft > slo_limit)" not in source
 
     import statistics
     from ch17.early_rejection import (
         SystemMetrics,
         _append_ttft_sample,
+        _count_ttft_violations_from_ordered,
         _exclusive_quantile_from_sorted,
         _ordered_ttft_samples,
         _ttft_p95_p99,
+        _ttft_p95_p99_from_ordered,
     )
 
     samples = [float(value) for value in range(1, 121)]
@@ -11255,6 +11263,8 @@ def test_ch17_early_rejection_uses_targeted_ttft_quantiles() -> None:
         statistics.quantiles(samples, n=100)[94],
         statistics.quantiles(samples, n=100)[98],
     )
+    assert _ttft_p95_p99_from_ordered(sorted(samples)) == _ttft_p95_p99(samples)
+    assert _count_ttft_violations_from_ordered(sorted(samples), 100.0) == 20
     metrics = SystemMetrics()
     for value in [5.0, 1.0, 4.0, 2.0, 3.0]:
         _append_ttft_sample(metrics, value)
@@ -15824,8 +15834,19 @@ def test_ch19_adaptive_worker_pool_selects_best_candidate_without_sorting() -> N
         maxsplit=1,
     )[0]
 
-    assert "best_pool, _ = min(" in routing_section
+    assert "best_pool: Optional[WorkerPool] = None" in routing_section
+    assert "best_sla_pool: Optional[WorkerPool] = None" in routing_section
+    assert "def consider_pool(pool: WorkerPool) -> None:" in routing_section
+    assert "if best_key is None or key < best_key:" in routing_section
+    assert "if best_sla_key is None or sla_key < best_sla_key:" in routing_section
+    assert "candidate_found = False" in routing_section
+    assert "if not candidate_found:" in routing_section
+    assert "return best_sla_pool" in routing_section
     assert "return best_pool" in routing_section
+    assert "candidate_pools = [pool for pool in self.pools if pool.can_handle(request)]" not in routing_section
+    assert "latency_estimates: List[Tuple[WorkerPool, float]] = []" not in routing_section
+    assert "meeting_sla = [" not in routing_section
+    assert "best_pool, _ = min(" not in routing_section
     assert "meeting_sla.sort(" not in routing_section
     assert "latency_estimates.sort(" not in routing_section
     assert "import torch" not in source
@@ -15843,5 +15864,9 @@ def test_ch17_blackwell_profiling_ranks_top_k_without_full_sort() -> None:
     )[0]
 
     assert "import heapq" in source
+    assert "from collections.abc import Iterable" in source
+    assert "rows: Iterable[Dict[str, str]] = kernel_rows" in rank_section
+    assert 'rows = (row for row in kernel_rows if pattern.search(row.get("Name", "")))' in rank_section
     assert "return heapq.nlargest(top_k, rows, key=parse_pct)" in rank_section
+    assert 'rows = [row for row in rows if pattern.search(row.get("Name", ""))]' not in rank_section
     assert "sorted(rows, key=parse_pct" not in rank_section

@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple, Deque
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import deque
-from bisect import bisect_left, insort
+from bisect import bisect_left, bisect_right, insort
 import threading
 
 class Priority(Enum):
@@ -36,16 +36,25 @@ def _exclusive_quantile_from_sorted(sorted_values: List[float], n: int, cut_inde
     return (sorted_values[j - 1] * (n - delta) + sorted_values[j] * delta) / n
 
 
-def _ttft_p95_p99(samples: List[float]) -> Tuple[float, float]:
-    sorted_samples = sorted(samples)
-    count = len(sorted_samples)
+def _ttft_p95_p99_from_ordered(ordered_samples: List[float]) -> Tuple[float, float]:
+    count = len(ordered_samples)
+    if count == 0:
+        return 0.0, 0.0
     if count >= 100:
         return (
-            _exclusive_quantile_from_sorted(sorted_samples, 100, 95),
-            _exclusive_quantile_from_sorted(sorted_samples, 100, 99),
+            _exclusive_quantile_from_sorted(ordered_samples, 100, 95),
+            _exclusive_quantile_from_sorted(ordered_samples, 100, 99),
         )
-    p95 = _exclusive_quantile_from_sorted(sorted_samples, 20, 19) if count >= 20 else sorted_samples[-1]
-    return p95, sorted_samples[-1]
+    p95 = _exclusive_quantile_from_sorted(ordered_samples, 20, 19) if count >= 20 else ordered_samples[-1]
+    return p95, ordered_samples[-1]
+
+
+def _ttft_p95_p99(samples: List[float]) -> Tuple[float, float]:
+    return _ttft_p95_p99_from_ordered(sorted(samples))
+
+
+def _count_ttft_violations_from_ordered(ordered_samples: List[float], slo_limit: float) -> int:
+    return len(ordered_samples) - bisect_right(ordered_samples, slo_limit)
 
 @dataclass
 class Request:
@@ -447,8 +456,9 @@ def simulate_load_spike():
     # Analyze SLO compliance
     print(f"\n=== SLO Analysis ===")
     if len(qos.metrics.recent_ttft_samples) > 0:
-        ttft_samples = list(qos.metrics.recent_ttft_samples)
-        ttft_p95, ttft_p99 = _ttft_p95_p99(ttft_samples)
+        ttft_ordered = _ordered_ttft_samples(qos.metrics)
+        ttft_p95, ttft_p99 = _ttft_p95_p99_from_ordered(ttft_ordered)
+        ttft_count = len(ttft_ordered)
         
         print(f"TTFT P95: {ttft_p95:.1f}ms")
         print(f"TTFT P99: {ttft_p99:.1f}ms")
@@ -456,8 +466,8 @@ def simulate_load_spike():
         # Check SLO compliance by priority
         for priority in Priority:
             slo_limit = qos.TTFT_SLO_MAX[priority]
-            violations = sum(1 for ttft in ttft_samples if ttft > slo_limit)
-            violation_rate = violations / len(ttft_samples) if ttft_samples else 0
+            violations = _count_ttft_violations_from_ordered(ttft_ordered, slo_limit)
+            violation_rate = violations / ttft_count if ttft_count else 0
             
             print(f"{priority.value} SLO ({slo_limit}ms): {violation_rate*100:.1f}% violations")
 

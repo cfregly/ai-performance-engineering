@@ -376,41 +376,50 @@ class AdaptiveParallelismManager:
         else:
             preferred_strategy = ParallelismStrategy.TENSOR_PARALLEL
         
-        candidate_pools = [pool for pool in self.pools if pool.can_handle(request)]
-        if not candidate_pools:
-            candidate_pools = self.pools
-        
-        latency_estimates: List[Tuple[WorkerPool, float]] = []
-        for pool in candidate_pools:
+        best_pool: Optional[WorkerPool] = None
+        best_key: Optional[Tuple[int, int, float, float]] = None
+        best_sla_pool: Optional[WorkerPool] = None
+        best_sla_key: Optional[Tuple[int, float, int, float]] = None
+
+        def consider_pool(pool: WorkerPool) -> None:
+            nonlocal best_pool, best_key, best_sla_pool, best_sla_key
             estimated = pool.get_estimated_latency(request)
-            latency_estimates.append((pool, estimated))
-        
-        if sla_latency is not None and latency_estimates:
-            meeting_sla = [
-                (pool, est) for pool, est in latency_estimates if est <= sla_latency
-            ]
-            if meeting_sla:
-                best_pool, _ = min(
-                    meeting_sla,
-                    key=lambda item: (
-                        0 if item[0].config.strategy == preferred_strategy else 1,
-                        abs(item[1] - min(sla_latency, item[0].config.target_latency_ms)),
-                        item[0].request_queue.qsize(),
-                        item[1]
-                    )
-                )
-                return best_pool
-        
-        if latency_estimates:
-            best_pool, _ = min(
-                latency_estimates,
-                key=lambda item: (
-                    0 if item[0].config.strategy == preferred_strategy else 1,
-                    item[0].request_queue.qsize(),
-                    abs(item[1] - item[0].config.target_latency_ms),
-                    item[1]
-                )
+            strategy_rank = 0 if pool.config.strategy == preferred_strategy else 1
+            queue_size = pool.request_queue.qsize()
+            key = (
+                strategy_rank,
+                queue_size,
+                abs(estimated - pool.config.target_latency_ms),
+                estimated
             )
+            if best_key is None or key < best_key:
+                best_pool = pool
+                best_key = key
+
+            if sla_latency is not None and estimated <= sla_latency:
+                sla_key = (
+                    strategy_rank,
+                    abs(estimated - min(sla_latency, pool.config.target_latency_ms)),
+                    queue_size,
+                    estimated
+                )
+                if best_sla_key is None or sla_key < best_sla_key:
+                    best_sla_pool = pool
+                    best_sla_key = sla_key
+
+        candidate_found = False
+        for pool in self.pools:
+            if pool.can_handle(request):
+                candidate_found = True
+                consider_pool(pool)
+
+        if not candidate_found:
+            for pool in self.pools:
+                consider_pool(pool)
+
+        if best_sla_pool is not None:
+            return best_sla_pool
+        if best_pool is not None:
             return best_pool
         
         return self.pools[0]
