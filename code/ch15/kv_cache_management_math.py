@@ -44,8 +44,27 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.out_proj: Optional[nn.Linear] = None
         self.inputs: Optional[list[torch.Tensor]] = None
         self._sequence_inputs: Optional[torch.Tensor] = None
+        self._sequence_inputs_2d: Optional[torch.Tensor] = None
         self.cache_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._q_buffer: Optional[torch.Tensor] = None
+        self._k_buffer: Optional[torch.Tensor] = None
+        self._v_buffer: Optional[torch.Tensor] = None
+        self._q_buffer_2d: Optional[torch.Tensor] = None
+        self._k_buffer_2d: Optional[torch.Tensor] = None
+        self._v_buffer_2d: Optional[torch.Tensor] = None
+        self._q_attn_view: Optional[torch.Tensor] = None
+        self._k_attn_view: Optional[torch.Tensor] = None
+        self._v_attn_view: Optional[torch.Tensor] = None
+        self._attn_merge_buffer: Optional[torch.Tensor] = None
+        self._attn_merge_view: Optional[torch.Tensor] = None
+        self._attn_merge_2d: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
+        self._output_buffer_2d: Optional[torch.Tensor] = None
+        self._q_proj_weight_t: Optional[torch.Tensor] = None
+        self._k_proj_weight_t: Optional[torch.Tensor] = None
+        self._v_proj_weight_t: Optional[torch.Tensor] = None
+        self._out_proj_weight_t: Optional[torch.Tensor] = None
         self.batch_size = 8
         self.hidden_dim = 256
         self.num_heads = 8
@@ -75,6 +94,10 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.out_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
         for module in (self.q_proj, self.k_proj, self.v_proj, self.out_proj):
             module.eval()
+        self._q_proj_weight_t = self.q_proj.weight.t()
+        self._k_proj_weight_t = self.k_proj.weight.t()
+        self._v_proj_weight_t = self.v_proj.weight.t()
+        self._out_proj_weight_t = self.out_proj.weight.t()
         self._payload_parameter_count = sum(
             p.numel()
             for layer in (self.q_proj, self.k_proj, self.v_proj, self.out_proj)
@@ -88,29 +111,84 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._sequence_inputs = torch.empty_like(self.cache_buffer)
         torch.cat(self.inputs, dim=1, out=self._sequence_inputs)
+        self._sequence_inputs_2d = self._sequence_inputs.reshape(
+            self.batch_size * self.steps,
+            self.hidden_dim,
+        )
+        self._q_buffer = torch.empty_like(self._sequence_inputs)
+        self._k_buffer = torch.empty_like(self._sequence_inputs)
+        self._v_buffer = torch.empty_like(self._sequence_inputs)
+        self._q_buffer_2d = self._q_buffer.reshape(self.batch_size * self.steps, self.hidden_dim)
+        self._k_buffer_2d = self._k_buffer.reshape(self.batch_size * self.steps, self.hidden_dim)
+        self._v_buffer_2d = self._v_buffer.reshape(self.batch_size * self.steps, self.hidden_dim)
+        self._q_attn_view = self._q_buffer.view(
+            self.batch_size,
+            self.steps,
+            self.num_heads,
+            self.head_dim,
+        ).transpose(1, 2)
+        self._k_attn_view = self._k_buffer.view(
+            self.batch_size,
+            self.steps,
+            self.num_heads,
+            self.head_dim,
+        ).transpose(1, 2)
+        self._v_attn_view = self._v_buffer.view(
+            self.batch_size,
+            self.steps,
+            self.num_heads,
+            self.head_dim,
+        ).transpose(1, 2)
+        self._attn_merge_buffer = torch.empty_like(self._sequence_inputs)
+        self._attn_merge_view = self._attn_merge_buffer.view(
+            self.batch_size,
+            self.steps,
+            self.num_heads,
+            self.head_dim,
+        )
+        self._attn_merge_2d = self._attn_merge_buffer.reshape(
+            self.batch_size * self.steps,
+            self.hidden_dim,
+        )
+        self._output_buffer = torch.empty_like(self._sequence_inputs)
+        self._output_buffer_2d = self._output_buffer.reshape(
+            self.batch_size * self.steps,
+            self.hidden_dim,
+        )
         self._synchronize()
         self._verify_input = self.inputs[0].detach()
     
     def benchmark_fn(self) -> None:
         assert self.q_proj is not None and self.k_proj is not None and self.v_proj is not None and self.out_proj is not None
         assert self.inputs is not None and self.cache_buffer is not None and self._sequence_inputs is not None
+        assert self._sequence_inputs_2d is not None
+        assert self._q_buffer_2d is not None and self._k_buffer_2d is not None and self._v_buffer_2d is not None
+        assert self._q_attn_view is not None and self._k_attn_view is not None and self._v_attn_view is not None
+        assert self._attn_merge_view is not None and self._attn_merge_2d is not None
+        assert self._output_buffer is not None and self._output_buffer_2d is not None
+        assert self._q_proj_weight_t is not None
+        assert self._k_proj_weight_t is not None
+        assert self._v_proj_weight_t is not None
+        assert self._out_proj_weight_t is not None
         with self._nvtx_range("kv_cache_management_math"):
             with torch.inference_mode():
-                queries = self._sequence_inputs
+                queries = self._sequence_inputs_2d
                 k_cache = self._sequence_inputs
                 
-                q = self.q_proj(queries)
-                k = self.k_proj(k_cache)
-                v = self.v_proj(k_cache)
-                
-                q = q.view(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-                k = k.view(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-                v = v.view(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+                torch.mm(queries, self._q_proj_weight_t, out=self._q_buffer_2d)
+                torch.mm(queries, self._k_proj_weight_t, out=self._k_buffer_2d)
+                torch.mm(queries, self._v_proj_weight_t, out=self._v_buffer_2d)
                 
                 with _math_sdp_context():
-                    attn = F.scaled_dot_product_attention(q, k, v, is_causal=True)
-                attn = attn.transpose(1, 2).contiguous().view(self.batch_size, -1, self.hidden_dim)
-                self.output = self.out_proj(attn)
+                    attn = F.scaled_dot_product_attention(
+                        self._q_attn_view,
+                        self._k_attn_view,
+                        self._v_attn_view,
+                        is_causal=True,
+                    )
+                self._attn_merge_view.copy_(attn.transpose(1, 2))
+                torch.mm(self._attn_merge_2d, self._out_proj_weight_t, out=self._output_buffer_2d)
+                self.output = self._output_buffer
                 
                 # Update cache with the newest token block without reallocation.
                 self.cache_buffer.copy_(k_cache)
@@ -141,7 +219,27 @@ class KVCacheManagementMathBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.out_proj = None
         self.inputs = None
         self._sequence_inputs = None
+        self._sequence_inputs_2d = None
         self.cache_buffer = None
+        self.output = None
+        self._q_buffer = None
+        self._k_buffer = None
+        self._v_buffer = None
+        self._q_buffer_2d = None
+        self._k_buffer_2d = None
+        self._v_buffer_2d = None
+        self._q_attn_view = None
+        self._k_attn_view = None
+        self._v_attn_view = None
+        self._attn_merge_buffer = None
+        self._attn_merge_view = None
+        self._attn_merge_2d = None
+        self._output_buffer = None
+        self._output_buffer_2d = None
+        self._q_proj_weight_t = None
+        self._k_proj_weight_t = None
+        self._v_proj_weight_t = None
+        self._out_proj_weight_t = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

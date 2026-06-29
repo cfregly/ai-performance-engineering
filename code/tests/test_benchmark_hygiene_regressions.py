@@ -10841,15 +10841,33 @@ def test_ch15_kv_cache_math_preconcats_static_inputs() -> None:
     )[0]
 
     assert "self._sequence_inputs: Optional[torch.Tensor] = None" in source
+    assert "self._q_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._attn_merge_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in source
     assert "self.cache_buffer = torch.empty(" in setup_section
     assert "self.cache_buffer = torch.zeros(" not in setup_section
     assert "self._sequence_inputs = torch.empty_like(self.cache_buffer)" in setup_section
     assert "torch.cat(self.inputs, dim=1, out=self._sequence_inputs)" in setup_section
+    assert "self._q_proj_weight_t = self.q_proj.weight.t()" in setup_section
+    assert "self._sequence_inputs_2d = self._sequence_inputs.reshape(" in setup_section
+    assert "self._q_attn_view = self._q_buffer.view(" in setup_section
+    assert "self._attn_merge_view = self._attn_merge_buffer.view(" in setup_section
+    assert "self._output_buffer_2d = self._output_buffer.reshape(" in setup_section
     assert "torch.cat(self.inputs" not in benchmark_section
     assert "with torch.inference_mode():" in benchmark_section
-    assert "queries = self._sequence_inputs" in benchmark_section
+    assert "queries = self._sequence_inputs_2d" in benchmark_section
     assert "k_cache = self._sequence_inputs" in benchmark_section
-    assert "self.output = self.out_proj(attn)" in benchmark_section
+    assert "torch.mm(queries, self._q_proj_weight_t, out=self._q_buffer_2d)" in benchmark_section
+    assert "torch.mm(queries, self._k_proj_weight_t, out=self._k_buffer_2d)" in benchmark_section
+    assert "torch.mm(queries, self._v_proj_weight_t, out=self._v_buffer_2d)" in benchmark_section
+    assert "self._attn_merge_view.copy_(attn.transpose(1, 2))" in benchmark_section
+    assert "torch.mm(self._attn_merge_2d, self._out_proj_weight_t, out=self._output_buffer_2d)" in benchmark_section
+    assert "self.output = self._output_buffer" in benchmark_section
+    assert "self.q_proj(queries)" not in benchmark_section
+    assert "self.k_proj(k_cache)" not in benchmark_section
+    assert "self.v_proj(k_cache)" not in benchmark_section
+    assert ".transpose(1, 2).contiguous()" not in benchmark_section
+    assert "self.out_proj(attn)" not in benchmark_section
     assert "self.output[:, -1, :].sum()" not in benchmark_section
 
 
