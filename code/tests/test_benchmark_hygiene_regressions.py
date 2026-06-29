@@ -7361,6 +7361,7 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._tpot_count: int = 0" in benchmark_section
     assert "self._throughput_total: float = 0.0" in benchmark_section
     assert "self._throughput_count: int = 0" in benchmark_section
+    assert "self._iteration_metric_payload: Dict[str, object] = {" in benchmark_section
     assert "MoEFeedForwardSortedDispatch" in source
     assert "def _replace_moe_dispatch(self, model: SimpleMoEGPT, cfg: MoeInferenceConfig) -> int" in benchmark_section
     assert "replacement = MoEFeedForwardSortedDispatch(" in benchmark_section
@@ -7396,6 +7397,12 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert 'self._history["graph_path"].append(graph_path)' not in hot_section
     assert '"graph_path": []' not in benchmark_section
     assert "self._history" not in benchmark_section
+    assert "iteration_payload = self._iteration_metric_payload" in hot_section
+    assert 'iteration_payload["ttft_times_ms"] = ttft_times' in hot_section
+    assert 'iteration_payload["tpot_times_ms"] = tpot_times' in hot_section
+    assert 'iteration_payload["graph_path"] = graph_path' in hot_section
+    assert "return iteration_payload" in hot_section
+    assert "return {" not in hot_section
     assert "statistics.mean(" not in benchmark_section
     assert ".extend(ttft_times)" not in hot_section
     assert ".extend(tpot_times)" not in hot_section

@@ -405,6 +405,11 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._mem_log_path: Optional[Path] = None
         self._nvlink_warned: bool = False
         self._nvlink_status: str = "unknown"
+        self._iteration_metric_payload: Dict[str, object] = {
+            "ttft_times_ms": [],
+            "tpot_times_ms": [],
+            "graph_path": "eager",
+        }
         self._payload_parameter_count = 0
         self.register_workload_metadata(
             requests_per_iteration=float(self.config.batch_size),
@@ -765,7 +770,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return ttft_times, tpot_times, "eager", spec.acceptance_rate(), float(chunk_used), tokens
 
     # --------------------------------------------------------------- benchmark_fn
-    def benchmark_fn(self) -> Dict[str, List[float]]:
+    def benchmark_fn(self) -> Dict[str, object]:
         if any(obj is None for obj in (self.model, self.prompts, self.paged_cache, self.spec_decoder)):
             raise RuntimeError("Benchmark not initialized")
 
@@ -892,11 +897,11 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.output = tokens
         self._iteration += 1
         self._refresh_router_metrics()
-        return {
-            "ttft_times_ms": ttft_times,
-            "tpot_times_ms": tpot_times,
-            "graph_path": graph_path,
-        }
+        iteration_payload = self._iteration_metric_payload
+        iteration_payload["ttft_times_ms"] = ttft_times
+        iteration_payload["tpot_times_ms"] = tpot_times
+        iteration_payload["graph_path"] = graph_path
+        return iteration_payload
 
     def capture_verification_payload(self) -> None:
         if self.model is None or self.prompts is None or self.output is None:
