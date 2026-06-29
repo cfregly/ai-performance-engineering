@@ -3361,14 +3361,33 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         "def main",
         maxsplit=1,
     )[0]
+    ch20_run_once = ch20_source.split("def run_once", maxsplit=1)[1].split(
+        "def benchmark",
+        maxsplit=1,
+    )[0]
     assert "torch.triu(" not in ch20_reference
     assert "torch.ones(q_len, kv_len" not in ch20_reference
     assert "_REFERENCE_POSITION_CACHE" in ch20_source
     assert "def _reference_position_views" in ch20_source
+    assert "def _attention_case" in ch20_source
+    assert "def _run_fused_attention" in ch20_source
     assert "q_pos, kv_pos = _reference_position_views(q_len, kv_len, q.device)" in ch20_reference
     assert "torch.arange(q_len, device=q.device)" not in ch20_reference
     assert "mask = kv_pos > q_pos" in ch20_reference
+    assert "from core.benchmark.utils import scalar_tensor_to_float" in ch20_source
+    assert "scalar_tensor_to_float((out_fused - out_ref).abs().max())" in ch20_run_once
+    assert ".abs().max().item()" not in ch20_source
+    assert "torch.cuda.synchronize()" not in ch20_run_once
     assert ch20_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "run_once(" not in ch20_benchmark
+    assert "out_ref = _reference_attention" not in ch20_benchmark
+    assert "torch.randn" not in ch20_benchmark
+    assert ch20_benchmark.count("_run_fused_attention(") == 3
+    assert "current_stream = torch.cuda.current_stream(_DEVICE)" in ch20_benchmark
+    assert "start.record(current_stream)" in ch20_benchmark
+    assert "end.record(current_stream)" in ch20_benchmark
+    assert "start.record()" not in ch20_benchmark
+    assert "end.record()" not in ch20_benchmark
     assert "start.elapsed_time(end) / count" in ch20_benchmark
 
     ch14_demo_source = (REPO_ROOT / "ch14" / "sliding_window_demo.py").read_text(

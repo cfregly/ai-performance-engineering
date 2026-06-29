@@ -8,6 +8,7 @@ import os
 import time
 
 import torch
+from core.benchmark.utils import scalar_tensor_to_float
 from core.utils.compile_utils import enable_tf32
 try:
     from torch._dynamo import config as dynamo_config
@@ -100,7 +101,7 @@ def _compiled_flex_attention():
     return _COMPILED_FLEX
 
 
-def run_once(*, batch, heads, seqlen, head_dim, dtype, causal=True):
+def _attention_case(*, batch, heads, seqlen, head_dim, dtype, causal=True):
     q = torch.randn(batch, heads, seqlen, head_dim, device=_DEVICE, dtype=dtype)
     k = torch.randn_like(q)
     v = torch.randn_like(q)
@@ -110,8 +111,11 @@ def run_once(*, batch, heads, seqlen, head_dim, dtype, causal=True):
         block_mask = create_block_mask(
             _causal_mask, batch, heads, seqlen, seqlen, device=_DEVICE  # type: ignore[arg-type]
         )
-    fused_fn = _compiled_flex_attention()
-    out_fused = fused_fn(
+    return q, k, v, scale, block_mask
+
+
+def _run_fused_attention(fused_fn, q, k, v, scale, block_mask):
+    return fused_fn(
         q,
         k,
         v,
@@ -119,51 +123,53 @@ def run_once(*, batch, heads, seqlen, head_dim, dtype, causal=True):
         block_mask=block_mask,
         scale=scale,
     )
+
+
+def run_once(*, batch, heads, seqlen, head_dim, dtype, causal=True):
+    q, k, v, scale, block_mask = _attention_case(
+        batch=batch,
+        heads=heads,
+        seqlen=seqlen,
+        head_dim=head_dim,
+        dtype=dtype,
+        causal=causal,
+    )
+    fused_fn = _compiled_flex_attention()
+    out_fused = _run_fused_attention(fused_fn, q, k, v, scale, block_mask)
     out_ref = _reference_attention(q, k, v, scale, causal)
-    if _using_cuda():
-        torch.cuda.synchronize()
-    return (out_fused - out_ref).abs().max().item()
+    return scalar_tensor_to_float((out_fused - out_ref).abs().max())
 
 
 def benchmark(*, batch, heads, seqlen, head_dim, dtype, repeat=10):
     if not _using_cuda():
         seqlen = min(seqlen, 2048)
         repeat = min(repeat, 3)
+    q, k, v, scale, block_mask = _attention_case(
+        batch=batch,
+        heads=heads,
+        seqlen=seqlen,
+        head_dim=head_dim,
+        dtype=dtype,
+    )
+    fused_fn = _compiled_flex_attention()
     for _ in range(3):
-        run_once(
-            batch=batch,
-            heads=heads,
-            seqlen=seqlen,
-            head_dim=head_dim,
-            dtype=dtype,
-        )
+        _run_fused_attention(fused_fn, q, k, v, scale, block_mask)
     count = max(repeat, 1)
     if _using_cuda():
         torch.cuda.synchronize()
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        start.record()
+        current_stream = torch.cuda.current_stream(_DEVICE)
+        start.record(current_stream)
         for _ in range(count):
-            run_once(
-                batch=batch,
-                heads=heads,
-                seqlen=seqlen,
-                head_dim=head_dim,
-                dtype=dtype,
-            )
-        end.record()
+            _run_fused_attention(fused_fn, q, k, v, scale, block_mask)
+        end.record(current_stream)
         end.synchronize()
         avg_ms = start.elapsed_time(end) / count
     else:
         start_time = time.time()
         for _ in range(count):
-            run_once(
-                batch=batch,
-                heads=heads,
-                seqlen=seqlen,
-                head_dim=head_dim,
-                dtype=dtype,
-            )
+            _run_fused_attention(fused_fn, q, k, v, scale, block_mask)
         avg_ms = (time.time() - start_time) * 1000.0 / count
     print(
         "FlexAttention fused kernel: "
