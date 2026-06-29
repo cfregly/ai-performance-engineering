@@ -7125,6 +7125,7 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._final_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._last_final_output_count: int = 0" in source
     assert "self._stage_buffers = [" in setup_section
+    assert "self._stage_buffers[0] = list(self.microbatch_inputs)" in setup_section
     assert "stage_output_features = [" in setup_section
     assert "self._stage_transfer_buffers = []" in setup_section
     assert "transfer_buffer.copy_(out, non_blocking=True)" in benchmark_section
@@ -7132,6 +7133,8 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._final_output_slots = [" in setup_section
     assert "stage_buffers: List[List[Optional[torch.Tensor]]] = [" not in benchmark_section
     assert "stage_buffers[0] = list(self.microbatch_inputs)" not in benchmark_section
+    assert "for stage_row in stage_buffers:" not in benchmark_section
+    assert "for micro_idx, micro_input in enumerate(self.microbatch_inputs):" not in benchmark_section
     assert "stage_devices = [next(stage.parameters()).device for stage in self.pipeline_stages]" not in benchmark_section
     assert ".to(stage_devices[stage_idx])" not in benchmark_section
     assert ".to(next_device)" not in benchmark_section

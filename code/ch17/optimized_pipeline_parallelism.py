@@ -136,6 +136,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                 [None for _ in range(self.micro_batches)]
                 for _ in range(len(self.pipeline_stages) + 1)
             ]
+            self._stage_buffers[0] = list(self.microbatch_inputs)
             self._stage_devices = [next(stage.parameters()).device for stage in self.pipeline_stages]
             self._last_stage_durations_ms = [0.0 for _ in self.pipeline_stages]
             self._final_output_slots = [
@@ -218,11 +219,6 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         for stage_idx in range(num_stages):
             self._last_stage_durations_ms[stage_idx] = 0.0
         stage_buffers = self._stage_buffers
-        for stage_row in stage_buffers:
-            for micro_idx in range(self.micro_batches):
-                stage_row[micro_idx] = None
-        for micro_idx, micro_input in enumerate(self.microbatch_inputs):
-            stage_buffers[0][micro_idx] = micro_input
 
         stage_devices = self._stage_devices
         transfer_buffers = self._stage_transfer_buffers
