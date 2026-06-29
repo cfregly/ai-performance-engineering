@@ -65,6 +65,8 @@ class _LocalPair:
     prompts: torch.Tensor
     decode_kv_cache: torch.Tensor
     decode_outputs: List[torch.Tensor]
+    prefill_kv_chunks: List[torch.Tensor]
+    prefill_seed_chunks: List[torch.Tensor]
     transfer_kv_chunks: List[torch.Tensor]
     transfer_seed_chunks: List[torch.Tensor]
 
@@ -131,16 +133,35 @@ def _run_prefill(
     cfg: DisaggConfig,
     model: SimpleMoEGPT,
     prompts: torch.Tensor,
+    kv_chunks: Optional[List[torch.Tensor]] = None,
+    seed_chunks: Optional[List[torch.Tensor]] = None,
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
-    kv_chunks: List[torch.Tensor] = []
-    seed_chunks: List[torch.Tensor] = []
+    reuse_kv_chunks = kv_chunks is not None and len(kv_chunks) == cfg.requests_per_rank
+    reuse_seed_chunks = seed_chunks is not None and len(seed_chunks) == cfg.requests_per_rank
+    if not reuse_kv_chunks:
+        kv_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
+    if not reuse_seed_chunks:
+        seed_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
+    assert kv_chunks is not None and seed_chunks is not None
     with torch.inference_mode():
         for req_idx in range(cfg.requests_per_rank):
             request_prompt = prompts[req_idx]
             hidden, logits = model.prefill(request_prompt)
             seed_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
-            kv_chunks.append(hidden.contiguous())
-            seed_chunks.append(seed_tokens.contiguous())
+            kv_out = kv_chunks[req_idx]
+            seed_out = seed_chunks[req_idx]
+            if kv_out.shape == hidden.shape and kv_out.device == hidden.device and kv_out.dtype == hidden.dtype:
+                kv_out.copy_(hidden)
+            else:
+                kv_chunks[req_idx] = hidden.contiguous()
+            if (
+                seed_out.shape == seed_tokens.shape
+                and seed_out.device == seed_tokens.device
+                and seed_out.dtype == seed_tokens.dtype
+            ):
+                seed_out.copy_(seed_tokens)
+            else:
+                seed_chunks[req_idx] = seed_tokens.contiguous()
     return kv_chunks, seed_chunks
 
 
@@ -490,6 +511,44 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                 self.cfg.dtype,
                 decode_device,
             )
+            prefill_kv_chunks = [
+                torch.empty(
+                    self.cfg.batch_size,
+                    self.cfg.context_window,
+                    self.cfg.hidden_size,
+                    device=prefill_device,
+                    dtype=self.cfg.dtype,
+                )
+                for _ in range(self.cfg.requests_per_rank)
+            ]
+            prefill_seed_chunks = [
+                torch.empty(
+                    self.cfg.batch_size,
+                    1,
+                    device=prefill_device,
+                    dtype=torch.long,
+                )
+                for _ in range(self.cfg.requests_per_rank)
+            ]
+            transfer_kv_chunks = [
+                torch.empty(
+                    self.cfg.batch_size,
+                    self.cfg.context_window,
+                    self.cfg.hidden_size,
+                    device=decode_device,
+                    dtype=self.cfg.dtype,
+                )
+                for _ in range(self.cfg.requests_per_rank)
+            ]
+            transfer_seed_chunks = [
+                torch.empty(
+                    self.cfg.batch_size,
+                    1,
+                    device=decode_device,
+                    dtype=torch.long,
+                )
+                for _ in range(self.cfg.requests_per_rank)
+            ]
             prompts = torch.randint(
                 0,
                 self.cfg.vocab_size,
@@ -508,8 +567,10 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                     prompts=prompts,
                     decode_kv_cache=decode_kv_cache,
                     decode_outputs=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)],
-                    transfer_kv_chunks=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)],
-                    transfer_seed_chunks=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)],
+                    prefill_kv_chunks=prefill_kv_chunks,
+                    prefill_seed_chunks=prefill_seed_chunks,
+                    transfer_kv_chunks=transfer_kv_chunks,
+                    transfer_seed_chunks=transfer_seed_chunks,
                 )
             )
 
@@ -535,19 +596,25 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         output_idx = 0
         with torch.inference_mode():
             for pair in self._pairs:
-                kv_chunks, seed_chunks = _run_prefill(self.cfg, pair.prefill_model, pair.prompts)
+                kv_chunks, seed_chunks = _run_prefill(
+                    self.cfg,
+                    pair.prefill_model,
+                    pair.prompts,
+                    pair.prefill_kv_chunks,
+                    pair.prefill_seed_chunks,
+                )
                 if (
                     len(pair.transfer_kv_chunks) != len(kv_chunks)
                     or len(pair.transfer_seed_chunks) != len(seed_chunks)
                 ):
                     raise RuntimeError("Transfer chunk slots not initialized")
                 for req_idx in range(len(kv_chunks)):
-                    pair.transfer_kv_chunks[req_idx] = kv_chunks[req_idx].to(
-                        pair.decode_device,
+                    pair.transfer_kv_chunks[req_idx].copy_(
+                        kv_chunks[req_idx],
                         non_blocking=self.overlap,
                     )
-                    pair.transfer_seed_chunks[req_idx] = seed_chunks[req_idx].to(
-                        pair.decode_device,
+                    pair.transfer_seed_chunks[req_idx].copy_(
+                        seed_chunks[req_idx],
                         non_blocking=self.overlap,
                     )
                 decoded = _run_decode(

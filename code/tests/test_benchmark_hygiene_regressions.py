@@ -6953,6 +6953,9 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     source = (
         REPO_ROOT / "ch15" / "baseline_disaggregated_inference_multigpu.py"
     ).read_text(encoding="utf-8")
+    prefill_helper = source.split("def _run_prefill", maxsplit=1)[1].split(
+        "def _run_decode", maxsplit=1
+    )[0]
     decode_helper = source.split("def _run_decode", maxsplit=1)[1].split(
         "def _run_torchrun_worker", maxsplit=1
     )[0]
@@ -6969,6 +6972,14 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
         "def _prepare_verification_payload", maxsplit=1
     )[0]
 
+    assert "kv_chunks: Optional[List[torch.Tensor]] = None" in prefill_helper
+    assert "seed_chunks: Optional[List[torch.Tensor]] = None" in prefill_helper
+    assert "reuse_kv_chunks = kv_chunks is not None and len(kv_chunks) == cfg.requests_per_rank" in prefill_helper
+    assert "reuse_seed_chunks = seed_chunks is not None and len(seed_chunks) == cfg.requests_per_rank" in prefill_helper
+    assert "kv_out.copy_(hidden)" in prefill_helper
+    assert "seed_out.copy_(seed_tokens)" in prefill_helper
+    assert "kv_chunks.append(" not in prefill_helper
+    assert "seed_chunks.append(" not in prefill_helper
     assert "outputs = [torch.empty(0) for _ in range(len(kv_chunks))]" in decode_helper
     assert "with torch.inference_mode():" in decode_helper
     assert "with torch.inference_mode():" in torchrun_worker
@@ -6996,17 +7007,27 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "outputs[req_idx] = tokens" in torchrun_worker
     assert "outputs.append(" not in torchrun_worker
     assert "decode_kv_cache = allocate_kv_cache(" in setup_section
+    assert "prefill_kv_chunks = [" in setup_section
+    assert "prefill_seed_chunks = [" in setup_section
+    assert "transfer_kv_chunks = [" in setup_section
+    assert "transfer_seed_chunks = [" in setup_section
     assert "decode_outputs=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in setup_section
-    assert "transfer_kv_chunks=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in setup_section
-    assert "transfer_seed_chunks=[torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in setup_section
+    assert "prefill_kv_chunks=prefill_kv_chunks" in setup_section
+    assert "prefill_seed_chunks=prefill_seed_chunks" in setup_section
+    assert "transfer_kv_chunks=transfer_kv_chunks" in setup_section
+    assert "transfer_seed_chunks=transfer_seed_chunks" in setup_section
     assert "self._pending_outputs = [" in setup_section
     assert "out.detach().cpu()" not in benchmark_section
     assert "torch.cat([out.detach().cpu()" not in benchmark_section
     assert "outputs: List[torch.Tensor] = []" not in benchmark_section
     assert "[kv.to(pair.decode_device" not in benchmark_section
     assert "[seed.to(pair.decode_device" not in benchmark_section
-    assert "pair.transfer_kv_chunks[req_idx] = kv_chunks[req_idx].to(" in benchmark_section
-    assert "pair.transfer_seed_chunks[req_idx] = seed_chunks[req_idx].to(" in benchmark_section
+    assert "pair.transfer_kv_chunks[req_idx].copy_(" in benchmark_section
+    assert "pair.transfer_seed_chunks[req_idx].copy_(" in benchmark_section
+    assert "pair.prefill_kv_chunks," in benchmark_section
+    assert "pair.prefill_seed_chunks," in benchmark_section
+    assert ".to(\n                        pair.decode_device" not in benchmark_section
+    assert ".to(pair.decode_device" not in benchmark_section
     assert "outputs = self._pending_outputs" in benchmark_section
     assert "output_idx = 0" in benchmark_section
     assert "kv_cache=pair.decode_kv_cache" in benchmark_section
