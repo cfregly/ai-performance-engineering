@@ -14730,3 +14730,17 @@ def test_nanochat_tokenizer_prepends_without_front_inserts() -> None:
         in encode_section
     )
     assert "ids = [[prepend_id, *ids_row] for ids_row in ids]" in encode_section
+
+
+def test_nanochat_calculator_uses_lazy_character_guards() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "engine.py"
+    ).read_text(encoding="utf-8")
+    calculator_section = source.split("def use_calculator", maxsplit=1)[1].split(
+        "@dataclass",
+        maxsplit=1,
+    )[0]
+
+    assert "all(x in \"0123456789*+-/.() \" for x in expr)" in calculator_section
+    assert "all(x in allowed_chars for x in expr)" in calculator_section
+    assert "all([x in" not in calculator_section
