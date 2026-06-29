@@ -196,8 +196,15 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             count_values_ready = True
         else:
             # Python loop-based routing (sequential, one-at-a-time)
+            est_ttft = (
+                self.router.get_current_prefill_queue_length()
+                * self.router.avg_prefill_time_per_req
+                + self.router.get_current_decode_queue_length()
+                * self.router.avg_decode_time_per_req
+            )
+            reject_low_priority = est_ttft > self.router.TTFT_SLO_MAX
             for idx, req in enumerate(requests):
-                if not self.router.admit_request(req):
+                if reject_low_priority and req.priority is Priority.LOW:
                     rejects += 1
                     continue
                 if queue_lengths is None:

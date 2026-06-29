@@ -8095,6 +8095,9 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "self._latency_count = 0" in source
     assert "self._latency_total_ms += elapsed_ms" in benchmark_section
     assert "self._latency_count += 1" in benchmark_section
+    assert "est_ttft = (" in benchmark_section
+    assert "reject_low_priority = est_ttft > self.router.TTFT_SLO_MAX" in benchmark_section
+    assert "if not self.router.admit_request(req):" not in benchmark_section
     assert "torch.tensor(" not in benchmark_section
     assert "self._output_values: list[float] = [0.0, 0.0, 0.0]" in source
     assert "self._output_values_ready = False" in source
