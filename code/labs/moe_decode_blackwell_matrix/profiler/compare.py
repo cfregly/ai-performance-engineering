@@ -15,17 +15,17 @@ def auto_select_graph_pair(rows: Sequence[dict[str, Any]]) -> tuple[dict[str, An
         for row in ok_rows
         if row["schedule_mode"] == "persistent" and row["launch_mode"] == "cuda_graph"
     ]
-    ranked_pairs = []
+    best_pair: tuple[float, dict[str, Any], dict[str, Any]] | None = None
     for graph_row in graph_rows:
         eager_row = eager_by_workload.get(graph_row["workload_key"])
         if eager_row is None:
             continue
         speedup = float(eager_row["step_mean_ms"]) / float(graph_row["step_mean_ms"])
-        ranked_pairs.append((speedup, eager_row, graph_row))
-    if not ranked_pairs:
+        if best_pair is None or speedup > best_pair[0]:
+            best_pair = (speedup, eager_row, graph_row)
+    if best_pair is None:
         raise RuntimeError("No persistent eager vs cuda_graph pair found in the run directory")
-    ranked_pairs.sort(key=lambda item: item[0], reverse=True)
-    _speedup, eager_row, graph_row = ranked_pairs[0]
+    _speedup, eager_row, graph_row = best_pair
     return eager_row, graph_row
 
 

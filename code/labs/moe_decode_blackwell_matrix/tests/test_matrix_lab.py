@@ -7,6 +7,7 @@ import torch
 
 from labs.moe_decode_blackwell_matrix.matrix_catalog import load_playbook
 from labs.moe_decode_blackwell_matrix.matrix_types import MatrixScenario
+from labs.moe_decode_blackwell_matrix.profiler.compare import auto_select_graph_pair
 from labs.moe_decode_blackwell_matrix.runner import (
     DispatchBatch,
     _compare_outputs,
@@ -88,6 +89,52 @@ def test_profiler_capture_selects_top_ops_without_full_sort() -> None:
     assert "import heapq" in source
     assert "heapq.nlargest(top_ops, events, key=_self_device_time_us)" in top_ops_section
     assert "sorted(events, key=_self_device_time_us" not in top_ops_section
+
+
+def test_profiler_compare_selects_graph_pair_without_full_sort() -> None:
+    source = inspect.getsource(auto_select_graph_pair)
+    rows = [
+        {
+            "config_id": "wk_a_eager",
+            "workload_key": "wk_a",
+            "status": "ok",
+            "schedule_mode": "persistent",
+            "launch_mode": "eager",
+            "step_mean_ms": 8.0,
+        },
+        {
+            "config_id": "wk_a_graph",
+            "workload_key": "wk_a",
+            "status": "ok",
+            "schedule_mode": "persistent",
+            "launch_mode": "cuda_graph",
+            "step_mean_ms": 4.0,
+        },
+        {
+            "config_id": "wk_b_eager",
+            "workload_key": "wk_b",
+            "status": "ok",
+            "schedule_mode": "persistent",
+            "launch_mode": "eager",
+            "step_mean_ms": 9.0,
+        },
+        {
+            "config_id": "wk_b_graph",
+            "workload_key": "wk_b",
+            "status": "ok",
+            "schedule_mode": "persistent",
+            "launch_mode": "cuda_graph",
+            "step_mean_ms": 3.0,
+        },
+    ]
+
+    eager_row, graph_row = auto_select_graph_pair(rows)
+
+    assert eager_row["config_id"] == "wk_b_eager"
+    assert graph_row["config_id"] == "wk_b_graph"
+    assert "best_pair" in source
+    assert "ranked_pairs" not in source
+    assert ".sort(" not in source
 
 
 def test_compare_outputs_batches_diff_materialization() -> None:
