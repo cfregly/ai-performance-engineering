@@ -42,6 +42,8 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         self.inputs: Optional[torch.Tensor] = None
         self._qkv_buffer: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._qkv_weight_t: Optional[torch.Tensor] = None
+        self._out_proj_weight_t: Optional[torch.Tensor] = None
         self.batch_size = 4
         self.max_seq_len = 4096  # Same as baseline
         self.hidden_dim = 1024
@@ -81,6 +83,8 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
             device=self.device,
             dtype=self.dtype,
         )
+        self._qkv_weight_t = self.qkv_proj.weight.t()
+        self._out_proj_weight_t = self.out_proj.weight.t()
         self.inputs = torch.randn(
             self.batch_size,
             self.max_seq_len,
@@ -124,10 +128,12 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
             or self.out_proj is None
             or self._qkv_buffer is None
             or self._output_buffer is None
+            or self._qkv_weight_t is None
+            or self._out_proj_weight_t is None
         ):
             raise RuntimeError("Benchmark not configured")
 
-        qkv = torch.matmul(self.inputs, self.qkv_proj.weight.t(), out=self._qkv_buffer)
+        qkv = torch.matmul(self.inputs, self._qkv_weight_t, out=self._qkv_buffer)
         q, k, v = torch.chunk(qkv, 3, dim=-1)
         
         # Reshape for attention
@@ -145,7 +151,7 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         
         # Output projection
         output = output.transpose(1, 2).contiguous().view(B, S, self.hidden_dim)
-        return torch.matmul(output, self.out_proj.weight.t(), out=self._output_buffer)
+        return torch.matmul(output, self._out_proj_weight_t, out=self._output_buffer)
     
     def benchmark_fn(self) -> None:
         """Benchmark: Flash Attention."""
@@ -179,6 +185,8 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         self.inputs = None
         self._qkv_buffer = None
         self._output_buffer = None
+        self._qkv_weight_t = None
+        self._out_proj_weight_t = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
