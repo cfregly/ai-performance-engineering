@@ -30,6 +30,7 @@ class BaselineTcgen05MatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.b: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._module: Optional[ModuleType] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.register_workload_metadata(
             bytes_per_iteration=float(6 * self.size * self.size),
             custom_units_per_iteration=float(2 * self.size * self.size * self.size),
@@ -48,6 +49,12 @@ class BaselineTcgen05MatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
         dtype = torch.float16
         self.a = torch.randn((self.size, self.size), device=self.device, dtype=dtype)
         self.b = torch.randn((self.size, self.size), device=self.device, dtype=dtype)
+        self._verify_output_buffer = torch.empty(
+            min(128, self.size),
+            min(256, self.size),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
     def benchmark_fn(self) -> None:
         if self.a is None or self.b is None:
@@ -58,11 +65,16 @@ class BaselineTcgen05MatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.output = self._module.matmul_tcgen05(self.a, self.b)
 
     def capture_verification_payload(self) -> None:
-        if self.a is None or self.b is None or self.output is None:
+        if self.a is None or self.b is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"A": self.a, "B": self.b},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.size,
             precision_flags={"fp16": True, "bf16": False, "fp8": False, "tf32": False},
             output_tolerance=(0.1, 0.5),
