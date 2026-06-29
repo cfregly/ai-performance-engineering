@@ -26,7 +26,7 @@ import time
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from labs.dynamic_router.router_round_robin import BaselineRouter, Request
 from labs.dynamic_router.router_policy import Router, SequenceInfo
@@ -340,10 +340,16 @@ def simulate(
 
         # 4) Optional: migrate (optimized only)
         if optimized and tick % 5 == 0:
+            active_decode_ids_by_gpu = {
+                gid: {task.req_id for task in gpu.decode_q}
+                for gid, gpu in gpus.items()
+                if gpu.decode_q
+            }
             active = []
             for state in requests.values():
                 if state.ttft_ms is not None and state.decode_gpu is not None:
-                    if any(t.req_id == state.req.req_id for t in gpus[state.decode_gpu].decode_q):
+                    decode_ids = active_decode_ids_by_gpu.get(state.decode_gpu)
+                    if decode_ids is not None and state.req.req_id in decode_ids:
                         active.append(
                             SequenceInfo(
                                 seq_id=state.req.req_id,
@@ -364,11 +370,16 @@ def simulate(
                         break
 
         # 5) Clean up finished requests
+        active_request_ids = {
+            task.req_id
+            for gpu in gpus.values()
+            for queue in (gpu.prefill_q, gpu.decode_q)
+            for task in queue
+        }
         finished = [
             rid
             for rid, state in requests.items()
-            if state.req.req_id
-            not in [t.req_id for gpu in gpus.values() for t in gpu.prefill_q + gpu.decode_q]
+            if state.req.req_id not in active_request_ids
         ]
         for rid in finished:
             if mode == "baseline":

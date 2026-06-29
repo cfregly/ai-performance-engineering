@@ -5357,6 +5357,28 @@ def test_dynamic_router_policy_avoids_candidate_list_churn() -> None:
     assert Router().choose_prefill_gpu() is None
 
 
+def test_dynamic_router_driver_precomputes_active_request_sets() -> None:
+    source = (REPO_ROOT / "labs" / "dynamic_router" / "driver.py").read_text(
+        encoding="utf-8"
+    )
+    migration_section = source.split("# 4) Optional: migrate", maxsplit=1)[1].split(
+        "# 5) Clean up finished requests",
+        maxsplit=1,
+    )[0]
+    cleanup_section = source.split("# 5) Clean up finished requests", maxsplit=1)[1].split(
+        "# Optional slow logging",
+        maxsplit=1,
+    )[0]
+
+    assert "active_decode_ids_by_gpu = {" in migration_section
+    assert "decode_ids = active_decode_ids_by_gpu.get(state.decode_gpu)" in migration_section
+    assert "any(t.req_id" not in migration_section
+    assert "active_request_ids = {" in cleanup_section
+    assert "if state.req.req_id not in active_request_ids" in cleanup_section
+    assert "gpu.prefill_q + gpu.decode_q" not in cleanup_section
+    assert "not in [t.req_id" not in cleanup_section
+
+
 def test_ch04_optimized_nvlink_topology_reuses_chunk_views() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_nvlink_topology_aware.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
