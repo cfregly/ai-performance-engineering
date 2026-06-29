@@ -12088,6 +12088,32 @@ def test_ch04_multi_node_training_defers_repeated_loss_syncs() -> None:
     assert "epoch_loss = float(loss_value_buffer.detach().cpu()[0])" in train_section
 
 
+def test_ch04_multi_node_bandwidth_uses_tensor_reduce_scatter() -> None:
+    source = (REPO_ROOT / "ch04" / "multi_node_blackwell.py").read_text(
+        encoding="utf-8"
+    )
+    bandwidth_section = source.split("def benchmark_multigpu_bandwidth", maxsplit=1)[
+        1
+    ].split(
+        "def benchmark_multi_node_bandwidth",
+        maxsplit=1,
+    )[0]
+
+    assert "start = time.perf_counter()" in bandwidth_section
+    assert "return time.perf_counter() - start" in bandwidth_section
+    assert "reducescatter_input = tensor.view(world_size, size)" in bandwidth_section
+    assert "dist.reduce_scatter_tensor(output, reducescatter_input)" in bandwidth_section
+    assert "input_list = list(tensor.chunk(world_size))" not in bandwidth_section
+    assert "dist.reduce_scatter(output, input_list)" not in bandwidth_section
+    assert "allreduce_total = 0.0" in bandwidth_section
+    assert "allreduce_count = 0" in bandwidth_section
+    assert "allreduce_total += value" in bandwidth_section
+    assert "allreduce_count += 1" in bandwidth_section
+    assert "avg_allreduce = allreduce_total / allreduce_count" in bandwidth_section
+    assert "allreduce_values = [" not in bandwidth_section
+    assert "sum(allreduce_values)" not in bandwidth_section
+
+
 def test_ch13_expert_parallel_batches_recv_split_materialization() -> None:
     source = (REPO_ROOT / "ch13" / "expert_parallel_common.py").read_text(
         encoding="utf-8"

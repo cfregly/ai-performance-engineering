@@ -579,11 +579,11 @@ def benchmark_multigpu_bandwidth(
         for _ in range(10):
             collective()
         torch.cuda.synchronize(device)
-        start = time.time()
+        start = time.perf_counter()
         for _ in range(num_iters):
             collective()
         torch.cuda.synchronize(device)
-        return time.time() - start
+        return time.perf_counter() - start
 
     # All-reduce
     if rank == 0:
@@ -644,9 +644,9 @@ def benchmark_multigpu_bandwidth(
     for size in sizes[1:3]:
         tensor = torch.randn(size * world_size, device=device, dtype=torch.float32)
         output = torch.empty(size, device=device, dtype=torch.float32)
-        input_list = list(tensor.chunk(world_size))
+        reducescatter_input = tensor.view(world_size, size)
         bytes_transferred = tensor.numel() * tensor.element_size()
-        elapsed = _bench(lambda: dist.reduce_scatter(output, input_list))
+        elapsed = _bench(lambda: dist.reduce_scatter_tensor(output, reducescatter_input))
         bandwidth_gbs = (bytes_transferred * num_iters) / elapsed / 1e9
         results[f"reducescatter_{bytes_transferred/1e6:.1f}MB"] = bandwidth_gbs
         if rank == 0:
@@ -656,9 +656,14 @@ def benchmark_multigpu_bandwidth(
             )
 
     if rank == 0:
-        allreduce_values = [v for k, v in results.items() if k.startswith("allreduce")]
-        if allreduce_values:
-            avg_allreduce = sum(allreduce_values) / len(allreduce_values)
+        allreduce_total = 0.0
+        allreduce_count = 0
+        for key, value in results.items():
+            if key.startswith("allreduce"):
+                allreduce_total += value
+                allreduce_count += 1
+        if allreduce_count:
+            avg_allreduce = allreduce_total / allreduce_count
             efficiency = (avg_allreduce / 750.0) * 100  # 750 GB/s target
             print("\n" + "=" * 70)
             print(f"Average All-Reduce Bandwidth: {avg_allreduce:.2f} GB/s")
