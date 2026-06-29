@@ -4312,6 +4312,38 @@ def test_ch20_bf16_mlp_preconverts_activation_dtype_outside_hot_loop() -> None:
     assert "self.output = self.model(self._x_model_dtype)" in benchmark_section
 
 
+def test_ch20_bf16_mlp_reuses_materialization_scalar() -> None:
+    for relative, allocation in (
+        (
+            "ch20/baseline_bf16_mlp.py",
+            "self._materialization_buffer = torch.empty((), device=self.device, dtype=torch.float32)",
+        ),
+        (
+            "ch20/optimized_bf16_mlp.py",
+            "self._materialization_buffer = torch.empty((), device=self.device, dtype=self._model_dtype)",
+        ),
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._materialization_buffer: Optional[torch.Tensor] = None" in source
+        assert allocation in setup_section
+        assert "assert self._materialization_buffer is not None" in benchmark_section
+        assert "torch.sum(" in benchmark_section
+        assert "dim=(0, 1)" in benchmark_section
+        assert "out=self._materialization_buffer" in benchmark_section
+        assert ".sum()" not in benchmark_section
+        assert "self._materialization_buffer = None" in teardown_section
+
+
 def test_ch20_optimized_forward_paths_use_inference_mode() -> None:
     for relative in (
         "ch20/optimized_autotuning.py",

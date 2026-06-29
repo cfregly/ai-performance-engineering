@@ -52,6 +52,7 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model: Optional[nn.Module] = None
         self.x: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._materialization_buffer: Optional[torch.Tensor] = None
         self.batch_size = 128
         self.hidden_dim = 2048  # Smaller to make differences more visible
         tokens = self.batch_size * self.hidden_dim
@@ -69,6 +70,7 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         self.x = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
         self.output = None
+        self._materialization_buffer = torch.empty((), device=self.device, dtype=torch.float32)
         # Warmup
         for _ in range(5):
             with torch.inference_mode():
@@ -76,10 +78,11 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         assert self.model is not None and self.x is not None
+        assert self._materialization_buffer is not None
         with self._nvtx_range("multiple_techniques_baseline"):
             with torch.inference_mode():
                 out = self.model(self.x)
-                _ = out.sum()  # Force materialization
+                torch.sum(out, dim=(0, 1), out=self._materialization_buffer)
                 self.output = out.detach()
 
     def capture_verification_payload(self) -> None:
@@ -95,6 +98,7 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.model = None
         self.x = None
+        self._materialization_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

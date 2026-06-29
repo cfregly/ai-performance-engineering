@@ -59,6 +59,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._x_model_dtype: Optional[torch.Tensor] = None
         self._model_dtype: Optional[torch.dtype] = None
         self.output: Optional[torch.Tensor] = None
+        self._materialization_buffer: Optional[torch.Tensor] = None
         self.batch_size = 128
         self.hidden_dim = 2048  # Match baseline
         tokens = self.batch_size * self.hidden_dim
@@ -80,6 +81,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.x = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
         self._refresh_model_input()
         self.output = None
+        self._materialization_buffer = torch.empty((), device=self.device, dtype=self._model_dtype)
         
         # Warmup
         for _ in range(10):
@@ -93,6 +95,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         assert self.model is not None and self.x is not None and self._x_model_dtype is not None
+        assert self._materialization_buffer is not None
 
         if getattr(self, "_verification_payload", None) is not None:
             self._refresh_model_input()
@@ -101,7 +104,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.inference_mode():
                 # Optimization: Single forward pass (no redundant compute)
                 self.output = self.model(self._x_model_dtype)
-                _ = self.output.sum()  # Force materialization
+                torch.sum(self.output, dim=(0, 1), out=self._materialization_buffer)
 
     def capture_verification_payload(self) -> None:
         assert self.model is not None and self.x is not None and self.output is not None
@@ -124,6 +127,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.x = None
         self._x_model_dtype = None
         self._model_dtype = None
+        self._materialization_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
