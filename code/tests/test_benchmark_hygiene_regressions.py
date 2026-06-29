@@ -832,14 +832,19 @@ def test_ch04_grace_blackwell_locality_reuses_verification_views() -> None:
 
         assert "self._verify_probe: Optional[torch.Tensor] = None" in source
         assert "self._output_view: Optional[torch.Tensor] = None" in source
+        assert "self._materialization_buffer: Optional[torch.Tensor] = None" in source
         assert f"self._verify_probe = {source_buffer}[: 256 * 256].view(256, 256)" in setup_section
         assert "self._output_view = self.device_buf[: 256 * 256].view(256, 256)" in setup_section
+        assert "self._materialization_buffer = torch.empty((), device=self.device, dtype=torch.float32)" in setup_section
+        assert "torch.sum(self.device_buf, dim=0, out=self._materialization_buffer)" in benchmark_section
+        assert "self.device_buf.sum()" not in benchmark_section
         assert "self.output = self._output_view.detach()" in benchmark_section
         assert "self.device_buf[: 256 * 256]" not in benchmark_section
         assert "probe = self._verify_probe" in capture_section
         assert "output = self.output" in capture_section
         assert "self._verify_probe = None" in teardown_section
         assert "self._output_view = None" in teardown_section
+        assert "self._materialization_buffer = None" in teardown_section
 
 
 def test_cluster_all_reduce_tool_reuses_bandwidth_scalar_buffer() -> None:
