@@ -1658,6 +1658,45 @@ def test_ch04_nvshmem_and_symmem_demos_buffer_loss_logging() -> None:
         assert "loss_value = float(loss_value_buffer.detach().cpu()[0])" in section
 
 
+def test_ch04_symmem_training_reuses_flat_gradient_buffers() -> None:
+    from ch04.symmetric_memory_training_advanced import _flatten_gradients_into
+
+    layer = torch.nn.Linear(3, 2)
+    params = list(layer.parameters())
+    layer(torch.ones(1, 3)).sum().backward()
+    flat = torch.empty(sum(param.numel() for param in params), dtype=torch.float32)
+
+    flattened = _flatten_gradients_into(params, flat)
+
+    assert flattened is not None
+    assert flattened.data_ptr() == flat.data_ptr()
+    torch.testing.assert_close(
+        flattened,
+        torch.cat([param.grad.reshape(-1) for param in params if param.grad is not None]),
+    )
+
+    source = (
+        REPO_ROOT / "ch04" / "symmetric_memory_training_advanced.py"
+    ).read_text(encoding="utf-8")
+    async_section = source.split("class AsyncGradientServer", maxsplit=1)[1].split(
+        "def wait_and_average",
+        maxsplit=1,
+    )[0]
+    lockfree_demo = source.split("def demo_lockfree_accumulation", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+
+    assert "def _flatten_gradients_into(" in source
+    assert "self._flat_grad_buffer = torch.empty(" in async_section
+    assert "all_grads = _flatten_gradients_into(self.parameters, self._flat_grad_buffer)" in async_section
+    assert "parameters = list(model.parameters())" in lockfree_demo
+    assert "flat_grad_buffer = torch.empty(param_numel" in lockfree_demo
+    assert "all_grads = _flatten_gradients_into(parameters, flat_grad_buffer)" in lockfree_demo
+    assert "torch.cat(grad_tensors)" not in source
+    assert "grad_tensors = [p.grad.flatten()" not in source
+
+
 def test_ch04_distributed_demo_elapsed_timing_uses_monotonic_clock() -> None:
     sources = {
         "multi_node": (REPO_ROOT / "ch04" / "multi_node_blackwell.py").read_text(

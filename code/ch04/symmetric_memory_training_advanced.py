@@ -127,6 +127,26 @@ def init_distributed(allow_single_gpu: bool = False) -> Tuple[int, int, int]:
     return dist.get_rank(), dist.get_world_size(), torch.cuda.current_device()
 
 
+def _flatten_gradients_into(
+    parameters: List[nn.Parameter],
+    out: torch.Tensor,
+) -> Optional[torch.Tensor]:
+    """Flatten available parameter gradients into a reusable buffer."""
+
+    offset = 0
+    for param in parameters:
+        grad = param.grad
+        if grad is None:
+            continue
+        grad_flat = grad.reshape(-1)
+        next_offset = offset + grad_flat.numel()
+        out[offset:next_offset].copy_(grad_flat)
+        offset = next_offset
+    if offset == 0:
+        return None
+    return out[:offset]
+
+
 # ============================================================================
 # Pattern 1: Async Gradient Aggregation Server
 # ============================================================================
@@ -287,15 +307,17 @@ class AsyncGradientServer:
         
         self.parameters = parameters
         self.step_count = 0
+        self._flat_grad_buffer = torch.empty(
+            self.param_numel,
+            device=self.device,
+            dtype=torch.float32,
+        )
 
     def submit_gradients(self, rank: int) -> None:
         """Submit current gradients for async aggregation."""
-        # Collect all gradients into flat tensor
-        grad_tensors = [p.grad.flatten() for p in self.parameters if p.grad is not None]
-        if not grad_tensors:
+        all_grads = _flatten_gradients_into(self.parameters, self._flat_grad_buffer)
+        if all_grads is None:
             return
-        
-        all_grads = torch.cat(grad_tensors)
         
         # Write to appropriate buffer (double-buffering)
         if self.step_count % 2 == 0:
@@ -526,10 +548,12 @@ def demo_lockfree_accumulation(*, allow_single_gpu: bool = False) -> None:
     
     # Create model
     model = nn.Linear(8192, 8192, device=device)
-    param_numel = sum(p.numel() for p in model.parameters())
+    parameters = list(model.parameters())
+    param_numel = sum(p.numel() for p in parameters)
     
     # Initialize lock-free accumulator
     accumulator = LockFreeGradientAccumulator(param_numel, world_size, device)
+    flat_grad_buffer = torch.empty(param_numel, device=device, dtype=torch.float32)
     
     # Simulate gradient accumulation over multiple microbatches
     num_microbatches = 8
@@ -541,9 +565,10 @@ def demo_lockfree_accumulation(*, allow_single_gpu: bool = False) -> None:
         loss = outputs.sum()
         loss.backward()
         
-        # Collect gradients
-        grad_tensors = [p.grad.flatten() for p in model.parameters() if p.grad is not None]
-        all_grads = torch.cat(grad_tensors)
+        all_grads = _flatten_gradients_into(parameters, flat_grad_buffer)
+        if all_grads is None:
+            model.zero_grad()
+            continue
         
         # Accumulate (lock-free)
         accumulator.accumulate(rank, all_grads)
