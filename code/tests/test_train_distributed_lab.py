@@ -55,6 +55,20 @@ def test_ddp_compression_int8_hook_masks_zero_scale_in_place() -> None:
     assert "scale.masked_fill_(scale == 0, 1.0)" in hook_section
 
 
+def test_ddp_compression_logs_loss_through_reused_buffer() -> None:
+    source = (LAB_DIR / "ddp_compression.py").read_text(encoding="utf-8")
+    loop_section = source.split("for step, batch in enumerate(dataloader):", maxsplit=1)[1].split(
+        "elapsed = perf_counter() - start",
+        maxsplit=1,
+    )[0]
+    logging_section = loop_section.split("if is_main and step % 10 == 0:", maxsplit=1)[1]
+
+    assert "loss.item()" not in loop_section
+    assert "loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)" in source
+    assert "loss_value_buffer[0].copy_(loss.detach())" in logging_section
+    assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in logging_section
+
+
 def test_train_distributed_mlp_builders_use_inplace_relu() -> None:
     for relative in (
         "baseline_zero1.py",
