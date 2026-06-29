@@ -6055,6 +6055,34 @@ def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
     assert 'start_decode = self._piecewise_events["start_decode"]' in benchmark_section
 
 
+def test_persistent_decode_tma_precomputes_prefill_work_outside_hot_loop() -> None:
+    targets = [
+        REPO_ROOT / "labs" / "persistent_decode" / "optimized_tma_prefill_decode.py",
+        REPO_ROOT / "labs" / "persistent_decode" / "optimized_native_tma_prefill_decode.py",
+    ]
+    for path in targets:
+        source = path.read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def _decode_body", maxsplit=1
+        )[0]
+        prefill_section = source.split("def _prefill_shaped", maxsplit=1)[1].split(
+            "def _decode_graph", maxsplit=1
+        )[0]
+
+        assert "self._prefill_work: list[" in source
+        assert "self._prefill_work = [" in setup_section
+        assert "self.prefill_src.unbind(0)" in setup_section
+        assert "self.prefill_dst.unbind(0)" in setup_section
+        assert "self._prefill_events" in setup_section
+        assert "strict=True" in setup_section
+        assert "for stream, src, dst, evt in self._prefill_work:" in prefill_section
+        assert "range(self.prefill_chunks)" not in prefill_section
+        assert "idx % len(self.prefill_streams)" not in prefill_section
+        assert "self.prefill_src[idx]" not in prefill_section
+        assert "self.prefill_dst[idx]" not in prefill_section
+        assert "torch.cuda.Event(" not in prefill_section
+
+
 def test_persistent_decode_baseline_reuses_decode_step_buffers() -> None:
     source = (REPO_ROOT / "labs" / "persistent_decode" / "baseline_persistent_decode.py").read_text(
         encoding="utf-8"
