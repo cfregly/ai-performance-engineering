@@ -59,7 +59,8 @@ class NvshmemIbgdaMicrobench(CudaBinaryBenchmark):
         self.nvshmemrun: Optional[str] = None
         self._parsed_metrics: Dict[str, float] = {}
         self._last_output: Optional[torch.Tensor] = None
-        self._last_output_values: Optional[list[float]] = None
+        self._last_output_values: list[float] = [0.0]
+        self._last_output_ready = False
 
         args = self._build_run_args()
 
@@ -274,12 +275,13 @@ class NvshmemIbgdaMicrobench(CudaBinaryBenchmark):
     def benchmark_fn(self) -> None:
         self._last_result = self._run_once()
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._last_output_values = [self._parsed_metrics.get("bandwidth_gbps", 0.0)]
+        self._last_output_values[0] = self._parsed_metrics.get("bandwidth_gbps", 0.0)
+        self._last_output_ready = True
         self._last_output = None
         self._payload_device = device
 
     def capture_verification_payload(self) -> None:
-        if self._last_output_values is None:
+        if not self._last_output_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         device = self._payload_device
         self._last_output = torch.tensor(

@@ -14199,6 +14199,10 @@ def test_ch04_nvshmem_microbench_defers_output_tensor_outside_hot_loop() -> None
     source = (REPO_ROOT / "ch04" / "nvshmem_ibgda_microbench_multigpu.py").read_text(
         encoding="utf-8"
     )
+    init_section = source.split("def __init__", maxsplit=1)[1].split(
+        "# --------------------------------------------------------------------- Setup/teardown",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -14207,7 +14211,12 @@ def test_ch04_nvshmem_microbench_defers_output_tensor_outside_hot_loop() -> None
     )[0]
 
     assert "torch.tensor(" not in benchmark_section
-    assert "self._last_output_values = [self._parsed_metrics.get(\"bandwidth_gbps\", 0.0)]" in benchmark_section
+    assert "self._last_output_values: list[float] = [0.0]" in init_section
+    assert "self._last_output_ready = False" in init_section
+    assert 'self._last_output_values[0] = self._parsed_metrics.get("bandwidth_gbps", 0.0)' in benchmark_section
+    assert "self._last_output_ready = True" in benchmark_section
+    assert "self._last_output_values = [" not in benchmark_section
+    assert "if not self._last_output_ready:" in capture_section
     assert "self._last_output = torch.tensor(" in capture_section
 
 
