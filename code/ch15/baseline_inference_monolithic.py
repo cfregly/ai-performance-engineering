@@ -42,6 +42,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self._last_elapsed_ms: Optional[float] = None
         self._metrics_pending = False
         self._last_decoded_tokens: List[torch.Tensor] = []
+        self._decode_output_buffer: Optional[torch.Tensor] = None
         self._ttft_metric_values = [0.0]
         self._tpot_metric_values = [0.0] * self.num_tokens
         self._iteration_metric_payload: Dict[str, List[float]] = {
@@ -71,6 +72,11 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self._ttft_count = 0
         self._tpot_count = 0
         self._last_decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]
+        self._decode_output_buffer = torch.empty(
+            (self.batch_size, self.num_tokens, self.model.hidden_dim),
+            device=self.device,
+            dtype=torch.bfloat16,
+        )
         if len(self._tpot_metric_values) != self.num_tokens:
             self._tpot_metric_values = [0.0] * self.num_tokens
             self._iteration_metric_payload["tpot_times_ms"] = self._tpot_metric_values
@@ -138,7 +144,17 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         if self.output is None:
             if not self._last_decoded_tokens:
                 raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-            self.output = torch.cat(self._last_decoded_tokens, dim=1)
+            if self._decode_output_buffer is None:
+                raise RuntimeError("setup() must initialize decode output buffer")
+            token_offset = 0
+            for decoded in self._last_decoded_tokens:
+                token_width = decoded.shape[1]
+                next_offset = token_offset + token_width
+                self._decode_output_buffer[:, token_offset:next_offset, :].copy_(decoded)
+                token_offset = next_offset
+            if token_offset != self._decode_output_buffer.shape[1]:
+                raise RuntimeError("unexpected decode output shape")
+            self.output = self._decode_output_buffer
         self._set_verification_payload(
             inputs={"prompt": self.prompt},
             output=self.output.float(),
@@ -158,6 +174,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self.kv_cache = None
         self.output = None
         self._last_decoded_tokens = []
+        self._decode_output_buffer = None
         self._last_elapsed_ms = None
         self._metrics_pending = False
         if torch.cuda.is_available():

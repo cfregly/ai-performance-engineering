@@ -17062,6 +17062,8 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.cat(" not in benchmark_section
     assert "self._last_decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]" in source
+    assert "self._decode_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._decode_output_buffer = torch.empty(" in setup_section
     assert "self._empty_iteration_result: Dict[str, List[float]] = {}" in source
     assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in source
     assert "self._ttft_metric_values = [0.0]" in source
@@ -17075,7 +17077,10 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "return {}" not in benchmark_section
     assert "decoded_tokens = []" not in benchmark_section
     assert "decoded_tokens.append(" not in benchmark_section
-    assert "self.output = torch.cat(self._last_decoded_tokens, dim=1)" in capture_section
+    assert "torch.cat(" not in capture_section
+    assert "for decoded in self._last_decoded_tokens:" in capture_section
+    assert "self._decode_output_buffer[:, token_offset:next_offset, :].copy_(decoded)" in capture_section
+    assert "self.output = self._decode_output_buffer" in capture_section
     assert "self._last_elapsed_ms" in source
     assert "finalize_iteration_metrics" in source
     assert "self._ttft_total_ms = 0.0" in setup_section
