@@ -485,6 +485,7 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph: Optional[torch.cuda.CUDAGraph] = None
         self.static_output: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._compile_enabled: bool = False
         self._gelu_epilogue_enabled: bool = False
         self._gemm1_aten_enabled: bool = False
@@ -553,6 +554,11 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).to(self.device)
 
         self.output = None
+        self._verify_output_buffer = torch.empty(
+            (self.batch_size, self.hidden_size),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
         # Calibrate the static per-expert slot capacity and warm up kernels
         # (cuBLAS workspaces, one-hot/cumsum) eagerly BEFORE graph capture:
@@ -747,14 +753,15 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.inputs is None or self.output is None or self.model is None:
+        if self.inputs is None or self.output is None or self.model is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         # Front M4: every timed replay accumulated the in-graph overflow
         # counter; check it before the output is allowed to verify.
         self._check_capacity_overflow("timed replays")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.inputs.detach()},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=self._payload_parameter_count,
             precision_flags={"bf16": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -767,6 +774,7 @@ class VectorizedRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph = None
         self.static_output = None
         self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

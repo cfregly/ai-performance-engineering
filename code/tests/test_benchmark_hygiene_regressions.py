@@ -6369,6 +6369,9 @@ def test_moe_cuda_router_wrappers_cache_nvtx_and_parameter_count() -> None:
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
 
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
         assert "self._payload_parameter_count = sum(p.numel() for p in model.parameters())" in setup_section
@@ -6377,6 +6380,12 @@ def test_moe_cuda_router_wrappers_cache_nvtx_and_parameter_count() -> None:
         assert "enable=self._enable_nvtx" in benchmark_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "sum(p.numel()" not in capture_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.output.detach().float().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch20_bf16_mlp_preconverts_activation_dtype_outside_hot_loop() -> None:

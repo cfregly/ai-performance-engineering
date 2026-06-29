@@ -25,6 +25,7 @@ class BaselineRouterDenseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model: Optional[nn.Module] = None
         self.inputs: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
             tokens_per_iteration=float(self.batch_size * self.top_k),
@@ -87,6 +88,11 @@ class BaselineRouterDenseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).to(self.device)
         torch.cuda.synchronize(self.device)
         self.output = None
+        self._verify_output_buffer = torch.empty(
+            (self.batch_size, self.hidden_size),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.inputs is None:
@@ -99,11 +105,12 @@ class BaselineRouterDenseBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.inputs is None or self.output is None or self.model is None:
+        if self.inputs is None or self.output is None or self.model is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.inputs.detach()},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=self._payload_parameter_count,
             precision_flags={"bf16": True, "tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -116,6 +123,7 @@ class BaselineRouterDenseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.inputs = None
         self.output = None
+        self._verify_output_buffer = None
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=10, warmup=10)  # Match compiled variants warmup
