@@ -129,6 +129,7 @@ class MoELayer(nn.Module):
         self.top_k = top_k
         self._route_token_cache: Dict[Tuple[int, int, str], torch.Tensor] = {}
         self._route_count_host_buffer: Optional[torch.Tensor] = None
+        self._route_count_list_buffer = [0] * num_experts
         self._output_buffer: Optional[torch.Tensor] = None
         
         self.router = LoadBalancedRouter(hidden_size, num_experts, top_k)
@@ -180,8 +181,12 @@ class MoELayer(nn.Module):
                 device="cpu",
                 pin_memory=needs_pinned,
             )
-        self._route_count_host_buffer.copy_(counts)
-        return [int(count) for count in self._route_count_host_buffer.tolist()]
+        route_count_host = self._route_count_host_buffer
+        route_count_host.copy_(counts)
+        route_count_list = self._route_count_list_buffer
+        for expert_idx in range(self.num_experts):
+            route_count_list[expert_idx] = int(route_count_host[expert_idx])
+        return route_count_list
     
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
         """

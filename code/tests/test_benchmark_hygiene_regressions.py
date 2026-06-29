@@ -7846,6 +7846,12 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     output_ptr = layer._output_buffer.data_ptr()
     layer(x)
     assert layer._output_buffer.data_ptr() == output_ptr
+    route_counts = layer._route_count_list(torch.tensor([0, 1, 1], dtype=torch.long))
+    route_counts_id = id(route_counts)
+    assert route_counts == [1, 2, 0]
+    assert layer._route_count_list(torch.tensor([0, 0, 2], dtype=torch.long)) is route_counts
+    assert id(route_counts) == route_counts_id
+    assert route_counts == [2, 0, 1]
 
     source = (REPO_ROOT / "labs" / "real_world_models" / "deepseek_r1_moe_optimization.py").read_text(
         encoding="utf-8"
@@ -7891,9 +7897,13 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "output_flat.index_copy_(0, token_indices, expert_output * weights)" not in moe_forward
     assert 'token_ids.div_(routes, rounding_mode="floor")' in moe_forward
     assert "self._route_count_host_buffer: Optional[torch.Tensor] = None" in moe_forward
+    assert "self._route_count_list_buffer = [0] * num_experts" in moe_forward
     assert "def _route_count_list(self, expert_ids: torch.Tensor)" in moe_forward
     assert "counts = torch.bincount(expert_ids, minlength=self.num_experts)" in moe_forward
-    assert "self._route_count_host_buffer.copy_(counts)" in moe_forward
+    assert "route_count_host.copy_(counts)" in moe_forward
+    assert "route_count_list = self._route_count_list_buffer" in moe_forward
+    assert "route_count_list[expert_idx] = int(route_count_host[expert_idx])" in moe_forward
+    assert ".tolist()" not in moe_forward
     assert "torch.argsort(remaining_experts)" in moe_forward
     assert "first_count_list = self._route_count_list(first_experts)" in moe_forward
     assert "route_count_list = self._route_count_list(remaining_experts)" in moe_forward
