@@ -3503,11 +3503,21 @@ def test_nvfp4_wrappers_reuse_shape_signature_tensors() -> None:
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
 
         assert "self._shape_signature: Optional[torch.Tensor] = None" in source
         assert f"self._shape_signature = torch.empty({length}, dtype=torch.int64)" in setup_section
         assert 'inputs={"shape_signature": self._shape_signature}' in capture_section
         assert "torch.tensor(" not in capture_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "verify_output = self._verify_output_buffer" in capture_section
+        assert "verify_output.copy_(output_slice)" in capture_section
+        assert "output=verify_output" in capture_section
+        assert ".float().detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_custom_vs_cublas_nvfp4_blocked_padding_zeroes_only_tails() -> None:

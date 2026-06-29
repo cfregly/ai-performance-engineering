@@ -33,6 +33,7 @@ class BaselineNvfp4GemvBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._generate_input: Optional[Callable[..., Any]] = None
         self.output: Optional[torch.Tensor] = None
         self._shape_signature: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         tokens = float(self.m * self.l)
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -80,6 +81,11 @@ class BaselineNvfp4GemvBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._shape_signature[1] = self.k
         self._shape_signature[2] = self.l
         self._shape_signature[3] = self.seed
+        self._verify_output_buffer = torch.empty(
+            (min(64, self.m), 1, 1),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -95,7 +101,11 @@ class BaselineNvfp4GemvBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         if self._shape_signature is None:
             raise RuntimeError("setup() must initialize shape signature")
-        verify_output = self.output[:64, :1, :1].float().detach().clone()
+        if self._verify_output_buffer is None:
+            raise RuntimeError("setup() must initialize verification output buffer")
+        verify_output = self._verify_output_buffer
+        output_slice = self.output[: verify_output.shape[0], : verify_output.shape[1], : verify_output.shape[2]]
+        verify_output.copy_(output_slice)
         self._set_verification_payload(
             inputs={"shape_signature": self._shape_signature},
             output=verify_output,
@@ -116,6 +126,7 @@ class BaselineNvfp4GemvBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._generate_input = None
         self.output = None
         self._shape_signature = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
