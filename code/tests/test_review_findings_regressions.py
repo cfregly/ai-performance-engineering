@@ -134,17 +134,23 @@ def test_ch06_ilp_benchmarks_defer_verification_clone_out_of_hot_path() -> None:
         assert "output=self.output.detach().clone()" in capture_text
 
 
-def test_ch17_static_routing_defers_verification_cast_and_clone() -> None:
+def test_ch17_static_routing_reuses_verification_output_buffer() -> None:
     for relative_path in (
         "ch17/baseline_routing_static.py",
         "ch17/optimized_routing_static.py",
     ):
+        source_text = _read(relative_path)
         benchmark_text = _benchmark_section(relative_path)
-        capture_text = _read(relative_path).split("def capture_verification_payload", 1)[1]
+        setup_text = source_text.split("def setup", 1)[1].split("def benchmark_fn", 1)[0]
+        capture_text = source_text.split("def capture_verification_payload", 1)[1]
 
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source_text
+        assert "self._verify_output_buffer = torch.empty(" in setup_text
         assert ".clone()" not in benchmark_text
         assert ".float()" not in benchmark_text
-        assert "output=self.output.detach().float().clone()" in capture_text
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_text
+        assert "output=self._verify_output_buffer" in capture_text
+        assert "output=self.output.detach().float().clone()" not in capture_text
 
 
 def test_ch06_optimized_adaptive_uses_chunk_plan_without_extra_staging_buffers() -> None:

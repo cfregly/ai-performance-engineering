@@ -45,6 +45,7 @@ class BaselineRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.route_scores: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self._verification_payload = None
@@ -69,6 +70,12 @@ class BaselineRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self._verify_input = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=dtype)
+        self._verify_output_buffer = torch.empty(
+            self.batch_size,
+            10,
+            device=self.device,
+            dtype=torch.float32,
+        )
         # Static router still pays routing overhead (naive per-request argmax).
         self.route_scores = torch.zeros(
             self.requests_per_iteration,
@@ -99,9 +106,12 @@ class BaselineRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         dtype = self._payload_dtype
+        if self.output is None or self._verify_input is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -116,6 +126,7 @@ class BaselineRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.model = None
         self.inputs = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
