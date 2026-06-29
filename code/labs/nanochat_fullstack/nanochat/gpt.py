@@ -474,6 +474,7 @@ class GPT(nn.Module):
         self._generate_topk_indices = None
         self._generate_topk_probs = None
         self._generate_token_host = None
+        self._generate_prompt_host = None
 
     def init_weights(self):
         self.apply(self._init_weights)
@@ -560,6 +561,34 @@ class GPT(nn.Module):
         if self._generate_token_host is None:
             self._generate_token_host = torch.empty(1, dtype=torch.long)
         return self._generate_token_host
+
+    def _generate_prompt_host_buffer(self, count, device):
+        pin_memory = device.type == "cuda"
+        if (
+            self._generate_prompt_host is None
+            or self._generate_prompt_host.numel() < count
+            or self._generate_prompt_host.is_pinned() != pin_memory
+        ):
+            self._generate_prompt_host = torch.empty(
+                count,
+                dtype=torch.long,
+                pin_memory=pin_memory,
+            )
+        return self._generate_prompt_host[:count]
+
+    def _copy_generate_prompt(self, ids, tokens, device):
+        token_count = len(tokens)
+        prompt_view = ids[:, :token_count]
+        if prompt_view.device.type == "cpu":
+            prompt_row = prompt_view[0]
+            for idx, token in enumerate(tokens):
+                prompt_row[idx] = int(token)
+            return
+
+        prompt_host = self._generate_prompt_host_buffer(token_count, device)
+        for idx, token in enumerate(tokens):
+            prompt_host[idx] = int(token)
+        prompt_view.copy_(prompt_host.view(1, token_count), non_blocking=True)
 
     def estimate_flops(self):
         """ Return the estimated FLOPs per token for the model. Ref: https://arxiv.org/abs/2204.02311 """
@@ -675,7 +704,7 @@ class GPT(nn.Module):
         total_len = prompt_len + max(max_tokens, 0)
         ids = self._generate_ids_buffer(total_len, device)
         if prompt_len:
-            ids[:, :prompt_len] = torch.tensor([tokens], dtype=torch.long, device=device)
+            self._copy_generate_prompt(ids, tokens, device)
         from nanochat.engine import KVCache
 
         head_dim = self.config.n_embd // self.config.n_head

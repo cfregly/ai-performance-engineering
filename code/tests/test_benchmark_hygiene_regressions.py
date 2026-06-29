@@ -6039,11 +6039,16 @@ def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
     assert "self._generate_choice_ids = None" in source
     assert "self._generate_ids = None" in source
     assert "self._generate_probs = None" in source
+    assert "self._generate_prompt_host = None" in source
     assert "def _generate_long_buffer" in source
     assert "def _generate_ids_buffer(self, total_len, device)" in source
     assert "def _generate_like_buffer" in source
     assert "def _generate_token_host_buffer" in source
+    assert "def _generate_prompt_host_buffer(self, count, device)" in source
+    assert "def _copy_generate_prompt(self, ids, tokens, device)" in source
     assert "ids = self._generate_ids_buffer(total_len, device)" in generate_section
+    assert "self._copy_generate_prompt(ids, tokens, device)" in generate_section
+    assert "torch.tensor([tokens], dtype=torch.long, device=device)" not in generate_section
     assert "ids = torch.empty((1, total_len), dtype=torch.long, device=device)" not in generate_section
     assert "from nanochat.engine import KVCache" in generate_section
     assert "kv_cache = KVCache(" in generate_section

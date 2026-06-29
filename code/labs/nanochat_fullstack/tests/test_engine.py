@@ -597,6 +597,31 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "next_ids[:, 0].tolist()" not in generate_section
 
 
+def test_gpt_generate_prompt_copy_reuses_ids_buffer():
+    config = GPTConfig(
+        sequence_len=8,
+        vocab_size=32,
+        n_layer=1,
+        n_head=2,
+        n_kv_head=2,
+        n_embd=8,
+        use_flash3=False,
+    )
+    model = GPT(config)
+    ids = model._generate_ids_buffer(4, torch.device("cpu"))
+    ids_ptr = model._generate_ids.data_ptr()
+
+    model._copy_generate_prompt(ids, [1, 2, 3], torch.device("cpu"))
+
+    torch.testing.assert_close(ids[:, :3], torch.tensor([[1, 2, 3]], dtype=torch.long))
+
+    shorter_ids = model._generate_ids_buffer(3, torch.device("cpu"))
+    model._copy_generate_prompt(shorter_ids, [4, 5], torch.device("cpu"))
+
+    assert model._generate_ids.data_ptr() == ids_ptr
+    torch.testing.assert_close(shorter_ids[:, :2], torch.tensor([[4, 5]], dtype=torch.long))
+
+
 def test_kv_cache_reuses_token_mask_row_sums():
     source = Path(__file__).resolve().parents[1] / "nanochat" / "engine.py"
     text = source.read_text(encoding="utf-8")
