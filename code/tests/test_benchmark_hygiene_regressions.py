@@ -3383,6 +3383,36 @@ def test_nvfp4_utils_reuse_nonzero_indices_for_mismatch_counts() -> None:
         assert "@torch.no_grad()" not in source
 
 
+def test_nvfp4_group_gemm_reuses_verification_output_buffer() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nvfp4_group_gemm" / "nvfp4_group_gemm_common.py"
+    ).read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def validate_result",
+        maxsplit=1,
+    )[0]
+
+    assert "self._verify_output: Optional[torch.Tensor] = None" in source
+    assert "total_output_elements = sum(" in setup_section
+    assert "self._verify_output = torch.empty(" in setup_section
+    assert "dtype=torch.float16" in setup_section
+    assert "if self._verify_output is None:" in capture_section
+    assert "for group_output in self._last_output:" in capture_section
+    assert "self._verify_output[offset:next_offset].copy_(flat_output)" in capture_section
+    assert "combined = self._verify_output[:offset]" in capture_section
+    assert "torch.cat([t.reshape(-1) for t in self._last_output], dim=0)" not in capture_section
+    assert ".to(torch.float16)" not in capture_section
+    assert "self._verify_output = None" in teardown_section
+
+
 def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     ch14_source = (REPO_ROOT / "ch14" / "baseline_sliding_window.py").read_text(
         encoding="utf-8"

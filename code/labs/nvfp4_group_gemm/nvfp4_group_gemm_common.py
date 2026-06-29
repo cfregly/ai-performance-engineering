@@ -179,6 +179,7 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.data_list: List[input_t] = []
         self._last_output: Optional[output_t] = None
+        self._verify_output: Optional[torch.Tensor] = None
         self._iter_graph: Optional[torch.cuda.CUDAGraph] = None
         self._iter_graph_last_output: Optional[output_t] = None
         self._capture_iter_graph = _resolve_capture_iter_graph(capture_iter_graph)
@@ -193,6 +194,7 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Rebuild inputs on every setup() call because verify_runner reuses benchmark instances.
         self.data_list = []
         self._last_output = None
+        self._verify_output = None
         self._iter_graph = None
         self._iter_graph_last_output = None
 
@@ -217,6 +219,16 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             maybe_data = self._prepare(self.data_list)
             if maybe_data is not None:
                 self.data_list = list(maybe_data)
+
+        total_output_elements = sum(
+            int(m) * int(n) * int(l)
+            for m, n, _k, l in self.case.problem_sizes()
+        )
+        self._verify_output = torch.empty(
+            total_output_elements,
+            device=self.device,
+            dtype=torch.float16,
+        )
 
         # Avoid async work leaking into first measured iteration.
         self._synchronize()
@@ -275,7 +287,15 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         a0 = self.data_list[0][0][0][0]
 
         # Combine per-group outputs into a single tensor to avoid input-output aliasing on C buffers.
-        combined = torch.cat([t.reshape(-1) for t in self._last_output], dim=0).to(torch.float16)
+        if self._verify_output is None:
+            raise RuntimeError("Verification output buffer not initialized")
+        offset = 0
+        for group_output in self._last_output:
+            flat_output = group_output.reshape(-1)
+            next_offset = offset + int(flat_output.numel())
+            self._verify_output[offset:next_offset].copy_(flat_output)
+            offset = next_offset
+        combined = self._verify_output[:offset]
 
         self._set_verification_payload(
             inputs={"a0": a0},
@@ -289,6 +309,7 @@ class NVFP4GroupGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.data_list = []
         self._last_output = None
+        self._verify_output = None
         self._iter_graph = None
         self._iter_graph_last_output = None
         torch.cuda.empty_cache()
