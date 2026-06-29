@@ -10760,6 +10760,41 @@ def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:
     assert "self.output = self._summary_buffer.detach()" in finalize_section
 
 
+def test_dynamic_router_verification_payloads_reuse_summary_buffers() -> None:
+    helper_source = (
+        REPO_ROOT / "labs" / "dynamic_router" / "verification.py"
+    ).read_text(encoding="utf-8")
+
+    assert "def metric_row_buffer(owner: object, metric_values: list[float])" in helper_source
+    assert "buffer = torch.empty((1, width), dtype=torch.float32)" in helper_source
+    assert "for index, value in enumerate(metric_values):" in helper_source
+    assert "buffer[0, index] = float(value)" in helper_source
+    assert "def scalar_int_buffer(owner: object, attr_name: str, value: int)" in helper_source
+
+    for relative_path in (
+        "labs/dynamic_router/baseline_dual_pool_vllm.py",
+        "labs/dynamic_router/baseline_dynamic_router_vllm.py",
+        "labs/dynamic_router/optimized_dual_pool_vllm.py",
+        "labs/dynamic_router/optimized_dynamic_router_vllm.py",
+        "labs/dynamic_router/topology_probe.py",
+    ):
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown" if "topology_probe.py" in relative_path else "def get_config",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1] if "def teardown" in source else ""
+
+        assert "numeric_metric_values(" in capture_section
+        assert "self.output = metric_row_buffer(self, metric_values)" in capture_section
+        assert "scalar_int_buffer(" in capture_section
+        assert "torch.tensor(metric_values" not in capture_section
+        assert "torch.tensor([" not in capture_section
+        assert "self._metric_output_buffer = None" in source
+        if teardown_section:
+            assert "self._metric_output_buffer = None" in teardown_section
+
+
 def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch19" / "fp8_calibration_free_tool.py").read_text(encoding="utf-8")
     scale_section = source.split("def _compute_scale", maxsplit=1)[1].split(

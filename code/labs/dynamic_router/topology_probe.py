@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from numbers import Number
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -11,6 +10,7 @@ import torch
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 from labs.dynamic_router.topology import detect_topology, write_topology
+from labs.dynamic_router.verification import metric_row_buffer, numeric_metric_values, scalar_int_buffer
 
 
 class TopologyProbeBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -25,6 +25,8 @@ class TopologyProbeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output_path: Optional[Path] = None
         self.output: Optional[torch.Tensor] = None
         self._metric_values: Optional[list[float]] = None
+        self._metric_output_buffer: Optional[torch.Tensor] = None
+        self._num_gpus_input: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         # Nothing to initialize besides ensuring artifacts dir exists (handled by write_topology).
@@ -41,14 +43,16 @@ class TopologyProbeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.snapshot is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         metrics_dict = self.get_custom_metrics() or {}
-        metric_values = [float(v) for v in metrics_dict.values() if isinstance(v, Number)]
-        if not metric_values:
-            metric_values = [0.0]
+        metric_values = numeric_metric_values(metrics_dict)
         self._metric_values = metric_values
-        self.output = torch.tensor(metric_values, dtype=torch.float32).unsqueeze(0)
+        self.output = metric_row_buffer(self, metric_values)
         self._set_verification_payload(
             inputs={
-                "num_gpus": torch.tensor([len(self.snapshot.gpu_numa) if self.snapshot else 0], dtype=torch.int64),
+                "num_gpus": scalar_int_buffer(
+                    self,
+                    "_num_gpus_input",
+                    len(self.snapshot.gpu_numa) if self.snapshot else 0,
+                ),
             },
             output=self.output,
             batch_size=1,
@@ -76,6 +80,8 @@ class TopologyProbeBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.output = None
         self._metric_values = None
+        self._metric_output_buffer = None
+        self._num_gpus_input = None
         self.snapshot = None
         self.output_path = None
         super().teardown()
