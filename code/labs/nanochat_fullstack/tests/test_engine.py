@@ -550,6 +550,14 @@ def test_decode_step_helpers_reuse_token_and_active_mask_buffers():
     assert engine._prompt_ids_device.data_ptr() == prompt_ptr
     torch.testing.assert_close(shorter_prompt_ids, torch.tensor([[4, 5]], dtype=torch.long))
 
+    first_ids_step = engine._ids_step_buffer_for(4, torch.device("cpu"))
+    ids_step_ptr = engine._ids_step_buffer.data_ptr()
+    second_ids_step = engine._ids_step_buffer_for(2, torch.device("cpu"))
+
+    assert first_ids_step.shape == (4, 1)
+    assert second_ids_step.shape == (2, 1)
+    assert engine._ids_step_buffer.data_ptr() == ids_step_ptr
+
 
 def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     source = Path(__file__).resolve().parents[1] / "nanochat" / "engine.py"
@@ -574,10 +582,12 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "self._sample_next_id_buffer = None" in text
     assert "self._sample_probs_buffer = None" in text
     assert "self._prompt_ids_device = None" in text
+    assert "self._ids_step_buffer = None" in text
     assert "def _sample_host_token_buffer(self, count, source_device)" in text
     assert "def _sample_token_buffers(self, count, device)" in text
     assert "def _sample_workspace(self, logits, top_k, temperature)" in text
     assert "def _single_prompt_ids(self, tokens, device)" in text
+    assert "def _ids_step_buffer_for(self, batch_size, device)" in text
     assert "def _token_tensor_to_list(self, token_tensor)" in text
     assert "host_tokens = self._sample_host_token_buffer(flat_tokens.numel(), flat_tokens.device)" in token_list_section
     assert "host_tokens.copy_(flat_tokens, non_blocking=flat_tokens.device.type == \"cuda\")" in token_list_section
@@ -593,6 +603,8 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert generate_section.count("**self._sample_workspace(logits, top_k, temperature),") == 2
     assert "ids = self._single_prompt_ids(tokens, device)" in generate_section
     assert "ids = torch.tensor([tokens], dtype=torch.long, device=device)" not in generate_section
+    assert "ids_buf = self._ids_step_buffer_for(num_samples, device) if self.reuse_ids_buffer else None" in generate_section
+    assert "torch.empty((num_samples, 1), dtype=torch.long, device=device)" not in generate_section
     assert "sampled_tokens = self._token_tensor_to_list(next_ids[:, 0])" in generate_section
     assert "next_ids[:, 0].tolist()" not in generate_section
 

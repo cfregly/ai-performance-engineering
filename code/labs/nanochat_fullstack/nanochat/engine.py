@@ -389,6 +389,7 @@ class Engine:
         self._prompt_lengths_host = None
         self._prompt_ids_host = None
         self._prompt_ids_device = None
+        self._ids_step_buffer = None
         self._pd_runner = PersistentDecodeRunner() if self.use_persistent_decode_kernel else None
         self._persistent_decode_kernel = (
             resolve_persistent_decode_kernel(
@@ -738,6 +739,15 @@ class Engine:
             target.copy_(host, non_blocking=True)
         return ids_buf[:count]
 
+    def _ids_step_buffer_for(self, batch_size, device):
+        if (
+            self._ids_step_buffer is None
+            or self._ids_step_buffer.device != device
+            or self._ids_step_buffer.size(0) < batch_size
+        ):
+            self._ids_step_buffer = torch.empty((batch_size, 1), dtype=torch.long, device=device)
+        return self._ids_step_buffer[:batch_size]
+
     def _active_mask_for_rows(
         self,
         row_states,
@@ -969,7 +979,7 @@ class Engine:
 
         # 3) Initialize states for each sample
         row_states = [RowState(tokens.copy()) for _ in range(num_samples)]
-        ids_buf = torch.empty((num_samples, 1), dtype=torch.long, device=device) if self.reuse_ids_buffer else None
+        ids_buf = self._ids_step_buffer_for(num_samples, device) if self.reuse_ids_buffer else None
 
         # 4) Main generation loop
         num_generated = 0
