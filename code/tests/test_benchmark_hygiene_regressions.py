@@ -4600,6 +4600,40 @@ def test_ch20_integrated_kv_cache_reuses_cache_touch_scalar() -> None:
         assert "cached_v.sum()" not in attention_section
 
 
+def test_ch20_baseline_integrated_kv_cache_precomputes_hot_loop_views() -> None:
+    source = (REPO_ROOT / "ch20" / "baseline_integrated_kv_cache.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._request_token_groups: list[tuple[str, list[tuple[int, torch.Tensor]]]] = []" in source
+    assert "self._layer_groups: list[tuple[int, nn.Module]] = []" in source
+    assert "self._layer_groups = list(enumerate(self.model))" in setup_section
+    assert "self._request_token_groups = [" in setup_section
+    assert "for request_id, x in zip(self.request_ids, self.inputs, strict=True)" in setup_section
+    assert "x[:, pos : pos + 1, :]" in setup_section
+    assert "for request_id, token_views in self._request_token_groups:" in benchmark_section
+    assert "for pos, token in token_views:" in benchmark_section
+    assert "for layer_idx, layer in self._layer_groups:" in benchmark_section
+    assert "zip(self.request_ids, self.inputs)" not in benchmark_section
+    assert "enumerate(self.model)" not in benchmark_section
+    assert "x[:, pos:pos+1, :]" not in benchmark_section
+    assert "x[:, pos : pos + 1, :]" not in benchmark_section
+    assert "self._request_token_groups = []" in teardown_section
+    assert "self._layer_groups = []" in teardown_section
+
+
 def test_remaining_benchmark_wrappers_cache_verification_parameter_count() -> None:
     for relative, parameters_expr in (
         ("ch16/awq_gptq_smoothquant_benchmarks.py", "self.reference_model.parameters()"),

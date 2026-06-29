@@ -108,6 +108,8 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.kv_cache = None
         self.inputs = None
         self.request_ids: list[str] = []
+        self._request_token_groups: list[tuple[str, list[tuple[int, torch.Tensor]]]] = []
+        self._layer_groups: list[tuple[int, nn.Module]] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
         self.max_seq_len = 8192
@@ -131,6 +133,7 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
         for _ in range(self.num_layers):
             layers.append(AttentionLayer(self.hidden_dim, self.num_heads, self.head_dim, dtype=dtype))
         self.model = nn.Sequential(*layers).to(self.device).eval()
+        self._layer_groups = list(enumerate(self.model))
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.kv_cache = NaiveKVCache(
@@ -150,6 +153,16 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
             self.request_ids.append(f"req_{len(self.request_ids)}")
         for request_id in self.request_ids:
             self.kv_cache.allocate(request_id)
+        self._request_token_groups = [
+            (
+                request_id,
+                [
+                    (pos, x[:, pos : pos + 1, :])
+                    for pos in range(x.size(1))
+                ],
+            )
+            for request_id, x in zip(self.request_ids, self.inputs, strict=True)
+        ]
         self._verify_input = self.inputs[-1] if self.inputs else None
         self.output = None
         config = getattr(self, "_config", None) or self.get_config()
@@ -161,13 +174,12 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
         """Function to benchmark - baseline integrated KV cache."""
         with torch.inference_mode():
             with nvtx_range("baseline_integrated_kv_cache", enable=self._enable_nvtx):
-                for request_id, x in zip(self.request_ids, self.inputs):
-                    seq_len = x.size(1)
-
-                    for pos in range(seq_len):
-                        token = x[:, pos:pos+1, :]
+                if not self._request_token_groups or not self._layer_groups:
+                    raise RuntimeError("setup() must precompute request and layer groups")
+                for request_id, token_views in self._request_token_groups:
+                    for pos, token in token_views:
                         hidden = token
-                        for layer_idx, layer in enumerate(self.model):
+                        for layer_idx, layer in self._layer_groups:
                             hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
         # Capture last hidden state for verification (no cloning in the hot path).
         self.output = hidden.detach() if hidden is not None else None
@@ -189,6 +201,8 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
         """Cleanup."""
         del self.model, self.kv_cache, self.inputs
         self.request_ids = []
+        self._request_token_groups = []
+        self._layer_groups = []
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
