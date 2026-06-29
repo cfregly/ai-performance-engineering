@@ -1595,6 +1595,13 @@ def test_ch04_nvshmem_wrappers_cache_benchmark_argv() -> None:
 
 def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
     source = (REPO_ROOT / "ch09" / "fusion_pytorch.py").read_text(encoding="utf-8")
+    kernel_fusion_section = source.split("def benchmark_fusion", maxsplit=1)[1].split(
+        "def demonstrate_torch_compile_fusion",
+        maxsplit=1,
+    )[0]
+    compile_fusion_section = source.split("def demonstrate_torch_compile_fusion", maxsplit=1)[
+        1
+    ].split('if __name__ == "__main__":', maxsplit=1)[0]
 
     assert "GELU_TANH_SCALE = math.sqrt(2.0 / math.pi)" in source
     assert "torch.sqrt(torch.tensor(2.0 / torch.pi))" not in source
@@ -1602,6 +1609,16 @@ def test_ch09_fusion_gelu_reuses_scalar_constant() -> None:
     assert "GELU_TANH_SCALE * (scaled + 0.044715 * torch.pow(scaled, 3))" in source
     assert "normalized.mul_(self.weight).add_(self.bias)" in source
     assert "scaled = normalized * self.weight + self.bias" not in source
+    assert kernel_fusion_section.count("current_stream = torch.cuda.current_stream(device)") == 1
+    assert kernel_fusion_section.count("start_event.record(current_stream)") == 5
+    assert kernel_fusion_section.count("end_event.record(current_stream)") == 5
+    assert "start_event.record()" not in kernel_fusion_section
+    assert "end_event.record()" not in kernel_fusion_section
+    assert compile_fusion_section.count("current_stream = torch.cuda.current_stream(device)") == 1
+    assert compile_fusion_section.count("start_event.record(current_stream)") == 4
+    assert compile_fusion_section.count("end_event.record(current_stream)") == 4
+    assert "start_event.record()" not in compile_fusion_section
+    assert "end_event.record()" not in compile_fusion_section
 
 
 def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
