@@ -550,21 +550,28 @@ if __name__ == '__main__':
     # Test 3: Multiple concurrent short requests
     print("\n3. Multiple concurrent requests (simulating high QPS):")
     import concurrent.futures
+    completed = 0
+    latency_total_ms = 0.0
+    strategies_used = set()
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-        futures = []
-        for i in range(8):
-            future = executor.submit(
+        futures = (
+            executor.submit(
                 manager.inference,
                 prompt=f"Query {i}: " * 10,
                 max_tokens=50
             )
-            futures.append(future)
-        
-        results = [f.result() for f in futures]
+            for i in range(8)
+        )
+        for future in concurrent.futures.as_completed(futures):
+            result = future.result()
+            completed += 1
+            latency_total_ms += result['latency_ms']
+            strategies_used.add(result['worker_pool'])
     
-    print(f"   Completed {len(results)} requests")
-    print(f"   Average latency: {sum(r['latency_ms'] for r in results) / len(results):.1f} ms")
-    print(f"   Strategies used: {set(r['worker_pool'] for r in results)}")
+    average_latency_ms = latency_total_ms / completed if completed else 0.0
+    print(f"   Completed {completed} requests")
+    print(f"   Average latency: {average_latency_ms:.1f} ms")
+    print(f"   Strategies used: {strategies_used}")
     
     # Print cluster statistics
     print("\n" + "=" * 70)

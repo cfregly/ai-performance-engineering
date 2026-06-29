@@ -15933,6 +15933,27 @@ def test_ch19_adaptive_worker_pool_selects_best_candidate_without_sorting() -> N
     assert "best_pool, _ = min(" not in routing_section
     assert "meeting_sla.sort(" not in routing_section
     assert "latency_estimates.sort(" not in routing_section
+
+
+def test_ch19_adaptive_worker_pool_demo_accumulates_concurrent_results() -> None:
+    source = (REPO_ROOT / "ch19" / "adaptive_parallelism_worker_pool.py").read_text(
+        encoding="utf-8"
+    )
+    demo_section = source.split(
+        'print("\\n3. Multiple concurrent requests (simulating high QPS):")',
+        maxsplit=1,
+    )[1].split(
+        "# Print cluster statistics",
+        maxsplit=1,
+    )[0]
+
+    assert "for future in concurrent.futures.as_completed(futures):" in demo_section
+    assert "completed += 1" in demo_section
+    assert "latency_total_ms += result['latency_ms']" in demo_section
+    assert "strategies_used.add(result['worker_pool'])" in demo_section
+    assert "results = [f.result() for f in futures]" not in demo_section
+    assert "sum(r['latency_ms'] for r in results)" not in demo_section
+    assert "set(r['worker_pool'] for r in results)" not in demo_section
     assert "import torch" not in source
     assert "import torch.distributed" not in source
     assert "import psutil" not in source
