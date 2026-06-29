@@ -39,6 +39,8 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._enable_nvtx = False
+        self._latency_total_ms = 0.0
+        self._latency_count = 0
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -62,6 +64,9 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scale = 1.0 / math.sqrt(self.head_dim)
         torch.cuda.synchronize(self.device)
         self.output = None
+        self._history = {"latency_ms": []}
+        self._latency_total_ms = 0.0
+        self._latency_count = 0
         self._payload_meta = torch.tensor(
             [self.batch, self.kv_seq, self.num_heads, self.head_dim],
             dtype=torch.int64,
@@ -110,6 +115,8 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         latency_ms = elapsed_ms(self._pending_timing_pair)
         self._pending_timing_pair = None
         self._history["latency_ms"].append(latency_ms)
+        self._latency_total_ms += latency_ms
+        self._latency_count += 1
         return {"decode_ms": [latency_ms]}
 
     def capture_verification_payload(self) -> None:
@@ -134,6 +141,8 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_meta = None
         self._timing_pair = None
         self._pending_timing_pair = None
+        self._latency_total_ms = 0.0
+        self._latency_count = 0
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=8, warmup=5)
@@ -143,10 +152,10 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
         self.finalize_iteration_metrics()
-        if not self._history["latency_ms"]:
+        if self._latency_count <= 0:
             return None
         return {
-            "decode.mean_ms": float(sum(self._history["latency_ms"]) / len(self._history["latency_ms"]))
+            "decode.mean_ms": float(self._latency_total_ms / self._latency_count)
         }
 
     def validate_result(self) -> Optional[str]:

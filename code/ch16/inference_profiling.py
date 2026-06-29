@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 
-import torch
-import os
-from core.utils.architecture_runtime import (
-    get_arch_config,
-    get_architecture,
-    get_architecture_info,
-)
+from core.utils.architecture_runtime import get_arch_config
 
 _ARCH_CFG = get_arch_config()
 """
@@ -22,19 +16,50 @@ This example demonstrates:
 
 import torch
 import torch.nn as nn
-import torch.profiler as profiler
 import time
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
-import json
-import threading
 import queue
-from dataclasses import dataclass, field
-from enum import Enum
 import psutil
 import GPUtil
 from collections import defaultdict, deque
 import hashlib
+
+
+def _recent_metric_summary(values: List[Tuple[float, float]], limit: int = 100) -> Dict[str, float]:
+    count = min(len(values), limit)
+    if count <= 0:
+        return {"current": 0.0, "average": 0.0, "min": 0.0, "max": 0.0}
+
+    start = len(values) - count
+    total = 0.0
+    min_value = float("inf")
+    max_value = float("-inf")
+    current = 0.0
+    for idx in range(start, len(values)):
+        current = float(values[idx][1])
+        total += current
+        min_value = min(min_value, current)
+        max_value = max(max_value, current)
+    return {
+        "current": current,
+        "average": total / count,
+        "min": min_value,
+        "max": max_value,
+    }
+
+
+def _mean_recent_dict_value(records: List[Dict[str, Any]], key: str, limit: int = 100) -> float:
+    count = min(len(records), limit)
+    if count <= 0:
+        return 0.0
+
+    start = len(records) - count
+    total = 0.0
+    for idx in range(start, len(records)):
+        total += float(records[idx][key])
+    return total / count
+
 
 class MonitoringSystem:
     """Comprehensive monitoring and metrics collection for inference systems."""
@@ -111,13 +136,7 @@ class MonitoringSystem:
         # Calculate metric summaries
         for metric_name, values in self.metrics.items():
             if values:
-                recent_values = [v for _, v in values[-100:]]  # Last 100 values
-                report['metric_summaries'][metric_name] = {
-                    'current': recent_values[-1] if recent_values else 0,
-                    'average': np.mean(recent_values),
-                    'min': np.min(recent_values),
-                    'max': np.max(recent_values)
-                }
+                report['metric_summaries'][metric_name] = _recent_metric_summary(values)
                 
         return report
 
@@ -171,10 +190,13 @@ class DynamicBatcher:
             self.request_queue.remove(request)
             
         if batch:
+            token_total = 0
+            for request in batch:
+                token_total += request['tokens']
             self.batch_history.append({
                 'timestamp': current_time,
                 'batch_size': len(batch),
-                'avg_tokens': np.mean([r['tokens'] for r in batch])
+                'avg_tokens': token_total / len(batch)
             })
             
         return batch
@@ -188,10 +210,9 @@ class DynamicBatcher:
                 'queue_length': len(self.request_queue)
             }
             
-        recent_batches = self.batch_history[-100:]  # Last 100 batches
         return {
-            'avg_batch_size': np.mean([b['batch_size'] for b in recent_batches]),
-            'avg_tokens_per_batch': np.mean([b['avg_tokens'] for b in recent_batches]),
+            'avg_batch_size': _mean_recent_dict_value(self.batch_history, 'batch_size'),
+            'avg_tokens_per_batch': _mean_recent_dict_value(self.batch_history, 'avg_tokens'),
             'queue_length': len(self.request_queue)
         }
 
@@ -412,16 +433,19 @@ class ModelCascader:
         if not self.routing_history:
             return {}
             
-        recent_routes = self.routing_history[-100:]  # Last 100 routes
-        
+        route_count = min(len(self.routing_history), 100)
+        route_start = len(self.routing_history) - route_count
         complexity_counts = defaultdict(int)
-        for route in recent_routes:
+        prompt_length_total = 0.0
+        for idx in range(route_start, len(self.routing_history)):
+            route = self.routing_history[idx]
             complexity_counts[route['complexity']] += 1
+            prompt_length_total += route['prompt_length']
             
         return {
-            'total_routes': len(recent_routes),
+            'total_routes': route_count,
             'complexity_distribution': dict(complexity_counts),
-            'avg_prompt_length': np.mean([r['prompt_length'] for r in recent_routes])
+            'avg_prompt_length': prompt_length_total / route_count
         }
 
 class StreamingResponse:

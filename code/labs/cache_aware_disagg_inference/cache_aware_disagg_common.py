@@ -66,12 +66,6 @@ def _split_prompt(prompt: torch.Tensor, chunk_size: int) -> Sequence[torch.Tenso
     return tuple(prompt.split(chunk_size, dim=1))
 
 
-def _mean(values: List[float]) -> float:
-    if not values:
-        return 0.0
-    return float(sum(values) / len(values))
-
-
 def _empty_kv(cfg: CacheAwareDisaggConfig, device: torch.device) -> torch.Tensor:
     return torch.empty(
         cfg.batch_size,
@@ -488,13 +482,20 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 raise RuntimeError("Output stack buffer not initialized")
             torch.stack(self._last_outputs, dim=0, out=self._output_stack)
             self.output = self._output_stack
-        request_ttft = [elapsed_ms((start, prefill_end)) for start, prefill_end, _ in self._request_event_triplets]
+        request_ttft: List[float] = []
         request_tpot: List[float] = []
+        ttft_total_ms = 0.0
+        tpot_total_ms = 0.0
         for start, prefill_end, decode_end in self._request_event_triplets:
             ttft_ms = elapsed_ms((start, prefill_end))
             total_ms = elapsed_ms((start, decode_end))
-            request_tpot.append(max(total_ms - ttft_ms, 0.0) / max(self.cfg.decode_tokens, 1))
+            tpot_ms = max(total_ms - ttft_ms, 0.0) / max(self.cfg.decode_tokens, 1)
+            request_ttft.append(ttft_ms)
+            request_tpot.append(tpot_ms)
+            ttft_total_ms += ttft_ms
+            tpot_total_ms += tpot_ms
         self._timing_history = {"ttft": request_ttft, "tpot": request_tpot}
+        timing_count = max(len(request_ttft), 1)
 
         metrics = dict(self._pending_metrics)
         cache_decisions = metrics.get("cache_hits", 0.0) + metrics.get("cache_misses", 0.0)
@@ -509,8 +510,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         temporal_locality = 1.0 - min(metrics.get("worker_switches", 0.0) / max_transitions, 1.0)
         self._custom_metrics = {
             **compute_inference_metrics(
-                ttft_ms=_mean(request_ttft),
-                tpot_ms=_mean(request_tpot),
+                ttft_ms=ttft_total_ms / timing_count,
+                tpot_ms=tpot_total_ms / timing_count,
                 total_tokens=self.cfg.total_requests * self.cfg.decode_tokens,
                 total_requests=self.cfg.total_requests,
                 batch_size=self.cfg.batch_size,

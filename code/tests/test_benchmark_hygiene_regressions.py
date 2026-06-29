@@ -3737,6 +3737,18 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
         "class InferenceProfiler",
         maxsplit=1,
     )[0]
+    monitoring_report = profiling_source.split("def generate_report", maxsplit=1)[1].split(
+        "class DynamicBatcher",
+        maxsplit=1,
+    )[0]
+    batcher_section = profiling_source.split("class DynamicBatcher", maxsplit=1)[1].split(
+        "class QuantizationManager",
+        maxsplit=1,
+    )[0]
+    cascader_section = profiling_source.split("class ModelCascader", maxsplit=1)[1].split(
+        "class StreamingResponse",
+        maxsplit=1,
+    )[0]
 
     assert quick_benchmark.count("with torch.inference_mode():") == 2
     assert "with torch.no_grad():" not in quick_benchmark
@@ -3762,6 +3774,23 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert "with torch.no_grad():" not in quantization_manager
     assert "module.weight.copy_(quantized_weights)" in quantization_manager
     assert "module.weight.data = quantized_weights" not in quantization_manager
+    assert "def _recent_metric_summary" in profiling_source
+    assert "def _mean_recent_dict_value" in profiling_source
+    assert "report['metric_summaries'][metric_name] = _recent_metric_summary(values)" in monitoring_report
+    assert "recent_values = [v for _, v in values[-100:]]" not in monitoring_report
+    assert "np.mean(recent_values)" not in monitoring_report
+    assert "np.min(recent_values)" not in monitoring_report
+    assert "np.max(recent_values)" not in monitoring_report
+    assert "token_total = 0" in batcher_section
+    assert "token_total += request['tokens']" in batcher_section
+    assert "np.mean([r['tokens'] for r in batch])" not in batcher_section
+    assert "_mean_recent_dict_value(self.batch_history, 'batch_size')" in batcher_section
+    assert "_mean_recent_dict_value(self.batch_history, 'avg_tokens')" in batcher_section
+    assert "recent_batches = self.batch_history[-100:]" not in batcher_section
+    assert "route_count = min(len(self.routing_history), 100)" in cascader_section
+    assert "prompt_length_total += route['prompt_length']" in cascader_section
+    assert "self.routing_history[-100:]" not in cascader_section
+    assert "np.mean([r['prompt_length'] for r in recent_routes])" not in cascader_section
 
 
 def test_ch16_runtime_schedulers_cache_nvtx_and_verification_dummy() -> None:
@@ -4988,9 +5017,21 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def finalize_iteration_metrics", maxsplit=1
     )[0]
+    baseline_finalize = baseline_source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    baseline_metrics = baseline_source.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "def validate_result", maxsplit=1
+    )[0]
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def finalize_iteration_metrics", maxsplit=1
+    )[0]
+    finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "def validate_result", maxsplit=1
     )[0]
 
     assert "def _cached_bf16" not in source
@@ -5019,6 +5060,17 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
         assert "get_config()" not in benchmark
         assert "get_nvtx_enabled(" not in benchmark
         assert "enable=self._enable_nvtx" in benchmark
+    for setup, finalize, metrics in (
+        (baseline_setup, baseline_finalize, baseline_metrics),
+        (setup_section, finalize_section, metrics_section),
+    ):
+        assert "self._latency_total_ms = 0.0" in setup
+        assert "self._latency_count = 0" in setup
+        assert "self._latency_total_ms += latency_ms" in finalize
+        assert "self._latency_count += 1" in finalize
+        assert "if self._latency_count <= 0:" in metrics
+        assert "self._latency_total_ms / self._latency_count" in metrics
+        assert 'sum(self._history["latency_ms"])' not in metrics
 
 
 def test_moe_cuda_decode_kernel_wrappers_cache_nvtx_outside_hot_loop() -> None:
@@ -7761,6 +7813,18 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "if self.prompts is None or not self._outputs_ready:" in capture_section
     assert "torch.stack(self._last_outputs, dim=0, out=self._output_stack)" in capture_section
     assert "self.output = self._output_stack" in capture_section
+    assert "request_ttft = [elapsed_ms(" not in capture_section
+    assert "ttft_total_ms = 0.0" in capture_section
+    assert "tpot_total_ms = 0.0" in capture_section
+    assert "request_ttft.append(ttft_ms)" in capture_section
+    assert "request_tpot.append(tpot_ms)" in capture_section
+    assert "ttft_total_ms += ttft_ms" in capture_section
+    assert "tpot_total_ms += tpot_ms" in capture_section
+    assert "timing_count = max(len(request_ttft), 1)" in capture_section
+    assert "ttft_ms=ttft_total_ms / timing_count" in capture_section
+    assert "tpot_ms=tpot_total_ms / timing_count" in capture_section
+    assert "_mean(request_ttft)" not in capture_section
+    assert "_mean(request_tpot)" not in capture_section
 
 
 def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
