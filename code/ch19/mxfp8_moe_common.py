@@ -60,9 +60,14 @@ def bucket_by_expert(
         raise ValueError("token_ids must contain one source token id per assignment")
     gather_index = torch.argsort(flat_assignments)
     counts_tensor = torch.bincount(flat_assignments, minlength=num_experts)
-    counts = counts_tensor.detach().cpu().tolist()
-    m_splits = [int(count) for count in counts[:num_experts] if count]
-    expert_order_list = [expert for expert, count in enumerate(counts[:num_experts]) if count]
+    counts_host = counts_tensor.detach().cpu()
+    m_splits: List[int] = []
+    expert_order_list: List[int] = []
+    for expert in range(num_experts):
+        count = int(counts_host[expert])
+        if count:
+            m_splits.append(count)
+            expert_order_list.append(expert)
     if not m_splits:
         raise RuntimeError("No expert received tokens; assignment mapping is empty.")
 

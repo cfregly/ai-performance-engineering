@@ -112,7 +112,11 @@ def test_bucket_by_expert_sorts_once_and_preserves_metadata() -> None:
 
     assert "torch.argsort(flat_assignments)" in source
     assert "counts_tensor = torch.bincount(flat_assignments, minlength=num_experts)" in source
-    assert "counts = counts_tensor.detach().cpu().tolist()" in source
+    assert "counts_host = counts_tensor.detach().cpu()" in source
+    assert "for expert in range(num_experts):" in source
+    assert "count = int(counts_host[expert])" in source
+    assert "m_splits.append(count)" in source
+    assert "counts_tensor.detach().cpu().tolist()" not in source
     assert "expert_range = torch.arange(num_experts, device=tokens.device, dtype=torch.int64)" in source
     assert "expert_order_tensor = expert_range[counts_tensor[:num_experts] > 0]" in source
     assert "torch.tensor(expert_order_list" not in source

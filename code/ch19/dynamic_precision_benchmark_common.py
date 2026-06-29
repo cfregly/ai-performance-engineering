@@ -33,6 +33,8 @@ class FixedDecodeWorkspace:
     next_token: torch.Tensor
     next_token_values: torch.Tensor | None = None
     host_logits_buffer: torch.Tensor | None = None
+    policy_metrics_buffer: torch.Tensor | None = None
+    policy_metric_values: list[float] | None = None
 
 
 class HighConfidenceDecoder(nn.Module):
@@ -155,6 +157,8 @@ def decode_host_policy_baseline(
         next_token = torch.empty((batch_size, 1), device=device, dtype=prompt.dtype)
         next_token_values: torch.Tensor | None = None
         host_logits_buffer: torch.Tensor | None = None
+        policy_metrics_buffer: torch.Tensor | None = None
+        policy_metric_values: list[float] | None = None
     else:
         generated = workspace.generated
         next_token = workspace.next_token
@@ -164,6 +168,12 @@ def decode_host_policy_baseline(
             raise ValueError("workspace.next_token does not match decode shape/device/dtype")
         next_token_values = workspace.next_token_values
         host_logits_buffer = workspace.host_logits_buffer
+        policy_metrics_buffer = workspace.policy_metrics_buffer
+        policy_metric_values = workspace.policy_metric_values
+    if policy_metric_values is None:
+        policy_metric_values = [0.0] * 4
+        if workspace is not None:
+            workspace.policy_metric_values = policy_metric_values
     generated[:, :prompt_len].copy_(prompt)
     current_len = prompt_len
     for _ in range(max_steps):
@@ -192,15 +202,16 @@ def decode_host_policy_baseline(
         if device.type == "cuda":
             torch.cuda.synchronize(device)
         host_logits = host_logits_buffer
-        policy_metrics = torch.stack(
-            (
-                compute_entropy(host_logits).mean(),
-                torch.softmax(host_logits, dim=-1).max(dim=-1).values.mean(),
-                torch.topk(host_logits, k=2, dim=-1).values.mean(),
-                torch.sort(host_logits, dim=-1).values[:, -1].mean(),
-            )
-        )
-        _ = policy_metrics.tolist()
+        if policy_metrics_buffer is None:
+            policy_metrics_buffer = torch.empty(4, device="cpu", dtype=torch.float32)
+            if workspace is not None:
+                workspace.policy_metrics_buffer = policy_metrics_buffer
+        policy_metrics_buffer[0].copy_(compute_entropy(host_logits).mean())
+        policy_metrics_buffer[1].copy_(torch.softmax(host_logits, dim=-1).max(dim=-1).values.mean())
+        policy_metrics_buffer[2].copy_(torch.topk(host_logits, k=2, dim=-1).values.mean())
+        policy_metrics_buffer[3].copy_(torch.sort(host_logits, dim=-1).values[:, -1].mean())
+        for metric_idx in range(4):
+            policy_metric_values[metric_idx] = float(policy_metrics_buffer[metric_idx])
         if next_token_values is None:
             next_token_values = torch.empty(
                 (batch_size, 1),
