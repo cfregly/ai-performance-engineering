@@ -211,14 +211,18 @@ def _compare_outputs(
     *,
     scenario: MatrixScenario,
 ) -> float:
-    diff_tensors: list[torch.Tensor] = []
+    max_diff: torch.Tensor | None = None
     with torch.inference_mode():
         for batch, ref in zip(batches, refs, strict=True):
             out = run_decode_step(experts, batch, scenario=scenario)
-            diff_tensors.append(torch.abs(out.float() - ref.float()).amax())
-    if not diff_tensors:
+            diff = torch.abs(out.float() - ref.float()).amax()
+            if max_diff is None:
+                max_diff = diff.clone()
+            else:
+                torch.maximum(max_diff, diff, out=max_diff)
+    if max_diff is None:
         return 0.0
-    return float(torch.stack(diff_tensors).amax().tolist())
+    return float(max_diff.detach().cpu().tolist())
 
 
 def measure_scenario(

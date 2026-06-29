@@ -7,6 +7,7 @@ import torch
 from labs.moe_decode_blackwell_matrix.matrix_catalog import load_playbook
 from labs.moe_decode_blackwell_matrix.matrix_types import MatrixScenario
 from labs.moe_decode_blackwell_matrix.runner import (
+    DispatchBatch,
     _compare_outputs,
     _routing_stats,
     build_decode_batches,
@@ -71,9 +72,59 @@ def test_routing_stats_batches_scalar_materialization() -> None:
 
 def test_compare_outputs_batches_diff_materialization() -> None:
     source = inspect.getsource(_compare_outputs)
+    scenario = MatrixScenario(
+        playbook_name="unit",
+        description="unit",
+        seed=17,
+        dtype="bf16",
+        hidden_size=4,
+        intermediate_size=8,
+        steps=2,
+        warmup=1,
+        repeats=1,
+        num_experts=2,
+        top_k=1,
+        decode_batch=2,
+        routing_policy="balanced",
+        schedule_mode="dynamic",
+        launch_mode="eager",
+    )
+    batches = [
+        DispatchBatch(
+            hidden_states=torch.zeros(2, 4, dtype=torch.bfloat16),
+            expert_indices=torch.zeros(2, 1, dtype=torch.long),
+            expert_weights=torch.ones(2, 1, dtype=torch.bfloat16),
+            routing_entropy_norm=0.0,
+            active_expert_fraction=0.5,
+            max_tokens_per_expert=2,
+        ),
+        DispatchBatch(
+            hidden_states=torch.ones(2, 4, dtype=torch.bfloat16),
+            expert_indices=torch.zeros(2, 1, dtype=torch.long),
+            expert_weights=torch.ones(2, 1, dtype=torch.bfloat16),
+            routing_entropy_norm=0.0,
+            active_expert_fraction=0.5,
+            max_tokens_per_expert=2,
+        ),
+    ]
+    refs = [batches[0].hidden_states.float() + 0.125, batches[1].hidden_states.float()]
 
-    assert "diff_tensors: list[torch.Tensor]" in source
-    assert "torch.stack(diff_tensors).amax().tolist()" in source
+    class EchoExperts:
+        def forward_grouped(
+            self,
+            hidden_states: torch.Tensor,
+            expert_indices: torch.Tensor,
+            expert_weights: torch.Tensor,
+        ) -> torch.Tensor:
+            return hidden_states
+
+    assert _compare_outputs(EchoExperts(), batches, refs, scenario=scenario) == 0.125
+
+    assert "max_diff: torch.Tensor | None = None" in source
+    assert "torch.maximum(max_diff, diff, out=max_diff)" in source
+    assert "return float(max_diff.detach().cpu().tolist())" in source
+    assert "diff_tensors" not in source
+    assert "torch.stack(diff_tensors)" not in source
     assert "diffs.append(float(" not in source
     assert "torch.max(torch.abs(out.float() - ref.float())).item()" not in source
 
