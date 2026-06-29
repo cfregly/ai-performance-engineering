@@ -79,14 +79,18 @@ class OptimizedOzakiSchemeDynamicBenchmark(CudaBinaryBenchmark):
 
     def benchmark_fn(self) -> None:
         super().benchmark_fn()
+        self._parsed_metrics = None
+
+    def _parse_last_metrics(self) -> dict[str, float]:
         stdout = self.last_stdout or ""
-        self._parsed_metrics = {}
+        metrics: dict[str, float] = {}
         for key, pattern in _FLOAT_PATTERNS.items():
             match = pattern.search(stdout)
             if not match:
                 continue
             value = float(match.group(1))
-            self._parsed_metrics[key] = value
+            metrics[key] = value
+        return metrics
 
     def get_input_signature(self) -> dict:
         return simple_signature(
@@ -100,6 +104,8 @@ class OptimizedOzakiSchemeDynamicBenchmark(CudaBinaryBenchmark):
         )
 
     def get_custom_metrics(self) -> Optional[dict]:
+        if self._parsed_metrics is None and self.last_stdout is not None:
+            self._parsed_metrics = self._parse_last_metrics()
         return self._parsed_metrics
 
     def get_output_tolerance(self) -> tuple[float, float]:

@@ -11924,6 +11924,34 @@ def test_ch19_quantization_validator_reuses_timing_events() -> None:
     assert "standardize_nvtx_label(" not in sample_loop
 
 
+def test_ozaki_optimized_wrappers_parse_metrics_outside_benchmark() -> None:
+    for relative in (
+        "labs/ozaki_scheme/optimized_ozaki_scheme_dynamic.py",
+        "labs/ozaki_scheme/optimized_ozaki_scheme_fixed.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def _parse_last_metrics",
+            maxsplit=1,
+        )[0]
+        parse_section = source.split("def _parse_last_metrics", maxsplit=1)[1].split(
+            "def get_input_signature",
+            maxsplit=1,
+        )[0]
+        metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
+            "def get_output_tolerance",
+            maxsplit=1,
+        )[0]
+
+        assert "super().benchmark_fn()" in benchmark_section
+        assert "self._parsed_metrics = None" in benchmark_section
+        assert "_FLOAT_PATTERNS.items()" not in benchmark_section
+        assert "float(match.group(1))" not in benchmark_section
+        assert "for key, pattern in _FLOAT_PATTERNS.items():" in parse_section
+        assert "metrics[key] = value" in parse_section
+        assert "self._parsed_metrics = self._parse_last_metrics()" in metrics_section
+
+
 def test_ch19_nvfp4_training_defers_verification_forward_outside_hot_loop() -> None:
     for filename in ("baseline_nvfp4_training.py", "optimized_nvfp4_training.py"):
         source = (REPO_ROOT / "ch19" / filename).read_text(encoding="utf-8")
