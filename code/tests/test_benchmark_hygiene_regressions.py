@@ -10716,8 +10716,8 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
         maxsplit=1,
     )[0]
 
-    assert "self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)" in setup_section
-    assert "self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)" in setup_section
+    assert "self._match_host = torch.empty(" in setup_section
+    assert "pin_memory=torch.cuda.is_available()" in setup_section
     assert "self._draft_head_offsets = torch.arange(wl.speculative_k, device=self.device, dtype=torch.int64).view(1, -1)" in setup_section
     assert "self._draft_seed_buffer = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)" in setup_section
     assert "self._draft_block_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
@@ -10745,7 +10745,9 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._match_views = [" in setup_section
     assert "self._draft_id_views = [" in setup_section
     assert "self._draft_id_column_views = [" in setup_section
-    assert "self._accept_prefix_views = [" in setup_section
+    assert "self._match_host_views = [" in setup_section
+    assert "self._accept_prefix" not in source
+    assert "self._accept_count" not in source
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "time.perf_counter" not in benchmark_section
@@ -10774,9 +10776,14 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._draft_id_column_views[j].copy_(next_d)" in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
     assert "torch.eq(target_next, draft_window, out=matches)" in benchmark_section
-    assert "accept_prefix = self._accept_prefix_views[view_idx]" in benchmark_section
-    assert "torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)" in benchmark_section
-    assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
+    assert "match_host = self._match_host_views[view_idx]" in benchmark_section
+    assert "match_host.copy_(matches[0], non_blocking=False)" in benchmark_section
+    assert "for match_idx in range(k):" in benchmark_section
+    assert "if not bool(match_host[match_idx]):" in benchmark_section
+    assert "accept_k += 1" in benchmark_section
+    assert "torch.cumprod(" not in benchmark_section
+    assert "torch.sum(accept_prefix" not in benchmark_section
+    assert "self._accept_count.item()" not in benchmark_section
     assert "self._output_write_views[view_idx][pos].copy_(draft_window)" in benchmark_section
     assert "self._output_token_views[pos + accept_k + 1].copy_(" in benchmark_section
     assert "self._draft_logits[:, :k]" not in benchmark_section
@@ -10787,7 +10794,7 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._matches[:, :k]" not in benchmark_section
     assert "draft_block[:, j]" not in benchmark_section
     assert "self._draft_ids[:, j]" not in benchmark_section
-    assert "self._accept_prefix[:k]" not in benchmark_section
+    assert "self._match_host[:k]" not in benchmark_section
     assert "out[:, pos" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
@@ -10840,8 +10847,8 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
         maxsplit=1,
     )[0]
 
-    assert "self._accept_prefix = torch.empty(wl.speculative_k, device=self.device, dtype=torch.int32)" in setup_section
-    assert "self._accept_count = torch.empty((), device=self.device, dtype=torch.int32)" in setup_section
+    assert "self._match_host = torch.empty(" in setup_section
+    assert "pin_memory=torch.cuda.is_available()" in setup_section
     assert "self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
@@ -10859,7 +10866,9 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._match_views = [self._matches[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._draft_id_column_views = [" in setup_section
-    assert "self._accept_prefix_views = [self._accept_prefix[:k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._match_host_views = [self._match_host[:k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._accept_prefix" not in source
+    assert "self._accept_count" not in source
     assert "import torch._dynamo as _dynamo" in setup_section
     assert "_dynamo.reset()" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
@@ -10886,10 +10895,14 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "matches = self._match_views[view_idx]" in benchmark_section
     assert "torch.eq(target_next, draft_window, out=matches)" in benchmark_section
     assert ".argmax(" not in benchmark_section
-    assert "accept_prefix = self._accept_prefix_views[view_idx]" in benchmark_section
-    assert "torch.cumprod(matches[0], dim=0, dtype=torch.int32, out=accept_prefix)" in benchmark_section
-    assert "torch.sum(accept_prefix, dim=0, out=self._accept_count)" in benchmark_section
-    assert "accept_k = int(self._accept_count.item())" in benchmark_section
+    assert "match_host = self._match_host_views[view_idx]" in benchmark_section
+    assert "match_host.copy_(matches[0], non_blocking=False)" in benchmark_section
+    assert "for match_idx in range(k):" in benchmark_section
+    assert "if not bool(match_host[match_idx]):" in benchmark_section
+    assert "accept_k += 1" in benchmark_section
+    assert "torch.cumprod(" not in benchmark_section
+    assert "torch.sum(accept_prefix" not in benchmark_section
+    assert "self._accept_count.item()" not in benchmark_section
     assert "self._output_write_views[view_idx][pos].copy_(draft_window)" in benchmark_section
     assert "self._output_write_views[accept_k - 1][pos].copy_(self._draft_id_views[accept_k - 1])" in benchmark_section
     assert "self._output_token_views[pos + accept_k + 1].copy_(" in benchmark_section
@@ -10901,7 +10914,7 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._target_next_values[:, :k]" not in benchmark_section
     assert "self._target_next_tokens[:, :k]" not in benchmark_section
     assert "self._matches[:, :k]" not in benchmark_section
-    assert "self._accept_prefix[:k]" not in benchmark_section
+    assert "self._match_host[:k]" not in benchmark_section
     assert "next_d.view(1, 1)" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
