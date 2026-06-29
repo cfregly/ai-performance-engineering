@@ -59,6 +59,7 @@ class OptimizedPrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.output = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self.register_workload_metadata(
             requests_per_iteration=float(self.micro_steps),
@@ -82,6 +83,7 @@ class OptimizedPrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs = self.inputs_fp32.to(dtype=torch.bfloat16)
         self.targets = self.targets_fp32.to(dtype=torch.bfloat16)
         self._verify_input = self.inputs_fp32.detach().clone()
+        self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)
         self.criterion = nn.MSELoss()
         
@@ -114,11 +116,12 @@ class OptimizedPrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
-        if self._verify_input is None:
-            raise RuntimeError("Verification input not initialized")
+        if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("Verification input/output not initialized")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -135,8 +138,13 @@ class OptimizedPrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.inputs = None
         self.targets = None
+        self.inputs_fp32 = None
+        self.targets_fp32 = None
         self.optimizer = None
         self.criterion = None
+        self.output = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:

@@ -14178,10 +14178,7 @@ def test_ch13_optimized_static_fp8_reuses_activation_quant_buffers() -> None:
 
 
 def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_loop() -> None:
-    precision_targets = {
-        "baseline_precisionmixed.py": "output=self.output.detach().clone()",
-        "optimized_precisionmixed.py": "output=self.output.detach().float().clone()",
-    }
+    precision_targets = ("baseline_precisionmixed.py", "optimized_precisionmixed.py")
     kv_targets = {
         "baseline_kv_cache_naive.py": "self.output = token.detach()",
         "optimized_kv_cache_naive.py": "self.output = hidden",
@@ -14189,18 +14186,30 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
         "optimized_kv_cache_naive_pool.py": "self.output = hidden",
     }
 
-    for name, capture_materialization in precision_targets.items():
+    for name in precision_targets:
         source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
 
         assert ".detach().clone()" not in benchmark_section
         assert "self.output = outputs.detach()" in benchmark_section
-        assert capture_materialization in capture_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)" in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.output.detach().clone()" not in capture_section
+        assert "output=self.output.detach().float().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
     for name, output_assignment in kv_targets.items():
         source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")

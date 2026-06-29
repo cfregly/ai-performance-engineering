@@ -58,6 +58,7 @@ class BaselinePrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.output = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self.register_workload_metadata(
             requests_per_iteration=float(self.micro_steps),
@@ -77,6 +78,7 @@ class BaselinePrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)
         self.criterion = nn.MSELoss()
         self._verify_input = self.inputs.detach().clone()
+        self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         
         for _ in range(3):
             self.optimizer.zero_grad()
@@ -99,9 +101,12 @@ class BaselinePrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
+        if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("Verification input/output not initialized")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -120,6 +125,9 @@ class BaselinePrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.targets = None
         self.optimizer = None
         self.criterion = None
+        self.output = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
