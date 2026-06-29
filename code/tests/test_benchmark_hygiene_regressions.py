@@ -10891,15 +10891,26 @@ def test_ch15_baseline_kv_cache_management_reuses_step_views() -> None:
     assert "self._query_step_views: list[torch.Tensor] = []" in source
     assert "self._prefix_views: list[torch.Tensor] = []" in source
     assert "self._output_step_views: list[torch.Tensor] = []" in source
-    assert "self._decode_step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._output_step_2d_views: list[torch.Tensor] = []" in source
+    assert "self._attn_step_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._out_proj_weight_t: Optional[torch.Tensor] = None" in source
+    assert "tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]" in source
+    assert "self._out_proj_weight_t = self.out_proj.weight.t()" in setup_section
+    assert "self._attn_step_buffer = torch.empty(" in setup_section
+    assert "self._attn_step_2d = self._attn_step_buffer.view(" in setup_section
     assert "self._query_step_views = [self.tokens[:, t : t + 1, :] for t in range(self.steps)]" in setup_section
     assert "self._prefix_views = [self.tokens[:, : t + 1, :] for t in range(self.steps)]" in setup_section
     assert "self._output_step_views = [self._output_buffer[:, t : t + 1, :] for t in range(self.steps)]" in setup_section
+    assert "self._output_step_2d_views = [self._output_buffer[:, t, :] for t in range(self.steps)]" in setup_section
     assert "self._decode_step_groups = list(" in setup_section
-    assert "for query, prefix, output_step in self._decode_step_groups:" in benchmark_section
+    assert "for query, prefix, _output_step, output_step_2d in self._decode_step_groups:" in benchmark_section
     assert "k = self.k_proj(prefix)" in benchmark_section
     assert "v = self.v_proj(prefix)" in benchmark_section
-    assert "output_step.copy_(out)" in benchmark_section
+    assert "self._attn_step_buffer.copy_(attn.transpose(1, 2))" in benchmark_section
+    assert "torch.mm(self._attn_step_2d, self._out_proj_weight_t, out=output_step_2d)" in benchmark_section
+    assert "attn.transpose(1, 2).contiguous()" not in benchmark_section
+    assert "out = self.out_proj(attn)" not in benchmark_section
+    assert "output_step.copy_(out)" not in benchmark_section
     assert "for query, prefix, output_step in zip(" not in benchmark_section
     assert "for t in range(self.steps):" not in benchmark_section
     assert "query = self.tokens[:, t : t + 1, :]" not in benchmark_section
@@ -10908,6 +10919,7 @@ def test_ch15_baseline_kv_cache_management_reuses_step_views() -> None:
     assert "self._query_step_views = []" in teardown_section
     assert "self._prefix_views = []" in teardown_section
     assert "self._output_step_views = []" in teardown_section
+    assert "self._output_step_2d_views = []" in teardown_section
     assert "self._decode_step_groups = []" in teardown_section
 
 

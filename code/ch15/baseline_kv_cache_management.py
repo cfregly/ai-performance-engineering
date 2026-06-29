@@ -40,10 +40,16 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
         self.output = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._attn_step_buffer: Optional[torch.Tensor] = None
+        self._attn_step_2d: Optional[torch.Tensor] = None
+        self._out_proj_weight_t: Optional[torch.Tensor] = None
         self._query_step_views: list[torch.Tensor] = []
         self._prefix_views: list[torch.Tensor] = []
         self._output_step_views: list[torch.Tensor] = []
-        self._decode_step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
+        self._output_step_2d_views: list[torch.Tensor] = []
+        self._decode_step_groups: list[
+            tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+        ] = []
         self._verify_input: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
         self.register_workload_metadata(
@@ -61,6 +67,7 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.out_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
         for module in (self.q_proj, self.k_proj, self.v_proj, self.out_proj):
             module.eval()
+        self._out_proj_weight_t = self.out_proj.weight.t()
         self._payload_parameter_count = sum(
             p.numel()
             for layer in (self.q_proj, self.k_proj, self.v_proj, self.out_proj)
@@ -81,14 +88,25 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._attn_step_buffer = torch.empty(
+            self.batch_size,
+            1,
+            self.num_heads,
+            self.head_dim,
+            device=self.device,
+            dtype=torch.bfloat16,
+        )
+        self._attn_step_2d = self._attn_step_buffer.view(self.batch_size, self.hidden_dim)
         self._query_step_views = [self.tokens[:, t : t + 1, :] for t in range(self.steps)]
         self._prefix_views = [self.tokens[:, : t + 1, :] for t in range(self.steps)]
         self._output_step_views = [self._output_buffer[:, t : t + 1, :] for t in range(self.steps)]
+        self._output_step_2d_views = [self._output_buffer[:, t, :] for t in range(self.steps)]
         self._decode_step_groups = list(
             zip(
                 self._query_step_views,
                 self._prefix_views,
                 self._output_step_views,
+                self._output_step_2d_views,
                 strict=True,
             )
         )
@@ -100,14 +118,17 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         assert self.q_proj is not None and self.k_proj is not None and self.v_proj is not None and self.out_proj is not None
         assert self.tokens is not None
         assert self._output_buffer is not None
+        assert self._attn_step_buffer is not None and self._attn_step_2d is not None
+        assert self._out_proj_weight_t is not None
         assert len(self._query_step_views) == self.steps
         assert len(self._prefix_views) == self.steps
         assert len(self._output_step_views) == self.steps
+        assert len(self._output_step_2d_views) == self.steps
         assert len(self._decode_step_groups) == self.steps
         with self._nvtx_range("baseline_kv_cache_management"):
             with torch.inference_mode():
                 outputs = self._output_buffer
-                for query, prefix, output_step in self._decode_step_groups:
+                for query, prefix, _output_step, output_step_2d in self._decode_step_groups:
                     q = self.q_proj(query)
                     k = self.k_proj(prefix)
                     v = self.v_proj(prefix)
@@ -120,9 +141,8 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
                     # so a causal mask is unnecessary here; is_causal=True would
                     # incorrectly mask all but the first key.
                     attn = F.scaled_dot_product_attention(q, k, v, is_causal=False)
-                    attn = attn.transpose(1, 2).contiguous().reshape(self.batch_size, 1, self.hidden_dim)
-                    out = self.out_proj(attn)
-                    output_step.copy_(out)
+                    self._attn_step_buffer.copy_(attn.transpose(1, 2))
+                    torch.mm(self._attn_step_2d, self._out_proj_weight_t, out=output_step_2d)
 
                 self.output = outputs
         if self.output is None:
@@ -154,9 +174,13 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.out_proj = None
         self.tokens = None
         self._output_buffer = None
+        self._attn_step_buffer = None
+        self._attn_step_2d = None
+        self._out_proj_weight_t = None
         self._query_step_views = []
         self._prefix_views = []
         self._output_step_views = []
+        self._output_step_2d_views = []
         self._decode_step_groups = []
         torch.cuda.empty_cache()
     
