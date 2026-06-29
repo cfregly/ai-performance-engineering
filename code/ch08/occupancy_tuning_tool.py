@@ -145,6 +145,14 @@ def _run_once(exe: Path, preset: Preset) -> float:
     return float(match.group(1))
 
 
+def _mean_runtime_ms(exe: Path, preset: Preset, runs: int) -> float:
+    count = max(runs, 1)
+    total_ms = 0.0
+    for _ in range(count):
+        total_ms += _run_once(exe, preset)
+    return total_ms / count
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -184,8 +192,7 @@ def main(argv: list[str]) -> int:
 
     try:
         for preset in default_group:
-            times = [_run_once(exe_default, preset) for _ in range(max(args.runs, 1))]
-            avg_ms = sum(times) / len(times)
+            avg_ms = _mean_runtime_ms(exe_default, preset, args.runs)
             if preset.name == "baseline":
                 baseline_ms = avg_ms
             speedup = (baseline_ms / avg_ms) if baseline_ms else None
@@ -197,8 +204,7 @@ def main(argv: list[str]) -> int:
         for maxrregcount, group in sorted(by_maxrreg.items(), key=lambda item: item[0] or 0):
             exe = _build_binary(chapter_dir, arch, suffix, maxrregcount=maxrregcount)
             for preset in group:
-                times = [_run_once(exe, preset) for _ in range(max(args.runs, 1))]
-                avg_ms = sum(times) / len(times)
+                avg_ms = _mean_runtime_ms(exe, preset, args.runs)
                 speedup = (baseline_ms / avg_ms) if baseline_ms else None
                 maxrreg_str = str(maxrregcount)
                 if speedup is None:

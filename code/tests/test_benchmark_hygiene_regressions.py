@@ -847,12 +847,26 @@ def test_ch19_dynamic_quantized_cache_demo_uses_shared_scalar_readback() -> None
 def test_ch07_and_ch08_sources_do_not_ship_artificial_baseline_penalties() -> None:
     hbm_copy_source = (REPO_ROOT / "ch07" / "baseline_hbm_copy.cu").read_text(encoding="utf-8")
     threshold_source = (REPO_ROOT / "ch08" / "threshold_common.cuh").read_text(encoding="utf-8")
+    occupancy_tool_source = (REPO_ROOT / "ch08" / "occupancy_tuning_tool.py").read_text(
+        encoding="utf-8"
+    )
+    occupancy_mean_section = occupancy_tool_source.split(
+        "def _mean_runtime_ms", maxsplit=1
+    )[1].split("def main", maxsplit=1)[0]
+    occupancy_main_section = occupancy_tool_source.split("def main", maxsplit=1)[1]
 
     assert "scalar_copy_kernel<<<64, 64>>>" not in hbm_copy_source
     assert "scalar_copy_kernel<<<blocks, threads>>>" in hbm_copy_source
     assert "const volatile float* volatile_inputs" not in threshold_source
     assert "volatile float redundant_eval" not in threshold_source
     assert "expensive_transform(-value" not in threshold_source
+    assert "count = max(runs, 1)" in occupancy_mean_section
+    assert "total_ms += _run_once(exe, preset)" in occupancy_mean_section
+    assert "return total_ms / count" in occupancy_mean_section
+    assert "times = [_run_once" not in occupancy_tool_source
+    assert "sum(times)" not in occupancy_tool_source
+    assert "avg_ms = _mean_runtime_ms(exe_default, preset, args.runs)" in occupancy_main_section
+    assert "avg_ms = _mean_runtime_ms(exe, preset, args.runs)" in occupancy_main_section
 
 
 def test_ch07_tma_copy_surfaces_scalar_vs_strict_descriptor_tma_story() -> None:
