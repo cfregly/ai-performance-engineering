@@ -8979,6 +8979,11 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "Prefetch event not initialized for async two-buffer prefetch" in benchmark_section
     assert "self.output = attn_out[:, :, :1, : min(8, attn_out.shape[-1])]" in benchmark_section
     assert "attn_out[:, :, :1, : min(8, attn_out.shape[-1])].detach()" not in benchmark_section
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty(" in setup_section
+    assert "self._verify_output_buffer.copy_(self.output)" in source
+    assert "output=self._verify_output_buffer" in source
+    assert "self.output.float().clone()" not in source
 
 
 def test_paged_kv_offload_hot_page_buffers_avoid_zero_fill() -> None:
@@ -9012,10 +9017,12 @@ def test_nvlink_offload_copies_directly_between_preallocated_buffers() -> None:
 
     assert "self._chunk_views: list[tuple[torch.Tensor, torch.Tensor]] = []" in source
     assert "self._output_view: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
     assert "for start in range(0, self.cfg.max_seq_len, self.cfg.chunk_tokens):" in setup_section
     assert "self.cpu_cache[..., start:end, :]" in setup_section
     assert "self.gpu_cache[..., :slice_len, :]" in setup_section
     assert "self._output_view = self.gpu_cache[" in setup_section
+    assert "self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)" in setup_section
     assert "cpu_slice, gpu_slice = self._chunk_views[self._next_chunk_idx]" in benchmark_section
     assert "copy_stream = self.copy_stream" in benchmark_section
     assert "current_stream = torch.cuda.current_stream() if copy_stream is not None else None" in benchmark_section
@@ -9031,8 +9038,12 @@ def test_nvlink_offload_copies_directly_between_preallocated_buffers() -> None:
     assert "self.cpu_cache[..., start:end, :]" not in benchmark_section
     assert "self.gpu_cache[..., :slice_len, :]" not in benchmark_section
     assert "target.copy_(" not in benchmark_section
+    assert "self._verify_output_buffer.copy_(self.output)" in source
+    assert "output=self._verify_output_buffer" in source
+    assert "self.output.float().clone()" not in source
     assert "self._chunk_views = []" in teardown_section
     assert "self._output_view = None" in teardown_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> None:

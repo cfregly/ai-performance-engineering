@@ -42,6 +42,7 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._next_chunk_idx: int = 0
         self._chunk_views: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._output_view: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._bytes_per_iteration: float = 0.0
         self.output: Optional[torch.Tensor] = None
         self.register_workload_metadata(requests_per_iteration=1.0)
@@ -81,6 +82,7 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             : min(1, self.cfg.max_seq_len),
             : min(8, self.cfg.head_dim),
         ]
+        self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
 
         elements_per_chunk = (
             self.cfg.num_layers
@@ -128,9 +130,12 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"gpu_cache": self.gpu_cache.detach()},
-            output=self.output.float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.cfg.batch_size,
             parameter_count=0,
             precision_flags={
@@ -148,6 +153,7 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._next_chunk_idx = 0
         self._chunk_views = []
         self._output_view = None
+        self._verify_output_buffer = None
         self.output = None
         super().teardown()
 

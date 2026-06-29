@@ -134,6 +134,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.page_cursor: int = 0
         self._bytes_per_iteration: float = 0.0
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     # -------------------- Setup helpers --------------------
@@ -323,6 +324,11 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if needs_cast:
             q = q.to(dtype=q_dtype)
         self.q = q
+        self._verify_output_buffer = torch.empty(
+            (self.cfg.batch_size, self.cfg.num_heads, 1, min(8, self.cfg.head_dim)),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
     # -------------------- Benchmark --------------------
 
@@ -520,9 +526,12 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         k = self._payload_k
         q = self._payload_q
         v = self._payload_v
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"q": q.detach(), "k": k.detach(), "v": v.detach()},
-            output=self.output.float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.cfg.batch_size,
             parameter_count=0,
             precision_flags={
@@ -551,6 +560,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefetch_staging = None
         self.copy_stream = None
         self.host_cache = None
+        self._verify_output_buffer = None
         if self.host_memmap is not None:
             self.host_memmap._mmap.close()  # type: ignore[attr-defined]
         self.host_memmap = None
