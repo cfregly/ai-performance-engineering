@@ -14744,3 +14744,21 @@ def test_nanochat_calculator_uses_lazy_character_guards() -> None:
     assert "all(x in \"0123456789*+-/.() \" for x in expr)" in calculator_section
     assert "all(x in allowed_chars for x in expr)" in calculator_section
     assert "all([x in" not in calculator_section
+
+
+def test_ch19_adaptive_worker_pool_selects_best_candidate_without_sorting() -> None:
+    source = (REPO_ROOT / "ch19" / "adaptive_parallelism_worker_pool.py").read_text(
+        encoding="utf-8"
+    )
+    routing_section = source.split("def choose_worker_pool", maxsplit=1)[1].split(
+        "def inference",
+        maxsplit=1,
+    )[0]
+
+    assert "best_pool, _ = min(" in routing_section
+    assert "return best_pool" in routing_section
+    assert "meeting_sla.sort(" not in routing_section
+    assert "latency_estimates.sort(" not in routing_section
+    assert "import torch" not in source
+    assert "import torch.distributed" not in source
+    assert "import psutil" not in source

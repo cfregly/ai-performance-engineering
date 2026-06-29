@@ -18,16 +18,12 @@ Usage:
     result = pool_manager.inference(prompt="...", max_tokens=100)
 """
 
-import torch
-import torch.distributed as dist
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from enum import Enum
 import threading
 import queue
 import time
-import psutil
-from collections import deque
 
 
 class ParallelismStrategy(Enum):
@@ -394,7 +390,8 @@ class AdaptiveParallelismManager:
                 (pool, est) for pool, est in latency_estimates if est <= sla_latency
             ]
             if meeting_sla:
-                meeting_sla.sort(
+                best_pool, _ = min(
+                    meeting_sla,
                     key=lambda item: (
                         0 if item[0].config.strategy == preferred_strategy else 1,
                         abs(item[1] - min(sla_latency, item[0].config.target_latency_ms)),
@@ -402,10 +399,11 @@ class AdaptiveParallelismManager:
                         item[1]
                     )
                 )
-                return meeting_sla[0][0]
+                return best_pool
         
         if latency_estimates:
-            latency_estimates.sort(
+            best_pool, _ = min(
+                latency_estimates,
                 key=lambda item: (
                     0 if item[0].config.strategy == preferred_strategy else 1,
                     item[0].request_queue.qsize(),
@@ -413,7 +411,7 @@ class AdaptiveParallelismManager:
                     item[1]
                 )
             )
-            return latency_estimates[0][0]
+            return best_pool
         
         return self.pools[0]
     
