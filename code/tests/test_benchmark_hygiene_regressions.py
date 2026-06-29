@@ -7448,12 +7448,15 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
         "def _prepare_verification_payload", maxsplit=1
     )[0]
 
-    assert "kv_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]" in prefill_helper
-    assert "seed_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]" in prefill_helper
+    assert "kv_chunks: Optional[List[torch.Tensor]] = None" in prefill_helper
+    assert "seed_chunks: Optional[List[torch.Tensor]] = None" in prefill_helper
+    assert "if kv_chunks is None or len(kv_chunks) != cfg.requests_per_rank:" in prefill_helper
+    assert "if seed_chunks is None or len(seed_chunks) != cfg.requests_per_rank:" in prefill_helper
     assert "kv_chunks[req_idx] = kv_cache" in prefill_helper
     assert "seed_chunks[req_idx] = seed" in prefill_helper
     assert ".append(" not in prefill_helper
-    assert "outputs = [torch.empty(0) for _ in range(len(kv_chunks))]" in decode_helper
+    assert "outputs: Optional[List[torch.Tensor]] = None" in decode_helper
+    assert "if outputs is None or len(outputs) != len(kv_chunks):" in decode_helper
     assert "for output_idx, (kv_cache, seed) in enumerate(zip(kv_chunks, seed_chunks)):" in decode_helper
     assert "outputs[output_idx] = model.decode(seed, kv_cache, cfg.decode_tokens)" in decode_helper
     assert "outputs.append(" not in decode_helper
@@ -7466,9 +7469,14 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "decode_outputs = [" in worker_section
     assert "serial_kv_chunks = [torch.empty(0) for _ in range(len(decode_outputs))]" in worker_section
     assert "serial_seed_chunks = [torch.empty(0) for _ in range(len(decode_outputs))]" in worker_section
+    assert "serial_prefill_kv_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]" in worker_section
+    assert "serial_prefill_seed_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]" in worker_section
     assert "prefill_inflight_groups[group_idx] = (kv_group, seed_group)" in run_iteration_section
     assert "prefill_send_handles[group_idx] = _batch_isend(" in run_iteration_section
     assert "decode_recv_entries[entry_count] = (handles, kv_group, seed_group, group_len)" in run_iteration_section
+    assert "serial_prefill_kv_chunks," in run_iteration_section
+    assert "serial_prefill_seed_chunks," in run_iteration_section
+    assert "return _run_decode(cfg, model, kv_chunks, seed_chunks, outputs)" in run_iteration_section
     assert "outputs[output_idx] = decoded_output" in run_iteration_section
     assert "kv_chunks[chunk_idx] = kv_buf" in run_iteration_section
     assert "seed_chunks[chunk_idx] = seed_buf" in run_iteration_section
@@ -7491,9 +7499,12 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "seed_buf = torch.empty(" not in run_iteration_section
     assert "expected_outputs = len(self._pairs) * self.cfg.requests_per_rank" in setup_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(expected_outputs)]" in setup_section
+    assert "prefill_kv_chunks=[" in setup_section
+    assert "prefill_seed_chunks=[" in setup_section
     assert "transfer_kv_chunks=[" in setup_section
     assert "self.cfg.context_window" in setup_section
     assert "transfer_seed_chunks=[" in setup_section
+    assert "decode_output_chunks=[" in setup_section
     assert "device=decode_device" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.stack(" not in benchmark_section
@@ -7516,6 +7527,9 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "transfer_seed.copy_(seed, non_blocking=True)" in benchmark_section
     assert "pair.transfer_kv_chunks[req_idx].copy_(" in benchmark_section
     assert "pair.transfer_seed_chunks[req_idx].copy_(" in benchmark_section
+    assert "pair.prefill_kv_chunks," in benchmark_section
+    assert "pair.prefill_seed_chunks," in benchmark_section
+    assert "pair.decode_output_chunks," in benchmark_section
     assert ".to(pair.decode_device)" not in benchmark_section
     assert "outputs.append(" not in benchmark_section
     assert "outputs.extend(" not in benchmark_section

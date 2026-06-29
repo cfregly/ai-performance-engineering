@@ -54,8 +54,11 @@ class _LocalPair:
     prefill_model: "TinyPrefillDecode"
     decode_model: "TinyPrefillDecode"
     prompts: torch.Tensor
+    prefill_kv_chunks: List[torch.Tensor]
+    prefill_seed_chunks: List[torch.Tensor]
     transfer_kv_chunks: List[torch.Tensor]
     transfer_seed_chunks: List[torch.Tensor]
+    decode_output_chunks: List[torch.Tensor]
 
 
 class TinyPrefillDecode(nn.Module):
@@ -172,9 +175,13 @@ def _run_prefill(
     cfg: PrefillDecodeConfig,
     model: TinyPrefillDecode,
     prompts: torch.Tensor,
+    kv_chunks: Optional[List[torch.Tensor]] = None,
+    seed_chunks: Optional[List[torch.Tensor]] = None,
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
-    kv_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
-    seed_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
+    if kv_chunks is None or len(kv_chunks) != cfg.requests_per_rank:
+        kv_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
+    if seed_chunks is None or len(seed_chunks) != cfg.requests_per_rank:
+        seed_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
     with torch.inference_mode():
         for req_idx in range(cfg.requests_per_rank):
             request_prompt = prompts[req_idx]
@@ -189,8 +196,10 @@ def _run_decode(
     model: TinyPrefillDecode,
     kv_chunks: List[torch.Tensor],
     seed_chunks: List[torch.Tensor],
+    outputs: Optional[List[torch.Tensor]] = None,
 ) -> List[torch.Tensor]:
-    outputs = [torch.empty(0) for _ in range(len(kv_chunks))]
+    if outputs is None or len(outputs) != len(kv_chunks):
+        outputs = [torch.empty(0) for _ in range(len(kv_chunks))]
     with torch.inference_mode():
         for output_idx, (kv_cache, seed) in enumerate(zip(kv_chunks, seed_chunks)):
             outputs[output_idx] = model.decode(seed, kv_cache, cfg.decode_tokens)
@@ -328,6 +337,8 @@ def _run_torchrun_worker(
     decode_recv_entries: List[Optional[Tuple[List[dist.Work], torch.Tensor, torch.Tensor, int]]] = []
     serial_kv_chunks: List[torch.Tensor] = []
     serial_seed_chunks: List[torch.Tensor] = []
+    serial_prefill_kv_chunks: List[torch.Tensor] = []
+    serial_prefill_seed_chunks: List[torch.Tensor] = []
     group_size = max(1, min(cfg.transfer_group, cfg.requests_per_rank))
     group_slices = [
         (start, min(group_size, cfg.requests_per_rank - start))
@@ -396,6 +407,9 @@ def _run_torchrun_worker(
     elif use_overlap:
         prefill_send_handles = [None] * len(group_slices)
         prefill_inflight_groups = [None] * len(group_slices)
+    elif not use_batched:
+        serial_prefill_kv_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
+        serial_prefill_seed_chunks = [torch.empty(0) for _ in range(cfg.requests_per_rank)]
 
     def run_iteration() -> List[torch.Tensor]:
         if is_prefill:
@@ -457,7 +471,13 @@ def _run_torchrun_worker(
                 ])
                 _wait_handles(handles)
             else:
-                kv_chunks, seed_chunks = _run_prefill(cfg, model, prompts)
+                kv_chunks, seed_chunks = _run_prefill(
+                    cfg,
+                    model,
+                    prompts,
+                    serial_prefill_kv_chunks,
+                    serial_prefill_seed_chunks,
+                )
                 for kv_cache, seed in zip(kv_chunks, seed_chunks):
                     _send_blocking(kv_cache, seed, peer_rank, pair_groups[rank])
                     if cfg.sync_per_request:
@@ -544,7 +564,7 @@ def _run_torchrun_worker(
                 kv_chunks[chunk_idx] = kv_buf
                 seed_chunks[chunk_idx] = seed_buf
                 chunk_idx += 1
-        return _run_decode(cfg, model, kv_chunks, seed_chunks)
+        return _run_decode(cfg, model, kv_chunks, seed_chunks, outputs)
 
     _barrier()
     torch.cuda.synchronize(device)
@@ -672,6 +692,12 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     prefill_model=prefill_model,
                     decode_model=decode_models[decode_device],
                     prompts=prompts,
+                    prefill_kv_chunks=[
+                        torch.empty(0) for _ in range(self.cfg.requests_per_rank)
+                    ],
+                    prefill_seed_chunks=[
+                        torch.empty(0) for _ in range(self.cfg.requests_per_rank)
+                    ],
                     transfer_kv_chunks=[
                         torch.empty(
                             (
@@ -691,6 +717,9 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                             dtype=self.cfg.dtype,
                         )
                         for _ in range(self.cfg.requests_per_rank)
+                    ],
+                    decode_output_chunks=[
+                        torch.empty(0) for _ in range(self.cfg.requests_per_rank)
                     ],
                 )
             )
@@ -732,7 +761,13 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         )
                         output_idx += 1
                 else:
-                    kv_chunks, seed_chunks = _run_prefill(self.cfg, pair.prefill_model, pair.prompts)
+                    kv_chunks, seed_chunks = _run_prefill(
+                        self.cfg,
+                        pair.prefill_model,
+                        pair.prompts,
+                        pair.prefill_kv_chunks,
+                        pair.prefill_seed_chunks,
+                    )
                     if (
                         len(pair.transfer_kv_chunks) != len(kv_chunks)
                         or len(pair.transfer_seed_chunks) != len(seed_chunks)
@@ -753,6 +788,7 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         pair.decode_model,
                         pair.transfer_kv_chunks,
                         pair.transfer_seed_chunks,
+                        pair.decode_output_chunks,
                     )
                     for decoded_output in decoded:
                         outputs[output_idx] = decoded_output
