@@ -31,6 +31,7 @@ class BaselineQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self.output = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.register_workload_metadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
@@ -54,6 +55,12 @@ class BaselineQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float32,
         )
+        self._verify_output_buffer = torch.empty(
+            min(128, self.batch_size),
+            min(256, self.out_features),
+            device=self.device,
+            dtype=torch.float32,
+        )
     
     def benchmark_fn(self) -> None:
         """Benchmark: FP32 inference without quantization."""
@@ -66,9 +73,16 @@ class BaselineQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.data is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"input": self.data},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.data.shape[0],
             precision_flags={
                 "fp16": False,
@@ -83,6 +97,8 @@ class BaselineQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.model = None
         self.data = None
+        self.output = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:

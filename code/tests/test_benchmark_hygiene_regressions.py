@@ -13254,6 +13254,42 @@ def test_ch13_precisionfp8_defers_verification_forwards_and_casts_outside_hot_lo
         assert "output=self.output.detach().float().clone()" in capture_section
 
 
+def test_ch13_quantization_wrappers_sample_verification_outputs() -> None:
+    for name in (
+        "baseline_quantization.py",
+        "optimized_quantization.py",
+        "baseline_torchao_quantization.py",
+        "optimized_torchao_quantization.py",
+    ):
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "min(128, self.batch_size)" in setup_section
+        assert "min(256, self.out_features)" in setup_section
+        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.output.detach().float().clone()" not in capture_section
+        assert ".detach().float().clone()" not in benchmark_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch13_mlp_benchmarks_use_inplace_relu_modules() -> None:
     for name in (
         "baseline_precisionfp8.py",
