@@ -336,7 +336,10 @@ def test_compare_measure_cuda_path_uses_single_event_bracket() -> None:
     )[0]
 
     assert cuda_section.count("torch.cuda.synchronize()") == 1
-    assert cuda_section.count("start.record()") == 1
-    assert cuda_section.count("end.record()") == 1
+    assert cuda_section.count("current_stream = torch.cuda.current_stream()") == 1
+    assert cuda_section.count("start.record(current_stream)") == 1
+    assert cuda_section.count("end.record(current_stream)") == 1
+    assert "start.record()" not in cuda_section
+    assert "end.record()" not in cuda_section
     assert cuda_section.count("end.synchronize()") == 1
     assert "total_ms += start.elapsed_time(end)" not in cuda_section
