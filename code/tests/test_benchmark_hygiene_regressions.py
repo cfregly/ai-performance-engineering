@@ -6688,13 +6688,27 @@ def test_ch18_optimized_flexdecoding_reuses_sdpa_backend_list() -> None:
 
 def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> None:
     source = (REPO_ROOT / "labs" / "persistent_decode" / "paged_kv_offload_common.py").read_text(encoding="utf-8")
+    copy_section = source.split("def _copy_to_device", maxsplit=1)[1].split(
+        "def setup",
+        maxsplit=1,
+    )[0]
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
 
     assert "self.prefetch_event = torch.cuda.Event() if buffer_count == 2 else None" in setup_section
+    assert "wait_stream: Optional[torch.cuda.Stream] = None" in copy_section
+    assert "if wait_stream is not None:" in copy_section
+    assert "self.copy_stream.wait_stream(wait_stream)" in copy_section
+    assert "consumer_stream = wait_stream or torch.cuda.current_stream()" in copy_section
+    assert "consumer_stream.wait_stream(self.copy_stream)" in copy_section
+    assert "torch.cuda.current_stream().wait_stream(self.copy_stream)" not in copy_section
     assert "torch.cuda.Event(" not in benchmark_section
+    assert "current_stream = torch.cuda.current_stream() if self.copy_stream is not None else None" in benchmark_section
+    assert "current_stream.wait_event(self.prefetch_event)" in benchmark_section
+    assert "torch.cuda.current_stream().wait_event(self.prefetch_event)" not in benchmark_section
+    assert "wait_stream=current_stream" in benchmark_section
     assert "Prefetch event not initialized for async two-buffer prefetch" in benchmark_section
     assert "self.output = attn_out[:, :, :1, : min(8, attn_out.shape[-1])]" in benchmark_section
     assert "attn_out[:, :, :1, : min(8, attn_out.shape[-1])].detach()" not in benchmark_section

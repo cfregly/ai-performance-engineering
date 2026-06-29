@@ -197,6 +197,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         buffer_idx: int = 0,
         wait_for_copy: bool = True,
         record_event: Optional[torch.cuda.Event] = None,
+        wait_stream: Optional[torch.cuda.Stream] = None,
     ) -> None:
         if not self.hot_k_bufs or not self.hot_v_bufs:
             raise RuntimeError("Device KV buffers are not initialized")
@@ -220,12 +221,15 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         label = "transfer_async:h2d" if (self.copy_stream is not None or self.cfg.use_pinned_stage) else "transfer_sync:h2d"
         if self.copy_stream is not None:
+            if wait_stream is not None:
+                self.copy_stream.wait_stream(wait_stream)
             with torch.cuda.stream(self.copy_stream), self._nvtx_range(label):
                 _copy_planes()
                 if record_event is not None:
                     record_event.record()
             if wait_for_copy:
-                torch.cuda.current_stream().wait_stream(self.copy_stream)
+                consumer_stream = wait_stream or torch.cuda.current_stream()
+                consumer_stream.wait_stream(self.copy_stream)
         else:
             with self._nvtx_range(label):
                 _copy_planes()
@@ -420,6 +424,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         repeats = max(1, self.cfg.repeat_pages)
         attn_out = None
         use_host_prefetch = bool(self.cfg.use_host_prefetch_thread and self.cfg.prefetch_next_page)
+        current_stream = torch.cuda.current_stream() if self.copy_stream is not None else None
         for _ in range(repeats):
             start = self.page_cursor
             active_idx = self.active_buf_idx
@@ -427,13 +432,27 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if prefetched is not None:
                 staged, slice_len = prefetched
                 if self.prefetch_event is not None and self.prefetch_buf_idx is not None:
-                    torch.cuda.current_stream().wait_event(self.prefetch_event)
+                    if current_stream is None:
+                        raise RuntimeError("Prefetch event requires an async copy stream")
+                    current_stream.wait_event(self.prefetch_event)
                     active_idx = self.prefetch_buf_idx
                 else:
-                    self._copy_to_device(staged, slice_len, buffer_idx=active_idx, wait_for_copy=True)
+                    self._copy_to_device(
+                        staged,
+                        slice_len,
+                        buffer_idx=active_idx,
+                        wait_for_copy=True,
+                        wait_stream=current_stream,
+                    )
             else:
                 staged, slice_len = self._stage_page(start)
-                self._copy_to_device(staged, slice_len, buffer_idx=active_idx, wait_for_copy=True)
+                self._copy_to_device(
+                    staged,
+                    slice_len,
+                    buffer_idx=active_idx,
+                    wait_for_copy=True,
+                    wait_stream=current_stream,
+                )
 
             next_start = (start + self.cfg.page_tokens) % self.cfg.max_seq_len
             if self.cfg.prefetch_next_page and use_host_prefetch:
