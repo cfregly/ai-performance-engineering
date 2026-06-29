@@ -41,6 +41,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self._kv_host_staging: Optional[torch.Tensor] = None
         self._flat_prompts: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
+        self._output_stack: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
         self._param_count = 0
 
@@ -72,6 +73,11 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
             p.numel() for p in self.decode_model.parameters()
         )
         self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
+        self._output_stack = torch.empty(
+            (self.cfg.requests_per_rank, self.cfg.batch_size, self.cfg.hidden_size),
+            device=self.device,
+            dtype=self.cfg.dtype,
+        )
         self._output = None
         torch.cuda.synchronize(self.device)
 
@@ -87,7 +93,10 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         if self._output is None and self._pending_outputs:
-            self._output = torch.stack(self._pending_outputs, dim=0)
+            if self._output_stack is None:
+                raise RuntimeError("setup() must initialize verification output stack")
+            torch.stack(self._pending_outputs, dim=0, out=self._output_stack)
+            self._output = self._output_stack
         if self._output is None or self.prompts is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
@@ -121,6 +130,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self._kv_host_staging = None
         self._flat_prompts = None
         self._output = None
+        self._output_stack = None
         self._pending_outputs = []
         torch.cuda.empty_cache()
 

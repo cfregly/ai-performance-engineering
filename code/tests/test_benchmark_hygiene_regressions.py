@@ -14844,10 +14844,13 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     optimized_benchmark = source.split("class OptimizedPrefillDecodeSingleGPUBenchmark", maxsplit=1)[1]
 
     assert "self._pending_outputs: List[torch.Tensor] = []" in base_section
+    assert "self._output_stack: Optional[torch.Tensor] = None" in base_section
     assert "self._flat_prompts: Optional[torch.Tensor] = None" in base_section
     assert "self._flat_prompts = self.prompts.view(" in base_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in base_section
-    assert "self._output = torch.stack(self._pending_outputs, dim=0)" in base_section
+    assert "self._output_stack = torch.empty(" in base_section
+    assert "torch.stack(self._pending_outputs, dim=0, out=self._output_stack)" in base_section
+    assert "self._output = self._output_stack" in base_section
     assert "kv_cache = kv_cpu.to(self.device)" not in baseline_benchmark
     assert "kv_cache.cpu()" not in baseline_benchmark
     assert "self._kv_host_staging.copy_(kv_cache, non_blocking=False)" in baseline_benchmark
