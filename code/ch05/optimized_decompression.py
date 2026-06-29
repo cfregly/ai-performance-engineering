@@ -23,6 +23,7 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._run_len: int = 0
         self._output_matrix: Optional[torch.Tensor] = None
         self._output_flat: Optional[torch.Tensor] = None
+        self._values_column: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(bytes_per_iteration=float(1024 * 1024 * 4))
 
     def setup(self) -> None:
@@ -41,14 +42,21 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._run_len = int(run_len)
         self._output_matrix = torch.empty((num_runs, run_len), device=self.device, dtype=self.values.dtype)
         self._output_flat = self._output_matrix.reshape(-1)
+        self._values_column = self.values.unsqueeze(1)
 
     def benchmark_fn(self) -> Optional[dict]:
-        if self.counts is None or self.values is None or self._output_matrix is None or self._output_flat is None:
+        if (
+            self.counts is None
+            or self.values is None
+            or self._output_matrix is None
+            or self._output_flat is None
+            or self._values_column is None
+        ):
             raise RuntimeError("SKIPPED: missing encoded RLE buffers")
 
         start = self._record_start()
         with self._nvtx_range("gpu_decompress_rle"):
-            self._output_matrix.copy_(self.values.unsqueeze(1))
+            self._output_matrix.copy_(self._values_column)
             out = self._output_flat
         latency_ms = self._record_stop(start)
         self.output = out.detach()

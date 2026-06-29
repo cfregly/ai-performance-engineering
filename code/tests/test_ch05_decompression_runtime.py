@@ -62,9 +62,11 @@ def test_gpu_decompression_reuses_preallocated_broadcast_output() -> None:
 
     assert "self._output_matrix = torch.empty((num_runs, run_len)" in setup_section
     assert "self._output_flat = self._output_matrix.reshape(-1)" in setup_section
+    assert "self._values_column = self.values.unsqueeze(1)" in setup_section
     assert "counts_i64" not in source
     assert "torch.repeat_interleave" not in benchmark_section
-    assert "self._output_matrix.copy_(self.values.unsqueeze(1))" in benchmark_section
+    assert "self._output_matrix.copy_(self._values_column)" in benchmark_section
+    assert "self.values.unsqueeze(1)" not in benchmark_section
     assert "out = self._output_flat" in benchmark_section
     assert 'with self._nvtx_range("gpu_decompress_rle"):' in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
