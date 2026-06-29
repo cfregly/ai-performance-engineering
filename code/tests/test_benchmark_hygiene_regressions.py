@@ -4560,14 +4560,43 @@ def test_cutlass_profiler_sweep_selects_latest_csv_without_full_sort() -> None:
     source = (
         REPO_ROOT / "labs" / "cutlass_profiler_kernel_selector" / "run_cutlass_profiler_sweep.py"
     ).read_text(encoding="utf-8")
+    parse_section = source.split("def parse_best_result", maxsplit=1)[1].split(
+        "def run_profiler_for_shape",
+        maxsplit=1,
+    )[0]
     run_section = source.split("def run_profiler_for_shape", maxsplit=1)[1].split(
         "def parse_args",
         maxsplit=1,
     )[0]
 
-    assert "csv_file = max(candidate_files, key=lambda p: p.stat().st_mtime)" in run_section
+    assert "first_row = next(reader, None)" in parse_section
+    assert "for row in chain((first_row,), reader):" in parse_section
+    assert "rows = list(reader)" not in parse_section
+    assert "csv_file = max(output_dir.glob(f\"{shape.name}*.csv\"), key=lambda p: p.stat().st_mtime, default=None)" in run_section
+    assert "candidate_files = list(" not in run_section
     assert "candidate_files.sort(" not in run_section
     assert "candidate_files[0]" not in run_section
+
+
+def test_cutlass_profiler_sweep_streaming_csv_parser(tmp_path: Path) -> None:
+    from labs.cutlass_profiler_kernel_selector.run_cutlass_profiler_sweep import parse_best_result
+
+    csv_path = tmp_path / "profiler.csv"
+    csv_path.write_text(
+        "Kernel,Runtime,GFLOPs\nslow,2.0,1000\nfast,1.0,2500\n",
+        encoding="utf-8",
+    )
+
+    best = parse_best_result(csv_path)
+
+    assert best["kernel"] == "fast"
+    assert best["gflops"] == 2500.0
+    assert best["runtime_ms"] == 1.0
+
+    empty_path = tmp_path / "empty.csv"
+    empty_path.write_text("Kernel,Runtime,GFLOPs\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="No rows found"):
+        parse_best_result(empty_path)
 
 
 def test_cuda_event_timing_waits_on_terminal_event_not_whole_device() -> None:

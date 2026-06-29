@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import sys
+from itertools import chain
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
@@ -67,46 +68,45 @@ def parse_best_result(csv_path: Path) -> Dict[str, object]:
 
     with csv_path.open("r", newline="") as f:
         reader = csv.DictReader(f)
-        rows = list(reader)
+        first_row = next(reader, None)
+        if first_row is None:
+            raise ValueError(f"No rows found in profiler output {csv_path}")
 
-    if not rows:
-        raise ValueError(f"No rows found in profiler output {csv_path}")
+        gflops_field = _select_field(reader.fieldnames or [], ("gflop", "tflop", "flops"))
+        runtime_field = _select_field(reader.fieldnames or [], ("runtime", "time"))
+        kernel_field = _select_field(reader.fieldnames or [], ("kernel", "name"))
 
-    gflops_field = _select_field(reader.fieldnames or [], ("gflop", "tflop", "flops"))
-    runtime_field = _select_field(reader.fieldnames or [], ("runtime", "time"))
-    kernel_field = _select_field(reader.fieldnames or [], ("kernel", "name"))
+        if gflops_field is None or runtime_field is None:
+            raise ValueError(f"Missing gflops/time fields in {csv_path} (fields: {reader.fieldnames})")
 
-    if gflops_field is None or runtime_field is None:
-        raise ValueError(f"Missing gflops/time fields in {csv_path} (fields: {reader.fieldnames})")
+        best_row = None
+        best_score = -float("inf")
+        for row in chain((first_row,), reader):
+            gflops_raw = _to_float(row[gflops_field])
+            if "tflop" in gflops_field.lower():
+                tflops = gflops_raw
+                gflops = gflops_raw * 1000.0
+            else:
+                gflops = gflops_raw
+                tflops = gflops_raw / 1000.0
 
-    best_row = None
-    best_score = -float("inf")
-    for row in rows:
-        gflops_raw = _to_float(row[gflops_field])
-        if "tflop" in gflops_field.lower():
-            tflops = gflops_raw
-            gflops = gflops_raw * 1000.0
-        else:
-            gflops = gflops_raw
-            tflops = gflops_raw / 1000.0
+            if gflops > best_score:
+                best_score = gflops
+                runtime_ms = _to_float(row[runtime_field])
+                # If runtime was missing/NaN, derive it from FLOP/s if possible.
+                if math.isnan(runtime_ms) or runtime_ms <= 0:
+                    try:
+                        flops = _to_float(row.get("Flops", "")) * 1.0  # reported as raw FLOPs
+                        runtime_ms = (flops / (gflops * 1e9)) * 1e3 if gflops > 0 else float("nan")
+                    except Exception:
+                        runtime_ms = float("nan")
 
-        if gflops > best_score:
-            best_score = gflops
-            runtime_ms = _to_float(row[runtime_field])
-            # If runtime was missing/NaN, derive it from FLOP/s if possible.
-            if math.isnan(runtime_ms) or runtime_ms <= 0:
-                try:
-                    flops = _to_float(row.get("Flops", "")) * 1.0  # reported as raw FLOPs
-                    runtime_ms = (flops / (gflops * 1e9)) * 1e3 if gflops > 0 else float("nan")
-                except Exception:
-                    runtime_ms = float("nan")
-
-            best_row = {
-                "kernel": row.get(kernel_field, row.get("op", "")) if kernel_field else "",
-                "gflops": gflops,
-                "tflops": tflops,
-                "runtime_ms": runtime_ms,
-            }
+                best_row = {
+                    "kernel": row.get(kernel_field, row.get("op", "")) if kernel_field else "",
+                    "gflops": gflops,
+                    "tflops": tflops,
+                    "runtime_ms": runtime_ms,
+                }
 
     assert best_row is not None
     return best_row
@@ -149,13 +149,11 @@ def run_profiler_for_shape(binary: Path, shape: GemmShape, output_dir: Path, ext
     if process.returncode != 0:
         raise RuntimeError(f"{binary.name} failed for {shape.name}; see {log_path}")
 
-    candidate_files = list(output_dir.glob(f"{shape.name}*.csv"))
-    if not candidate_files:
+    csv_file = max(output_dir.glob(f"{shape.name}*.csv"), key=lambda p: p.stat().st_mtime, default=None)
+    if csv_file is None:
         raise FileNotFoundError(
             f"Profiler did not emit CSV for {shape.name}; expected something like {csv_path}*.csv; log: {log_path}"
         )
-    # Select the most recent matching CSV (operation suffix varies, e.g., .gemm.csv)
-    csv_file = max(candidate_files, key=lambda p: p.stat().st_mtime)
 
     best_row = parse_best_result(csv_file)
     best_row.update(shape.as_dict())
