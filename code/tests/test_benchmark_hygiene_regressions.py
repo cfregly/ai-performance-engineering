@@ -10976,7 +10976,9 @@ def test_ch16_moe_performance_benchmark_uses_cuda_event_timing() -> None:
     assert "end_event.record()" not in cuda_section
     assert "elapsed = start_event.elapsed_time(end_event) / 1000.0" in cuda_section
     assert "time.time()" not in cuda_section
-    assert "time.time()" in cpu_section
+    assert "start = time.perf_counter()" in cpu_section
+    assert "elapsed = time.perf_counter() - start" in cpu_section
+    assert "time.time()" not in cpu_section
 
 
 def test_ch16_perplexity_eval_accumulates_loss_on_device() -> None:

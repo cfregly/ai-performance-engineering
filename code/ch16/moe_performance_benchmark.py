@@ -149,10 +149,10 @@ def benchmark_model(
         end_event.synchronize()
         elapsed = start_event.elapsed_time(end_event) / 1000.0
     else:
-        start = time.time()
+        start = time.perf_counter()
         for _ in range(iters):
             _ = model(input_ids)
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
 
     avg_ms = (elapsed / iters) * 1000.0
     tokens = input_ids.numel()
