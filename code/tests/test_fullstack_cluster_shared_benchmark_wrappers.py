@@ -356,6 +356,9 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "return tensor.clone()" not in all_to_all_single_section
     assert "return tensor" in all_to_all_list_section
     assert "return tensor" in all_to_all_single_section
+    assert "dist_nn.all_to_all(recv_parts, send_parts, group=group)" in all_to_all_list_section
+    assert "return torch.cat(list(result), dim=0)" not in all_to_all_list_section
+    assert "return recv" in all_to_all_list_section
     assert "self._exchange_count_send_buffer = torch.empty(" in source
     assert "self._exchange_count_recv_buffer = torch.empty(" in source
     assert "dist.all_gather_into_tensor(recv_tensor, send_tensor, group=group)" in exchange_counts_section
@@ -458,6 +461,47 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "value = float(host_buffer[index])" in reduce_section
     assert "host_buffer.tolist()" not in reduce_section
     assert "for key, value in metrics.items()" not in reduce_section
+
+
+def test_moe_hybrid_ep_list_all_to_all_returns_preallocated_recv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from labs.fullstack_cluster import moe_hybrid_ep_common as common
+
+    topology = common.TopologyInfo(
+        rank=0,
+        world_size=2,
+        local_rank=0,
+        local_world_size=2,
+        node_rank=0,
+        num_nodes=1,
+        initialized=False,
+        local_group=None,
+    )
+    module = common.DeepSeekHybridEPModule(
+        hidden_size=2,
+        num_experts=2,
+        local_experts=1,
+        top_k=1,
+        topology=topology,
+        route_mode="rank",
+        optimized=False,
+    )
+    source = torch.arange(6, dtype=torch.float32).view(3, 2)
+
+    def fake_all_to_all(output_parts, input_parts, group=None):
+        del group
+        for output, input_part in zip(output_parts, input_parts, strict=True):
+            output.copy_(input_part)
+        return tuple(output_parts)
+
+    monkeypatch.setattr(common.dist_nn, "all_to_all", fake_all_to_all)
+
+    result = module._all_to_all_list(source, [1, 2], [1, 2], group=None)
+
+    assert result.shape == source.shape
+    assert result.data_ptr() != source.data_ptr()
+    torch.testing.assert_close(result, source)
 
 
 def test_moe_hybrid_ep_wrapper_reuses_latest_metrics_dict() -> None:

@@ -654,8 +654,8 @@ class DeepSeekHybridEPModule(nn.Module):
         recv = tensor.new_empty(recv_shape)
         recv_parts = self._split_list(recv, recv_counts)
         send_parts = self._split_list(tensor, send_counts)
-        result = dist_nn.all_to_all(recv_parts, send_parts, group=group)
-        return torch.cat(list(result), dim=0) if result else recv
+        dist_nn.all_to_all(recv_parts, send_parts, group=group)
+        return recv
 
     def _all_to_all_single(
         self,
