@@ -71,7 +71,7 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
         with nvtx_range("optimized_vectorization", enable=self._enable_nvtx):
             for _ in range(self.repeats):
                 torch.add(self._tensor_a_fp16, self._tensor_b_fp16, out=self._work)
-            self.output = self._work.detach()
+            self.output = self._work
         if self.tensor_a is None or self.tensor_b is None or self.output is None:
             raise RuntimeError("benchmark_fn() must produce output")
 

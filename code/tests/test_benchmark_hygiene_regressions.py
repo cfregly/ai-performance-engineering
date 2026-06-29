@@ -4217,6 +4217,8 @@ def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
     assert "self._tensor_a_fp16 = self.tensor_a.to(self._compute_dtype)" in setup_section
     assert "self._tensor_b_fp16 = self.tensor_b.to(self._compute_dtype)" in setup_section
     assert "torch.add(self._tensor_a_fp16, self._tensor_b_fp16, out=self._work)" in benchmark_section
+    assert "self.output = self._work" in benchmark_section
+    assert "self._work.detach()" not in benchmark_section
     assert ".to(self._compute_dtype)" not in benchmark_section
     for setup, benchmark in ((baseline_setup, baseline_benchmark), (setup_section, benchmark_section)):
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup
