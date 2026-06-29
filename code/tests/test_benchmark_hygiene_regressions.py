@@ -8190,6 +8190,59 @@ def test_ch15_moe_router_ranks_topk_without_score_list_materialization() -> None
     assert "sorted(" not in router_section
 
 
+def test_python_concurrency_summaries_reuse_sorted_latency_samples() -> None:
+    round1_source = (REPO_ROOT / "labs" / "python_concurrency" / "taskrun_round1_asyncio.py").read_text(
+        encoding="utf-8"
+    )
+    round2_source = (REPO_ROOT / "labs" / "python_concurrency" / "taskrun_round2_controls.py").read_text(
+        encoding="utf-8"
+    )
+    all_in_one_source = (REPO_ROOT / "labs" / "python_concurrency" / "all_in_one_pipeline.py").read_text(
+        encoding="utf-8"
+    )
+    hybrid_source = (REPO_ROOT / "labs" / "python_concurrency" / "hybrid_three_stage_pipeline.py").read_text(
+        encoding="utf-8"
+    )
+
+    round1_summary = round1_source.split("def summarize", maxsplit=1)[1].split(
+        "async def main_async",
+        maxsplit=1,
+    )[0]
+    round2_summary = round2_source.split("def summarize", maxsplit=1)[1].split(
+        "async def run_pipeline",
+        maxsplit=1,
+    )[0]
+    all_in_one_summary = all_in_one_source.split("def summarize", maxsplit=1)[1].split(
+        "def parse_args",
+        maxsplit=1,
+    )[0]
+    hybrid_summary = hybrid_source.split("def summarize", maxsplit=1)[1].split(
+        "async def main_async",
+        maxsplit=1,
+    )[0]
+
+    assert "def _latency_percentiles" in round1_source
+    assert "def _success_latency_percentiles" in round2_source
+    assert "def _latency_percentiles" in all_in_one_source
+    assert "def _total_latency_percentiles" in hybrid_source
+
+    assert "p50_ms, p95_ms = _latency_percentiles(latencies)" in round1_summary
+    assert "p50_success_ms, p95_success_ms = _success_latency_percentiles(success_latencies)" in round2_summary
+    assert "p50_total_ms, p95_total_ms = _latency_percentiles(totals)" in all_in_one_summary
+    assert "p50_success_ms, _ = _latency_percentiles(success_totals)" in all_in_one_summary
+    assert "p50_total_ms, p95_total_ms = _total_latency_percentiles(totals)" in hybrid_summary
+
+    assert "statistics.median(" not in round1_summary
+    assert "statistics.median(" not in round2_summary
+    assert "statistics.median(" not in all_in_one_summary
+    assert "statistics.median(totals)" not in hybrid_summary
+    assert "sorted(latencies)" not in round1_summary
+    assert "sorted(success_latencies)" not in round2_summary
+    assert "sorted(totals)" not in all_in_one_summary
+    assert "sorted(success_totals)" not in all_in_one_summary
+    assert "sorted(totals)" not in hybrid_summary
+
+
 def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     source = (REPO_ROOT / "ch15" / "moe_inference_common.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(

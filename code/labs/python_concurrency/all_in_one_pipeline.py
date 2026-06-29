@@ -29,7 +29,6 @@ import argparse
 import asyncio
 import json
 import random
-import statistics
 import time
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass
@@ -62,6 +61,20 @@ TERMINAL_STATUSES = {
     FAILED_STAGE_B,
     FAILED_STAGE_C,
 }
+
+
+def _latency_percentiles(values: list[float]) -> tuple[float, float]:
+    if not values:
+        return 0.0, 0.0
+
+    ordered = sorted(values)
+    midpoint = len(ordered) // 2
+    if len(ordered) % 2:
+        p50 = ordered[midpoint]
+    else:
+        p50 = (ordered[midpoint - 1] + ordered[midpoint]) / 2.0
+    p95 = ordered[max(0, int(0.95 * len(ordered)) - 1)]
+    return round(p50, 2), round(p95, 2)
 
 
 class TransientStageError(RuntimeError):
@@ -1075,6 +1088,8 @@ def summarize(results: list[ResultRecord], shared: SharedState) -> dict[str, Any
 
     totals = [record.total_ms for record in results]
     success_totals = [record.total_ms for record in results if record.status == SUCCESS]
+    p50_total_ms, p95_total_ms = _latency_percentiles(totals)
+    p50_success_ms, _ = _latency_percentiles(success_totals)
 
     summary = {
         "total": len(results),
@@ -1084,14 +1099,9 @@ def summarize(results: list[ResultRecord], shared: SharedState) -> dict[str, Any
         "unique_completed_keys": len(shared.completed_keys),
         "retried_fetch": shared.retried_fetch,
         "retried_write": shared.retried_write,
-        "p50_total_ms": round(statistics.median(totals), 2) if totals else 0.0,
-        "p95_total_ms": round(
-            sorted(totals)[max(0, int(0.95 * len(totals)) - 1)],
-            2,
-        )
-        if totals
-        else 0.0,
-        "p50_success_ms": round(statistics.median(success_totals), 2) if success_totals else 0.0,
+        "p50_total_ms": p50_total_ms,
+        "p95_total_ms": p95_total_ms,
+        "p50_success_ms": p50_success_ms,
     }
 
     summary.update(status_counts)

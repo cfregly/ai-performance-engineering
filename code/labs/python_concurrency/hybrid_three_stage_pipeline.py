@@ -43,6 +43,20 @@ FAILED_STAGE_B = "failed_stage_b"
 FAILED_STAGE_C = "failed_stage_c"
 
 
+def _total_latency_percentiles(values: list[float]) -> tuple[float, float]:
+    if not values:
+        return 0.0, 0.0
+
+    ordered = sorted(values)
+    midpoint = len(ordered) // 2
+    if len(ordered) % 2:
+        p50 = ordered[midpoint]
+    else:
+        p50 = (ordered[midpoint - 1] + ordered[midpoint]) / 2.0
+    p95 = ordered[max(0, int(0.95 * len(ordered)) - 1)]
+    return round(p50, 2), round(p95, 2)
+
+
 @dataclass(slots=True)
 class PipelineResult:
     """Terminal record for one item across all three stages."""
@@ -450,6 +464,7 @@ def summarize(results: list[PipelineResult]) -> dict[str, Any]:
 
     totals = [r.total_ms for r in results]
     success_lat = [r.total_ms for r in results if r.status == SUCCESS]
+    p50_total_ms, p95_total_ms = _total_latency_percentiles(totals)
 
     return {
         "total": total,
@@ -457,13 +472,8 @@ def summarize(results: list[PipelineResult]) -> dict[str, Any]:
         "failed_stage_a": failed_a,
         "failed_stage_b": failed_b,
         "failed_stage_c": failed_c,
-        "p50_total_ms": round(statistics.median(totals), 2) if totals else 0.0,
-        "p95_total_ms": round(
-            sorted(totals)[max(0, int(0.95 * len(totals)) - 1)],
-            2,
-        )
-        if totals
-        else 0.0,
+        "p50_total_ms": p50_total_ms,
+        "p95_total_ms": p95_total_ms,
         "mean_success_ms": round(statistics.mean(success_lat), 2) if success_lat else math.nan,
     }
 
