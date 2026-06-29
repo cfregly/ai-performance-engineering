@@ -84,6 +84,18 @@ class ProofWrightAgent:
         self.device = device
         self.proofs: List[VerificationProof] = []
         self._verification_cache: Dict[str, VerificationProof] = {}
+        self._report_summary: Dict[str, int] = {
+            "total_properties": 0,
+            "proven": 0,
+            "refuted": 0,
+            "unknown": 0,
+        }
+        self._report_proofs: List[Dict[str, Any]] = []
+        self._report_payload: Dict[str, Any] = {
+            "summary": self._report_summary,
+            "proofs": self._report_proofs,
+            "verification_complete": False,
+        }
     
     def _generate_spec_from_kernel(self, kernel_source: str) -> KernelSpec:
         """LLM agent generates formal spec from kernel source.
@@ -300,9 +312,26 @@ class ProofWrightAgent:
         refuted = 0
         unknown = 0
         verification_complete = True
-        proof_dicts = []
-        for proof in self.proofs:
-            proof_dicts.append(proof.to_dict())
+        proof_dicts = self._report_proofs
+        while len(proof_dicts) < len(self.proofs):
+            proof_dicts.append(
+                {
+                    "property": "",
+                    "status": "",
+                    "steps": 0,
+                    "has_counterexample": False,
+                    "time_ms": 0.0,
+                }
+            )
+        del proof_dicts[len(self.proofs):]
+
+        for index, proof in enumerate(self.proofs):
+            proof_payload = proof_dicts[index]
+            proof_payload["property"] = proof.property_name
+            proof_payload["status"] = proof.status.value
+            proof_payload["steps"] = len(proof.proof_steps)
+            proof_payload["has_counterexample"] = proof.counterexample is not None
+            proof_payload["time_ms"] = proof.verification_time_ms
             if proof.status == VerificationStatus.PROVEN:
                 proven += 1
             elif proof.status == VerificationStatus.REFUTED:
@@ -314,16 +343,14 @@ class ProofWrightAgent:
             else:
                 verification_complete = False
 
-        return {
-            "summary": {
-                "total_properties": len(self.proofs),
-                "proven": proven,
-                "refuted": refuted,
-                "unknown": unknown,
-            },
-            "proofs": proof_dicts,
-            "verification_complete": verification_complete,
-        }
+        summary = self._report_summary
+        summary["total_properties"] = len(self.proofs)
+        summary["proven"] = proven
+        summary["refuted"] = refuted
+        summary["unknown"] = unknown
+        report = self._report_payload
+        report["verification_complete"] = verification_complete
+        return report
 
 
 class OptimizedProofwrightBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -366,6 +393,11 @@ class OptimizedProofwrightBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(self.shape[0] * self.shape[1]),
         )
         self._verification_report: Dict[str, Any] = {}
+        self._specification_payload: Dict[str, int] = {
+            "preconditions": 0,
+            "postconditions": 0,
+            "invariants": 0,
+        }
     
     def setup(self) -> None:
         """Setup: Initialize verification agent and test functions."""
@@ -446,11 +478,11 @@ class OptimizedProofwrightBenchmark(VerificationPayloadMixin, BaseBenchmark):
             # Step 6: Generate report
             self._verification_report = self.agent.generate_verification_report()
             self._verification_report["discovered_edge_cases"] = len(edge_cases)
-            self._verification_report["specification"] = {
-                "preconditions": len(spec.preconditions),
-                "postconditions": len(spec.postconditions),
-                "invariants": len(spec.invariants),
-            }
+            specification = self._specification_payload
+            specification["preconditions"] = len(spec.preconditions)
+            specification["postconditions"] = len(spec.postconditions)
+            specification["invariants"] = len(spec.invariants)
+            self._verification_report["specification"] = specification
 
             if self._verify_input is None:
                 raise RuntimeError("setup() must initialize verification input")

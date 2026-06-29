@@ -6869,6 +6869,24 @@ def test_ch20_kernel_verifiers_defer_contiguous_payload_slice_outside_hot_loop()
         assert "scalar_tensor_to_float((kernel_out - ref_out).abs().max())" in source
 
 
+def test_ch20_kernel_verification_reuses_result_payloads() -> None:
+    source = (REPO_ROOT / "ch20" / "kernel_verification_tool.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert 'self._random_test_result: Dict[str, Any] = {"passed": False, "errors": []}' in source
+    assert 'self._edge_case_result: Dict[str, Any] = {"passed": False, "errors": []}' in source
+    assert 'self._boundary_test_result: Dict[str, Any] = {"passed": False, "errors": []}' in source
+    assert '"random_tests": self._random_test_result' in source
+    assert 'self._random_test_result["passed"] = random_pass' in benchmark_section
+    assert 'self._edge_case_result["errors"] = edge_errors' in benchmark_section
+    assert 'self._boundary_test_result["passed"] = boundary_pass' in benchmark_section
+    assert 'self._verification_results = {' not in benchmark_section
+    assert '"random_tests": {"passed": random_pass, "errors": random_errors}' not in benchmark_section
+
+
 def test_ch20_proofwright_report_accumulates_summary_once() -> None:
     source = (REPO_ROOT / "ch20" / "proofwright_verify_tool.py").read_text(encoding="utf-8")
     report_section = source.split("def generate_verification_report", maxsplit=1)[1].split(
@@ -6876,16 +6894,37 @@ def test_ch20_proofwright_report_accumulates_summary_once() -> None:
         maxsplit=1,
     )[0]
 
-    assert "for proof in self.proofs:" in report_section
-    assert "proof_dicts.append(proof.to_dict())" in report_section
+    assert "for index, proof in enumerate(self.proofs):" in report_section
+    assert "proof_dicts = self._report_proofs" in report_section
+    assert "while len(proof_dicts) < len(self.proofs):" in report_section
+    assert "proof_payload = proof_dicts[index]" in report_section
+    assert 'proof_payload["property"] = proof.property_name' in report_section
+    assert 'proof_payload["status"] = proof.status.value' in report_section
     assert "proven += 1" in report_section
     assert "refuted += 1" in report_section
     assert "unknown += 1" in report_section
-    assert '"proofs": proof_dicts' in report_section
-    assert '"verification_complete": verification_complete' in report_section
+    assert "summary = self._report_summary" in report_section
+    assert 'report["verification_complete"] = verification_complete' in report_section
+    assert "return report" in report_section
+    assert "proof_dicts.append(proof.to_dict())" not in report_section
+    assert "return {" not in report_section
     assert "sum(1 for p in self.proofs" not in report_section
     assert "[p.to_dict() for p in self.proofs]" not in report_section
     assert "all(" not in report_section
+
+
+def test_ch20_proofwright_benchmark_reuses_specification_payload() -> None:
+    source = (REPO_ROOT / "ch20" / "proofwright_verify_tool.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._specification_payload: Dict[str, int] = {" in source
+    assert "specification = self._specification_payload" in benchmark_section
+    assert 'specification["preconditions"] = len(spec.preconditions)' in benchmark_section
+    assert 'self._verification_report["specification"] = specification' in benchmark_section
+    assert 'self._verification_report["specification"] = {' not in benchmark_section
 
 
 def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:

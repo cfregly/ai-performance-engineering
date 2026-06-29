@@ -211,7 +211,14 @@ class BaselineKernelVerificationBenchmark(VerificationPayloadMixin, BaseBenchmar
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.shape[0] * self.shape[1]),
         )
-        self._verification_results: Dict[str, Any] = {}
+        self._random_test_result: Dict[str, Any] = {"passed": False, "errors": []}
+        self._edge_case_result: Dict[str, Any] = {"passed": False, "errors": []}
+        self._boundary_test_result: Dict[str, Any] = {"passed": False, "errors": []}
+        self._verification_results: Dict[str, Any] = {
+            "random_tests": self._random_test_result,
+            "edge_cases": self._edge_case_result,
+            "boundary_tests": self._boundary_test_result,
+        }
     
     def setup(self) -> None:
         """Setup: Initialize verifier and test functions."""
@@ -270,11 +277,12 @@ class BaselineKernelVerificationBenchmark(VerificationPayloadMixin, BaseBenchmar
                 base_shape=self.shape,
             )
             
-            self._verification_results = {
-                "random_tests": {"passed": random_pass, "errors": random_errors},
-                "edge_cases": {"passed": edge_pass, "errors": edge_errors},
-                "boundary_tests": {"passed": boundary_pass, "errors": boundary_errors},
-            }
+            self._random_test_result["passed"] = random_pass
+            self._random_test_result["errors"] = random_errors
+            self._edge_case_result["passed"] = edge_pass
+            self._edge_case_result["errors"] = edge_errors
+            self._boundary_test_result["passed"] = boundary_pass
+            self._boundary_test_result["errors"] = boundary_errors
 
             if self._verify_input is None:
                 raise RuntimeError("setup() must initialize verification input")
