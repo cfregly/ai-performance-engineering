@@ -4346,6 +4346,17 @@ def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:
     assert "sorted_times = sorted(times_ms)" in timing_section
     assert "torch.tensor(times_ms" not in timing_section
     assert "std_ms=statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0" in timing_section
+    assert "import statistics" not in microbench_source
+    assert "def _timing_stats_from_samples" in microbench_source
+    assert "return _timing_stats_from_samples(times_ms)" in microbench_timing_section
+    assert "sorted_times = sorted(times_ms)" in microbench_source
+    assert "mean_ms = total / count" in microbench_source
+    assert "variance = (total_sq - (total * total / count)) / (count - 1)" in microbench_source
+    assert "statistics.mean(times_ms)" not in microbench_timing_section
+    assert "statistics.median(times_ms)" not in microbench_timing_section
+    assert "statistics.stdev(times_ms)" not in microbench_timing_section
+    assert "min(times_ms)" not in microbench_timing_section
+    assert "max(times_ms)" not in microbench_timing_section
     assert microbench_timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
     assert timing_section.count("current_stream = torch.cuda.current_stream()") == 1
     assert timing_section.count("start.record(current_stream)") == 1

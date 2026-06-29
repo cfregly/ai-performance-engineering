@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import statistics
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -77,6 +76,44 @@ class MicrobenchResult:
     speedup_vs_triton_flex: Optional[float]
     speedup_vs_cudnn_sdpa: Optional[float]
     verification_max_diff: Optional[float]
+
+
+def _timing_stats_from_samples(times_ms: list[float]) -> TimingStats:
+    if not times_ms:
+        raise ValueError("times_ms must contain at least one sample")
+
+    count = len(times_ms)
+    total = 0.0
+    total_sq = 0.0
+    min_ms = float("inf")
+    max_ms = float("-inf")
+    for value in times_ms:
+        total += value
+        total_sq += value * value
+        min_ms = min(min_ms, value)
+        max_ms = max(max_ms, value)
+
+    sorted_times = sorted(times_ms)
+    midpoint = count // 2
+    if count % 2:
+        median_ms = sorted_times[midpoint]
+    else:
+        median_ms = (sorted_times[midpoint - 1] + sorted_times[midpoint]) / 2.0
+
+    mean_ms = total / count
+    if count > 1:
+        variance = (total_sq - (total * total / count)) / (count - 1)
+        std_ms = variance**0.5 if variance > 0.0 else 0.0
+    else:
+        std_ms = 0.0
+
+    return TimingStats(
+        mean_ms=mean_ms,
+        median_ms=median_ms,
+        min_ms=min_ms,
+        max_ms=max_ms,
+        std_ms=std_ms,
+    )
 
 
 BACKENDS = {
@@ -252,13 +289,7 @@ def _benchmark_cuda_callable(fn: Callable[[], torch.Tensor], *, warmup: int, ite
         end.synchronize()
         times_ms.append(float(start.elapsed_time(end)))
 
-    return TimingStats(
-        mean_ms=statistics.mean(times_ms),
-        median_ms=statistics.median(times_ms),
-        min_ms=min(times_ms),
-        max_ms=max(times_ms),
-        std_ms=statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0,
-    )
+    return _timing_stats_from_samples(times_ms)
 
 
 def _build_benchmark_callable(args: argparse.Namespace, mode: str, backend: BenchBackend) -> Callable[[], torch.Tensor]:
