@@ -302,7 +302,16 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for _ in self.request_plans
         ]
         self._request_event_triplets = []
-        self._pending_metrics = {}
+        self._pending_metrics = {
+            "cache_hits": 0.0,
+            "cache_misses": 0.0,
+            "shared_reloads": 0.0,
+            "peer_reloads": 0.0,
+            "worker_switches": 0.0,
+            "kv_transfer_bytes": 0.0,
+            "warm_requests": float(self._warm_request_count),
+            "warm_requests_served_local": 0.0,
+        }
         torch.cuda.synchronize(self.device)
 
     def _empty_kv(self) -> torch.Tensor:
@@ -389,16 +398,15 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if len(prompt_chunks) != len(self.request_plans):
             raise RuntimeError("Prompt chunk views not initialized")
         output_idx = 0
-        metrics = {
-            "cache_hits": 0.0,
-            "cache_misses": 0.0,
-            "shared_reloads": 0.0,
-            "peer_reloads": 0.0,
-            "worker_switches": 0.0,
-            "kv_transfer_bytes": 0.0,
-            "warm_requests": float(self._warm_request_count),
-            "warm_requests_served_local": 0.0,
-        }
+        metrics = self._pending_metrics
+        metrics["cache_hits"] = 0.0
+        metrics["cache_misses"] = 0.0
+        metrics["shared_reloads"] = 0.0
+        metrics["peer_reloads"] = 0.0
+        metrics["worker_switches"] = 0.0
+        metrics["kv_transfer_bytes"] = 0.0
+        metrics["warm_requests"] = float(self._warm_request_count)
+        metrics["warm_requests_served_local"] = 0.0
         request_events = self._request_event_pool
         if len(request_events) != len(self.request_plans):
             raise RuntimeError("Request timing events not initialized")

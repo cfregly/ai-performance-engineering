@@ -8560,6 +8560,11 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "self._owners = {}" in setup_section
     assert "worker_caches = self._worker_caches" in benchmark_section
     assert "owners = self._owners" in benchmark_section
+    assert '"cache_hits": 0.0' in setup_section
+    assert "metrics = self._pending_metrics" in benchmark_section
+    assert 'metrics["cache_hits"] = 0.0' in benchmark_section
+    assert 'metrics["warm_requests"] = float(self._warm_request_count)' in benchmark_section
+    assert "metrics = {" not in benchmark_section
     assert "worker_caches = [{} for _ in range(self.cfg.logical_decode_workers)]" not in benchmark_section
     assert "owners: Dict[int, int] = {}" not in benchmark_section
     assert "for cache in worker_caches:" in benchmark_section
