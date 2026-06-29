@@ -32,6 +32,7 @@ class BaselineNvfp4GemvBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._kernel_fn: Optional[Callable[[Any], torch.Tensor]] = None
         self._generate_input: Optional[Callable[..., Any]] = None
         self.output: Optional[torch.Tensor] = None
+        self._shape_signature: Optional[torch.Tensor] = None
         tokens = float(self.m * self.l)
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -74,6 +75,11 @@ class BaselineNvfp4GemvBenchmark(VerificationPayloadMixin, BaseBenchmark):
             seed=self.seed,
         )
         self.output = None
+        self._shape_signature = torch.empty(4, dtype=torch.int64)
+        self._shape_signature[0] = self.m
+        self._shape_signature[1] = self.k
+        self._shape_signature[2] = self.l
+        self._shape_signature[3] = self.seed
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -87,14 +93,11 @@ class BaselineNvfp4GemvBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.output is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if self._shape_signature is None:
+            raise RuntimeError("setup() must initialize shape signature")
         verify_output = self.output[:64, :1, :1].float().detach().clone()
         self._set_verification_payload(
-            inputs={
-                "shape_signature": torch.tensor(
-                    [self.m, self.k, self.l, self.seed],
-                    dtype=torch.int64,
-                )
-            },
+            inputs={"shape_signature": self._shape_signature},
             output=verify_output,
             batch_size=1,
             parameter_count=0,
@@ -112,6 +115,7 @@ class BaselineNvfp4GemvBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._kernel_fn = None
         self._generate_input = None
         self.output = None
+        self._shape_signature = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
