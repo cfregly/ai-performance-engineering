@@ -8486,7 +8486,7 @@ def test_ch16_blackwell_inference_demo_uses_cuda_event_timing() -> None:
     assert "time.time()" not in demo_section
 
 
-def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
+def test_ch16_moe_feedforward_uses_sorted_dispatch_workspaces() -> None:
     source = (REPO_ROOT / "ch16" / "moe_performance_benchmark.py").read_text(
         encoding="utf-8"
     )
@@ -8495,20 +8495,13 @@ def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
         maxsplit=1,
     )[0]
 
-    assert "self._output_buffer: Optional[torch.Tensor] = None" in forward_section
-    assert "def _output_for(self, flat: torch.Tensor) -> torch.Tensor:" in forward_section
-    assert "if torch.is_grad_enabled() and flat.requires_grad:" in forward_section
-    assert "self._output_buffer = torch.empty_like(flat)" in forward_section
-    assert "output = self._output_for(flat)" in forward_section
-    assert "output = torch.empty_like(flat)" not in forward_section
-    assert "torch.zeros_like(flat)" not in forward_section
-    assert "token_ids = (expert_ids == expert_id).nonzero(as_tuple=True)[0]" in forward_section
-    assert "if token_ids.numel() == 0:" in forward_section
-    assert "expert_out.mul_(weights[token_ids])" in forward_section
-    assert "if k == 0:" in forward_section
-    assert "output[token_ids] = expert_out" in forward_section
-    assert "output[token_ids] += expert_out" in forward_section
-    assert "weighted_out = expert_out * weights[token_ids]" not in forward_section
+    assert "from core.optimization.moe_inference import MoEFeedForwardSortedDispatch" in source
+    assert "class MoEFeedForward(MoEFeedForwardSortedDispatch):" in source
+    assert "hidden=config.d_model" in forward_section
+    assert "ffn=config.d_ff" in forward_section
+    assert "num_experts=config.num_experts" in forward_section
+    assert "top_k=config.top_k" in forward_section
+    assert ".nonzero(" not in forward_section
     assert "mask.any()" not in forward_section
 
     from ch16.moe_performance_benchmark import MoEConfig, MoEFeedForward
@@ -8518,12 +8511,16 @@ def test_ch16_moe_feedforward_seeds_output_from_first_route() -> None:
     x = torch.randn(2, 3, 8)
     with torch.inference_mode():
         out = layer(x)
-        ptr = layer._output_buffer.data_ptr()
+        token_ptr = layer._sorted_token_ids_workspace.data_ptr()
+        weight_ptr = layer._sorted_weights_workspace.data_ptr()
+        flat_ptr = layer._sorted_flat_workspace.data_ptr()
         out_again = layer(x)
 
     assert out.shape == x.shape
     assert out_again.shape == x.shape
-    assert layer._output_buffer.data_ptr() == ptr
+    assert layer._sorted_token_ids_workspace.data_ptr() == token_ptr
+    assert layer._sorted_weights_workspace.data_ptr() == weight_ptr
+    assert layer._sorted_flat_workspace.data_ptr() == flat_ptr
 
 
 def test_ch16_moe_performance_benchmark_uses_cuda_event_timing() -> None:

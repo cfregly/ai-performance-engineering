@@ -17,11 +17,12 @@ import json
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
+from core.optimization.moe_inference import MoEFeedForwardSortedDispatch
 
 
 @dataclass
@@ -51,53 +52,14 @@ class ExpertMLP(nn.Module):
         return self.net(x)
 
 
-class MoEFeedForward(nn.Module):
+class MoEFeedForward(MoEFeedForwardSortedDispatch):
     def __init__(self, config: MoEConfig) -> None:
-        super().__init__()
-        self.num_experts = config.num_experts
-        self.top_k = config.top_k
-        self.d_model = config.d_model
-        self.gate = nn.Linear(config.d_model, config.num_experts)
-        self.experts = nn.ModuleList([ExpertMLP(config.d_model, config.d_ff) for _ in range(config.num_experts)])
-        self._output_buffer: Optional[torch.Tensor] = None
-
-    def _output_for(self, flat: torch.Tensor) -> torch.Tensor:
-        if torch.is_grad_enabled() and flat.requires_grad:
-            return torch.empty_like(flat)
-        if (
-            self._output_buffer is None
-            or self._output_buffer.device != flat.device
-            or self._output_buffer.dtype != flat.dtype
-            or tuple(self._output_buffer.shape) != tuple(flat.shape)
-        ):
-            self._output_buffer = torch.empty_like(flat)
-        return self._output_buffer
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: [batch, seq, hidden]
-        batch, seq, hidden = x.shape
-        flat = x.view(batch * seq, hidden)
-        logits = self.gate(flat)
-        scores = F.softmax(logits, dim=-1)
-        top_scores, top_indices = torch.topk(scores, k=self.top_k, dim=-1)
-
-        output = self._output_for(flat)
-        for k in range(self.top_k):
-            expert_ids = top_indices[:, k]
-            weights = top_scores[:, k].unsqueeze(-1)
-            for expert_id, expert in enumerate(self.experts):
-                token_ids = (expert_ids == expert_id).nonzero(as_tuple=True)[0]
-                if token_ids.numel() == 0:
-                    continue
-                expert_input = flat[token_ids]
-                expert_out = expert(expert_input)
-                expert_out.mul_(weights[token_ids])
-                if k == 0:
-                    output[token_ids] = expert_out
-                else:
-                    output[token_ids] += expert_out
-
-        return output.view(batch, seq, hidden)
+        super().__init__(
+            hidden=config.d_model,
+            ffn=config.d_ff,
+            num_experts=config.num_experts,
+            top_k=config.top_k,
+        )
 
 
 class DenseFeedForward(nn.Module):
