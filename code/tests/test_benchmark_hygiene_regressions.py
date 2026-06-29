@@ -8672,6 +8672,16 @@ def test_nanochat_core_eval_reuses_prompt_templates() -> None:
     assert "_PROMPT_TEMPLATE_LM.render(include_continuation=True, **context)" in source
     assert all("Template(" not in section for section in render_sections)
 
+    common_length_section = source.split("def find_common_length", maxsplit=1)[1].split(
+        "def stack_sequences",
+        maxsplit=1,
+    )[0]
+    assert "reference = token_sequences[0]" in common_length_section
+    assert "comparison_sequences = token_sequences[1:]" in common_length_section
+    assert "token = reference[idx]" in common_length_section
+    assert "all(seq[idx] == token for seq in comparison_sequences)" in common_length_section
+    assert "all(seq[idx] == token for seq in token_sequences)" not in common_length_section
+
 
 def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     source = (
@@ -10195,6 +10205,10 @@ def test_nanochat_chat_eval_batches_count_reductions() -> None:
     source = (
         REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_eval.py"
     ).read_text(encoding="utf-8")
+    generative_section = source.split("def run_generative_eval", maxsplit=1)[1].split(
+        "# -----------------------------------------------------------------------------\n# Categorical evaluation loop",
+        maxsplit=1,
+    )[0]
 
     assert "def _reduce_counts(num_passed, total, device):" in source
     assert "counts = torch.tensor([num_passed, total], dtype=torch.long, device=device)" in source
@@ -10209,6 +10223,14 @@ def test_nanochat_chat_eval_batches_count_reductions() -> None:
     assert "total_tensor = torch.tensor" not in source
     assert "num_passed_tensor.item()" not in source
     assert "total_tensor.item()" not in source
+    assert "passed = False" in generative_section
+    assert "for result_tokens in results:" in generative_section
+    assert "completion = tokenizer.decode(result_tokens[prefix_length:])" in generative_section
+    assert "if task_object.evaluate(conversation, completion):" in generative_section
+    assert "break" in generative_section
+    assert "completions = [" not in generative_section
+    assert "outcomes = [" not in generative_section
+    assert "passed = any(outcomes)" not in generative_section
 
 
 def test_nanochat_chat_eval_batches_categorical_predictions() -> None:
@@ -10226,6 +10248,17 @@ def test_nanochat_chat_eval_batches_categorical_predictions() -> None:
     assert "answer_positions_host = torch.empty(batch_size, dtype=torch.long, pin_memory=use_pinned_transfer)" in categorical_section
     assert "def get_letter_ids(letters):" in categorical_section
     assert "def get_letter_id_tensor(letters_key, letter_ids):" in categorical_section
+    assert "conversations = []" in categorical_section
+    assert "prompt_id_rows = []" in categorical_section
+    assert "answer_time_positions = []" in categorical_section
+    assert "max_length = 0" in categorical_section
+    assert "for ii in range(i0, i1):" in categorical_section
+    assert "max_length = max(max_length, len(ids))" in categorical_section
+    assert "padded_prompt_ids = [ids + [bos] * (max_length - len(ids)) for ids in prompt_id_rows]" in categorical_section
+    assert "conversations = [task_object[ii] for ii in range(i0, i1)]" not in categorical_section
+    assert "prompt_ids = [tokenizer.render_for_completion(conversation) for conversation in conversations]" not in categorical_section
+    assert "max_length = max(len(ids) for ids in prompt_ids)" not in categorical_section
+    assert "answer_time_positions = [len(ids) - 1 for ids in prompt_ids]" not in categorical_section
     assert "active_answer_positions.copy_(" in categorical_section
     assert "same_letter_choices = all(tuple(conversation['letters']) == letters_key for conversation in conversations)" in categorical_section
     assert "focus_logits = logits[" in categorical_section

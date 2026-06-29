@@ -59,12 +59,14 @@ def run_generative_eval(task_object, tokenizer, model, engine, num_samples, max_
             temperature=temperature,
             top_k=top_k,
         )
-        # Decode the completions as text
+        # Decode/evaluate completions until one passes.
         prefix_length = len(encoded_prompt)
-        completions = [tokenizer.decode(result_tokens[prefix_length:]) for result_tokens in results]
-        # Evaluate success criteria
-        outcomes = [task_object.evaluate(conversation, completion) for completion in completions]
-        passed = any(outcomes)
+        passed = False
+        for result_tokens in results:
+            completion = tokenizer.decode(result_tokens[prefix_length:])
+            if task_object.evaluate(conversation, completion):
+                passed = True
+                break
 
         # Keep stats
         total += 1
@@ -133,11 +135,18 @@ def run_categorical_eval(task_object, tokenizer, model, batch_size, max_problems
         i0, i1 = i * batch_size, min((i + 1) * batch_size, num_problems)
 
         # Prepare the batch of problems. They might all be of different length, so we pad/collate them.
-        conversations = [task_object[ii] for ii in range(i0, i1)]
-        prompt_ids = [tokenizer.render_for_completion(conversation) for conversation in conversations] # TODO: remake the way this works
-        max_length = max(len(ids) for ids in prompt_ids)
-        answer_time_positions = [len(ids) - 1 for ids in prompt_ids] # where the last token is (and the predicted answer)
-        padded_prompt_ids = [ids + [bos] * (max_length - len(ids)) for ids in prompt_ids]
+        conversations = []
+        prompt_id_rows = []
+        answer_time_positions = [] # where the last token is (and the predicted answer)
+        max_length = 0
+        for ii in range(i0, i1):
+            conversation = task_object[ii]
+            ids = tokenizer.render_for_completion(conversation) # TODO: remake the way this works
+            conversations.append(conversation)
+            prompt_id_rows.append(ids)
+            answer_time_positions.append(len(ids) - 1)
+            max_length = max(max_length, len(ids))
+        padded_prompt_ids = [ids + [bos] * (max_length - len(ids)) for ids in prompt_id_rows]
         prompt_ids = torch.tensor(padded_prompt_ids, dtype=torch.long, device=device)
         active_batch_size = len(conversations)
         for idx, answer_pos in enumerate(answer_time_positions):

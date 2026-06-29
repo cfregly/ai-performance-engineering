@@ -94,10 +94,12 @@ def find_common_length(token_sequences, direction='left'):
         'left': range(min_len),
         'right': range(-1, -min_len-1, -1)
     }[direction]
+    reference = token_sequences[0]
+    comparison_sequences = token_sequences[1:]
     # Find the first position where the token sequences differ
     for i, idx in enumerate(indices):
-        token = token_sequences[0][idx]
-        if not all(seq[idx] == token for seq in token_sequences):
+        token = reference[idx]
+        if not all(seq[idx] == token for seq in comparison_sequences):
             return i
     return min_len
 
