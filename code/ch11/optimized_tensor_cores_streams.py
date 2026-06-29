@@ -34,6 +34,19 @@ class OptimizedTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchma
         self.device_A_slots: List[torch.Tensor] | None = None
         self.device_B_slots: List[torch.Tensor] | None = None
         self.device_C_slots: List[torch.Tensor] | None = None
+        self.device_C_rows: List[torch.Tensor] | None = None
+        self.segment_work: List[
+            tuple[
+                torch.cuda.Stream,
+                torch.Tensor,
+                torch.Tensor,
+                torch.Tensor,
+                torch.Tensor,
+                torch.Tensor,
+                torch.Tensor,
+                torch.Tensor,
+            ]
+        ] | None = None
         element_size = float(torch.finfo(self.dtype).bits // 8)
         bytes_transferred = float(self.num_elements * element_size * 3)
         self.register_workload_metadata(bytes_per_iteration=bytes_transferred)
@@ -75,6 +88,25 @@ class OptimizedTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchma
         ]
         self.device_B_slots = [torch.empty_like(slot) for slot in self.device_A_slots]
         self.device_C_slots = [torch.empty_like(slot) for slot in self.device_A_slots]
+        self.device_C_rows = [slot[0] for slot in self.device_C_slots]
+        segment_work = []
+        for idx, (host_a, host_b, host_out) in enumerate(
+            zip(self.host_A.unbind(0), self.host_B.unbind(0), self.host_output.unbind(0), strict=True)
+        ):
+            slot = idx % self.num_streams
+            segment_work.append(
+                (
+                    self.streams[slot],
+                    host_a,
+                    host_b,
+                    host_out,
+                    self.device_A_slots[slot],
+                    self.device_B_slots[slot],
+                    self.device_C_slots[slot],
+                    self.device_C_rows[slot],
+                )
+            )
+        self.segment_work = segment_work
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
@@ -86,19 +118,25 @@ class OptimizedTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchma
             assert self.device_A_slots is not None
             assert self.device_B_slots is not None
             assert self.device_C_slots is not None
+            assert self.device_C_rows is not None
+            assert self.segment_work is not None
 
             with torch.inference_mode():
-                for idx in range(self.num_segments):
-                    slot = idx % self.num_streams
-                    stream = self.streams[slot]
-                    device_a = self.device_A_slots[slot]
-                    device_b = self.device_B_slots[slot]
-                    device_c = self.device_C_slots[slot]
+                for (
+                    stream,
+                    host_a,
+                    host_b,
+                    host_out,
+                    device_a,
+                    device_b,
+                    device_c,
+                    device_c_row,
+                ) in self.segment_work:
                     with torch.cuda.stream(stream):
-                        device_a.copy_(self.host_A[idx], non_blocking=True)
-                        device_b.copy_(self.host_B[idx], non_blocking=True)
+                        device_a.copy_(host_a, non_blocking=True)
+                        device_b.copy_(host_b, non_blocking=True)
                         torch.matmul(device_a, device_b, out=device_c)
-                        self.host_output[idx].copy_(device_c[0], non_blocking=True)
+                        host_out.copy_(device_c_row, non_blocking=True)
 
                 current = torch.cuda.current_stream(self.device)
                 for stream in self.streams:
@@ -132,6 +170,8 @@ class OptimizedTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchma
         self.device_A_slots = None
         self.device_B_slots = None
         self.device_C_slots = None
+        self.device_C_rows = None
+        self.segment_work = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

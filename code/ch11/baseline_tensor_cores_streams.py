@@ -32,6 +32,8 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.device_A_slot: torch.Tensor | None = None
         self.device_B_slot: torch.Tensor | None = None
         self.device_C_slot: torch.Tensor | None = None
+        self.device_C_row: torch.Tensor | None = None
+        self.segment_work: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] | None = None
         element_size = float(torch.finfo(self.dtype).bits // 8)
         bytes_transferred = float(self.num_elements * element_size * 3)
         self.register_workload_metadata(bytes_per_iteration=bytes_transferred)
@@ -71,6 +73,15 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
         )
         self.device_B_slot = torch.empty_like(self.device_A_slot)
         self.device_C_slot = torch.empty_like(self.device_A_slot)
+        self.device_C_row = self.device_C_slot[0]
+        self.segment_work = list(
+            zip(
+                self.host_A.unbind(0),
+                self.host_B.unbind(0),
+                self.host_output.unbind(0),
+                strict=True,
+            )
+        )
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
@@ -82,14 +93,16 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
             assert self.device_A_slot is not None
             assert self.device_B_slot is not None
             assert self.device_C_slot is not None
+            assert self.device_C_row is not None
+            assert self.segment_work is not None
 
             with torch.inference_mode():
-                for idx in range(self.num_segments):
+                for host_a, host_b, host_out in self.segment_work:
                     with torch.cuda.stream(self.stream):
-                        self.device_A_slot.copy_(self.host_A[idx], non_blocking=True)
-                        self.device_B_slot.copy_(self.host_B[idx], non_blocking=True)
+                        self.device_A_slot.copy_(host_a, non_blocking=True)
+                        self.device_B_slot.copy_(host_b, non_blocking=True)
                         torch.matmul(self.device_A_slot, self.device_B_slot, out=self.device_C_slot)
-                        self.host_output[idx].copy_(self.device_C_slot[0], non_blocking=True)
+                        host_out.copy_(self.device_C_row, non_blocking=True)
                 current = torch.cuda.current_stream(self.device)
                 current.wait_stream(self.stream)
 
@@ -121,6 +134,8 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.device_A_slot = None
         self.device_B_slot = None
         self.device_C_slot = None
+        self.device_C_row = None
+        self.segment_work = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

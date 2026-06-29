@@ -11937,6 +11937,51 @@ def test_ch11_stream_overlap_base_reuses_chunk_groups() -> None:
     assert "zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks)" not in optimized_benchmark
 
 
+def test_ch11_tensor_core_streams_precompute_segment_work() -> None:
+    baseline_source = (
+        REPO_ROOT / "ch11" / "baseline_tensor_cores_streams.py"
+    ).read_text(encoding="utf-8")
+    optimized_source = (
+        REPO_ROOT / "ch11" / "optimized_tensor_cores_streams.py"
+    ).read_text(encoding="utf-8")
+
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self.device_C_row = self.device_C_slot[0]" in baseline_setup
+    assert "self.segment_work = list(" in baseline_setup
+    assert "self.host_A.unbind(0)" in baseline_setup
+    assert "for host_a, host_b, host_out in self.segment_work:" in baseline_benchmark
+    assert "self.host_A[idx]" not in baseline_benchmark
+    assert "self.host_output[idx]" not in baseline_benchmark
+    assert "self.device_C_slot[0]" not in baseline_benchmark
+
+    assert "self.device_C_rows = [slot[0] for slot in self.device_C_slots]" in optimized_setup
+    assert "self.segment_work = segment_work" in optimized_setup
+    assert "self.host_A.unbind(0)" in optimized_setup
+    assert "in self.segment_work:" in optimized_benchmark
+    for name in ("stream", "host_a", "host_b", "host_out", "device_a", "device_b", "device_c", "device_c_row"):
+        assert name in optimized_benchmark
+    assert "idx % self.num_streams" not in optimized_benchmark
+    assert "self.host_A[idx]" not in optimized_benchmark
+    assert "self.host_output[idx]" not in optimized_benchmark
+    assert "device_c[0]" not in optimized_benchmark
+
+
 def test_ch12_core_benchmarks_use_cached_nvtx_range() -> None:
     expected_labels = {
         "baseline_kernel_launches.py": "kernel_launches",
