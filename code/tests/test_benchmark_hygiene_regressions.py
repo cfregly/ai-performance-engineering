@@ -1057,7 +1057,7 @@ def test_ch04_torchtitan_async_tp_zero_target_uses_square_mean_loss() -> None:
     assert "loss.item()" not in main_section
     assert "loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)" in main_section
     assert "loss_value_buffer[0].copy_(loss.detach())" in main_section
-    assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in main_section
+    assert "loss_value = float(loss_value_buffer.detach().cpu()[0])" in main_section
     assert "loss={loss_value:.5f}" in main_section
 
 
@@ -1418,7 +1418,7 @@ def test_ch04_nvshmem_and_symmem_demos_buffer_loss_logging() -> None:
         assert "loss.item()" not in section
         assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in section
         assert "loss_value_buffer[0].copy_(loss.detach())" in section
-        assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in section
+        assert "loss_value = float(loss_value_buffer.detach().cpu()[0])" in section
 
 
 def test_ch04_training_pipeline_defers_step_loss_sync_until_logging() -> None:
@@ -1439,7 +1439,7 @@ def test_ch04_training_pipeline_defers_step_loss_sync_until_logging() -> None:
     assert "loss_value = float(loss)" not in train_loop_section
     assert "loss_value_buffer = torch.empty(" in train_loop_section
     assert "loss_value_buffer[0].copy_(loss)" in train_loop_section
-    assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in train_loop_section
+    assert "loss_value = float(loss_value_buffer.detach().cpu()[0])" in train_loop_section
 
 
 def test_ch19_native_fp8_training_defers_loss_readback_until_after_timing() -> None:
@@ -1470,7 +1470,7 @@ def test_ch19_native_fp8_training_defers_loss_readback_until_after_timing() -> N
     assert ".tolist()" not in timed_section
     assert "loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)" in benchmark_section
     assert "loss_value_buffer[0].copy_(loss_tensor)" in readback_section
-    assert "loss_val = loss_value_buffer.detach().cpu().tolist()[0]" in readback_section
+    assert "loss_val = float(loss_value_buffer.detach().cpu()[0])" in readback_section
 
 
 def test_ch04_nvshmem_training_example_defers_reduced_norm_sync() -> None:
@@ -8309,7 +8309,7 @@ def test_train_distributed_optimized_fsdp_defers_loss_sync_until_logging() -> No
         assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in source
         assert "loss_value_buffer[0].copy_(loss.detach())" in logging_section
         assert (
-            "loss_value = loss_value_buffer.detach().cpu().tolist()[0] * args.grad_accum"
+            "loss_value = float(loss_value_buffer.detach().cpu()[0]) * args.grad_accum"
             in logging_section
         )
 
@@ -8347,7 +8347,7 @@ def test_train_distributed_baseline_fsdp_defers_loss_sync_until_logging() -> Non
         assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in source
         assert "loss_value_buffer[0].copy_(loss.detach())" in logging_section
         assert (
-            "loss_value = loss_value_buffer.detach().cpu().tolist()[0] * args.grad_accum"
+            "loss_value = float(loss_value_buffer.detach().cpu()[0]) * args.grad_accum"
             in logging_section
         )
 
@@ -8373,7 +8373,7 @@ def test_train_distributed_optimized_wrappers_log_detached_loss_values() -> None
         assert "float(loss.detach())" not in source
         assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in source
         assert "loss_value_buffer[0].copy_(loss.detach())" in source
-        assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in source
+        assert "loss_value = float(loss_value_buffer.detach().cpu()[0])" in source
         assert "loss={loss_value:.4f}" in source
 
 
@@ -8393,7 +8393,7 @@ def test_train_distributed_baseline_wrappers_log_detached_loss_values() -> None:
         assert "float(loss.detach())" not in source
         assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in source
         assert "loss_value_buffer[0].copy_(loss.detach())" in source
-        assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in source
+        assert "loss_value = float(loss_value_buffer.detach().cpu()[0])" in source
         assert "loss={loss_value:.4f}" in source
 
 
@@ -10025,13 +10025,13 @@ def test_ch04_multi_node_training_defers_repeated_loss_syncs() -> None:
     assert "epoch_loss_sum.zero_()" in train_section
     assert "loss_value_buffer[0].copy_(loss.detach())" in train_section
     assert (
-        "loss_value = loss_value_buffer.detach().cpu().tolist()[0] * gradient_accumulation_steps"
+        "loss_value = float(loss_value_buffer.detach().cpu()[0]) * gradient_accumulation_steps"
         in train_section
     )
     assert "epoch_loss_sum.add_(loss.detach())" in train_section
     assert "loss_value_buffer[0].copy_(epoch_loss_sum)" in train_section
     assert "stats['losses'].append(loss_value)" in train_section
-    assert "epoch_loss = loss_value_buffer.detach().cpu().tolist()[0]" in train_section
+    assert "epoch_loss = float(loss_value_buffer.detach().cpu()[0])" in train_section
 
 
 def test_ch13_expert_parallel_batches_recv_split_materialization() -> None:

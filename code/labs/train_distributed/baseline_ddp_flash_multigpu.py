@@ -102,7 +102,7 @@ def main():
 
         if is_main and step % 10 == 0:
             loss_value_buffer[0].copy_(loss.detach())
-            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+            loss_value = float(loss_value_buffer.detach().cpu()[0])
             print(f"[baseline-ddp-flash] step {step}/{num_steps} | loss={loss_value:.4f}")
 
     if device.type == "cuda":

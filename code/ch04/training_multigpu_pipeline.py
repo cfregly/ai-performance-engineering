@@ -408,7 +408,7 @@ def train(
 
         if rank == 0 and step % 10 == 0:
             loss_value_buffer[0].copy_(loss)
-            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+            loss_value = float(loss_value_buffer.detach().cpu()[0])
             tokens_per_sec = (batch_size * seq_len * world_size) / step_time
             print(f"Step {step:4d} | Loss: {loss_value:.4f} | "
                   f"Tokens/sec: {tokens_per_sec/1e6:.2f}M | "

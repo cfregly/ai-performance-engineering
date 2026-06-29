@@ -528,7 +528,7 @@ def train_multi_node(
             # Log statistics
             if rank == 0 and step % 10 == 0:
                 loss_value_buffer[0].copy_(loss.detach())
-                loss_value = loss_value_buffer.detach().cpu().tolist()[0] * gradient_accumulation_steps
+                loss_value = float(loss_value_buffer.detach().cpu()[0]) * gradient_accumulation_steps
                 tokens_per_step = input_ids.numel() * world_size
                 throughput = tokens_per_step / step_time
                 stats['losses'].append(loss_value)
@@ -544,7 +544,7 @@ def train_multi_node(
             epoch_time = time.time() - epoch_start
         if rank == 0:
             loss_value_buffer[0].copy_(epoch_loss_sum)
-            epoch_loss = loss_value_buffer.detach().cpu().tolist()[0]
+            epoch_loss = float(loss_value_buffer.detach().cpu()[0])
             avg_loss = epoch_loss / len(train_data)
             print(f"\nEpoch {epoch} complete:")
             print(f" Average loss: {avg_loss:.4f}")

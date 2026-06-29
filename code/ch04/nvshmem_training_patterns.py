@@ -678,7 +678,7 @@ def demo_pipeline_parallel(benchmark: bool = False) -> None:
             loss = output.sum()
             if mb_idx == 0 and not benchmark:
                 loss_value_buffer[0].copy_(loss.detach())
-                loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+                loss_value = float(loss_value_buffer.detach().cpu()[0])
                 print(f"[pipeline] Microbatch {mb_idx} loss: {loss_value:.4f}")
     
     if rank == 0:

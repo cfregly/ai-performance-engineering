@@ -138,7 +138,7 @@ def main():
 
         if step % 10 == 0 and is_main:
             loss_value_buffer[0].copy_(loss.detach())
-            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+            loss_value = float(loss_value_buffer.detach().cpu()[0])
             print(
                 f"[optimized-ddp-flash] step {step}/{num_steps} "
                 f"loss={loss_value:.4f} "

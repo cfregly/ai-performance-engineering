@@ -802,7 +802,7 @@ def demo_zero_style_sharding(*, allow_single_gpu: bool = False) -> None:
         
         if rank == 0:
             loss_value_buffer[0].copy_(loss.detach())
-            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+            loss_value = float(loss_value_buffer.detach().cpu()[0])
             print(f"[zero] Step {step}, loss: {loss_value:.4f}")
     
     if rank == 0:

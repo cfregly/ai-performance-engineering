@@ -102,7 +102,7 @@ def main():
 
         if rank == 0 and step % 10 == 0:
             loss_value_buffer[0].copy_(loss.detach())
-            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+            loss_value = float(loss_value_buffer.detach().cpu()[0])
             print(
                 f"[baseline-zero2] step {step}/{args.steps} loss={loss_value:.4f} "
                 f"tokens/step={x.numel():,}"

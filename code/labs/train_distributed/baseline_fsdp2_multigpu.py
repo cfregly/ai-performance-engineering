@@ -232,7 +232,7 @@ def main():
             ):
                 metrics.update(gpu_memory_usage(local_rank))
                 loss_value_buffer[0].copy_(loss.detach())
-                loss_value = loss_value_buffer.detach().cpu().tolist()[0] * args.grad_accum
+                loss_value = float(loss_value_buffer.detach().cpu()[0]) * args.grad_accum
                 msg = (
                     f"[baseline_fsdp2_multigpu] step {optimizer_step}/{total_updates} "
                     f"loss={loss_value:.4f}" + ThroughputTracker.format(metrics, include_memory=True)

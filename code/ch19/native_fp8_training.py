@@ -198,7 +198,7 @@ def benchmark_fp8_training() -> Dict[str, BenchmarkResult]:
         if loss_tensor is None:
             raise RuntimeError("No FP8 training iterations ran")
         loss_value_buffer[0].copy_(loss_tensor)
-        loss_val = loss_value_buffer.detach().cpu().tolist()[0]
+        loss_val = float(loss_value_buffer.detach().cpu()[0])
 
         results[name] = BenchmarkResult(time_ms=time_ms, memory_mb=memory_mb, loss=loss_val)
         print(f"{name:<4}  time={time_ms:6.2f} ms | memory={memory_mb:7.1f} MB | loss={loss_val:.5f}")

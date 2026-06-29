@@ -126,7 +126,7 @@ def main():
             elapsed = perf_counter() - start
             toks_per_sec = total_tokens / elapsed if elapsed > 0 else 0.0
             loss_value_buffer[0].copy_(loss.detach())
-            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+            loss_value = float(loss_value_buffer.detach().cpu()[0])
             print(
                 f"[optimized-zero2] step {step}/{args.steps} "
                 f"loss={loss_value:.4f} "

@@ -391,7 +391,7 @@ def main():
 
         if is_main and step % 10 == 0:
             loss_value_buffer[0].copy_(loss.detach())
-            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+            loss_value = float(loss_value_buffer.detach().cpu()[0])
             print(
                 f"[ddp-compression:{args.compression}] step {step}/{num_steps} | loss={loss_value:.4f}"
             )

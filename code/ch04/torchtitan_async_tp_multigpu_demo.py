@@ -178,7 +178,7 @@ def main() -> None:
 
         if dist.get_rank() == 0:
             loss_value_buffer[0].copy_(loss.detach())
-            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+            loss_value = float(loss_value_buffer.detach().cpu()[0])
             print(
                 f"[step {step:02d}] loss={loss_value:.5f} "
                 f"(Async-TP micro-pipelined step took {elapsed_ms:.2f} ms)"
