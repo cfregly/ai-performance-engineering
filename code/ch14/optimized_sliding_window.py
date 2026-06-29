@@ -48,6 +48,12 @@ class OptimizedAttentionModule(nn.Module):
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         self._qkv_buffer: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._qkv_weight_t: Optional[torch.Tensor] = None
+        self._out_proj_weight_t: Optional[torch.Tensor] = None
+
+    def cache_weight_views(self) -> None:
+        self._qkv_weight_t = self.qkv_proj.weight.t()
+        self._out_proj_weight_t = self.out_proj.weight.t()
 
     def _ensure_projection_buffers(
         self,
@@ -89,8 +95,10 @@ class OptimizedAttentionModule(nn.Module):
             qkv = self.qkv_proj(x)
             output_buffer = None
         else:
+            if self._qkv_weight_t is None or self._out_proj_weight_t is None:
+                self.cache_weight_views()
             qkv_buffer, output_buffer = self._ensure_projection_buffers(x, B, S)
-            qkv = torch.matmul(x, self.qkv_proj.weight.t(), out=qkv_buffer)
+            qkv = torch.matmul(x, self._qkv_weight_t, out=qkv_buffer)
         qkv = qkv.view(B, S, 3, self.num_heads, self.head_dim)
         qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, B, H, S, D]
         q, k, v = qkv[0], qkv[1], qkv[2]
@@ -105,7 +113,7 @@ class OptimizedAttentionModule(nn.Module):
         # Reshape and output projection
         output = output.transpose(1, 2).contiguous().view(B, S, self.embed_dim)
         if output_buffer is not None:
-            return torch.matmul(output, self.out_proj.weight.t(), out=output_buffer)
+            return torch.matmul(output, self._out_proj_weight_t, out=output_buffer)
         return self.out_proj(output)
 
 
@@ -146,6 +154,7 @@ class OptimizedSlidingWindowBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = OptimizedAttentionModule(
             self.embed_dim, self.num_heads, self.window_size
         ).to(self.device, self.dtype).eval()
+        self.model.cache_weight_views()
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
         self.x = torch.randn(

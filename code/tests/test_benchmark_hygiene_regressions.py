@@ -1596,13 +1596,17 @@ def test_ch14_optimized_attention_modules_reuse_projection_buffers() -> None:
 
         assert "self._qkv_buffer: Optional[torch.Tensor] = None" in source
         assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._qkv_weight_t: Optional[torch.Tensor] = None" in source
+        assert "self._out_proj_weight_t: Optional[torch.Tensor] = None" in source
+        assert "def cache_weight_views(self) -> None:" in source
+        assert "self._qkv_weight_t = self.qkv_proj.weight.t()" in source
+        assert "self._out_proj_weight_t = self.out_proj.weight.t()" in source
         assert "def _ensure_projection_buffers(" in source
         assert "if torch.is_grad_enabled():" in forward_section
-        assert "qkv = torch.matmul(x, self.qkv_proj.weight.t(), out=qkv_buffer)" in forward_section
-        assert (
-            "return torch.matmul(output, self.out_proj.weight.t(), out=output_buffer)"
-            in forward_section
-        )
+        assert "qkv = torch.matmul(x, self._qkv_weight_t, out=qkv_buffer)" in forward_section
+        assert "return torch.matmul(output, self._out_proj_weight_t, out=output_buffer)" in forward_section
+        assert "self.qkv_proj.weight.t()" not in forward_section
+        assert "self.out_proj.weight.t()" not in forward_section
 
 
 def test_ch14_triton_persistent_demo_batches_correctness_error_reads() -> None:

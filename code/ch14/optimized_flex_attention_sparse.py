@@ -111,9 +111,15 @@ class SlidingWindowCausalAttention(nn.Module):
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         self._qkv_buffer: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._qkv_weight_t: Optional[torch.Tensor] = None
+        self._out_proj_weight_t: Optional[torch.Tensor] = None
         
         self._compiled_flex = torch.compile(flex_attention) if HAS_FLEX_ATTENTION else None
         self._block_mask_cache = {}
+
+    def cache_weight_views(self) -> None:
+        self._qkv_weight_t = self.qkv_proj.weight.t()
+        self._out_proj_weight_t = self.out_proj.weight.t()
 
     def _ensure_projection_buffers(
         self,
@@ -166,8 +172,10 @@ class SlidingWindowCausalAttention(nn.Module):
             qkv = self.qkv_proj(x)
             output_buffer = None
         else:
+            if self._qkv_weight_t is None or self._out_proj_weight_t is None:
+                self.cache_weight_views()
             qkv_buffer, output_buffer = self._ensure_projection_buffers(x, batch_size, seq_len)
-            qkv = torch.matmul(x, self.qkv_proj.weight.t(), out=qkv_buffer)
+            qkv = torch.matmul(x, self._qkv_weight_t, out=qkv_buffer)
         qkv = qkv.view(batch_size, seq_len, 3, self.num_heads, self.head_dim)
         qkv = qkv.permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
@@ -188,7 +196,7 @@ class SlidingWindowCausalAttention(nn.Module):
         
         output = output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.embed_dim)
         if output_buffer is not None:
-            return torch.matmul(output, self.out_proj.weight.t(), out=output_buffer)
+            return torch.matmul(output, self._out_proj_weight_t, out=output_buffer)
         return self.out_proj(output)
 
 
@@ -324,6 +332,7 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
             num_heads=self.num_heads,
             window_size=self.window_size,
         ).to(self.device, dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16)
+        self.attn.cache_weight_views()
         self.model = self.attn
         self.parameter_count = sum(p.numel() for p in self.attn.parameters())
         
