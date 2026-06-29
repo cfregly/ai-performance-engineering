@@ -6030,6 +6030,10 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "prefix_parts" not in setup_section
     assert "prefix_buffer = torch.empty(" in setup_section
     assert "prefix_buffer[:, offset:next_offset].copy_(chunk_kv)" in setup_section
+    assert "self._metric_request_count = max(" in setup_section
+    assert "self._metric_total_tokens = int(" in setup_section
+    assert "self._metric_total_batch_requests = int(" in setup_section
+    assert "self._metric_max_batch_size = max(" in setup_section
     assert "torch.cat(\n                    prefix_parts," not in setup_section
     assert "prefix_parts" not in worker_setup_section
     assert "prompt_chunks: Dict[int, Sequence[torch.Tensor]] = {}" in worker_prompt_section
@@ -6079,6 +6083,10 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "for rank in self._decode_models:" in benchmark_section
     assert "for cache in active_caches.values():" in benchmark_section
     assert "cache.clear()" in benchmark_section
+    assert "total_requests = self._metric_request_count" in benchmark_section
+    assert "total_tokens=self._metric_total_tokens" in benchmark_section
+    assert "total_requests=self._metric_total_batch_requests" in benchmark_section
+    assert "max_batch_size=self._metric_max_batch_size" in benchmark_section
     assert "_extend_cache_buffer(" in run_iteration_section
     assert "_extend_cache_buffer(" in benchmark_section
     assert "self._output_parts = [torch.empty(0) for _ in self._request_plans]" in setup_section
@@ -6104,6 +6112,7 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "if not self._outputs_ready or self._verify_prompt is None:" in capture_section
     assert "self._prompt_chunks = {}" in teardown_section
     assert "self._sync_devices = []" in teardown_section
+    assert "self._metric_total_tokens = 0" in teardown_section
     assert "reduced_values = reduced.detach().cpu().tolist()" in reduced_metrics_section
     assert ".item()" not in reduced_metrics_section
 

@@ -738,6 +738,10 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._kv_buffer_pools: Dict[int, Dict[int, torch.Tensor]] = {}
         self._sync_devices: List[torch.device] = []
         self._verify_output = torch.zeros(1, dtype=torch.float32)
+        self._metric_request_count = 1.0
+        self._metric_total_tokens = 0
+        self._metric_total_batch_requests = 0
+        self._metric_max_batch_size = self.cfg.batch_size
         self._register_workload_metadata(
             world_size=_world_size_hint(),
             prefill_ranks=_hint_prefill_ranks(_world_size_hint(), self.cfg.prefill_ranks),
@@ -829,6 +833,23 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._resolved_prefill_ranks = prefill_ranks
         self._resolved_decode_ranks = decode_ranks
         self._register_workload_metadata(world_size=world_size, prefill_ranks=prefill_ranks)
+        self._metric_request_count = max(
+            float(self.cfg.requests_per_rank * prefill_ranks),
+            1.0,
+        )
+        self._metric_total_tokens = int(
+            self.cfg.requests_per_rank
+            * prefill_ranks
+            * self.cfg.batch_size
+            * self.cfg.decode_tokens
+        )
+        self._metric_total_batch_requests = int(
+            self.cfg.requests_per_rank * prefill_ranks * self.cfg.batch_size
+        )
+        self._metric_max_batch_size = max(
+            self.cfg.batch_size * decode_ranks,
+            self.cfg.batch_size,
+        )
 
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
@@ -1060,29 +1081,17 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.output = None
         self._output_parts = outputs
         self._outputs_ready = True
-        total_requests = max(
-            float(self.cfg.requests_per_rank * self._resolved_prefill_ranks),
-            1.0,
-        )
+        total_requests = self._metric_request_count
         cache_decisions = max(metrics["cache_hits"] + metrics["cache_misses"], 1.0)
         timing_divisor = max(timing_count, 1)
         self._custom_metrics = {
             **compute_inference_metrics(
                 ttft_ms=ttft_total_ms / timing_divisor,
                 tpot_ms=tpot_total_ms / timing_divisor,
-                total_tokens=int(
-                    self.cfg.requests_per_rank
-                    * self._resolved_prefill_ranks
-                    * self.cfg.batch_size
-                    * self.cfg.decode_tokens
-                ),
-                total_requests=int(
-                    self.cfg.requests_per_rank
-                    * self._resolved_prefill_ranks
-                    * self.cfg.batch_size
-                ),
+                total_tokens=self._metric_total_tokens,
+                total_requests=self._metric_total_batch_requests,
                 batch_size=self.cfg.batch_size,
-                max_batch_size=max(self.cfg.batch_size * self._resolved_decode_ranks, self.cfg.batch_size),
+                max_batch_size=self._metric_max_batch_size,
             ),
             "cache_aware.cache_hit_rate": metrics["cache_hits"] / cache_decisions,
             "cache_aware.kv_transfer_mb": metrics["kv_transfer_bytes"] / 1e6,
@@ -1149,6 +1158,10 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._active_caches = {}
         self._kv_buffer_pools = {}
         self._sync_devices = []
+        self._metric_request_count = 1.0
+        self._metric_total_tokens = 0
+        self._metric_total_batch_requests = 0
+        self._metric_max_batch_size = self.cfg.batch_size
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
