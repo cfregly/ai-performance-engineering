@@ -7932,11 +7932,18 @@ def test_nanochat_chat_rl_batches_eval_and_rollout_syncs() -> None:
     assert "passk_values = [value / num_records for value in eval_values[1:]]" in source
     assert "log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)" in source
     assert "summary_buffer = torch.empty(2, dtype=torch.float64, device=device)" in source
+    assert "reward_sum = torch.empty((), dtype=torch.float64, device=device)" in source
     assert "log_value_buffer[0].copy_(loss.detach())" in source
     assert "log_value_buffer[1].copy_(rewards.mean())" in source
     assert "loss_item, reward_item = log_value_buffer.detach().cpu().tolist()" in source
-    assert "rewards_list.append(rewards_all.mean())" in source
-    assert "mean_reward_tensor = torch.stack(rewards_list).mean()" in source
+    assert "rewards_list = []" not in source
+    assert "rewards_list.append(rewards_all.mean())" not in source
+    assert "torch.stack(rewards_list)" not in source
+    assert "reward_sum.zero_()" in source
+    assert "reward_count = 0" in source
+    assert "reward_sum.add_(rewards_all.mean())" in source
+    assert "reward_count += 1" in source
+    assert "mean_reward_tensor = reward_sum / max(reward_count, 1)" in source
     assert "summary_buffer[0].copy_(mean_reward_tensor)" in source
     assert "summary_buffer[1] = float(mean_sequence_length)" in source
     assert "dist.all_reduce(summary_buffer, op=dist.ReduceOp.AVG)" in source

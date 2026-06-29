@@ -215,6 +215,7 @@ print0(f"Calculated examples per rank: {examples_per_rank}")
 batch_iterator = get_batch()
 log_value_buffer = torch.empty(2, dtype=torch.float64, device=device)
 summary_buffer = torch.empty(2, dtype=torch.float64, device=device)
+reward_sum = torch.empty((), dtype=torch.float64, device=device)
 for step in range(num_steps):
 
     # Evaluate the model once in a while and log to wandb
@@ -243,7 +244,8 @@ for step in range(num_steps):
         })
 
     # Forward/Backward on rollouts over multiple examples in the dataset
-    rewards_list = []
+    reward_sum.zero_()
+    reward_count = 0
     sequence_lengths = []
     for example_step in range(examples_per_rank):
         # Get one batch corresponding to one example in the training dataset
@@ -277,11 +279,12 @@ for step in range(num_steps):
             loss_item, reward_item = log_value_buffer.detach().cpu().tolist()
             print0(f"Step {step}/{num_steps} | Example step {example_step} | Pass {pass_idx} | loss: {loss_item:.6f} | Average reward: {reward_item}")
         # For logging
-        rewards_list.append(rewards_all.mean())
+        reward_sum.add_(rewards_all.mean())
+        reward_count += 1
         sequence_lengths.extend(len(seq) for seq in sequences_all)
 
     # A bunch of logging for how the rollouts went this step
-    mean_reward_tensor = torch.stack(rewards_list).mean()
+    mean_reward_tensor = reward_sum / max(reward_count, 1)
     mean_sequence_length = sum(sequence_lengths) / len(sequence_lengths)
     summary_buffer[0].copy_(mean_reward_tensor)
     summary_buffer[1] = float(mean_sequence_length)
