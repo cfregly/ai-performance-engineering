@@ -230,6 +230,8 @@ class ThroughputTracker:
 
     def __init__(self, warmup_steps: int = 10):
         self.warmup_steps = warmup_steps
+        self._empty_metrics: dict = {}
+        self._metrics: dict = {}
         self.reset()
 
     def reset(self):
@@ -237,6 +239,7 @@ class ThroughputTracker:
         self.tokens = 0
         self.steps_seen = 0
         self.in_warmup = True
+        self._metrics.clear()
 
     def step(self, tokens: int, flops_per_token: float | None = None) -> dict:
         self.steps_seen += 1
@@ -245,23 +248,24 @@ class ThroughputTracker:
             self.start_time = time.perf_counter()
             self.tokens = 0
             self.in_warmup = False
-            return {}
+            return self._empty_metrics
 
         if self.in_warmup or self.start_time is None:
-            return {}
+            return self._empty_metrics
 
         self.tokens += tokens
         elapsed = time.perf_counter() - self.start_time
         steps = self.steps_seen - self.warmup_steps
-        metrics = {
-            "tokens_per_second": self.tokens / elapsed,
-            "steps_per_second": steps / elapsed,
-            "total_tokens": self.tokens,
-            "total_time": elapsed,
-        }
+        metrics = self._metrics
+        metrics["tokens_per_second"] = self.tokens / elapsed
+        metrics["steps_per_second"] = steps / elapsed
+        metrics["total_tokens"] = self.tokens
+        metrics["total_time"] = elapsed
 
         if flops_per_token is not None:
             metrics["tflops_per_device"] = (flops_per_token * self.tokens) / (elapsed * 1e12)
+        else:
+            metrics.pop("tflops_per_device", None)
 
         return metrics
 

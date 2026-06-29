@@ -66,7 +66,8 @@ def test_ddp_compression_logs_loss_through_reused_buffer() -> None:
     assert "loss.item()" not in loop_section
     assert "loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)" in source
     assert "loss_value_buffer[0].copy_(loss.detach())" in logging_section
-    assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in logging_section
+    assert "loss_value = float(loss_value_buffer.detach().cpu()[0])" in logging_section
+    assert "loss_value_buffer.detach().cpu().tolist()" not in logging_section
 
 
 def test_train_distributed_mlp_builders_use_inplace_relu() -> None:
@@ -109,6 +110,30 @@ def test_zero2_gradient_sharder_reuses_reduce_buffers() -> None:
     assert "shard_grad = torch.empty_like(flattened)\n            dist.reduce_scatter_tensor" not in step_section
 
 
+def test_throughput_tracker_reuses_metric_payloads(monkeypatch) -> None:
+    from labs.train_distributed import utils as train_utils
+
+    perf_times = iter((100.0, 102.0, 104.0))
+    monkeypatch.setattr(train_utils.time, "perf_counter", lambda: next(perf_times))
+
+    tracker = train_utils.ThroughputTracker(warmup_steps=2)
+
+    assert tracker.step(tokens=5) is tracker._empty_metrics
+    assert tracker.step(tokens=5) is tracker._empty_metrics
+
+    metrics = tracker.step(tokens=10, flops_per_token=2.0e12)
+    assert metrics is tracker._metrics
+    assert metrics["tokens_per_second"] == 5.0
+    assert metrics["steps_per_second"] == 0.5
+    assert metrics["total_tokens"] == 10
+    assert metrics["total_time"] == 2.0
+    assert metrics["tflops_per_device"] == 10.0
+
+    metrics_without_flops = tracker.step(tokens=10)
+    assert metrics_without_flops is metrics
+    assert "tflops_per_device" not in metrics_without_flops
+
+
 def test_zero3_param_shards_reuse_local_drop_buffers() -> None:
     for relative in ("baseline_zero3.py", "baseline_zero3_multigpu.py"):
         source = (LAB_DIR / relative).read_text(encoding="utf-8")
@@ -125,16 +150,17 @@ def test_zero3_param_shards_reuse_local_drop_buffers() -> None:
             maxsplit=1,
         )[0]
 
-        assert "self.full_data = None" in init_section
+        assert "self.full_data = torch.empty(" in init_section
         assert "self.local_shard = local_shard" in init_section
         assert "self.local_grad = torch.empty_like(local_shard)" in init_section
-        assert "shards = [torch.empty_like(self.local_shard) for _ in range(self.world_size)]" in all_gather_section
-        assert "dist.all_gather(shards, self.local_shard)" in all_gather_section
-        assert "self.full_data = torch.cat(shards, dim=self.shard_dim)" in all_gather_section
+        assert "dist.all_gather_into_tensor(self.full_data, self.local_shard)" in all_gather_section
+        assert "shards = [torch.empty_like(self.local_shard) for _ in range(self.world_size)]" not in all_gather_section
+        assert "dist.all_gather(shards, self.local_shard)" not in all_gather_section
+        assert "torch.cat(shards, dim=self.shard_dim)" not in all_gather_section
         assert "local = self.param.data.contiguous()" not in all_gather_section
         assert "self.param.data = self.local_shard" in drop_full_section
         assert "local = shards[self.rank].contiguous()" not in drop_full_section
         assert "self.local_grad.copy_(grad_shards[self.rank])" in drop_full_section
         assert "self.param.grad.data = self.local_grad" in drop_full_section
         assert "self.param.grad.data = grad_shards[self.rank].contiguous()" not in drop_full_section
-        assert "self.full_data = None" in drop_full_section
+        assert "self.full_data = None" not in drop_full_section
