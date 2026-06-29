@@ -88,6 +88,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._decode_groups: list[tuple[torch.Tensor, int]] = []
         self._batch_size_tensor: Optional[torch.Tensor] = None
         self._seq_meta_tensor: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
 
     def _resolve_device(self) -> torch.device:
         return resolve_device()
@@ -148,6 +149,15 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._seq_meta_tensor[0] = self.prefill_seq
         self._seq_meta_tensor[1] = self.decode_seq
         self._seq_meta_tensor[2] = self.decode_steps
+        self._verify_output_buffer = torch.empty(
+            2,
+            self.batch_size,
+            1,
+            1,
+            min(8, self.hidden_dim // self.num_heads),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self._calibrate_fp8(recipe)
         self._warmup_runtime(recipe)
         self._cache_output_ready = False
@@ -196,6 +206,8 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _build_verification_output(self) -> torch.Tensor:
         if self.cache is None or not self._cache_output_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if self._verify_output_buffer is None:
+            raise RuntimeError("setup() must initialize verification output buffer")
         k_slice = self.cache.cache_k[
             :,
             : min(1, self.cache.cache_k.shape[1]),
@@ -208,7 +220,9 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             :1,
             : min(8, self.cache.cache_v.shape[-1]),
         ]
-        return torch.stack([k_slice, v_slice], dim=0).detach().float().clone()
+        self._verify_output_buffer[0].copy_(k_slice)
+        self._verify_output_buffer[1].copy_(v_slice)
+        return self._verify_output_buffer
 
     def capture_verification_payload(self) -> None:
         self.output = self._build_verification_output()
@@ -240,6 +254,7 @@ class BaselineKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._batch_size_tensor = None
         self._seq_meta_tensor = None
+        self._verify_output_buffer = None
         self._cache_output_ready = False
         torch.cuda.empty_cache()
 
