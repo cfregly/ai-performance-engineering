@@ -58,7 +58,8 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         self.chunk_pairs: list[list[tuple[torch.Tensor, torch.Tensor]]] = []
         self.streams: list[torch.cuda.Stream] = []
         self._timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
-        self._pending_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._empty_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._pending_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = self._empty_timing_pairs
         self._stream_chunk_pairs: list[tuple[torch.cuda.Stream, list[tuple[torch.Tensor, torch.Tensor]]]] = []
         self._stream_timing_pairs: list[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []
         self.register_workload_metadata(requests_per_iteration=1.0)
@@ -74,6 +75,7 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         self.chunk_pairs = []
         self.streams = []
         self._timing_pairs = []
+        self._pending_timing_pairs = self._empty_timing_pairs
         self._stream_chunk_pairs = []
         self._stream_timing_pairs = []
         src_buffers = [
@@ -125,7 +127,7 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             return None
         total_bytes = self.size_mb * 1024 * 1024 * len(self.pairs) * self.inner_iterations
         elapsed_ms_value = max_elapsed_ms(self._pending_timing_pairs)
-        self._pending_timing_pairs = []
+        self._pending_timing_pairs = self._empty_timing_pairs
         elapsed_s = max(elapsed_ms_value, 1e-9) / 1000.0
         self.last_bandwidth_gbps = (total_bytes / elapsed_s) / 1e9
         return None

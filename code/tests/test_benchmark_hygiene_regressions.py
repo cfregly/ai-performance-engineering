@@ -14275,6 +14275,10 @@ def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() 
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def finalize_iteration_metrics", maxsplit=1
         )[0]
+        finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
 
         assert "torch.cuda.Event(enable_timing=True)" in setup_section
         assert "torch.cuda.Event(" not in benchmark_section
@@ -14282,6 +14286,8 @@ def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() 
         assert "Timing events not initialized" in benchmark_section
         if filename == "optimized_symmetric_memory_perf_multigpu.py":
             assert "self._stream_timing_pairs: List[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []" in setup_section
+            assert "self._empty_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []" in setup_section
+            assert "self._pending_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = self._empty_timing_pairs" in setup_section
             assert "self._stream_timing_pairs = list(zip(self._copy_streams, self._timing_pairs, strict=True))" in setup_section
             assert "current_stream = torch.cuda.current_stream()" in benchmark_section
             assert "send_stream.wait_stream(current_stream)" in benchmark_section
@@ -14294,6 +14300,8 @@ def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() 
             assert "torch.cuda.current_stream().wait_stream(recv_stream)" not in benchmark_section
             assert "for stream, (start_event, _) in self._stream_timing_pairs:" in benchmark_section
             assert "zip((send_stream, recv_stream), timing_pairs)" not in benchmark_section
+            assert "self._pending_timing_pairs = self._empty_timing_pairs" in finalize_section
+            assert "self._pending_timing_pairs = []" not in finalize_section
 
 
 def test_ch04_symmetric_queue_batches_head_tail_reads() -> None:
@@ -14346,10 +14354,16 @@ def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() 
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def finalize_iteration_metrics", maxsplit=1
     )[0]
+    finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
 
     assert "torch.cuda.Event(enable_timing=True)" in setup_section
     assert "self._stream_chunk_pairs: list[tuple[torch.cuda.Stream, list[tuple[torch.Tensor, torch.Tensor]]]] = []" in setup_section
     assert "self._stream_timing_pairs: list[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []" in setup_section
+    assert "self._empty_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []" in setup_section
+    assert "self._pending_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = self._empty_timing_pairs" in setup_section
     assert "self._stream_chunk_pairs = list(zip(self.streams, self.chunk_pairs, strict=True))" in setup_section
     assert "self._stream_timing_pairs = list(zip(self.streams, self._timing_pairs, strict=True))" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
@@ -14360,6 +14374,8 @@ def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() 
     assert "for stream, (_, end_event) in self._stream_timing_pairs:" in benchmark_section
     assert "stream = self.streams[idx]" not in benchmark_section
     assert "Timing events not initialized" in benchmark_section
+    assert "self._pending_timing_pairs = self._empty_timing_pairs" in finalize_section
+    assert "self._pending_timing_pairs = []" not in finalize_section
 
 
 def test_labs_nccl_nixl_nvshmem_reuses_metric_state() -> None:

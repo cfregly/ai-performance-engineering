@@ -76,7 +76,8 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._bytes_transferred = 0.0
         self._inner_iterations = 2000
         self._timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
-        self._pending_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._empty_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._pending_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = self._empty_timing_pairs
         self._stream_timing_pairs: List[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
@@ -169,7 +170,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         if not self._pending_timing_pairs:
             return None
         elapsed_ms_value = max_elapsed_ms(self._pending_timing_pairs)
-        self._pending_timing_pairs = []
+        self._pending_timing_pairs = self._empty_timing_pairs
         bytes_per_iter = self.size_mb * 1024 * 1024 * 2
         bytes_moved = bytes_per_iter * self._inner_iterations
         gbps = (bytes_moved / (elapsed_ms_value / 1000.0)) / 1e9 if elapsed_ms_value > 0 else 0.0
@@ -229,7 +230,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._buffer_events = None
         self._buffer_inflight = None
         self._timing_pairs = []
-        self._pending_timing_pairs = []
+        self._pending_timing_pairs = self._empty_timing_pairs
         self._stream_timing_pairs = []
         self._verify_output = None
         self._local_buffer = None
