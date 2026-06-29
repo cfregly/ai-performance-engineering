@@ -4678,12 +4678,18 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
 
     assert "self._fc1_buffer: Optional[torch.Tensor] = None" in pipeline_section
     assert "self._fc2_buffer: Optional[torch.Tensor] = None" in pipeline_section
+    assert "self._fc1_weight_t: Optional[torch.Tensor] = None" in pipeline_section
+    assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in pipeline_section
+    assert "def cache_weight_views(self) -> None:" in pipeline_section
+    assert "self._fc1_weight_t = self.fc1.weight.t()" in pipeline_section
+    assert "self._fc2_weight_t = self.fc2.weight.t()" in pipeline_section
     assert "def _ensure_forward_buffers(" in pipeline_section
     assert "if torch.is_grad_enabled():" in pipeline_section
-    assert "torch.mm(x, self.fc1.weight.t(), out=fc1_out)" in pipeline_section
+    assert "self.model.cache_weight_views()" in setup_section
+    assert "torch.mm(x, self._fc1_weight_t, out=fc1_out)" in pipeline_section
     assert "fc1_out.add_(self.fc1.bias)" in pipeline_section
     assert "self.relu(fc1_out)" in pipeline_section
-    assert "torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)" in pipeline_section
+    assert "torch.mm(fc1_out, self._fc2_weight_t, out=fc2_out)" in pipeline_section
     assert "fc2_out.add_(self.fc2.bias)" in pipeline_section
     assert "self._flat_output: Optional[torch.Tensor] = None" in source
     assert "self._output_view: Optional[torch.Tensor] = None" in source
