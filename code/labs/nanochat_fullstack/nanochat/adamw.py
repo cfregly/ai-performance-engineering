@@ -15,15 +15,21 @@ class DistAdamW(torch.optim.Optimizer):
     def __init__(self, param_groups, lr: float = 1e-3, betas: tuple[float, float] = (0.9, 0.999), eps: float = 1e-8, weight_decay: float = 0.01):
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
         super().__init__(param_groups, defaults)
+        self._reduce_scatter_futures: list[torch.Future] = []
+        self._all_gather_futures: list[torch.Future] = []
+        self._grad_slices: list[Tensor] = []
 
     @torch.compile
     @torch.no_grad()
     def step(self):
         rank = dist.get_rank()
         world_size = dist.get_world_size()
-        reduce_scatter_futures: list[torch.Future] = []
-        all_reduce_futures: list[torch.Future] = []
-        grad_slices = []
+        reduce_scatter_futures = self._reduce_scatter_futures
+        all_gather_futures = self._all_gather_futures
+        grad_slices = self._grad_slices
+        reduce_scatter_futures.clear()
+        all_gather_futures.clear()
+        grad_slices.clear()
         for group in self.param_groups:
             params: list[Tensor] = group["params"]
             for base_i in range(len(params)):
@@ -80,5 +86,8 @@ class DistAdamW(torch.optim.Optimizer):
                 g_slice.mul_(step_size)
                 p_slice.add_(other=g_slice, alpha=-1.0)
                 idx += 1
-                all_reduce_futures.append(dist.all_gather_into_tensor(p, p_slice, async_op=True).get_future())
-        torch.futures.collect_all(all_reduce_futures).wait()
+                all_gather_futures.append(dist.all_gather_into_tensor(p, p_slice, async_op=True).get_future())
+        torch.futures.collect_all(all_gather_futures).wait()
+        reduce_scatter_futures.clear()
+        all_gather_futures.clear()
+        grad_slices.clear()

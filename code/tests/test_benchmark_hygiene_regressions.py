@@ -9347,6 +9347,15 @@ def test_nanochat_dist_adamw_reuses_update_buffers() -> None:
     )
     step_section = source.split("def step", maxsplit=1)[1]
 
+    assert "self._reduce_scatter_futures: list[torch.Future] = []" in source
+    assert "self._all_gather_futures: list[torch.Future] = []" in source
+    assert "self._grad_slices: list[Tensor] = []" in source
+    assert "reduce_scatter_futures = self._reduce_scatter_futures" in step_section
+    assert "all_gather_futures = self._all_gather_futures" in step_section
+    assert "grad_slices = self._grad_slices" in step_section
+    assert "reduce_scatter_futures: list[torch.Future] = []" not in step_section
+    assert "all_reduce_futures: list[torch.Future] = []" not in step_section
+    assert "grad_slices = []" not in step_section
     assert 'if "_grad_slice" not in state:' in step_section
     assert 'grad_slice = state["_grad_slice"]' in step_section
     assert 'if "step" not in state:' in step_section
