@@ -1311,6 +1311,7 @@ class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Keep constructor-side verification state on CPU so benchmark discovery/load
         # does not create a parent-process CUDA context before subprocess isolation.
         self._verify_output = torch.zeros(1, dtype=torch.float32)
+        self._verify_probe = torch.zeros(1, dtype=torch.float32)
         self._metrics_sidecar_path = Path(tempfile.gettempdir()) / (
             f"aisp_{label}_metrics.json"
         )
@@ -1453,7 +1454,7 @@ class MoEHybridEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(
-            inputs={"probe": torch.zeros(1, dtype=torch.float32)},
+            inputs={"probe": self._verify_probe},
             output=self._verify_output,
             batch_size=1,
             parameter_count=int(self.parameter_count),

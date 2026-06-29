@@ -515,14 +515,20 @@ def test_moe_hybrid_ep_wrapper_reuses_latest_metrics_dict() -> None:
     setup_section = source.split("def setup", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def _prepare_verification_payload", maxsplit=1
+    )[0]
 
     assert "self._latest_metrics: Dict[str, float] = {}" in source
     assert "self._has_latest_metrics = False" in source
+    assert "self._verify_probe = torch.zeros(1, dtype=torch.float32)" in source
     assert "latest_metrics = self._latest_metrics" in benchmark_section
     assert "latest_metrics.clear()" in benchmark_section
     assert "latest_metrics.update(artifacts.metrics)" in benchmark_section
     assert "dict(artifacts.metrics)" not in benchmark_section
     assert "self._latest_metrics.clear()" in setup_section
+    assert 'inputs={"probe": self._verify_probe}' in capture_section
+    assert "torch.zeros(" not in capture_section
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for benchmark wrappers")
