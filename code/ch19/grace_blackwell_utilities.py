@@ -284,12 +284,19 @@ def scheduler_loop(
             
         util = gpu_utilization()
         
-        # Find prefill requests
-        prefill_requests = [r for r in pending if getattr(r, 'phase', 'decode') == 'prefill']
-        
-        if util < target_util and prefill_requests:
+        req = None
+        max_prefill_len = -1
+        if util < target_util:
+            for candidate in pending:
+                if getattr(candidate, 'phase', 'decode') != 'prefill':
+                    continue
+                remaining_length = getattr(candidate, 'remaining_length', lambda: 0)()
+                if remaining_length > max_prefill_len:
+                    max_prefill_len = remaining_length
+                    req = candidate
+
+        if req is not None:
             # Select heaviest prefill request
-            req = max(prefill_requests, key=lambda r: getattr(r, 'remaining_length', lambda: 0)())
             L = getattr(req, 'remaining_length', lambda: 1024)()
             
             # Get optimal tile size
@@ -309,9 +316,8 @@ def scheduler_loop(
             process_request(req, T)
         else:
             # Process decode requests (latency-sensitive)
-            decode_requests = [r for r in pending if getattr(r, 'phase', 'decode') == 'decode']
-            if decode_requests:
-                for req in decode_requests:
+            for req in pending:
+                if getattr(req, 'phase', 'decode') == 'decode':
                     process_request(req, 32)  # Small tile for decode
         
         iteration += 1

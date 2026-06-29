@@ -9488,6 +9488,21 @@ def test_vllm_deepseek_report_precomputes_best_index() -> None:
     assert "sum(1 for r in rows" not in markdown_section
 
 
+def test_nanochat_report_counts_packaged_source_without_line_lists() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "report.py"
+    ).read_text(encoding="utf-8")
+    bloat_section = source.split("# bloat metrics:", maxsplit=1)[1].split(
+        "# count dependencies via uv.lock",
+        maxsplit=1,
+    )[0]
+
+    assert "num_lines = packaged.count('\\n') + 1" in bloat_section
+    assert "num_files = int(packaged.startswith('<source>')) + packaged.count('\\n<source>')" in bloat_section
+    assert "packaged.split('\\n')" not in bloat_section
+    assert "len([x for x in packaged" not in bloat_section
+
+
 def test_gpt4_architecture_runner_reuses_cuda_timing_events() -> None:
     source = (
         REPO_ROOT / "labs" / "real_world_models" / "gpt4_architecture_optimization.py"
@@ -13918,6 +13933,60 @@ def test_ch19_quantization_validator_reuses_timing_events() -> None:
     assert "times.append(start_event.elapsed_time(end_event))" in sample_loop
     assert "with nvtx.range(iteration_labels[i]):" in sample_loop
     assert "standardize_nvtx_label(" not in sample_loop
+
+
+def test_ch19_scheduler_avoids_phase_bucket_lists(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ch19 import grace_blackwell_utilities as gb_utils
+
+    source = (REPO_ROOT / "ch19" / "grace_blackwell_utilities.py").read_text(
+        encoding="utf-8"
+    )
+    scheduler_section = source.split("def scheduler_loop", maxsplit=1)[1].split(
+        "# ---------------------------------------------------------------------------\n# KV Cache Prefetch Utilities",
+        maxsplit=1,
+    )[0]
+
+    assert "max_prefill_len = -1" in scheduler_section
+    assert "for candidate in pending:" in scheduler_section
+    assert "for req in pending:" in scheduler_section
+    assert "prefill_requests = [" not in scheduler_section
+    assert "decode_requests = [" not in scheduler_section
+    assert "max(prefill_requests" not in scheduler_section
+
+    class Request:
+        def __init__(self, name: str, phase: str, remaining: int = 0) -> None:
+            self.name = name
+            self.phase = phase
+            self._remaining = remaining
+
+        def remaining_length(self) -> int:
+            return self._remaining
+
+    pending = [
+        Request("decode", "decode"),
+        Request("short-prefill", "prefill", 512),
+        Request("long-prefill", "prefill", 2048),
+    ]
+    processed: list[tuple[str, int]] = []
+    monkeypatch.setattr(gb_utils, "get_optimal_tile", lambda _length: 64)
+    monkeypatch.setattr(gb_utils, "get_occupancy", lambda *_args, **_kwargs: 1.0)
+
+    gb_utils.scheduler_loop(
+        lambda: pending,
+        lambda: 0.1,
+        lambda req, tile: processed.append((req.name, tile)),
+        max_iterations=1,
+    )
+    assert processed == [("long-prefill", 64)]
+
+    processed.clear()
+    gb_utils.scheduler_loop(
+        lambda: pending,
+        lambda: 0.95,
+        lambda req, tile: processed.append((req.name, tile)),
+        max_iterations=1,
+    )
+    assert processed == [("decode", 32)]
 
 
 def test_ozaki_optimized_wrappers_parse_metrics_outside_benchmark() -> None:
