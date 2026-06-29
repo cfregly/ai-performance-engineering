@@ -71,7 +71,12 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
-        self._metrics: Dict[str, float] = {}
+        self._metrics: Dict[str, float] = {
+            "speculative.draft_tokens": 0.0,
+            "speculative.accepted_draft_tokens": 0.0,
+            "speculative.acceptance_rate_pct": 0.0,
+            "speculative.rounds": 0.0,
+        }
 
         tokens = float(self.workload.total_tokens)
         self._workload = WorkloadMetadata(
@@ -148,7 +153,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
 
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
         self.output = None
-        self._metrics = {}
+        for key in self._metrics:
+            self._metrics[key] = 0.0
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -250,12 +256,10 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                     pos += accept_k + 1
 
         self.output = out
-        self._metrics = {
-            "speculative.draft_tokens": float(draft_tokens),
-            "speculative.accepted_draft_tokens": float(accepted_draft),
-            "speculative.acceptance_rate_pct": (accepted_draft / max(draft_tokens, 1)) * 100.0,
-            "speculative.rounds": float(rounds),
-        }
+        self._metrics["speculative.draft_tokens"] = float(draft_tokens)
+        self._metrics["speculative.accepted_draft_tokens"] = float(accepted_draft)
+        self._metrics["speculative.acceptance_rate_pct"] = (accepted_draft / max(draft_tokens, 1)) * 100.0
+        self._metrics["speculative.rounds"] = float(rounds)
 
     def capture_verification_payload(self) -> None:
         if self.input_ids is None or self.output is None:
@@ -301,6 +305,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._draft_id_column_views = []
         self._match_host_views = []
         self.output = None
+        for key in self._metrics:
+            self._metrics[key] = 0.0
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

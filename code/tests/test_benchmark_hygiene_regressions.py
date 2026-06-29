@@ -13808,6 +13808,12 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._draft_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._draft_logits_next = self._draft_logits[:, 0, :]" in setup_section
     assert "self._target_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
+    assert '"speculative.draft_tokens": 0.0' in source
+    assert '"speculative.accepted_draft_tokens": 0.0' in source
+    assert '"speculative.acceptance_rate_pct": 0.0' in source
+    assert '"speculative.rounds": 0.0' in source
+    assert "for key in self._metrics:" in setup_section
+    assert "self._metrics[key] = 0.0" in setup_section
     assert "self._verify_prev_views = [self._verify_prev[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._verify_prev_tail_views = [self._verify_prev[:, 1:k] for k in range(2, wl.speculative_k + 1)]" in setup_section
     assert "self._target_logits_views = [self._target_logits[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
@@ -13857,6 +13863,11 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._output_write_views[view_idx][pos].copy_(draft_window)" in benchmark_section
     assert "self._output_write_views[accept_k - 1][pos].copy_(self._draft_id_views[accept_k - 1])" in benchmark_section
     assert "self._output_token_views[pos + accept_k + 1].copy_(" in benchmark_section
+    assert 'self._metrics["speculative.draft_tokens"] = float(draft_tokens)' in benchmark_section
+    assert 'self._metrics["speculative.accepted_draft_tokens"] = float(accepted_draft)' in benchmark_section
+    assert 'self._metrics["speculative.acceptance_rate_pct"] = (accepted_draft / max(draft_tokens, 1)) * 100.0' in benchmark_section
+    assert 'self._metrics["speculative.rounds"] = float(rounds)' in benchmark_section
+    assert "self._metrics = {" not in benchmark_section
     assert "self.target_model.forward_into(self._verify_prev[:, :k], self._target_logits[:, :k])" not in benchmark_section
     assert "self._draft_ids[:, j]" not in benchmark_section
     assert "self._draft_ids[:, : k - 1]" not in benchmark_section
