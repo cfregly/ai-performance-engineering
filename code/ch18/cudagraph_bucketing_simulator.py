@@ -14,6 +14,7 @@ Key Optimization (Ch18):
 from __future__ import annotations
 
 import argparse
+import heapq
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import torch
@@ -274,7 +275,12 @@ class OptimizedCUDAGraphBucketing(BaselineCUDAGraphBucketing):
             if padded_batch is None:
                 continue
             freq[(padded_batch, s_bucket)] = freq.get((padded_batch, s_bucket), 0) + 1
-        return [shape for shape, _ in sorted(freq.items(), key=lambda kv: kv[1], reverse=True)[:4]]
+        top_shapes = heapq.nlargest(
+            4,
+            freq.items(),
+            key=lambda kv: (kv[1], -kv[0][0], -kv[0][1]),
+        )
+        return [shape for shape, _ in top_shapes]
 
     def build_simulator(self) -> GraphTreeSimulator:
         sim = GraphTreeSimulator(

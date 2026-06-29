@@ -6038,6 +6038,10 @@ def test_ch18_cudagraph_bucketing_reuses_resolved_capture_bins() -> None:
         assert "capture_bins_from_vllm_config(" not in optimized_prewarm
         assert "pad_fn_from_vllm_config(" not in optimized_prewarm
         assert "pad_batch_to_capture(b_bucket, self._capture_bins, self._pad_fn)" in optimized_prewarm
+        assert "import heapq" in source
+        assert "top_shapes = heapq.nlargest(" in optimized_prewarm
+        assert "key=lambda kv: (kv[1], -kv[0][0], -kv[0][1])" in optimized_prewarm
+        assert "sorted(freq.items()" not in optimized_prewarm
         assert "capture_batch_sizes=self._capture_bins" in optimized_build
         assert "pad_fn=self._pad_fn" in optimized_build
         assert "capture_bins_from_vllm_config(" not in optimized_build
