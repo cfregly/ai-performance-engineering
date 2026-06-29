@@ -174,10 +174,10 @@ class ProfiledBenchmark:
                     max_time_ms = max(max_time_ms, elapsed_ms)
             else:
                 for i in range(benchmark_iters):
-                    start = time.time()
+                    start = time.perf_counter()
                     with nvtx.range(iteration_labels[i]):
                         _ = func(*args)
-                    elapsed_ms = (time.time() - start) * 1000
+                    elapsed_ms = (time.perf_counter() - start) * 1000
                     sample_count += 1
                     delta = elapsed_ms - mean_time_ms
                     mean_time_ms += delta / sample_count

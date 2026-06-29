@@ -14359,12 +14359,15 @@ def test_ch19_quantization_validator_reuses_timing_events() -> None:
     assert "min_time_ms = min(min_time_ms, elapsed_ms)" in sample_loop
     assert "max_time_ms = max(max_time_ms, elapsed_ms)" in sample_loop
     assert "sample_count += 1" in cpu_sample_loop
+    assert "start = time.perf_counter()" in cpu_sample_loop
+    assert "elapsed_ms = (time.perf_counter() - start) * 1000" in cpu_sample_loop
     assert "m2_time_ms += delta * (elapsed_ms - mean_time_ms)" in cpu_sample_loop
     assert "avg_time_ms = mean_time_ms" in statistics_section
     assert "std_time_ms = (m2_time_ms / sample_count) ** 0.5" in statistics_section
     assert "times: List[float]" not in method_section
     assert "times.append(" not in method_section
     assert "sum(times)" not in method_section
+    assert "time.time()" not in method_section
     assert "with nvtx.range(iteration_labels[i]):" in sample_loop
     assert "standardize_nvtx_label(" not in sample_loop
 
