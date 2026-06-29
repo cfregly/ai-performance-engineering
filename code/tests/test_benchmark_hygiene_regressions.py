@@ -3623,10 +3623,20 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert quick_benchmark.count("with torch.inference_mode():") == 2
     assert "with torch.no_grad():" not in quick_benchmark
     assert quick_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "current_stream = torch.cuda.current_stream(x.device)" in quick_benchmark
+    assert "start.record(current_stream)" in quick_benchmark
+    assert "end.record(current_stream)" in quick_benchmark
+    assert "start.record()" not in quick_benchmark
+    assert "end.record()" not in quick_benchmark
     assert "time.perf_counter()" not in quick_benchmark
     assert fp8_benchmark.count("with torch.inference_mode():") == 2
     assert "with torch.no_grad():" not in fp8_benchmark
     assert fp8_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "current_stream = torch.cuda.current_stream(input_ids.device)" in fp8_benchmark
+    assert "start.record(current_stream)" in fp8_benchmark
+    assert "end.record(current_stream)" in fp8_benchmark
+    assert "start.record()" not in fp8_benchmark
+    assert "end.record()" not in fp8_benchmark
     assert "time.time()" not in fp8_benchmark
     assert "with torch.inference_mode():" in te_convert
     assert "with torch.no_grad():" not in te_convert
@@ -9603,6 +9613,12 @@ def test_ch16_blackwell_inference_demo_uses_cuda_event_timing() -> None:
         "# ============================================================================",
         maxsplit=1,
     )[0]
+    pipeline_benchmark = source.split("def benchmark(self, seq_len: int = 1024", maxsplit=1)[
+        1
+    ].split("def generate", maxsplit=1)[0]
+    tensor_parallel_benchmark = source.split("def benchmark_multigpu_tensor_parallel", maxsplit=1)[
+        1
+    ].split("if __name__ ==", maxsplit=1)[0]
     demo_section = source.split("def compare_inference_methods", maxsplit=1)[1].split(
         "def benchmark_multigpu_tensor_parallel",
         maxsplit=1,
@@ -9615,6 +9631,16 @@ def test_ch16_blackwell_inference_demo_uses_cuda_event_timing() -> None:
     assert "start.record()" not in helper_section
     assert "end.record()" not in helper_section
     assert "start.elapsed_time(end) / iterations" in helper_section
+    assert "current_stream = torch.cuda.current_stream(self.device)" in pipeline_benchmark
+    assert "start_event.record(current_stream)" in pipeline_benchmark
+    assert "end_event.record(current_stream)" in pipeline_benchmark
+    assert "start_event.record()" not in pipeline_benchmark
+    assert "end_event.record()" not in pipeline_benchmark
+    assert "current_stream = torch.cuda.current_stream(device)" in tensor_parallel_benchmark
+    assert "start_event.record(current_stream)" in tensor_parallel_benchmark
+    assert "end_event.record(current_stream)" in tensor_parallel_benchmark
+    assert "start_event.record()" not in tensor_parallel_benchmark
+    assert "end_event.record()" not in tensor_parallel_benchmark
     assert demo_section.count("_benchmark_cuda_latency_ms(") == 3
     assert "time.time()" not in demo_section
 
@@ -9832,6 +9858,11 @@ def test_ch16_synthetic_moe_benchmark_hoists_inference_mode() -> None:
     assert "for _ in range(num_warmup):\n            if use_autocast:" in benchmark_function
     assert "for _ in range(count):\n                if use_autocast:" in benchmark_function
     assert benchmark_function.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "current_stream = torch.cuda.current_stream(input_ids.device)" in benchmark_function
+    assert "start_event.record(current_stream)" in benchmark_function
+    assert "end_event.record(current_stream)" in benchmark_function
+    assert "start_event.record()" not in benchmark_function
+    assert "end_event.record()" not in benchmark_function
 
 
 def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
@@ -11460,6 +11491,10 @@ def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
         "def generate_with_radix",
         maxsplit=1,
     )[0]
+    benchmark_section = source.split("def benchmark_prefix_caching", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
 
     assert source.count("@torch.inference_mode()") >= 2
     assert "with torch.no_grad():" not in forward_section
@@ -11478,6 +11513,11 @@ def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
     assert "torch.randn_like(logits)" not in generate_next_section
     assert "selected_idx = torch.multinomial" not in generate_next_section
     assert ".item()" not in generate_next_section
+    assert "current_stream = torch.cuda.current_stream(model.device)" in benchmark_section
+    assert benchmark_section.count("start_event.record(current_stream)") == 2
+    assert benchmark_section.count("end_event.record(current_stream)") == 2
+    assert "start_event.record()" not in benchmark_section
+    assert "end_event.record()" not in benchmark_section
 
     from ch16.radix_attention_example import ModelState, SimpleTransformerModel
 

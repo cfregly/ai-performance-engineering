@@ -649,7 +649,8 @@ def benchmark_prefix_caching():
     if torch.cuda.is_available():
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
-        start_event.record()
+        current_stream = torch.cuda.current_stream(model.device)
+        start_event.record(current_stream)
     else:
         start_time = time.time()
     
@@ -671,7 +672,7 @@ def benchmark_prefix_caching():
                 naive_responses.append(response)
     
     if torch.cuda.is_available():
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
         naive_time = start_event.elapsed_time(end_event) / 1000  # Convert ms to seconds
     else:
@@ -688,7 +689,7 @@ def benchmark_prefix_caching():
     
     # Use CUDA Events for accurate GPU timing
     if torch.cuda.is_available():
-        start_event.record()
+        start_event.record(current_stream)
     else:
         start_time = time.time()
     
@@ -725,7 +726,7 @@ def benchmark_prefix_caching():
                 cached_responses.append(response)
     
     if torch.cuda.is_available():
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
         cached_time = start_event.elapsed_time(end_event) / 1000  # Convert ms to seconds
     else:

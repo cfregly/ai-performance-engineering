@@ -440,15 +440,16 @@ def benchmark_inference(model, input_ids, name, num_warmup=20, num_iters=100, *,
     if input_ids.device.type == "cuda":
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
+        current_stream = torch.cuda.current_stream(input_ids.device)
         with torch.inference_mode():
-            start_event.record()
+            start_event.record(current_stream)
             for _ in range(count):
                 if use_autocast:
                     with torch.autocast("cuda", dtype=autocast_dtype):
                         _ = model(input_ids)
                 else:
                     _ = model(input_ids)
-            end_event.record()
+            end_event.record(current_stream)
         end_event.synchronize()
         elapsed = start_event.elapsed_time(end_event) / 1000.0
     else:

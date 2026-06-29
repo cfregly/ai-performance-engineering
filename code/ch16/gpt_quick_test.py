@@ -41,11 +41,12 @@ def benchmark_quick(model, x, name, num_iters=20):
     count = max(num_iters, 1)
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream(x.device)
     with torch.inference_mode():
-        start.record()
+        start.record(current_stream)
         for _ in range(count):
             _ = model(x)
-        end.record()
+        end.record(current_stream)
     end.synchronize()
     elapsed_ms = start.elapsed_time(end)
     elapsed = elapsed_ms / 1000.0

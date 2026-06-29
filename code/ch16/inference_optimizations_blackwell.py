@@ -754,11 +754,12 @@ class BlackwellInferencePipeline:
         # Benchmark using CUDA Events for accurate GPU timing
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
+        current_stream = torch.cuda.current_stream(self.device)
         
-        start_event.record()
+        start_event.record(current_stream)
         for _ in range(num_iterations):
             _ = self.model(input_ids)
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
         
         total_time = start_event.elapsed_time(end_event) / 1000  # Convert ms to seconds
@@ -1069,12 +1070,13 @@ def benchmark_multigpu_tensor_parallel():
     # Benchmark
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream(device)
     
     num_iterations = 100
-    start_event.record()
+    start_event.record(current_stream)
     for _ in range(num_iterations):
         _ = layer(hidden_states, kv_cache=kv_cache, layer_idx=0)
-    end_event.record()
+    end_event.record(current_stream)
     end_event.synchronize()
     
     time_ms = start_event.elapsed_time(end_event) / num_iterations

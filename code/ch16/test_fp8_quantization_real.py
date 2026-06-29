@@ -152,11 +152,12 @@ def benchmark_model(
     count = max(iters, 1)
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream(input_ids.device)
     with torch.inference_mode():
-        start.record()
+        start.record(current_stream)
         for _ in range(count):
             _ = model(input_ids)
-        end.record()
+        end.record(current_stream)
     end.synchronize()
     elapsed_ms = start.elapsed_time(end)
     
