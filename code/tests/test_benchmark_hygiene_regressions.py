@@ -6470,11 +6470,17 @@ def test_nanochat_loss_eval_batches_reduced_totals() -> None:
         encoding="utf-8"
     )
 
-    assert "totals = torch.stack((total_nats.to(torch.float64), total_bytes.to(torch.float64)))" in source
+    assert "totals = torch.empty(2, dtype=torch.float64, device=model.get_device())" in source
+    assert "totals.zero_()" in source
+    assert "totals[0].add_((loss2d * (num_bytes2d > 0)).sum())" in source
+    assert "totals[1].add_(num_bytes2d.sum())" in source
     assert "dist.all_reduce(totals, op=dist.ReduceOp.SUM)" in source
     assert "total_nats, total_bytes = totals.detach().cpu().tolist()" in source
     assert "@torch.inference_mode()\ndef evaluate_bpb" in source
     assert "@torch.no_grad()" not in source
+    assert "total_nats = torch.tensor(" not in source
+    assert "total_bytes = torch.tensor(" not in source
+    assert "torch.stack((total_nats.to(torch.float64), total_bytes.to(torch.float64)))" not in source
     assert "dist.all_reduce(total_nats" not in source
     assert "dist.all_reduce(total_bytes" not in source
     assert "total_nats = total_nats.item()" not in source
