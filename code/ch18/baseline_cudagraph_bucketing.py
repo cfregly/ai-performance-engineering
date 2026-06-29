@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 from typing import Iterable, Optional, Tuple
 
 import torch
@@ -91,6 +90,7 @@ class BaselineCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.use_vllm_bins = True
         self._last = None
         self.output: Optional[torch.Tensor] = None
+        self._baseline_runner: Optional[BaselineCUDAGraphBucketing] = None
         self._output_values: Optional[list[float]] = None
         self._payload_traffic: list[Tuple[int, int]] = []
         self._payload_output_values: list[float] = []
@@ -118,12 +118,27 @@ class BaselineCUDAGraphBucketingBenchmark(VerificationPayloadMixin, BaseBenchmar
         total_tokens = sum(batch * seqlen for batch, seqlen in traffic)
         self._payload_traffic = traffic
         self._payload_output_values = [float(len(traffic)), float(total_tokens)]
+        self._baseline_runner = None
 
-    def benchmark_fn(self) -> None:
-        runner = BaselineCUDAGraphBucketing(
+    def _build_baseline_runner(self) -> BaselineCUDAGraphBucketing:
+        return BaselineCUDAGraphBucketing(
+            traffic=self._payload_traffic,
             vllm_model=self.vllm_model,
             use_vllm_bins=self.use_vllm_bins,
         )
+
+    def _baseline_simulator_runner(self) -> BaselineCUDAGraphBucketing:
+        runner = self._baseline_runner
+        if runner is None:
+            runner = self._build_baseline_runner()
+            self._baseline_runner = runner
+        return runner
+
+    def setup(self) -> None:
+        self._baseline_runner = self._build_baseline_runner()
+
+    def benchmark_fn(self) -> None:
+        runner = self._baseline_simulator_runner()
         sim = runner.run()
         self._last = sim
         self._output_values = self._payload_output_values

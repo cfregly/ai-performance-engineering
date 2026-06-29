@@ -5057,6 +5057,20 @@ def test_ch18_metric_wrappers_defer_output_tensors_outside_hot_loop() -> None:
             assert "traffic = getattr(" not in benchmark_section
             assert "sum(batch * seqlen for batch, seqlen in traffic)" not in benchmark_section
             assert "traffic = self._payload_traffic" in capture_section
+        if relative.endswith("baseline_cudagraph_bucketing.py"):
+            build_section = source.split("def _build_baseline_runner", maxsplit=1)[1].split(
+                "def _baseline_simulator_runner", maxsplit=1
+            )[0]
+            setup_section = source.split("def setup", maxsplit=1)[1].split(
+                "def benchmark_fn", maxsplit=1
+            )[0]
+            assert "self._baseline_runner: Optional[BaselineCUDAGraphBucketing] = None" in source
+            assert "def _build_baseline_runner" in source
+            assert "def _baseline_simulator_runner" in source
+            assert "traffic=self._payload_traffic" in build_section
+            assert "self._baseline_runner = self._build_baseline_runner()" in setup_section
+            assert "runner = self._baseline_simulator_runner()" in benchmark_section
+            assert "BaselineCUDAGraphBucketing(" not in benchmark_section
         if relative.endswith("optimized_cudagraph_bucketing.py"):
             setup_section = source.split("def setup", maxsplit=1)[1].split(
                 "def benchmark_fn", maxsplit=1
