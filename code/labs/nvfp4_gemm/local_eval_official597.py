@@ -15,7 +15,6 @@ import json
 import math
 import multiprocessing
 import os
-import statistics
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -173,16 +172,17 @@ def _worker_run_single_benchmark(
 
     bm_start_time = time.perf_counter_ns()
     stop_reason = "max_repeats"
+    current_stream = torch.cuda.current_stream()
     for i in range(max_repeats):
         torch.cuda.synchronize()
         outputs = []
         clear_l2_cache_large()
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
-        start_event.record()
+        start_event.record(current_stream)
         for data in data_list:
             outputs.append(custom_kernel(data))
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
 
         duration_ns = (start_event.elapsed_time(end_event) / NUM_ITERATIONS_PER_BENCHMARK) * 1e6

@@ -96,15 +96,16 @@ def _run_case(
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream()
     samples_us: list[float] = []
 
     for _ in range(repeats):
         if flush_l2:
             nvfp4_utils.clear_l2_cache_large()
-        start.record()
+        start.record(current_stream)
         for data in data_batch:
             submission_mod.custom_kernel(data)
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         repeat_us = float(start.elapsed_time(end) * 1000.0)
         samples_us.append(repeat_us / float(inputs_per_repeat))
