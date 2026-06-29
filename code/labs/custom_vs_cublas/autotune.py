@@ -12,9 +12,7 @@ How it works:
 4. Adapts to different matrix sizes (small vs large may prefer different kernels)
 """
 
-from functools import lru_cache
-from typing import Dict, Tuple, Callable
-import hashlib
+from typing import Dict, Callable
 import json
 import os
 
@@ -73,10 +71,11 @@ def _benchmark_kernel(fn: Callable, A: torch.Tensor, B: torch.Tensor,
     times = []
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
+    current_stream = torch.cuda.current_stream()
     for _ in range(iters):
-        start_event.record()
+        start_event.record(current_stream)
         _ = fn(A, B)
-        end_event.record()
+        end_event.record(current_stream)
         end_event.synchronize()
         times.append(start_event.elapsed_time(end_event))
 

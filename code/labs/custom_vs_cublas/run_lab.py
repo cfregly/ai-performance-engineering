@@ -53,10 +53,11 @@ def benchmark_kernel(fn, *args, warmup=5, iters=20):
     # Timed runs
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
-    start.record()
+    current_stream = torch.cuda.current_stream()
+    start.record(current_stream)
     for _ in range(iters):
         fn(*args)
-    end.record()
+    end.record(current_stream)
     end.synchronize()
 
     elapsed_ms = start.elapsed_time(end) / iters

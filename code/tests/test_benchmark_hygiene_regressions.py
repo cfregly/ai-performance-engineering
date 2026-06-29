@@ -1791,11 +1791,21 @@ def test_custom_vs_cublas_timing_helpers_use_cuda_events() -> None:
     ].split("# Available kernels", maxsplit=1)[0]
 
     assert runner_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "current_stream = torch.cuda.current_stream()" in runner_section
+    assert "start.record(current_stream)" in runner_section
+    assert "end.record(current_stream)" in runner_section
+    assert "start.record()" not in runner_section
+    assert "end.record()" not in runner_section
     assert "end.synchronize()" in runner_section
     assert "return elapsed_ms" in runner_section
     assert "start.elapsed_time(end) / iters" in runner_section
     assert "time.time()" not in runner_section
     assert autotune_section.count("torch.cuda.Event(enable_timing=True)") == 2
+    assert "current_stream = torch.cuda.current_stream()" in autotune_section
+    assert "start_event.record(current_stream)" in autotune_section
+    assert "end_event.record(current_stream)" in autotune_section
+    assert "start_event.record()" not in autotune_section
+    assert "end_event.record()" not in autotune_section
     assert "end_event.synchronize()" in autotune_section
     assert "times.append(start_event.elapsed_time(end_event))" in autotune_section
     assert "time.perf_counter()" not in autotune_section
