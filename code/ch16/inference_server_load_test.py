@@ -176,11 +176,10 @@ def run_load_test(
 
     _run_warmup_phase()
 
-    start_time = time.time()
-    next_tick = start_time
+    run_start = time.perf_counter()
 
-    while time.time() - start_time < duration:
-        tick_start = time.time()
+    while time.perf_counter() - run_start < duration:
+        tick_start = time.perf_counter()
 
         # Generate load on rank 0 and broadcast to others
         if rank == 0:
@@ -236,7 +235,7 @@ def run_load_test(
             )
 
         # Maintain target tick rate
-        tick_elapsed = time.time() - tick_start
+        tick_elapsed = time.perf_counter() - tick_start
         sleep_time = interval - tick_elapsed
         if sleep_time > 0:
             time.sleep(sleep_time)
@@ -244,7 +243,7 @@ def run_load_test(
     dist.barrier()
 
     stats = server.scheduler.get_stats()
-    elapsed = time.time() - start_time
+    elapsed = time.perf_counter() - run_start
     return {
         "rank": rank,
         "elapsed": elapsed,

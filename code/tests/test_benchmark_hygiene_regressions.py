@@ -10507,6 +10507,18 @@ def test_ch16_load_test_batches_percentile_calculations() -> None:
     source = (REPO_ROOT / "ch16" / "inference_server_load_test.py").read_text(
         encoding="utf-8"
     )
+    run_loop = source.split("_run_warmup_phase()", maxsplit=1)[1].split(
+        "def _summarize_samples",
+        maxsplit=1,
+    )[0]
+    generated_loop = run_loop.split("# Generate load on rank 0", maxsplit=1)[1].split(
+        "request_specs = _broadcast_requests",
+        maxsplit=1,
+    )[0]
+    tick_section = run_loop.split("# Maintain target tick rate", maxsplit=1)[1].split(
+        "dist.barrier()",
+        maxsplit=1,
+    )[0]
     sample_summary = source.split("def _summarize_samples", maxsplit=1)[1].split(
         "def aggregate_results",
         maxsplit=1,
@@ -10517,6 +10529,15 @@ def test_ch16_load_test_batches_percentile_calculations() -> None:
     )[0]
 
     assert "def _summarize_samples(values: List[int], total: Optional[float] = None)" in source
+    assert "run_start = time.perf_counter()" in run_loop
+    assert "while time.perf_counter() - run_start < duration:" in run_loop
+    assert "tick_start = time.perf_counter()" in run_loop
+    assert "tick_elapsed = time.perf_counter() - tick_start" in tick_section
+    assert "elapsed = time.perf_counter() - run_start" in run_loop
+    assert "next_tick =" not in run_loop
+    assert "current_time = time.time()" in generated_loop
+    assert "time.time() - run_start" not in run_loop
+    assert "time.time() - tick_start" not in run_loop
     assert "p50, p95 = np.percentile(array, (50, 95))" in sample_summary
     assert '"avg": float((sum(values) if total is None else total) / len(values))' in sample_summary
     assert "array.mean()" not in sample_summary
