@@ -3681,6 +3681,8 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         assert "with torch.inference_mode():" in dense_benchmark
         assert "with torch.no_grad():" not in dense_setup
         assert "with torch.no_grad():" not in dense_benchmark
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in dense_source
+        assert "self._verify_output_buffer = torch.empty(" in dense_setup
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in dense_setup
         assert "self._payload_parameter_count = sum(p.numel() for p in self.qkv_proj.parameters())" in dense_setup
         assert "get_config()" not in dense_benchmark
@@ -3689,6 +3691,9 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         assert "sum(p.numel()" not in dense_benchmark
         assert "parameter_count += " not in dense_benchmark
         assert "self._payload_parameter_count = parameter_count" not in dense_benchmark
+        assert "self._verify_output_buffer.copy_(self.output)" in dense_capture
+        assert "output=self._verify_output_buffer" in dense_capture
+        assert "self.output.detach().clone()" not in dense_capture
         assert "parameter_count = self._payload_parameter_count" not in dense_capture
         assert "parameter_count=self._payload_parameter_count" in dense_capture
 
@@ -4110,6 +4115,7 @@ def test_ch16_optimized_dense_attention_flash_reuses_projection_buffers() -> Non
         assert "self._output_buffer = None" in teardown_section
         assert "self._qkv_weight_t = None" in teardown_section
         assert "self._out_proj_weight_t = None" in teardown_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:

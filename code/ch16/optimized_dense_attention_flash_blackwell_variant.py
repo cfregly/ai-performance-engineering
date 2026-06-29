@@ -53,6 +53,7 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
         self.head_dim = self.hidden_dim // self.num_heads
         self.dtype = torch.float16
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._enable_nvtx = False
         self._payload_parameter_count = 0
         self.register_workload_metadata(
@@ -111,6 +112,13 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
             device=device,
             dtype=self.dtype,
         )
+        self._verify_output_buffer = torch.empty(
+            self.batch_size,
+            self.seq_length,
+            self.hidden_dim,
+            device=device,
+            dtype=self.dtype,
+        )
         self._payload_parameter_count = sum(p.numel() for p in self.qkv_proj.parameters()) + sum(
             p.numel() for p in self.out_proj.parameters()
         )
@@ -160,9 +168,12 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
             raise RuntimeError("Verification input missing")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_input is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -183,6 +194,7 @@ class DenseAttentionFlashBlackwellVariantBenchmark(VerificationPayloadMixin, Bas
         self._output_buffer = None
         self._qkv_weight_t = None
         self._out_proj_weight_t = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_custom_metrics(self) -> Optional[dict]:
