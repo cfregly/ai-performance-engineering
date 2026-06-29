@@ -8748,6 +8748,37 @@ def test_ch16_inference_serving_flushes_kv_views_without_stack() -> None:
     assert "key_layers = []" not in flush_section
 
 
+def test_ch16_blackwell_kv_cache_reuses_batch_index_scratch() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_optimizations_blackwell.py").read_text(
+        encoding="utf-8"
+    )
+    cache_section = source.split("class DynamicQuantizedKVCache", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+    init_section = cache_section.split("def _batch_indices_buffer", maxsplit=1)[0]
+    update_section = cache_section.split("def update(", maxsplit=1)[1].split(
+        "def clear",
+        maxsplit=1,
+    )[0]
+    clear_section = cache_section.split("def clear", maxsplit=1)[1].split(
+        "def get_memory_usage",
+        maxsplit=1,
+    )[0]
+
+    assert "self._batch_index_list = [0] * max_batch_size" in init_section
+    assert "self._batch_index_seen = [0] * max_batch_size" in init_section
+    assert "self._next_length_rows = [0] * max_batch_size" in init_section
+    assert "self._range_cache_indices = [0] * max_batch_size" in init_section
+    assert "self._fill_batch_index_list_from_host(batch_index_host, batch_count)" in update_section
+    assert ".tolist()" not in update_section
+    assert "len(set(" not in update_section
+    assert "current_lengths = [" not in update_section
+    assert "self._seq_lens_host.copy()" not in update_section
+    assert "ranges.append(" not in update_section
+    assert "self._seq_lens_host = [0] * self.max_batch_size" not in clear_section
+
+
 def test_ch16_blackwell_tensor_parallel_reuses_gather_buffers() -> None:
     source = (REPO_ROOT / "ch16" / "inference_optimizations_blackwell.py").read_text(
         encoding="utf-8"

@@ -215,25 +215,42 @@ class TestNumericalCorrectness:
         assert "self._batch_indices_device_buffer: Optional[torch.Tensor] = None" in init_source
         assert "self.cache.zero_()" not in clear_source
         assert "self.cache[:, :, batch_idx].zero_()" not in clear_source
+        assert "self._seq_lens_host = [0] * self.max_batch_size" not in clear_source
         assert "unique_rows" in source
         assert "batch_indices = self._batch_index_cache.narrow(0, cache_idx, 1)" in source
         assert "if isinstance(batch_indices, int)" in source
         assert 'batch_indices.device.type == "cpu"' in source
         assert "self._batch_index_host = torch.empty(" in init_source
+        assert "self._batch_index_list = [0] * max_batch_size" in init_source
+        assert "self._batch_index_seen = [0] * max_batch_size" in init_source
+        assert "self._next_length_rows = [0] * max_batch_size" in init_source
+        assert "self._range_cache_indices = [0] * max_batch_size" in init_source
         assert "self._updated_key_buffer: Optional[torch.Tensor] = None" in init_source
         assert "self._updated_value_buffer: Optional[torch.Tensor] = None" in init_source
         assert 'pin_memory=torch.device(device).type == "cuda"' in init_source
         assert "batch_index_host = self._batch_index_host[:batch_count]" in source
         assert "batch_index_host.copy_(batch_indices)" in source
-        assert "batch_index_list = [int(idx) for idx in batch_index_host.tolist()]" in source
+        assert "self._fill_batch_index_list_from_host(batch_index_host, batch_count)" in source
+        assert ".tolist()" not in source
         assert "batch_indices.detach().cpu().tolist()" not in source
+        assert "len(set(" not in source
+        assert "current_lengths = [" not in source
+        assert "self._seq_lens_host.copy()" not in source
+        assert "ranges: list" not in source
+        assert "ranges.append(" not in source
         assert "def _batch_indices_buffer(self, count: int) -> torch.Tensor:" in inspect.getsource(
             blackwell.DynamicQuantizedKVCache._batch_indices_buffer
+        )
+        assert "def _fill_batch_index_list_from_host(" in inspect.getsource(
+            blackwell.DynamicQuantizedKVCache._fill_batch_index_list_from_host
+        )
+        assert "def _batch_rows_unique_and_same_length(" in inspect.getsource(
+            blackwell.DynamicQuantizedKVCache._batch_rows_unique_and_same_length
         )
         assert "batch_indices = self._batch_indices_buffer(batch_count)" in source
         assert "device_batch_indices = self._batch_indices_buffer(batch_count)" in source
         assert "batch_indices = torch.tensor(" not in source
-        assert "current_lengths = [self._seq_lens_host[idx] for idx in batch_index_list]" in source
+        assert "current_len = range_start_positions[local_idx]" in source
         assert "self.seq_lens[cache_idx_int].item()" not in source
         assert "self.cache[layer_idx, 0, batch_indices, :, current_len:end_pos, :] = k_store" in source
         assert "return_shape = (batch_count, self.num_heads, max_end_pos, self.head_dim)" in source
@@ -355,6 +372,28 @@ class TestNumericalCorrectness:
         )
         assert out_k_again.data_ptr() == key_ptr
         assert out_v_again.data_ptr() == value_ptr
+
+        cache.clear()
+        dup_key = torch.tensor([[[[1.0, 2.0]]], [[[3.0, 4.0]]]])
+        dup_value = dup_key + 30.0
+        out_k_dup, out_v_dup = cache.update(0, dup_key, dup_value, batch_indices=[0, 0])
+
+        torch.testing.assert_close(cache.seq_lens, torch.tensor([2, 0], dtype=torch.long))
+        assert cache._seq_lens_host == [2, 0]
+        torch.testing.assert_close(out_k_dup[0, :, :1, :], dup_key[0])
+        torch.testing.assert_close(out_v_dup[0, :, :1, :], dup_value[0])
+        torch.testing.assert_close(
+            out_k_dup[0, :, 1:, :],
+            torch.zeros_like(out_k_dup[0, :, 1:, :]),
+        )
+        torch.testing.assert_close(
+            out_v_dup[0, :, 1:, :],
+            torch.zeros_like(out_v_dup[0, :, 1:, :]),
+        )
+        expected_dup_key = dup_key[:, 0, 0, :].unsqueeze(0)
+        expected_dup_value = dup_value[:, 0, 0, :].unsqueeze(0)
+        torch.testing.assert_close(out_k_dup[1, :, :2, :], expected_dup_key)
+        torch.testing.assert_close(out_v_dup[1, :, :2, :], expected_dup_value)
 
     def test_tensor_parallel_all_gather_uses_uninitialized_receive_buffers(self):
         blackwell = pytest.importorskip("ch16.inference_optimizations_blackwell")

@@ -137,6 +137,15 @@ class DynamicQuantizedKVCache:
             pin_memory=torch.device(device).type == "cuda",
         )
         self._seq_lens_host = [0] * max_batch_size
+        self._batch_index_list = [0] * max_batch_size
+        self._batch_index_seen = [0] * max_batch_size
+        self._batch_index_seen_token = 0
+        self._next_length_rows = [0] * max_batch_size
+        self._next_length_seen = [0] * max_batch_size
+        self._next_length_seen_token = 0
+        self._range_cache_indices = [0] * max_batch_size
+        self._range_start_positions = [0] * max_batch_size
+        self._range_end_positions = [0] * max_batch_size
         self._batch_indices_device_buffer: Optional[torch.Tensor] = None
         self._updated_key_buffer: Optional[torch.Tensor] = None
         self._updated_value_buffer: Optional[torch.Tensor] = None
@@ -161,6 +170,34 @@ class DynamicQuantizedKVCache:
                 device=self.seq_lens.device,
             )
         return self._batch_indices_device_buffer[:count]
+
+    def _fill_batch_index_list_from_host(
+        self,
+        batch_index_host: torch.Tensor,
+        batch_count: int,
+    ) -> None:
+        batch_index_list = self._batch_index_list
+        for local_idx in range(batch_count):
+            batch_index_list[local_idx] = int(batch_index_host[local_idx])
+
+    def _batch_rows_unique_and_same_length(self, batch_count: int) -> Tuple[bool, bool, int]:
+        self._batch_index_seen_token += 1
+        seen_token = self._batch_index_seen_token
+        seen = self._batch_index_seen
+        batch_index_list = self._batch_index_list
+        seq_lens_host = self._seq_lens_host
+
+        first_length = seq_lens_host[batch_index_list[0]]
+        unique_rows = True
+        same_length = True
+        for local_idx in range(batch_count):
+            cache_idx = batch_index_list[local_idx]
+            if seen[cache_idx] == seen_token:
+                unique_rows = False
+            seen[cache_idx] = seen_token
+            if seq_lens_host[cache_idx] != first_length:
+                same_length = False
+        return unique_rows, same_length, first_length
     
     def update(
         self,
@@ -184,24 +221,32 @@ class DynamicQuantizedKVCache:
         """
         if batch_indices is None:
             cache_idx = int(batch_idx)
-            batch_index_list = [cache_idx]
+            batch_index_list = self._batch_index_list
+            batch_index_list[0] = cache_idx
+            batch_count = 1
             batch_indices = self._batch_index_cache.narrow(0, cache_idx, 1)
         elif not torch.is_tensor(batch_indices):
             if isinstance(batch_indices, int):
                 cache_idx = int(batch_indices)
-                batch_index_list = [cache_idx]
+                batch_index_list = self._batch_index_list
+                batch_index_list[0] = cache_idx
+                batch_count = 1
                 batch_indices = self._batch_index_cache.narrow(0, cache_idx, 1)
             else:
-                batch_index_list = [int(idx) for idx in batch_indices]
-                batch_count = len(batch_index_list)
+                batch_index_list = self._batch_index_list
+                batch_count = 0
+                for local_idx, cache_idx in enumerate(batch_indices):
+                    cache_idx_int = int(cache_idx)
+                    batch_index_list[local_idx] = cache_idx_int
+                    batch_count += 1
                 batch_indices = self._batch_indices_buffer(batch_count)
                 if batch_indices.device.type == "cpu":
-                    for local_idx, cache_idx in enumerate(batch_index_list):
-                        batch_indices[local_idx] = cache_idx
+                    for local_idx in range(batch_count):
+                        batch_indices[local_idx] = batch_index_list[local_idx]
                 else:
                     batch_index_host = self._batch_index_host[:batch_count]
-                    for local_idx, cache_idx in enumerate(batch_index_list):
-                        batch_index_host[local_idx] = cache_idx
+                    for local_idx in range(batch_count):
+                        batch_index_host[local_idx] = batch_index_list[local_idx]
                     batch_indices.copy_(batch_index_host, non_blocking=True)
         else:
             if batch_indices.dim() == 0:
@@ -210,7 +255,8 @@ class DynamicQuantizedKVCache:
                 batch_count = batch_indices.numel()
                 batch_index_host = self._batch_index_host[:batch_count]
                 batch_index_host.copy_(batch_indices)
-                batch_index_list = [int(idx) for idx in batch_index_host.tolist()]
+                batch_index_list = self._batch_index_list
+                self._fill_batch_index_list_from_host(batch_index_host, batch_count)
                 device_batch_indices = self._batch_indices_buffer(batch_count)
                 device_batch_indices.copy_(
                     batch_index_host,
@@ -221,19 +267,17 @@ class DynamicQuantizedKVCache:
                 batch_count = batch_indices.numel()
                 batch_index_host = self._batch_index_host[:batch_count]
                 batch_index_host.copy_(batch_indices)
-                batch_index_list = [int(idx) for idx in batch_index_host.tolist()]
+                batch_index_list = self._batch_index_list
+                self._fill_batch_index_list_from_host(batch_index_host, batch_count)
                 if batch_indices.device != self.seq_lens.device or batch_indices.dtype != torch.long:
                     batch_indices = batch_indices.to(self.seq_lens.device, dtype=torch.long)
         
-        assert key.shape[0] == batch_indices.numel(), (
+        assert key.shape[0] == batch_count, (
             f"Batch size mismatch: key batch={key.shape[0]}, "
-            f"indices={batch_indices.numel()}"
+            f"indices={batch_count}"
         )
-        unique_rows = len(set(batch_index_list)) == len(batch_index_list)
-        current_lengths = [self._seq_lens_host[idx] for idx in batch_index_list]
-        same_length = all(length == current_lengths[0] for length in current_lengths)
+        unique_rows, same_length, current_len = self._batch_rows_unique_and_same_length(batch_count)
         if unique_rows and same_length:
-            current_len = current_lengths[0]
             new_seq_len = key.shape[2]
             end_pos = current_len + new_seq_len
             if end_pos > self.max_seq_len:
@@ -256,8 +300,8 @@ class DynamicQuantizedKVCache:
             self.cache[layer_idx, 0, batch_indices, :, current_len:end_pos, :] = k_store
             self.cache[layer_idx, 1, batch_indices, :, current_len:end_pos, :] = v_store
             self.seq_lens[batch_indices] = end_pos
-            for cache_idx in batch_index_list:
-                self._seq_lens_host[cache_idx] = end_pos
+            for local_idx in range(batch_count):
+                self._seq_lens_host[batch_index_list[local_idx]] = end_pos
 
             cached_key = self.cache[layer_idx, 0, batch_indices, :, :end_pos, :]
             cached_value = self.cache[layer_idx, 1, batch_indices, :, :end_pos, :]
@@ -269,10 +313,19 @@ class DynamicQuantizedKVCache:
             return cached_key, cached_value
         
         new_seq_len = key.shape[2]
-        ranges: list[tuple[int, int, int]] = []
-        next_lengths = self._seq_lens_host.copy()
+        self._next_length_seen_token += 1
+        seen_token = self._next_length_seen_token
+        next_lengths = self._next_length_rows
+        next_length_seen = self._next_length_seen
+        range_cache_indices = self._range_cache_indices
+        range_start_positions = self._range_start_positions
+        range_end_positions = self._range_end_positions
         max_end_pos = 0
-        for cache_idx_int in batch_index_list:
+        for local_idx in range(batch_count):
+            cache_idx_int = batch_index_list[local_idx]
+            if next_length_seen[cache_idx_int] != seen_token:
+                next_length_seen[cache_idx_int] = seen_token
+                next_lengths[cache_idx_int] = self._seq_lens_host[cache_idx_int]
             current_len = next_lengths[cache_idx_int]
             end_pos = current_len + new_seq_len
             if end_pos > self.max_seq_len:
@@ -280,11 +333,12 @@ class DynamicQuantizedKVCache:
                     f"KV cache overflow: requested {end_pos}, "
                     f"max={self.max_seq_len}"
                 )
-            ranges.append((cache_idx_int, current_len, end_pos))
+            range_cache_indices[local_idx] = cache_idx_int
+            range_start_positions[local_idx] = current_len
+            range_end_positions[local_idx] = end_pos
             next_lengths[cache_idx_int] = end_pos
             max_end_pos = max(max_end_pos, end_pos)
 
-        batch_count = len(batch_index_list)
         return_dtype = torch.float32 if FP8_AVAILABLE else self.cache.dtype
         return_shape = (batch_count, self.num_heads, max_end_pos, self.head_dim)
         if (
@@ -298,7 +352,10 @@ class DynamicQuantizedKVCache:
         updated_keys = self._updated_key_buffer
         updated_vals = self._updated_value_buffer
 
-        for local_idx, (cache_idx_int, current_len, end_pos) in enumerate(ranges):
+        for local_idx in range(batch_count):
+            cache_idx_int = range_cache_indices[local_idx]
+            current_len = range_start_positions[local_idx]
+            end_pos = range_end_positions[local_idx]
             k_slice = key[local_idx]
             v_slice = value[local_idx]
             
@@ -339,7 +396,8 @@ class DynamicQuantizedKVCache:
         """Clear cache"""
         if batch_idx is None:
             self.seq_lens.zero_()
-            self._seq_lens_host = [0] * self.max_batch_size
+            for cache_idx in range(self.max_batch_size):
+                self._seq_lens_host[cache_idx] = 0
         else:
             self.seq_lens[batch_idx] = 0
             self._seq_lens_host[batch_idx] = 0
