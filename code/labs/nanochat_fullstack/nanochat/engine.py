@@ -985,7 +985,7 @@ class Engine:
 
         # 3) Initialize states for each sample
         row_states = [RowState(tokens.copy()) for _ in range(num_samples)]
-        ids_buf = self._ids_step_buffer_for(num_samples, device) if self.reuse_ids_buffer else None
+        ids_buf = self._ids_step_buffer_for(num_samples, device)
 
         # 4) Main generation loop
         num_generated = 0
@@ -1006,7 +1006,7 @@ class Engine:
                 sampled_tokens = [sampled_tokens[0]] * num_samples  # Broadcast first token to all rows
                 if num_samples == 1:
                     sampled_ids = next_ids
-                elif self.reuse_ids_buffer:
+                else:
                     ids_buf[:, 0].fill_(sampled_tokens[0])
                     sampled_ids = ids_buf
                 # TODO: we should sample a token for each row instead of broadcasting
@@ -1068,10 +1068,8 @@ class Engine:
             # Prepare ids for next iteration
             if sampled_ids is not None and not has_forced_tokens:
                 ids = sampled_ids
-            elif self.reuse_ids_buffer:
-                ids = self._fill_ids_buffer_from_tokens(ids_buf, token_column)
             else:
-                ids = torch.tensor(token_column, dtype=torch.long, device=device).unsqueeze(1)
+                ids = self._fill_ids_buffer_from_tokens(ids_buf, token_column)
 
     @torch.inference_mode()
     def generate_batched(self, prompt_tokens_batch, max_tokens=None, temperature=1.0, top_k=None, seed=42):
@@ -1146,7 +1144,7 @@ class Engine:
         row_states = [RowState(tokens.copy()) for tokens in prompt_tokens_batch]
         lengths_by_batch = lengths.clone()
         lengths_by_row = prompt_lengths.copy()
-        ids_buf = self._ids_step_buffer_for(batch_size, device) if self.reuse_ids_buffer else None
+        ids_buf = self._ids_step_buffer_for(batch_size, device)
 
         # Special tokens for control flow
         get_special = lambda s: self.tokenizer.encode_special(s)
@@ -1173,10 +1171,7 @@ class Engine:
                 current_tokens = sampled_tokens
                 first_iteration = False
             else:
-                if self.reuse_ids_buffer:
-                    step_ids = self._fill_ids_buffer_from_tokens(ids_buf, token_column)
-                else:
-                    step_ids = torch.tensor(token_column, dtype=torch.long, device=device).unsqueeze(1)
+                step_ids = self._fill_ids_buffer_from_tokens(ids_buf, token_column)
                 active_mask, active_rows, active_indices = self._active_mask_for_rows(
                     row_states,
                     generated_counts,

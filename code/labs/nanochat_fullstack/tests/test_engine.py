@@ -610,8 +610,9 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert generate_section.count("**self._sample_workspace(logits, top_k, temperature),") == 2
     assert "ids = self._single_prompt_ids(tokens, device)" in generate_section
     assert "ids = torch.tensor([tokens], dtype=torch.long, device=device)" not in generate_section
-    assert "ids_buf = self._ids_step_buffer_for(num_samples, device) if self.reuse_ids_buffer else None" in generate_section
+    assert "ids_buf = self._ids_step_buffer_for(num_samples, device)" in generate_section
     assert "torch.empty((num_samples, 1), dtype=torch.long, device=device)" not in generate_section
+    assert "torch.tensor(token_column, dtype=torch.long, device=device).unsqueeze(1)" not in generate_section
     assert "sampled_tokens = self._token_tensor_to_list(next_ids[:, 0])" in generate_section
     assert "next_ids[:, 0].tolist()" not in generate_section
     assert "active_count = num_samples" in generate_section
@@ -759,8 +760,9 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     assert "active_mask = self._full_active_mask(batch_size, device)" in generate_batched
     assert "torch.ones(batch_size, dtype=torch.bool, device=device)" not in generate_batched
     assert "lengths_by_batch.add_(step_token_mask[:, 0])" in generate_batched
-    assert "ids_buf = self._ids_step_buffer_for(batch_size, device) if self.reuse_ids_buffer else None" in generate_batched
+    assert "ids_buf = self._ids_step_buffer_for(batch_size, device)" in generate_batched
     assert "torch.empty((batch_size, 1), dtype=torch.long, device=device)" not in generate_batched
+    assert "torch.tensor(token_column, dtype=torch.long, device=device).unsqueeze(1)" not in generate_batched
     assert "return_active_indices=True" in generate_batched
     assert "active_indices=active_indices" in generate_batched
     assert "uniform_sampling = all(temp == first_temp and top_k == first_top_k for temp, top_k in zip(temps, top_ks, strict=True))" in generate_batched
