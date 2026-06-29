@@ -399,13 +399,30 @@ async def run_pipeline(
 def summarize(results: list[ItemResult], shared: SharedState) -> dict[str, Any]:
     """Produce aggregate metrics for reliability behavior."""
 
+    success = 0
+    deduped = 0
+    poison = 0
+    failed = 0
+    cancelled = 0
+    for result in results:
+        if result.status == SUCCESS:
+            success += 1
+        elif result.status == DEDUPED:
+            deduped += 1
+        elif result.status == POISON:
+            poison += 1
+        elif result.status == FAILED:
+            failed += 1
+        elif result.status == CANCELLED:
+            cancelled += 1
+
     return {
         "total": len(results),
-        "success": sum(1 for r in results if r.status == SUCCESS),
-        "deduped": sum(1 for r in results if r.status == DEDUPED),
-        "poison": sum(1 for r in results if r.status == POISON),
-        "failed": sum(1 for r in results if r.status == FAILED),
-        "cancelled": sum(1 for r in results if r.status == CANCELLED),
+        "success": success,
+        "deduped": deduped,
+        "poison": poison,
+        "failed": failed,
+        "cancelled": cancelled,
         "retried_attempts": shared.retried_attempts,
         "unique_completed_keys": len(shared.completed_keys),
     }

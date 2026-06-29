@@ -7,7 +7,6 @@ pinning so the rack-prep scripts remain copy/paste-friendly.
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -126,20 +125,27 @@ def discover_nics(target_names: Optional[Sequence[str]] = None) -> List[NICInfo]
         numa_node = _read_int(nic_dir / "device" / "numa_node")
         local_cpus = parse_cpulist(_read_text(nic_dir / "device" / "local_cpulist"))
 
-        interrupts = Path("/proc/interrupts")
         irq_ids: List[int] = []
-        if interrupts.exists():
-            for line in interrupts.read_text().splitlines():
-                if name in line:
+        try:
+            with Path("/proc/interrupts").open(encoding="utf-8") as interrupts:
+                for line in interrupts:
+                    if name not in line:
+                        continue
                     prefix, _sep, _rest = line.partition(":")
                     try:
                         irq_ids.append(int(prefix.strip()))
                     except ValueError:
                         continue
+        except (FileNotFoundError, PermissionError, OSError):
+            pass
 
         queues_dir = nic_dir / "queues"
-        rx_queues = len(list(queues_dir.glob("rx-*"))) if queues_dir.exists() else 0
-        tx_queues = len(list(queues_dir.glob("tx-*"))) if queues_dir.exists() else 0
+        if queues_dir.exists():
+            rx_queues = sum(1 for _ in queues_dir.glob("rx-*"))
+            tx_queues = sum(1 for _ in queues_dir.glob("tx-*"))
+        else:
+            rx_queues = 0
+            tx_queues = 0
 
         nics.append(
             NICInfo(

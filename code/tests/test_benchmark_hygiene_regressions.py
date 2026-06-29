@@ -2297,6 +2297,24 @@ def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
         assert "torch.nn.ReLU()" not in source
 
 
+def test_ch03_topology_discovery_streams_interrupts_and_counts_queues() -> None:
+    source = (REPO_ROOT / "ch03" / "grace_blackwell_topology.py").read_text(
+        encoding="utf-8"
+    )
+    discover_section = source.split("def discover_nics", maxsplit=1)[1].split(
+        "def recommended_cpuset",
+        maxsplit=1,
+    )[0]
+
+    assert 'with Path("/proc/interrupts").open(encoding="utf-8") as interrupts:' in discover_section
+    assert "for line in interrupts:" in discover_section
+    assert 'rx_queues = sum(1 for _ in queues_dir.glob("rx-*"))' in discover_section
+    assert 'tx_queues = sum(1 for _ in queues_dir.glob("tx-*"))' in discover_section
+    assert "read_text().splitlines()" not in discover_section
+    assert 'len(list(queues_dir.glob("rx-*")))' not in discover_section
+    assert 'len(list(queues_dir.glob("tx-*")))' not in discover_section
+
+
 def test_ch04_cpu_staged_reduction_baselines_reuse_buffered_mlp_and_outputs() -> None:
     for relative in (
         "ch04/baseline_nccl.py",
@@ -8733,6 +8751,9 @@ def test_python_concurrency_summaries_reuse_sorted_latency_samples() -> None:
     round2_source = (REPO_ROOT / "labs" / "python_concurrency" / "taskrun_round2_controls.py").read_text(
         encoding="utf-8"
     )
+    round3_source = (
+        REPO_ROOT / "labs" / "python_concurrency" / "taskrun_round3_idempotency.py"
+    ).read_text(encoding="utf-8")
     all_in_one_source = (REPO_ROOT / "labs" / "python_concurrency" / "all_in_one_pipeline.py").read_text(
         encoding="utf-8"
     )
@@ -8746,6 +8767,10 @@ def test_python_concurrency_summaries_reuse_sorted_latency_samples() -> None:
     )[0]
     round2_summary = round2_source.split("def summarize", maxsplit=1)[1].split(
         "async def run_pipeline",
+        maxsplit=1,
+    )[0]
+    round3_summary = round3_source.split("def summarize", maxsplit=1)[1].split(
+        "async def main_async",
         maxsplit=1,
     )[0]
     all_in_one_summary = all_in_one_source.split("def summarize", maxsplit=1)[1].split(
@@ -8774,6 +8799,8 @@ def test_python_concurrency_summaries_reuse_sorted_latency_samples() -> None:
     assert "for result in results:" in round2_summary
     assert "success_latencies = [r.latency_ms for r in results" not in round2_summary
     assert "sum(1 for r in results" not in round2_summary
+    assert "for result in results:" in round3_summary
+    assert "sum(1 for r in results" not in round3_summary
     assert "totals = [record.total_ms for record in results]" not in all_in_one_summary
     assert "success_totals = [record.total_ms for record in results" not in all_in_one_summary
     assert "for result in results:" in hybrid_summary
