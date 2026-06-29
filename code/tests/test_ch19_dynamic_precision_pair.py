@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from ch19.baseline_dynamic_precision import BaselineDynamicPrecisionBenchmark
 from ch19.dynamic_precision_benchmark_common import (
     DynamicPrecisionBenchmarkConfig,
+    FixedDecodeWorkspace,
     HighConfidenceDecoder,
     build_model,
     build_prompt,
@@ -16,7 +17,11 @@ from ch19.dynamic_precision_benchmark_common import (
     decode_fixed_precision,
     decode_host_policy_baseline,
 )
-from ch19.dynamic_precision_switching import decode_with_dynamic_precision, should_use_low_precision
+from ch19.dynamic_precision_switching import (
+    DynamicPrecisionWorkspace,
+    decode_with_dynamic_precision,
+    should_use_low_precision,
+)
 from ch19.optimized_dynamic_precision import OptimizedDynamicPrecisionBenchmark
 
 
@@ -119,6 +124,87 @@ def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:
     assert "torch.topk(last, k=2, dim=topk_dim, out=(top2_values, top2_indices))" in dynamic_source
     assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in dynamic_source
     assert "next_token = torch.argmax(last_step_logits" not in dynamic_source
+
+
+def test_dynamic_precision_decoders_accept_reusable_workspaces_on_cpu() -> None:
+    cfg = DynamicPrecisionBenchmarkConfig(batch_size=2, prompt_len=8, max_steps=4, vocab_size=64, hidden_dim=64)
+    device = torch.device("cpu")
+    prompt = build_prompt(cfg, device)
+    output_shape = (cfg.batch_size, cfg.prompt_len + cfg.max_steps)
+    token_shape = (cfg.batch_size, 1)
+
+    fixed_model = build_model(cfg, device, dtype=torch.float32)
+    fixed_workspace = FixedDecodeWorkspace(
+        generated=torch.empty(output_shape, device=device, dtype=prompt.dtype),
+        next_token=torch.empty(token_shape, device=device, dtype=prompt.dtype),
+        next_token_values=torch.empty(token_shape, device=device, dtype=torch.float32),
+    )
+    fixed_generated_ptr = fixed_workspace.generated.data_ptr()
+    fixed_values_ptr = fixed_workspace.next_token_values.data_ptr()
+
+    fixed_tokens = decode_fixed_precision(
+        fixed_model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        workspace=fixed_workspace,
+    )
+
+    assert fixed_tokens.data_ptr() == fixed_generated_ptr
+    assert fixed_workspace.next_token_values is not None
+    assert fixed_workspace.next_token_values.data_ptr() == fixed_values_ptr
+
+    host_model = build_model(cfg, device, dtype=torch.float32)
+    host_workspace = FixedDecodeWorkspace(
+        generated=torch.empty(output_shape, device=device, dtype=prompt.dtype),
+        next_token=torch.empty(token_shape, device=device, dtype=prompt.dtype),
+        next_token_values=torch.empty(token_shape, device=device, dtype=torch.float32),
+        host_logits_buffer=torch.empty((cfg.batch_size, cfg.vocab_size), device="cpu", dtype=torch.float32),
+    )
+    host_generated_ptr = host_workspace.generated.data_ptr()
+    host_logits_ptr = host_workspace.host_logits_buffer.data_ptr()
+
+    host_tokens = decode_host_policy_baseline(
+        host_model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        workspace=host_workspace,
+    )
+
+    assert host_tokens.data_ptr() == host_generated_ptr
+    assert host_workspace.host_logits_buffer is not None
+    assert host_workspace.host_logits_buffer.data_ptr() == host_logits_ptr
+
+    dynamic_model = build_model(cfg, device, dtype=torch.float32)
+    dynamic_workspace = DynamicPrecisionWorkspace(
+        generated=torch.empty(output_shape, device=device, dtype=prompt.dtype),
+        next_token=torch.empty(token_shape, device=device, dtype=prompt.dtype),
+        next_token_values=torch.empty(token_shape, device=device, dtype=torch.float32),
+        top2_values=torch.empty((cfg.batch_size, 2), device=device, dtype=torch.float32),
+        top2_indices=torch.empty((cfg.batch_size, 2), device=device, dtype=torch.long),
+        margin_values=torch.empty(cfg.batch_size, device=device, dtype=torch.float32),
+        margin_mean=torch.empty((), device=device, dtype=torch.float32),
+        ema_conf=torch.empty((), device=device, dtype=torch.float32),
+    )
+    dynamic_generated_ptr = dynamic_workspace.generated.data_ptr()
+    dynamic_top2_ptr = dynamic_workspace.top2_values.data_ptr()
+
+    dynamic_tokens, stats = decode_with_dynamic_precision(
+        dynamic_model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        enable_fp8=False,
+        enable_fp4=False,
+        reeval_interval=1,
+        workspace=dynamic_workspace,
+    )
+
+    assert dynamic_tokens.data_ptr() == dynamic_generated_ptr
+    assert dynamic_workspace.top2_values is not None
+    assert dynamic_workspace.top2_values.data_ptr() == dynamic_top2_ptr
+    assert stats is not None
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for chapter 19 dynamic-precision benchmark pair")

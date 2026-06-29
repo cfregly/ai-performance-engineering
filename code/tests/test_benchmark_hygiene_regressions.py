@@ -3413,6 +3413,41 @@ def test_ch19_dynamic_precision_benchmarks_cache_parameter_count() -> None:
         assert "sum(p.numel()" not in capture_section
 
 
+def test_ch19_dynamic_precision_benchmarks_reuse_decode_workspaces() -> None:
+    baseline_source = (REPO_ROOT / "ch19" / "baseline_dynamic_precision.py").read_text(encoding="utf-8")
+    optimized_source = (REPO_ROOT / "ch19" / "optimized_dynamic_precision.py").read_text(encoding="utf-8")
+
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._decode_workspace: Optional[FixedDecodeWorkspace] = None" in baseline_source
+    assert "self._decode_workspace = FixedDecodeWorkspace(" in baseline_setup
+    assert "host_logits_buffer=torch.empty(" in baseline_setup
+    assert "workspace=self._decode_workspace" in baseline_benchmark
+    assert "torch.empty(" not in baseline_benchmark
+
+    assert "self._decode_workspace: Optional[DynamicPrecisionWorkspace] = None" in optimized_source
+    assert "self._decode_workspace = DynamicPrecisionWorkspace(" in optimized_setup
+    assert "top2_values=torch.empty(" in optimized_setup
+    assert "ema_conf=torch.empty(" in optimized_setup
+    assert "workspace=self._decode_workspace" in optimized_benchmark
+    assert "torch.empty(" not in optimized_benchmark
+
+
 def test_ch19_native_fp4_batches_accuracy_metric_reads() -> None:
     source = (REPO_ROOT / "ch19" / "native_fp4_quantization.py").read_text(
         encoding="utf-8"

@@ -81,6 +81,20 @@ class PrecisionStats:
         print("="*60 + "\n")
 
 
+@dataclass
+class DynamicPrecisionWorkspace:
+    """Reusable buffers for repeated dynamic-precision decode calls."""
+
+    generated: torch.Tensor
+    next_token: torch.Tensor
+    next_token_values: Optional[torch.Tensor] = None
+    top2_values: Optional[torch.Tensor] = None
+    top2_indices: Optional[torch.Tensor] = None
+    margin_values: Optional[torch.Tensor] = None
+    margin_mean: Optional[torch.Tensor] = None
+    ema_conf: Optional[torch.Tensor] = None
+
+
 # Safe Transformer Engine (TE) FP8 autocast import
 try:
     from transformer_engine.pytorch import fp8_autocast as _te_fp8_autocast
@@ -182,7 +196,8 @@ def decode_with_dynamic_precision(
     reeval_interval: int = 8,  # compute/inspect confidence every N steps to avoid per-step sync
     topk_dim: int = -1,  # last dimension holds vocabulary logits
     eos_id: Optional[int] = None,
-    collect_stats: bool = True
+    collect_stats: bool = True,
+    workspace: Optional[DynamicPrecisionWorkspace] = None,
 ) -> Tuple[torch.Tensor, Optional[PrecisionStats]]:
     """
     Autoregressive decode loop that smoothly switches between AMP (BF16/FP16) and
@@ -225,20 +240,37 @@ def decode_with_dynamic_precision(
     
     model.eval()
     prompt = tokens.to(device, non_blocking=True)
+    prompt_device = prompt.device
     batch_size, prompt_len = prompt.shape
-    generated = torch.empty(
-        (batch_size, prompt_len + max_steps),
-        device=device,
-        dtype=prompt.dtype,
-    )
+    generated_shape = (batch_size, prompt_len + max_steps)
+    if workspace is None:
+        generated = torch.empty(
+            generated_shape,
+            device=device,
+            dtype=prompt.dtype,
+        )
+        next_token = torch.empty((batch_size, 1), device=device, dtype=prompt.dtype)
+        next_token_values: Optional[torch.Tensor] = None
+        top2_values: Optional[torch.Tensor] = None
+        top2_indices: Optional[torch.Tensor] = None
+        margin_values: Optional[torch.Tensor] = None
+        margin_mean: Optional[torch.Tensor] = None
+        workspace_ema_conf: Optional[torch.Tensor] = None
+    else:
+        generated = workspace.generated
+        next_token = workspace.next_token
+        if generated.shape != generated_shape or generated.device != prompt_device or generated.dtype != prompt.dtype:
+            raise ValueError("workspace.generated does not match decode shape/device/dtype")
+        if next_token.shape != (batch_size, 1) or next_token.device != prompt_device or next_token.dtype != prompt.dtype:
+            raise ValueError("workspace.next_token does not match decode shape/device/dtype")
+        next_token_values = workspace.next_token_values
+        top2_values = workspace.top2_values
+        top2_indices = workspace.top2_indices
+        margin_values = workspace.margin_values
+        margin_mean = workspace.margin_mean
+        workspace_ema_conf = workspace.ema_conf
     generated[:, :prompt_len].copy_(prompt)
     current_len = prompt_len
-    next_token = torch.empty((batch_size, 1), device=device, dtype=prompt.dtype)
-    next_token_values: Optional[torch.Tensor] = None
-    top2_values: Optional[torch.Tensor] = None
-    top2_indices: Optional[torch.Tensor] = None
-    margin_values: Optional[torch.Tensor] = None
-    margin_mean: Optional[torch.Tensor] = None
     
     # Internal state
     default_mode = PrecisionMode.BF16 if prefer_bfloat16 else PrecisionMode.FP16
@@ -281,7 +313,7 @@ def decode_with_dynamic_precision(
         torch.mean(margin_values, out=margin_mean)
 
         if ema_conf is None:
-            ema_conf = torch.empty_like(margin_mean)
+            ema_conf = workspace_ema_conf if workspace_ema_conf is not None else torch.empty_like(margin_mean)
             ema_conf.copy_(margin_mean)
         else:
             ema_conf.mul_(1 - alpha).add_(margin_mean, alpha=alpha)
@@ -380,6 +412,14 @@ def decode_with_dynamic_precision(
             if (generated[:, current_len - 1] == eos_id).all():
                 break
     
+    if workspace is not None:
+        workspace.next_token_values = next_token_values
+        workspace.top2_values = top2_values
+        workspace.top2_indices = top2_indices
+        workspace.margin_values = margin_values
+        workspace.margin_mean = margin_mean
+        workspace.ema_conf = ema_conf
+
     return generated[:, :current_len].contiguous(), stats
 
 
