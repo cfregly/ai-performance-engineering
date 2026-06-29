@@ -89,14 +89,16 @@ def main():
     total_tokens = 0
     start = perf_counter()
     loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
+    x = torch.empty(args.batch_size, args.hidden_size, device=device)
+    y = torch.empty_like(x)
 
     # Warmup
-    optim_warmup_x = torch.randn(args.batch_size, args.hidden_size, device=device)
-    optim_warmup_y = torch.randn_like(optim_warmup_x)
+    x.normal_()
+    y.normal_()
     optimizer.zero_grad(set_to_none=True)
     with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-        warmup_loss = ddp_model(optim_warmup_x)
-        warmup_loss = nn.functional.mse_loss(warmup_loss, optim_warmup_y)
+        warmup_loss = ddp_model(x)
+        warmup_loss = nn.functional.mse_loss(warmup_loss, y)
     warmup_loss.backward()
     optimizer.step()
 
@@ -107,8 +109,8 @@ def main():
     for step in range(args.steps):
         optimizer.zero_grad(set_to_none=True)
         for micro in range(args.grad_accum):
-            x = torch.randn(args.batch_size, args.hidden_size, device=device)
-            y = torch.randn_like(x)
+            x.normal_()
+            y.normal_()
             with torch.cuda.amp.autocast(dtype=torch.bfloat16):
                 out = ddp_model(x)
                 loss = nn.functional.mse_loss(out, y) / args.grad_accum

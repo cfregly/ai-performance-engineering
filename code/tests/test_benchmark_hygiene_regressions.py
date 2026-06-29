@@ -7814,6 +7814,34 @@ def test_train_distributed_baseline_wrappers_log_detached_loss_values() -> None:
         assert "loss={loss_value:.4f}" in source
 
 
+def test_train_distributed_zero_scripts_reuse_synthetic_batch_buffers() -> None:
+    for relative in (
+        "baseline_zero1.py",
+        "baseline_zero1_multigpu.py",
+        "baseline_zero2.py",
+        "baseline_zero2_multigpu.py",
+        "baseline_zero3.py",
+        "baseline_zero3_multigpu.py",
+        "optimized_zero1.py",
+        "optimized_zero1_multigpu.py",
+        "optimized_zero2.py",
+        "optimized_zero2_multigpu.py",
+        "optimized_zero3.py",
+        "optimized_zero3_multigpu.py",
+    ):
+        source = (REPO_ROOT / "labs" / "train_distributed" / relative).read_text(
+            encoding="utf-8"
+        )
+        measured_loop = source.split("for step in range(", maxsplit=1)[1]
+
+        assert "torch.randn(" not in source
+        assert "torch.randn_like(" not in source
+        assert "y = torch.empty_like(x)" in source
+        assert source.count("x.normal_()") >= 2
+        assert source.count("y.normal_()") >= 2
+        assert "torch.empty(" not in measured_loop
+
+
 def test_nanochat_chat_sft_batches_training_log_syncs() -> None:
     source = (
         REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_sft.py"

@@ -100,11 +100,13 @@ def _build_adamw(params) -> AdamW:
 
 def run_training(model, optimizer, batch_size: int, device, steps: int, label: str):
     rank = get("rank")
+    x = torch.empty(batch_size, model[0].in_features, device=device)
+    y = torch.empty_like(x)
 
     # Warmup step to avoid counting setup overhead.
     optimizer.zero_grad()
-    x = torch.randn(batch_size, model[0].in_features, device=device)
-    y = torch.randn_like(x)
+    x.normal_()
+    y.normal_()
     loss = nn.functional.mse_loss(model(x), y)
     loss.backward()
     optimizer.step()
@@ -119,8 +121,8 @@ def run_training(model, optimizer, batch_size: int, device, steps: int, label: s
         torch.cuda.reset_peak_memory_stats(device)
         optimizer.zero_grad()
 
-        x = torch.randn(batch_size, model[0].in_features, device=device)
-        y = torch.randn_like(x)
+        x.normal_()
+        y.normal_()
         loss = nn.functional.mse_loss(model(x), y)
         loss.backward()
         optimizer.step()

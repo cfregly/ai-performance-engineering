@@ -80,13 +80,15 @@ def main():
         fsdp_model = torch.compile(fsdp_model, mode="reduce-overhead")
 
     optimizer = _maybe_fused_adamw(fsdp_model.parameters(), args.learning_rate)
+    x = torch.empty(args.batch_size, args.hidden_size, device=device)
+    y = torch.empty_like(x)
 
     # Warmup to stabilize allocator and buckets.
-    warm_x = torch.randn(args.batch_size, args.hidden_size, device=device)
-    warm_y = torch.randn_like(warm_x)
+    x.normal_()
+    y.normal_()
     optimizer.zero_grad(set_to_none=True)
     with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-        warm_loss = nn.functional.mse_loss(fsdp_model(warm_x), warm_y)
+        warm_loss = nn.functional.mse_loss(fsdp_model(x), y)
     warm_loss.backward()
     optimizer.step()
     if rank == 0:
@@ -101,8 +103,8 @@ def main():
     for step in range(args.steps):
         optimizer.zero_grad(set_to_none=True)
         for _ in range(args.grad_accum):
-            x = torch.randn(args.batch_size, args.hidden_size, device=device)
-            y = torch.randn_like(x)
+            x.normal_()
+            y.normal_()
             with torch.cuda.amp.autocast(dtype=torch.bfloat16):
                 loss = nn.functional.mse_loss(fsdp_model(x), y) / args.grad_accum
             loss.backward()

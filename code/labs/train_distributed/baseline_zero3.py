@@ -131,14 +131,16 @@ def _build_adamw(params) -> AdamW:
 def train(model, optimizer, batch_size, device, steps, label, shard_map=None):
     rank = get("rank")
     input_dim = model[0].in_features
+    x = torch.empty(batch_size, input_dim, device=device)
+    y = torch.empty_like(x)
 
     if shard_map:
         attach_zero3_hooks(model, shard_map)
 
     optimizer.zero_grad()
-    warm_x = torch.randn(batch_size, input_dim, device=device)
-    warm_y = torch.randn_like(warm_x)
-    nn.functional.mse_loss(model(warm_x), warm_y).backward()
+    x.normal_()
+    y.normal_()
+    nn.functional.mse_loss(model(x), y).backward()
     optimizer.step()
     torch.cuda.synchronize()
 
@@ -151,8 +153,8 @@ def train(model, optimizer, batch_size, device, steps, label, shard_map=None):
         torch.cuda.reset_peak_memory_stats(device)
         optimizer.zero_grad()
 
-        x = torch.randn(batch_size, input_dim, device=device)
-        y = torch.randn_like(x)
+        x.normal_()
+        y.normal_()
         loss = nn.functional.mse_loss(model(x), y)
         loss.backward()
         optimizer.step()
