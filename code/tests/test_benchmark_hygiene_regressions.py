@@ -14190,6 +14190,44 @@ def test_ch17_single_token_prefill_decode_skips_redundant_tail_views() -> None:
         assert "token_output[:, -1:, :]" not in benchmark_section
 
 
+def test_ch17_prefill_decode_disagg_records_timing_on_explicit_streams() -> None:
+    baseline_source = (REPO_ROOT / "ch17" / "baseline_prefill_decode_disagg.py").read_text(
+        encoding="utf-8"
+    )
+    baseline_section = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+
+    assert "current_stream = torch.cuda.current_stream(device=self.device)" in baseline_section
+    assert "request_start.record(current_stream)" in baseline_section
+    assert "prefill_end.record(current_stream)" in baseline_section
+    assert "token_start.record(current_stream)" in baseline_section
+    assert "token_end.record(current_stream)" in baseline_section
+    assert "request_start.record()" not in baseline_section
+    assert "prefill_end.record()" not in baseline_section
+    assert "token_start.record()" not in baseline_section
+    assert "token_end.record()" not in baseline_section
+
+    optimized_source = (REPO_ROOT / "ch17" / "optimized_prefill_decode_disagg.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_section = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+
+    assert "default_stream = torch.cuda.current_stream(device=self.device)" in optimized_section
+    assert "request_start.record(default_stream)" in optimized_section
+    assert "prefill_end.record(self.prefill_stream)" in optimized_section
+    assert "token_start.record(self.decode_stream)" in optimized_section
+    assert "token_end.record(self.decode_stream)" in optimized_section
+    assert "request_start.record()" not in optimized_section
+    assert "prefill_end.record()" not in optimized_section
+    assert "token_start.record()" not in optimized_section
+    assert "token_end.record()" not in optimized_section
+
+
 def test_ch17_optimized_disaggregated_waits_once_before_decode_loop() -> None:
     source = (REPO_ROOT / "ch17" / "optimized_prefill_decode_disagg.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(

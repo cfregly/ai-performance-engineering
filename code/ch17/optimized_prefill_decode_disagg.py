@@ -119,13 +119,13 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.inference_mode():
                 ttft_events = self._ttft_events
                 request_start, prefill_end = ttft_events
-                request_start.record()
                 default_stream = torch.cuda.current_stream(device=self.device)
+                request_start.record(default_stream)
                 with torch.cuda.stream(self.prefill_stream):
                     self.prefill_stream.wait_stream(default_stream)
                     kv_cache = self.model.prefill(self.prompt)
                     self._prefill_done.record(self.prefill_stream)
-                    prefill_end.record()
+                    prefill_end.record(self.prefill_stream)
 
                 token_output = kv_cache
                 token_event_pairs = self._tpot_events
@@ -134,7 +134,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     for token_start, token_end in token_event_pairs:
                         token_start.record(self.decode_stream)
                         token_output = self.model.decode(token_output, num_tokens=1)
-                        token_end.record()
+                        token_end.record(self.decode_stream)
 
                 self.output = token_output
                 self._pending_ttft_pair = ttft_events
