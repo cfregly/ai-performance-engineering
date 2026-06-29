@@ -349,9 +349,13 @@ class ToyTransformer(nn.Module):
         active_mask: torch.Tensor,
         active_rows: torch.Tensor,
         extension,
+        active_mask_column: torch.Tensor | None = None,
+        active_attn_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        active_mask_column = active_mask.unsqueeze(-1)
-        active_attn_mask = active_mask[:, None, None, :]
+        if active_mask_column is None:
+            active_mask_column = active_mask.unsqueeze(-1)
+        if active_attn_mask is None:
+            active_attn_mask = active_mask[:, None, None, :]
         x = self.input_proj(x, active_rows=active_rows, extension=extension)
         x = x * active_mask_column
         for block in self.blocks:
@@ -638,6 +642,8 @@ class PaddingAwareTransformerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model: Optional[ToyTransformer] = None
         self.output: Optional[torch.Tensor] = None
         self._active_mask: Optional[torch.Tensor] = None
+        self._active_mask_column: Optional[torch.Tensor] = None
+        self._active_attn_mask: Optional[torch.Tensor] = None
         self._extension = None
         self._custom_metrics: dict[str, float] = {}
         self._payload_parameter_count = 0
@@ -657,6 +663,8 @@ class PaddingAwareTransformerBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.active_rows,
             active_tokens,
         ) = build_padding_inputs(self.workload, self.device)
+        self._active_mask_column = self._active_mask.unsqueeze(-1)
+        self._active_attn_mask = self._active_mask[:, None, None, :]
         self._extension = load_training_hotpath_extension() if self.optimized else None
         if self._extension is not None:
             flat = self.inputs.reshape(-1, self.inputs.shape[-1]).contiguous()
@@ -677,7 +685,15 @@ class PaddingAwareTransformerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        if self.inputs is None or self.seq_lens is None or self.active_rows is None or self.model is None:
+        if (
+            self.inputs is None
+            or self.seq_lens is None
+            or self.active_rows is None
+            or self.model is None
+            or self._active_mask is None
+            or self._active_mask_column is None
+            or self._active_attn_mask is None
+        ):
             raise RuntimeError("Padding-aware benchmark state not initialized")
         with torch.inference_mode():
             self.output = self.model(
@@ -685,6 +701,8 @@ class PaddingAwareTransformerBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 active_mask=self._active_mask,
                 active_rows=self.active_rows,
                 extension=self._extension,
+                active_mask_column=self._active_mask_column,
+                active_attn_mask=self._active_attn_mask,
             )
 
     def capture_verification_payload(self) -> None:
@@ -707,6 +725,8 @@ class PaddingAwareTransformerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._extension = None
         self._active_mask = None
+        self._active_mask_column = None
+        self._active_attn_mask = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

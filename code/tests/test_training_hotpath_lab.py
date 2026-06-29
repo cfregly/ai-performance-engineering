@@ -140,6 +140,10 @@ def test_padding_aware_transformer_forward_uses_inference_swiglu_fast_path() -> 
     assert "y = _silu_mul_in_place_if_safe(up, gate)" in common_source
     assert "active_mask_column = active_mask.unsqueeze(-1)" in common_source
     assert "active_attn_mask = active_mask[:, None, None, :]" in common_source
+    assert "self._active_mask_column = self._active_mask.unsqueeze(-1)" in benchmark_source
+    assert "self._active_attn_mask = self._active_mask[:, None, None, :]" in benchmark_source
+    assert "active_mask_column=self._active_mask_column" in benchmark_source
+    assert "active_attn_mask=self._active_attn_mask" in benchmark_source
     assert "active_attn_mask=active_attn_mask" in common_source
     assert "active_mask_column=active_mask_column" in common_source
     assert "attn_mask=active_attn_mask" in common_source

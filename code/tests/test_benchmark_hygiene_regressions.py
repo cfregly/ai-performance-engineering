@@ -1184,12 +1184,22 @@ def test_labs_training_hotpath_payload_caches_parameter_count() -> None:
         "def benchmark_fn",
         maxsplit=1,
     )[0]
+    benchmark_section = class_section.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
     capture_section = class_section.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown",
         maxsplit=1,
     )[0]
 
     assert "self._payload_parameter_count = 0" in class_section
+    assert "self._active_mask_column: Optional[torch.Tensor] = None" in class_section
+    assert "self._active_attn_mask: Optional[torch.Tensor] = None" in class_section
+    assert "self._active_mask_column = self._active_mask.unsqueeze(-1)" in setup_section
+    assert "self._active_attn_mask = self._active_mask[:, None, None, :]" in setup_section
+    assert "active_mask_column=self._active_mask_column" in benchmark_section
+    assert "active_attn_mask=self._active_attn_mask" in benchmark_section
     assert (
         "self._payload_parameter_count = sum(parameter.numel() for parameter in self.model.parameters())"
         in setup_section
