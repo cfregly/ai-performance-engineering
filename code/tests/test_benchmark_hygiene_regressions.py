@@ -7852,26 +7852,27 @@ def test_train_distributed_pipeline_defers_microbatch_loss_syncs() -> None:
     schedule_section = source.split("class PipelineExperiment", maxsplit=1)[1]
 
     assert "def _finish_pipeline_loss" in source
-    assert "total = loss_values[0].detach().clone()" in finish_section
-    assert "total.add_(loss.detach())" in finish_section
+    assert "total = loss_buffer[:loss_count].sum()" in finish_section
+    assert "total.detach().cpu().tolist() / n_micro" in finish_section
+    assert ".cpu().item()" not in finish_section
     assert "torch.stack(loss_values)" not in finish_section
-    assert "loss_values.append(loss.detach())" in schedule_section
-    assert "_finish_pipeline_loss(loss_values, n_micro)" in schedule_section
+    assert "loss_values.append(loss.detach())" not in schedule_section
+    assert "loss_buffer = torch.empty(n_micro, dtype=torch.float64" in schedule_section
+    assert "loss_count = 0" in schedule_section
+    assert "loss_buffer[loss_count].copy_(loss.detach())" in schedule_section
+    assert "loss_count += 1" in schedule_section
+    assert "_finish_pipeline_loss(loss_buffer, loss_count, n_micro)" in schedule_section
     assert "loss_total += loss.item()" not in schedule_section
 
 
 def test_train_distributed_pipeline_loss_finish_averages_without_stack() -> None:
     from labs.train_distributed.pipeline import _finish_pipeline_loss
 
-    losses = [
-        torch.tensor(1.0),
-        torch.tensor(3.0),
-        torch.tensor(5.0),
-    ]
+    loss_buffer = torch.tensor([1.0, 3.0, 5.0])
 
-    assert _finish_pipeline_loss(losses, 3) == pytest.approx(3.0)
-    assert _finish_pipeline_loss([], 3) == 0.0
-    assert _finish_pipeline_loss(losses, 0) == 0.0
+    assert _finish_pipeline_loss(loss_buffer, 3, 3) == pytest.approx(3.0)
+    assert _finish_pipeline_loss(loss_buffer, 0, 3) == 0.0
+    assert _finish_pipeline_loss(loss_buffer, 3, 0) == 0.0
 
 
 def test_nanochat_chat_eval_batches_count_reductions() -> None:
