@@ -24,6 +24,8 @@ except ImportError:
 import time
 import torch
 
+from core.benchmark.utils import scalar_tensor_to_float
+
 
 def _device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -178,7 +180,7 @@ def compare_mask_strategies() -> None:
     time_all = _benchmark("Process all elements", run_all)
     time_active = _benchmark("Process active subset", run_active)
 
-    diff = torch.max(torch.abs(res_all - res_active)).item()
+    diff = scalar_tensor_to_float(torch.max(torch.abs(res_all - res_active)))
     print(f"Max elementwise difference: {diff:.2e}")
     if time_active > 0:
         print(f"Speedup (all / active): {time_all / time_active:5.2f}x")
@@ -229,7 +231,9 @@ def compiled_conditionals() -> None:
     _benchmark("Uncompiled", lambda: uncompiled(x, y, threshold))
     _benchmark(f"Compiled ({compile_mode})", lambda: compiled(x, y, threshold))
 
-    max_diff = torch.max(torch.abs(uncompiled(x, y, threshold) - compiled(x, y, threshold))).item()
+    max_diff = scalar_tensor_to_float(
+        torch.max(torch.abs(uncompiled(x, y, threshold) - compiled(x, y, threshold)))
+    )
     print(f"Max difference post-compile: {max_diff:.2e}")
 
 

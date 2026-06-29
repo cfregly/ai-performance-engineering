@@ -255,6 +255,15 @@ def test_ch08_mask_strategy_demo_reuses_output_workspaces() -> None:
     assert "torch.cos(data[active_indices])" not in mask_section
     assert "all_output.masked_fill_(inactive, 0.0)" in mask_section
     assert "active_output.zero_()" in mask_section
+    assert "scalar_tensor_to_float(torch.max(torch.abs(res_all - res_active)))" in mask_section
+    assert "torch.max(torch.abs(res_all - res_active)).item()" not in mask_section
+
+    compiled_section = source.split("def compiled_conditionals", maxsplit=1)[1]
+    assert "max_diff = scalar_tensor_to_float(" in compiled_section
+    assert (
+        "torch.max(torch.abs(uncompiled(x, y, threshold) - compiled(x, y, threshold))).item()"
+        not in compiled_section
+    )
 
 
 def test_ch08_tiling_optimized_wrapper_uses_strict_fast_path() -> None:
