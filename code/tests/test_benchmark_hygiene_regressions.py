@@ -4285,13 +4285,20 @@ def test_ch16_runtime_schedulers_cache_nvtx_and_verification_dummy() -> None:
 
         assert "self._enable_nvtx = False" in source
         assert "self._verification_dummy: Optional[torch.Tensor] = None" in source
+        assert "self._verification_output_buffer: Optional[torch.Tensor] = None" in source
         assert 'config = getattr(self, "_config", None) or self.get_config()' in setup_section
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
         assert "self._verification_dummy = torch.zeros(1, device=self.device)" in setup_section
+        assert "max_dim = max(scenario.matmul_dim for scenario in self.scenarios)" in setup_section
+        assert "self._verification_output_buffer = torch.empty(" in setup_section
         assert f'with nvtx_range("{label}", enable=self._enable_nvtx):' in benchmark_section
         assert "get_config()" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert 'inputs={"dummy": self._verification_dummy}' in capture_section
+        assert "verify_output = self._verification_output_buffer[" in capture_section
+        assert "verify_output.copy_(self.output)" in capture_section
+        assert "output=verify_output" in capture_section
+        assert "self.output.detach().clone()" not in capture_section
         assert "torch.zeros(1, device=self.device)" not in capture_section
 
 

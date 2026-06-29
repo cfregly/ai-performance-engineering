@@ -29,6 +29,7 @@ class OptimizedRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._custom_metrics: Dict[str, float] = {}
         self._enable_nvtx = False
         self._verification_dummy: Optional[torch.Tensor] = None
+        self._verification_output_buffer: Optional[torch.Tensor] = None
 
         self.scenarios = (
             SchedulerScenario(
@@ -67,6 +68,13 @@ class OptimizedRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self._verification_dummy = torch.zeros(1, device=self.device)
+        max_dim = max(scenario.matmul_dim for scenario in self.scenarios)
+        self._verification_output_buffer = torch.empty(
+            max_dim,
+            max_dim,
+            device=self.device,
+            dtype=torch.float32,
+        )
         if torch.cuda.is_available():
             torch.cuda.synchronize(self.device)
 
@@ -105,11 +113,20 @@ class OptimizedRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark
             raise RuntimeError("benchmark_fn() did not produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or self._verification_dummy is None:
+        if (
+            self.output is None
+            or self._verification_dummy is None
+            or self._verification_output_buffer is None
+        ):
             raise RuntimeError("benchmark_fn() did not produce output")
+        verify_output = self._verification_output_buffer[
+            : self.output.shape[0],
+            : self.output.shape[1],
+        ]
+        verify_output.copy_(self.output)
         self._set_verification_payload(
             inputs={"dummy": self._verification_dummy},
-            output=self.output.detach().clone(),
+            output=verify_output,
             batch_size=1,
             parameter_count=0,
             precision_flags={
