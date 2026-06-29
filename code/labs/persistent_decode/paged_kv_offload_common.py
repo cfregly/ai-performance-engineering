@@ -226,7 +226,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.cuda.stream(self.copy_stream), self._nvtx_range(label):
                 _copy_planes()
                 if record_event is not None:
-                    record_event.record()
+                    record_event.record(self.copy_stream)
             if wait_for_copy:
                 consumer_stream = wait_stream or torch.cuda.current_stream()
                 consumer_stream.wait_stream(self.copy_stream)
@@ -234,7 +234,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with self._nvtx_range(label):
                 _copy_planes()
                 if record_event is not None:
-                    record_event.record()
+                    record_event.record(torch.cuda.current_stream())
 
     def setup(self) -> None:
         torch.manual_seed(42)

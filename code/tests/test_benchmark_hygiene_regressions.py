@@ -7162,6 +7162,9 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "consumer_stream = wait_stream or torch.cuda.current_stream()" in copy_section
     assert "consumer_stream.wait_stream(self.copy_stream)" in copy_section
     assert "torch.cuda.current_stream().wait_stream(self.copy_stream)" not in copy_section
+    assert "record_event.record(self.copy_stream)" in copy_section
+    assert "record_event.record(torch.cuda.current_stream())" in copy_section
+    assert "record_event.record()" not in copy_section
     assert "torch.cuda.Event(" not in benchmark_section
     assert "current_stream = torch.cuda.current_stream() if self.copy_stream is not None else None" in benchmark_section
     assert "current_stream.wait_event(self.prefetch_event)" in benchmark_section
