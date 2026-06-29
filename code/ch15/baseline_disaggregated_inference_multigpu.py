@@ -474,6 +474,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         self.label = label
         self._pairs: List[_LocalPair] = []
         self._output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
         self._verify_prompt: Optional[torch.Tensor] = None
         self._param_count: int = 0
@@ -484,6 +485,16 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
             requests_per_iteration=float(total_requests),
             tokens_per_iteration=float(tokens_per_iter),
         )
+
+    def _allocate_output_buffer(self) -> torch.Tensor:
+        shape = (
+            self.num_pairs * self.cfg.requests_per_rank * self.cfg.batch_size,
+            1,
+        )
+        try:
+            return torch.empty(shape, device="cpu", dtype=torch.long, pin_memory=True)
+        except RuntimeError:
+            return torch.empty(shape, device="cpu", dtype=torch.long)
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -582,6 +593,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         self._pending_outputs = [
             torch.empty(0) for _ in range(self.num_pairs * self.cfg.requests_per_rank)
         ]
+        self._output_buffer = self._allocate_output_buffer()
         for pair in self._pairs:
             torch.cuda.synchronize(pair.prefill_device)
             torch.cuda.synchronize(pair.decode_device)
@@ -640,7 +652,17 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         if self._output is None:
             if not self._pending_outputs:
                 raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-            self._output = torch.cat([out.detach().cpu() for out in self._pending_outputs], dim=0)
+            if self._output_buffer is None:
+                raise RuntimeError("Output buffer not initialized")
+            output_offset = 0
+            for output in self._pending_outputs:
+                output_rows = int(output.shape[0])
+                self._output_buffer[output_offset : output_offset + output_rows].copy_(
+                    output,
+                    non_blocking=False,
+                )
+                output_offset += output_rows
+            self._output = self._output_buffer
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
         meta_dtype = torch.float32
         self._set_verification_payload(
@@ -684,6 +706,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
     def teardown(self) -> None:
         self._pairs = []
         self._output = None
+        self._output_buffer = None
         self._pending_outputs = []
         self._verify_prompt = None
         torch.cuda.empty_cache()

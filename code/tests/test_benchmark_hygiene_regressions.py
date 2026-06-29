@@ -9249,7 +9249,13 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "outputs[output_idx] = decoded_tokens" in benchmark_section
     assert "output_idx += 1" in benchmark_section
     assert "self._pending_outputs = outputs" in benchmark_section
-    assert "torch.cat([out.detach().cpu() for out in self._pending_outputs], dim=0)" in capture_section
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._output_buffer = self._allocate_output_buffer()" in setup_section
+    assert "if self._output_buffer is None:" in capture_section
+    assert "for output in self._pending_outputs:" in capture_section
+    assert "self._output_buffer[output_offset : output_offset + output_rows].copy_(" in capture_section
+    assert "self._output = self._output_buffer" in capture_section
+    assert "torch.cat([out.detach().cpu() for out in self._pending_outputs], dim=0)" not in capture_section
 
 
 def test_ch15_sdpa_attention_reuses_kv_concat_buffers() -> None:
