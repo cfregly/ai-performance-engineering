@@ -17,13 +17,14 @@ def _time_kernel(fn, iters: int, timeout_s: float, warmup: int = 5) -> float:
     torch.cuda.synchronize()
     start_evt = torch.cuda.Event(enable_timing=True)
     end_evt = torch.cuda.Event(enable_timing=True)
-    start_evt.record()
+    current_stream = torch.cuda.current_stream()
+    start_evt.record(current_stream)
     wall_start = time.perf_counter()
     for _ in range(max(1, iters)):
         fn()
         if timeout_s and (time.perf_counter() - wall_start) > timeout_s:
             raise TimeoutError("Kernel timing exceeded timeout")
-    end_evt.record()
+    end_evt.record(current_stream)
     end_evt.synchronize()
     return start_evt.elapsed_time(end_evt) / max(1, iters)
 

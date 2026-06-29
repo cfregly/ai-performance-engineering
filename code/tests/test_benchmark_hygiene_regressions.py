@@ -4400,6 +4400,52 @@ def test_nvfp4_gemm_local_eval_timing_records_on_current_stream() -> None:
         assert implicit_end not in timing_section
 
 
+def test_lab_utility_timers_record_on_current_stream() -> None:
+    timing_splits = {
+        "labs/tcgen05_cluster_shapes/run_cluster_shape_sweep.py": (
+            "def _benchmark",
+            "def _run_variant",
+            "current_stream = torch.cuda.current_stream()",
+            "start.record(current_stream)",
+            "end.record(current_stream)",
+            "start.record()",
+            "end.record()",
+        ),
+        "labs/fullstack_cluster/run_lab_fullstack_cluster.py": (
+            "def _time_kernel",
+            "def run_benchmark",
+            "current_stream = torch.cuda.current_stream()",
+            "start_evt.record(current_stream)",
+            "end_evt.record(current_stream)",
+            "start_evt.record()",
+            "end_evt.record()",
+        ),
+        "labs/flexattention/flex_attention_cute.py": (
+            "count = max(int(args.iters), 1)",
+            "elapsed_s =",
+            "current_stream = torch.cuda.current_stream(device)",
+            "start.record(current_stream)",
+            "end.record(current_stream)",
+            "start.record()",
+            "end.record()",
+        ),
+    }
+
+    for filename, records in timing_splits.items():
+        start_marker, end_marker, stream_capture, start_record, end_record, implicit_start, implicit_end = records
+        source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        timing_section = source.split(start_marker, maxsplit=1)[1].split(
+            end_marker,
+            maxsplit=1,
+        )[0]
+        assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
+        assert stream_capture in timing_section
+        assert start_record in timing_section
+        assert end_record in timing_section
+        assert implicit_start not in timing_section
+        assert implicit_end not in timing_section
+
+
 def test_occupancy_tuning_variants_match_their_filenames() -> None:
     wide_n = get_wide_n_benchmark()
     latency = get_latency_benchmark()

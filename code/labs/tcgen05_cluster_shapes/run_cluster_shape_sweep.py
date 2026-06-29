@@ -26,10 +26,11 @@ def _benchmark(fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], a: torc
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
-    start.record()
+    current_stream = torch.cuda.current_stream()
+    start.record(current_stream)
     for _ in range(iterations):
         fn(a, b)
-    end.record()
+    end.record(current_stream)
     end.synchronize()
     return start.elapsed_time(end) / iterations
 

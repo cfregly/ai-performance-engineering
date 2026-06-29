@@ -65,10 +65,11 @@ def main() -> None:
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
     with torch.inference_mode():
-        start.record()
+        current_stream = torch.cuda.current_stream(device)
+        start.record(current_stream)
         for _ in range(count):
             out = _flash_attn_fwd(q, k, v)
-        end.record()
+        end.record(current_stream)
         end.synchronize()
     elapsed_s = start.elapsed_time(end) / 1000.0
 
