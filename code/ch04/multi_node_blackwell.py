@@ -699,11 +699,11 @@ def benchmark_multi_node_bandwidth(
         for _ in range(5):
             collective()
         torch.cuda.synchronize(device)
-        start = time.time()
+        start = time.perf_counter()
         for _ in range(num_iters):
             collective()
         torch.cuda.synchronize(device)
-        return time.time() - start
+        return time.perf_counter() - start
 
     for size in sizes:
         tensor = torch.randn(size, device=device, dtype=torch.float32)
