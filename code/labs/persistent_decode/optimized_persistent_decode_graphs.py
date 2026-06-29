@@ -151,13 +151,14 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
             self.graph_mode == GraphMode.FULL
             or (self.graph_mode == GraphMode.FULL_AND_PIECEWISE and self.seq_len <= self.max_capture_seq)
         )
+        current_stream = torch.cuda.current_stream(self.device)
         if use_full and self.full_graph is not None:
             start = self._full_events["start"]
             end = self._full_events["end"]
             with self._nvtx_range("full_graph"):
-                start.record()
+                start.record(current_stream)
                 self.full_graph.replay()
-                end.record()
+                end.record(current_stream)
             self._pending_iteration = {
                 "path": "full_graph",
                 "start": start,
@@ -178,12 +179,12 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
             end_prefill = self._piecewise_events["end_prefill"]
             start_decode = self._piecewise_events["start_decode"]
             end_decode = self._piecewise_events["end_decode"]
-            start_prefill.record()
+            start_prefill.record(current_stream)
             self.prefill_graph.replay()
-            end_prefill.record()
-            start_decode.record()
+            end_prefill.record(current_stream)
+            start_decode.record(current_stream)
             self.decode_graph.replay()
-            end_decode.record()
+            end_decode.record(current_stream)
             self._pending_iteration = {
                 "path": "piecewise_graph",
                 "start": start_prefill,

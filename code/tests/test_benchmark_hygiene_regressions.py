@@ -6567,6 +6567,19 @@ def test_persistent_decode_graphs_reuses_timing_events_outside_hot_loop() -> Non
     assert "torch.cuda.Event(" not in piecewise_capture_section
     assert "torch.cuda.Event(" not in full_capture_section
     assert "torch.cuda.Event(" not in benchmark_section
+    assert "current_stream = torch.cuda.current_stream(self.device)" in benchmark_section
+    assert "start.record(current_stream)" in benchmark_section
+    assert "end.record(current_stream)" in benchmark_section
+    assert "start_prefill.record(current_stream)" in benchmark_section
+    assert "end_prefill.record(current_stream)" in benchmark_section
+    assert "start_decode.record(current_stream)" in benchmark_section
+    assert "end_decode.record(current_stream)" in benchmark_section
+    assert "start.record()" not in benchmark_section
+    assert "end.record()" not in benchmark_section
+    assert "start_prefill.record()" not in benchmark_section
+    assert "end_prefill.record()" not in benchmark_section
+    assert "start_decode.record()" not in benchmark_section
+    assert "end_decode.record()" not in benchmark_section
     assert "self.inputs.out.zero_()" not in full_capture_section
     assert 'start = self._full_events["start"]' in benchmark_section
     assert 'start_prefill = self._piecewise_events["start_prefill"]' in benchmark_section
@@ -8205,10 +8218,15 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "output_flat.index_add_(0, token_indices, expert_output * weights)" not in moe_forward
     assert "torch.cuda.Event(" not in benchmark_section
     assert "start_event, end_event = self._timing_events" in benchmark_section
+    assert "current_stream = torch.cuda.current_stream(self.device)" in benchmark_section
+    assert "start_event.record(current_stream)" in benchmark_section
+    assert "end_event.record(current_stream)" in benchmark_section
+    assert "start_event.record()" not in benchmark_section
+    assert "end_event.record()" not in benchmark_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.moe_layer.parameters())" in setup_section
     assert ".detach().float().clone()" not in benchmark_section
-    end_event_idx = benchmark_section.index("end_event.record()")
+    end_event_idx = benchmark_section.index("end_event.record(current_stream)")
     output_idx = benchmark_section.index("self.output = output")
     aux_metrics_idx = benchmark_section.index("self._last_aux_metrics.clear()")
 

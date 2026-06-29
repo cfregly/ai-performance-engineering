@@ -315,7 +315,8 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
             if self._timing_events is None:
                 raise RuntimeError("Timing events not initialized")
             start_event, end_event = self._timing_events
-            start_event.record()
+            current_stream = torch.cuda.current_stream(self.device)
+            start_event.record(current_stream)
             self._pending_timing_events = (start_event, end_event)
             self._last_elapsed_ms = None
         else:
@@ -326,7 +327,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         with torch.inference_mode():
             output, metrics = self.moe_layer(self.input)
         if use_cuda_timing:
-            end_event.record()
+            end_event.record(current_stream)
         else:
             self._last_elapsed_ms = (time.perf_counter() - start_time) * 1000.0
 
