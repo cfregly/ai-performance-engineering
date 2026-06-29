@@ -944,6 +944,10 @@ def test_ch04_symmetric_memory_examples_reuse_recv_buffers() -> None:
     traditional_p2p = example_source.split("def benchmark_traditional_p2p", maxsplit=1)[1].split(
         "def benchmark_symmetric_memory", maxsplit=1
     )[0]
+    symmetric_memory = example_source.split("def benchmark_symmetric_memory", maxsplit=1)[1].split(
+        "def benchmark_traditional_ring",
+        maxsplit=1,
+    )[0]
     example_multigpu = example_source.split("def benchmark_multigpu_symmetric_memory", maxsplit=1)[
         1
     ].split("def main", maxsplit=1)[0]
@@ -976,6 +980,9 @@ def test_ch04_symmetric_memory_examples_reuse_recv_buffers() -> None:
 
     assert "recv_tensor = torch.empty_like(tensor) if rank == peer_rank else None" in traditional_p2p
     assert "dist.send(tensor, dst=peer_rank)" in traditional_p2p
+    assert "remote_touch = torch.empty((), device=device, dtype=tensor.dtype) if rank == 1 else None" in symmetric_memory
+    assert "torch.sum(remote_data, dim=0, out=remote_touch)" in symmetric_memory
+    assert "remote_data.sum()" not in symmetric_memory
     assert "dist.all_reduce(tensor.clone())" not in traditional_allreduce
     assert "recv_tensor = torch.empty_like(tensor) if rank > 0 else None" in symmetric_access
     assert "recv_tensor = torch.empty_like(tensor)" in example_multigpu

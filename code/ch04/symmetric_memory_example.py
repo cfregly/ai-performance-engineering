@@ -29,8 +29,6 @@ import torch
 import torch.distributed as dist
 import torch.cuda.nvtx as nvtx
 from core.profiling.nvtx_helper import standardize_nvtx_label
-import time
-from typing import Optional
 
 
 def setup_distributed():
@@ -179,8 +177,8 @@ def benchmark_traditional_p2p(tensor: torch.Tensor, peer_rank: int, iterations: 
 def benchmark_symmetric_memory(tensor: torch.Tensor, iterations: int = 100):
     """Benchmark symmetric memory for ultralow-latency cross-GPU access."""
     rank = dist.get_rank()
-    world_size = dist.get_world_size()
     device = torch.device("cuda", torch.cuda.current_device())
+    remote_touch = torch.empty((), device=device, dtype=tensor.dtype) if rank == 1 else None
     
     # Check if symmetric memory is available
     try:
@@ -209,7 +207,9 @@ def benchmark_symmetric_memory(tensor: torch.Tensor, iterations: int = 100):
         if rank == 1:
             # Rank 1 directly reads from rank 0's symmetric buffer
             remote_data = sym_mem.get_buffer(0)
-            _ = remote_data.sum()  # Force materialization
+            if remote_touch is None:
+                raise RuntimeError("Remote touch buffer was not initialized")
+            torch.sum(remote_data, dim=0, out=remote_touch)
     
     dist.barrier()
     
@@ -227,7 +227,9 @@ def benchmark_symmetric_memory(tensor: torch.Tensor, iterations: int = 100):
             dist.barrier()
             if rank == 1:
                 remote_data = sym_mem.get_buffer(0)
-                _ = remote_data.sum()
+                if remote_touch is None:
+                    raise RuntimeError("Remote touch buffer was not initialized")
+                torch.sum(remote_data, dim=0, out=remote_touch)
     
     end.record()
     end.synchronize()
