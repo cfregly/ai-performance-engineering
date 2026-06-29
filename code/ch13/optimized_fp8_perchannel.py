@@ -32,6 +32,7 @@ class FP8PerChannelLinear(nn.Module):
         self.out_features = out_features
         self.fp8_max = 448.0  # E4M3 max value
         self._weight_fp8 = None
+        self._weight_fp8_t = None
         self._scale_b = None
         self._bias_bf16 = None
         self.register_buffer("_scale_a_buffer", torch.empty(0), persistent=False)
@@ -70,6 +71,7 @@ class FP8PerChannelLinear(nn.Module):
             self._scale_b = weight_scale.unsqueeze(0).contiguous()  # [1, out_features]
             weight_fp8 = (self.weight / weight_scale.unsqueeze(1)).to(torch.float8_e4m3fn)
             self._weight_fp8 = weight_fp8.contiguous()  # [out_features, in_features]
+            self._weight_fp8_t = self._weight_fp8.T
             if self.bias is not None:
                 self._bias_bf16 = self.bias.to(torch.bfloat16).contiguous()
 
@@ -146,7 +148,7 @@ class FP8PerChannelLinear(nn.Module):
         Uses per-tensor scaling for input (standard) and per-output-channel
         scaling for weights (the key improvement).
         """
-        if self._weight_fp8 is None or self._scale_b is None:
+        if self._weight_fp8 is None or self._weight_fp8_t is None or self._scale_b is None:
             raise RuntimeError("prepare_fp8_weights() must be called before forward()")
         if x.device.type != "cuda":
             raise RuntimeError("CUDA required for fp8_perchannel optimized benchmark")
@@ -178,7 +180,7 @@ class FP8PerChannelLinear(nn.Module):
 
         output_2d = torch._scaled_mm(
             x_fp8,
-            self._weight_fp8.T,
+            self._weight_fp8_t,
             scale_a,
             self._scale_b,
             out_dtype=torch.bfloat16,

@@ -117,6 +117,7 @@ class StaticFP8Linear(nn.Module):
         self.register_buffer('weight_scale', torch.tensor(1.0, dtype=torch.float32, device=device))
         self.register_buffer('is_calibrated', torch.tensor(False))
         self.register_buffer('weight_fp8', torch.empty(0, device=device, dtype=torch.float8_e4m3fn))
+        self._weight_fp8_t: Optional[torch.Tensor] = None
         self.register_buffer(
             "_input_scaled_buffer",
             torch.empty(0, device=device, dtype=dtype),
@@ -155,6 +156,7 @@ class StaticFP8Linear(nn.Module):
         self.is_calibrated.fill_(True)
         weight_fp8 = (self.weight / self.weight_scale).to(torch.float8_e4m3fn)
         self.weight_fp8 = weight_fp8.contiguous()
+        self._weight_fp8_t = self.weight_fp8.T
         
         return {"input_scale": input_scale, "weight_scale": weight_scale,
                 "calibration_samples": self._input_stats.num_samples}
@@ -193,7 +195,7 @@ class StaticFP8Linear(nn.Module):
                 raise RuntimeError("torch._scaled_mm is required for static FP8 benchmark")
             if not hasattr(torch, "float8_e4m3fn"):
                 raise RuntimeError("torch.float8_e4m3fn is required for static FP8 benchmark")
-            if self.weight_fp8.numel() == 0:
+            if self.weight_fp8.numel() == 0 or self._weight_fp8_t is None:
                 raise RuntimeError("freeze_scales() must be called before inference")
 
             batch_shape = x.shape[:-1]
@@ -204,7 +206,7 @@ class StaticFP8Linear(nn.Module):
 
             output_2d = torch._scaled_mm(
                 x_fp8,
-                self.weight_fp8.T,
+                self._weight_fp8_t,
                 self.input_scale,
                 self.weight_scale,
                 out_dtype=torch.float32,

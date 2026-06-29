@@ -211,6 +211,7 @@ class OptimizedFP4Linear(nn.Module):
         self.register_buffer('weight_scales', None)
         self.register_buffer('_weight_cache', None)
         self.register_buffer('_weight_fp8_cache', None)
+        self.register_buffer('_weight_fp8_t_cache', None)
         fp8_dtype = getattr(torch, "float8_e4m3fn", torch.uint8)
         self.register_buffer('_input_fp8_buffer', torch.empty(0, dtype=fp8_dtype), persistent=False)
         self.register_buffer('_fp8_scale_a', torch.ones(1, dtype=torch.float32), persistent=False)
@@ -234,6 +235,7 @@ class OptimizedFP4Linear(nn.Module):
             self._weight_fp16 = None
             self._weight_cache = None
             self._weight_fp8_cache = None
+            self._weight_fp8_t_cache = None
             self._quantized = True
     
     def _get_weight(self) -> torch.Tensor:
@@ -264,6 +266,7 @@ class OptimizedFP4Linear(nn.Module):
         """Clear weight cache to free memory."""
         self._weight_cache = None
         self._weight_fp8_cache = None
+        self._weight_fp8_t_cache = None
 
     def _get_weight_fp8(self) -> torch.Tensor:
         """Get a cached row-major FP8 bridge for tensor-core execution."""
@@ -284,6 +287,16 @@ class OptimizedFP4Linear(nn.Module):
         weight_fp8 = weight.to(torch.float8_e4m3fn).contiguous()
         self._weight_fp8_cache = weight_fp8
         return weight_fp8
+
+    def _get_weight_fp8_t(self) -> torch.Tensor:
+        """Get a cached transposed FP8 bridge for scaled_mm."""
+        if self._weight_fp8_t_cache is not None:
+            return self._weight_fp8_t_cache
+
+        weight_fp8 = self._get_weight_fp8()
+        weight_fp8_t = weight_fp8.T
+        self._weight_fp8_t_cache = weight_fp8_t
+        return weight_fp8_t
 
     def _activation_fp8_buffer(self, x_2d: torch.Tensor) -> torch.Tensor:
         input_fp8 = self._input_fp8_buffer
@@ -319,7 +332,7 @@ class OptimizedFP4Linear(nn.Module):
     
     def _forward_fp8(self, x: torch.Tensor) -> torch.Tensor:
         """Forward using FP8 tensor cores for acceleration."""
-        weight_fp8 = self._get_weight_fp8()
+        weight_fp8_t = self._get_weight_fp8_t()
         
         # Reshape for matmul
         batch_shape = x.shape[:-1]
@@ -332,7 +345,7 @@ class OptimizedFP4Linear(nn.Module):
         
         # _scaled_mm: (M, K) @ (N, K).T -> (M, N)
         result = torch._scaled_mm(
-            x_fp8, weight_fp8.T,
+            x_fp8, weight_fp8_t,
             scale_a, scale_b,
             out_dtype=self.dtype
         )

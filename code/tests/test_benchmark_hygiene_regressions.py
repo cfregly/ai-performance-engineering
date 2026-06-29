@@ -3827,11 +3827,15 @@ def test_ch19_optimized_fp4_fp8_bridge_reuses_activation_and_scale_buffers() -> 
     assert "self.register_buffer('_input_fp8_buffer'" in source
     assert "self.register_buffer('_fp8_scale_a'" in source
     assert "self.register_buffer('_fp8_scale_b'" in source
+    assert "self.register_buffer('_weight_fp8_t_cache', None)" in source
+    assert "def _get_weight_fp8_t(self) -> torch.Tensor" in source
     assert "def _activation_fp8_buffer(self, x_2d: torch.Tensor)" in source
     assert "def _fp8_scale_buffers(self, device: torch.device)" in source
+    assert "weight_fp8_t = self._get_weight_fp8_t()" in forward_fp8_section
     assert "x_fp8 = self._activation_fp8_buffer(x_2d)" in forward_fp8_section
     assert "x_fp8.copy_(x_2d)" in forward_fp8_section
     assert "scale_a, scale_b = self._fp8_scale_buffers(x.device)" in forward_fp8_section
+    assert "weight_fp8.T" not in forward_fp8_section
     assert ".to(torch.float8_e4m3fn)" not in forward_fp8_section
     assert "torch.ones(1, device=x.device, dtype=torch.float32)" not in forward_fp8_section
 
@@ -10264,9 +10268,13 @@ def test_ch13_optimized_static_fp8_reuses_activation_quant_buffers() -> None:
 
     assert '"_input_scaled_buffer"' in source
     assert '"_input_fp8_buffer"' in source
+    assert "self._weight_fp8_t: Optional[torch.Tensor] = None" in source
+    assert "self._weight_fp8_t = self.weight_fp8.T" in source
     assert "def _activation_buffers(self, x_2d: torch.Tensor)" in source
     assert "torch.div(x_2d, self.input_scale, out=input_scaled)" in forward_section
     assert "x_fp8.copy_(input_scaled)" in forward_section
+    assert "self._weight_fp8_t," in forward_section
+    assert "self.weight_fp8.T" not in forward_section
     assert "(x_2d / self.input_scale).to(torch.float8_e4m3fn)" not in forward_section
 
 
@@ -12057,6 +12065,8 @@ def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
     assert 'self.register_buffer("_input_scale_buffer", torch.empty(0), persistent=False)' in source
     assert 'self.register_buffer("_input_scaled_buffer", torch.empty(0), persistent=False)' in source
     assert '"_input_fp8_buffer"' in source
+    assert "self._weight_fp8_t = None" in source
+    assert "self._weight_fp8_t = self._weight_fp8.T" in source
     assert "def _activation_buffers(self, x_2d: torch.Tensor)" in source
     assert "def _cacheable_input_key(self, x_2d: torch.Tensor) -> tuple | None" in source
     assert "def _input_scale_for(self, x_2d: torch.Tensor) -> torch.Tensor" in source
@@ -12069,6 +12079,8 @@ def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
     assert "scale_a.copy_(input_scale)" in forward_section
     assert "torch.div(x_2d, input_scale, out=input_scaled)" in forward_section
     assert "x_fp8.copy_(input_scaled)" in forward_section
+    assert "self._weight_fp8_t," in forward_section
+    assert "self._weight_fp8.T" not in forward_section
     assert "output_2d.add_(self._bias_bf16)" in forward_section
     assert "output = output + self._bias_bf16" not in forward_section
     assert "(x_2d / input_scale).to(torch.float8_e4m3fn)" not in forward_section
