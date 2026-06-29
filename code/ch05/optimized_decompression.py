@@ -59,7 +59,7 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._output_matrix.copy_(self._values_column)
             out = self._output_flat
         latency_ms = self._record_stop(start)
-        self.output = out.detach()
+        self.output = out
         self._payload_counts = self.counts
         self._payload_values = self.values
         return {"latency_ms": latency_ms, "decompressed_len": int(out.numel())}
