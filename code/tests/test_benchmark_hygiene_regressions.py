@@ -3923,6 +3923,14 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
         "class QuantizationManager",
         maxsplit=1,
     )[0]
+    prefix_cache_section = profiling_source.split("class PrefixCache", maxsplit=1)[1].split(
+        "class ModelCascader",
+        maxsplit=1,
+    )[0]
+    prefix_lookup_section = prefix_cache_section.split("def find_longest_prefix", maxsplit=1)[1].split(
+        "def cache_prefix",
+        maxsplit=1,
+    )[0]
     optimizer_process_section = profiling_source.split(
         "class InferenceOptimizer",
         maxsplit=1,
@@ -3969,12 +3977,22 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert "_mean_recent_dict_value(self.batch_history, 'batch_size')" in batcher_section
     assert "_mean_recent_dict_value(self.batch_history, 'avg_tokens')" in batcher_section
     assert "recent_batches = self.batch_history[-100:]" not in batcher_section
+    assert "heapq.nsmallest(" in batcher_section
+    assert "sorted_requests = sorted(" not in batcher_section
+    assert "batch.sort(key=request_sort_key)" in batcher_section
     assert "start_time = time.perf_counter()" in optimizer_process_section
     assert "total_time = time.perf_counter() - start_time" in optimizer_process_section
     assert "time.time()" not in optimizer_process_section
-    assert "selected_request_ids = {id(request) for request in batch}" in batcher_section
+    assert "selected_request_ids = {id(request) for request in top_batch_requests}" in batcher_section
+    assert "selected_request_ids.add(id(request))" in batcher_section
     assert "self.request_queue = deque(" in batcher_section
     assert "self.request_queue.remove(request)" not in batcher_section
+    assert "digest = hashlib.md5()" in prefix_cache_section
+    assert "digest.update(b\" \")" in prefix_cache_section
+    assert "prefix_keys.append((digest.hexdigest(), idx))" in prefix_cache_section
+    assert "for cache_key, length in reversed(prefix_keys):" in prefix_lookup_section
+    assert "for length in range(len(words), 0, -1)" not in prefix_lookup_section
+    assert "self.get_cache_key(prefix)" not in prefix_lookup_section
     assert "route_count = min(len(self.routing_history), 100)" in cascader_section
     assert "prompt_length_total += route['prompt_length']" in cascader_section
     assert "self.routing_history[-100:]" not in cascader_section

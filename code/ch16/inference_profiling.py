@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 import time
 import numpy as np
+import heapq
 from typing import Dict, List, Tuple, Optional, Any
 import queue
 import psutil
@@ -167,26 +168,30 @@ class DynamicBatcher:
             return []
             
         current_time = time.time()
-        batch = []
-        
-        # Sort by priority and timestamp
-        sorted_requests = sorted(
-            self.request_queue, 
-            key=lambda x: (-x['priority'], x['timestamp'])
+        def request_sort_key(request: Dict[str, Any]) -> Tuple[int, float]:
+            return (-int(request['priority']), float(request['timestamp']))
+
+        top_batch_requests = heapq.nsmallest(
+            self.max_batch_size,
+            self.request_queue,
+            key=request_sort_key,
         )
-        
-        for request in sorted_requests:
-            # Check if we should include this request
+        selected_request_ids = {id(request) for request in top_batch_requests}
+
+        for request in self.request_queue:
             age_ms = (current_time - request['timestamp']) * 1000
-            
-            if len(batch) < self.max_batch_size and age_ms <= self.max_delay_ms:
-                batch.append(request)
-            elif age_ms > self.max_delay_ms:
-                # Force include old requests
-                batch.append(request)
+            if age_ms > self.max_delay_ms:
+                # Force include old requests even when the fresh batch is full.
+                selected_request_ids.add(id(request))
+
+        batch = [
+            request
+            for request in self.request_queue
+            if id(request) in selected_request_ids
+        ]
+        batch.sort(key=request_sort_key)
                 
         # Remove processed requests from queue in one pass.
-        selected_request_ids = {id(request) for request in batch}
         if selected_request_ids:
             self.request_queue = deque(
                 request
@@ -336,18 +341,28 @@ class PrefixCache:
     def get_cache_key(self, prompt: str) -> str:
         """Generate cache key for prompt."""
         return hashlib.md5(prompt.encode()).hexdigest()
+
+    @staticmethod
+    def _prefix_cache_keys(words: List[str]) -> List[Tuple[str, int]]:
+        digest = hashlib.md5()
+        prefix_keys = []
+        for idx, word in enumerate(words, start=1):
+            if idx > 1:
+                digest.update(b" ")
+            digest.update(word.encode())
+            prefix_keys.append((digest.hexdigest(), idx))
+        return prefix_keys
         
     def find_longest_prefix(self, prompt: str) -> Tuple[str, int]:
         """Find the longest cached prefix for a prompt."""
         words = prompt.split()
-        
-        for length in range(len(words), 0, -1):
-            prefix = ' '.join(words[:length])
-            cache_key = self.get_cache_key(prefix)
-            
+        prefix_keys = self._prefix_cache_keys(words)
+
+        for cache_key, length in reversed(prefix_keys):
             if cache_key in self.cache:
                 self.hit_count += 1
                 self.access_times[cache_key] = time.time()
+                prefix = ' '.join(words[:length])
                 return prefix, length
                 
         self.miss_count += 1
