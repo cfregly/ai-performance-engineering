@@ -167,6 +167,25 @@ class OptimizedVLLMV1Integration:
         self.use_vllm = True
         self.enable_chunked_prefill = enable_chunked_prefill
         self._runtime_mode = "cuda_graphs"
+        self._token_id_preview: List[int] = []
+        self._result_payload: Dict[str, Any] = {
+            "mean_latency_ms": 0.0,
+            "throughput_tokens_per_sec": 0.0,
+            "total_tokens": 0,
+            "token_ids": self._token_id_preview,
+            "runtime_mode": self._runtime_mode,
+        }
+
+    def _store_token_preview(self, token_ids: Sequence[int]) -> List[int]:
+        preview_count = min(16, len(token_ids))
+        preview = self._token_id_preview
+        if len(preview) < preview_count:
+            preview.extend([0] * (preview_count - len(preview)))
+        elif len(preview) > preview_count:
+            del preview[preview_count:]
+        for index in range(preview_count):
+            preview[index] = int(token_ids[index])
+        return preview
 
     def _new_llm(self) -> "LLM":
         return LLM(
@@ -268,7 +287,7 @@ class OptimizedVLLMV1Integration:
             seed=42,
         )
     
-    def run(self) -> Dict[str, float]:
+    def run(self) -> Dict[str, Any]:
         """Execute optimized vLLM inference."""
         torch.cuda.synchronize()
         start = time.perf_counter()
@@ -284,20 +303,20 @@ class OptimizedVLLMV1Integration:
         # Calculate metrics
         total_tokens = sum(len(output.outputs[0].token_ids) for output in outputs)
         first_ids = outputs[0].outputs[0].token_ids if outputs else []
-        token_ids = list(first_ids[:16])
+        token_ids = self._store_token_preview(first_ids)
         throughput = total_tokens / elapsed
         mean_latency_ms = (elapsed / len(self.prompts)) * 1000
         
-        logger.info(f"Throughput: {throughput:.2f} tokens/sec")
-        logger.info(f"Mean latency: {mean_latency_ms:.2f} ms")
-        
-        return {
-            "mean_latency_ms": mean_latency_ms,
-            "throughput_tokens_per_sec": throughput,
-            "total_tokens": total_tokens,
-            "token_ids": token_ids,
-            "runtime_mode": self._runtime_mode,
-        }
+        logger.info("Throughput: %.2f tokens/sec", throughput)
+        logger.info("Mean latency: %.2f ms", mean_latency_ms)
+
+        metrics = self._result_payload
+        metrics["mean_latency_ms"] = mean_latency_ms
+        metrics["throughput_tokens_per_sec"] = throughput
+        metrics["total_tokens"] = total_tokens
+        metrics["token_ids"] = token_ids
+        metrics["runtime_mode"] = self._runtime_mode
+        return metrics
     
     def cleanup(self):
         """Clean up resources."""

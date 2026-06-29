@@ -7462,6 +7462,9 @@ def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
         assert "self._token_id_buffer: Optional[torch.Tensor] = None" in source
         assert "def _materialize_token_ids" in source
         assert "torch.as_tensor(token_ids" not in source
+        assert "self._result_payload" in source
+        assert "def _store_token_preview" in source
+        assert "token_ids = list(first_ids[:16])" not in source
 
 
 def test_ch18_paged_vllm_cache_reset_is_metadata_only() -> None:
