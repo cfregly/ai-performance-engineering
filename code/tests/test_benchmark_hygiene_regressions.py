@@ -6736,6 +6736,11 @@ def test_nvlink_offload_copies_directly_between_preallocated_buffers() -> None:
     assert "self.gpu_cache[..., :slice_len, :]" in setup_section
     assert "self._output_view = self.gpu_cache[" in setup_section
     assert "cpu_slice, gpu_slice = self._chunk_views[self._next_chunk_idx]" in benchmark_section
+    assert "copy_stream = self.copy_stream" in benchmark_section
+    assert "current_stream = torch.cuda.current_stream() if copy_stream is not None else None" in benchmark_section
+    assert "current_stream.wait_stream(copy_stream)" in benchmark_section
+    assert "copy_stream.wait_stream(current_stream)" in benchmark_section
+    assert "torch.cuda.current_stream().wait_stream(self.copy_stream)" not in benchmark_section
     assert ".to(self.device" not in benchmark_section
     assert '.to("cpu"' not in benchmark_section
     assert "gpu_slice.copy_(cpu_slice, non_blocking=self.cfg.non_blocking)" in benchmark_section

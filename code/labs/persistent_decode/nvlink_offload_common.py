@@ -100,20 +100,23 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Offload chunk views not initialized")
 
         cpu_slice, gpu_slice = self._chunk_views[self._next_chunk_idx]
-        if self.copy_stream is not None:
-            with torch.cuda.stream(self.copy_stream):
+        copy_stream = self.copy_stream
+        current_stream = torch.cuda.current_stream() if copy_stream is not None else None
+        if copy_stream is not None and current_stream is not None:
+            with torch.cuda.stream(copy_stream):
                 gpu_slice.copy_(cpu_slice, non_blocking=self.cfg.non_blocking)
-            torch.cuda.current_stream().wait_stream(self.copy_stream)
+            current_stream.wait_stream(copy_stream)
         else:
             gpu_slice.copy_(cpu_slice, non_blocking=self.cfg.non_blocking)
 
         # Lightweight compute to keep the slice "hot"
         gpu_slice.mul_(1.0001)
 
-        if self.copy_stream is not None:
-            with torch.cuda.stream(self.copy_stream):
+        if copy_stream is not None and current_stream is not None:
+            copy_stream.wait_stream(current_stream)
+            with torch.cuda.stream(copy_stream):
                 cpu_slice.copy_(gpu_slice, non_blocking=self.cfg.non_blocking)
-            torch.cuda.current_stream().wait_stream(self.copy_stream)
+            current_stream.wait_stream(copy_stream)
         else:
             cpu_slice.copy_(gpu_slice, non_blocking=self.cfg.non_blocking)
 
