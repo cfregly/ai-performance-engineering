@@ -28,6 +28,14 @@ class BufferedGeluMlp(nn.Module):
         self._fc1_buffer: Optional[torch.Tensor] = None
         self._fc2_buffer: Optional[torch.Tensor] = None
         self._fc3_buffer: Optional[torch.Tensor] = None
+        self._fc1_weight_t: Optional[torch.Tensor] = None
+        self._fc2_weight_t: Optional[torch.Tensor] = None
+        self._fc3_weight_t: Optional[torch.Tensor] = None
+
+    def cache_weight_views(self) -> None:
+        self._fc1_weight_t = self.fc1.weight.t()
+        self._fc2_weight_t = self.fc2.weight.t()
+        self._fc3_weight_t = self.fc3.weight.t()
 
     def _ensure_hidden_buffers(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         rows = x.shape[0]
@@ -61,18 +69,20 @@ class BufferedGeluMlp(nn.Module):
         return self._fc3_buffer
 
     def forward_into(self, x: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+        if self._fc1_weight_t is None or self._fc2_weight_t is None or self._fc3_weight_t is None:
+            self.cache_weight_views()
         fc1_out, fc2_out = self._ensure_hidden_buffers(x)
-        torch.mm(x, self.fc1.weight.t(), out=fc1_out)
+        torch.mm(x, self._fc1_weight_t, out=fc1_out)
         if self.fc1.bias is not None:
             fc1_out.add_(self.fc1.bias)
         F.gelu(fc1_out, out=fc1_out)
 
-        torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)
+        torch.mm(fc1_out, self._fc2_weight_t, out=fc2_out)
         if self.fc2.bias is not None:
             fc2_out.add_(self.fc2.bias)
         F.gelu(fc2_out, out=fc2_out)
 
-        torch.mm(fc2_out, self.fc3.weight.t(), out=out)
+        torch.mm(fc2_out, self._fc3_weight_t, out=out)
         if self.fc3.bias is not None:
             out.add_(self.fc3.bias)
         return out
@@ -116,6 +126,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(42)
         self.model = BufferedGeluMlp(self.input_dim, HIDDEN_DIM).to(self.device, dtype=torch.float32).eval()
+        self.model.cache_weight_views()
         
         self.device_buffer = torch.empty(
             self.batch_size,

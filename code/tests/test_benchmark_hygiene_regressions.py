@@ -5120,6 +5120,9 @@ def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None
     ch17_model = ch17_source.split("class BufferedGeluMlp", maxsplit=1)[1].split(
         "class OptimizedMemoryBenchmark", maxsplit=1
     )[0]
+    ch17_forward_into = ch17_model.split("def forward_into", maxsplit=1)[1].split(
+        "def forward", maxsplit=1
+    )[0]
 
     assert "with torch.inference_mode(), torch.cuda.graph(self.graph):" in ch17_setup
     assert "self.model = BufferedGeluMlp(self.input_dim, HIDDEN_DIM)" in ch17_setup
@@ -5127,12 +5130,23 @@ def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None
     assert "self._fc1_buffer: Optional[torch.Tensor] = None" in ch17_model
     assert "self._fc2_buffer: Optional[torch.Tensor] = None" in ch17_model
     assert "self._fc3_buffer: Optional[torch.Tensor] = None" in ch17_model
+    assert "self._fc1_weight_t: Optional[torch.Tensor] = None" in ch17_model
+    assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in ch17_model
+    assert "self._fc3_weight_t: Optional[torch.Tensor] = None" in ch17_model
+    assert "def cache_weight_views(self) -> None:" in ch17_model
+    assert "self._fc1_weight_t = self.fc1.weight.t()" in ch17_model
+    assert "self._fc2_weight_t = self.fc2.weight.t()" in ch17_model
+    assert "self._fc3_weight_t = self.fc3.weight.t()" in ch17_model
     assert "def forward_into(" in ch17_model
-    assert "torch.mm(x, self.fc1.weight.t(), out=fc1_out)" in ch17_model
+    assert "torch.mm(x, self._fc1_weight_t, out=fc1_out)" in ch17_forward_into
     assert "F.gelu(fc1_out, out=fc1_out)" in ch17_model
-    assert "torch.mm(fc1_out, self.fc2.weight.t(), out=fc2_out)" in ch17_model
+    assert "torch.mm(fc1_out, self._fc2_weight_t, out=fc2_out)" in ch17_forward_into
     assert "F.gelu(fc2_out, out=fc2_out)" in ch17_model
-    assert "torch.mm(fc2_out, self.fc3.weight.t(), out=out)" in ch17_model
+    assert "torch.mm(fc2_out, self._fc3_weight_t, out=out)" in ch17_forward_into
+    assert "self.fc1.weight.t()" not in ch17_forward_into
+    assert "self.fc2.weight.t()" not in ch17_forward_into
+    assert "self.fc3.weight.t()" not in ch17_forward_into
+    assert "self.model.cache_weight_views()" in ch17_setup
     assert "self.model.forward_into(self.transform_buffer, self.graph_output)" in ch17_setup
     assert "self.graph_output.copy_(self.model(self.transform_buffer))" not in ch17_setup
     assert "with torch.inference_mode():" in ch17_benchmark
