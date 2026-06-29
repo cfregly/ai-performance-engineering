@@ -664,6 +664,21 @@ def test_ch05_baseline_storage_cpu_reuses_output_buffer() -> None:
     assert "self._output_buffer = None" in teardown_section
 
 
+def test_fullstack_capstone_matmul_uses_inference_mode() -> None:
+    source = (
+        REPO_ROOT / "labs" / "fullstack_cluster" / "capstone_benchmarks.py"
+    ).read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+
+    assert "with self._nvtx_range(self._label):" in benchmark_section
+    assert "with torch.inference_mode():" in benchmark_section
+    assert "self._last_output = self._runner(self._lhs, self._rhs)" in benchmark_section
+    assert "with torch.no_grad():" not in benchmark_section
+
+
 def test_ch05_storage_io_dataset_defers_label_tensor_to_collate() -> None:
     source = (REPO_ROOT / "ch05" / "storage_io_optimization.py").read_text(encoding="utf-8")
     getitem_section = source.split("def __getitem__", maxsplit=1)[1].split(

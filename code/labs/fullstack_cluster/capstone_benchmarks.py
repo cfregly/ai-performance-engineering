@@ -76,7 +76,8 @@ class CapstoneMatmulBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         with self._nvtx_range(self._label):
-            self._last_output = self._runner(self._lhs, self._rhs)
+            with torch.inference_mode():
+                self._last_output = self._runner(self._lhs, self._rhs)
 
     def teardown(self) -> None:
         self._last_output = None
