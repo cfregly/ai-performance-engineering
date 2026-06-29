@@ -2345,6 +2345,9 @@ def test_ch13_arithmetic_intensity_setup_avoids_redundant_zero_fill() -> None:
     source = (REPO_ROOT / "ch13" / "baseline_arithmetic_intensity.py").read_text(
         encoding="utf-8"
     )
+    optimized_source = (REPO_ROOT / "ch13" / "optimized_arithmetic_intensity.py").read_text(
+        encoding="utf-8"
+    )
     setup_section = source.split("def setup", maxsplit=1)[1].split(
         "def _chunked_matmul",
         maxsplit=1,
@@ -2359,6 +2362,23 @@ def test_ch13_arithmetic_intensity_setup_avoids_redundant_zero_fill() -> None:
     assert "self.C.zero_()" not in chunked_section
     assert "torch.mm(self.A[:, :first_end], self.B[:first_end, :], out=self.C)" in chunked_section
     assert "for k in range(first_end, self.K, self.block_k):" in chunked_section
+    for target_source in (source, optimized_source):
+        target_setup = target_source.split("def setup", maxsplit=1)[1].split(
+            "def _", maxsplit=1
+        )[0]
+        target_capture = target_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown", maxsplit=1
+        )[0]
+        target_teardown = target_source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
+
+        assert "self._verify_output_buffer: torch.Tensor | None = None" in target_source
+        assert "self._verify_output_buffer = torch.empty_like(self.C)" in target_setup
+        assert "self._verify_output_buffer.copy_(self.C)" in target_capture
+        assert "output=self._verify_output_buffer" in target_capture
+        assert "self.C.detach().float().clone()" not in target_capture
+        assert "self._verify_output_buffer = None" in target_teardown
 
 
 def test_ch03_ch05_accumulator_buffers_skip_setup_zero_fill() -> None:

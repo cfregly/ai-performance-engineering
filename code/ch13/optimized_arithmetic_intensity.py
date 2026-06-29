@@ -32,6 +32,7 @@ class OptimizedArithmeticIntensityBenchmark(VerificationPayloadMixin, BaseBenchm
         self.A: torch.Tensor | None = None
         self.B: torch.Tensor | None = None
         self.C: torch.Tensor | None = None
+        self._verify_output_buffer: torch.Tensor | None = None
         self.M = 2048
         self.K = 2048
         self.N = 2048
@@ -52,6 +53,7 @@ class OptimizedArithmeticIntensityBenchmark(VerificationPayloadMixin, BaseBenchm
         self.A = torch.randn(self.M, self.K, device=self.device, dtype=torch.float32)
         self.B = torch.randn(self.K, self.N, device=self.device, dtype=torch.float32)
         self.C = torch.empty(self.M, self.N, device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty_like(self.C)
 
         # Warmup high-AI matmul so autotuning occurs before measurement.
         self._fast_matmul()
@@ -77,9 +79,12 @@ class OptimizedArithmeticIntensityBenchmark(VerificationPayloadMixin, BaseBenchm
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.C is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.C)
         self._set_verification_payload(
             inputs={"A": self.A, "B": self.B},
-            output=self.C.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.M,
             precision_flags={
                 "fp16": False,
@@ -95,6 +100,7 @@ class OptimizedArithmeticIntensityBenchmark(VerificationPayloadMixin, BaseBenchm
         self.A = None
         self.B = None
         self.C = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
