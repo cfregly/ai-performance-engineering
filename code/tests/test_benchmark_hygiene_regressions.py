@@ -6793,7 +6793,16 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert "ranked_count = min(experts, max(top_k, 2))" in moe_section
     assert "dirichlet_alpha = 0.85 if optimized else 0.55" in moe_section
     assert "ranked_experts = _rank_top_experts(probs, expert_ids, ranked_count)" in moe_section
+    assert "entropy_total += entropy" in moe_section
+    assert "margin_total += margin" in moe_section
+    assert "router_sample_count += 1" in moe_section
+    assert '"entropy": entropy_total / router_sample_count if router_sample_count else 0.0' in moe_section
+    assert '"gate_margin": margin_total / router_sample_count if router_sample_count else 0.0' in moe_section
     assert "ranked_experts = sorted(expert_ids" not in moe_section
+    assert "entropy_samples.append" not in moe_section
+    assert "margin_samples.append" not in moe_section
+    assert "mean(entropy_samples)" not in moe_section
+    assert "mean(margin_samples)" not in moe_section
     assert "if ranked_count == 1:" in ranking_section
     assert "if ranked_count == 2:" in ranking_section
     assert "return heapq.nsmallest(" in ranking_section

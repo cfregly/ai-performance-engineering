@@ -553,8 +553,9 @@ class CheapEvalStack:
         ranked_count = min(experts, max(top_k, 2))
         expert_ids = range(experts)
         expert_hist = [0 for _ in expert_ids]
-        entropy_samples: List[float] = []
-        margin_samples: List[float] = []
+        entropy_total = 0.0
+        margin_total = 0.0
+        router_sample_count = 0
 
         drop_chance = 0.0065 if not optimized else 0.0008
         imbalance_tilt = 0.35 if not optimized else 0.15
@@ -589,8 +590,9 @@ class CheapEvalStack:
                 roll *= 0.5  # optimized routing should hit capacity limits less often
             drop_event = roll < adjusted_drop
 
-            entropy_samples.append(entropy)
-            margin_samples.append(margin)
+            entropy_total += entropy
+            margin_total += margin
+            router_sample_count += 1
             total_tokens += 1
             dropped_tokens += 1 if drop_event else 0
 
@@ -616,8 +618,8 @@ class CheapEvalStack:
         summary = {
             "token_drop_rate": drop_rate,
             "imbalance_cv": _imbalance_cv(expert_hist),
-            "entropy": mean(entropy_samples) if entropy_samples else 0.0,
-            "gate_margin": mean(margin_samples) if margin_samples else 0.0,
+            "entropy": entropy_total / router_sample_count if router_sample_count else 0.0,
+            "gate_margin": margin_total / router_sample_count if router_sample_count else 0.0,
         }
         return router_rows, traffic_rows, summary
 
