@@ -258,7 +258,7 @@ def test_ch13_multigpu_wrappers_expose_verification_and_launch_modes_in_story_me
 
     assert BaselineContextParallelMultigpuBenchmark.story_metadata["optimization_mechanism"] == "all_gather_attention"
     assert OptimizedContextParallelMultigpuBenchmark.story_metadata["optimization_mechanism"] == "ring_attention"
-    assert BaselineExpertParallelMultigpuBenchmark.story_metadata["optimization_mechanism"] == "per_iteration_list_all_to_all"
+    assert BaselineExpertParallelMultigpuBenchmark.story_metadata["optimization_mechanism"] == "reused_list_all_to_all_buffers"
     assert OptimizedExpertParallelMultigpuBenchmark.story_metadata["optimization_mechanism"] == "preallocated_all_to_all_single"
     assert (
         BaselineSequenceParallelMultigpuBenchmark.story_metadata["optimization_mechanism"]

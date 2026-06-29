@@ -12663,6 +12663,35 @@ def test_ch13_expert_parallel_batches_recv_split_materialization() -> None:
     assert "gathered[src][rank].item()" not in split_section
 
 
+def test_ch13_expert_parallel_list_all_to_all_reuses_buffers() -> None:
+    source = (REPO_ROOT / "ch13" / "expert_parallel_common.py").read_text(
+        encoding="utf-8"
+    )
+    split_view_section = source.split("def split_buffer_views", maxsplit=1)[1].split(
+        "def run_expert_parallel",
+        maxsplit=1,
+    )[0]
+    run_section = source.split("def run_expert_parallel", maxsplit=1)[1]
+    list_section = run_section.split("def _all_to_all_list", maxsplit=1)[1].split(
+        "def _all_to_all_single",
+        maxsplit=1,
+    )[0]
+
+    assert "views: List[torch.Tensor] = []" in split_view_section
+    assert "views.append(buffer[offset:next_offset])" in split_view_section
+    assert "send_buf = torch.empty((tokens_per_rank, config.hidden_size)" in run_section
+    assert "recv_buf = torch.empty((recv_total, config.hidden_size)" in run_section
+    assert "send_views = split_buffer_views(send_buf, send_splits)" in run_section
+    assert "recv_views = split_buffer_views(recv_buf, recv_splits)" in run_section
+    assert 'if impl == "list":' in run_section
+    assert "pack_tokens(tokens=tokens, send_indices=send_indices, send_splits=send_splits, send_buf=send_buf)" in run_section
+    assert "dist.all_to_all(recv_views, send_views)" in list_section
+    assert "return recv_buf" in list_section
+    assert "tokens[idx].contiguous()" not in list_section
+    assert "torch.empty((count, config.hidden_size)" not in list_section
+    assert "torch.cat(recv_list" not in list_section
+
+
 def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
     from ch13.baseline_sequence_parallel_multigpu import _replicate_sequence_shard
 

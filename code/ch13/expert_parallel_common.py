@@ -80,6 +80,16 @@ def pack_tokens(
         offset += count
 
 
+def split_buffer_views(buffer: torch.Tensor, splits: List[int]) -> List[torch.Tensor]:
+    views: List[torch.Tensor] = []
+    offset = 0
+    for count in splits:
+        next_offset = offset + int(count)
+        views.append(buffer[offset:next_offset])
+        offset = next_offset
+    return views
+
+
 def run_expert_parallel(
     *,
     config: ExpertParallelConfig,
@@ -107,14 +117,16 @@ def run_expert_parallel(
     recv_total = int(sum(recv_splits))
     expert_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False, dtype=config.dtype).to(device)
 
-    def _all_to_all_list() -> torch.Tensor:
-        send_list = [tokens[idx].contiguous() for idx in send_indices]
-        recv_list = [torch.empty((count, config.hidden_size), device=device, dtype=config.dtype) for count in recv_splits]
-        dist.all_to_all(recv_list, send_list)
-        return torch.cat(recv_list, dim=0)
-
     send_buf = torch.empty((tokens_per_rank, config.hidden_size), device=device, dtype=config.dtype)
     recv_buf = torch.empty((recv_total, config.hidden_size), device=device, dtype=config.dtype)
+    send_views = split_buffer_views(send_buf, send_splits)
+    recv_views = split_buffer_views(recv_buf, recv_splits)
+    if impl == "list":
+        pack_tokens(tokens=tokens, send_indices=send_indices, send_splits=send_splits, send_buf=send_buf)
+
+    def _all_to_all_list() -> torch.Tensor:
+        dist.all_to_all(recv_views, send_views)
+        return recv_buf
 
     def _all_to_all_single() -> torch.Tensor:
         pack_tokens(tokens=tokens, send_indices=send_indices, send_splits=send_splits, send_buf=send_buf)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Baseline: expert-parallel all-to-all using per-iteration list allocations."""
+"""Baseline: expert-parallel all-to-all using reusable list buffers."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ class BaselineExpertParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBenc
         "chapter_native_exemplar": True,
         "timed_launch_mode": "torchrun_multi_gpu",
         "verification_mode": "single_process_surrogate",
-        "optimization_mechanism": "per_iteration_list_all_to_all",
+        "optimization_mechanism": "reused_list_all_to_all_buffers",
     }
 
     def __init__(self) -> None:
