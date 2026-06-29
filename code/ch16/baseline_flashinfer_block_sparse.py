@@ -33,6 +33,7 @@ class BaselineFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBench
         self._v_sdp: Optional[torch.Tensor] = None
         self.attn_mask: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.sparsity_ratio = 0.0
         tokens = self.seq_len * self.heads
         self._workload = WorkloadMetadata(
@@ -53,6 +54,13 @@ class BaselineFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBench
         self._q_sdp = self.q.transpose(0, 1).unsqueeze(0)
         self._k_sdp = self.k.transpose(0, 1).unsqueeze(0)
         self._v_sdp = self.v.transpose(0, 1).unsqueeze(0)
+        self._verify_output_buffer = torch.empty(
+            self.seq_len,
+            self.heads,
+            self.head_dim,
+            device=self.device,
+            dtype=torch.float16,
+        )
         block_mask = build_block_sparse_pattern(
             seq_len=self.seq_len,
             block_size=self.block_size,
@@ -91,11 +99,18 @@ class BaselineFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBench
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
-        if self.q is None or self.k is None or self.v is None or self.output is None:
+        if (
+            self.q is None
+            or self.k is None
+            or self.v is None
+            or self.output is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"q": self.q, "k": self.k, "v": self.v},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.seq_len,
             parameter_count=0,
             precision_flags={
@@ -119,6 +134,7 @@ class BaselineFlashInferBlockSparseBenchmark(VerificationPayloadMixin, BaseBench
         self._v_sdp = None
         self.attn_mask = None
         self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

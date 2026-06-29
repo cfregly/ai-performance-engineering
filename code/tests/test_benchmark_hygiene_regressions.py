@@ -12043,7 +12043,21 @@ def test_ch16_block_sparse_bsr_build_uses_vectorized_metadata() -> None:
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        capture_section = benchmark_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = benchmark_source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
         assert "with torch.inference_mode():" in benchmark_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in benchmark_source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.output.detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
         if filename.startswith("baseline"):
             assert "self._q_sdp = self.q.transpose(0, 1).unsqueeze(0)" in setup_section
             assert "self._k_sdp = self.k.transpose(0, 1).unsqueeze(0)" in setup_section
