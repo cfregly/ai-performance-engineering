@@ -11488,6 +11488,10 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
     assert ".detach().clone()" not in run_section
     assert ".item()" not in run_section
     assert "self.output_slice = x[:1, :1, : min(16, x.shape[-1])]" in run_section
+    assert "self._nan_output: Optional[torch.Tensor] = None" in source
+    assert "self._nan_output.fill_(float(\"inf\"))" in source
+    assert "self.output_slice = self._nan_output" in run_section
+    assert "torch.full(" not in run_section
     assert "torch.tensor(" not in benchmark_section
     assert "self._output = output" in benchmark_section
     assert "output=self._output.detach().float().clone()" in capture_section

@@ -181,6 +181,7 @@ class OptimizedFP8CalibrationFree:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.output_slice: Optional[torch.Tensor] = None
         self._last_output: Optional[torch.Tensor] = None
+        self._nan_output: Optional[torch.Tensor] = None
         self.output_mean: Optional[float] = None
         
         if self.use_te:
@@ -222,6 +223,8 @@ class OptimizedFP8CalibrationFree:
             device=self.device,
             dtype=torch.bfloat16
         )
+        self._nan_output = torch.empty((), device=self.device, dtype=torch.float32)
+        self._nan_output.fill_(float("inf"))
         
         logger.info(f"Setup complete: {self.num_layers} FP8 layers")
     
@@ -247,7 +250,9 @@ class OptimizedFP8CalibrationFree:
         if torch.isnan(x).any():
             logger.error("NaN detected in output!")
             self._last_output = None
-            self.output_slice = torch.full((), float("inf"), device=self.device)
+            if self._nan_output is None:
+                raise RuntimeError("setup() must initialize NaN output sentinel")
+            self.output_slice = self._nan_output
             return self.output_slice
         
         self._last_output = x
@@ -258,6 +263,7 @@ class OptimizedFP8CalibrationFree:
         """Clean up resources."""
         del self.layers
         del self.input
+        self._nan_output = None
         torch.cuda.empty_cache()
 
 
