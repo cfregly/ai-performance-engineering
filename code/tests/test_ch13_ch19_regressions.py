@@ -6,6 +6,7 @@ import torch
 
 import ch19.baseline_fp4_weight_quantization as baseline_fp4
 import ch19.baseline_mxfp8_moe as baseline_mxfp8_moe
+import ch13.compiled_autograd as compiled_autograd_demo
 import ch19.mxfp8_moe_common as mxfp8_moe_common
 import ch19.native_fp4_quantization as native_fp4
 import ch19.native_fp6_quantization as native_fp6
@@ -36,6 +37,24 @@ def test_optimized_autograd_standard_skips_post_capture_output_zero_fill() -> No
 
     assert "self.output_buffer.zero_()" not in setup_source
     assert "self.output_buffer.copy_(outputs)" in train_step_source
+
+
+def test_compiled_autograd_demo_uses_current_stream_and_monotonic_cpu_timing() -> None:
+    for fn in (
+        compiled_autograd_demo.benchmark_standard_autograd,
+        compiled_autograd_demo.benchmark_compiled_autograd,
+        compiled_autograd_demo.benchmark_forward_and_backward_compiled,
+    ):
+        source = inspect.getsource(fn)
+        assert source.count("torch.cuda.Event(enable_timing=True)") == 2
+        assert "current_stream = torch.cuda.current_stream()" in source
+        assert "start.record(current_stream)" in source
+        assert "end.record(current_stream)" in source
+        assert "start.record()" not in source
+        assert "end.record()" not in source
+        assert "start_time = time.perf_counter()" in source
+        assert "elapsed_ms = (time.perf_counter() - start_time) / num_iters * 1000" in source
+        assert "time.time()" not in source
 
 
 def test_restore_bucketed_reduce_casts_weighted_output_and_reuses_buffer() -> None:

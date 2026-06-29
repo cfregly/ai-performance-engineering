@@ -8,17 +8,11 @@ Compiled Autograd with PyTorch 2.10
 PyTorch 2.10 can compile the backward pass for improved training efficiency.
 Requires PyTorch 2.10+ and CUDA 13.0+.
 """
-from pathlib import Path
-
-
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch._dynamo import compiled_autograd
 import time
-from typing import Optional
-from contextlib import nullcontext
 from core.common.device_utils import get_preferred_device
 
 # Check if compiled autograd is available
@@ -80,9 +74,10 @@ def benchmark_standard_autograd() -> float:
     if device == "cuda":
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
-        start.record()
+        current_stream = torch.cuda.current_stream()
+        start.record(current_stream)
     else:
-        start_time = time.time()
+        start_time = time.perf_counter()
     
     num_iters = 20
     for _ in range(num_iters):
@@ -93,11 +88,11 @@ def benchmark_standard_autograd() -> float:
         optimizer.step()
     
     if device == "cuda":
-        end.record()
+        end.record(current_stream)
         end.synchronize()
         elapsed_ms = start.elapsed_time(end) / num_iters
     else:
-        elapsed_ms = (time.time() - start_time) / num_iters * 1000
+        elapsed_ms = (time.perf_counter() - start_time) / num_iters * 1000
     
     return elapsed_ms
 
@@ -141,9 +136,10 @@ def benchmark_compiled_autograd() -> float:
         if device == "cuda":
             start = torch.cuda.Event(enable_timing=True)
             end = torch.cuda.Event(enable_timing=True)
-            start.record()
+            current_stream = torch.cuda.current_stream()
+            start.record(current_stream)
         else:
-            start_time = time.time()
+            start_time = time.perf_counter()
         
         num_iters = 20
         for _ in range(num_iters):
@@ -154,11 +150,11 @@ def benchmark_compiled_autograd() -> float:
             optimizer.step()
         
         if device == "cuda":
-            end.record()
+            end.record(current_stream)
             end.synchronize()
             elapsed_ms = start.elapsed_time(end) / num_iters
         else:
-            elapsed_ms = (time.time() - start_time) / num_iters * 1000
+            elapsed_ms = (time.perf_counter() - start_time) / num_iters * 1000
         
         return elapsed_ms
     
@@ -210,9 +206,10 @@ def benchmark_forward_and_backward_compiled() -> tuple[float, float]:
         if device == "cuda":
             start = torch.cuda.Event(enable_timing=True)
             end = torch.cuda.Event(enable_timing=True)
-            start.record()
+            current_stream = torch.cuda.current_stream()
+            start.record(current_stream)
         else:
-            start_time = time.time()
+            start_time = time.perf_counter()
         
         num_iters = 20
         for _ in range(num_iters):
@@ -223,11 +220,11 @@ def benchmark_forward_and_backward_compiled() -> tuple[float, float]:
             optimizer.step()
         
         if device == "cuda":
-            end.record()
+            end.record(current_stream)
             end.synchronize()
             elapsed_ms = start.elapsed_time(end) / num_iters
         else:
-            elapsed_ms = (time.time() - start_time) / num_iters * 1000
+            elapsed_ms = (time.perf_counter() - start_time) / num_iters * 1000
         
         # Memory usage
         if device == "cuda":
