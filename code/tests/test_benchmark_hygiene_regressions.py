@@ -16962,6 +16962,18 @@ def test_ch13_matmul_pair_reuses_output_buffers_without_collapsing_epilogue_cont
     optimized_helper = optimized_source.split("def optimized_matmul", maxsplit=1)[1].split(
         "class OptimizedMatmulPyTorchBenchmark", maxsplit=1
     )[0]
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+    optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
 
     assert "torch.mm(A, B, out=out)" in baseline_helper
     assert "torch.addmm(" not in baseline_helper
@@ -16972,6 +16984,14 @@ def test_ch13_matmul_pair_reuses_output_buffers_without_collapsing_epilogue_cont
     assert "torch.matmul(self.A, self.B)" not in baseline_source
     assert "torch.relu(out + self.bias)" not in baseline_source
     assert "torch.addmm(bias, A, B, out=out)" in optimized_helper
+    for setup_section, capture_section in (
+        (baseline_setup, baseline_capture),
+        (optimized_setup, optimized_capture),
+    ):
+        assert "self._verify_output_buffer = torch.empty_like(self.C)" in setup_section
+        assert "self._verify_output_buffer.copy_(self.C)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.C.detach().clone()" not in capture_section
 
 
 def test_ch10_tcgen05_baseline_epilogue_adds_bias_in_place() -> None:

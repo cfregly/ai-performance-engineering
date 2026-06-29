@@ -53,6 +53,7 @@ class BaselineMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.A = None
         self.B = None
         self.C = None
+        self._verify_output_buffer = None
         self.bias = None
         self.residual = None
         self.scale = 0.125
@@ -81,6 +82,7 @@ class BaselineMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float16)
         self.B = torch.randn(self.k, self.n, device=self.device, dtype=torch.float16)
         self.C = torch.empty(self.m, self.n, device=self.device, dtype=torch.float16)
+        self._verify_output_buffer = torch.empty_like(self.C)
         self.bias = torch.randn(self.m, self.n, device=self.device, dtype=torch.float16)
         self.residual = torch.randn(self.m, self.n, device=self.device, dtype=torch.float16)
         
@@ -103,9 +105,12 @@ class BaselineMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
 
     def capture_verification_payload(self) -> None:
+        if self.C is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.C)
         self._set_verification_payload(
             inputs={"A": self.A, "B": self.B, "bias": self.bias, "residual": self.residual},
-            output=self.C.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.m,
             parameter_count=0,
             precision_flags={
@@ -119,6 +124,7 @@ class BaselineMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Cleanup."""
         del self.A, self.B, self.C, self.bias, self.residual
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

@@ -45,6 +45,7 @@ class OptimizedMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.A = None
         self.B = None
         self.C = None
+        self._verify_output_buffer = None
         self.bias = None
         self.residual = None
         self.scale = 0.125
@@ -76,6 +77,7 @@ class OptimizedMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.bias = torch.randn(self.m, self.n, device=self.device, dtype=torch.float16)
         self.residual = torch.randn(self.m, self.n, device=self.device, dtype=torch.float16)
         self.C = torch.empty(self.m, self.n, device=self.device, dtype=torch.float16)
+        self._verify_output_buffer = torch.empty_like(self.C)
         for _ in range(10):
             _ = optimized_matmul(self.A, self.B, self.bias, self.residual, self.C, self.scale)
         self._synchronize()
@@ -87,6 +89,9 @@ class OptimizedMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.C = optimized_matmul(self.A, self.B, self.bias, self.residual, self.C, self.scale)
 
     def capture_verification_payload(self) -> None:
+        if self.C is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.C)
         self._set_verification_payload(
             inputs={
                 "A": self.A,
@@ -94,7 +99,7 @@ class OptimizedMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "bias": self.bias,
                 "residual": self.residual,
             },
-            output=self.C.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.m,
             parameter_count=0,
             precision_flags={
@@ -108,6 +113,7 @@ class OptimizedMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Cleanup."""
         del self.A, self.B, self.bias, self.residual, self.C
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
