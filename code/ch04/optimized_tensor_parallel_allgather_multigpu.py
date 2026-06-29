@@ -127,10 +127,6 @@ def _run_worker(
         for _ in range(world_size)
     ]
     full_out = torch.empty(batch, seq_length, hidden, device=device, dtype=torch.bfloat16)
-    shard_slices = [
-        slice(rank_idx * hidden_per_rank, (rank_idx + 1) * hidden_per_rank)
-        for rank_idx in range(world_size)
-    ]
     def _step() -> None:
         x = inputs
         for layer_idx in range(num_layers):
@@ -139,8 +135,7 @@ def _run_worker(
             aux_out = x
             for _ in range(_AUX_PASSES):
                 aux_out = aux_layers[layer_idx](aux_out)
-            for rank_idx, shard_slice in enumerate(shard_slices):
-                full_out[..., shard_slice].copy_(gather_list[rank_idx])
+            torch.cat(gather_list, dim=-1, out=full_out)
             proj_out = proj_layers[layer_idx](full_out)
             proj_out.add_(aux_out)
             x = proj_out

@@ -1133,6 +1133,10 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
         assert "full_out = torch.cat(gather_list, dim=-1)" not in worker_section
         if "torch.cat(gather_list" in worker_section:
             assert "torch.cat(gather_list, dim=-1, out=full_out)" in worker_section
+        if filename == "optimized_tensor_parallel_allgather_multigpu.py":
+            assert "shard_slices = [" not in worker_section
+            assert "full_out[..., shard_slice].copy_" not in worker_section
+            assert "torch.cat(gather_list, dim=-1, out=full_out)" in worker_section
         if filename.startswith("optimized_"):
             assert "proj_out.add_(aux_out)" in worker_section
             assert "proj_out.add_(aux_out)" in benchmark_section
