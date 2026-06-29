@@ -11308,7 +11308,9 @@ def test_ch04_symmetric_queue_batches_head_tail_reads() -> None:
     assert "def _read_queue_pointer_pair(" in queue_section
     assert "readback[0].copy_(first)" in queue_section
     assert "readback[1].copy_(second)" in queue_section
-    assert "first_value, second_value = readback.detach().cpu().tolist()" in queue_section
+    assert "readback_host = readback.detach().cpu()" in queue_section
+    assert "return int(readback_host[0]), int(readback_host[1])" in queue_section
+    assert "readback.detach().cpu().tolist()" not in queue_section
     assert "torch.stack((self.tail[0], self.head[0])).tolist()" not in queue_section
     assert "torch.stack((self.head[0], self.tail[0])).tolist()" not in queue_section
     assert "self.tail.item()" not in queue_section

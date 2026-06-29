@@ -89,8 +89,12 @@ def test_adaptive_parallelism_baseline_materializes_feature_rows_once() -> None:
     source = inspect.getsource(classify_baseline)
 
     assert "feature_rows = torch.stack(" in source
-    assert ").detach().cpu().tolist()" in source
-    assert "for seq_len, gpu_mem_util, concurrent_reqs, batch_size, prefill_tokens, decode_tokens in feature_rows" in source
+    assert ").detach().cpu()" in source
+    assert ").detach().cpu().tolist()" not in source
+    assert "for row_idx in range(feature_rows.size(0)):" in source
+    assert "feature_row = feature_rows[row_idx]" in source
+    assert "seq_len=int(feature_row[0])" in source
+    assert "gpu_mem_util=float(feature_row[1])" in source
     assert "[idx].item()" not in source
     assert 'workload["seq_len"].detach().cpu()' not in source
 

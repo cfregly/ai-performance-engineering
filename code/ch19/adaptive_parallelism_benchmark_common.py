@@ -85,17 +85,18 @@ def classify_baseline(workload: Dict[str, torch.Tensor], *, device: torch.device
             workload["decode_tokens"].to(dtype=torch.float64),
         ),
         dim=1,
-    ).detach().cpu().tolist()
+    ).detach().cpu()
 
     strategy_ids: list[int] = []
-    for seq_len, gpu_mem_util, concurrent_reqs, batch_size, prefill_tokens, decode_tokens in feature_rows:
+    for row_idx in range(feature_rows.size(0)):
+        feature_row = feature_rows[row_idx]
         config = choose_worker_pool(
-            seq_len=int(seq_len),
-            gpu_mem_util=float(gpu_mem_util),
-            concurrent_reqs=int(concurrent_reqs),
-            batch_size=int(batch_size),
-            prefill_tokens=int(prefill_tokens),
-            decode_tokens=int(decode_tokens),
+            seq_len=int(feature_row[0]),
+            gpu_mem_util=float(feature_row[1]),
+            concurrent_reqs=int(feature_row[2]),
+            batch_size=int(feature_row[3]),
+            prefill_tokens=int(feature_row[4]),
+            decode_tokens=int(feature_row[5]),
         )
         strategy_ids.append(STRATEGY_TO_ID[config.strategy])
 

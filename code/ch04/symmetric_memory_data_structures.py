@@ -604,8 +604,8 @@ class LockFreeRingBuffer:
         readback = self._head_tail_readback
         readback[0].copy_(first)
         readback[1].copy_(second)
-        first_value, second_value = readback.detach().cpu().tolist()
-        return int(first_value), int(second_value)
+        readback_host = readback.detach().cpu()
+        return int(readback_host[0]), int(readback_host[1])
     
     def enqueue(self, data: torch.Tensor) -> bool:
         """
