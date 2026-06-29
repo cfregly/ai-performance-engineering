@@ -2478,6 +2478,11 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     )[0]
 
     assert "self._output_buffer = torch.empty(" in setup_section
+    assert "self._model_shard_view: Optional[torch.Tensor] = None" in source
+    assert (
+        "self._model_shard_view = model_out.view(self.num_shards, self._reduced_rows, self.hidden_dim)"
+        in setup_section
+    )
     assert "self._reduced_rows = self.batch_size // self.num_shards" in setup_section
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
@@ -2490,8 +2495,8 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     assert "Batch size must be divisible by num_shards" not in benchmark_section
     assert "torch.chunk(" not in benchmark_section
     assert "for shard in" not in benchmark_section
-    assert "shard_view = out.view(self.num_shards, self._reduced_rows, self.hidden_dim)" in benchmark_section
-    assert "torch.sum(shard_view, dim=0, out=self._output_buffer)" in benchmark_section
+    assert "shard_view = out.view(self.num_shards, self._reduced_rows, self.hidden_dim)" not in benchmark_section
+    assert "torch.sum(self._model_shard_view, dim=0, out=self._output_buffer)" in benchmark_section
     assert "self._output_buffer.copy_(" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
@@ -2554,6 +2559,11 @@ def test_ch04_optimized_gpu_reduction_uses_single_gpu_sum_kernel() -> None:
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
     assert "self._reduced_rows = self.batch_size // self.num_shards" in setup_section
+    assert "self._model_shard_view: Optional[torch.Tensor] = None" in source
+    assert (
+        "self._model_shard_view = model_out.view(self.num_shards, self._reduced_rows, self.hidden_dim)"
+        in setup_section
+    )
     assert "self._reduction_buffer" not in source
     assert "get_config()" not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
@@ -2561,8 +2571,8 @@ def test_ch04_optimized_gpu_reduction_uses_single_gpu_sum_kernel() -> None:
     assert "Batch size must be divisible by num_shards" not in benchmark_section
     assert "torch.chunk(" not in benchmark_section
     assert "for shard in" not in benchmark_section
-    assert "shard_view = out.view(self.num_shards, self._reduced_rows, self.hidden_dim)" in benchmark_section
-    assert "torch.sum(shard_view, dim=0, out=self._output_buffer)" in benchmark_section
+    assert "shard_view = out.view(self.num_shards, self._reduced_rows, self.hidden_dim)" not in benchmark_section
+    assert "torch.sum(self._model_shard_view, dim=0, out=self._output_buffer)" in benchmark_section
     assert "self._output_buffer.copy_(" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section

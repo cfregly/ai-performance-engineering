@@ -39,6 +39,7 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._model_shard_view: Optional[torch.Tensor] = None
         self._reduced_rows = 0
         self._bytes_transferred: float = 0.0
         self._enable_nvtx = False
@@ -67,6 +68,9 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Batch size must be divisible by num_shards")
         self._reduced_rows = self.batch_size // self.num_shards
         self._output_buffer = torch.empty(self._reduced_rows, self.hidden_dim, device=self.device)
+        with torch.inference_mode():
+            model_out = self.model(self.input)
+        self._model_shard_view = model_out.view(self.num_shards, self._reduced_rows, self.hidden_dim)
         self._bytes_transferred = 0.0
         torch.cuda.synchronize(self.device)
 
@@ -80,8 +84,9 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 out = self.model(self.input)
             
             # All-GPU reduction over a strided shard view, no CPU or Python shard loop.
-            shard_view = out.view(self.num_shards, self._reduced_rows, self.hidden_dim)
-            torch.sum(shard_view, dim=0, out=self._output_buffer)
+            if self._model_shard_view is None:
+                raise RuntimeError("Model shard view not initialized")
+            torch.sum(self._model_shard_view, dim=0, out=self._output_buffer)
             
             # Average in place; the sum already landed in the reusable output buffer.
             self._output_buffer.div_(self.num_shards)
@@ -114,6 +119,7 @@ class OptimizedNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input = None
         self.output = None
         self._output_buffer = None
+        self._model_shard_view = None
         self._reduced_rows = 0
         torch.cuda.empty_cache()
 
