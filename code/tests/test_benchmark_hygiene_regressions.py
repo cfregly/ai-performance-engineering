@@ -6738,9 +6738,17 @@ def test_dynamic_router_percentiles_reuse_sorted_samples() -> None:
     assert "_percentile(pool_ttft" not in runner_source
 
     assert "def _percentile_from_ordered" in driver_source
+    assert "import statistics" not in driver_source
     assert "data_sorted = sorted(data)" in driver_percentiles
     assert "return tuple(_percentile_from_ordered(data_sorted, pct) for pct in pcts)" in driver_percentiles
     assert "ttft_p50, ttft_p95 = _percentiles(completed_ttfts, (50.0, 95.0))" in simulate_section
+    assert "completed_ttft_total += state.ttft_ms" in simulate_section
+    assert '"ttft_ms_mean": completed_ttft_total / len(completed_ttfts)' in simulate_section
+    assert "decode_tpot_total = 0.0" in simulate_section
+    assert "prefill_tpot_total = 0.0" in simulate_section
+    assert "decode_tpots = [" not in simulate_section
+    assert "prefill_tpots = [" not in simulate_section
+    assert "statistics.mean(" not in simulate_section
     assert "_percentile(completed_ttfts, 50.0)" not in simulate_section
     assert "_percentile(completed_ttfts, 95.0)" not in simulate_section
 

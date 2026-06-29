@@ -21,7 +21,6 @@ import argparse
 import json
 import math
 import random
-import statistics
 import time
 import sys
 from collections import deque
@@ -278,6 +277,7 @@ def simulate(
     requests: Dict[str, RequestState] = {}
     next_id = 0
     completed_ttfts: List[float] = []
+    completed_ttft_total = 0.0
     completed_count = 0
     good_requests = 0
     good_tokens = 0
@@ -345,6 +345,7 @@ def simulate(
                     state.ttft_ms = (now - state.admitted_at) * 1000.0
                     state.decode_started_at = now
                     completed_ttfts.append(state.ttft_ms)
+                    completed_ttft_total += state.ttft_ms
                     ttft_samples.append(state.ttft_ms)
                 state.decode_finished_at = now
             gpu.update_smoothed_metrics(ttft_samples, tokens_emitted)
@@ -451,7 +452,7 @@ def simulate(
         ttft_p50, ttft_p95 = _percentiles(completed_ttfts, (50.0, 95.0))
         summary.update(
             {
-                "ttft_ms_mean": statistics.mean(completed_ttfts),
+                "ttft_ms_mean": completed_ttft_total / len(completed_ttfts),
                 "ttft_ms_p50": ttft_p50,
                 "ttft_ms_p95": ttft_p95,
             }
@@ -459,10 +460,23 @@ def simulate(
     else:
         summary.update({"ttft_ms_mean": 0.0, "ttft_ms_p50": 0.0, "ttft_ms_p95": 0.0})
 
-    decode_tpots = [g.tpot_ema for g in gpus.values() if g.is_decode]
-    prefill_tpots = [g.tpot_ema for g in gpus.values() if g.is_prefill]
-    summary["avg_decode_tpot_tok_per_s"] = statistics.mean(decode_tpots) if decode_tpots else 0.0
-    summary["avg_prefill_tpot_tok_per_s"] = statistics.mean(prefill_tpots) if prefill_tpots else 0.0
+    decode_tpot_total = 0.0
+    decode_tpot_count = 0
+    prefill_tpot_total = 0.0
+    prefill_tpot_count = 0
+    for gpu in gpus.values():
+        if gpu.is_decode:
+            decode_tpot_total += gpu.tpot_ema
+            decode_tpot_count += 1
+        if gpu.is_prefill:
+            prefill_tpot_total += gpu.tpot_ema
+            prefill_tpot_count += 1
+    summary["avg_decode_tpot_tok_per_s"] = (
+        decode_tpot_total / decode_tpot_count if decode_tpot_count else 0.0
+    )
+    summary["avg_prefill_tpot_tok_per_s"] = (
+        prefill_tpot_total / prefill_tpot_count if prefill_tpot_count else 0.0
+    )
 
     total_hours = num_ticks * TICK_SECONDS / 3600.0
     total_cost = sum(g.hourly_cost for g in gpus.values()) * total_hours
