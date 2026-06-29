@@ -22,7 +22,10 @@ from typing import Dict, List
 
 
 def _read_json(path: Path) -> Dict:
-    return json.loads(path.read_text()) if path.exists() else {}
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8") as f:
+        return json.load(f)
 
 
 def _read_jsonl(path: Path) -> List[Dict]:
@@ -57,14 +60,24 @@ def _load_run(run_dir: Path) -> Dict:
     tps_goodput = _read_json(run_dir / "tps_goodput.json")
     sys_meta = _read_json(run_dir / "sys_meta.json")
 
-    quality_acc = (
-        sum(1 for r in quality_rows if r.get("correct")) / float(len(quality_rows) or 1)
-    )
-    ttft_p95 = _pct([r.get("ttft_ms", 0.0) for r in latency_rows], 95)
-    decode_p95 = _pct([r.get("decode_ms", 0.0) for r in latency_rows], 95)
-    drop_rate = (
-        sum(r.get("drops", 0) for r in moe_router_rows) / float(len(moe_router_rows) or 1)
-    )
+    correct_count = 0
+    for row in quality_rows:
+        if row.get("correct"):
+            correct_count += 1
+    quality_acc = correct_count / float(len(quality_rows) or 1)
+
+    ttft_vals: List[float] = []
+    decode_vals: List[float] = []
+    for row in latency_rows:
+        ttft_vals.append(row.get("ttft_ms", 0.0))
+        decode_vals.append(row.get("decode_ms", 0.0))
+    ttft_p95 = _pct(ttft_vals, 95)
+    decode_p95 = _pct(decode_vals, 95)
+
+    drop_total = 0
+    for row in moe_router_rows:
+        drop_total += row.get("drops", 0)
+    drop_rate = drop_total / float(len(moe_router_rows) or 1)
     traffic_rows = _read_jsonl(run_dir / "moe_traffic.jsonl")
     imbalance_cv = max((r.get("imbalance_cv", 0.0) for r in traffic_rows), default=0.0)
 
@@ -137,12 +150,18 @@ def _maybe_plot(runs: List[Dict], out: Path) -> None:
         print(f"[scorecard] Skipping plot (matplotlib unavailable: {exc})")
         return
 
-    labels = [r["dir"].name for r in runs]
+    labels: List[str] = []
+    ttft_vals: List[float] = []
+    decode_vals: List[float] = []
+    acc_vals: List[float] = []
+    drop_vals: List[float] = []
+    for row in runs:
+        labels.append(row["dir"].name)
+        ttft_vals.append(row["ttft_p95"])
+        decode_vals.append(row["decode_p95"])
+        acc_vals.append(row["acc"])
+        drop_vals.append(row["drop_rate"] * 100)
     x = list(range(len(labels)))
-    ttft_vals = [r["ttft_p95"] for r in runs]
-    decode_vals = [r["decode_p95"] for r in runs]
-    acc_vals = [r["acc"] for r in runs]
-    drop_vals = [r["drop_rate"] * 100 for r in runs]
 
     fig, axes = plt.subplots(2, 2, figsize=(10, 6))
     axes = axes.flatten()

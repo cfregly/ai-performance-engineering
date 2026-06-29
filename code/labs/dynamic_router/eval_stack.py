@@ -624,16 +624,22 @@ class CheapEvalStack:
 
     # -------------------------------------------------------------- Throughput
     def _compute_throughput(self, latency_rows: List[Dict], drop_rate: float) -> Dict[str, float]:
-        total_tokens = sum(r["output_tokens"] for r in latency_rows)
-        total_time_s = sum((r["ttft_ms"] + r["decode_ms"]) for r in latency_rows) / 1000.0
+        total_tokens = 0
+        total_latency_ms = 0.0
+        good_tokens = 0
+        slo_hit_count = 0
+        for row in latency_rows:
+            output_tokens = row["output_tokens"]
+            ttft_ms = row["ttft_ms"]
+            decode_ms = row["decode_ms"]
+            total_tokens += output_tokens
+            total_latency_ms += ttft_ms + decode_ms
+            if ttft_ms <= self.cfg.ttft_slo_ms and decode_ms <= self.cfg.latency_slo_ms:
+                slo_hit_count += 1
+                good_tokens += output_tokens
+        total_time_s = total_latency_ms / 1000.0
         throughput = total_tokens / total_time_s if total_time_s > 0 else 0.0
 
-        good_rows = [
-            r
-            for r in latency_rows
-            if r["ttft_ms"] <= self.cfg.ttft_slo_ms and r["decode_ms"] <= self.cfg.latency_slo_ms
-        ]
-        good_tokens = sum(r["output_tokens"] for r in good_rows)
         goodput = good_tokens / total_time_s if total_time_s > 0 else 0.0
         # Penalize goodput when drop rate is high to reflect MoE instability.
         goodput *= max(0.0, 1.0 - drop_rate * 5.0)
@@ -641,7 +647,7 @@ class CheapEvalStack:
         return {
             "throughput_tps": throughput,
             "goodput": goodput,
-            "slo_hit_rate": (len(good_rows) / len(latency_rows)) if latency_rows else 0.0,
+            "slo_hit_rate": (slo_hit_count / len(latency_rows)) if latency_rows else 0.0,
             "drop_rate": drop_rate,
         }
 

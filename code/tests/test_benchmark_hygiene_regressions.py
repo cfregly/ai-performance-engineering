@@ -6907,6 +6907,9 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
     scorecard_source = (
         REPO_ROOT / "labs" / "dynamic_router" / "scorecard.py"
     ).read_text(encoding="utf-8")
+    plot_source = (
+        REPO_ROOT / "labs" / "dynamic_router" / "plot_right_sized.py"
+    ).read_text(encoding="utf-8")
     runner_percentiles = runner_source.split("def _percentiles", maxsplit=1)[1].split(
         "def _build_handles",
         maxsplit=1,
@@ -6968,9 +6971,63 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
         "def _pct",
         maxsplit=1,
     )[0]
+    scorecard_read_json = scorecard_source.split("def _read_json", maxsplit=1)[1].split(
+        "def _read_jsonl",
+        maxsplit=1,
+    )[0]
+    scorecard_load_run = scorecard_source.split("def _load_run", maxsplit=1)[1].split(
+        "def _fmt_pct",
+        maxsplit=1,
+    )[0]
+    scorecard_plot = scorecard_source.split("def _maybe_plot", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+    plot_load_runs = plot_source.split("def _load_runs", maxsplit=1)[1].split(
+        "def _plot_metric",
+        maxsplit=1,
+    )[0]
+    plot_metric = plot_source.split("def _plot_metric", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
     assert 'with path.open(encoding="utf-8") as f:' in scorecard_read_jsonl
     assert "for line in f:" in scorecard_read_jsonl
     assert "path.read_text().splitlines()" not in scorecard_read_jsonl
+    assert 'with path.open(encoding="utf-8") as f:' in scorecard_read_json
+    assert "return json.load(f)" in scorecard_read_json
+    assert "json.loads(path.read_text())" not in scorecard_read_json
+    assert "correct_count = 0" in scorecard_load_run
+    assert "for row in quality_rows:" in scorecard_load_run
+    assert "ttft_vals: List[float] = []" in scorecard_load_run
+    assert "decode_vals: List[float] = []" in scorecard_load_run
+    assert "for row in latency_rows:" in scorecard_load_run
+    assert "ttft_vals.append(row.get(\"ttft_ms\", 0.0))" in scorecard_load_run
+    assert "decode_vals.append(row.get(\"decode_ms\", 0.0))" in scorecard_load_run
+    assert "drop_total = 0" in scorecard_load_run
+    assert "for row in moe_router_rows:" in scorecard_load_run
+    assert "sum(1 for r in quality_rows" not in scorecard_load_run
+    assert "[r.get(\"ttft_ms\", 0.0) for r in latency_rows]" not in scorecard_load_run
+    assert "[r.get(\"decode_ms\", 0.0) for r in latency_rows]" not in scorecard_load_run
+    assert "sum(r.get(\"drops\", 0) for r in moe_router_rows)" not in scorecard_load_run
+    assert "labels: List[str] = []" in scorecard_plot
+    assert "for row in runs:" in scorecard_plot
+    assert "labels.append(row[\"dir\"].name)" in scorecard_plot
+    assert "drop_vals.append(row[\"drop_rate\"] * 100)" in scorecard_plot
+    assert "[r[\"ttft_p95\"] for r in runs]" not in scorecard_plot
+    assert "[r[\"decode_p95\"] for r in runs]" not in scorecard_plot
+    assert "[r[\"acc\"] for r in runs]" not in scorecard_plot
+    assert "[r[\"drop_rate\"] * 100 for r in runs]" not in scorecard_plot
+    assert 'with path.open(encoding="utf-8") as f:' in plot_load_runs
+    assert "data = json.load(f)" in plot_load_runs
+    assert "json.loads(path.read_text())" not in plot_load_runs
+    assert "labels: List[str] = []" in plot_metric
+    assert "values: List[float] = []" in plot_metric
+    assert "for name, data in runs:" in plot_metric
+    assert "labels.append(name)" in plot_metric
+    assert "values.append(data.get(metric, 0.0))" in plot_metric
+    assert "labels = [name for name, _ in runs]" not in plot_metric
+    assert "values = [data.get(metric, 0.0) for _, data in runs]" not in plot_metric
 
     from labs.dynamic_router.scorecard import _read_jsonl
 
@@ -7001,6 +7058,10 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     )[0]
     moe_section = source.split("def _simulate_moe", maxsplit=1)[1].split(
         "def _compute_throughput",
+        maxsplit=1,
+    )[0]
+    throughput_section = source.split("def _compute_throughput", maxsplit=1)[1].split(
+        "# -------------------------------------------------------------- Scorecard",
         maxsplit=1,
     )[0]
     ranking_section = source.split("def _rank_top_experts", maxsplit=1)[1].split(
@@ -7051,6 +7112,20 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert "decode_summary = _percentiles([r[\"decode_ms\"] for r in latency_rows])" not in run_summary_section
     assert "_percentile([r[\"ttft_ms\"] for r in latency_rows]" not in run_summary_section
     assert "_percentile([r[\"decode_ms\"] for r in latency_rows]" not in run_summary_section
+    assert "total_tokens = 0" in throughput_section
+    assert "total_latency_ms = 0.0" in throughput_section
+    assert "good_tokens = 0" in throughput_section
+    assert "slo_hit_count = 0" in throughput_section
+    assert "for row in latency_rows:" in throughput_section
+    assert "total_tokens += output_tokens" in throughput_section
+    assert "total_latency_ms += ttft_ms + decode_ms" in throughput_section
+    assert "slo_hit_count += 1" in throughput_section
+    assert "good_tokens += output_tokens" in throughput_section
+    assert '"slo_hit_rate": (slo_hit_count / len(latency_rows)) if latency_rows else 0.0' in throughput_section
+    assert "good_rows = [" not in throughput_section
+    assert "sum(r[\"output_tokens\"] for r in latency_rows)" not in throughput_section
+    assert "sum((r[\"ttft_ms\"] + r[\"decode_ms\"])" not in throughput_section
+    assert "sum(r[\"output_tokens\"] for r in good_rows)" not in throughput_section
     assert "decode_by_token_vals: Dict[int, List[float]] = {128: [], 512: [], 2048: []}" in scorecard_section
     assert "for row in latency_rows:" in scorecard_section
     assert "warm_ttft_vals.append(ttft_ms)" in scorecard_section

@@ -16,7 +16,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 def _load_runs(paths: List[Path]) -> List[Tuple[str, Dict[str, float]]]:
     runs: List[Tuple[str, Dict[str, float]]] = []
     for path in paths:
-        data = json.loads(path.read_text())
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
         label = path.stem
         if "scenario" in data:
             label = f"{data.get('scenario')}-{data.get('mode', '')}-{path.stem}"
@@ -30,8 +31,11 @@ def _plot_metric(
     ylabel: str,
     out_path: Path,
 ) -> None:
-    labels = [name for name, _ in runs]
-    values = [data.get(metric, 0.0) for _, data in runs]
+    labels: List[str] = []
+    values: List[float] = []
+    for name, data in runs:
+        labels.append(name)
+        values.append(data.get(metric, 0.0))
     plt.figure(figsize=(10, 4))
     bars = plt.bar(labels, values, color="#4f6bed")
     plt.ylabel(ylabel)
