@@ -9505,6 +9505,29 @@ def test_ch16_tensor_parallel_attention_avoids_mask_completeness_sync() -> None:
     assert "valid_mask.fill_(False)" in cached_attention_section
 
 
+def test_ch16_load_test_batches_percentile_calculations() -> None:
+    source = (REPO_ROOT / "ch16" / "inference_server_load_test.py").read_text(
+        encoding="utf-8"
+    )
+    sample_summary = source.split("def _summarize_samples", maxsplit=1)[1].split(
+        "def aggregate_results",
+        maxsplit=1,
+    )[0]
+    aggregate_section = source.split("def aggregate_results", maxsplit=1)[1].split(
+        "def parse_args",
+        maxsplit=1,
+    )[0]
+
+    assert "p50, p95 = np.percentile(array, (50, 95))" in sample_summary
+    assert "np.percentile(array, 50)" not in sample_summary
+    assert "np.percentile(array, 95)" not in sample_summary
+    assert "latency_array = np.asarray(latencies, dtype=np.float64)" in aggregate_section
+    assert "np.percentile(latency_array, (50, 90, 99))" in aggregate_section
+    assert "np.percentile(latencies, 50)" not in aggregate_section
+    assert "np.percentile(latencies, 90)" not in aggregate_section
+    assert "np.percentile(latencies, 99)" not in aggregate_section
+
+
 def test_ch16_inference_serving_symmetric_probe_uses_shared_scalar_readback() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"

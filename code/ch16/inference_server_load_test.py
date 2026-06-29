@@ -258,10 +258,11 @@ def _summarize_samples(values: List[int]) -> Dict[str, float]:
     if not values:
         return {"p50": 0.0, "p95": 0.0, "avg": 0.0}
     array = np.asarray(values, dtype=np.float64)
+    p50, p95 = np.percentile(array, (50, 95))
     return {
         "avg": float(array.mean()),
-        "p50": float(np.percentile(array, 50)),
-        "p95": float(np.percentile(array, 95)),
+        "p50": float(p50),
+        "p95": float(p95),
     }
 
 
@@ -279,9 +280,11 @@ def aggregate_results(local_result: Dict) -> Dict:
     generated_lengths = [rec["generated_tokens"] for item in gathered for rec in item["completions"]]
 
     throughput = tokens_generated / elapsed if elapsed > 0 else 0.0
-    p50 = float(np.percentile(latencies, 50)) if latencies else 0.0
-    p90 = float(np.percentile(latencies, 90)) if latencies else 0.0
-    p99 = float(np.percentile(latencies, 99)) if latencies else 0.0
+    if latencies:
+        latency_array = np.asarray(latencies, dtype=np.float64)
+        p50, p90, p99 = (float(value) for value in np.percentile(latency_array, (50, 90, 99)))
+    else:
+        p50 = p90 = p99 = 0.0
 
     prompt_stats = _summarize_samples(prompt_lengths)
     generated_stats = _summarize_samples(generated_lengths)
