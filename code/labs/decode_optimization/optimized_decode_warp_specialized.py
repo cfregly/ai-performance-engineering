@@ -65,12 +65,13 @@ class CUDAGraphPersistentDecodeBenchmark(DecodeBenchmark):
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
+        current_stream = torch.cuda.current_stream()
         with torch.cuda.stream(self._graph_stream):
             # Reset on the graph stream so replay consumes the intended state.
             self.state_buffer.copy_(self._prefilled_state)
             self.current_tokens.copy_(self._prefilled_tokens)
             self._decode_graph.replay()
-        torch.cuda.current_stream().wait_stream(self._graph_stream)
+        current_stream.wait_stream(self._graph_stream)
 
     def teardown(self) -> None:
         for attr in ("_decode_graph", "_graph_stream", "_prefilled_state", "_prefilled_tokens"):

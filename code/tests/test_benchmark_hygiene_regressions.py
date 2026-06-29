@@ -13409,7 +13409,11 @@ def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path(
             maxsplit=1,
         )[0]
         assert "self._finalize_output()" not in benchmark_section
+        assert "current_stream = torch.cuda.current_stream()" in benchmark_section
         if name.startswith("baseline"):
+            assert "stream = self.compute_stream or current_stream" in benchmark_section
+            assert "current_stream.wait_stream(stream)" in benchmark_section
+            assert "torch.cuda.current_stream().wait_stream(stream)" not in benchmark_section
             pre_stream_section = benchmark_section.split("with torch.cuda.stream(stream):", maxsplit=1)[0]
             stream_section = benchmark_section.split("with torch.cuda.stream(stream):", maxsplit=1)[1]
             assert "self.state_buffer.copy_(self._prefilled_state)" not in pre_stream_section
@@ -13425,6 +13429,8 @@ def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path(
                 "with torch.cuda.stream(self._graph_stream):",
                 maxsplit=1,
             )[1]
+            assert "current_stream.wait_stream(self._graph_stream)" in benchmark_section
+            assert "torch.cuda.current_stream().wait_stream(self._graph_stream)" not in benchmark_section
             assert "self.state_buffer.copy_(self._prefilled_state)" not in pre_stream_section
             assert "self.current_tokens.copy_(self._prefilled_tokens)" not in pre_stream_section
             assert "self.state_buffer.copy_(self._prefilled_state)" in stream_section

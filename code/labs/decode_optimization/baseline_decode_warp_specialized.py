@@ -32,7 +32,8 @@ class PersistentPrefillBaselineBenchmark(DecodeBenchmark):
         if not hasattr(self, "_prefilled_state") or not hasattr(self, "_prefilled_tokens"):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        stream = self.compute_stream or torch.cuda.current_stream()
+        current_stream = torch.cuda.current_stream()
+        stream = self.compute_stream or current_stream
         with torch.cuda.stream(stream):
             # Reset on the same stream that consumes the state to keep ordering explicit.
             self.state_buffer.copy_(self._prefilled_state)
@@ -42,7 +43,7 @@ class PersistentPrefillBaselineBenchmark(DecodeBenchmark):
                 self.state_buffer.copy_(next_state)
                 self.current_tokens.copy_(next_token)
         if self.compute_stream is not None:
-            torch.cuda.current_stream().wait_stream(stream)
+            current_stream.wait_stream(stream)
 
 
 def get_benchmark() -> DecodeBenchmark:
