@@ -252,25 +252,29 @@ class Router:
     # Routing
     def choose_prefill_gpu(self) -> Optional[str]:
         """Pick a GPU for a new prefill request."""
-        cands = [g for g in self._gpus.values() if g.is_prefill]
-        if not cands:
-            return None
-        return max(cands, key=self._score_prefill_gpu).gpu_id
+        best_score = float("-inf")
+        best_gpu = None
+        for gpu in self._gpus.values():
+            if not gpu.is_prefill:
+                continue
+            score = self._score_prefill_gpu(gpu)
+            if score > best_score:
+                best_score = score
+                best_gpu = gpu.gpu_id
+        return best_gpu
 
     def choose_decode_gpu(self, seq: SequenceInfo) -> Optional[str]:
         """Pick a GPU for decode, preferring KV-local placements."""
-        cands = [g for g in self._gpus.values() if g.is_decode]
-        if not cands:
-            return None
-
         best_score = float("-inf")
         best_gpu = None
-        for g in cands:
-            kv_local = g.gpu_id in seq.kv_gpus
-            score = self._score_decode_gpu(g, kv_local=kv_local)
+        for gpu in self._gpus.values():
+            if not gpu.is_decode:
+                continue
+            kv_local = gpu.gpu_id in seq.kv_gpus
+            score = self._score_decode_gpu(gpu, kv_local=kv_local)
             if score > best_score:
                 best_score = score
-                best_gpu = g.gpu_id
+                best_gpu = gpu.gpu_id
         return best_gpu
 
     # Migration helpers
@@ -295,12 +299,12 @@ class Router:
         """
         Suggest (seq_id, src_gpu, dst_gpu) moves when decode scores are imbalanced.
         """
-        decode_gpus = [g for g in self._gpus.values() if g.is_decode]
-        if len(decode_gpus) < 2:
-            return []
-
-        scores = {g.gpu_id: self._score_decode_gpu(g) for g in decode_gpus}
-        if not scores:
+        scores = {
+            gpu.gpu_id: self._score_decode_gpu(gpu)
+            for gpu in self._gpus.values()
+            if gpu.is_decode
+        }
+        if len(scores) < 2:
             return []
 
         best = max(scores, key=scores.get)

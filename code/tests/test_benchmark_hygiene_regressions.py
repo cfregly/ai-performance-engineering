@@ -5309,6 +5309,54 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert "lambda i: probs[i]" not in moe_section
 
 
+def test_dynamic_router_policy_avoids_candidate_list_churn() -> None:
+    source = (REPO_ROOT / "labs" / "dynamic_router" / "router_policy.py").read_text(
+        encoding="utf-8"
+    )
+    prefill_section = source.split("def choose_prefill_gpu", maxsplit=1)[1].split(
+        "def choose_decode_gpu",
+        maxsplit=1,
+    )[0]
+    decode_section = source.split("def choose_decode_gpu", maxsplit=1)[1].split(
+        "# Migration helpers",
+        maxsplit=1,
+    )[0]
+    migration_section = source.split("def plan_migrations", maxsplit=1)[1].split(
+        "def _choose_migration_target",
+        maxsplit=1,
+    )[0]
+
+    assert "cands = [" not in prefill_section
+    assert "cands = [" not in decode_section
+    assert "max(cands" not in prefill_section
+    assert "for gpu in self._gpus.values():" in prefill_section
+    assert "for gpu in self._gpus.values():" in decode_section
+    assert "scores = {" in migration_section
+    assert "if gpu.is_decode" in migration_section
+    assert "decode_gpus = [" not in migration_section
+
+    from labs.dynamic_router.router_policy import Router, SequenceInfo
+
+    router = Router(
+        scoring_fn_prefill=lambda gpu, _snap: 2.0 if gpu.gpu_id == "pf1" else 1.0,
+        scoring_fn_decode=lambda gpu, _snap: 1.0 if gpu.gpu_id == "d1" else 0.0,
+        kv_locality_boost=2.0,
+    )
+    router.register_gpu("pf0", is_prefill=True, is_decode=False)
+    router.register_gpu("pf1", is_prefill=True, is_decode=False)
+    router.register_gpu("d0", is_prefill=False, is_decode=True)
+    router.register_gpu("d1", is_prefill=False, is_decode=True)
+
+    assert router.choose_prefill_gpu() == "pf1"
+    assert (
+        router.choose_decode_gpu(
+            SequenceInfo(seq_id="seq0", current_gpu="d0", kv_gpus={"d0"})
+        )
+        == "d0"
+    )
+    assert Router().choose_prefill_gpu() is None
+
+
 def test_ch04_optimized_nvlink_topology_reuses_chunk_views() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_nvlink_topology_aware.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
