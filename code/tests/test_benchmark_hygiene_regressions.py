@@ -6841,7 +6841,10 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._prompt_chunks = {}" in teardown_section
     assert "self._sync_devices = []" in teardown_section
     assert "self._metric_total_tokens = 0" in teardown_section
-    assert "reduced_values = reduced.detach().cpu().tolist()" in reduced_metrics_section
+    assert "reduced_host = reduced.detach().cpu()" in reduced_metrics_section
+    assert "cache_hits = float(reduced_host[0])" in reduced_metrics_section
+    assert "request_count = float(reduced_host[8])" in reduced_metrics_section
+    assert "reduced.detach().cpu().tolist()" not in reduced_metrics_section
     assert ".item()" not in reduced_metrics_section
 
 

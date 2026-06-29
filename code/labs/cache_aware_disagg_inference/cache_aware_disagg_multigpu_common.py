@@ -641,18 +641,16 @@ def _run_torchrun_worker(
     dist.all_reduce(reduced, op=dist.ReduceOp.SUM)
 
     if rank == 0:
-        reduced_values = reduced.detach().cpu().tolist()
-        (
-            cache_hits,
-            cache_misses,
-            worker_switches,
-            peer_handoffs,
-            kv_transfer_bytes,
-            shared_reload_bytes,
-            ttft_reduced_ms,
-            tpot_reduced_ms,
-            request_count,
-        ) = reduced_values
+        reduced_host = reduced.detach().cpu()
+        cache_hits = float(reduced_host[0])
+        cache_misses = float(reduced_host[1])
+        worker_switches = float(reduced_host[2])
+        peer_handoffs = float(reduced_host[3])
+        kv_transfer_bytes = float(reduced_host[4])
+        shared_reload_bytes = float(reduced_host[5])
+        ttft_reduced_ms = float(reduced_host[6])
+        tpot_reduced_ms = float(reduced_host[7])
+        request_count = float(reduced_host[8])
         total_requests = max(float(request_count), 1.0)
         cache_decisions = max(float(cache_hits + cache_misses), 1.0)
         total_generated_tokens = (
