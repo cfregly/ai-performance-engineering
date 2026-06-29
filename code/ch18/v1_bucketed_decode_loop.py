@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from typing import Callable, Iterable, Iterator, List, Sequence, Tuple
+from typing import Iterable, Iterator, List, Sequence, Tuple
 
 import torch
 
@@ -14,7 +14,7 @@ from ch18.baseline_vllm_decode_graphs import (  # noqa: E402
     format_metrics,
 )
 from ch18.decode_kernels import DEVICE, build_decode_kernel  # noqa: E402
-from ch18.optimized_vllm_decode_graphs import BUCKETS, pick_bucket, pad_to_bucket  # noqa: E402
+from ch18.optimized_vllm_decode_graphs import BUCKETS, pick_bucket  # noqa: E402
 from ch18.v1_engine_loop import run_engine_loop  # noqa: E402
 from ch18.v1_engine_loop_common import MockRequestOutput, build_demo_stack  # noqa: E402
 
@@ -23,7 +23,12 @@ from ch18.v1_engine_loop_common import MockRequestOutput, build_demo_stack  # no
 class BucketWorkspace:
     batch: int
     hidden: int
+    dtype: torch.dtype
     device: str = DEVICE
+    tokens_kv: torch.Tensor | None = None
+    tokens: torch.Tensor | None = None
+    kv: torch.Tensor | None = None
+    mask: torch.Tensor | None = None
     logits: torch.Tensor | None = None
     tmp: torch.Tensor | None = None
     stream: torch.cuda.Stream | None = None
@@ -32,29 +37,59 @@ class BucketWorkspace:
     def ensure(self) -> None:
         if self.initialized:
             return
+        self.tokens_kv = torch.empty(
+            (2, self.batch, self.hidden),
+            device=self.device,
+            dtype=self.dtype,
+        )
+        self.tokens = self.tokens_kv[0]
+        self.kv = self.tokens_kv[1]
+        self.tokens_kv.normal_(mean=0.0, std=1.0)
+        self.mask = torch.ones(self.batch, dtype=torch.bool, device=self.device)
         if torch.cuda.is_available():
             self.stream = torch.cuda.Stream(device=self.device)
             with torch.cuda.stream(self.stream):
-                self.logits = torch.empty((self.batch, self.hidden), device=self.device, dtype=torch.float16)
+                self.logits = torch.empty(
+                    (self.batch, self.hidden),
+                    device=self.device,
+                    dtype=self.dtype,
+                )
                 self.tmp = torch.empty_like(self.logits)
             self.stream.synchronize()
         else:
-            self.logits = torch.empty((self.batch, self.hidden), device=self.device, dtype=torch.float32)
+            self.logits = torch.empty(
+                (self.batch, self.hidden),
+                device=self.device,
+                dtype=self.dtype,
+            )
             self.tmp = torch.empty_like(self.logits)
         self.initialized = True
 
     @property
     def bytes(self) -> int:
-        if self.logits is None or self.tmp is None:
+        if (
+            self.logits is None
+            or self.tmp is None
+            or self.tokens is None
+            or self.kv is None
+            or self.mask is None
+        ):
             return 0
-        return (self.logits.numel() + self.tmp.numel()) * self.logits.element_size()
+        return (
+            (self.logits.numel() + self.tmp.numel()) * self.logits.element_size()
+            + self.tokens.numel() * self.tokens.element_size()
+            + self.kv.numel() * self.kv.element_size()
+            + self.mask.numel() * self.mask.element_size()
+        )
 
 
 class BucketWorkspaceRegistry:
     """Per-bucket reusable workspaces for the decode step."""
 
-    def __init__(self, buckets: Sequence[int], hidden: int) -> None:
-        self.workspaces = {b: BucketWorkspace(batch=b, hidden=hidden) for b in buckets}
+    def __init__(self, buckets: Sequence[int], hidden: int, dtype: torch.dtype) -> None:
+        self.workspaces = {
+            b: BucketWorkspace(batch=b, hidden=hidden, dtype=dtype) for b in buckets
+        }
         self._bytes_accounted: set[int] = set()
 
     def get(self, bucket: int) -> BucketWorkspace:
@@ -86,10 +121,10 @@ def run_bucketed_loop(
     hidden: int,
 ) -> DecodeMetrics:
     decode_kernel = build_decode_kernel(hidden=hidden, max_batch=max(BUCKETS))
-    registry = BucketWorkspaceRegistry(BUCKETS, hidden=hidden)
     metrics = DecodeMetrics()
     seen_shapes: set[Tuple[int, int]] = set()
     dtype = torch.float16 if getattr(decode_kernel, "backend", "") == "vllm" else torch.float32
+    registry = BucketWorkspaceRegistry(BUCKETS, hidden=hidden, dtype=dtype)
 
     for outputs in step_iter:
         if not outputs:
@@ -102,11 +137,17 @@ def run_bucketed_loop(
         ws.ensure()
 
         # Drive the real decode kernel on dummy tensors to exercise the graph,
-        # padding/masking to the bucket size to keep shapes stable.
-        tokens = torch.randn(batch_size, hidden, device=DEVICE, dtype=dtype)
-        kv = torch.randn(batch_size, hidden, device=DEVICE, dtype=dtype)
-        tokens_padded, mask = pad_to_bucket(tokens, bucket)
-        kv_padded, _ = pad_to_bucket(kv, bucket)
+        # masking inactive rows to keep bucketed shapes stable.
+        if ws.tokens is None or ws.kv is None or ws.mask is None:
+            raise RuntimeError("workspace not initialized")
+        tokens_padded = ws.tokens
+        kv_padded = ws.kv
+        mask = ws.mask
+        if batch_size == bucket:
+            mask.fill_(True)
+        else:
+            mask[:batch_size].fill_(True)
+            mask[batch_size:bucket].fill_(False)
 
         if ws.stream is not None:
             torch.cuda.current_stream().wait_stream(ws.stream)

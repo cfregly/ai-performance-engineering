@@ -5343,6 +5343,35 @@ def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None
     assert "seq_lens[batch_size:bucket].zero_()" not in run_section
 
 
+def test_ch18_v1_bucketed_decode_reuses_bucket_inputs_and_mask() -> None:
+    source = (REPO_ROOT / "ch18" / "v1_bucketed_decode_loop.py").read_text(
+        encoding="utf-8"
+    )
+    workspace_section = source.split("class BucketWorkspace", maxsplit=1)[1].split(
+        "class BucketWorkspaceRegistry",
+        maxsplit=1,
+    )[0]
+    run_section = source.split("def run_bucketed_loop", maxsplit=1)[1].split(
+        "def parse_args",
+        maxsplit=1,
+    )[0]
+
+    assert "pad_to_bucket" not in source
+    assert "tokens_kv: torch.Tensor | None = None" in workspace_section
+    assert "tokens: torch.Tensor | None = None" in workspace_section
+    assert "kv: torch.Tensor | None = None" in workspace_section
+    assert "mask: torch.Tensor | None = None" in workspace_section
+    assert "self.tokens_kv = torch.empty(" in workspace_section
+    assert "self.tokens_kv.normal_(mean=0.0, std=1.0)" in workspace_section
+    assert "self.mask = torch.ones(self.batch, dtype=torch.bool, device=self.device)" in workspace_section
+    assert "tokens_padded = ws.tokens" in run_section
+    assert "kv_padded = ws.kv" in run_section
+    assert "mask = ws.mask" in run_section
+    assert "mask[:batch_size].fill_(True)" in run_section
+    assert "mask[batch_size:bucket].fill_(False)" in run_section
+    assert "torch.randn(" not in run_section
+
+
 def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     source = (REPO_ROOT / "ch18" / "run_vllm_decoder.py").read_text(encoding="utf-8")
     decoder_section = source.split("class SpeculativeDecoder", maxsplit=1)[1].split(
