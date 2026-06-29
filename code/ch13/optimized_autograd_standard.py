@@ -108,7 +108,7 @@ class OptimizedAutogradCompiledBenchmark(VerificationPayloadMixin, BaseBenchmark
                 self.static_input.copy_(self.inputs)
                 self.static_target.copy_(self.targets)
                 self.graph.replay()
-            self.output = self.output_buffer.detach()
+            self.output = self.output_buffer
         if self.inputs is None or self.targets is None or self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
 

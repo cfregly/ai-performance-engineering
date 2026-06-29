@@ -183,7 +183,7 @@ class OptimizedTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             self.graph.replay()
             if self.output_buffer is None:
                 raise RuntimeError("Output buffer not initialized")
-            self.output = self.output_buffer.detach()
+            self.output = self.output_buffer
         if self._verify_input is None or self.output is None:
             raise RuntimeError("Verification input/output not initialized")
 

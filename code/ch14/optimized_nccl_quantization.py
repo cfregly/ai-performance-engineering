@@ -88,7 +88,7 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
                 self.quantized.copy_(self._quant_float)
                 torch.div(self._max_abs, 127.0, out=self._dequant_scales)
                 torch.mul(self.quantized, self._dequant_scales, out=self.dequantized)
-                self.output = self.dequantized.detach()
+                self.output = self.dequantized
             torch.cuda.current_stream(device=self.device).wait_stream(self.stream)
         if self.output is None or self.tensor is None:
             raise RuntimeError("benchmark_fn() must produce output")

@@ -1581,7 +1581,8 @@ def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
     assert "self.quantized.copy_(self._quant_float)" in optimized_benchmark
     assert "torch.div(self._max_abs, 127.0, out=self._dequant_scales)" in optimized_benchmark
     assert "torch.mul(self.quantized, self._dequant_scales, out=self.dequantized)" in optimized_benchmark
-    assert "self.output = self.dequantized.detach()" in optimized_benchmark
+    assert "self.output = self.dequantized" in optimized_benchmark
+    assert "self.dequantized.detach()" not in optimized_benchmark
     assert "output=self.output.detach().clone()" in optimized_capture
 
 
@@ -10202,7 +10203,7 @@ def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:
     targets = {
         "fp8_perchannel_bench.py": "self.output = output.detach()",
         "fp8_static_demo.py": "self.output = output.detach()",
-        "optimized_precisionfp8_te.py": "self.output = self.output_buffer.detach()",
+        "optimized_precisionfp8_te.py": "self.output = self.output_buffer",
     }
 
     for name, output_assignment in targets.items():
@@ -10218,7 +10219,27 @@ def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:
         assert "float(output" not in benchmark_section
         assert "float(self.output" not in benchmark_section
         assert output_assignment in benchmark_section
+        if name == "optimized_precisionfp8_te.py":
+            assert "self.output_buffer.detach()" not in benchmark_section
         assert "output=self.output.detach().clone()" in capture_section
+
+
+def test_ch13_optimized_autograd_uses_output_buffer_directly() -> None:
+    source = (REPO_ROOT / "ch13" / "optimized_autograd_standard.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def _train_step",
+        maxsplit=1,
+    )[0]
+
+    assert "self.output = self.output_buffer" in benchmark_section
+    assert "self.output_buffer.detach()" not in benchmark_section
+    assert "output=self.output.detach().float().clone()" in capture_section
 
 
 def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
