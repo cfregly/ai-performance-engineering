@@ -64,14 +64,18 @@ def run_benchmark(
     expected = torch.relu(x + bias) + residual
     baseline_error = out_baseline - expected
     fused_error = out_fused - expected
-    max_abs_baseline, max_abs_fused, l2_baseline, l2_fused = torch.stack(
+    error_stats = torch.stack(
         (
             baseline_error.abs().amax(),
             fused_error.abs().amax(),
             torch.linalg.vector_norm(baseline_error),
             torch.linalg.vector_norm(fused_error),
         )
-    ).tolist()
+    ).detach().cpu()
+    max_abs_baseline = float(error_stats[0])
+    max_abs_fused = float(error_stats[1])
+    l2_baseline = float(error_stats[2])
+    l2_fused = float(error_stats[3])
 
     baseline_ms = time_kernel(
         lambda: extension.separate_kernels(x, bias, residual, tmp, out_baseline, iterations),

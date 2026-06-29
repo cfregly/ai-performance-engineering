@@ -89,9 +89,12 @@ class CalibrationStats:
             value_slice[idx].copy_(value)
         host_slice = host_buffer[:count]
         host_slice.copy_(value_slice)
-        values = host_slice.tolist()
-        self.amax_history.extend(float(value) for value in values)
-        self.running_amax = max(self.running_amax, max(float(value) for value in values))
+        running_amax = self.running_amax
+        for idx in range(count):
+            value = float(host_slice[idx])
+            self.amax_history.append(value)
+            running_amax = max(running_amax, value)
+        self.running_amax = running_amax
         self._amax_tensors.clear()
     
     def get_scale(self, fp8_max: float = 448.0, margin: float = 0.0) -> float:

@@ -95,9 +95,12 @@ class CalibrationStats:
             value_slice[idx].copy_(value)
         host_slice = host_buffer[:count]
         host_slice.copy_(value_slice)
-        values = host_slice.tolist()
-        self.amax_history.extend(float(value) for value in values)
-        self.running_amax = max(self.running_amax, max(float(value) for value in values))
+        running_amax = self.running_amax
+        for idx in range(count):
+            value = float(host_slice[idx])
+            self.amax_history.append(value)
+            running_amax = max(running_amax, value)
+        self.running_amax = running_amax
         self._amax_tensors.clear()
     
     def get_scale(self, fp8_max: float = 448.0, margin: float = 0.0) -> float:
@@ -289,7 +292,10 @@ class StaticFP8Linear(nn.Module):
                 pin_memory=needs_pinned,
             )
         self._calibration_info_host.copy_(values)
-        return [float(value) for value in self._calibration_info_host.tolist()]
+        return [
+            float(self._calibration_info_host[idx])
+            for idx in range(self._calibration_info_host.numel())
+        ]
     
     def get_calibration_info(self) -> dict:
         """Get calibration information."""
@@ -440,10 +446,9 @@ class StaticFP8Model(nn.Module):
             scale_slice[2 * idx + 1].copy_(layer.weight_scale)
         scale_host = self._scale_values_host[:count]
         scale_host.copy_(scale_slice)
-        scale_values = scale_host.tolist()
         scales = {}
         for i in range(len(self._fp8_layers)):
-            scales[f"layer_{i}"] = (scale_values[2 * i], scale_values[2 * i + 1])
+            scales[f"layer_{i}"] = (float(scale_host[2 * i]), float(scale_host[2 * i + 1]))
         return scales
 
 
@@ -563,7 +568,7 @@ def benchmark_static_vs_dynamic():
     print(f"  Baseline (FP32): {baseline_ms:.3f} ms")
     print(f"  Static FP8:      {static_ms:.3f} ms")
     print(f"  Speedup:         {baseline_ms / static_ms:.2f}x")
-    print(f"  Relative Error:  {float((error * 100).tolist()):.4f}%")
+    print(f"  Relative Error:  {float((error * 100).detach().cpu()):.4f}%")
     print()
     
     # Print scale info

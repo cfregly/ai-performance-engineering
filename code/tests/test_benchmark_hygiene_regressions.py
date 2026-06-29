@@ -10400,7 +10400,11 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
         assert "value_slice = value_buffer[:count]" in stats_section
         assert "value_slice[idx].copy_(value)" in stats_section
         assert "host_slice.copy_(value_slice)" in stats_section
-        assert "values = host_slice.tolist()" in stats_section
+        assert "running_amax = self.running_amax" in stats_section
+        assert "for idx in range(count):" in stats_section
+        assert "value = float(host_slice[idx])" in stats_section
+        assert "self.amax_history.append(value)" in stats_section
+        assert "values = host_slice.tolist()" not in stats_section
         assert "torch.stack(self._amax_tensors).detach().cpu().tolist()" not in stats_section
         assert "tensor.abs().max().item()" not in stats_section
         assert "self.running_amax = max(self.running_amax, current_amax)" not in stats_section
@@ -10421,7 +10425,9 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
     assert "scale_slice[2 * idx].copy_(layer.input_scale)" in scale_section
     assert "scale_slice[2 * idx + 1].copy_(layer.weight_scale)" in scale_section
     assert "scale_host.copy_(scale_slice)" in scale_section
-    assert "scale_values = scale_host.tolist()" in scale_section
+    assert "float(scale_host[2 * i])" in scale_section
+    assert "float(scale_host[2 * i + 1])" in scale_section
+    assert "scale_values = scale_host.tolist()" not in scale_section
     assert "scale_values = torch.stack(" not in scale_section
     assert "layer.input_scale.item()" not in scale_section
     assert "self.is_calibrated.item()" not in info_section
@@ -10431,6 +10437,9 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
     assert "values[1].copy_(self.input_scale)" in info_section
     assert "values[2].copy_(self.weight_scale)" in info_section
     assert "self._calibration_info_host.copy_(values)" in info_section
+    assert "float(self._calibration_info_host[idx])" in info_section
+    assert "for idx in range(self._calibration_info_host.numel())" in info_section
+    assert "self._calibration_info_host.tolist()" not in info_section
     assert "is_calibrated, input_scale, weight_scale = self._calibration_info_list()" in info_section
     assert "is_calibrated, input_scale, weight_scale = torch.stack(" not in info_section
 
@@ -12971,7 +12980,11 @@ def test_ch12_bias_relu_residual_batches_verification_metric_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "max_abs_baseline, max_abs_fused, l2_baseline, l2_fused = torch.stack(" in source
+    assert "error_stats = torch.stack(" in source
+    assert ").detach().cpu()" in correctness_section
+    assert "max_abs_baseline = float(error_stats[0])" in correctness_section
+    assert "l2_fused = float(error_stats[3])" in correctness_section
+    assert ").tolist()" not in correctness_section
     assert "torch.linalg.vector_norm(baseline_error)" in source
     assert ".item()" not in correctness_section
 
