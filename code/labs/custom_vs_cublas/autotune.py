@@ -68,8 +68,9 @@ def _benchmark_kernel(fn: Callable, A: torch.Tensor, B: torch.Tensor,
         _ = fn(A, B)
     torch.cuda.synchronize()
 
-    # Timed runs
-    times = []
+    # Timed runs: keep the k+1 smallest samples, whose max is the upper median.
+    target_heap_size = iters // 2 + 1
+    upper_median_heap = []
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
     current_stream = torch.cuda.current_stream()
@@ -78,10 +79,12 @@ def _benchmark_kernel(fn: Callable, A: torch.Tensor, B: torch.Tensor,
         _ = fn(A, B)
         end_event.record(current_stream)
         end_event.synchronize()
-        times.append(start_event.elapsed_time(end_event))
+        elapsed_ms = start_event.elapsed_time(end_event)
+        heapq.heappush(upper_median_heap, -elapsed_ms)
+        if len(upper_median_heap) > target_heap_size:
+            heapq.heappop(upper_median_heap)
 
-    # Return the same upper-median sample without fully sorting every timing.
-    return heapq.nsmallest(len(times) // 2 + 1, times)[-1]
+    return -upper_median_heap[0]
 
 
 # Available kernels with names (in order of progressive optimization)

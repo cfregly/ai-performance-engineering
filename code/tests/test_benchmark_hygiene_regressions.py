@@ -2012,8 +2012,15 @@ def test_custom_vs_cublas_timing_helpers_use_cuda_events() -> None:
     assert "start_event.record()" not in autotune_section
     assert "end_event.record()" not in autotune_section
     assert "end_event.synchronize()" in autotune_section
-    assert "times.append(start_event.elapsed_time(end_event))" in autotune_section
-    assert "heapq.nsmallest(len(times) // 2 + 1, times)[-1]" in autotune_section
+    assert "target_heap_size = iters // 2 + 1" in autotune_section
+    assert "upper_median_heap = []" in autotune_section
+    assert "elapsed_ms = start_event.elapsed_time(end_event)" in autotune_section
+    assert "heapq.heappush(upper_median_heap, -elapsed_ms)" in autotune_section
+    assert "heapq.heappop(upper_median_heap)" in autotune_section
+    assert "return -upper_median_heap[0]" in autotune_section
+    assert "times = []" not in autotune_section
+    assert "times.append(" not in autotune_section
+    assert "heapq.nsmallest(" not in autotune_section
     assert "times.sort()" not in autotune_section
     assert "time.perf_counter()" not in autotune_section
 
