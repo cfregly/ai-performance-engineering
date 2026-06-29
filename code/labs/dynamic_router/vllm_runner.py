@@ -216,14 +216,12 @@ class _VllmWrapper:
             if rt is None:
                 continue
             # Detect first token
-            if rt.ttft_ms is None and ro.outputs:
-                total_tokens = sum(len(o.token_ids) for o in ro.outputs)
-                if total_tokens > 0:
+            if ro.outputs:
+                output_token_count = sum(len(o.token_ids) for o in ro.outputs)
+                if rt.ttft_ms is None and output_token_count > 0:
                     rt.ttft_ms = (now - rt.admitted_at) * 1000.0
                     ttft_samples.append((rid, rt.ttft_ms))
-            # Track tokens
-            if ro.outputs:
-                tokens_emitted += sum(len(o.token_ids) for o in ro.outputs)
+                tokens_emitted += output_token_count
             if ro.finished:
                 finished_ids.append(rid)
                 rt.finished = True
@@ -338,13 +336,13 @@ class _VllmV1Wrapper(_VllmWrapper):
                     rt = self._inflight.get(rid)
                     if rt is None:
                         continue
-                    if rt.ttft_ms is None and getattr(ro, "outputs", None):
-                        total_tokens = sum(len(o.token_ids) for o in ro.outputs)
-                        if total_tokens > 0:
+                    ro_outputs = getattr(ro, "outputs", None)
+                    if ro_outputs:
+                        output_token_count = sum(len(o.token_ids) for o in ro_outputs)
+                        if rt.ttft_ms is None and output_token_count > 0:
                             rt.ttft_ms = (now - rt.admitted_at) * 1000.0
                             ttft_samples.append((rid, rt.ttft_ms))
-                    if getattr(ro, "outputs", None):
-                        tokens_emitted += sum(len(o.token_ids) for o in ro.outputs)
+                        tokens_emitted += output_token_count
                     if getattr(ro, "finished", False):
                         finished_ids.append(rid)
                         rt.finished = True

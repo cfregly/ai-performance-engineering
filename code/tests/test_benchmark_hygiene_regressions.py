@@ -6686,6 +6686,14 @@ def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
     source = (REPO_ROOT / "labs" / "dynamic_router" / "vllm_runner.py").read_text(
         encoding="utf-8"
     )
+    wrapper_section = source.split("class _VllmWrapper", maxsplit=1)[1].split(
+        "class _VllmV1Wrapper",
+        maxsplit=1,
+    )[0]
+    v1_wrapper_section = source.split("class _VllmV1Wrapper", maxsplit=1)[1].split(
+        "@dataclass",
+        maxsplit=1,
+    )[0]
     routing_section = source.split(
         "def run_vllm_routing_with_topology",
         maxsplit=1,
@@ -6696,6 +6704,15 @@ def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
     assert "list(engines.keys())" not in routing_section
     assert "ttft_samples.extend(sample for _, sample in ttft_new)" in routing_section
     assert "ttft_samples.extend([sample" not in routing_section
+    assert "output_token_count = sum(len(o.token_ids) for o in ro.outputs)" in wrapper_section
+    assert "tokens_emitted += output_token_count" in wrapper_section
+    assert "total_tokens = sum(len(o.token_ids) for o in ro.outputs)" not in wrapper_section
+    assert wrapper_section.count("sum(len(o.token_ids) for o in ro.outputs)") == 1
+    assert "ro_outputs = getattr(ro, \"outputs\", None)" in v1_wrapper_section
+    assert "output_token_count = sum(len(o.token_ids) for o in ro_outputs)" in v1_wrapper_section
+    assert "tokens_emitted += output_token_count" in v1_wrapper_section
+    assert "total_tokens = sum(len(o.token_ids) for o in ro.outputs)" not in v1_wrapper_section
+    assert v1_wrapper_section.count("sum(len(o.token_ids) for o in ro_outputs)") == 1
 
 
 def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None:
