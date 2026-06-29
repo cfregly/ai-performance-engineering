@@ -143,14 +143,15 @@ class OptimizedNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBen
         if self.inputs is None or self._output_view is None:
             raise RuntimeError("Inputs not initialized")
 
+        current_stream = torch.cuda.current_stream()
         with self._nvtx_range("prefill_native_shaped_low_pri"):
             pref_events = self._prefill_shaped_native(async_only=True)
         with self._nvtx_range("decode_graph_high_pri"):
             self._decode_graph()
         if pref_events:
             for evt in pref_events:
-                torch.cuda.current_stream().wait_event(evt)
-        torch.cuda.current_stream().wait_stream(self.decode_stream)
+                current_stream.wait_event(evt)
+        current_stream.wait_stream(self.decode_stream)
         if self.inputs is not None:
             self.output = self._output_view
         if self.inputs is None or self.output is None:

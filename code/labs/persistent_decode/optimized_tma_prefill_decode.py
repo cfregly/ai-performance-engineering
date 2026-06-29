@@ -434,6 +434,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         if self.inputs is None or self._output_view is None:
             raise RuntimeError("Inputs not initialized")
 
+        current_stream = torch.cuda.current_stream()
         use_full = (
             self.graph_mode == GraphMode.FULL
             or (self.graph_mode == GraphMode.FULL_AND_PIECEWISE and self.seq_len <= self.max_capture_seq)
@@ -446,7 +447,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
                     start.record(self.decode_stream)
                     self.full_graph.replay()
                     end.record(self.decode_stream)
-            torch.cuda.current_stream().wait_stream(self.decode_stream)
+            current_stream.wait_stream(self.decode_stream)
             self._pending_iteration = {
                 "path": "full_graph",
                 "start": start,
@@ -476,9 +477,9 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
                 end_decode.record(self.decode_stream)
         if pref_events:
             for evt in pref_events:
-                torch.cuda.current_stream().wait_event(evt)
+                current_stream.wait_event(evt)
         end_prefill.record()
-        torch.cuda.current_stream().wait_stream(self.decode_stream)
+        current_stream.wait_stream(self.decode_stream)
         self._pending_iteration = {
             "path": "piecewise_graph",
             "start": start_prefill,

@@ -6535,19 +6535,30 @@ def test_persistent_decode_graphs_reuses_timing_events_outside_hot_loop() -> Non
 
 
 def test_persistent_decode_tma_reuses_timing_events_outside_hot_loop() -> None:
-    source = (REPO_ROOT / "labs" / "persistent_decode" / "optimized_tma_prefill_decode.py").read_text(
-        encoding="utf-8"
-    )
-    setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
-    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
-        "def finalize_iteration_metrics", maxsplit=1
-    )[0]
+    for filename in (
+        "optimized_tma_prefill_decode.py",
+        "optimized_native_tma_prefill_decode.py",
+    ):
+        source = (REPO_ROOT / "labs" / "persistent_decode" / filename).read_text(
+            encoding="utf-8"
+        )
+        setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def finalize_iteration_metrics" if filename == "optimized_tma_prefill_decode.py" else "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
 
-    assert "torch.cuda.Event(enable_timing=True)" in setup_section
-    assert "torch.cuda.Event(" not in benchmark_section
-    assert 'start = self._full_events["start"]' in benchmark_section
-    assert 'start_prefill = self._piecewise_events["start_prefill"]' in benchmark_section
-    assert 'start_decode = self._piecewise_events["start_decode"]' in benchmark_section
+        assert "torch.cuda.Event(" not in benchmark_section
+        assert "current_stream = torch.cuda.current_stream()" in benchmark_section
+        assert "current_stream.wait_stream(self.decode_stream)" in benchmark_section
+        assert "torch.cuda.current_stream().wait_stream(self.decode_stream)" not in benchmark_section
+        assert "torch.cuda.current_stream().wait_event(evt)" not in benchmark_section
+        if filename == "optimized_tma_prefill_decode.py":
+            assert "torch.cuda.Event(enable_timing=True)" in setup_section
+            assert 'start = self._full_events["start"]' in benchmark_section
+            assert 'start_prefill = self._piecewise_events["start_prefill"]' in benchmark_section
+            assert 'start_decode = self._piecewise_events["start_decode"]' in benchmark_section
+            assert "current_stream.wait_event(evt)" in benchmark_section
 
 
 def test_persistent_decode_tma_precomputes_prefill_work_outside_hot_loop() -> None:
