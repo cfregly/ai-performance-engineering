@@ -7731,6 +7731,44 @@ def test_train_distributed_optimized_fsdp_defers_loss_sync_until_logging() -> No
         )
 
 
+def test_train_distributed_baseline_fsdp_defers_loss_sync_until_logging() -> None:
+    for relative in (
+        "baseline_fsdp.py",
+        "baseline_fsdp_multigpu.py",
+        "baseline_fsdp2.py",
+        "baseline_fsdp2_multigpu.py",
+    ):
+        source = (REPO_ROOT / "labs" / "train_distributed" / relative).read_text(
+            encoding="utf-8"
+        )
+        loop_section = source.split("while optimizer_step < total_updates:", maxsplit=1)[1].split(
+            "if optimizer_step >= total_updates:",
+            maxsplit=1,
+        )[0]
+        before_logging = loop_section.split(
+            "metrics.update(gpu_memory_usage(local_rank))",
+            maxsplit=1,
+        )[0]
+        logging_section = loop_section.split(
+            "metrics.update(gpu_memory_usage(local_rank))",
+            maxsplit=1,
+        )[1].split(
+            "print(msg, flush=True)",
+            maxsplit=1,
+        )[0]
+
+        assert "loss.item() * args.grad_accum" not in loop_section
+        assert "loss.item()" not in loop_section
+        assert "float(loss.detach())" not in loop_section
+        assert "loss_value =" not in before_logging
+        assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in source
+        assert "loss_value_buffer[0].copy_(loss.detach())" in logging_section
+        assert (
+            "loss_value = loss_value_buffer.detach().cpu().tolist()[0] * args.grad_accum"
+            in logging_section
+        )
+
+
 def test_train_distributed_optimized_wrappers_log_detached_loss_values() -> None:
     for relative in (
         "optimized_ddp.py",
@@ -7743,6 +7781,26 @@ def test_train_distributed_optimized_wrappers_log_detached_loss_values() -> None
         "optimized_zero2_multigpu.py",
         "optimized_zero3.py",
         "optimized_zero3_multigpu.py",
+    ):
+        source = (REPO_ROOT / "labs" / "train_distributed" / relative).read_text(
+            encoding="utf-8"
+        )
+
+        assert "loss.item()" not in source
+        assert "float(loss.detach())" not in source
+        assert "loss_value_buffer = torch.empty(1, dtype=torch.float64" in source
+        assert "loss_value_buffer[0].copy_(loss.detach())" in source
+        assert "loss_value = loss_value_buffer.detach().cpu().tolist()[0]" in source
+        assert "loss={loss_value:.4f}" in source
+
+
+def test_train_distributed_baseline_wrappers_log_detached_loss_values() -> None:
+    for relative in (
+        "baseline_ddp.py",
+        "baseline_ddp_multigpu.py",
+        "baseline_ddp_flash.py",
+        "baseline_ddp_flash_multigpu.py",
+        "baseline_zero2_multigpu.py",
     ):
         source = (REPO_ROOT / "labs" / "train_distributed" / relative).read_text(
             encoding="utf-8"

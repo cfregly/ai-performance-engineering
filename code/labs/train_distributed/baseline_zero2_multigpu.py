@@ -83,6 +83,7 @@ def main():
     torch.cuda.synchronize(device)
 
     total_tokens = 0
+    loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
     start = perf_counter()
 
     for step in range(args.steps):
@@ -98,8 +99,10 @@ def main():
         total_tokens += x.numel()
 
         if rank == 0 and step % 10 == 0:
+            loss_value_buffer[0].copy_(loss.detach())
+            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
             print(
-                f"[baseline-zero2] step {step}/{args.steps} loss={loss.item():.4f} "
+                f"[baseline-zero2] step {step}/{args.steps} loss={loss_value:.4f} "
                 f"tokens/step={x.numel():,}"
             )
 

@@ -103,6 +103,7 @@ def main():
     num_steps = min(args.steps, len(dataloader))
     start = perf_counter()
     total_tokens = 0
+    loss_value_buffer = torch.empty(1, dtype=torch.float64, device=device)
 
     for step, batch in enumerate(dataloader):
         if step >= num_steps:
@@ -121,7 +122,9 @@ def main():
         total_tokens += batch["input_ids"].numel()
 
         if is_main and step % 10 == 0:
-            print(f"[baseline-ddp] step {step}/{num_steps} | loss={loss.item():.4f}")
+            loss_value_buffer[0].copy_(loss.detach())
+            loss_value = loss_value_buffer.detach().cpu().tolist()[0]
+            print(f"[baseline-ddp] step {step}/{num_steps} | loss={loss_value:.4f}")
 
     if device.type == "cuda":
         torch.cuda.synchronize(device)
