@@ -659,6 +659,9 @@ def test_kv_cache_reuses_token_mask_row_sums():
     assert "if token_mask is None:\n                next_row_pos = base_row_pos + T_add" not in insert_section
     assert "positions = base_row_pos + t" not in insert_section
     assert "self.kv_cache[layer_idx, 0, batch_idx, :, dense_positions] = k[:, :, t, :]" in insert_section
+    assert "def insert_kv(self, layer_idx, k, v, token_mask=None, max_cache_len=None)" in text
+    assert "max_needed = int(max_cache_len) if max_cache_len is not None else int(dense_positions.max().item()) + T_add" in insert_section
+    assert "max_needed = int(max_cache_len) if max_cache_len is not None else int(next_row_pos.max().item())" in insert_section
     assert "batch_idx = self._batch_index_buffer(B, k.device)" in insert_section
     assert "rows = batch_idx[active]" in insert_section
     assert "if rows.numel() == 0:" in insert_section
@@ -684,6 +687,15 @@ def test_gpt_forward_skips_matching_mask_casts():
     assert "if token_mask.device != idx.device or token_mask.dtype != torch.bool:" in forward_prefix
     assert "token_mask = token_mask.to(device=idx.device, dtype=torch.bool)" in forward_prefix
     assert forward_prefix.count(".to(device=idx.device, dtype=torch.bool)") == 2
+    attention_source = source.read_text(encoding="utf-8").split(
+        "# Apply KV cache: insert current k,v into cache, get the full view so far",
+        maxsplit=1,
+    )[1].split(
+        "Tq = q.size(2)",
+        maxsplit=1,
+    )[0]
+    assert "cache_max_len = attention_mask.size(-1) if cache_token_mask is not None and attention_mask is not None else None" in attention_source
+    assert "max_cache_len=cache_max_len" in attention_source
 
 
 def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():

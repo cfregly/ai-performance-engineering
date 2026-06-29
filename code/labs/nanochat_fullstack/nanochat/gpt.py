@@ -349,7 +349,8 @@ class CausalSelfAttention(nn.Module):
             cache_token_mask = token_mask if self.use_padded_attention else None
             if cache_token_mask is not None:
                 assert cache_token_mask.shape[0] == B and cache_token_mask.shape[1] == T, f"token_mask shape mismatch: {cache_token_mask.shape} vs ({B}, {T})"
-            k, v = kv_cache.insert_kv(self.layer_idx, k, v, token_mask=cache_token_mask)
+            cache_max_len = attention_mask.size(-1) if cache_token_mask is not None and attention_mask is not None else None
+            k, v = kv_cache.insert_kv(self.layer_idx, k, v, token_mask=cache_token_mask, max_cache_len=cache_max_len)
         Tq = q.size(2) # number of queries in this forward pass
         Tk = k.size(2) # number of keys/values in total (in the cache + current forward pass)
 

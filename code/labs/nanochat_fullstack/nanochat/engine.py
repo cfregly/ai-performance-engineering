@@ -226,7 +226,7 @@ class KVCache:
             self._row_position_idx = positions
         return positions[:batch_size]
 
-    def insert_kv(self, layer_idx, k, v, token_mask=None):
+    def insert_kv(self, layer_idx, k, v, token_mask=None, max_cache_len=None):
         # Lazy initialize the cache here because we need to know the dtype/device
         if self.kv_cache is None:
             self.kv_cache = torch.empty(self.kv_shape, dtype=k.dtype, device=k.device)
@@ -246,11 +246,11 @@ class KVCache:
             if token_mask is None:
                 dense_positions = self._row_position_buffer(B, k.device)
                 dense_positions.copy_(base_row_pos)
-                max_needed = int(dense_positions.max().item()) + T_add
+                max_needed = int(max_cache_len) if max_cache_len is not None else int(dense_positions.max().item()) + T_add
             else:
                 token_increments = token_mask.sum(dim=1)
                 next_row_pos = base_row_pos + token_increments
-                max_needed = int(next_row_pos.max().item())
+                max_needed = int(max_cache_len) if max_cache_len is not None else int(next_row_pos.max().item())
             self._maybe_grow_cache(max_needed, k.dtype, k.device)
             batch_idx = self._batch_index_buffer(B, k.device)
             if token_mask is None:
