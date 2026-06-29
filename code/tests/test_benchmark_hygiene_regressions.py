@@ -16042,6 +16042,10 @@ def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:
     source = (REPO_ROOT / "labs" / "moe_parallelism" / "benchmarking.py").read_text(
         encoding="utf-8"
     )
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
     setup_section = source.split("def setup", maxsplit=1)[1].split(
         "def benchmark_fn",
         maxsplit=1,
@@ -16058,6 +16062,8 @@ def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:
     assert "self._summary_buffer[0, index] = float(value)" in finalize_section
     assert "self.output = self._summary_buffer" in finalize_section
     assert "self._summary_buffer.detach()" not in finalize_section
+    assert "output=self.output" in capture_section
+    assert "output=self.output.detach().clone()" not in capture_section
 
 
 def test_dynamic_router_verification_payloads_reuse_summary_buffers() -> None:
@@ -16479,6 +16485,38 @@ def test_ch13_inference_precision_benchmarks_use_inference_mode() -> None:
         )[0]
         assert "torch.inference_mode()" in setup_section
         assert "torch.no_grad()" not in setup_section
+
+
+def test_ch13_warp_specialization_samples_verification_output() -> None:
+    source = (REPO_ROOT / "ch13" / "baseline_warp_specialization_training.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "(min(128, self.rows), min(256, self.cols))" in setup_section
+    assert "dtype=torch.float32" in setup_section
+    assert "output_slice = self.output[" in capture_section
+    assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "output=self.output.detach().float().clone()" not in capture_section
+    assert ".detach().float().clone()" not in benchmark_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch13_attention_wrappers_sample_verification_outputs() -> None:
@@ -17284,6 +17322,14 @@ def test_ch13_dtensor_mesh_caches_nvtx_enablement() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_workload_metadata",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_custom_metrics",
+        maxsplit=1,
+    )[0]
 
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
     assert "get_config()" not in benchmark_section
@@ -17292,6 +17338,12 @@ def test_ch13_dtensor_mesh_caches_nvtx_enablement() -> None:
     assert "self._empty_iteration_result = {}" in source
     assert "return self._empty_iteration_result" in benchmark_section
     assert "return {}" not in benchmark_section
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(local, dtype=torch.float32)" in setup_section
+    assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "output=self.output.detach().float().clone()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch13_multigpu_surrogates_cache_verification_parameter_counts() -> None:

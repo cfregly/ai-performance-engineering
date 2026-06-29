@@ -57,6 +57,7 @@ class BaselineWarpSpecializationTrainingBenchmark(VerificationPayloadMixin, Base
         self.scale2: Optional[torch.Tensor] = None
         self.bias2: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
 
         self.rows = 4096
         self.cols = 4096
@@ -83,6 +84,11 @@ class BaselineWarpSpecializationTrainingBenchmark(VerificationPayloadMixin, Base
         self.scale2 = torch.tensor(0.97, device=self.device, dtype=self.dtype)
         self.bias2 = torch.tensor(0.2, device=self.device, dtype=self.dtype)
         self.output = None
+        self._verify_output_buffer = torch.empty(
+            (min(128, self.rows), min(256, self.cols)),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -103,11 +109,16 @@ class BaselineWarpSpecializationTrainingBenchmark(VerificationPayloadMixin, Base
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
-        if self.x is None or self.output is None:
+        if self.x is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("capture_verification_payload() requires a completed benchmark run")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"x": self.x},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=int(self.rows),
             precision_flags={
                 "fp16": False,
@@ -128,6 +139,7 @@ class BaselineWarpSpecializationTrainingBenchmark(VerificationPayloadMixin, Base
         self.scale2 = None
         self.bias2 = None
         self.output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

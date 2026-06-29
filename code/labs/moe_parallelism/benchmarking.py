@@ -136,9 +136,11 @@ class PlanBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Failed to produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.metrics is None or self.output is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         self._set_verification_payload(
             inputs={"metrics": self.metrics},
-            output=self.output.detach().clone(),
+            output=self.output,
             batch_size=1,
             parameter_count=0,
             precision_flags={"fp16": False, "bf16": False, "tf32": False},

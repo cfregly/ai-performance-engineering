@@ -22,6 +22,8 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.mesh = None
         self.tensor: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._payload_input_local: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._enable_nvtx = False
         self._empty_iteration_result = {}
 
@@ -37,6 +39,7 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
         devices = list(range(min(2, torch.cuda.device_count())))
         self.mesh = DeviceMesh("cuda", devices)
         local = torch.randn(4, 4, device=f"cuda:{devices[0]}")
+        self._verify_output_buffer = torch.empty_like(local, dtype=torch.float32)
         self.tensor = distribute_tensor(local, placements=[Replicate()], device_mesh=self.mesh)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
@@ -57,9 +60,12 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def capture_verification_payload(self) -> None:
         input_local = self._payload_input_local
+        if input_local is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": input_local},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=int(input_local.shape[0]) if input_local is not None else 1,
             precision_flags={
                 "fp16": False,
@@ -73,6 +79,13 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
 
+    def teardown(self) -> None:
+        self.mesh = None
+        self.tensor = None
+        self.output = None
+        self._payload_input_local = None
+        self._verify_output_buffer = None
+        super().teardown()
 
     def get_custom_metrics(self) -> Optional[dict]:
         """Return domain-specific metrics using standardized helper."""
