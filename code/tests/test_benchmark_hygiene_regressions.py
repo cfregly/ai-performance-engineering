@@ -6580,6 +6580,53 @@ def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
     assert "ttft_samples.extend([sample" not in routing_section
 
 
+def test_dynamic_router_percentiles_reuse_sorted_samples() -> None:
+    runner_source = (REPO_ROOT / "labs" / "dynamic_router" / "vllm_runner.py").read_text(
+        encoding="utf-8"
+    )
+    driver_source = (REPO_ROOT / "labs" / "dynamic_router" / "driver.py").read_text(
+        encoding="utf-8"
+    )
+    runner_percentiles = runner_source.split("def _percentiles", maxsplit=1)[1].split(
+        "def _mean",
+        maxsplit=1,
+    )[0]
+    routing_section = runner_source.split(
+        "def run_vllm_routing_with_topology",
+        maxsplit=1,
+    )[1].split("def run_vllm_routing", maxsplit=1)[0]
+    dual_pool_section = runner_source.split(
+        "def run_dual_pool_vllm_with_topology",
+        maxsplit=1,
+    )[1].split("def run_dual_pool_vllm", maxsplit=1)[0]
+    driver_percentiles = driver_source.split("def _percentiles", maxsplit=1)[1].split(
+        "def _poisson",
+        maxsplit=1,
+    )[0]
+    simulate_section = driver_source.split("def simulate", maxsplit=1)[1].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+
+    assert "def _percentile_from_ordered" in runner_source
+    assert "data_sorted = sorted(data)" in runner_percentiles
+    assert "return tuple(_percentile_from_ordered(data_sorted, pct) for pct in pcts)" in runner_percentiles
+    assert "summary[\"ttft_ms_p50\"], summary[\"ttft_ms_p95\"] = _percentiles(ttft_samples" in routing_section
+    assert "ttft_p50, ttft_p95 = _percentiles(ttft_samples, (50.0, 95.0))" in dual_pool_section
+    assert "prefill_ttft_p50, prefill_ttft_p95 = _percentiles(pool_ttft[\"prefill\"]" in dual_pool_section
+    assert "decode_ttft_p50, decode_ttft_p95 = _percentiles(pool_ttft[\"decode\"]" in dual_pool_section
+    assert "_percentile(ttft_samples, 50.0)" not in runner_source
+    assert "_percentile(ttft_samples, 95.0)" not in runner_source
+    assert "_percentile(pool_ttft" not in runner_source
+
+    assert "def _percentile_from_ordered" in driver_source
+    assert "data_sorted = sorted(data)" in driver_percentiles
+    assert "return tuple(_percentile_from_ordered(data_sorted, pct) for pct in pcts)" in driver_percentiles
+    assert "ttft_p50, ttft_p95 = _percentiles(completed_ttfts, (50.0, 95.0))" in simulate_section
+    assert "_percentile(completed_ttfts, 50.0)" not in simulate_section
+    assert "_percentile(completed_ttfts, 95.0)" not in simulate_section
+
+
 def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     source = (REPO_ROOT / "labs" / "dynamic_router" / "eval_stack.py").read_text(encoding="utf-8")
     percentile_section = source.split("def _percentiles", maxsplit=1)[1].split(

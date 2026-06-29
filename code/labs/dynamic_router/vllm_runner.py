@@ -381,11 +381,8 @@ def _parse_device_list(raw: Optional[str], default: str, max_device: int) -> Lis
     return sorted(set(ids))
 
 
-def _percentile(data: List[float], pct: float) -> float:
-    if not data:
-        return 0.0
+def _percentile_from_ordered(data_sorted: List[float], pct: float) -> float:
     assert 0.0 <= pct <= 100.0
-    data_sorted = sorted(data)
     k = (len(data_sorted) - 1) * (pct / 100.0)
     f = int(k // 1)
     c = int(k // 1 + 1)
@@ -394,6 +391,19 @@ def _percentile(data: List[float], pct: float) -> float:
     d0 = data_sorted[f] * (c - k)
     d1 = data_sorted[c] * (k - f)
     return d0 + d1
+
+
+def _percentile(data: List[float], pct: float) -> float:
+    if not data:
+        return 0.0
+    return _percentile_from_ordered(sorted(data), pct)
+
+
+def _percentiles(data: List[float], pcts: Tuple[float, ...]) -> Tuple[float, ...]:
+    if not data:
+        return tuple(0.0 for _ in pcts)
+    data_sorted = sorted(data)
+    return tuple(_percentile_from_ordered(data_sorted, pct) for pct in pcts)
 
 
 def _mean(data: List[float]) -> float:
@@ -524,12 +534,7 @@ def run_vllm_routing_with_topology(
         "completed": completed,
         "ttft_ms_mean": float(sum(ttft_samples) / len(ttft_samples)) if ttft_samples else 0.0,
     }
-    if ttft_samples:
-        summary["ttft_ms_p50"] = _percentile(ttft_samples, 50.0)
-        summary["ttft_ms_p95"] = _percentile(ttft_samples, 95.0)
-    else:
-        summary["ttft_ms_p50"] = 0.0
-        summary["ttft_ms_p95"] = 0.0
+    summary["ttft_ms_p50"], summary["ttft_ms_p95"] = _percentiles(ttft_samples, (50.0, 95.0))
     for gid in engines:
         summary[f"tpot_tok_per_step_{gid}"] = tpot_ema[gid]
     return summary
@@ -728,18 +733,22 @@ def run_dual_pool_vllm_with_topology(
         if len(completed) >= len(req_roles):
             break
 
+    ttft_p50, ttft_p95 = _percentiles(ttft_samples, (50.0, 95.0))
+    prefill_ttft_p50, prefill_ttft_p95 = _percentiles(pool_ttft["prefill"], (50.0, 95.0))
+    decode_ttft_p50, decode_ttft_p95 = _percentiles(pool_ttft["decode"], (50.0, 95.0))
+
     summary: Dict[str, float] = {
         "mode": normalized_mode,
         "requests": len(req_roles),
         "completed": len(completed),
         "prefill_gpu_count": len(prefill_ids),
         "decode_gpu_count": len(decode_ids),
-        "ttft_ms_p50": _percentile(ttft_samples, 50.0),
-        "ttft_ms_p95": _percentile(ttft_samples, 95.0),
-        "prefill_ttft_ms_p50": _percentile(pool_ttft["prefill"], 50.0),
-        "prefill_ttft_ms_p95": _percentile(pool_ttft["prefill"], 95.0),
-        "decode_ttft_ms_p50": _percentile(pool_ttft["decode"], 50.0),
-        "decode_ttft_ms_p95": _percentile(pool_ttft["decode"], 95.0),
+        "ttft_ms_p50": ttft_p50,
+        "ttft_ms_p95": ttft_p95,
+        "prefill_ttft_ms_p50": prefill_ttft_p50,
+        "prefill_ttft_ms_p95": prefill_ttft_p95,
+        "decode_ttft_ms_p50": decode_ttft_p50,
+        "decode_ttft_ms_p95": decode_ttft_p95,
         "queue_depth_prefill_mean": _mean(queue_samples["prefill"]),
         "queue_depth_decode_mean": _mean(queue_samples["decode"]),
         "long_prompt_tokens": float(long_prompt_tokens),

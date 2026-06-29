@@ -217,11 +217,8 @@ def build_optimized_router(gpus: Dict[str, VirtualGPU], queue_urgency: float, co
     return r
 
 
-def _percentile(data: List[float], pct: float) -> float:
-    if not data:
-        return 0.0
+def _percentile_from_ordered(data_sorted: List[float], pct: float) -> float:
     assert 0.0 <= pct <= 100.0
-    data_sorted = sorted(data)
     k = (len(data_sorted) - 1) * (pct / 100.0)
     f = math.floor(k)
     c = math.ceil(k)
@@ -230,6 +227,19 @@ def _percentile(data: List[float], pct: float) -> float:
     d0 = data_sorted[int(f)] * (c - k)
     d1 = data_sorted[int(c)] * (k - f)
     return d0 + d1
+
+
+def _percentile(data: List[float], pct: float) -> float:
+    if not data:
+        return 0.0
+    return _percentile_from_ordered(sorted(data), pct)
+
+
+def _percentiles(data: List[float], pcts: Tuple[float, ...]) -> Tuple[float, ...]:
+    if not data:
+        return tuple(0.0 for _ in pcts)
+    data_sorted = sorted(data)
+    return tuple(_percentile_from_ordered(data_sorted, pct) for pct in pcts)
 
 
 def _poisson(lam: float) -> int:
@@ -438,11 +448,12 @@ def simulate(
     }
 
     if completed_ttfts:
+        ttft_p50, ttft_p95 = _percentiles(completed_ttfts, (50.0, 95.0))
         summary.update(
             {
                 "ttft_ms_mean": statistics.mean(completed_ttfts),
-                "ttft_ms_p50": _percentile(completed_ttfts, 50.0),
-                "ttft_ms_p95": _percentile(completed_ttfts, 95.0),
+                "ttft_ms_p50": ttft_p50,
+                "ttft_ms_p95": ttft_p95,
             }
         )
     else:
