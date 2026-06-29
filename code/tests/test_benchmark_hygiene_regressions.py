@@ -1964,6 +1964,8 @@ def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
     assert "torch.matmul(hidden, self._linear2_weight_t, out=output)" in buffered_forward
     assert "self.linear1.weight.t()" not in buffered_forward
     assert "self.linear2.weight.t()" not in buffered_forward
+    assert "self.output = out" in benchmark_section
+    assert "out.detach()" not in benchmark_section
 
 
 def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
@@ -7993,6 +7995,8 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "def _attention_bhsd(" in optimized_attention
     assert "return self._attention_bhsd(q_bhsd, k_bhsd, v_bhsd)" in optimized_attention
     assert "out = self._attention_bhsd(self._q_bhsd, self._k_bhsd, self._v_bhsd)" in optimized_benchmark
+    assert "self.output = out" in optimized_benchmark
+    assert "out.detach()" not in optimized_benchmark
     assert "self._attention(self.q, self.k, self.v)" not in optimized_benchmark
     assert ".transpose(0, 1).unsqueeze(0)" not in optimized_benchmark
     assert "self._q_bhsd = None" in optimized_teardown

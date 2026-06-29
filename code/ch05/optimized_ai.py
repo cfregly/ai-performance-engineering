@@ -111,7 +111,7 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if out is None or last_input is None:
             raise RuntimeError("benchmark_fn() must produce output")
         self._last_input = last_input
-        self.output = out.detach()
+        self.output = out
 
     def capture_verification_payload(self) -> None:
         self._set_verification_payload(

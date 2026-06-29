@@ -118,7 +118,7 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
             ):
                 raise RuntimeError("Tensors not initialized")
             out = self._attention_bhsd(self._q_bhsd, self._k_bhsd, self._v_bhsd)
-            self.output = out.detach()
+            self.output = out
         if self.q is None or self.k is None or self.v is None or self.output is None:
             raise RuntimeError("Verification input/output not initialized")
 
