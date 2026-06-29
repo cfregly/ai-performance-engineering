@@ -56,7 +56,16 @@ def run_benchmark(
     ]
     fused = None
     if mode == "optimized":
-        fused = torch.cat([t.view(-1) for t in tensors])
+        fused = torch.empty(
+            num_tensors * numel,
+            device=device,
+            dtype=dtype,
+        )
+        offset = 0
+        for tensor in tensors:
+            next_offset = offset + numel
+            fused[offset:next_offset].copy_(tensor.view(-1))
+            offset = next_offset
 
     for _ in range(5):
         if mode == "baseline":

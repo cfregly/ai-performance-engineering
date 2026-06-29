@@ -1419,6 +1419,9 @@ def test_ch04_gradient_fusion_seeds_accumulator_without_hot_loop_clear() -> None
     )[0]
 
     assert "self._accum_buffer = torch.empty((), device=self.device, dtype=torch.float32)" in setup_section
+    assert "self.fused_tensor = torch.empty(" in setup_section
+    assert "self.fused_tensor[offset:next_offset].copy_(tensor.view(-1))" in setup_section
+    assert "torch.cat([t.view(-1) for t in self.tensors])" not in setup_section
     assert "self._seed_tensor = self.tensors[0]" in setup_section
     assert "self._tail_tensors = self.tensors[1:]" in setup_section
     assert "self._accum_buffer = torch.zeros(" not in setup_section
@@ -1459,6 +1462,12 @@ def test_dtype_byte_sizing_avoids_empty_tensor_metadata_allocations() -> None:
     assert "FLOAT16_BYTES = torch.finfo(torch.float16).bits // 8" in (
         REPO_ROOT / "ch04" / "gradient_fusion_multigpu.py"
     ).read_text(encoding="utf-8")
+    gradient_fusion_multigpu = (
+        REPO_ROOT / "ch04" / "gradient_fusion_multigpu.py"
+    ).read_text(encoding="utf-8")
+    assert "fused = torch.empty(" in gradient_fusion_multigpu
+    assert "fused[offset:next_offset].copy_(tensor.view(-1))" in gradient_fusion_multigpu
+    assert "torch.cat([t.view(-1) for t in tensors])" not in gradient_fusion_multigpu
     assert "FLOAT16_BYTES = torch.finfo(torch.float16).bits // 8" in (
         REPO_ROOT / "ch04" / "nvshmem_vs_nccl_benchmark.py"
     ).read_text(encoding="utf-8")

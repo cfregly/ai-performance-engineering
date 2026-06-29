@@ -60,7 +60,16 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.randn(numel, device=self.device, dtype=torch.float32)
             for _ in range(self.num_tensors)
         ]
-        self.fused_tensor = torch.cat([t.view(-1) for t in self.tensors])
+        self.fused_tensor = torch.empty(
+            self.num_tensors * numel,
+            device=self.device,
+            dtype=torch.float32,
+        )
+        offset = 0
+        for tensor in self.tensors:
+            next_offset = offset + numel
+            self.fused_tensor[offset:next_offset].copy_(tensor.view(-1))
+            offset = next_offset
         self._seed_tensor = self.tensors[0]
         self._tail_tensors = self.tensors[1:]
         self._verify_input = self.tensors[0]
