@@ -61,11 +61,13 @@ def main():
     experiment = PipelineExperiment(config)
     cumulative = PipelineTelemetry(config.n_stages, schedule=config.schedule)
     total_loss = 0.0
+    inputs = torch.empty(config.batch_size, config.input_dim, dtype=config.dtype)
+    targets = torch.empty_like(inputs)
     start = perf_counter()
 
     for step in range(args.steps):
-        inputs = torch.randn(config.batch_size, config.input_dim, dtype=config.dtype)
-        targets = torch.randn_like(inputs)
+        inputs.normal_()
+        targets.normal_()
         loss, telemetry = experiment.run_batch(inputs, targets)
         cumulative.merge(telemetry)
         total_loss += loss

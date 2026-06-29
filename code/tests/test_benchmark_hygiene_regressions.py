@@ -7988,6 +7988,30 @@ def test_train_distributed_pipeline_loss_finish_averages_without_stack() -> None
     assert _finish_pipeline_loss(loss_buffer, 3, 0) == 0.0
 
 
+def test_train_distributed_pipeline_wrappers_reuse_synthetic_batches() -> None:
+    wrapper_paths = sorted(
+        (REPO_ROOT / "labs" / "train_distributed").glob("*_pipeline*.py")
+    )
+    assert wrapper_paths
+
+    for path in wrapper_paths:
+        source = path.read_text(encoding="utf-8")
+        if "for step in range(args.steps):" not in source:
+            continue
+        loop_section = source.split("for step in range(args.steps):", maxsplit=1)[1].split(
+            "torch.cuda.synchronize()",
+            maxsplit=1,
+        )[0]
+
+        assert "inputs = torch.empty(config.batch_size, config.input_dim, dtype=config.dtype)" in source
+        assert "targets = torch.empty_like(inputs)" in source
+        assert "torch.randn(config.batch_size, config.input_dim" not in source
+        assert "torch.randn_like(inputs)" not in source
+        assert "inputs.normal_()" in loop_section
+        assert "targets.normal_()" in loop_section
+        assert "torch.empty(" not in loop_section
+
+
 def test_nanochat_chat_eval_batches_count_reductions() -> None:
     source = (
         REPO_ROOT / "labs" / "nanochat_fullstack" / "scripts" / "chat_eval.py"
