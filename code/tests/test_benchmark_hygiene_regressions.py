@@ -11388,6 +11388,7 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "self._prompt_chunk_count = 0" in setup_section
     assert "self._request_event_group_count = 0" in setup_section
     assert "self._last_output_count = 0" in setup_section
+    assert "self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))" in setup_section
     assert "self._request_plan_count = len(self.request_plans)" in setup_section
     assert "self._worker_caches = [{} for _ in range(self._logical_decode_worker_count)]" in setup_section
     assert "self._worker_cache_count = len(self._worker_caches)" in setup_section
@@ -11457,6 +11458,8 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "tpot_total_ms = 0.0" in capture_section
     assert "request_ttft.append(ttft_ms)" in capture_section
     assert "request_tpot.append(tpot_ms)" in capture_section
+    assert "tpot_ms = max(total_ms - ttft_ms, 0.0) / self._decode_token_divisor" in capture_section
+    assert "max(self.cfg.decode_tokens, 1)" not in capture_section
     assert "ttft_total_ms += ttft_ms" in capture_section
     assert "tpot_total_ms += tpot_ms" in capture_section
     assert "timing_count = max(len(request_ttft), 1)" in capture_section
@@ -11524,6 +11527,7 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._metric_total_tokens = int(" in setup_section
     assert "self._metric_total_batch_requests = int(" in setup_section
     assert "self._metric_max_batch_size = max(" in setup_section
+    assert "self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))" in setup_section
     assert "torch.cat(\n                    prefix_parts," not in setup_section
     assert "prefix_parts" not in worker_setup_section
     assert "prompt_chunks: Dict[int, Sequence[torch.Tensor]] = {}" in worker_prompt_section
@@ -11626,6 +11630,8 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "tpot_history.append(" not in benchmark_section
     assert "ttft_total_ms = 0.0" in benchmark_section
     assert "tpot_total_ms = 0.0" in benchmark_section
+    assert "tpot_total_ms += max(total_ms - ttft_ms, 0.0) / self._decode_token_divisor" in benchmark_section
+    assert "max(self.cfg.decode_tokens, 1)" not in benchmark_section
     assert "timing_count = 0" in benchmark_section
     assert "timing_count += 1" in benchmark_section
     assert "outputs = self._output_parts" in benchmark_section
@@ -11658,6 +11664,7 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._output_stack = None" in teardown_section
     assert "self._verify_prompt = None" in teardown_section
     assert "self._metric_total_tokens = 0" in teardown_section
+    assert "self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))" in teardown_section
     assert "reduced_host = reduced.detach().cpu()" in reduced_metrics_section
     assert "cache_hits = float(reduced_host[0])" in reduced_metrics_section
     assert "request_count = float(reduced_host[8])" in reduced_metrics_section
@@ -16082,6 +16089,9 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
 
         assert "logits[:1, :1, :8].detach().float().clone()" not in benchmark_section
         assert "self.output = None" in benchmark_section
@@ -16098,6 +16108,14 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
             assert "self._targets_flat = self.targets.view(-1)" in setup_section
             assert "self._targets_flat" in benchmark_section
             assert "self.targets.view(-1)" not in benchmark_section
+            finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+                "def teardown", maxsplit=1
+            )[0]
+            assert "self._memory_bytes_to_gb = 1e-9" in source
+            assert "torch.cuda.max_memory_allocated(self.device)" not in benchmark_section
+            assert "torch.cuda.max_memory_allocated(self.device) * self._memory_bytes_to_gb" in finalize_section
+            assert "self._peak_memory_gb = max(self._peak_memory_gb, peak_memory_gb)" in finalize_section
+            assert "self.finalize_iteration_metrics()" in teardown_section
         if name == "baseline_training_speed.py":
             assert "self.targets_flat = self.targets.view(-1)" in setup_section
             assert "self.targets_flat" in benchmark_section

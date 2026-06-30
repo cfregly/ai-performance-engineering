@@ -756,6 +756,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._metric_total_tokens = 0
         self._metric_total_batch_requests = 0
         self._metric_max_batch_size = self.cfg.batch_size
+        self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))
         self._register_workload_metadata(
             world_size=_world_size_hint(),
             prefill_ranks=_hint_prefill_ranks(_world_size_hint(), self.cfg.prefill_ranks),
@@ -881,6 +882,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             self.cfg.batch_size * decode_ranks,
             self.cfg.batch_size,
         )
+        self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))
 
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
@@ -1130,7 +1132,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 total_ms = (time.perf_counter() - request_start) * 1000.0
                 ttft_ms = (prefill_end - request_start) * 1000.0
                 ttft_total_ms += ttft_ms
-                tpot_total_ms += max(total_ms - ttft_ms, 0.0) / max(self.cfg.decode_tokens, 1)
+                tpot_total_ms += max(total_ms - ttft_ms, 0.0) / self._decode_token_divisor
                 timing_count += 1
                 outputs[output_idx] = output
                 output_idx += 1
@@ -1235,6 +1237,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._metric_total_tokens = 0
         self._metric_total_batch_requests = 0
         self._metric_max_batch_size = self.cfg.batch_size
+        self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 

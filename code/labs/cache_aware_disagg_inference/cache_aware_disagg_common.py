@@ -177,6 +177,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_event_groups: List[tuple[int, RequestPlan]] = []
         self._request_event_group_count = 0
         self._last_output_count = 0
+        self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))
 
     def _build_request_plans(self) -> List[RequestPlan]:
         warm_requests = int(round(self.cfg.requests_per_iteration * self.cfg.warm_request_ratio))
@@ -572,7 +573,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         for start, prefill_end, decode_end in self._request_event_triplets:
             ttft_ms = elapsed_ms((start, prefill_end))
             total_ms = elapsed_ms((start, decode_end))
-            tpot_ms = max(total_ms - ttft_ms, 0.0) / max(self.cfg.decode_tokens, 1)
+            tpot_ms = max(total_ms - ttft_ms, 0.0) / self._decode_token_divisor
             request_ttft.append(ttft_ms)
             request_tpot.append(tpot_ms)
             ttft_total_ms += ttft_ms
@@ -665,6 +666,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_event_groups = []
         self._request_event_group_count = 0
         self._last_output_count = 0
+        self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

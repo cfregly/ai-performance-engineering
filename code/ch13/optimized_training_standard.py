@@ -130,6 +130,7 @@ class OptimizedTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self._peak_memory_gb = 0.0
+        self._memory_bytes_to_gb = 1e-9
         self._optimization_goal = "memory"  # This is a memory optimization
         self.output = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
@@ -215,11 +216,6 @@ class OptimizedTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             
             # Optimizer step
             self.optimizer.step()
-        # Track peak memory
-        self._peak_memory_gb = max(
-            self._peak_memory_gb,
-            torch.cuda.max_memory_allocated(self.device) / 1e9
-        )
         if self.input_ids is None:
             raise RuntimeError("benchmark_fn() requires input_ids for verification")
 
@@ -250,9 +246,17 @@ class OptimizedTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             },
             output_tolerance=(0.5, 10.0),
         )
+
+    def finalize_iteration_metrics(self) -> Optional[dict]:
+        """Poll peak memory after harness timing has already finalized."""
+        peak_memory_gb = torch.cuda.max_memory_allocated(self.device) * self._memory_bytes_to_gb
+        self._peak_memory_gb = max(self._peak_memory_gb, peak_memory_gb)
+        return None
     
     def teardown(self) -> None:
         """Cleanup and report memory usage."""
+        if torch.cuda.is_available():
+            self.finalize_iteration_metrics()
         if self._peak_memory_gb > 0:
             print(f"\n[Checkpointed] Peak GPU Memory: {self._peak_memory_gb:.2f} GB")
         
