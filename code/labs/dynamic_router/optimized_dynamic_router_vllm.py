@@ -45,7 +45,7 @@ class OptimizedDynamicRouterVllmBenchmark(VerificationPayloadMixin, BaseBenchmar
     def capture_verification_payload(self) -> None:
         if not self._summary_ready:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        metric_values = numeric_metric_values(self._summary)
+        metric_values = numeric_metric_values(self._summary, self._metric_values)
         self._metric_values = metric_values
         self.output = metric_row_buffer(self, metric_values)
         self._set_verification_payload(

@@ -8,9 +8,15 @@ from typing import Mapping
 import torch
 
 
-def numeric_metric_values(metrics: Mapping[str, object]) -> list[float]:
-    values = [float(value) for value in metrics.values() if isinstance(value, Number)]
-    return values or [0.0]
+def numeric_metric_values(metrics: Mapping[str, object], out: list[float] | None = None) -> list[float]:
+    values = [] if out is None else out
+    values.clear()
+    for value in metrics.values():
+        if isinstance(value, Number):
+            values.append(float(value))
+    if not values:
+        values.append(0.0)
+    return values
 
 
 def metric_row_buffer(owner: object, metric_values: list[float]) -> torch.Tensor:

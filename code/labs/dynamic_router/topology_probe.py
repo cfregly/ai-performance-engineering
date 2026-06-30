@@ -43,7 +43,7 @@ class TopologyProbeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.snapshot is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         metrics_dict = self.get_custom_metrics() or {}
-        metric_values = numeric_metric_values(metrics_dict)
+        metric_values = numeric_metric_values(metrics_dict, self._metric_values)
         self._metric_values = metric_values
         self.output = metric_row_buffer(self, metric_values)
         self._set_verification_payload(

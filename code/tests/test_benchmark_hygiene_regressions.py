@@ -8590,6 +8590,9 @@ def test_dynamic_router_policy_avoids_candidate_list_churn() -> None:
     assert "if gpu.is_decode" in migration_section
     assert "decode_gpus = [" not in migration_section
     assert "import heapq" in source
+    assert "active_source_ids = [gpu_id for gpu_id in by_gpu if gpu_id in scores]" in migration_section
+    assert "heapq.nsmallest(len(active_source_ids), active_source_ids, key=scores.get)" in migration_section
+    assert "sorted(scores.keys()" not in migration_section
     assert "seq_heap = [" in migration_section
     assert "heapq.heapify(seq_heap)" in migration_section
     assert "heapq.heappop(seq_heap)" in migration_section
@@ -16341,6 +16344,10 @@ def test_dynamic_router_verification_payloads_reuse_summary_buffers() -> None:
     ).read_text(encoding="utf-8")
 
     assert "def metric_row_buffer(owner: object, metric_values: list[float])" in helper_source
+    assert "def numeric_metric_values(metrics: Mapping[str, object], out: list[float] | None = None)" in helper_source
+    assert "values = [] if out is None else out" in helper_source
+    assert "values.clear()" in helper_source
+    assert "[float(value) for value in metrics.values()" not in helper_source
     assert "buffer = torch.empty((1, width), dtype=torch.float32)" in helper_source
     assert "for index, value in enumerate(metric_values):" in helper_source
     assert "buffer[0, index] = float(value)" in helper_source
@@ -16361,6 +16368,7 @@ def test_dynamic_router_verification_payloads_reuse_summary_buffers() -> None:
         teardown_section = source.split("def teardown", maxsplit=1)[1] if "def teardown" in source else ""
 
         assert "numeric_metric_values(" in capture_section
+        assert "numeric_metric_values(self._summary, self._metric_values)" in capture_section or "numeric_metric_values(metrics_dict, self._metric_values)" in capture_section
         assert "self.output = metric_row_buffer(self, metric_values)" in capture_section
         assert "scalar_int_buffer(" in capture_section
         assert "torch.tensor(metric_values" not in capture_section

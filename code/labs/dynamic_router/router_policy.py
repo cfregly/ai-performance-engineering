@@ -330,11 +330,10 @@ class Router:
 
         # Move low-priority, long sequences first from lowest-scoring GPUs.
         migrations: List[Tuple[str, str, str]] = []
-        for src in sorted(scores.keys(), key=scores.get):
+        active_source_ids = [gpu_id for gpu_id in by_gpu if gpu_id in scores]
+        for src in heapq.nsmallest(len(active_source_ids), active_source_ids, key=scores.get):
             if budget <= 0:
                 break
-            if src not in by_gpu:
-                continue
             seq_heap = [
                 (s.priority, -(s.expected_tokens_remaining or 0), order, s)
                 for order, s in enumerate(by_gpu[src])
