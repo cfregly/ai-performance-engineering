@@ -22081,6 +22081,18 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
         assert "self._verify_output_buffer.copy_(self.output)" in gluon_capture
         assert "output=self._verify_output_buffer" in gluon_capture
         assert "self.output.float().clone()" not in gluon_capture
+    optimized_gluon_setup = optimized_gluon.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    optimized_gluon_benchmark = optimized_gluon.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in optimized_gluon
+    assert "self._output_buffer = torch.empty_like(self.inputs.q)" in optimized_gluon_setup
+    assert "result = self.kernel.fn(q, k, v, out=self._output_buffer)" in optimized_gluon_benchmark
+    assert "torch.empty_like(self.inputs.q)" not in optimized_gluon_benchmark
     assert "self.output = result" in optimized_gluon
     assert "self.output = result.detach()" not in optimized_gluon
 

@@ -52,8 +52,16 @@ def test_baseline_flashattention_gluon_defers_output_clone_to_capture() -> None:
 def test_optimized_flashattention_gluon_defers_output_clone_to_capture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_kernel(q: torch.Tensor, _k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        return q + v
+    def fake_kernel(
+        q: torch.Tensor,
+        _k: torch.Tensor,
+        v: torch.Tensor,
+        *,
+        out: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        assert out is not None
+        torch.add(q, v, out=out)
+        return out
 
     monkeypatch.setattr(
         optimized_module,
@@ -65,6 +73,10 @@ def test_optimized_flashattention_gluon_defers_output_clone_to_capture(
     _shrink_workload(bench)
     bench.setup()
     try:
+        assert bench._output_buffer is not None
+        output_buffer_ptr = bench._output_buffer.data_ptr()
         _assert_deferred_verification_clone(bench)
+        assert bench.output is not None
+        assert bench.output.data_ptr() == output_buffer_ptr
     finally:
         bench.teardown()

@@ -143,6 +143,7 @@ def gluon_flash_attention(
     causal: bool = False,
     dropout_p: float = 0.0,
     softmax_scale: float = None,
+    out: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Warp-specialized FlashAttention using Triton/Gluon patterns.
     
@@ -163,8 +164,8 @@ def gluon_flash_attention(
     if softmax_scale is None:
         softmax_scale = 1.0 / math.sqrt(D)
     
-    # Allocate output
-    out = torch.empty_like(q)
+    if out is None:
+        out = torch.empty_like(q)
     
     # Block sizes optimized for Blackwell/Hopper
     BLOCK_M = 64

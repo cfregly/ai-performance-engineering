@@ -31,6 +31,7 @@ class OptimizedFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchm
         self.inputs: Optional[FlashAttentionInputs] = None
         self.kernel: Optional[FlashAttentionKernel] = None
         self.output: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_q: Optional[torch.Tensor] = None
         self._payload_k: Optional[torch.Tensor] = None
@@ -54,11 +55,12 @@ class OptimizedFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchm
             dtype=self.dtype,
             device=self.device,
         )
+        self._output_buffer = torch.empty_like(self.inputs.q)
         self._verify_output_buffer = torch.empty_like(self.inputs.q, dtype=torch.float32)
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        if self.inputs is None or self.kernel is None:
+        if self.inputs is None or self.kernel is None or self._output_buffer is None:
             raise RuntimeError("FlashAttention inputs/kernel not initialized")
 
         with torch.inference_mode():
@@ -67,7 +69,7 @@ class OptimizedFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchm
                     q = self.inputs.q
                     k = self.inputs.k
                     v = self.inputs.v
-                    result = self.kernel.fn(q, k, v)
+                    result = self.kernel.fn(q, k, v, out=self._output_buffer)
                     self.output = result
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
@@ -95,6 +97,7 @@ class OptimizedFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchm
         self.inputs = None
         self.kernel = None
         self.output = None
+        self._output_buffer = None
         self._verify_output_buffer = None
         self._payload_q = None
         self._payload_k = None
