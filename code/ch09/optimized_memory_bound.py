@@ -28,6 +28,7 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.repeats = 64
         self.output: Optional[torch.Tensor] = None
         self.output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._compiled_run = None
         # Memory-bound benchmark - fixed dimensions for roofline analysis
         self._workload = WorkloadMetadata(
@@ -41,6 +42,7 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         self.data = torch.randn(self.N, dtype=torch.float32, device=self.device)
         self.output_buffer = torch.empty_like(self.data)
+        self._verify_output_buffer = torch.empty(4096, device=self.device, dtype=torch.float32)
         self.register_workload_metadata(
             requests_per_iteration=self._workload.requests_per_iteration,
             tokens_per_iteration=self._workload.tokens_per_iteration,
@@ -72,13 +74,14 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
-        if self.output is None:
+        if self.output is None or self.data is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must be called before verification")
         # Keep verification lightweight: slice the large output tensor.
-        verify_output = self.output[:4096].detach().clone()
+        output_slice = self.output[: self._verify_output_buffer.numel()].detach()
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"tensor": self.data},
-            output=verify_output,
+            output=self._verify_output_buffer,
             batch_size=self.data.shape[0],
             parameter_count=0,
             precision_flags={
@@ -94,7 +97,9 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         self.data = None
+        self.output = None
         self.output_buffer = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:

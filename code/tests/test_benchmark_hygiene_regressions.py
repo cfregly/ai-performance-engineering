@@ -3154,6 +3154,33 @@ def test_ch09_optimized_memory_bound_reuses_compiled_output_buffer() -> None:
     assert "self.output_buffer = None" in teardown_section
 
 
+def test_ch09_memory_bound_verification_reuses_slice_buffer() -> None:
+    for filename in ("baseline_memory_bound.py", "optimized_memory_bound.py"):
+        source = (REPO_ROOT / "ch09" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(4096, device=self.device, dtype=torch.float32)" in setup_section
+        assert "output_slice = self.output[: self._verify_output_buffer.numel()].detach()" in capture_section
+        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert ".detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_pipeline_and_demo_activation_paths_use_inplace_relu() -> None:
     for relative in (
         "ch04/baseline_pipeline_parallel.py",
