@@ -125,7 +125,7 @@ class OptimizedPinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmar
             self.optimizer.step()
         
         # Store output for verification
-        self.output = out.detach()
+        self.output = out
         self._payload_inputs = inputs
         self._payload_targets = targets
 

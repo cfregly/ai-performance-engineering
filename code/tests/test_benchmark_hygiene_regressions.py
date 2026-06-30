@@ -3081,6 +3081,23 @@ def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
     assert "out.detach()" not in benchmark_section
 
 
+def test_ch03_mlp_training_benchmarks_store_outputs_without_detach() -> None:
+    for relative in (
+        "ch03/baseline_pinned_prefetch_mlp.py",
+        "ch03/optimized_pinned_prefetch_mlp.py",
+        "ch03/baseline_double_buffered_batch_provisioning.py",
+        "ch03/optimized_double_buffered_batch_provisioning.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self.output = out" in benchmark_section
+        assert "out.detach()" not in benchmark_section
+
+
 def test_early_chapter_mlp_benchmarks_use_inplace_relu_modules() -> None:
     for relative in (
         "ch03/baseline_pinned_prefetch_mlp.py",

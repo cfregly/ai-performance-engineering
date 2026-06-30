@@ -81,7 +81,7 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
             self.optimizer.zero_grad(set_to_none=True)
         
         # Store output for verification
-        self.output = out.detach()
+        self.output = out
         self._payload_x = x
         self._payload_y = y
 
