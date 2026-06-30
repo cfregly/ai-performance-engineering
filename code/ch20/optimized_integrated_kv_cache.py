@@ -216,6 +216,8 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.request_ids: list[str] = []
         self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []
         self._request_block_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []
+        self._request_group_counts: tuple[int, int, int] = (0, 0, 0)
+        self._expected_request_group_counts: tuple[int, int, int] = (0, 0, 0)
         self._layer_groups: list[tuple[int, nn.Module]] = []
         self.page_size = 128
         self.num_layers = 2
@@ -278,6 +280,17 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
                 strict=True,
             )
         ]
+        input_count = len(self.inputs)
+        self._request_group_counts = (
+            len(self.request_ids),
+            len(self._input_block_views),
+            len(self._request_block_groups),
+        )
+        self._expected_request_group_counts = (
+            input_count,
+            input_count,
+            input_count,
+        )
         self._verify_input = self.inputs[-1] if self.inputs else None
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
@@ -288,11 +301,7 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
         """Function to benchmark - integrated KV cache pipeline."""
         with torch.inference_mode():
             with nvtx_range("integrated_kv_cache", enable=self._enable_nvtx):
-                if len(self.request_ids) != len(self.inputs):
-                    raise RuntimeError("Request IDs not initialized")
-                if len(self._input_block_views) != len(self.inputs):
-                    raise RuntimeError("Input block views not initialized")
-                if len(self._request_block_groups) != len(self.inputs):
+                if self._request_group_counts != self._expected_request_group_counts:
                     raise RuntimeError("Request block groups not initialized")
                 if not self._layer_groups:
                     raise RuntimeError("Layer groups not initialized")
@@ -326,6 +335,8 @@ class OptimizedIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmar
         """Cleanup."""
         self._input_block_views = []
         self._request_block_groups = []
+        self._request_group_counts = (0, 0, 0)
+        self._expected_request_group_counts = (0, 0, 0)
         self._layer_groups = []
         del self.layers, self.kv_cache, self.inputs
         self.request_ids = []

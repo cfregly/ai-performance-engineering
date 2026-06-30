@@ -8298,6 +8298,8 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     assert "self.request_ids: list[str] = []" in source
     assert "self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []" in source
     assert "self._request_block_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []" in source
+    assert "self._request_group_counts: tuple[int, int, int] = (0, 0, 0)" in source
+    assert "self._expected_request_group_counts: tuple[int, int, int] = (0, 0, 0)" in source
     assert "self._layer_groups: list[tuple[int, nn.Module]] = []" in source
     assert "CacheEntry = dict[str, object]" in source
     assert "def append_block_entry(" in cache_section
@@ -8308,9 +8310,14 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     assert "enumerate(x.split(self.block_size, dim=1))" in setup_section
     assert "(request_id, seq_len, block_views)" in setup_section
     assert "self._layer_groups = list(enumerate(self.layers))" in setup_section
-    assert "if len(self.request_ids) != len(self.inputs):" in benchmark_section
-    assert "if len(self._input_block_views) != len(self.inputs):" in benchmark_section
-    assert "if len(self._request_block_groups) != len(self.inputs):" in benchmark_section
+    assert "input_count = len(self.inputs)" in setup_section
+    assert "self._request_group_counts = (" in setup_section
+    assert "self._expected_request_group_counts = (" in setup_section
+    assert "if self._request_group_counts != self._expected_request_group_counts:" in benchmark_section
+    assert "len(self.request_ids)" not in benchmark_section
+    assert "len(self.inputs)" not in benchmark_section
+    assert "len(self._input_block_views)" not in benchmark_section
+    assert "len(self._request_block_groups)" not in benchmark_section
     assert "for request_id, seq_len, block_views in self._request_block_groups:" in benchmark_section
     assert "request_entries = kv_cache.allocate(request_id, seq_len)" in benchmark_section
     assert "for layer_idx, layer in self._layer_groups:" in benchmark_section
@@ -8327,6 +8334,8 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     assert "request_id = f\"req_{seq_idx}\"" not in benchmark_section
     assert "self._input_block_views = []" in teardown_section
     assert "self._request_block_groups = []" in teardown_section
+    assert "self._request_group_counts = (0, 0, 0)" in teardown_section
+    assert "self._expected_request_group_counts = (0, 0, 0)" in teardown_section
     assert "self._layer_groups = []" in teardown_section
     assert "_, k, v = qkv.chunk(3, dim=-1)" in attention_section
     assert "k = k.view(batch_size, seq_len, self.num_heads, self.head_dim)" in attention_section
