@@ -70,10 +70,24 @@ def _null_ctx():
 
 
 def _calculate_stats(durations_ns: list[float]) -> Stats:
-    runs = len(durations_ns)
-    mean = sum(durations_ns) / runs
+    runs = 0
+    mean = 0.0
+    m2 = 0.0
+    best = float("inf")
+    worst = float("-inf")
+    for value in durations_ns:
+        runs += 1
+        delta = value - mean
+        mean += delta / runs
+        m2 += delta * (value - mean)
+        if value < best:
+            best = value
+        if value > worst:
+            worst = value
+    if runs == 0:
+        raise ValueError("durations_ns must not be empty")
     if runs > 1:
-        variance = sum((x - mean) ** 2 for x in durations_ns) / (runs - 1)
+        variance = m2 / (runs - 1)
         std = math.sqrt(variance)
         err = std / math.sqrt(runs)
     else:
@@ -84,8 +98,8 @@ def _calculate_stats(durations_ns: list[float]) -> Stats:
         mean=mean,
         std=std,
         err=err,
-        best=min(durations_ns),
-        worst=max(durations_ns),
+        best=best,
+        worst=worst,
     )
 
 

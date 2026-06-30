@@ -3710,12 +3710,33 @@ def test_nvfp4_utils_reuse_nonzero_indices_for_mismatch_counts() -> None:
     official_dual_eval = (
         REPO_ROOT / "labs" / "nvfp4_dual_gemm" / "official_semantics_eval.py"
     ).read_text(encoding="utf-8")
+    stats_section = official_dual_eval.split("def _calculate_stats", maxsplit=1)[1].split(
+        "def _build_data_list",
+        maxsplit=1,
+    )[0]
     clear_l2_section = official_dual_eval.split("if clear_l2:", maxsplit=1)[1].split(
         "outputs_iter = []",
         maxsplit=1,
     )[0]
+    assert "m2 = 0.0" in stats_section
+    assert "for value in durations_ns:" in stats_section
+    assert "m2 += delta * (value - mean)" in stats_section
+    assert "variance = m2 / (runs - 1)" in stats_section
+    assert "sum(durations_ns)" not in stats_section
+    assert "sum((x - mean) ** 2 for x in durations_ns)" not in stats_section
+    assert "min(durations_ns)" not in stats_section
+    assert "max(durations_ns)" not in stats_section
     assert "clear_l2_cache_large()" in clear_l2_section
     assert "torch.cuda.empty_cache()" not in clear_l2_section
+
+    from labs.nvfp4_dual_gemm.official_semantics_eval import _calculate_stats
+
+    stats = _calculate_stats([10.0, 20.0, 30.0])
+    assert stats.runs == 3
+    assert stats.mean == 20.0
+    assert stats.std == 10.0
+    assert stats.best == 10.0
+    assert stats.worst == 30.0
 
 
 def test_nvfp4_group_gemm_reuses_verification_output_buffer() -> None:
