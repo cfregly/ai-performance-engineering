@@ -99,6 +99,39 @@ class FP8PerChannelLinear(nn.Module):
 
         return input_scaled, input_fp8
 
+    def _scale_a_for(self, x_fp8: torch.Tensor) -> torch.Tensor:
+        scale_a_shape = (x_fp8.size(0), 1)
+        scale_a = self._scale_a_buffer
+        if (
+            scale_a.device != x_fp8.device
+            or scale_a.dtype != torch.float32
+            or tuple(scale_a.shape) != scale_a_shape
+        ):
+            scale_a = torch.empty(
+                scale_a_shape,
+                device=x_fp8.device,
+                dtype=torch.float32,
+            )
+            self._scale_a_buffer = scale_a
+        return scale_a
+
+    def prepare_activation_buffers(self, example_input: torch.Tensor) -> None:
+        hidden = example_input.shape[-1]
+        x_2d = example_input.reshape(-1, hidden)
+        self._activation_buffers(x_2d)
+        self._scale_a_for(self._input_fp8_buffer)
+        input_scale = self._input_scale_buffer
+        if (
+            input_scale.device != x_2d.device
+            or input_scale.dtype != torch.float32
+            or tuple(input_scale.shape) != ()
+        ):
+            self._input_scale_buffer = torch.empty(
+                (),
+                device=x_2d.device,
+                dtype=torch.float32,
+            )
+
     def _cacheable_input_key(self, x_2d: torch.Tensor) -> tuple | None:
         try:
             version = x_2d._version
@@ -167,18 +200,7 @@ class FP8PerChannelLinear(nn.Module):
         input_scaled, x_fp8 = self._activation_buffers(x_2d)
         torch.div(x_2d, input_scale, out=input_scaled)
         x_fp8.copy_(input_scaled)
-        scale_a_shape = (x_fp8.size(0), 1)
-        if (
-            self._scale_a_buffer.device != x_fp8.device
-            or self._scale_a_buffer.dtype != torch.float32
-            or tuple(self._scale_a_buffer.shape) != scale_a_shape
-        ):
-            self._scale_a_buffer = torch.empty(
-                scale_a_shape,
-                device=x_fp8.device,
-                dtype=torch.float32,
-            )
-        scale_a = self._scale_a_buffer
+        scale_a = self._scale_a_for(x_fp8)
         scale_a.copy_(input_scale)
 
         output_2d = torch._scaled_mm(
@@ -261,6 +283,7 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
 
         self.model.prepare_fp8_weights()
+        self.model.prepare_activation_buffers(self.x)
         
         # Warmup
         for _ in range(3):

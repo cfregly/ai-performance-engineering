@@ -18228,6 +18228,9 @@ def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
     assert "self._weight_fp8_t = None" in source
     assert "self._weight_fp8_t = self._weight_fp8.T" in source
     assert "def _activation_buffers(self, x_2d: torch.Tensor)" in source
+    assert "def _scale_a_for(self, x_fp8: torch.Tensor) -> torch.Tensor" in source
+    assert "def prepare_activation_buffers(self, example_input: torch.Tensor) -> None" in source
+    assert "self.model.prepare_activation_buffers(self.x)" in source
     assert "def _cacheable_input_key(self, x_2d: torch.Tensor) -> tuple | None" in source
     assert "def _input_scale_for(self, x_2d: torch.Tensor) -> torch.Tensor" in source
     assert "cache_key = self._cacheable_input_key(x_2d)" in source
@@ -18239,8 +18242,9 @@ def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
     assert 'hasattr(torch, "_scaled_mm")' not in forward_section
     assert 'hasattr(torch, "float8_e4m3fn")' not in forward_section
     assert "input_amax = x_2d.abs().max()" not in forward_section
-    assert "scale_a = self._scale_a_buffer" in forward_section
+    assert "scale_a = self._scale_a_for(x_fp8)" in forward_section
     assert "scale_a.copy_(input_scale)" in forward_section
+    assert "torch.empty(" not in forward_section
     assert "torch.div(x_2d, input_scale, out=input_scaled)" in forward_section
     assert "x_fp8.copy_(input_scaled)" in forward_section
     assert "self._weight_fp8_t," in forward_section
