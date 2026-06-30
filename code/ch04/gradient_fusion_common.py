@@ -49,6 +49,8 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._tail_tensors: list[torch.Tensor] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._accum_buffer: Optional[torch.Tensor] = None
+        self._sum_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
@@ -75,23 +77,30 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._tail_tensors = self.tensors[1:]
         self._verify_input = self.tensors[0]
         self._accum_buffer = torch.empty((), device=self.device, dtype=torch.float32)
+        self._sum_buffer = torch.empty_like(self._accum_buffer)
         self._verify_output_buffer = torch.empty_like(self._accum_buffer)
 
     def benchmark_fn(self) -> None:
         if not self.tensors or self.fused_tensor is None or self._seed_tensor is None:
             raise RuntimeError("setup() must run before benchmark_fn()")
         accum = self._accum_buffer
+        sum_buffer = self._sum_buffer
+        if accum is None or sum_buffer is None:
+            raise RuntimeError("setup() must initialize reduction buffers")
         if self.fused:
-            accum.copy_(self.fused_tensor.sum())
+            torch.sum(self.fused_tensor, dim=None, out=accum)
             for _ in range(1, self.reduction_repeats):
-                accum.add_(self.fused_tensor.sum())
+                torch.sum(self.fused_tensor, dim=None, out=sum_buffer)
+                accum.add_(sum_buffer)
         else:
-            accum.copy_(self._seed_tensor.sum())
+            torch.sum(self._seed_tensor, dim=None, out=accum)
             for tensor in self._tail_tensors:
-                accum.add_(tensor.sum())
+                torch.sum(tensor, dim=None, out=sum_buffer)
+                accum.add_(sum_buffer)
             for _ in range(1, self.reduction_repeats):
                 for tensor in self.tensors:
-                    accum.add_(tensor.sum())
+                    torch.sum(tensor, dim=None, out=sum_buffer)
+                    accum.add_(sum_buffer)
         self.output = accum
 
     def capture_verification_payload(self) -> None:
@@ -124,6 +133,7 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._verify_input = None
         self._accum_buffer = None
+        self._sum_buffer = None
         self._verify_output_buffer = None
         torch.cuda.empty_cache()
 

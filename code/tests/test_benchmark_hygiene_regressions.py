@@ -1843,6 +1843,7 @@ def test_ch04_gradient_fusion_seeds_accumulator_without_hot_loop_clear() -> None
     )[0]
 
     assert "self._accum_buffer = torch.empty((), device=self.device, dtype=torch.float32)" in setup_section
+    assert "self._sum_buffer = torch.empty_like(self._accum_buffer)" in setup_section
     assert "self.fused_tensor = torch.empty(" in setup_section
     assert "self.fused_tensor[offset:next_offset].copy_(tensor.view(-1))" in setup_section
     assert "torch.cat([t.view(-1) for t in self.tensors])" not in setup_section
@@ -1850,8 +1851,12 @@ def test_ch04_gradient_fusion_seeds_accumulator_without_hot_loop_clear() -> None
     assert "self._tail_tensors = self.tensors[1:]" in setup_section
     assert "self._accum_buffer = torch.zeros(" not in setup_section
     assert "accum.zero_()" not in benchmark_section
-    assert "accum.copy_(self.fused_tensor.sum())" in benchmark_section
-    assert "accum.copy_(self._seed_tensor.sum())" in benchmark_section
+    assert "sum_buffer = self._sum_buffer" in benchmark_section
+    assert "torch.sum(self.fused_tensor, dim=None, out=accum)" in benchmark_section
+    assert "torch.sum(self.fused_tensor, dim=None, out=sum_buffer)" in benchmark_section
+    assert "torch.sum(self._seed_tensor, dim=None, out=accum)" in benchmark_section
+    assert "torch.sum(tensor, dim=None, out=sum_buffer)" in benchmark_section
+    assert ".sum()" not in benchmark_section
     assert "for tensor in self._tail_tensors:" in benchmark_section
     assert "self.tensors[1:]" not in benchmark_section
 
