@@ -13,6 +13,7 @@ decode workers."""
 import heapq
 import time
 import random
+from itertools import chain
 from typing import Dict, List, Optional, Sequence, Tuple
 from dataclasses import dataclass
 from enum import Enum
@@ -415,14 +416,17 @@ def main():
     print(f"\n=== Latency Cost Analysis ===")
     print("Worker latency costs (lower is better):")
     
-    all_worker_costs = [
-        (f"prefill-{worker_id}", metrics, router.calculate_latency_cost(metrics))
-        for worker_id, metrics in router.prefill_workers.items()
-    ] + [
-        (f"decode-{worker_id}", metrics, router.calculate_latency_cost(metrics))
-        for worker_id, metrics in router.decode_workers.items()
-    ]
-    top_workers = heapq.nsmallest(5, all_worker_costs, key=lambda row: row[2])
+    worker_costs = chain(
+        (
+            (f"prefill-{worker_id}", metrics, router.calculate_latency_cost(metrics))
+            for worker_id, metrics in router.prefill_workers.items()
+        ),
+        (
+            (f"decode-{worker_id}", metrics, router.calculate_latency_cost(metrics))
+            for worker_id, metrics in router.decode_workers.items()
+        ),
+    )
+    top_workers = heapq.nsmallest(5, worker_costs, key=lambda row: row[2])
     
     for worker_id, metrics, cost in top_workers:
         print(f"  {worker_id}: cost={cost:.3f} "
