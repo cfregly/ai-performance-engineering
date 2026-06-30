@@ -35,6 +35,8 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.hidden = 512
         self._payload_parameter_count = 0
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._model_count = 0
+        self._grad_scale = 1.0
         tokens = self.batch_size * self.hidden * self.microbatches
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size * self.microbatches),
@@ -49,6 +51,8 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         for rank in range(num):
             device = f"cuda:{rank}"
             self.models.append(nn.Linear(self.hidden, self.hidden).to(device))
+        self._model_count = len(self.models)
+        self._grad_scale = 1.0 / self._model_count
         self._payload_parameter_count = sum(p.numel() for model in self.models for p in model.parameters())
         self._grad_slots = [
             torch.empty(0, device=model.weight.device)
@@ -67,7 +71,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 micro_inputs.append(torch.randn(self.batch_size, self.hidden, device=model.weight.device))
             self._inputs.append(micro_inputs)
         self._micro_model_groups = [
-            list(zip(range(len(self.models)), self.models, micro_inputs, strict=True))
+            list(zip(range(self._model_count), self.models, micro_inputs, strict=True))
             for micro_inputs in self._inputs
         ]
         self._allreduce_buffer = torch.empty_like(self.models[0].weight, device=self.models[0].weight.device)
@@ -75,7 +79,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _simulate_allreduce(self, grads: List[torch.Tensor]) -> None:
         """Simple blocking allreduce (sum + scatter) across model gradients."""
-        if len(grads) == 1:
+        if self._model_count == 1:
             return
         root = grads[0].device
         buf = self._allreduce_buffer
@@ -84,14 +88,14 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         buf.copy_(grads[0].to(root))
         for g in grads[1:]:
             buf.add_(g.to(root))
-        buf.mul_(1.0 / len(grads))
+        buf.mul_(self._grad_scale)
         for g in grads:
             g.copy_(buf.to(g.device))
 
     def benchmark_fn(self) -> None:
         assert self.models
         with self._nvtx_range("baseline_ddp_multigpu_nvlink_naive"):
-            if len(self._grad_slots) != len(self.models):
+            if len(self._grad_slots) != self._model_count:
                 raise RuntimeError("Gradient slots not initialized")
             grads = self._grad_slots
             for micro in self._microbatch_range:
@@ -140,6 +144,8 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._micro_model_groups = []
         self._grad_slots = []
         self._allreduce_buffer = None
+        self._model_count = 0
+        self._grad_scale = 1.0
         self.output = None
         self._verify_output_buffer = None
         torch.cuda.empty_cache()

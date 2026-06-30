@@ -65,6 +65,8 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._reduction_results: List[torch.Tensor] = []
         self._model_update_groups: List[Tuple[int, nn.Linear, torch.Tensor]] = []
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._model_count = 0
+        self._grad_scale = 1.0
         tokens = self.batch_size * self.hidden * self.microbatches
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size * self.microbatches),
@@ -82,6 +84,8 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         for rank in range(num):
             device = f"cuda:{rank}"
             self.models.append(nn.Linear(self.hidden, self.hidden).to(device))
+        self._model_count = len(self.models)
+        self._grad_scale = 1.0 / self._model_count
         self._payload_parameter_count = sum(p.numel() for model in self.models for p in model.parameters())
         self._grad_slots = [
             torch.empty(0, device=model.weight.device)
@@ -99,8 +103,8 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         bucket_order = sorted(_bucket_order(), key=lambda kv: kv[0])
         self._ordered_bucket_indices = [bucket_idx for _, bucket_idx in bucket_order]
         self._bucket_reorder_pairs = list(enumerate(self._ordered_bucket_indices))
-        self._model_index_range = range(len(self.models))
-        self._tail_model_index_range = range(1, len(self.models))
+        self._model_index_range = range(self._model_count)
+        self._tail_model_index_range = range(1, self._model_count)
         self._inputs = []
         self._microbatch_range = range(self.microbatches)
         for _micro in self._microbatch_range:
@@ -109,7 +113,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
                 micro_inputs.append(torch.randn(self.batch_size, self.hidden, device=model.weight.device))
             self._inputs.append(micro_inputs)
         self._micro_model_groups = [
-            list(zip(range(len(self.models)), self.models, micro_inputs, strict=True))
+            list(zip(range(self._model_count), self.models, micro_inputs, strict=True))
             for micro_inputs in self._inputs
         ]
         self._reduce_buffers = [
@@ -175,9 +179,9 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         assert self.models
         with self._nvtx_range("optimized_ddp_multigpu_nvlink_overlap"):
             if (
-                len(self._grad_slots) != len(self.models)
-                or len(self._ordered_grad_slots) != len(self.models)
-                or len(self._ordered_bucket_indices) != len(self.models)
+                len(self._grad_slots) != self._model_count
+                or len(self._ordered_grad_slots) != self._model_count
+                or len(self._ordered_bucket_indices) != self._model_count
                 or len(self._reduction_results) != self.microbatches
                 or not self._model_update_groups
             ):
@@ -212,7 +216,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
                 else:
                     root_local = root_buf
                 with torch.no_grad():
-                    root_local.mul_(1.0 / len(self.models))
+                    root_local.mul_(self._grad_scale)
                     model.weight.add_(-1e-3, root_local)
                     model.weight.grad.zero_()
                     model.bias.grad.zero_()
@@ -256,6 +260,8 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._tail_model_index_range = range(1, 1)
         self._reduction_results = []
         self._model_update_groups = []
+        self._model_count = 0
+        self._grad_scale = 1.0
         self.output = None
         self._verify_output_buffer = None
         torch.cuda.empty_cache()

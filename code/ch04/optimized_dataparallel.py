@@ -59,6 +59,7 @@ class OptimizedDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs: List[torch.Tensor] = []
         self.targets: List[torch.Tensor] = []
         self.batch_idx = 0
+        self._input_count = 0
         self.output: Optional[torch.Tensor] = None
         self._last_input: Optional[torch.Tensor] = None
         self._last_target: Optional[torch.Tensor] = None
@@ -90,6 +91,7 @@ class OptimizedDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         cpu_target = torch.randn(self.batch_size, 1, dtype=torch.float32, generator=data_gen)
         self.inputs.append(cpu_input.to(self.device))
         self.targets.append(cpu_target.to(self.device))
+        self._input_count = len(self.inputs)
         self._verify_input = cpu_input.clone()
         self._verify_target = cpu_target.clone()
 
@@ -97,7 +99,7 @@ class OptimizedDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         assert self.model is not None and self.optimizer is not None
-        idx = self.batch_idx % len(self.inputs)
+        idx = self.batch_idx % self._input_count
         self.batch_idx += 1
         self._last_input = self.inputs[idx]
         self._last_target = self.targets[idx]
@@ -145,6 +147,7 @@ class OptimizedDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer = None
         self.inputs = []
         self.targets = []
+        self._input_count = 0
         self._verify_state = None
         self._verify_input = None
         self._verify_target = None

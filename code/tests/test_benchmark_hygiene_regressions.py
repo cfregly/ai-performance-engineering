@@ -503,6 +503,28 @@ def test_ch04_training_benchmarks_avoid_detach_wrappers() -> None:
         assert ".detach()" not in benchmark_section
 
 
+def test_ch04_optimized_dataparallel_caches_input_count() -> None:
+    source = (REPO_ROOT / "ch04" / "optimized_dataparallel.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._input_count = 0" in source
+    assert "self._input_count = len(self.inputs)" in setup_section
+    assert "idx = self.batch_idx % self._input_count" in benchmark_section
+    assert "idx = self.batch_idx % len(self.inputs)" not in benchmark_section
+    assert "self._input_count = 0" in teardown_section
+
+
 def test_ch04_dataparallel_and_reduction_payloads_cache_parameter_counts() -> None:
     for relative, parameter_expr in (
         ("ch04/baseline_cpu_reduction.py", "self.model.parameters()"),
@@ -816,6 +838,10 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._micro_model_groups: list[list[tuple[int, nn.Linear, torch.Tensor]]] = []" in source
     assert "self._grad_slots: List[torch.Tensor] = []" in naive_source
     assert "self._grad_slots: List[torch.Tensor] = []" in source
+    assert "self._model_count = 0" in naive_source
+    assert "self._model_count = 0" in source
+    assert "self._grad_scale = 1.0" in naive_source
+    assert "self._grad_scale = 1.0" in source
     assert "self._ordered_grad_slots: List[torch.Tensor] = []" in source
     assert "self._ordered_bucket_indices: List[int] = []" in source
     assert "self._bucket_reorder_pairs: List[Tuple[int, int]] = []" in source
@@ -823,6 +849,8 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._model_update_groups: List[Tuple[int, nn.Linear, torch.Tensor]] = []" in source
     assert "self._allreduce_buffer = torch.empty_like(" in naive_setup
     assert "self._grad_slots = [" in naive_setup
+    assert "self._model_count = len(self.models)" in naive_setup
+    assert "self._grad_scale = 1.0 / self._model_count" in naive_setup
     assert "self._microbatch_range = range(self.microbatches)" in naive_setup
     assert "for _micro in self._microbatch_range:" in naive_setup
     assert "self._micro_model_groups = [" in naive_setup
@@ -833,20 +861,29 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "for micro in range(self.microbatches):" not in naive_benchmark
     assert "for model_idx, model, x in self._micro_model_groups[micro]:" in naive_benchmark
     assert "enumerate(self.models)" not in naive_benchmark
+    assert "len(self.models)" not in naive_benchmark
+    assert "len(self._grad_slots) != self._model_count" in naive_benchmark
     assert "buf.copy_(grads[0].to(root))" in naive_reduce
     assert "for g in grads[1:]" in naive_reduce
+    assert "if self._model_count == 1:" in naive_reduce
+    assert "buf.mul_(self._grad_scale)" in naive_reduce
+    assert "len(grads)" not in naive_reduce
     assert "buf.zero_()" not in naive_reduce
     assert "self._grad_ready_events = [" in setup_section
     assert "torch.empty_like(self.models[0].weight, device=self.root_device)" in setup_section
     assert "torch.zeros_like(self.models[0].weight, device=self.root_device)" not in setup_section
     assert "[torch.cuda.Event() for _ in self.models]" in setup_section
     assert "self._ordered_grad_slots = [" in setup_section
+    assert "self._model_count = len(self.models)" in setup_section
+    assert "self._grad_scale = 1.0 / self._model_count" in setup_section
     assert "self._ordered_bucket_indices = [bucket_idx for _, bucket_idx in bucket_order]" in setup_section
     assert "self._reduction_results = [" in setup_section
     assert "self._model_update_groups = [" in setup_section
     assert "self._microbatch_range = range(self.microbatches)" in setup_section
     assert "for _micro in self._microbatch_range:" in setup_section
     assert "self._micro_model_groups = [" in setup_section
+    assert "range(self._model_count)" in setup_section
+    assert "range(len(self.models))" not in setup_section
     assert "self._bucket_reorder_pairs = list(enumerate(self._ordered_bucket_indices))" in setup_section
     assert "zip(self.models, self._update_buffers, strict=True)" in setup_section
     assert "torch.cuda.Event()" not in reduce_section
@@ -861,6 +898,10 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "for micro in self._microbatch_range:" in benchmark_section
     assert "for micro in range(self.microbatches):" not in benchmark_section
     assert "for model_idx, model, x in self._micro_model_groups[micro]:" in benchmark_section
+    assert "len(self.models)" not in benchmark_section
+    assert "len(self._grad_slots) != self._model_count" in benchmark_section
+    assert "len(self._ordered_grad_slots) != self._model_count" in benchmark_section
+    assert "len(self._ordered_bucket_indices) != self._model_count" in benchmark_section
     assert "for ordered_idx, source_idx in self._bucket_reorder_pairs:" in benchmark_section
     assert "enumerate(self.models)" not in benchmark_section
     assert "enumerate(self._ordered_bucket_indices)" not in benchmark_section
@@ -873,6 +914,8 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "root_buf.zero_()" not in reduce_section
     assert "root_buf.to(model.weight.device" not in benchmark_section
     assert "root_local.copy_(root_buf, non_blocking=True)" in benchmark_section
+    assert "root_local.mul_(self._grad_scale)" in benchmark_section
+    assert "root_local.mul_(1.0 / len(self.models))" not in benchmark_section
     assert "staging.copy_(g, non_blocking=True)" in reduce_section
     assert "self._model_update_groups = []" in source
 
