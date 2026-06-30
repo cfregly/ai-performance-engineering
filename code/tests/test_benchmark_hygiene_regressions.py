@@ -10135,6 +10135,80 @@ def test_persistent_decode_tma_buffers_avoid_zero_fill_before_overwrite() -> Non
         assert "self.graph_out.zero_()" not in decode_graph_section
 
 
+def test_persistent_decode_tma_baselines_precompute_host_loop_views() -> None:
+    targets = {
+        "baseline_tma_prefill_decode.py": (
+            "def _prefill_sequential",
+            "dst.copy_(src)",
+            "dst.add_(src)",
+        ),
+        "baseline_native_tma_prefill_decode.py": (
+            "def _prefill_native",
+            "self._tma_ext.tma_copy(src, dst)",
+            "assert self._tma_ext is not None",
+        ),
+    }
+
+    for filename, (prefill_marker, first_prefill_assert, second_prefill_assert) in targets.items():
+        source = (
+            REPO_ROOT / "labs" / "persistent_decode" / filename
+        ).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            prefill_marker,
+            maxsplit=1,
+        )[0]
+        prefill_section = source.split(prefill_marker, maxsplit=1)[1].split(
+            "def _decode_host_loop",
+            maxsplit=1,
+        )[0]
+        decode_section = source.split("def _decode_host_loop", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._product_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._dot_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._decode_step_views: tuple[" in source
+        assert "self._prefill_work: tuple[tuple[torch.Tensor, torch.Tensor], ...] = ()" in source
+        assert "self._output_view: Optional[torch.Tensor] = None" in source
+        assert "self._prefill_work = tuple(" in setup_section
+        assert "self.prefill_src.unbind(0)" in setup_section
+        assert "self.prefill_dst.unbind(0)" in setup_section
+        assert "self._product_buffer = torch.empty(" in setup_section
+        assert "self._dot_buffer = torch.empty(" in setup_section
+        assert "self._decode_step_views = tuple(" in setup_section
+        assert "self.inputs.q.unbind(1)" in setup_section
+        assert "self.inputs.out.unbind(1)" in setup_section
+        assert "strict=True" in setup_section
+        assert "self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" in setup_section
+        assert "for src, dst in self._prefill_work:" in prefill_section
+        assert first_prefill_assert in prefill_section
+        assert second_prefill_assert in prefill_section
+        assert "range(self.prefill_chunks)" not in prefill_section
+        assert "self.prefill_src[idx]" not in prefill_section
+        assert "self.prefill_dst[idx]" not in prefill_section
+        assert "for q_t, k_t, v_t, out_t in self._decode_step_views:" in decode_section
+        assert "torch.mul(q_t, k_t, out=product)" in decode_section
+        assert "torch.sum(product, dim=-1, keepdim=True, out=dot)" in decode_section
+        assert "torch.mul(v_t, dot, out=out_t)" in decode_section
+        assert "for t in range(self.seq_len):" not in decode_section
+        assert "self.inputs.q[:, t, :]" not in decode_section
+        assert "(q_t * k_t).sum" not in decode_section
+        assert "self.output = self._output_view" in benchmark_section
+        assert "self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" not in benchmark_section
+        assert "self._decode_step_views = ()" in teardown_section
+        assert "self._prefill_work = ()" in teardown_section
+        assert "self._output_view = None" in teardown_section
+
+
 def test_optimized_flexdecode_graph_preprojects_static_decode_token() -> None:
     source = (REPO_ROOT / "ch18" / "optimized_flexdecoding_graphs.py").read_text(encoding="utf-8")
     setup_section = source.split("def _initialize_and_capture", maxsplit=1)[1].split(

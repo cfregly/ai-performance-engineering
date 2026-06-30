@@ -30,6 +30,14 @@ class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.device = resolve_device()
         self.inputs = None
         self.output: Optional[torch.Tensor] = None
+        self._product_buffer: Optional[torch.Tensor] = None
+        self._dot_buffer: Optional[torch.Tensor] = None
+        self._decode_step_views: tuple[
+            tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+            ...,
+        ] = ()
+        self._prefill_work: tuple[tuple[torch.Tensor, torch.Tensor], ...] = ()
+        self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.batch, self.seq_len, self.head_dim = resolve_shapes()
         self.batch_size = self.batch
@@ -48,6 +56,31 @@ class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
             self.prefill_chunks, self.prefill_chunk_elems, device=self.device
         )
         self.prefill_dst = torch.empty_like(self.prefill_src)
+        self._prefill_work = tuple(
+            zip(self.prefill_src.unbind(0), self.prefill_dst.unbind(0), strict=True)
+        )
+        self._product_buffer = torch.empty(
+            self.batch,
+            self.head_dim,
+            device=self.inputs.q.device,
+            dtype=self.inputs.q.dtype,
+        )
+        self._dot_buffer = torch.empty(
+            self.batch,
+            1,
+            device=self.inputs.q.device,
+            dtype=self.inputs.q.dtype,
+        )
+        self._decode_step_views = tuple(
+            zip(
+                self.inputs.q.unbind(1),
+                self.inputs.k.unbind(1),
+                self.inputs.v.unbind(1),
+                self.inputs.out.unbind(1),
+                strict=True,
+            )
+        )
+        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
         self._verify_output_buffer = torch.empty(
             1,
             min(8, self.seq_len),
@@ -59,31 +92,36 @@ class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
     def _prefill_sequential(self) -> None:
         """Sequential copy + compute without any pipelining."""
-        for idx in range(self.prefill_chunks):
+        for src, dst in self._prefill_work:
             # Real copy operation - no artificial delays
-            self.prefill_dst[idx].copy_(self.prefill_src[idx])
+            dst.copy_(src)
             # Add computation to simulate processing
-            self.prefill_dst[idx].add_(self.prefill_src[idx])
+            dst.add_(src)
 
     def _decode_host_loop(self) -> None:
-        assert self.inputs is not None
-        for t in range(self.seq_len):
-            q_t = self.inputs.q[:, t, :]
-            k_t = self.inputs.k[:, t, :]
-            v_t = self.inputs.v[:, t, :]
-            dot = (q_t * k_t).sum(dim=-1, keepdim=True)
-            self.inputs.out[:, t, :] = v_t * dot
+        assert self._product_buffer is not None
+        assert self._dot_buffer is not None
+        product = self._product_buffer
+        dot = self._dot_buffer
+        for q_t, k_t, v_t, out_t in self._decode_step_views:
+            torch.mul(q_t, k_t, out=product)
+            torch.sum(product, dim=-1, keepdim=True, out=dot)
+            torch.mul(v_t, dot, out=out_t)
 
     def benchmark_fn(self) -> None:
-        if self.inputs is None:
+        if (
+            self.inputs is None
+            or self._output_view is None
+            or not self._decode_step_views
+            or not self._prefill_work
+        ):
             raise RuntimeError("Inputs not initialized")
 
         with self._nvtx_range("prefill_baseline"):
             self._prefill_sequential()
         with self._nvtx_range("decode_baseline"):
             self._decode_host_loop()
-        if self.inputs is not None:
-            self.output = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+        self.output = self._output_view
         if self.inputs is None or self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -112,6 +150,11 @@ class BaselineTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         torch.cuda.empty_cache()
         self.inputs = None
         self.output = None
+        self._product_buffer = None
+        self._dot_buffer = None
+        self._decode_step_views = ()
+        self._prefill_work = ()
+        self._output_view = None
         self._verify_output_buffer = None
 
     def get_config(self) -> BenchmarkConfig:
