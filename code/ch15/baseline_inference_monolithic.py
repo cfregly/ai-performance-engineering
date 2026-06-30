@@ -42,6 +42,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self._last_elapsed_ms: Optional[float] = None
         self._metrics_pending = False
         self._last_decoded_tokens: List[torch.Tensor] = []
+        self._decode_token_indices = range(self.num_tokens)
         self._decode_output_buffer: Optional[torch.Tensor] = None
         self._ttft_metric_values = [0.0]
         self._tpot_metric_values = [0.0] * self.num_tokens
@@ -72,6 +73,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self._ttft_count = 0
         self._tpot_count = 0
         self._last_decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]
+        self._decode_token_indices = range(self.num_tokens)
         self._decode_output_buffer = torch.empty(
             (self.batch_size, self.num_tokens, self.model.hidden_dim),
             device=self.device,
@@ -92,16 +94,14 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
                 decoded_tokens = self._last_decoded_tokens
                 if len(decoded_tokens) != self.num_tokens:
                     raise RuntimeError("Decode output slots not initialized")
+                decode_token_indices = self._decode_token_indices
                 decode_state = kv_cache
-                token_idx = 0
 
-                for _ in range(self.num_tokens):
-                    decoded = self.model.decode(decode_state, num_tokens=1)
-                    decode_state = decoded[:, -1:, :]
+                for token_idx in decode_token_indices:
+                    decode_state = self.model.decode_step(decode_state)
                     decoded_tokens[token_idx] = decode_state
-                    token_idx += 1
 
-                if token_idx == 0:
+                if not decoded_tokens:
                     raise RuntimeError("Decode loop produced no tokens")
 
                 self._last_decoded_tokens = decoded_tokens

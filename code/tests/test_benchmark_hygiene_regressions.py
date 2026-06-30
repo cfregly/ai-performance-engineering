@@ -20159,13 +20159,18 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in source
     assert "self._ttft_metric_values = [0.0]" in source
     assert "self._tpot_metric_values = [0.0] * self.num_tokens" in source
+    assert "self._decode_token_indices = range(self.num_tokens)" in source
     assert "decoded_tokens = self._last_decoded_tokens" in benchmark_section
-    assert "token_idx = 0" in benchmark_section
+    assert "decode_token_indices = self._decode_token_indices" in benchmark_section
+    assert "for token_idx in decode_token_indices:" in benchmark_section
+    assert "decode_state = self.model.decode_step(decode_state)" in benchmark_section
     assert "decoded_tokens[token_idx] = decode_state" in benchmark_section
-    assert "token_idx += 1" in benchmark_section
     assert "self._last_decoded_tokens = decoded_tokens" in benchmark_section
     assert "return self._empty_iteration_result" in benchmark_section
     assert "return {}" not in benchmark_section
+    assert "token_idx = 0" not in benchmark_section
+    assert "token_idx += 1" not in benchmark_section
+    assert "self.model.decode(decode_state, num_tokens=1)" not in benchmark_section
     assert "decoded_tokens = []" not in benchmark_section
     assert "decoded_tokens.append(" not in benchmark_section
     assert "torch.cat(" not in capture_section
@@ -20190,7 +20195,6 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "self._tpot_total_ms / self._tpot_count" in metrics_section
     assert 'sum(self._history["ttft"])' not in metrics_section
     assert 'sum(self._history["tpot"])' not in metrics_section
-    assert "self.model.decode(decode_state, num_tokens=1)" in source
     assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
     assert "get_config()" not in benchmark_section
