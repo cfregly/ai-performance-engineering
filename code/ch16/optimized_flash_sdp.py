@@ -44,15 +44,17 @@ class FlashAttentionModule(nn.Module):
         self._qkv_weight_t = self.qkv.weight.t()
 
     def _ensure_qkv_buffer(self, x: torch.Tensor, batch_size: int, seq_len: int) -> torch.Tensor:
-        shape = (batch_size, seq_len, self.hidden_dim * 3)
+        rows = int(batch_size * seq_len)
+        shape = (rows, self.hidden_dim * 3)
+        view_shape = (batch_size, seq_len, self.hidden_dim * 3)
         if (
             self._qkv_buffer is None
-            or self._qkv_buffer.shape != shape
+            or self._qkv_buffer.size(0) < rows
             or self._qkv_buffer.device != x.device
             or self._qkv_buffer.dtype != x.dtype
         ):
             self._qkv_buffer = torch.empty(shape, device=x.device, dtype=x.dtype)
-        return self._qkv_buffer
+        return self._qkv_buffer[:rows].view(view_shape)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, T, _ = x.shape

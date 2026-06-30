@@ -5103,9 +5103,23 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "def cache_weight_views(self) -> None:" in flash_module_section
     assert "self._qkv_weight_t = self.qkv.weight.t()" in flash_module_section
     assert "def _ensure_qkv_buffer(" in flash_module_section
+    assert "rows = int(batch_size * seq_len)" in flash_module_section
+    assert "or self._qkv_buffer.size(0) < rows" in flash_module_section
+    assert "return self._qkv_buffer[:rows].view(view_shape)" in flash_module_section
     assert "qkv = torch.matmul(x, self._qkv_weight_t, out=qkv_buffer)" in flash_module_section
     assert "qkv = torch.matmul(x, self.qkv.weight.t(), out=qkv_buffer)" not in flash_module_section
     assert "if torch.is_grad_enabled():" in flash_module_section
+
+    from ch16.optimized_flash_sdp import FlashAttentionModule
+
+    module = FlashAttentionModule(hidden_dim=8, num_heads=2)
+    large_qkv = module._ensure_qkv_buffer(torch.randn(2, 4, 8), 2, 4)
+    qkv_ptr = module._qkv_buffer.data_ptr()
+    small_qkv = module._ensure_qkv_buffer(torch.randn(1, 2, 8), 1, 2)
+
+    assert large_qkv.shape == (2, 4, 24)
+    assert small_qkv.shape == (1, 2, 24)
+    assert module._qkv_buffer.data_ptr() == qkv_ptr
 
     baseline_flash_setup = (REPO_ROOT / "ch16" / "baseline_flash_sdp.py").read_text(
         encoding="utf-8"
