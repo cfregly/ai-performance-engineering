@@ -7795,6 +7795,47 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
             assert "self._graph_chunk_triplets = []" in teardown_section
 
 
+def test_moe_cuda_direct_kv_transfer_writes_matmul_into_destination() -> None:
+    baseline_source = (
+        REPO_ROOT / "labs" / "moe_cuda" / "baseline_kv_transfer_direct.py"
+    ).read_text(encoding="utf-8")
+    source = (
+        REPO_ROOT / "labs" / "moe_cuda" / "optimized_kv_transfer_direct.py"
+    ).read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "BaselineKVTransferBenchmark" in baseline_source
+    assert "self.kv_dest = torch.empty_like(self.input_chunks)" in setup_section
+    assert "self.workspace" not in source
+    assert "self._direct_chunk_specs: List[tuple[torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._direct_chunk_specs = list(zip(" in setup_section
+    assert "self._chunk_spec_count = len(self._direct_chunk_specs)" in setup_section
+    assert "if self._chunk_spec_count != self._expected_chunk_spec_count:" in benchmark_section
+    assert "for input_chunk, dest_chunk in self._direct_chunk_specs:" in benchmark_section
+    assert "torch.matmul(input_chunk, self.weight, out=dest_chunk)" in benchmark_section
+    assert ".copy_(" not in benchmark_section
+    assert "self.output = self._output_view" in benchmark_section
+    assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "self._direct_chunk_specs = []" in teardown_section
+    assert "self._chunk_spec_count = 0" in teardown_section
+
+
 def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     source = (
         REPO_ROOT / "labs" / "moe_cuda" / "optimized_router_vectorized.py"
