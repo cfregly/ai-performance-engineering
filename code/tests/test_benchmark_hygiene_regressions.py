@@ -5581,20 +5581,25 @@ def test_ch16_optimized_dense_attention_flash_reuses_projection_buffers() -> Non
         )[0]
 
         assert "self._qkv_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._attn_merge_buffer: Optional[torch.Tensor] = None" in source
         assert "self._output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._qkv_weight_t: Optional[torch.Tensor] = None" in source
         assert "self._out_proj_weight_t: Optional[torch.Tensor] = None" in source
         assert "self._qkv_buffer = torch.empty(" in setup_section
+        assert "self._attn_merge_buffer = torch.empty(" in setup_section
         assert "self._output_buffer = torch.empty(" in setup_section
         assert "self._qkv_weight_t = self.qkv_proj.weight.t()" in setup_section
         assert "self._out_proj_weight_t = self.out_proj.weight.t()" in setup_section
         assert "qkv = torch.matmul(self.inputs, self._qkv_weight_t, out=self._qkv_buffer)" in forward_section
-        assert "return torch.matmul(output, self._out_proj_weight_t, out=self._output_buffer)" in forward_section
+        assert "self._attn_merge_buffer.copy_(output.transpose(1, 2))" in forward_section
+        assert "return torch.matmul(self._attn_merge_buffer, self._out_proj_weight_t, out=self._output_buffer)" in forward_section
+        assert "output.transpose(1, 2).contiguous().view" not in forward_section
         assert "self.qkv_proj.weight.t()" not in forward_section
         assert "self.out_proj.weight.t()" not in forward_section
         assert "self.qkv_proj(self.inputs)" not in forward_section
         assert "return self.out_proj(output)" not in forward_section
         assert "self._qkv_buffer = None" in teardown_section
+        assert "self._attn_merge_buffer = None" in teardown_section
         assert "self._output_buffer = None" in teardown_section
         assert "self._qkv_weight_t = None" in teardown_section
         assert "self._out_proj_weight_t = None" in teardown_section

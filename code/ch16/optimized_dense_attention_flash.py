@@ -41,6 +41,7 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         self.out_proj: Optional[nn.Linear] = None
         self.inputs: Optional[torch.Tensor] = None
         self._qkv_buffer: Optional[torch.Tensor] = None
+        self._attn_merge_buffer: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self._qkv_weight_t: Optional[torch.Tensor] = None
         self._out_proj_weight_t: Optional[torch.Tensor] = None
@@ -101,6 +102,13 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
             device=self.device,
             dtype=self.dtype,
         )
+        self._attn_merge_buffer = torch.empty(
+            self.batch_size,
+            self.max_seq_len,
+            self.hidden_dim,
+            device=self.device,
+            dtype=self.dtype,
+        )
         self._output_buffer = torch.empty(
             self.batch_size,
             self.max_seq_len,
@@ -135,6 +143,7 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
             or self.qkv_proj is None
             or self.out_proj is None
             or self._qkv_buffer is None
+            or self._attn_merge_buffer is None
             or self._output_buffer is None
             or self._qkv_weight_t is None
             or self._out_proj_weight_t is None
@@ -158,8 +167,8 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         )
         
         # Output projection
-        output = output.transpose(1, 2).contiguous().view(B, S, self.hidden_dim)
-        return torch.matmul(output, self._out_proj_weight_t, out=self._output_buffer)
+        self._attn_merge_buffer.copy_(output.transpose(1, 2))
+        return torch.matmul(self._attn_merge_buffer, self._out_proj_weight_t, out=self._output_buffer)
     
     def benchmark_fn(self) -> None:
         """Benchmark: Flash Attention."""
@@ -193,6 +202,7 @@ class OptimizedDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchm
         self.out_proj = None
         self.inputs = None
         self._qkv_buffer = None
+        self._attn_merge_buffer = None
         self._output_buffer = None
         self._qkv_weight_t = None
         self._out_proj_weight_t = None
