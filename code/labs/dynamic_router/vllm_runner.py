@@ -336,14 +336,21 @@ class _VllmV1Wrapper(_VllmWrapper):
                     rt = self._inflight.get(rid)
                     if rt is None:
                         continue
-                    ro_outputs = getattr(ro, "outputs", None)
+                    try:
+                        ro_outputs = ro.outputs
+                    except AttributeError:
+                        ro_outputs = None
                     if ro_outputs:
                         output_token_count = sum(len(o.token_ids) for o in ro_outputs)
                         if rt.ttft_ms is None and output_token_count > 0:
                             rt.ttft_ms = (now - rt.admitted_at) * 1000.0
                             ttft_samples.append((rid, rt.ttft_ms))
                         tokens_emitted += output_token_count
-                    if getattr(ro, "finished", False):
+                    try:
+                        is_finished = ro.finished
+                    except AttributeError:
+                        is_finished = False
+                    if is_finished:
                         finished_ids.append(rid)
                         rt.finished = True
                         self._inflight.pop(rid, None)

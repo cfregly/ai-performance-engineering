@@ -9067,7 +9067,10 @@ def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
     assert "tokens_emitted += output_token_count" in wrapper_section
     assert "total_tokens = sum(len(o.token_ids) for o in ro.outputs)" not in wrapper_section
     assert wrapper_section.count("sum(len(o.token_ids) for o in ro.outputs)") == 1
-    assert "ro_outputs = getattr(ro, \"outputs\", None)" in v1_wrapper_section
+    assert "ro_outputs = ro.outputs" in v1_wrapper_section
+    assert "is_finished = ro.finished" in v1_wrapper_section
+    assert "except AttributeError:" in v1_wrapper_section
+    assert "getattr(ro," not in v1_wrapper_section
     assert "output_token_count = sum(len(o.token_ids) for o in ro_outputs)" in v1_wrapper_section
     assert "tokens_emitted += output_token_count" in v1_wrapper_section
     assert "total_tokens = sum(len(o.token_ids) for o in ro.outputs)" not in v1_wrapper_section
