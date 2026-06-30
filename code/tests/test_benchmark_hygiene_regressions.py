@@ -3981,8 +3981,32 @@ def test_ch06_optimized_add_reuses_output_buffer() -> None:
     )[0]
 
     assert "self.C = torch.empty_like(self.A)" in setup_section
+    assert "with torch.inference_mode(), self._nvtx_range(\"add_vectorized\"):" in benchmark_section
+    assert "with torch.no_grad():" not in benchmark_section
     assert "self.C = self.A + self.B" not in benchmark_section
     assert "torch.add(self.A, self.B, out=self.C)" in benchmark_section
+
+
+def test_ch06_add_and_ilp_wrappers_use_inference_mode() -> None:
+    cases = (
+        ("baseline_add.py", "baseline_add_sequential"),
+        ("optimized_add.py", "add_vectorized"),
+        ("baseline_elementwise_ilp.py", "elementwise_ilp_baseline"),
+        ("optimized_elementwise_ilp.py", "elementwise_ilp_optimized"),
+        ("baseline_attention_ilp.py", "baseline_attention_ilp"),
+        ("optimized_attention_ilp.py", "optimized_attention_ilp"),
+    )
+
+    for filename, label in cases:
+        source = (REPO_ROOT / "ch06" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert f"with torch.inference_mode(), self._nvtx_range(\"{label}\"):" in benchmark_section
+        assert f"with self._nvtx_range(\"{label}\"):" not in benchmark_section
+        assert "with torch.no_grad():" not in benchmark_section
 
 
 def test_ch06_quantization_ilp_reuses_output_buffers() -> None:

@@ -60,7 +60,7 @@ class OptimizedElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """
         assert self._extension is not None and self.input is not None and self._buf0 is not None and self._buf1 is not None
         assert self._output_view0 is not None and self._output_view1 is not None
-        with self._nvtx_range("elementwise_ilp_optimized"):
+        with torch.inference_mode(), self._nvtx_range("elementwise_ilp_optimized"):
             src: torch.Tensor = self.input
             buf0: torch.Tensor = self._buf0
             buf1: torch.Tensor = self._buf1

@@ -39,7 +39,7 @@ class BaselineAddBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Sequential loop launches N tiny kernels."""
         assert self.A is not None and self.B is not None and self.C is not None
-        with self._nvtx_range("baseline_add_sequential"):
+        with torch.inference_mode(), self._nvtx_range("baseline_add_sequential"):
             for i in self._index_range:
                 self.C[i] = self.A[i] + self.B[i]
 

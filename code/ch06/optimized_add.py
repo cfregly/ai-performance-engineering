@@ -37,7 +37,7 @@ class OptimizedAddParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Vectorized operation - single kernel launch."""
         assert self.A is not None and self.B is not None and self.C is not None
-        with self._nvtx_range("add_vectorized"):
+        with torch.inference_mode(), self._nvtx_range("add_vectorized"):
             torch.add(self.A, self.B, out=self.C)
 
     def capture_verification_payload(self) -> None:
