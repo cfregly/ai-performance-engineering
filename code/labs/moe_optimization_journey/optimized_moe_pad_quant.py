@@ -24,7 +24,7 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 from core.profiling.nvtx_helper import get_nvtx_enabled, nvtx_range
 from core.utils.compile_utils import get_optimal_compile_mode
-from labs.moe_optimization_journey.moe_model import MoEExperts
+from labs.moe_optimization_journey.moe_model import MoEExperts, MoELayer
 from labs.moe_optimization_journey.moe_pad_quant_common import build_moe_pad_quant_model
 
 
@@ -66,6 +66,13 @@ def _dispatch_slot_buffer(
     return padded
 
 
+def _dispatch_capacity_for_indices(expert_indices: torch.Tensor, num_experts: int) -> int:
+    flat_ids = expert_indices.reshape(-1)
+    counts = torch.bincount(flat_ids, minlength=num_experts)
+    max_count = int(counts.max().item())
+    return min(flat_ids.numel(), max(64, ((2 * max_count + 63) // 64) * 64))
+
+
 def _vectorized_forward_grouped(
     self: MoEExperts,
     x: torch.Tensor,
@@ -101,14 +108,10 @@ def _vectorized_forward_grouped(
     token_ids = _cached_topk_token_ids(self, batch_seq, top_k, x.device)
     rep_x = x.index_select(0, token_ids)
     flat_w = expert_weights.reshape(-1).to(x.dtype)
-    n = flat_ids.numel()
 
     cap = getattr(self, "_dispatch_capacity", None)
     if cap is None:
-        counts = torch.bincount(flat_ids, minlength=self.num_experts)
-        max_count = int(counts.max().item())
-        cap = min(n, max(64, ((2 * max_count + 63) // 64) * 64))
-        self._dispatch_capacity = cap
+        raise RuntimeError("Vectorized MoE dispatch capacity must be calibrated in setup()")
 
     one_hot = F.one_hot(flat_ids, num_classes=self.num_experts)
     pos = one_hot.cumsum(0).gather(1, flat_ids.unsqueeze(1)).squeeze(1) - 1
@@ -163,7 +166,45 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._enable_nvtx = False
         self._payload_parameter_count = 0
 
-    def _install_vectorized_router(self) -> None:
+    def _calibrate_vectorized_router_capacity(self) -> dict[int, int]:
+        if self.model is None or self.inputs is None:
+            raise RuntimeError("Benchmark not initialized")
+
+        capacities: dict[int, int] = {}
+        handles = []
+        for module in self.model.modules():
+            if not isinstance(module, MoELayer):
+                continue
+
+            def capture_capacity(
+                _gate: torch.nn.Module,
+                _args: tuple[torch.Tensor, ...],
+                router_logits: torch.Tensor,
+                *,
+                layer: MoELayer = module,
+            ) -> None:
+                _, expert_indices = torch.topk(
+                    router_logits.float(),
+                    layer.num_experts_per_tok,
+                    dim=-1,
+                )
+                capacities[id(layer.experts)] = _dispatch_capacity_for_indices(
+                    expert_indices,
+                    layer.experts.num_experts,
+                )
+
+            handles.append(module.gate.register_forward_hook(capture_capacity))
+
+        try:
+            with torch.inference_mode():
+                _ = self.model(self.inputs)
+        finally:
+            for handle in handles:
+                handle.remove()
+
+        return capacities
+
+    def _install_vectorized_router(self, capacities: dict[int, int]) -> None:
         """Bind the sync-free grouped dispatch onto this arm's own experts.
 
         Instance-level binding (types.MethodType) on the optimized model only;
@@ -173,7 +214,10 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """
         for module in self.model.modules():
             if isinstance(module, MoEExperts):
-                module._dispatch_capacity = None
+                capacity = capacities.get(id(module))
+                if capacity is None:
+                    raise RuntimeError("Missing calibrated dispatch capacity for MoEExperts module")
+                module._dispatch_capacity = capacity
                 module._dispatch_token_ids = None
                 module._dispatch_padded = None
                 module.forward_grouped = types.MethodType(
@@ -209,12 +253,11 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.bfloat16,
         )
-        # Replace the nonzero/tolist-based level-4 router dispatch with the
-        # vectorized override, then run one eager pass so each MoEExperts
-        # module calibrates its fixed dispatch capacity (the only host sync;
-        # it happens here, before compile tracing, so the compiled graph sees
-        # a plain int constant).
-        self._install_vectorized_router()
+        # Calibrate static dispatch capacity before installing the vectorized
+        # override. The only host sync is explicit setup work; the runtime
+        # dispatch function has no hidden `.item()` fallback.
+        capacities = self._calibrate_vectorized_router_capacity()
+        self._install_vectorized_router(capacities)
         with torch.inference_mode():
             _ = self.model(self.inputs)
         # get_optimal_compile_mode keeps max-autotune on the pinned toolchain but
