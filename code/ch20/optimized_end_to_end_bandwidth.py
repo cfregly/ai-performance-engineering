@@ -23,10 +23,14 @@ class SimplePipeline(nn.Module):
         self._fc2_buffer: Optional[torch.Tensor] = None
         self._fc1_weight_t: Optional[torch.Tensor] = None
         self._fc2_weight_t: Optional[torch.Tensor] = None
+        self._fc1_bias: Optional[torch.Tensor] = None
+        self._fc2_bias: Optional[torch.Tensor] = None
 
     def cache_weight_views(self) -> None:
         self._fc1_weight_t = self.fc1.weight.t()
         self._fc2_weight_t = self.fc2.weight.t()
+        self._fc1_bias = self.fc1.bias
+        self._fc2_bias = self.fc2.bias
 
     def _ensure_forward_buffers(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         rows = x.shape[0]
@@ -57,12 +61,28 @@ class SimplePipeline(nn.Module):
             self.cache_weight_views()
         fc1_out, fc2_out = self._ensure_forward_buffers(x)
         torch.mm(x, self._fc1_weight_t, out=fc1_out)
-        if self.fc1.bias is not None:
-            fc1_out.add_(self.fc1.bias)
+        if self._fc1_bias is not None:
+            fc1_out.add_(self._fc1_bias)
         self.relu(fc1_out)
         torch.mm(fc1_out, self._fc2_weight_t, out=fc2_out)
-        if self.fc2.bias is not None:
-            fc2_out.add_(self.fc2.bias)
+        if self._fc2_bias is not None:
+            fc2_out.add_(self._fc2_bias)
+        return fc2_out
+
+    def forward_cached(self, x: torch.Tensor) -> torch.Tensor:
+        fc1_out = self._fc1_buffer
+        fc2_out = self._fc2_buffer
+        fc1_weight_t = self._fc1_weight_t
+        fc2_weight_t = self._fc2_weight_t
+        if fc1_out is None or fc2_out is None or fc1_weight_t is None or fc2_weight_t is None:
+            raise RuntimeError("forward_cached() requires setup-time buffers and weight views")
+        torch.mm(x, fc1_weight_t, out=fc1_out)
+        if self._fc1_bias is not None:
+            fc1_out.add_(self._fc1_bias)
+        self.relu(fc1_out)
+        torch.mm(fc1_out, fc2_weight_t, out=fc2_out)
+        if self._fc2_bias is not None:
+            fc2_out.add_(self._fc2_bias)
         return fc2_out
 
 
@@ -71,7 +91,7 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
     
     def __init__(self):
         super().__init__()
-        self.model: Optional[nn.Module] = None
+        self.model: Optional[SimplePipeline] = None
         self.inputs: Optional[list[torch.Tensor]] = None
         self.stacked_inputs: Optional[torch.Tensor] = None
         self.flat_inputs: Optional[torch.Tensor] = None
@@ -116,7 +136,7 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
         assert self.model is not None and self.flat_inputs is not None and self._output_view is not None
         with self._nvtx_range("optimized_end_to_end_bandwidth"):
             with torch.inference_mode():
-                self.model(self.flat_inputs)
+                self.model.forward_cached(self.flat_inputs)
                 self.output = self._output_view
 
     def capture_verification_payload(self) -> None:

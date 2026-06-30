@@ -6908,17 +6908,22 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
     assert "self._fc2_buffer: Optional[torch.Tensor] = None" in pipeline_section
     assert "self._fc1_weight_t: Optional[torch.Tensor] = None" in pipeline_section
     assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in pipeline_section
+    assert "self._fc1_bias: Optional[torch.Tensor] = None" in pipeline_section
+    assert "self._fc2_bias: Optional[torch.Tensor] = None" in pipeline_section
     assert "def cache_weight_views(self) -> None:" in pipeline_section
     assert "self._fc1_weight_t = self.fc1.weight.t()" in pipeline_section
     assert "self._fc2_weight_t = self.fc2.weight.t()" in pipeline_section
+    assert "self._fc1_bias = self.fc1.bias" in pipeline_section
+    assert "self._fc2_bias = self.fc2.bias" in pipeline_section
     assert "def _ensure_forward_buffers(" in pipeline_section
+    assert "def forward_cached(self, x: torch.Tensor) -> torch.Tensor:" in pipeline_section
     assert "if torch.is_grad_enabled():" in pipeline_section
     assert "self.model.cache_weight_views()" in setup_section
     assert "torch.mm(x, self._fc1_weight_t, out=fc1_out)" in pipeline_section
-    assert "fc1_out.add_(self.fc1.bias)" in pipeline_section
+    assert "fc1_out.add_(self._fc1_bias)" in pipeline_section
     assert "self.relu(fc1_out)" in pipeline_section
     assert "torch.mm(fc1_out, self._fc2_weight_t, out=fc2_out)" in pipeline_section
-    assert "fc2_out.add_(self.fc2.bias)" in pipeline_section
+    assert "fc2_out.add_(self._fc2_bias)" in pipeline_section
     assert "self._flat_output: Optional[torch.Tensor] = None" in source
     assert "self._output_view: Optional[torch.Tensor] = None" in source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
@@ -6932,7 +6937,8 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
     assert ".contiguous()" not in setup_section
     assert "self._output_view = self._flat_output.view(self.num_batches, self.batch_size, self.hidden_dim)" in setup_section
     assert "self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)" in setup_section
-    assert "self.model(self.flat_inputs)" in benchmark_section
+    assert "self.model.forward_cached(self.flat_inputs)" in benchmark_section
+    assert "self.model(self.flat_inputs)" not in benchmark_section
     assert "self.output = self._output_view" in benchmark_section
     assert "flat_output.view(" not in benchmark_section
     assert "self._verify_output_buffer.copy_(self.output)" in source
