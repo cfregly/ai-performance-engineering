@@ -130,6 +130,7 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._next_token_buffer: Optional[torch.Tensor] = None
         self._next_token_values: Optional[torch.Tensor] = None
         self._metadata_inputs: Dict[str, torch.Tensor] = {}
+        self._verify_prompt_buffer: Optional[torch.Tensor] = None
         self._param_count = 0
 
     def setup(self) -> None:
@@ -147,6 +148,11 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
             device=self.device,
             dtype=torch.long,
         )
+        self._verify_prompt_buffer = self._allocate_host_staging(
+            self.prompts[0].shape,
+            self.prompts.dtype,
+        )
+        self._verify_prompt_buffer.copy_(self.prompts[0], non_blocking=False)
         self._param_count = sum(p.numel() for p in self.prefill_model.parameters()) + sum(
             p.numel() for p in self.decode_model.parameters()
         )
@@ -252,9 +258,11 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
         if not self._metadata_inputs:
             raise RuntimeError("setup() must initialize verification metadata tensors")
+        if self._verify_prompt_buffer is None:
+            raise RuntimeError("setup() must initialize verification prompt buffer")
         self._set_verification_payload(
             inputs={
-                "prompt": self.prompts[0].detach().cpu(),
+                "prompt": self._verify_prompt_buffer,
                 "decode_tokens": self._metadata_inputs["decode_tokens"],
                 "hidden_size": self._metadata_inputs["hidden_size"],
                 "num_layers": self._metadata_inputs["num_layers"],
@@ -288,6 +296,7 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._next_token_buffer = None
         self._next_token_values = None
         self._metadata_inputs = {}
+        self._verify_prompt_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

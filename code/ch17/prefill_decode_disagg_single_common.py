@@ -44,6 +44,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self._output_stack: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
         self._metadata_inputs: Dict[str, torch.Tensor] = {}
+        self._verify_prompt_buffer: Optional[torch.Tensor] = None
         self._param_count = 0
 
     def setup(self) -> None:
@@ -65,6 +66,11 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
+        self._verify_prompt_buffer = self._allocate_host_staging(
+            self.prompts[0].shape,
+            self.prompts.dtype,
+        )
+        self._verify_prompt_buffer.copy_(self.prompts[0], non_blocking=False)
         self._flat_prompts = self.prompts.view(
             self.cfg.requests_per_rank * self.cfg.batch_size,
             self.cfg.context_window,
@@ -109,9 +115,11 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
         if not self._metadata_inputs:
             raise RuntimeError("setup() must initialize verification metadata tensors")
+        if self._verify_prompt_buffer is None:
+            raise RuntimeError("setup() must initialize verification prompt buffer")
         self._set_verification_payload(
             inputs={
-                "prompt": self.prompts[0].detach().cpu(),
+                "prompt": self._verify_prompt_buffer,
                 "decode_tokens": self._metadata_inputs["decode_tokens"],
                 "hidden_size": self._metadata_inputs["hidden_size"],
                 "num_layers": self._metadata_inputs["num_layers"],
@@ -141,6 +149,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self._output_stack = None
         self._pending_outputs = []
         self._metadata_inputs = {}
+        self._verify_prompt_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
