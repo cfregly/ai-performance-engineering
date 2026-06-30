@@ -110,6 +110,10 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scale6_src: Optional[torch.Tensor] = None
         self._scale4_src: Optional[torch.Tensor] = None
         self._packed_dst_bytes: Optional[torch.Tensor] = None
+        self._packed_dst_int8: Optional[torch.Tensor] = None
+        self._packed_dst_int6: Optional[torch.Tensor] = None
+        self._packed_dst_int4: Optional[torch.Tensor] = None
+        self._last_packed_dst: Optional[torch.Tensor] = None
         self._packed_dst_bytes_cpu: Optional[torch.Tensor] = None
         self._last_scale_cpu: Optional[torch.Tensor] = None
         self._dequantized_cpu: Optional[torch.Tensor] = None
@@ -158,7 +162,10 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._scale8_src = torch.empty(self._reference_cache.shape[:-1] + (1,), device=self.device, dtype=torch.float32)
             self._scale6_src = torch.empty_like(self._scale8_src)
             self._scale4_src = torch.empty_like(self._scale8_src)
-            self._packed_dst_bytes = torch.empty_like(self._reference_cache, dtype=torch.uint8)
+            self._packed_dst_int8 = torch.empty_like(self._reference_cache, dtype=torch.uint8)
+            self._packed_dst_int6 = torch.empty_like(self._packed_int6_src)
+            self._packed_dst_int4 = torch.empty_like(self._packed_int4_src)
+            self._packed_dst_bytes = self._packed_dst_int8
             self._prepare_quantized_sources()
             self._reference_cache = None
             pin_cpu_output = self.device.type == "cuda" and torch.cuda.is_available()
@@ -243,17 +250,22 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._scale8_src is None
             or self._scale6_src is None
             or self._scale4_src is None
-            or self._packed_dst_bytes is None
+            or self._packed_dst_int8 is None
+            or self._packed_dst_int6 is None
+            or self._packed_dst_int4 is None
         ):
             raise RuntimeError("Quantized cache buffers not initialized")
         if bits == 8:
-            self._packed_dst_bytes.copy_(self._quantized_int8_src.view(torch.uint8))
+            self._packed_dst_int8.copy_(self._quantized_int8_src.view(torch.uint8))
+            self._last_packed_dst = self._packed_dst_int8
             self._last_scale = self._scale8_src
         elif bits == 6:
-            self._packed_dst_bytes[..., :_FP6_PACKED_LAST_DIM].copy_(self._packed_int6_src)
+            self._packed_dst_int6.copy_(self._packed_int6_src)
+            self._last_packed_dst = self._packed_dst_int6
             self._last_scale = self._scale6_src
         elif bits == 4:
-            self._packed_dst_bytes[..., :_FP4_PACKED_LAST_DIM].copy_(self._packed_int4_src)
+            self._packed_dst_int4.copy_(self._packed_int4_src)
+            self._last_packed_dst = self._packed_dst_int4
             self._last_scale = self._scale4_src
         else:
             raise ValueError(f"Unsupported quantization bits: {bits}")
@@ -264,7 +276,7 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if (
             self.use_fp32_baseline
             or self._reference_cache_cpu is None
-            or self._packed_dst_bytes is None
+            or self._last_packed_dst is None
             or self._last_scale is None
             or self._packed_dst_bytes_cpu is None
             or self._last_scale_cpu is None
@@ -278,13 +290,13 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         scale_cpu.copy_(self._last_scale, non_blocking=scale_cpu.is_pinned())
         if last_bits == 8:
             packed_view = packed_cpu
-            packed_view.copy_(self._packed_dst_bytes, non_blocking=packed_cpu.is_pinned())
+            packed_view.copy_(self._last_packed_dst, non_blocking=packed_cpu.is_pinned())
             dequantized.copy_(packed_cpu.view(torch.int8))
             dequantized.mul_(scale_cpu)
         elif last_bits == 6:
             packed_view = packed_cpu[..., :_FP6_PACKED_LAST_DIM]
             packed_view.copy_(
-                self._packed_dst_bytes[..., :_FP6_PACKED_LAST_DIM],
+                self._last_packed_dst,
                 non_blocking=packed_cpu.is_pinned(),
             )
             _unpack_int6_to_float(
@@ -295,7 +307,7 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         elif last_bits == 4:
             packed_view = packed_cpu[..., :_FP4_PACKED_LAST_DIM]
             packed_view.copy_(
-                self._packed_dst_bytes[..., :_FP4_PACKED_LAST_DIM],
+                self._last_packed_dst,
                 non_blocking=packed_cpu.is_pinned(),
             )
             _unpack_int4_to_float(
@@ -369,6 +381,10 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scale6_src = None
         self._scale4_src = None
         self._packed_dst_bytes = None
+        self._packed_dst_int8 = None
+        self._packed_dst_int6 = None
+        self._packed_dst_int4 = None
+        self._last_packed_dst = None
         self._packed_dst_bytes_cpu = None
         self._last_scale_cpu = None
         self._dequantized_cpu = None
