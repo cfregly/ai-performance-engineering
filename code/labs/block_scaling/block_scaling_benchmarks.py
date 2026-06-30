@@ -32,6 +32,7 @@ class BlockScalingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.problem: Optional[BlockScalingProblem] = None
         self.last_run_completed = False
         self.verification_summary: Optional[dict[str, float]] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.config.l),
             custom_units_per_iteration=theoretical_flops(self.config),
@@ -40,6 +41,11 @@ class BlockScalingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         self.problem = build_problem(self.config, compile_hardware=self.compile_hardware)
+        self._verify_output_buffer = torch.empty(
+            (min(128, self.config.m), min(128, self.config.n), min(1, self.config.l)),
+            device=self.problem.c_ref.device,
+            dtype=torch.float32,
+        )
         self.last_run_completed = False
         self.verification_summary = None
         self._post_setup()
@@ -69,6 +75,7 @@ class BlockScalingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.problem = None
         self.last_run_completed = False
         self.verification_summary = None
+        self._verify_output_buffer = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -134,7 +141,7 @@ class BaselineBlockScalingBenchmarkBase(BlockScalingBenchmarkBase):
         problem.run_software()
 
     def _build_verification_output(self, problem: BlockScalingProblem) -> torch.Tensor:
-        return verification_output_slice(problem.run_software())
+        return verification_output_slice(problem.run_software(), self._verify_output_buffer)
 
     def _verification_precision_flags(self) -> dict[str, bool]:
         return {
@@ -225,7 +232,7 @@ class OptimizedBlockScalingBenchmarkBase(BlockScalingBenchmarkBase):
     def _build_verification_output(self, problem: BlockScalingProblem) -> torch.Tensor:
         problem.run_hardware()
         self._synchronize()
-        return verification_output_slice(problem.extract_hardware_output())
+        return verification_output_slice(problem.extract_hardware_output(), self._verify_output_buffer)
 
     def _verification_precision_flags(self) -> dict[str, bool]:
         return {"fp16": False, "bf16": True}

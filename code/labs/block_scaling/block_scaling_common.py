@@ -473,13 +473,25 @@ def verification_inputs(config: BlockScalingConfig) -> dict[str, torch.Tensor]:
     }
 
 
-def verification_output_slice(output: torch.Tensor) -> torch.Tensor:
+def verification_output_slice(
+    output: torch.Tensor,
+    buffer: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
     """Return a representative output tile for harness verification."""
-    return output[
+    output_slice = output[
         : min(128, output.shape[0]),
         : min(128, output.shape[1]),
         : min(1, output.shape[2]),
-    ].detach().float().clone()
+    ]
+    if buffer is None:
+        return output_slice.detach().to(torch.float32).contiguous()
+    verify_output = buffer[
+        : output_slice.shape[0],
+        : output_slice.shape[1],
+        : output_slice.shape[2],
+    ]
+    verify_output.copy_(output_slice)
+    return verify_output
 
 
 def measure_cuda_callable(fn: Any, *, warmup: int, iterations: int) -> float:

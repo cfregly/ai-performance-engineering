@@ -90,6 +90,11 @@ def test_verification_output_slice_caps_to_small_tile() -> None:
     assert sliced.shape == (128, 128, 1)
     torch.testing.assert_close(sliced, output[:128, :128, :1].float())
 
+    buffer = torch.empty(128, 128, 1, dtype=torch.float32)
+    buffered = verification_output_slice(output, buffer)
+    assert buffered.data_ptr() == buffer.data_ptr()
+    torch.testing.assert_close(buffered, output[:128, :128, :1].float())
+
 
 def test_block_scaling_verify_close_batches_error_materialization() -> None:
     source = inspect.getsource(BlockScalingProblem.verify_close)

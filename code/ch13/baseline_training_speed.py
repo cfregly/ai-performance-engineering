@@ -25,6 +25,7 @@ class BaselineTrainingSpeedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.criterion: Optional[nn.Module] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self.autocast_dtype = torch.bfloat16
 
@@ -48,6 +49,11 @@ class BaselineTrainingSpeedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-2)
         self.criterion = nn.CrossEntropyLoss()
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
+        self._verify_output_buffer = torch.empty(
+            (1, 1, min(8, self.cfg.vocab_size)),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self.output = None
         self._synchronize()
 
@@ -83,11 +89,19 @@ class BaselineTrainingSpeedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.model is None or self.input_ids is None:
             raise RuntimeError("capture_verification_payload() requires model and inputs")
+        if self._verify_output_buffer is None:
+            raise RuntimeError("setup() must initialize verification output buffer")
         with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=self.autocast_dtype):
             verify_logits = self.model(self.input_ids)
-            self.output = verify_logits[:1, :1, :8].detach().float().clone()
+            output_slice = verify_logits[
+                : self._verify_output_buffer.shape[0],
+                : self._verify_output_buffer.shape[1],
+                : self._verify_output_buffer.shape[2],
+            ]
+            self._verify_output_buffer.copy_(output_slice)
+            self.output = self._verify_output_buffer
         self._set_verification_payload(
-            inputs={"input_ids": self.input_ids.detach().clone()},
+            inputs={"input_ids": self.input_ids},
             output=self.output,
             batch_size=self.cfg.batch_size,
             parameter_count=self.parameter_count,
@@ -108,6 +122,7 @@ class BaselineTrainingSpeedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer = None
         self.criterion = None
         self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
         super().teardown()
 

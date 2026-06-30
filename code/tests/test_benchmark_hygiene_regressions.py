@@ -13542,7 +13542,14 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
         assert "logits[:1, :1, :8].detach().float().clone()" not in benchmark_section
         assert "self.output = None" in benchmark_section
         assert "verify_logits = self.model(self.input_ids)" in capture_section
-        assert "self.output = verify_logits[:1, :1, :8].detach().float().clone()" in capture_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "output_slice = verify_logits[" in capture_section
+        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "self.output = self._verify_output_buffer" in capture_section
+        assert 'inputs={"input_ids": self.input_ids}' in capture_section
+        assert "verify_logits[:1, :1, :8].detach().float().clone()" not in capture_section
+        assert "self.input_ids.detach().clone()" not in capture_section
         if name in {"baseline_training_standard.py", "optimized_training_standard.py"}:
             assert "self._targets_flat = self.targets.view(-1)" in setup_section
             assert "self._targets_flat" in benchmark_section
@@ -13551,6 +13558,7 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
             assert "self.targets_flat = self.targets.view(-1)" in setup_section
             assert "self.targets_flat" in benchmark_section
             assert "targets.view(-1)" not in benchmark_section
+        assert "self._verify_output_buffer = None" in source
 
     optimized_speed = (REPO_ROOT / "ch13" / "optimized_training_speed.py").read_text(encoding="utf-8")
     optimized_benchmark = optimized_speed.split("def benchmark_fn", maxsplit=1)[1].split(
@@ -16640,6 +16648,34 @@ def test_ch13_static_and_training_helpers_use_inference_mode() -> None:
         source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
         assert "torch.inference_mode()" in source
         assert "torch.no_grad()" not in source
+
+
+def test_software_pipelining_samples_verification_output() -> None:
+    source = (
+        REPO_ROOT / "labs" / "software_pipelining" / "software_pipelining_common.py"
+    ).read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def validate_result",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._reference = reference_tile_pipeline(" in setup_section
+    assert ").detach().clone()" not in setup_section
+    assert "self._verify_output_buffer = torch.empty(" in setup_section
+    assert "min(4096, self._workload.length)" in setup_section
+    assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "output=self._output.detach().clone()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
