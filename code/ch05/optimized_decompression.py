@@ -60,7 +60,7 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("SKIPPED: missing encoded RLE buffers")
 
         start = self._record_start()
-        with self._nvtx_range("gpu_decompress_rle"):
+        with torch.inference_mode(), self._nvtx_range("gpu_decompress_rle"):
             self._output_matrix.copy_(self._values_column)
             out = self._output_flat
         latency_ms = self._record_stop(start)

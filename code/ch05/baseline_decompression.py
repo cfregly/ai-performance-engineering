@@ -45,7 +45,7 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("SKIPPED: missing encoded RLE buffers")
 
         start = self._record_start()
-        with self._nvtx_range("cpu_decompress"):
+        with torch.inference_mode(), self._nvtx_range("cpu_decompress"):
             decompressed = torch.repeat_interleave(self.values, self.counts)
         latency_ms = self._record_stop(start)
         self.output = decompressed

@@ -49,7 +49,7 @@ class OptimizedHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchm
         """Benchmark: reduce directly on the GPU."""
         assert self.data is not None
         output_buffer = self._output_for_data()
-        with self._nvtx_range("optimized_host_staged_reduction"):
+        with torch.inference_mode(), self._nvtx_range("optimized_host_staged_reduction"):
             torch.sum(self.data, dim=0, out=output_buffer)
         self.output = output_buffer
 

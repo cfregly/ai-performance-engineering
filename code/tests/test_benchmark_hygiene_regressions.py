@@ -3137,6 +3137,9 @@ def test_ch05_optimized_host_reduction_reuses_scalar_output_buffer() -> None:
     assert "self._output_buffer = torch.empty((), device=self.device, dtype=self.data.dtype)" in setup_section
     assert "def _output_for_data(self) -> torch.Tensor:" in source
     assert "output_buffer = self._output_for_data()" in benchmark_section
+    assert 'with torch.inference_mode(), self._nvtx_range("optimized_host_staged_reduction"):' in benchmark_section
+    assert "torch.no_grad()" not in benchmark_section
+    assert "with self._nvtx_range(" not in benchmark_section
     assert "torch.sum(self.data, dim=0, out=output_buffer)" in benchmark_section
     assert "self.output = output_buffer" in benchmark_section
     assert "self.data.sum()" not in benchmark_section
@@ -3175,6 +3178,9 @@ def test_ch05_baseline_host_reduction_reuses_host_and_scalar_buffers() -> None:
     assert "host_buffer = self._host_buffer_for_data()" in benchmark_section
     assert "host_sum = self._host_sum_for_data()" in benchmark_section
     assert "output_buffer = self._output_for_data()" in benchmark_section
+    assert 'with torch.inference_mode(), self._nvtx_range("baseline_host_staged_reduction"):' in benchmark_section
+    assert "torch.no_grad()" not in benchmark_section
+    assert "with self._nvtx_range(" not in benchmark_section
     assert "host_buffer.copy_(self.data, non_blocking=False)" in benchmark_section
     assert "torch.sum(host_buffer, dim=0, out=host_sum)" in benchmark_section
     assert "output_buffer.copy_(host_sum, non_blocking=False)" in benchmark_section

@@ -79,7 +79,7 @@ class BaselineHostStagedReductionBenchmark(VerificationPayloadMixin, BaseBenchma
         host_buffer = self._host_buffer_for_data()
         host_sum = self._host_sum_for_data()
         output_buffer = self._output_for_data()
-        with self._nvtx_range("baseline_host_staged_reduction"):
+        with torch.inference_mode(), self._nvtx_range("baseline_host_staged_reduction"):
             host_buffer.copy_(self.data, non_blocking=False)
             torch.sum(host_buffer, dim=0, out=host_sum)
             output_buffer.copy_(host_sum, non_blocking=False)

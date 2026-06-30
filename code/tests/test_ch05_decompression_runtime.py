@@ -58,7 +58,9 @@ def test_cpu_decompression_defers_full_output_clone_to_capture() -> None:
     assert '"values": values' in capture_section
     assert "counts.detach().clone()" not in capture_section
     assert "values.detach().clone()" not in capture_section
-    assert 'with self._nvtx_range("cpu_decompress"):' in benchmark_section
+    assert 'with torch.inference_mode(), self._nvtx_range("cpu_decompress"):' in benchmark_section
+    assert "torch.no_grad()" not in benchmark_section
+    assert "with self._nvtx_range(" not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
     assert "with nvtx_range(" not in benchmark_section
     assert "from core.profiling.nvtx_helper" not in source
@@ -106,7 +108,9 @@ def test_gpu_decompression_reuses_preallocated_broadcast_output() -> None:
     assert "out = self._output_flat" in benchmark_section
     assert "self.output = out" in benchmark_section
     assert "out.detach()" not in benchmark_section
-    assert 'with self._nvtx_range("gpu_decompress_rle"):' in benchmark_section
+    assert 'with torch.inference_mode(), self._nvtx_range("gpu_decompress_rle"):' in benchmark_section
+    assert "torch.no_grad()" not in benchmark_section
+    assert "with self._nvtx_range(" not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
     assert "with nvtx_range(" not in benchmark_section
     assert "from core.profiling.nvtx_helper" not in source
