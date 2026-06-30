@@ -3679,6 +3679,9 @@ def test_ch04_eval_reduction_and_disagg_paths_use_inference_mode() -> None:
 
         assert "with torch.inference_mode():" in benchmark_section
         assert "with torch.no_grad():" not in benchmark_section
+        if "disaggregated" in relative:
+            assert "self.output = decode_output" in benchmark_section
+            assert "decode_output.detach()" not in benchmark_section
 
 
 def test_ch04_optimized_disaggregated_normalizes_allreduce_in_place() -> None:
