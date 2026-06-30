@@ -20043,6 +20043,10 @@ def test_decode_handoff_benchmarks_do_not_allocate_placeholder_outputs_in_hot_pa
         )[0]
         assert "torch.empty(0)" not in benchmark_section
         assert "not initialized" in benchmark_section
+        if path == "ch15/prefill_decode_disagg_common.py":
+            assert "self._decode_step_range = range(self.decode_length)" in source
+            assert "for _ in self._decode_step_range:" in benchmark_section
+            assert "for _ in range(self.decode_length):" not in benchmark_section
 
 
 def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:

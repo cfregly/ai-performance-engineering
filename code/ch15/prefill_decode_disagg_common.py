@@ -52,6 +52,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefill_length = int(self.cfg.prefill_length)
         self.decode_length = int(self.cfg.decode_length)
         self.hidden_size = int(self.cfg.hidden_size)
+        self._decode_step_range = range(self.decode_length)
 
         self._workload: Optional[WorkloadMetadata] = None
         self._refresh_workload_metadata()
@@ -149,6 +150,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._host_staging = {}
         self._handoff_staging = {}
         self._request_groups = []
+        self._decode_step_range = range(self.decode_length)
         self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]
         probe_width = min(256, self.hidden_size)
         probe_shape = torch.Size((1, 1, probe_width))
@@ -241,7 +243,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     prefill_out = prefill_model(request)
                     kv_decode = self._handoff_kv(prefill_out, decode_device)
                     token_state = kv_decode[:, -1:, :]
-                    for _ in range(self.decode_length):
+                    for _ in self._decode_step_range:
                         token_state = decode_model(token_state)
                     outputs[output_idx] = token_state.squeeze(0).squeeze(0)
 
