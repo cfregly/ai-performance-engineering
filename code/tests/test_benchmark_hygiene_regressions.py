@@ -11674,8 +11674,12 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "outputs: List[torch.Tensor] = []" not in benchmark_section
     assert "[kv.to(pair.decode_device" not in benchmark_section
     assert "[seed.to(pair.decode_device" not in benchmark_section
-    assert "pair.transfer_kv_chunks[req_idx].copy_(" in benchmark_section
-    assert "pair.transfer_seed_chunks[req_idx].copy_(" in benchmark_section
+    assert "transfer_slots: Tuple[Tuple[int, torch.Tensor, torch.Tensor], ...]" in source
+    assert "transfer_slots = tuple(" in setup_section
+    assert "for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:" in benchmark_section
+    assert "for req_idx in range(len(kv_chunks)):" not in benchmark_section
+    assert "pair.transfer_kv_chunks[req_idx]" not in benchmark_section
+    assert "pair.transfer_seed_chunks[req_idx]" not in benchmark_section
     assert "pair.prefill_kv_chunks," in benchmark_section
     assert "pair.prefill_seed_chunks," in benchmark_section
     assert ".to(\n                        pair.decode_device" not in benchmark_section
@@ -12443,6 +12447,12 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "kv_chunks[chunk_idx] = kv_buf" in run_iteration_section
     assert "seed_chunks[chunk_idx] = seed_buf" in run_iteration_section
     assert "handles.extend(" not in run_iteration_section
+    assert "transfer_slots: Tuple[Tuple[int, torch.Tensor, torch.Tensor], ...]" in source
+    assert "transfer_slots = tuple(" in setup_section
+    assert "for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:" in benchmark_section
+    assert "for req_idx in range(len(kv_chunks)):" not in benchmark_section
+    assert "pair.transfer_kv_chunks[req_idx]" not in benchmark_section
+    assert "pair.transfer_seed_chunks[req_idx]" not in benchmark_section
     assert "inflight.append(" not in run_iteration_section
     assert "recv_entries.append(" not in run_iteration_section
     assert "outputs.extend(" not in run_iteration_section
@@ -12465,11 +12475,11 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "self._output_buffer = self._allocate_output_buffer()" in setup_section
     assert "self._metadata_inputs: Dict[str, torch.Tensor] = {}" in class_section
     assert '"decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype)' in setup_section
-    assert "prefill_kv_chunks=[" in setup_section
-    assert "prefill_seed_chunks=[" in setup_section
-    assert "transfer_kv_chunks=[" in setup_section
+    assert "prefill_kv_chunks = [" in setup_section
+    assert "prefill_seed_chunks = [" in setup_section
+    assert "transfer_kv_chunks = [" in setup_section
     assert "self.cfg.context_window" in setup_section
-    assert "transfer_seed_chunks=[" in setup_section
+    assert "transfer_seed_chunks = [" in setup_section
     assert "decode_output_chunks=[" in setup_section
     assert "device=decode_device" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
@@ -12491,8 +12501,6 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "seed = seed.to(pair.decode_device" not in benchmark_section
     assert "transfer_kv.copy_(kv_cache, non_blocking=True)" in benchmark_section
     assert "transfer_seed.copy_(seed, non_blocking=True)" in benchmark_section
-    assert "pair.transfer_kv_chunks[req_idx].copy_(" in benchmark_section
-    assert "pair.transfer_seed_chunks[req_idx].copy_(" in benchmark_section
     assert "pair.prefill_kv_chunks," in benchmark_section
     assert "pair.prefill_seed_chunks," in benchmark_section
     assert "pair.decode_output_chunks," in benchmark_section

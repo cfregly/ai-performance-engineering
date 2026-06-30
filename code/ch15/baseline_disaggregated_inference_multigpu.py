@@ -69,6 +69,7 @@ class _LocalPair:
     prefill_seed_chunks: List[torch.Tensor]
     transfer_kv_chunks: List[torch.Tensor]
     transfer_seed_chunks: List[torch.Tensor]
+    transfer_slots: Tuple[Tuple[int, torch.Tensor, torch.Tensor], ...]
 
 
 def _build_moe_config(cfg: DisaggConfig) -> MoeInferenceConfig:
@@ -562,6 +563,10 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                 )
                 for _ in range(self.cfg.requests_per_rank)
             ]
+            transfer_slots = tuple(
+                (req_idx, transfer_kv_chunks[req_idx], transfer_seed_chunks[req_idx])
+                for req_idx in range(self.cfg.requests_per_rank)
+            )
             prompts = torch.randint(
                 0,
                 self.cfg.vocab_size,
@@ -584,6 +589,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                     prefill_seed_chunks=prefill_seed_chunks,
                     transfer_kv_chunks=transfer_kv_chunks,
                     transfer_seed_chunks=transfer_seed_chunks,
+                    transfer_slots=transfer_slots,
                 )
             )
 
@@ -627,14 +633,15 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                 if (
                     len(pair.transfer_kv_chunks) != len(kv_chunks)
                     or len(pair.transfer_seed_chunks) != len(seed_chunks)
+                    or len(pair.transfer_slots) != len(kv_chunks)
                 ):
                     raise RuntimeError("Transfer chunk slots not initialized")
-                for req_idx in range(len(kv_chunks)):
-                    pair.transfer_kv_chunks[req_idx].copy_(
+                for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:
+                    transfer_kv.copy_(
                         kv_chunks[req_idx],
                         non_blocking=self.overlap,
                     )
-                    pair.transfer_seed_chunks[req_idx].copy_(
+                    transfer_seed.copy_(
                         seed_chunks[req_idx],
                         non_blocking=self.overlap,
                     )

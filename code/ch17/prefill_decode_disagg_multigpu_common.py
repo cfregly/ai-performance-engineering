@@ -58,6 +58,7 @@ class _LocalPair:
     prefill_seed_chunks: List[torch.Tensor]
     transfer_kv_chunks: List[torch.Tensor]
     transfer_seed_chunks: List[torch.Tensor]
+    transfer_slots: Tuple[Tuple[int, torch.Tensor, torch.Tensor], ...]
     decode_output_chunks: List[torch.Tensor]
 
 
@@ -699,6 +700,32 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 dtype=self.cfg.dtype,
             )
             total_params += sum(p.numel() for p in prefill_model.parameters())
+            prefill_kv_chunks = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
+            prefill_seed_chunks = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
+            transfer_kv_chunks = [
+                torch.empty(
+                    (
+                        self.cfg.batch_size,
+                        self.cfg.context_window,
+                        self.cfg.hidden_size,
+                    ),
+                    device=decode_device,
+                    dtype=self.cfg.dtype,
+                )
+                for _ in range(self.cfg.requests_per_rank)
+            ]
+            transfer_seed_chunks = [
+                torch.empty(
+                    (self.cfg.batch_size, self.cfg.hidden_size),
+                    device=decode_device,
+                    dtype=self.cfg.dtype,
+                )
+                for _ in range(self.cfg.requests_per_rank)
+            ]
+            transfer_slots = tuple(
+                (req_idx, transfer_kv_chunks[req_idx], transfer_seed_chunks[req_idx])
+                for req_idx in range(self.cfg.requests_per_rank)
+            )
             self._pairs.append(
                 _LocalPair(
                     prefill_device=prefill_device,
@@ -706,32 +733,11 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     prefill_model=prefill_model,
                     decode_model=decode_models[decode_device],
                     prompts=prompts,
-                    prefill_kv_chunks=[
-                        torch.empty(0) for _ in range(self.cfg.requests_per_rank)
-                    ],
-                    prefill_seed_chunks=[
-                        torch.empty(0) for _ in range(self.cfg.requests_per_rank)
-                    ],
-                    transfer_kv_chunks=[
-                        torch.empty(
-                            (
-                                self.cfg.batch_size,
-                                self.cfg.context_window,
-                                self.cfg.hidden_size,
-                            ),
-                            device=decode_device,
-                            dtype=self.cfg.dtype,
-                        )
-                        for _ in range(self.cfg.requests_per_rank)
-                    ],
-                    transfer_seed_chunks=[
-                        torch.empty(
-                            (self.cfg.batch_size, self.cfg.hidden_size),
-                            device=decode_device,
-                            dtype=self.cfg.dtype,
-                        )
-                        for _ in range(self.cfg.requests_per_rank)
-                    ],
+                    prefill_kv_chunks=prefill_kv_chunks,
+                    prefill_seed_chunks=prefill_seed_chunks,
+                    transfer_kv_chunks=transfer_kv_chunks,
+                    transfer_seed_chunks=transfer_seed_chunks,
+                    transfer_slots=transfer_slots,
                     decode_output_chunks=[
                         torch.empty(0) for _ in range(self.cfg.requests_per_rank)
                     ],
@@ -768,10 +774,8 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with torch.inference_mode():
             for pair in self._pairs:
                 if self.overlap:
-                    for req_idx in range(self.cfg.requests_per_rank):
+                    for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:
                         kv_cache, seed = pair.prefill_model.prefill(pair.prompts[req_idx])
-                        transfer_kv = pair.transfer_kv_chunks[req_idx]
-                        transfer_seed = pair.transfer_seed_chunks[req_idx]
                         with torch.cuda.device(pair.decode_device):
                             transfer_kv.copy_(kv_cache, non_blocking=True)
                             transfer_seed.copy_(seed, non_blocking=True)
@@ -792,15 +796,16 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     if (
                         len(pair.transfer_kv_chunks) != len(kv_chunks)
                         or len(pair.transfer_seed_chunks) != len(seed_chunks)
+                        or len(pair.transfer_slots) != len(kv_chunks)
                     ):
                         raise RuntimeError("Transfer chunk slots not initialized")
-                    for req_idx in range(len(kv_chunks)):
+                    for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:
                         with torch.cuda.device(pair.decode_device):
-                            pair.transfer_kv_chunks[req_idx].copy_(
+                            transfer_kv.copy_(
                                 kv_chunks[req_idx],
                                 non_blocking=True,
                             )
-                            pair.transfer_seed_chunks[req_idx].copy_(
+                            transfer_seed.copy_(
                                 seed_chunks[req_idx],
                                 non_blocking=True,
                             )
