@@ -387,23 +387,31 @@ class SimpleTransformerModel:
         self._attention_kernel = _attention_core
 
     def _sampling_like_buffer(self, name: str, tensor: torch.Tensor) -> torch.Tensor:
+        shape = tuple(int(dim) for dim in tensor.shape)
+        numel = int(tensor.numel())
         buffer = getattr(self, name)
         if (
             buffer is None
             or buffer.device != tensor.device
             or buffer.dtype != tensor.dtype
-            or tuple(buffer.shape) != tuple(tensor.shape)
+            or buffer.numel() < numel
         ):
-            buffer = torch.empty_like(tensor)
+            buffer = torch.empty(numel, dtype=tensor.dtype, device=tensor.device)
             setattr(self, name, buffer)
-        return buffer
+        return buffer[:numel].view(shape)
 
     def _sampling_long_buffer(self, name: str, shape: Tuple[int, ...]) -> torch.Tensor:
+        shape = tuple(int(dim) for dim in shape)
         buffer = getattr(self, name)
-        if buffer is None or buffer.device != self.device or tuple(buffer.shape) != tuple(shape):
+        if (
+            buffer is None
+            or buffer.device != self.device
+            or buffer.dim() != len(shape)
+            or any(buffer.size(dim) < size for dim, size in enumerate(shape))
+        ):
             buffer = torch.empty(shape, dtype=torch.long, device=self.device)
             setattr(self, name, buffer)
-        return buffer
+        return buffer[tuple(slice(0, size) for size in shape)]
 
     def _sampling_host_buffer(self) -> torch.Tensor:
         if self._sampling_next_token_host is None:

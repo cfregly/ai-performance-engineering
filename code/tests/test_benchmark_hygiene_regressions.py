@@ -18209,6 +18209,12 @@ def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
     assert "state.kv_cache.append(k, v)" in forward_section
     assert "self._sampling_noise = None" in source
     assert "def _sampling_like_buffer" in source
+    assert "numel = int(tensor.numel())" in source
+    assert "or buffer.numel() < numel" in source
+    assert "return buffer[:numel].view(shape)" in source
+    assert "def _sampling_long_buffer" in source
+    assert "or any(buffer.size(dim) < size for dim, size in enumerate(shape))" in source
+    assert "return buffer[tuple(slice(0, size) for size in shape)]" in source
     assert "torch.randn(logits.shape, dtype=logits.dtype, device=logits.device, out=noise)" in generate_next_section
     assert "torch.topk(logits, k, dim=-1, out=(top_k_logits, top_k_indices))" in generate_next_section
     assert "torch.softmax(top_k_logits, dim=-1, out=probs)" in generate_next_section
@@ -18262,6 +18268,21 @@ def test_ch16_radix_attention_reuses_token_and_kv_buffers() -> None:
     assert model._sampling_noise.data_ptr() == noise_ptr
     assert model._sampling_topk_logits.data_ptr() == topk_ptr
     assert model._sampling_probs.data_ptr() == probs_ptr
+
+    large_probs = model._sampling_like_buffer("_sampling_probs", torch.empty(2, 12))
+    large_probs_ptr = model._sampling_probs.data_ptr()
+    small_probs = model._sampling_like_buffer("_sampling_probs", torch.empty(1, 3))
+    large_indices = model._sampling_long_buffer("_sampling_topk_indices", (2, 12))
+    large_indices_ptr = model._sampling_topk_indices.data_ptr()
+    small_indices = model._sampling_long_buffer("_sampling_topk_indices", (1, 3))
+
+    assert large_probs.shape == (2, 12)
+    assert small_probs.shape == (1, 3)
+    assert small_probs.is_contiguous()
+    assert model._sampling_probs.data_ptr() == large_probs_ptr
+    assert large_indices.shape == (2, 12)
+    assert small_indices.shape == (1, 3)
+    assert model._sampling_topk_indices.data_ptr() == large_indices_ptr
 
 
 def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
