@@ -164,27 +164,31 @@ class VectorizedTopKMoE(nn.Module):
         if torch.is_grad_enabled() and tokens.requires_grad:
             return tokens.index_select(0, token_indices)
         expected_shape = (int(token_indices.numel()), tokens.shape[1])
+        numel = expected_shape[0] * expected_shape[1]
         if (
             self._flat_tokens_buffer is None
             or self._flat_tokens_buffer.device != tokens.device
             or self._flat_tokens_buffer.dtype != tokens.dtype
-            or tuple(self._flat_tokens_buffer.shape) != expected_shape
+            or self._flat_tokens_buffer.numel() < numel
         ):
-            self._flat_tokens_buffer = torch.empty(expected_shape, dtype=tokens.dtype, device=tokens.device)
-        torch.index_select(tokens, 0, token_indices, out=self._flat_tokens_buffer)
-        return self._flat_tokens_buffer
+            self._flat_tokens_buffer = torch.empty(numel, dtype=tokens.dtype, device=tokens.device)
+        flat_tokens = self._flat_tokens_buffer[:numel].view(expected_shape)
+        torch.index_select(tokens, 0, token_indices, out=flat_tokens)
+        return flat_tokens
 
     def _scatter_output_for(self, tokens: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled():
             return torch.empty_like(tokens, dtype=tokens.dtype)
+        shape = tuple(int(dim) for dim in tokens.shape)
+        numel = int(tokens.numel())
         if (
             self._scatter_output_buffer is None
             or self._scatter_output_buffer.device != tokens.device
             or self._scatter_output_buffer.dtype != tokens.dtype
-            or tuple(self._scatter_output_buffer.shape) != tuple(tokens.shape)
+            or self._scatter_output_buffer.numel() < numel
         ):
-            self._scatter_output_buffer = torch.empty_like(tokens, dtype=tokens.dtype)
-        return self._scatter_output_buffer
+            self._scatter_output_buffer = torch.empty(numel, dtype=tokens.dtype, device=tokens.device)
+        return self._scatter_output_buffer[:numel].view(shape)
 
     def _combine_index_for(self, token_indices: torch.Tensor, values: torch.Tensor) -> torch.Tensor:
         key = (

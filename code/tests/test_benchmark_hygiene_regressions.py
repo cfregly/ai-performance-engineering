@@ -7924,9 +7924,13 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     assert "self._flat_tokens_buffer: Optional[torch.Tensor] = None" in base_section
     assert "def _flat_tokens_for(self, tokens: torch.Tensor, token_indices: torch.Tensor)" in base_section
     assert "if torch.is_grad_enabled() and tokens.requires_grad:" in base_section
-    assert "torch.index_select(tokens, 0, token_indices, out=self._flat_tokens_buffer)" in base_section
+    assert "or self._flat_tokens_buffer.numel() < numel" in base_section
+    assert "flat_tokens = self._flat_tokens_buffer[:numel].view(expected_shape)" in base_section
+    assert "torch.index_select(tokens, 0, token_indices, out=flat_tokens)" in base_section
     assert "self._scatter_output_buffer: Optional[torch.Tensor] = None" in base_section
     assert "def _scatter_output_for(self, tokens: torch.Tensor)" in base_section
+    assert "or self._scatter_output_buffer.numel() < numel" in base_section
+    assert "return self._scatter_output_buffer[:numel].view(shape)" in base_section
     assert "def _combine_index_for(self, token_indices: torch.Tensor, values: torch.Tensor)" in base_section
     assert "token_indices = self._flat_token_indices_for(tokens.shape[0], tokens.device)" in base_section
     assert "flat_tokens = self._flat_tokens_for(tokens, token_indices)" in base_forward_section
@@ -8029,8 +8033,13 @@ def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
         flat_tokens_ptr = base_model._flat_tokens_buffer.data_ptr()
         base_output_snapshot = base_output.clone()
         base_output_again = base_model(x_base)
+        base_output_smaller = base_model(x_base[:2])
     assert base_output_again.data_ptr() == output_ptr
+    assert base_output_smaller.shape == (2, 8)
+    assert base_output_smaller.data_ptr() == output_ptr
     assert base_model._flat_tokens_buffer.data_ptr() == flat_tokens_ptr
+    assert base_model._flat_tokens_buffer.numel() >= x_base.numel() * base_model.top_k
+    assert base_model._scatter_output_buffer.numel() >= x_base.numel()
     torch.testing.assert_close(base_output_again, base_output_snapshot)
 
     model = GroupedTopKMoE(hidden_size=8, num_experts=4, top_k=2, expansion=1)
