@@ -66,6 +66,8 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._model_update_groups: List[Tuple[int, nn.Linear, torch.Tensor]] = []
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._model_count = 0
+        self._slot_counts: Tuple[int, ...] = ()
+        self._expected_slot_counts: Tuple[int, ...] = ()
         self._grad_scale = 1.0
         tokens = self.batch_size * self.hidden * self.microbatches
         self._workload = WorkloadMetadata(
@@ -143,6 +145,18 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
             (model_idx, model, update_buffer)
             for model_idx, (model, update_buffer) in enumerate(zip(self.models, self._update_buffers, strict=True))
         ][: len(self._reduction_results)]
+        self._slot_counts = (
+            len(self._grad_slots),
+            len(self._ordered_grad_slots),
+            len(self._ordered_bucket_indices),
+            len(self._reduction_results),
+        )
+        self._expected_slot_counts = (
+            self._model_count,
+            self._model_count,
+            self._model_count,
+            self.microbatches,
+        )
         self._synchronize()
 
     def _async_reduce_to_root(self, grads: List[torch.Tensor], buffer_index: int) -> torch.Tensor:
@@ -179,10 +193,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         assert self.models
         with self._nvtx_range("optimized_ddp_multigpu_nvlink_overlap"):
             if (
-                len(self._grad_slots) != self._model_count
-                or len(self._ordered_grad_slots) != self._model_count
-                or len(self._ordered_bucket_indices) != self._model_count
-                or len(self._reduction_results) != self.microbatches
+                self._slot_counts != self._expected_slot_counts
                 or not self._model_update_groups
             ):
                 raise RuntimeError("Gradient reduction slots not initialized")
@@ -261,6 +272,8 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._reduction_results = []
         self._model_update_groups = []
         self._model_count = 0
+        self._slot_counts = ()
+        self._expected_slot_counts = ()
         self._grad_scale = 1.0
         self.output = None
         self._verify_output_buffer = None

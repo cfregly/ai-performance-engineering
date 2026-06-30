@@ -842,6 +842,9 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
 
     assert "self._root_grad_staging: List[List[torch.Tensor]] = []" in source
     assert "self._grad_ready_events: List[List[torch.cuda.Event]] = []" in source
@@ -859,6 +862,8 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._bucket_reorder_pairs: List[Tuple[int, int]] = []" in source
     assert "self._reduction_results: List[torch.Tensor] = []" in source
     assert "self._model_update_groups: List[Tuple[int, nn.Linear, torch.Tensor]] = []" in source
+    assert "self._slot_counts: Tuple[int, ...] = ()" in source
+    assert "self._expected_slot_counts: Tuple[int, ...] = ()" in source
     assert "self._allreduce_buffer = torch.empty_like(" in naive_setup
     assert "self._grad_slots = [" in naive_setup
     assert "self._model_count = len(self.models)" in naive_setup
@@ -891,6 +896,10 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._ordered_bucket_indices = [bucket_idx for _, bucket_idx in bucket_order]" in setup_section
     assert "self._reduction_results = [" in setup_section
     assert "self._model_update_groups = [" in setup_section
+    assert "self._slot_counts = (" in setup_section
+    assert "len(self._grad_slots)" in setup_section
+    assert "len(self._reduction_results)" in setup_section
+    assert "self._expected_slot_counts = (" in setup_section
     assert "self._microbatch_range = range(self.microbatches)" in setup_section
     assert "for _micro in self._microbatch_range:" in setup_section
     assert "self._micro_model_groups = [" in setup_section
@@ -911,9 +920,11 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "for micro in range(self.microbatches):" not in benchmark_section
     assert "for model_idx, model, x in self._micro_model_groups[micro]:" in benchmark_section
     assert "len(self.models)" not in benchmark_section
-    assert "len(self._grad_slots) != self._model_count" in benchmark_section
-    assert "len(self._ordered_grad_slots) != self._model_count" in benchmark_section
-    assert "len(self._ordered_bucket_indices) != self._model_count" in benchmark_section
+    assert "self._slot_counts != self._expected_slot_counts" in benchmark_section
+    assert "len(self._grad_slots)" not in benchmark_section
+    assert "len(self._ordered_grad_slots)" not in benchmark_section
+    assert "len(self._ordered_bucket_indices)" not in benchmark_section
+    assert "len(self._reduction_results)" not in benchmark_section
     assert "for ordered_idx, source_idx in self._bucket_reorder_pairs:" in benchmark_section
     assert "enumerate(self.models)" not in benchmark_section
     assert "enumerate(self._ordered_bucket_indices)" not in benchmark_section
@@ -923,6 +934,8 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "for model_idx, model, update_buffer in self._model_update_groups:" in benchmark_section
     assert "root_buf = reduction_results[model_idx]" in benchmark_section
     assert "zip(self.models, reduction_results)" not in benchmark_section
+    assert "self._slot_counts = ()" in teardown_section
+    assert "self._expected_slot_counts = ()" in teardown_section
     assert "root_buf.zero_()" not in reduce_section
     assert "root_buf.to(model.weight.device" not in benchmark_section
     assert "root_local.copy_(root_buf, non_blocking=True)" in benchmark_section
