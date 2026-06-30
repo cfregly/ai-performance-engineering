@@ -215,7 +215,7 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("Verification input/output not initialized")
-        with torch.no_grad():
+        with torch.inference_mode():
             self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},

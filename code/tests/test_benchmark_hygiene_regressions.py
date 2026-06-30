@@ -15844,7 +15844,8 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
         assert "self._verify_output_buffer" in source
         assert "self._verify_output_buffer = torch.empty(" in setup_section
         assert "dtype=torch.float32" in setup_section
-        assert "with torch.no_grad():" in capture_section
+        assert "with torch.inference_mode():" in capture_section
+        assert "with torch.no_grad():" not in capture_section
         assert "self._verify_output_buffer.copy_(self.output)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert "output=self.output.float()" not in capture_section
