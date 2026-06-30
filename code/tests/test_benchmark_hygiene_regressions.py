@@ -10711,6 +10711,27 @@ def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
     assert "logits[logits <" not in generate_section
 
 
+def test_nanochat_attention_reuses_non_flash_sdpa_backend_order() -> None:
+    source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "gpt.py").read_text(
+        encoding="utf-8"
+    )
+    attention_section = source.split("class CausalSelfAttention", maxsplit=1)[1].split(
+        "class MLP", maxsplit=1
+    )[0]
+    forward_section = attention_section.split("def forward", maxsplit=1)[1].split(
+        "# Attention: queries attend to keys/values autoregressively.", maxsplit=1
+    )[1].split(
+        "# Re-assemble the heads side by side and project back to residual stream", maxsplit=1
+    )[0]
+
+    assert "_NON_FLASH_SDP_BACKENDS = tuple(" in source
+    assert 'getattr(SDPBackend, "EFFICIENT_ATTENTION", None)' in source
+    assert 'getattr(SDPBackend, "MATH", None)' in source
+    assert "sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS" in forward_section
+    assert "getattr(SDPBackend" not in forward_section
+    assert "for backend in (" not in forward_section
+
+
 def test_nanochat_optimized_inference_reuses_decode_step_views() -> None:
     source = (
         REPO_ROOT / "labs" / "nanochat_fullstack" / "optimized_nanochat_inference.py"

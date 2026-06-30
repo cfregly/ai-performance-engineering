@@ -33,6 +33,15 @@ from nanochat.adamw import DistAdamW
 from nanochat.kernels.clustered_attention import clustered_attention
 from nanochat.kernels.stubs import resolve_clustered_attention_kernel
 
+_NON_FLASH_SDP_BACKENDS = tuple(
+    backend
+    for backend in (
+        getattr(SDPBackend, "EFFICIENT_ATTENTION", None),
+        getattr(SDPBackend, "MATH", None),
+    )
+    if backend is not None
+)
+
 
 def _maybe_make_weight_only_linear(in_features, out_features, config, name="linear"):
     """Create a linear layer; optionally use Transformer Engine when flagged."""
@@ -380,17 +389,8 @@ class CausalSelfAttention(nn.Module):
         use_mask = self.use_padded_attention and attention_mask is not None
         if attention_mask is not None and not self.use_padded_attention:
             raise ValueError("attention_mask provided but use_padded_attention=False")
-        sdpa_order = None
-        if not self.use_flash_sdp:
-            # Allow callers to force efficient/math paths when flash/TE is undesired.
-            sdpa_order = [
-                backend
-                for backend in (
-                    getattr(SDPBackend, "EFFICIENT_ATTENTION", None),
-                    getattr(SDPBackend, "MATH", None),
-                )
-                if backend is not None
-            ]
+        # Allow callers to force efficient/math paths when flash/TE is undesired.
+        sdpa_order = None if self.use_flash_sdp else _NON_FLASH_SDP_BACKENDS
         attn_mask = None
         if use_mask:
             if attention_mask.dim() == 2:
