@@ -15116,7 +15116,8 @@ def test_ch13_dataloader_payload_inputs_reuse_dict() -> None:
         assert 'self._payload_inputs["labels"] = labels' in benchmark_section
         assert 'self._payload_inputs["data"] = data.detach()' not in benchmark_section
         assert 'self._payload_inputs["labels"] = labels.detach()' not in benchmark_section
-        assert "self.output = outputs.detach()" in benchmark_section
+        assert "self.output = outputs.detach_()" in benchmark_section
+        assert "outputs.detach()" not in benchmark_section
         assert "self._payload_inputs_ready = True" in benchmark_section
         assert 'self._payload_inputs = {"data": data.detach(), "labels": labels.detach()}' not in benchmark_section
         assert "if not self._payload_inputs_ready or self.output is None:" in capture_section
@@ -16300,7 +16301,8 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
         )[0]
 
         assert ".detach().clone()" not in benchmark_section
-        assert "self.output = outputs.detach()" in benchmark_section
+        assert "self.output = outputs.detach_()" in benchmark_section
+        assert "outputs.detach()" not in benchmark_section
         assert "self._micro_step_range = range(self.micro_steps)" in source
         assert "for _ in self._micro_step_range:" in benchmark_section
         assert "for _ in range(self.micro_steps):" not in benchmark_section
@@ -19301,8 +19303,10 @@ def test_ch13_memory_profiling_pair_keeps_compute_dtype_fixed_and_direct_output_
         assert "dtype=torch.float32" in source
     assert ".detach().clone()" not in baseline_benchmark
     assert ".detach().clone()" not in optimized_benchmark
-    assert "self.output = outputs.detach()" in baseline_benchmark
-    assert "self.output = outputs.detach()" in optimized_benchmark
+    assert "self.output = outputs.detach_()" in baseline_benchmark
+    assert "self.output = outputs.detach_()" in optimized_benchmark
+    assert "outputs.detach()" not in baseline_benchmark
+    assert "outputs.detach()" not in optimized_benchmark
     assert "use_reentrant=False" in optimized_source
     assert "self.model.zero_grad(set_to_none=True)" in optimized_benchmark
     for source, setup, capture, teardown in (

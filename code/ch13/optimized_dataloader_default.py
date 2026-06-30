@@ -171,7 +171,7 @@ class OptimizedDataloaderTunedBenchmark(VerificationPayloadMixin, BaseBenchmark)
             loss = self.criterion(outputs, labels)
             loss.backward()
             self.optimizer.step()
-            self.output = outputs.detach()
+            self.output = outputs.detach_()
         self._payload_inputs["data"] = data
         self._payload_inputs["labels"] = labels
         self._payload_inputs_ready = True
