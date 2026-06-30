@@ -13779,9 +13779,12 @@ def test_ch13_expert_parallel_batches_recv_split_materialization() -> None:
         maxsplit=1,
     )[0]
 
-    assert "recv_counts = torch.stack(gathered, dim=0)[:, rank]" in split_section
+    assert "recv_counts = torch.empty(world_size, dtype=send_counts.dtype, device=send_counts.device)" in split_section
+    assert "for src, counts in enumerate(gathered):" in split_section
+    assert "recv_counts[src].copy_(counts[rank])" in split_section
     assert "recv_counts_host = recv_counts.detach().cpu()" in split_section
     assert "return [int(recv_counts_host[src]) for src in range(recv_counts_host.numel())]" in split_section
+    assert "recv_counts = torch.stack(gathered, dim=0)[:, rank]" not in split_section
     assert "recv_counts.detach().cpu().tolist()" not in split_section
     assert "gathered[src][rank].item()" not in split_section
 
