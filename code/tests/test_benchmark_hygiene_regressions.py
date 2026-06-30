@@ -17615,10 +17615,14 @@ def test_ch15_moe_overlap_reuses_comm_chunk_views() -> None:
 
         assert "self._flat_inputs: Optional[torch.Tensor] = None" in source
         assert "self._comm_copy_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in source
+        assert "self._comm_round_range = range(self.comm_round_trips)" in source
         assert "self._flat_inputs = self.inputs.view(-1, self.hidden_size)" in setup_section
         assert "self._comm_copy_pairs = [" in setup_section
+        assert "self._comm_round_range = range(self.comm_round_trips)" in setup_section
         assert "for start in range(0, total_tokens, chunk_tokens)" in setup_section
         assert "flat = self._flat_inputs" in benchmark_section
+        assert "for _ in self._comm_round_range:" in benchmark_section
+        assert "for _ in range(self.comm_round_trips):" not in benchmark_section
         assert "for comm_chunk, remote_chunk in self._comm_copy_pairs:" in benchmark_section
         assert "comm_chunk.copy_(remote_chunk, non_blocking=True)" in benchmark_section
         assert "start:end" not in benchmark_section
@@ -17626,6 +17630,7 @@ def test_ch15_moe_overlap_reuses_comm_chunk_views() -> None:
         assert "chunk_tokens = max" not in benchmark_section
         assert "self.inputs.view(-1, self.hidden_size)" not in benchmark_section
         assert "self._comm_copy_pairs = []" in teardown_section
+        assert "self._comm_round_range = range(self.comm_round_trips)" in teardown_section
 
     baseline_source = (REPO_ROOT / "ch15" / "baseline_moe_overlap.py").read_text(
         encoding="utf-8"
