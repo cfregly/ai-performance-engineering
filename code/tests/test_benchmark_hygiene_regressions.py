@@ -15774,6 +15774,9 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
 
         assert ".detach().clone()" not in benchmark_section
         assert "self.output = outputs.detach()" in benchmark_section
+        assert "self._micro_step_range = range(self.micro_steps)" in source
+        assert "for _ in self._micro_step_range:" in benchmark_section
+        assert "for _ in range(self.micro_steps):" not in benchmark_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)" in setup_section
         assert "self._verify_output_buffer.copy_(self.output)" in capture_section

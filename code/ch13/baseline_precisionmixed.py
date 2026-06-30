@@ -51,6 +51,7 @@ class BaselinePrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # time in GEMM-heavy math where mixed precision should pay off.
         self.hidden_dim = 3072
         self.micro_steps = 4
+        self._micro_step_range = range(self.micro_steps)
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.micro_steps),
@@ -77,6 +78,7 @@ class BaselinePrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.targets = torch.randn_like(self.inputs)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)
         self.criterion = nn.MSELoss()
+        self._micro_step_range = range(self.micro_steps)
         self._verify_input = self.inputs.detach().clone()
         self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         
@@ -90,7 +92,7 @@ class BaselinePrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if any(v is None for v in (self.model, self.inputs, self.targets, self.optimizer, self.criterion)):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_precision_mixed"):
-            for _ in range(self.micro_steps):
+            for _ in self._micro_step_range:
                 self.optimizer.zero_grad(set_to_none=True)
                 outputs = self.model(self.inputs)
                 loss = self.criterion(outputs, self.targets)

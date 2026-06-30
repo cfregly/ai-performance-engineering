@@ -52,6 +52,7 @@ class OptimizedPrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # against the same training shape as the FP32 baseline.
         self.hidden_dim = 3072
         self.micro_steps = 4
+        self._micro_step_range = range(self.micro_steps)
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.micro_steps),
@@ -82,6 +83,7 @@ class OptimizedPrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.targets_fp32 = torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
         self.inputs = self.inputs_fp32.to(dtype=torch.bfloat16)
         self.targets = self.targets_fp32.to(dtype=torch.bfloat16)
+        self._micro_step_range = range(self.micro_steps)
         self._verify_input = self.inputs_fp32.detach().clone()
         self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)
@@ -102,7 +104,7 @@ class OptimizedPrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if any(v is None for v in (self.model, self.inputs, self.targets, self.optimizer, self.criterion)):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("optimized_precision_mixed"):
-            for _ in range(self.micro_steps):
+            for _ in self._micro_step_range:
                 self.optimizer.zero_grad(set_to_none=True)
                 
                 with autocast("cuda", dtype=torch.bfloat16):
