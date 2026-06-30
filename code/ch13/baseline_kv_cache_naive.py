@@ -183,7 +183,7 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.model is None or self.kv_cache is None or self.inputs is None:
             raise RuntimeError("Benchmark not configured")
 
-        with self._nvtx_range("kv_cache_baseline_naive"):
+        with torch.inference_mode(), self._nvtx_range("kv_cache_baseline_naive"):
             for seq_idx, x in enumerate(self.inputs):
                 request_id = f"req_{seq_idx}"
                 seq_len = x.size(1)
@@ -196,7 +196,7 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
                 self.kv_cache.free(request_id)
             # Store last output for verification
-            self.output = token.detach()
+            self.output = token
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
 

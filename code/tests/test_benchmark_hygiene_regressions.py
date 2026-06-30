@@ -15710,7 +15710,7 @@ def test_ch13_optimized_static_fp8_reuses_activation_quant_buffers() -> None:
 def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_loop() -> None:
     precision_targets = ("baseline_precisionmixed.py", "optimized_precisionmixed.py")
     kv_targets = {
-        "baseline_kv_cache_naive.py": "self.output = token.detach()",
+        "baseline_kv_cache_naive.py": "self.output = token",
         "optimized_kv_cache_naive.py": "self.output = hidden",
         "optimized_kv_cache_naive_flash_blockwise.py": "self.output = hidden[:, -1:, :]",
         "optimized_kv_cache_naive_pool.py": "self.output = hidden",
@@ -15758,6 +15758,9 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
 
         assert ".detach().clone()" not in benchmark_section
         assert output_assignment in benchmark_section
+        if name == "baseline_kv_cache_naive.py":
+            assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
+            assert "token.detach()" not in benchmark_section
         if name.startswith("optimized_kv_cache_naive"):
             assert "hidden.detach()" not in benchmark_section
             assert "hidden[:, -1:, :].detach()" not in benchmark_section
