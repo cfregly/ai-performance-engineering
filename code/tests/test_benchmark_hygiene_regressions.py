@@ -18244,10 +18244,22 @@ def test_ch04_single_gpu_transfer_reuses_inner_iteration_range() -> None:
     )
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+    finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1]
 
+    assert "import time" not in source
+    assert "self._total_bytes_per_benchmark = bytes_per_iter * self.inner_iterations" in setup_section
+    assert "self._pending_bandwidth_sample = False" in setup_section
     assert "self._inner_iteration_range = range(self.inner_iterations)" in setup_section
     assert "self._stream_chunk_pairs: list[tuple[torch.cuda.Stream, torch.Tensor, torch.Tensor]] = []" in setup_section
     assert "self._stream_chunk_pairs = [" in setup_section
@@ -18256,6 +18268,15 @@ def test_ch04_single_gpu_transfer_reuses_inner_iteration_range() -> None:
     assert "for _ in range(self.inner_iterations):" not in benchmark_section
     assert "enumerate(self.chunk_pairs)" not in benchmark_section
     assert "idx % len(self.streams)" not in benchmark_section
+    assert "time.perf_counter()" not in benchmark_section
+    assert "self.last_bandwidth_gbps =" not in benchmark_section
+    assert "self._pending_bandwidth_sample = True" in benchmark_section
+    assert 'getattr(self, "_last_wall_elapsed_ms", None)' in finalize_section
+    assert 'getattr(self, "_last_elapsed_ms", None)' in finalize_section
+    assert "self._pending_bandwidth_sample = False" in finalize_section
+    assert "self.last_bandwidth_gbps = (self._total_bytes_per_benchmark / elapsed_s) / 1e9" in finalize_section
+    assert "self.finalize_iteration_metrics()" in capture_section
+    assert "self.finalize_iteration_metrics()" in metrics_section
 
 
 def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() -> None:
