@@ -155,7 +155,12 @@ class OptimizedDataloaderTunedBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
-        if any(v is None for v in (self.model, self.optimizer, self.criterion, self._data_iter)):
+        if (
+            self.model is None
+            or self.optimizer is None
+            or self.criterion is None
+            or self._data_iter is None
+        ):
             raise RuntimeError("Benchmark not configured")
 
         with self._nvtx_range("optimized_dataloader_default"):

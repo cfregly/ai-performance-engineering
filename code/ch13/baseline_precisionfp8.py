@@ -119,7 +119,13 @@ class BaselinePrecisionFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - FP16 precision."""
-        if any(v is None for v in (self.model, self.optimizer, self.criterion, self._verify_input, self._verify_input_fp16)):
+        if (
+            self.model is None
+            or self.optimizer is None
+            or self.criterion is None
+            or self._verify_input is None
+            or self._verify_input_fp16 is None
+        ):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_precisionfp8"):
             self._train_step()

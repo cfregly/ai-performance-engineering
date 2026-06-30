@@ -15183,6 +15183,43 @@ def test_ch13_training_benchmarks_defer_verification_materialization_outside_hot
     assert "self.output = None" in optimized_benchmark
 
 
+def test_ch13_benchmark_guards_avoid_generator_allocations() -> None:
+    targets = (
+        "baseline_autograd_standard.py",
+        "baseline_dataloader_default.py",
+        "optimized_dataloader_default.py",
+        "baseline_precisionmixed.py",
+        "optimized_precisionmixed.py",
+        "baseline_training_speed.py",
+        "optimized_training_speed.py",
+        "baseline_training_standard.py",
+        "optimized_training_standard.py",
+        "baseline_precisionfp8.py",
+        "baseline_precisionfp8_pad_inner.py",
+        "baseline_warp_specialization_training.py",
+        "optimized_warp_specialization_training.py",
+    )
+    for name in targets:
+        source = (REPO_ROOT / "ch13" / name).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        benchmark_fn = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "benchmark_fn"
+        )
+        benchmark_tail = source.split("def benchmark_fn", maxsplit=1)[1]
+        if "def capture_verification_payload" in benchmark_tail:
+            benchmark_section = benchmark_tail.split(
+                "def capture_verification_payload",
+                maxsplit=1,
+            )[0]
+        else:
+            benchmark_section = benchmark_tail.split("def teardown", maxsplit=1)[0]
+
+        assert not any(isinstance(node, ast.GeneratorExp) for node in ast.walk(benchmark_fn)), name
+        assert "any(" not in benchmark_section
+
+
 def test_ch13_training_models_reuse_position_id_buffers() -> None:
     sources = [
         REPO_ROOT / "ch13" / "training_speed_common.py",

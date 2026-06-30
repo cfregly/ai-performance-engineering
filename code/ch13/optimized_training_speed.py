@@ -58,17 +58,14 @@ class OptimizedTrainingSpeedBenchmark(BaselineTrainingSpeedBenchmark):
         self.output = None
 
     def benchmark_fn(self) -> None:
-        if any(
-            v is None
-            for v in (
-                self.graph,
-                self.capture_stream,
-                self.input_ids,
-                self.targets,
-                self.static_input,
-                self.static_target,
-                self.static_target_flat,
-            )
+        if (
+            self.graph is None
+            or self.capture_stream is None
+            or self.input_ids is None
+            or self.targets is None
+            or self.static_input is None
+            or self.static_target is None
+            or self.static_target_flat is None
         ):
             raise RuntimeError("CUDA graph not initialized")
 

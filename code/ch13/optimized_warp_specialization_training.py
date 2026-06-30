@@ -39,7 +39,15 @@ class OptimizedWarpSpecializationTrainingBenchmark(BaselineWarpSpecializationTra
             raise
 
     def benchmark_fn(self) -> None:
-        if any(v is None for v in (self.x, self.scale0, self.bias0, self.scale1, self.bias1, self.scale2, self.bias2)):
+        if (
+            self.x is None
+            or self.scale0 is None
+            or self.bias0 is None
+            or self.scale1 is None
+            or self.bias1 is None
+            or self.scale2 is None
+            or self.bias2 is None
+        ):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("optimized_warp_specialization_training"):
             with torch.inference_mode():

@@ -187,16 +187,13 @@ class OptimizedTrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Training step WITH checkpointing - recomputes activations in backward."""
-        if any(
-            v is None
-            for v in (
-                self.model,
-                self.input_ids,
-                self.targets,
-                self._targets_flat,
-                self.optimizer,
-                self.criterion,
-            )
+        if (
+            self.model is None
+            or self.input_ids is None
+            or self.targets is None
+            or self._targets_flat is None
+            or self.optimizer is None
+            or self.criterion is None
         ):
             raise RuntimeError("Benchmark not configured")
 

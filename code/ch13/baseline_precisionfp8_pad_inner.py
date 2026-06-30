@@ -84,7 +84,7 @@ class BaselinePrecisionFP8PadInnerBenchmark(VerificationPayloadMixin, BaseBenchm
         )
 
     def benchmark_fn(self) -> None:
-        if any(v is None for v in (self.model, self.inputs, self._verify_input)):
+        if self.model is None or self.inputs is None or self._verify_input is None:
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_precisionfp8_pad_inner"):
             with torch.inference_mode():

@@ -89,7 +89,13 @@ class BaselinePrecisionMixedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - FP32 training."""
-        if any(v is None for v in (self.model, self.inputs, self.targets, self.optimizer, self.criterion)):
+        if (
+            self.model is None
+            or self.inputs is None
+            or self.targets is None
+            or self.optimizer is None
+            or self.criterion is None
+        ):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("baseline_precision_mixed"):
             for _ in self._micro_step_range:
