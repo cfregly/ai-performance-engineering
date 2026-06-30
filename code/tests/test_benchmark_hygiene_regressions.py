@@ -19558,6 +19558,7 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
         REPO_ROOT / "labs" / "persistent_decode" / "optimized_persistent_decode_graphs.py",
         REPO_ROOT / "labs" / "persistent_decode" / "optimized_persistent_decode_triton.py",
         REPO_ROOT / "labs" / "persistent_decode" / "baseline_tma_prefill_decode.py",
+        REPO_ROOT / "labs" / "persistent_decode" / "baseline_native_tma_prefill_decode.py",
         REPO_ROOT / "labs" / "persistent_decode" / "optimized_tma_prefill_decode.py",
         REPO_ROOT / "labs" / "persistent_decode" / "optimized_native_tma_prefill_decode.py",
     ]
@@ -19601,6 +19602,12 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
             assert "output=self._verify_output_buffer" in capture_section
             assert "self.output.float().clone()" not in capture_section
             assert "self.output.to(dtype=torch.float32)" not in capture_section
+            if path.name.startswith("baseline"):
+                hot_section = text.split(setup_split, maxsplit=1)[1].split(
+                    "def capture_verification_payload",
+                    maxsplit=1,
+                )[0]
+                assert ".detach()" not in hot_section
 
         if path.name in {
             "optimized_persistent_decode_cuda.py",
