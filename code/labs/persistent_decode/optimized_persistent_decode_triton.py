@@ -116,7 +116,7 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
         num_items = min(self.batch, self.num_programs)
         grid = (max(1, num_items),)
         BLOCK_K = self.block_k
-        with self._nvtx_range("persistent_decode_triton"):
+        with torch.inference_mode(), self._nvtx_range("persistent_decode_triton"):
             persistent_decode_kernel[grid](
                 self.inputs.q,
                 self.inputs.k,

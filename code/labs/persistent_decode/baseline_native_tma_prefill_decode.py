@@ -110,9 +110,9 @@ class BaselineNativeTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenc
         ):
             raise RuntimeError("Inputs not initialized")
 
-        with self._nvtx_range("prefill_native_baseline"):
+        with torch.inference_mode(), self._nvtx_range("prefill_native_baseline"):
             self._prefill_native()
-        with self._nvtx_range("decode_baseline"):
+        with torch.inference_mode(), self._nvtx_range("decode_baseline"):
             self._decode_host_loop()
         self.output = self._output_view
         if self.inputs is None or self.output is None:

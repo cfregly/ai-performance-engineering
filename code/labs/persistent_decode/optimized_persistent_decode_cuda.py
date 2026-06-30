@@ -95,7 +95,7 @@ class OptimizedPersistentDecodeCUDABenchmark(VerificationPayloadMixin, BaseBench
             raise RuntimeError("SKIPPED: persistent_decode_ext not initialized")
         
         # Call the extension's forward pass
-        with self._nvtx_range("persistent_decode_cuda"):
+        with torch.inference_mode(), self._nvtx_range("persistent_decode_cuda"):
             self._ext.persistent_decode(
                 self.inputs.q,
                 self.inputs.k,

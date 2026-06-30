@@ -104,7 +104,7 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         if self.inputs is None or self._output_view is None or not self._decode_step_views:
             raise RuntimeError("Inputs not initialized")
 
-        with self._nvtx_range("baseline_per_token"):
+        with torch.inference_mode(), self._nvtx_range("baseline_per_token"):
             for q_t, k_t, v_t, out_t in self._decode_step_views:
                 self._decode_step(q_t, k_t, v_t, out_t)
             self.output = self._output_view

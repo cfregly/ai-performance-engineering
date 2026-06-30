@@ -454,7 +454,7 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         if use_full and self.full_graph is not None:
             start = self._full_events["start"]
             end = self._full_events["end"]
-            with self._nvtx_range("full_graph_high_pri"):
+            with torch.inference_mode(), self._nvtx_range("full_graph_high_pri"):
                 with torch.cuda.stream(self.decode_stream):
                     start.record(self.decode_stream)
                     self.full_graph.replay()
@@ -471,12 +471,12 @@ class OptimizedTmaPrefillDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
                 raise RuntimeError("Inputs not initialized for verification")
             return
 
-        with self._nvtx_range("prefill_shaped_low_pri"):
+        with torch.inference_mode(), self._nvtx_range("prefill_shaped_low_pri"):
             start_prefill = self._piecewise_events["start_prefill"]
             end_prefill = self._piecewise_events["end_prefill"]
             start_prefill.record(current_stream)
             pref_events = self._prefill_shaped(async_only=True)
-        with self._nvtx_range(
+        with torch.inference_mode(), self._nvtx_range(
             "decode_graph_high_pri" if self.graph_mode != GraphMode.FULL_AND_PIECEWISE else "graph_fallback_piecewise"
         ):
             start_decode = self._piecewise_events["start_decode"]

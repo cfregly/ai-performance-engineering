@@ -10762,6 +10762,61 @@ def test_persistent_decode_baseline_reuses_decode_step_buffers() -> None:
     assert "self._output_view = None" in teardown_section
 
 
+def test_persistent_decode_hot_paths_use_inference_mode() -> None:
+    exact_labels = {
+        "baseline_persistent_decode.py": ("baseline_per_token",),
+        "optimized_persistent_decode_cuda.py": ("persistent_decode_cuda",),
+        "optimized_persistent_decode_triton.py": ("persistent_decode_triton",),
+        "baseline_tma_prefill_decode.py": ("prefill_baseline", "decode_baseline"),
+        "baseline_native_tma_prefill_decode.py": ("prefill_native_baseline", "decode_baseline"),
+        "optimized_native_tma_prefill_decode.py": (
+            "prefill_native_shaped_low_pri",
+            "decode_graph_high_pri",
+        ),
+    }
+
+    for filename, labels in exact_labels.items():
+        source = (REPO_ROOT / "labs" / "persistent_decode" / filename).read_text(
+            encoding="utf-8"
+        )
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        for label in labels:
+            assert f'with torch.inference_mode(), self._nvtx_range("{label}"):' in benchmark_section
+            assert f'with self._nvtx_range("{label}"):' not in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+
+    graph_source = (
+        REPO_ROOT / "labs" / "persistent_decode" / "optimized_persistent_decode_graphs.py"
+    ).read_text(encoding="utf-8")
+    graph_benchmark = graph_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+    assert 'with torch.inference_mode(), self._nvtx_range("full_graph"):' in graph_benchmark
+    assert "with torch.inference_mode(), self._nvtx_range(" in graph_benchmark
+    assert '"piecewise_graph"' in graph_benchmark
+    assert 'with self._nvtx_range("full_graph"):' not in graph_benchmark
+    assert "torch.no_grad()" not in graph_benchmark
+
+    tma_source = (
+        REPO_ROOT / "labs" / "persistent_decode" / "optimized_tma_prefill_decode.py"
+    ).read_text(encoding="utf-8")
+    tma_benchmark = tma_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+    assert 'with torch.inference_mode(), self._nvtx_range("full_graph_high_pri"):' in tma_benchmark
+    assert 'with torch.inference_mode(), self._nvtx_range("prefill_shaped_low_pri"):' in tma_benchmark
+    assert "with torch.inference_mode(), self._nvtx_range(" in tma_benchmark
+    assert '"decode_graph_high_pri"' in tma_benchmark
+    assert 'with self._nvtx_range("full_graph_high_pri"):' not in tma_benchmark
+    assert 'with self._nvtx_range("prefill_shaped_low_pri"):' not in tma_benchmark
+    assert "torch.no_grad()" not in tma_benchmark
+
+
 def test_persistent_decode_tma_buffers_avoid_zero_fill_before_overwrite() -> None:
     prefill_targets = [
         REPO_ROOT / "labs" / "persistent_decode" / "baseline_tma_prefill_decode.py",

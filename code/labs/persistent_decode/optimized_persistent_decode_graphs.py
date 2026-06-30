@@ -166,7 +166,7 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         if use_full and self.full_graph is not None:
             start = self._full_events["start"]
             end = self._full_events["end"]
-            with self._nvtx_range("full_graph"):
+            with torch.inference_mode(), self._nvtx_range("full_graph"):
                 start.record(current_stream)
                 self.full_graph.replay()
                 end.record(current_stream)
@@ -181,7 +181,7 @@ class OptimizedPersistentDecodeGraphsBenchmark(VerificationPayloadMixin, BaseBen
         if self.prefill_graph is None or self.decode_graph is None:
             raise RuntimeError("Piecewise graphs not initialized")
 
-        with self._nvtx_range(
+        with torch.inference_mode(), self._nvtx_range(
             "piecewise_graph" if self.graph_mode != GraphMode.FULL_AND_PIECEWISE else "graph_fallback_piecewise"
         ):
             start_prefill = self._piecewise_events["start_prefill"]
