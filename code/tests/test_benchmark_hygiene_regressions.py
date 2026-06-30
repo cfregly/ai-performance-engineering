@@ -5238,21 +5238,61 @@ def test_ch19_dynamic_precision_benchmarks_reuse_decode_workspaces() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    baseline_teardown = baseline_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_workload_metadata",
+        maxsplit=1,
+    )[0]
+    optimized_teardown = optimized_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_workload_metadata",
+        maxsplit=1,
+    )[0]
 
     assert "self._decode_workspace: Optional[FixedDecodeWorkspace] = None" in baseline_source
     assert "self._decode_workspace = FixedDecodeWorkspace(" in baseline_setup
     assert "host_logits_buffer=torch.empty(" in baseline_setup
     assert "policy_top2_values=torch.empty((self.cfg.batch_size, 2), device=\"cpu\", dtype=torch.float32)" in baseline_setup
     assert "policy_top2_indices=torch.empty((self.cfg.batch_size, 2), device=\"cpu\", dtype=torch.long)" in baseline_setup
+    assert "self._verify_prompt_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._verify_prompt_buffer = torch.empty(" in baseline_setup
+    assert "self._verify_output_buffer = torch.empty(" in baseline_setup
+    assert "pin_memory=True" in baseline_setup
     assert "workspace=self._decode_workspace" in baseline_benchmark
     assert "torch.empty(" not in baseline_benchmark
+    assert "self._verify_prompt_buffer.copy_(self.prompt, non_blocking=False)" in baseline_capture
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in baseline_capture
+    assert "inputs={\"prompt\": self._verify_prompt_buffer}" in baseline_capture
+    assert "output=self._verify_output_buffer" in baseline_capture
+    assert ".detach().cpu()" not in baseline_capture
+    assert "self._verify_prompt_buffer = None" in baseline_teardown
+    assert "self._verify_output_buffer = None" in baseline_teardown
 
     assert "self._decode_workspace: Optional[DynamicPrecisionWorkspace] = None" in optimized_source
     assert "self._decode_workspace = DynamicPrecisionWorkspace(" in optimized_setup
     assert "top2_values=torch.empty(" in optimized_setup
     assert "ema_conf=torch.empty(" in optimized_setup
+    assert "self._verify_prompt_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._verify_prompt_buffer = torch.empty(" in optimized_setup
+    assert "self._verify_output_buffer = torch.empty(" in optimized_setup
+    assert "pin_memory=True" in optimized_setup
     assert "workspace=self._decode_workspace" in optimized_benchmark
     assert "torch.empty(" not in optimized_benchmark
+    assert "self._verify_prompt_buffer.copy_(self.prompt, non_blocking=False)" in optimized_capture
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in optimized_capture
+    assert "inputs={\"prompt\": self._verify_prompt_buffer}" in optimized_capture
+    assert "output=self._verify_output_buffer" in optimized_capture
+    assert ".detach().cpu()" not in optimized_capture
+    assert "self._verify_prompt_buffer = None" in optimized_teardown
+    assert "self._verify_output_buffer = None" in optimized_teardown
 
 
 def test_ch19_native_fp4_batches_accuracy_metric_reads() -> None:

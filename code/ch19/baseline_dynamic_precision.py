@@ -25,6 +25,8 @@ class BaselineDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.prompt = None
         self.output: Optional[torch.Tensor] = None
         self._decode_workspace: Optional[FixedDecodeWorkspace] = None
+        self._verify_prompt_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.batch_size),
@@ -51,6 +53,18 @@ class BaselineDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark)
             policy_top2_values=torch.empty((self.cfg.batch_size, 2), device="cpu", dtype=torch.float32),
             policy_top2_indices=torch.empty((self.cfg.batch_size, 2), device="cpu", dtype=torch.long),
         )
+        self._verify_prompt_buffer = torch.empty(
+            self.prompt.shape,
+            device="cpu",
+            dtype=self.prompt.dtype,
+            pin_memory=True,
+        )
+        self._verify_output_buffer = torch.empty(
+            output_shape,
+            device="cpu",
+            dtype=self.prompt.dtype,
+            pin_memory=True,
+        )
 
     def benchmark_fn(self) -> None:
         if self.model is None or self.prompt is None or self._decode_workspace is None:
@@ -64,11 +78,19 @@ class BaselineDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         )
 
     def capture_verification_payload(self) -> None:
-        if self.prompt is None or self.output is None or self.model is None:
+        if (
+            self.prompt is None
+            or self.output is None
+            or self.model is None
+            or self._verify_prompt_buffer is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_prompt_buffer.copy_(self.prompt, non_blocking=False)
+        self._verify_output_buffer.copy_(self.output, non_blocking=False)
         self._set_verification_payload(
-            inputs={"prompt": self.prompt.detach().cpu()},
-            output=self.output.detach().cpu(),
+            inputs={"prompt": self._verify_prompt_buffer},
+            output=self._verify_output_buffer,
             batch_size=self.cfg.batch_size,
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -79,6 +101,15 @@ class BaselineDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark)
             },
             output_tolerance=(0.0, 0.0),
         )
+
+    def teardown(self) -> None:
+        self.model = None
+        self.prompt = None
+        self.output = None
+        self._decode_workspace = None
+        self._verify_prompt_buffer = None
+        self._verify_output_buffer = None
+        super().teardown()
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
