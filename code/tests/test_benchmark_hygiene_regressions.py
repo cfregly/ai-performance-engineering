@@ -7044,6 +7044,42 @@ def test_ch20_benchmarks_cache_verification_parameter_count() -> None:
         assert "sum(p.numel()" not in capture_section
 
 
+def test_ch20_verification_forwards_reuse_output_buffers() -> None:
+    for relative in (
+        "ch20/baseline_autotuning.py",
+        "ch20/optimized_autotuning.py",
+        "ch20/baseline_moe.py",
+        "ch20/optimized_moe.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert (
+            "self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)"
+            in setup_section
+        )
+        assert "verify_output = self.model(self._verify_input)" in capture_section
+        assert "self._verify_output_buffer.copy_(verify_output)" in capture_section
+        assert "self.output = self._verify_output_buffer" in capture_section
+        assert "self.model(self._verify_input).float().clone()" not in capture_section
+        assert "output=self.output" in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch20_integrated_and_pipeline_cache_nvtx_enablement() -> None:
     for relative, label in (
         ("ch20/baseline_integrated_kv_cache.py", "baseline_integrated_kv_cache"),
