@@ -17265,6 +17265,7 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     optimized_benchmark = source.split("class OptimizedPrefillDecodeSingleGPUBenchmark", maxsplit=1)[1]
 
     assert "self._pending_outputs: List[torch.Tensor] = []" in base_section
+    assert "self._request_prompt_outputs: List[tuple[int, torch.Tensor, torch.Tensor]] = []" in base_section
     assert "self._output_stack: Optional[torch.Tensor] = None" in base_section
     assert "self._metadata_inputs: Dict[str, torch.Tensor] = {}" in base_section
     assert "self._verify_prompt_buffer: Optional[torch.Tensor] = None" in base_section
@@ -17274,12 +17275,15 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "self._verify_prompt_buffer.copy_(self.prompts[0], non_blocking=False)" in base_section
     assert "self._flat_prompts = self.prompts.view(" in base_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in base_section
+    assert "self._request_prompt_outputs = list(" in base_section
+    assert "zip(range(self.cfg.requests_per_rank), self.prompts, self._pending_outputs, strict=True)" in base_section
     assert "self._output_stack = torch.empty(" in base_section
     assert '"decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype)' in base_section
     assert "torch.stack(self._pending_outputs, dim=0, out=self._output_stack)" in base_section
     assert "self._output = self._output_stack" in base_section
     assert '"prompt": self._verify_prompt_buffer' in base_section
     assert '"decode_tokens": self._metadata_inputs["decode_tokens"]' in base_section
+    assert "self._request_prompt_outputs = []" in base_section
     assert "self.prompts[0].detach().cpu()" not in base_section
     assert "torch.zeros(" not in base_section.split("def capture_verification_payload", maxsplit=1)[1].split("def teardown", maxsplit=1)[0]
     assert "kv_cache = kv_cpu.to(self.device)" not in baseline_benchmark
@@ -17287,10 +17291,16 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "self._kv_host_staging.copy_(kv_cache, non_blocking=False)" in baseline_benchmark
     assert "kv_cache.copy_(self._kv_host_staging, non_blocking=False)" in baseline_benchmark
     assert "outputs = self._pending_outputs" in baseline_benchmark
-    assert "output_idx = 0" in baseline_benchmark
+    assert "request_prompt_outputs = self._request_prompt_outputs" in baseline_benchmark
+    assert "if len(request_prompt_outputs) != self.cfg.requests_per_rank:" in baseline_benchmark
     assert "with torch.inference_mode():" in baseline_benchmark
+    assert "for output_idx, prompt, _output_slot in request_prompt_outputs:" in baseline_benchmark
+    assert "kv_cache, seed = self.prefill_model.prefill(prompt)" in baseline_benchmark
     assert "outputs[output_idx] = self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)" in baseline_benchmark
-    assert "output_idx += 1" in baseline_benchmark
+    assert "output_idx = 0" not in baseline_benchmark
+    assert "output_idx += 1" not in baseline_benchmark
+    assert "for idx in range(self.cfg.requests_per_rank):" not in baseline_benchmark
+    assert "self.prompts[idx]" not in baseline_benchmark
     assert "outputs: List[torch.Tensor] = []" not in baseline_benchmark
     assert "outputs.append(" not in baseline_benchmark
     assert "torch.stack(" not in baseline_benchmark

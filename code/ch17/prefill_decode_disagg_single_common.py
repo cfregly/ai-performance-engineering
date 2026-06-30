@@ -43,6 +43,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self._output: Optional[torch.Tensor] = None
         self._output_stack: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
+        self._request_prompt_outputs: List[tuple[int, torch.Tensor, torch.Tensor]] = []
         self._metadata_inputs: Dict[str, torch.Tensor] = {}
         self._verify_prompt_buffer: Optional[torch.Tensor] = None
         self._param_count = 0
@@ -80,6 +81,9 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
             p.numel() for p in self.decode_model.parameters()
         )
         self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
+        self._request_prompt_outputs = list(
+            zip(range(self.cfg.requests_per_rank), self.prompts, self._pending_outputs, strict=True)
+        )
         self._output_stack = torch.empty(
             (self.cfg.requests_per_rank, self.cfg.batch_size, self.cfg.hidden_size),
             device=self.device,
@@ -148,6 +152,7 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self._output = None
         self._output_stack = None
         self._pending_outputs = []
+        self._request_prompt_outputs = []
         self._metadata_inputs = {}
         self._verify_prompt_buffer = None
         torch.cuda.empty_cache()
@@ -186,14 +191,15 @@ class BaselinePrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
         outputs = self._pending_outputs
         if len(outputs) != self.cfg.requests_per_rank:
             raise RuntimeError("Decode output slots not initialized")
-        output_idx = 0
+        request_prompt_outputs = self._request_prompt_outputs
+        if len(request_prompt_outputs) != self.cfg.requests_per_rank:
+            raise RuntimeError("Request prompt/output groups not initialized")
         with torch.inference_mode():
-            for idx in range(self.cfg.requests_per_rank):
-                kv_cache, seed = self.prefill_model.prefill(self.prompts[idx])
+            for output_idx, prompt, _output_slot in request_prompt_outputs:
+                kv_cache, seed = self.prefill_model.prefill(prompt)
                 self._kv_host_staging.copy_(kv_cache, non_blocking=False)
                 kv_cache.copy_(self._kv_host_staging, non_blocking=False)
                 outputs[output_idx] = self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)
-                output_idx += 1
 
         self._set_output(outputs)
 
