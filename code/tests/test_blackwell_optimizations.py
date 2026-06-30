@@ -398,9 +398,11 @@ class TestNumericalCorrectness:
     def test_tensor_parallel_all_gather_uses_uninitialized_receive_buffers(self):
         blackwell = pytest.importorskip("ch16.inference_optimizations_blackwell")
         source = inspect.getsource(blackwell.TensorParallelMultiGPU.forward)
+        class_source = inspect.getsource(blackwell.TensorParallelMultiGPU)
 
-        assert "self._gathered_outputs = [" in source
-        assert "torch.empty_like(outputs)" in source
+        assert "gathered_outputs, final_output = self._output_gather_workspaces(outputs)" in source
+        assert "self._gathered_outputs = [" in class_source
+        assert "torch.empty(local_numel" in class_source
         assert "torch.zeros_like(outputs)" not in source
 
     def test_blackwell_inference_generate_preallocates_output_tokens(self):

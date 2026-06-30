@@ -966,6 +966,47 @@ class TensorParallelMultiGPU:
         cache_shard = kv_cache.cache[:, :, :, start_head:end_head, :, :]
         
         return cache_shard, start_head, end_head
+
+    def _output_gather_workspaces(self, outputs: torch.Tensor):
+        local_shape = tuple(int(dim) for dim in outputs.shape)
+        local_numel = int(outputs.numel())
+        final_shape = (*local_shape[:-1], local_shape[-1] * self.num_gpus)
+        final_numel = local_numel * self.num_gpus
+
+        needs_gather_buffers = (
+            self._gathered_outputs is None
+            or len(self._gathered_outputs) != self.num_gpus
+            or any(
+                buffer.device != outputs.device
+                or buffer.dtype != outputs.dtype
+                or buffer.numel() < local_numel
+                for buffer in self._gathered_outputs
+            )
+        )
+        if needs_gather_buffers:
+            self._gathered_outputs = [
+                torch.empty(local_numel, device=outputs.device, dtype=outputs.dtype)
+                for _ in range(self.num_gpus)
+            ]
+
+        if (
+            self._final_output is None
+            or self._final_output.device != outputs.device
+            or self._final_output.dtype != outputs.dtype
+            or self._final_output.numel() < final_numel
+        ):
+            self._final_output = torch.empty(
+                final_numel,
+                device=outputs.device,
+                dtype=outputs.dtype,
+            )
+
+        gathered_outputs = [
+            buffer[:local_numel].view(local_shape)
+            for buffer in self._gathered_outputs
+        ]
+        final_output = self._final_output[:final_numel].view(final_shape)
+        return gathered_outputs, final_output
     
     def forward(self, input_ids, kv_cache=None):
         """
@@ -979,26 +1020,9 @@ class TensorParallelMultiGPU:
         
         # All-gather outputs across GPUs
         if dist.is_initialized():
-            expected_shape = (*outputs.shape[:-1], outputs.shape[-1] * self.num_gpus)
-            needs_buffer = (
-                self._final_output is None
-                or self._final_output.shape != expected_shape
-                or self._final_output.device != outputs.device
-                or self._final_output.dtype != outputs.dtype
-            )
-            if needs_buffer:
-                self._gathered_outputs = [
-                    torch.empty_like(outputs)
-                    for _ in range(self.num_gpus)
-                ]
-                self._final_output = torch.empty(
-                    expected_shape,
-                    device=outputs.device,
-                    dtype=outputs.dtype,
-                )
-            dist.all_gather(self._gathered_outputs, outputs)
-            torch.cat(self._gathered_outputs, dim=-1, out=self._final_output)
-            final_output = self._final_output
+            gathered_outputs, final_output = self._output_gather_workspaces(outputs)
+            dist.all_gather(gathered_outputs, outputs)
+            torch.cat(gathered_outputs, dim=-1, out=final_output)
         else:
             final_output = outputs
         

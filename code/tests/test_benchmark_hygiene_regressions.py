@@ -15177,8 +15177,32 @@ def test_ch16_blackwell_tensor_parallel_reuses_gather_buffers() -> None:
     assert "outputs = self.model(input_ids)" in forward_section
     assert "self.shard_kv_cache(kv_cache)" not in forward_section
     assert "cache_shard" not in forward_section
-    assert "torch.cat(self._gathered_outputs, dim=-1, out=self._final_output)" in forward_section
+    assert "def _output_gather_workspaces(self, outputs: torch.Tensor)" in source
+    assert "or buffer.numel() < local_numel" in source
+    assert "or self._final_output.numel() < final_numel" in source
+    assert "final_output = self._final_output[:final_numel].view(final_shape)" in source
+    assert "gathered_outputs, final_output = self._output_gather_workspaces(outputs)" in forward_section
+    assert "torch.cat(gathered_outputs, dim=-1, out=final_output)" in forward_section
     assert "final_output = torch.cat(gathered_outputs, dim=-1)" not in forward_section
+
+    from ch16.inference_optimizations_blackwell import TensorParallelMultiGPU
+
+    parallel = object.__new__(TensorParallelMultiGPU)
+    parallel.num_gpus = 2
+    parallel._gathered_outputs = None
+    parallel._final_output = None
+
+    gathered_outputs, final_output = parallel._output_gather_workspaces(torch.empty(2, 3, 4))
+    gather_ptrs = [buffer.data_ptr() for buffer in parallel._gathered_outputs]
+    final_ptr = parallel._final_output.data_ptr()
+    gathered_smaller, final_smaller = parallel._output_gather_workspaces(torch.empty(1, 1, 4))
+
+    assert [buffer.data_ptr() for buffer in parallel._gathered_outputs] == gather_ptrs
+    assert parallel._final_output.data_ptr() == final_ptr
+    assert gathered_outputs[0].shape == (2, 3, 4)
+    assert final_output.shape == (2, 3, 8)
+    assert gathered_smaller[0].shape == (1, 1, 4)
+    assert final_smaller.shape == (1, 1, 8)
 
 
 def test_ch16_blackwell_decoder_reuses_attention_projection_buffers() -> None:
