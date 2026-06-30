@@ -10197,6 +10197,9 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    setup_body = source.split("def setup", maxsplit=1)[1].split(
+        "# -------------------- Benchmark --------------------", maxsplit=1
+    )[0]
 
     assert "self.prefetch_event = torch.cuda.Event() if buffer_count == 2 else None" in setup_section
     assert "wait_stream: Optional[torch.cuda.Stream] = None" in copy_section
@@ -10221,6 +10224,12 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "self._verify_output_buffer.copy_(self.output)" in source
     assert "output=self._verify_output_buffer" in source
     assert "self.output.float().clone()" not in source
+    assert '_FLOAT8_E4M3FN = getattr(torch, "float8_e4m3fn", None)' in source
+    assert '_FLOAT8_E5M2FN = getattr(torch, "float8_e5m2fn", None)' in source
+    assert "needs_cast = q_dtype in (_FLOAT8_E4M3FN, _FLOAT8_E5M2FN)" in setup_body
+    assert 'getattr(torch, "float8_e4m3fn"' not in setup_body
+    assert "fp8_enabled = _FLOAT8_E4M3FN is not None and self.runtime_dtype == _FLOAT8_E4M3FN" in benchmark_section
+    assert 'getattr(torch, "float8_e4m3fn"' not in benchmark_section
 
 
 def test_paged_kv_offload_hot_page_buffers_avoid_zero_fill() -> None:

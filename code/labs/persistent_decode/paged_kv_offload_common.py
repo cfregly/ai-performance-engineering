@@ -35,10 +35,14 @@ from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.arch_config import prefer_sdpa_backends
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig
 
+_FLOAT8_E4M3FN = getattr(torch, "float8_e4m3fn", None)
+_FLOAT8_E5M2FN = getattr(torch, "float8_e5m2fn", None)
+_HAS_FLOAT8_E4M3FN = _FLOAT8_E4M3FN is not None
+
 
 def _supports_fp8_kv() -> bool:
     """Return True if FP8 KV is even representable in this build of PyTorch."""
-    return hasattr(torch, "float8_e4m3fn") and torch.cuda.is_available()
+    return _HAS_FLOAT8_E4M3FN and torch.cuda.is_available()
 
 
 def _supports_fused_fp8_attention() -> bool:
@@ -50,7 +54,7 @@ def _supports_fused_fp8_attention() -> bool:
     """
     if not torch.cuda.is_available():
         return False
-    fp8_dtype = getattr(torch, "float8_e4m3fn", None)
+    fp8_dtype = _FLOAT8_E4M3FN
     if fp8_dtype is None:
         return False
     try:
@@ -65,9 +69,7 @@ def _supports_fused_fp8_attention() -> bool:
 
 def _np_dtype_for(torch_dtype: torch.dtype) -> np.dtype:
     """Map a torch dtype to a numpy dtype used for the memmap backing store."""
-    float8_e4m3 = getattr(torch, "float8_e4m3fn", None)
-    float8_e5m2 = getattr(torch, "float8_e5m2fn", None)
-    if torch_dtype in {float8_e4m3, float8_e5m2}:
+    if torch_dtype in (_FLOAT8_E4M3FN, _FLOAT8_E5M2FN):
         # memmap sticks to fp16; conversion to fp8 happens during staging/H2D.
         return np.float16
     return torch.empty([], dtype=torch_dtype).numpy().dtype
@@ -152,8 +154,14 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     f"falling back to {self.cfg.fallback_dtype}."
                 )
                 return self.cfg.fallback_dtype
+            if _FLOAT8_E4M3FN is None:
+                self._fp8_reason = (
+                    "FP8 requested but torch.float8_e4m3fn is unavailable; "
+                    f"falling back to {self.cfg.fallback_dtype}."
+                )
+                return self.cfg.fallback_dtype
             self._fp8_reason = "Using FP8 KV: FP8 SDPA kernel available."
-            return torch.float8_e4m3fn  # type: ignore[attr-defined]
+            return _FLOAT8_E4M3FN
         return self.cfg.fallback_dtype
 
     def _init_host_cache(self, shape: Tuple[int, ...]) -> None:
@@ -309,9 +317,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Precompute a deterministic query tensor in the runtime dtype.
         # Some PyTorch builds lack RNG kernels for FP8; generate in FP16 and cast.
         q_dtype = self.runtime_dtype
-        fp8_e4m3 = getattr(torch, "float8_e4m3fn", None)
-        fp8_e5m2 = getattr(torch, "float8_e5m2fn", None)
-        needs_cast = q_dtype in (fp8_e4m3, fp8_e5m2)
+        needs_cast = q_dtype in (_FLOAT8_E4M3FN, _FLOAT8_E5M2FN)
         gen_dtype = torch.float16 if needs_cast else q_dtype
         q = torch.randn(
             self.cfg.batch_size,
@@ -514,8 +520,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() did not produce output")
         # Capture a slice of attention output for verification
         self.output = attn_out[:, :, :1, : min(8, attn_out.shape[-1])]
-        fp8_dtype = getattr(torch, "float8_e4m3fn", None)
-        fp8_enabled = fp8_dtype is not None and self.runtime_dtype == fp8_dtype
+        fp8_enabled = _FLOAT8_E4M3FN is not None and self.runtime_dtype == _FLOAT8_E4M3FN
         self._payload_fp8_enabled = fp8_enabled
         self._payload_k = k
         self._payload_q = q
@@ -617,7 +622,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             f"{self.label}.page_tokens": float(self.cfg.page_tokens),
             f"{self.label}.decode_tokens": float(self.cfg.decode_tokens),
             f"{self.label}.max_seq_len": float(self.cfg.max_seq_len),
-            f"{self.label}.use_fp8": float(self.runtime_dtype == getattr(torch, "float8_e4m3fn", torch.float16)),
+            f"{self.label}.use_fp8": float(_FLOAT8_E4M3FN is not None and self.runtime_dtype == _FLOAT8_E4M3FN),
             f"{self.label}.use_pinned": float(self.cfg.use_pinned_stage),
             f"{self.label}.use_async": float(self.cfg.use_async_stream),
         }
