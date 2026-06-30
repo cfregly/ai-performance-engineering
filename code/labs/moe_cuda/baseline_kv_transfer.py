@@ -25,6 +25,7 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.chunk_size = 256
         # Baseline for both overlap and graphs variants.
         self.num_chunks = 32
+        self._chunk_range = range(self.num_chunks)
         self.dtype = torch.float16
         self.input_chunks: Optional[torch.Tensor] = None
         self.weight: Optional[torch.Tensor] = None
@@ -49,6 +50,7 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
+        self._chunk_range = range(self.num_chunks)
         self.input_chunks = torch.randn(
             self.num_chunks,
             self.chunk_size,
@@ -74,7 +76,7 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Buffers not initialized")
 
         with nvtx_range("moe_cuda_kv_baseline", enable=self._enable_nvtx):
-            for i in range(self.num_chunks):
+            for i in self._chunk_range:
                 chunk = self.input_chunks[i]
                 out = torch.matmul(chunk, self.weight)
                 self.workspace[i].copy_(out)

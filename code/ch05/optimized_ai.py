@@ -36,6 +36,7 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.batch = 64
         self.hidden = 32
         self.num_blocks = 256
+        self._block_range = range(self.num_blocks)
         self.parameter_count = 0
         tokens = self.batch * self.hidden * self.num_blocks
         self._workload = WorkloadMetadata(
@@ -58,6 +59,7 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         f.close()
         np.save(self.inputs_path, host_batches)
         self.mapped_inputs = np.load(self.inputs_path, mmap_mode="r")
+        self._block_range = range(self.num_blocks)
 
         pin_memory = torch.cuda.is_available()
         self.host_buffers = [
@@ -101,7 +103,7 @@ class OptimizedAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         last_input: Optional[torch.Tensor] = None
         with self._nvtx_range("optimized_ai_storage_pipeline"):
             with torch.inference_mode():
-                for step in range(self.num_blocks):
+                for step in self._block_range:
                     current = step & 1
                     next_slot = current ^ 1
                     self._wait_for_copy(current_stream)

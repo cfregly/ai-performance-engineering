@@ -24,6 +24,7 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
         super().__init__()
         self.tensor = None
         self.num_chunks = 16
+        self._chunk_range = range(self.num_chunks)
         self.chunk_len = 1 << 14
         self._last = 0.0
         self._host_chunk: Optional[torch.Tensor] = None
@@ -57,6 +58,7 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
         self.tensor = torch.randn(self.num_chunks, self.chunk_len, device=self.device, dtype=torch.float32)
+        self._chunk_range = range(self.num_chunks)
         use_pinned_host = torch.cuda.is_available()
         self._host_chunk = torch.empty(self.chunk_len, dtype=torch.float32, pin_memory=use_pinned_host)
         self._host_abs = torch.empty_like(self._host_chunk)
@@ -89,7 +91,7 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
             ):
                 raise RuntimeError("Host quantization buffers not initialized")
             total = 0.0
-            for idx in range(self.num_chunks):
+            for idx in self._chunk_range:
                 self._host_chunk.copy_(self.tensor[idx], non_blocking=False)
                 torch.abs(self._host_chunk, out=self._host_abs)
                 torch.amax(self._host_abs, dim=0, out=self._host_max_abs)

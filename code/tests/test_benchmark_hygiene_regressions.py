@@ -2720,6 +2720,77 @@ def test_ch03_ch05_accumulator_buffers_skip_setup_zero_fill() -> None:
         assert reset in benchmark_section
 
 
+def test_fixed_dimension_benchmark_hot_loops_reuse_cached_ranges() -> None:
+    targets = (
+        (
+            "ch03/baseline_gemm.py",
+            "self._block_range = range(self.num_blocks)",
+            "for i in self._block_range:",
+            "for i in range(self.num_blocks):",
+        ),
+        (
+            "ch05/baseline_ai.py",
+            "self._block_range = range(self.num_blocks)",
+            "for step in self._block_range:",
+            "for step in range(self.num_blocks):",
+        ),
+        (
+            "ch05/optimized_ai.py",
+            "self._block_range = range(self.num_blocks)",
+            "for step in self._block_range:",
+            "for step in range(self.num_blocks):",
+        ),
+        (
+            "ch06/baseline_add.py",
+            "self._index_range = range(self.N)",
+            "for i in self._index_range:",
+            "for i in range(self.N):",
+        ),
+        (
+            "ch06/baseline_warp_divergence_ilp.py",
+            "self._branch_iteration_range = range(self.branch_iterations)",
+            "for iteration in self._branch_iteration_range:",
+            "for iteration in range(self.branch_iterations):",
+        ),
+        (
+            "ch14/baseline_nccl_quantization.py",
+            "self._chunk_range = range(self.num_chunks)",
+            "for idx in self._chunk_range:",
+            "for idx in range(self.num_chunks):",
+        ),
+        (
+            "ch17/baseline_routing_static.py",
+            "self._request_range = range(self.requests_per_iteration)",
+            "for idx in self._request_range:",
+            "for idx in range(self.requests_per_iteration):",
+        ),
+        (
+            "ch17/optimized_memory.py",
+            "self._repetition_range = range(self.repetitions)",
+            "for _ in self._repetition_range:",
+            "for _ in range(self.repetitions):",
+        ),
+        (
+            "labs/moe_cuda/baseline_kv_transfer.py",
+            "self._chunk_range = range(self.num_chunks)",
+            "for i in self._chunk_range:",
+            "for i in range(self.num_chunks):",
+        ),
+    )
+
+    for relative_path, cached_range, cached_loop, old_loop in targets:
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert cached_range in setup_section
+        assert cached_loop in benchmark_section
+        assert old_loop not in benchmark_section
+
+
 def test_ch03_gemm_and_rack_prep_reuse_verification_output_buffers() -> None:
     targets = (
         ("ch03/baseline_gemm.py", "self._verify_output_buffer = torch.empty_like(self._output_buffer)"),

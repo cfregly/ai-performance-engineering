@@ -37,6 +37,7 @@ class BaselineRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.hidden_dim = 2048
         self.num_layers = 24
         self.requests_per_iteration = 512
+        self._request_range = range(self.requests_per_iteration)
         self.num_routes = 1024
         tokens = self.batch_size * self.hidden_dim * self.requests_per_iteration
         self._workload = WorkloadMetadata(
@@ -84,6 +85,7 @@ class BaselineRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=dtype,
         )
         self.route_scores[:, 0] = 1.0  # always select "large"
+        self._request_range = range(self.requests_per_iteration)
         self._synchronize()
 
     def benchmark_fn(self) -> None:
@@ -93,7 +95,7 @@ class BaselineRoutingStaticBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.inference_mode():
                 if self.route_scores is None:
                     raise RuntimeError("Routing scores not initialized")
-                for idx in range(self.requests_per_iteration):
+                for idx in self._request_range:
                     # Naive routing: per-request argmax (launch-heavy).
                     _ = torch.argmax(self.route_scores[idx])
             if self._verify_input is not None:

@@ -109,6 +109,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph_output: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.repetitions = REPETITIONS
+        self._repetition_range = range(self.repetitions)
         tokens = self.batch_size * self.input_dim * self.repetitions
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repetitions),
@@ -138,6 +139,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.transform_buffer = torch.empty_like(self.device_buffer)
         self.graph_output = torch.empty_like(self.device_buffer)
         self._verify_output_buffer = torch.empty_like(self.device_buffer)
+        self._repetition_range = range(self.repetitions)
         self._synchronize()
 
         with torch.inference_mode():
@@ -171,7 +173,7 @@ class OptimizedMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         with self._nvtx_range("optimized_memory"):
             with torch.inference_mode():
-                for _ in range(self.repetitions):
+                for _ in self._repetition_range:
                     # Make the discrete input population explicit on every replay.
                     self.device_buffer.random_(0, 256)
                     self.graph.replay()

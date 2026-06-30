@@ -30,6 +30,7 @@ class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.batch = 64
         self.hidden = 32
         self.num_blocks = 256
+        self._block_range = range(self.num_blocks)
         self.parameter_count = 0
         tokens = self.batch * self.hidden * self.num_blocks
         self._workload = WorkloadMetadata(
@@ -51,6 +52,7 @@ class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs_path = f.name
         f.close()
         np.save(self.inputs_path, host_batches)
+        self._block_range = range(self.num_blocks)
         self._device_batch_buffer = torch.empty(
             (self.batch, self.hidden),
             device=self.device,
@@ -71,7 +73,7 @@ class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         device_batch = self._device_batch_buffer
         with self._nvtx_range("baseline_ai_storage_pipeline"):
             with torch.inference_mode():
-                for step in range(self.num_blocks):
+                for step in self._block_range:
                     device_batch.copy_(host_tensor[step], non_blocking=False)
                     out = self.block(device_batch)
                     last_input = device_batch

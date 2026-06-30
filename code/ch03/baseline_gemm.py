@@ -41,6 +41,7 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Micro-batch size for blocked computation
         self.block_size = 256
         self.num_blocks = self.k // self.block_size
+        self._block_range = range(self.num_blocks)
         
         self.left: Optional[torch.Tensor] = None
         self.right: Optional[torch.Tensor] = None
@@ -62,6 +63,7 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.right = torch.randn(self.k, self.n, device=self.device, dtype=torch.float32)
         self._output_buffer = torch.empty(self.m, self.n, device=self.device, dtype=torch.float32)
         self._verify_output_buffer = torch.empty_like(self._output_buffer)
+        self._block_range = range(self.num_blocks)
         self.output = None
         self._synchronize()
 
@@ -79,7 +81,7 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         result.zero_()
         
         with self._nvtx_range("baseline_gemm"):
-            for i in range(self.num_blocks):
+            for i in self._block_range:
                 start = i * self.block_size
                 end = start + self.block_size
                 # Extract block slices

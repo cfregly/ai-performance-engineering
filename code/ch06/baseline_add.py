@@ -19,6 +19,7 @@ class BaselineAddBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.B: Optional[torch.Tensor] = None
         self.C: Optional[torch.Tensor] = None
         self.N = 10_000  # Small enough to complete, but still demonstrates the problem
+        self._index_range = range(self.N)
         # Kernel launch overhead benchmark - fixed input size
         tokens = self.N
         self._workload = WorkloadMetadata(
@@ -33,12 +34,13 @@ class BaselineAddBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.A = torch.arange(self.N, dtype=torch.float32, device=self.device)
         self.B = 2 * self.A
         self.C = torch.empty_like(self.A)
+        self._index_range = range(self.N)
     
     def benchmark_fn(self) -> None:
         """Sequential loop launches N tiny kernels."""
         assert self.A is not None and self.B is not None and self.C is not None
         with self._nvtx_range("baseline_add_sequential"):
-            for i in range(self.N):
+            for i in self._index_range:
                 self.C[i] = self.A[i] + self.B[i]
 
     def capture_verification_payload(self) -> None:

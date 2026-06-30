@@ -23,6 +23,7 @@ class BaselineWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.workload = WORKLOAD
         self.N = self.workload.warp_elements
         self.branch_iterations = self.workload.warp_branch_iterations
+        self._branch_iteration_range = range(self.branch_iterations)
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.branch_iterations),
             tokens_per_iteration=float(self.N * self.branch_iterations),
@@ -36,6 +37,7 @@ class BaselineWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.output = None  # Will be set by benchmark_fn
         self._output_buffer = torch.empty_like(self.input)
         self.routing_logits = torch.randn(self.N, device=self.device, dtype=torch.float32)
+        self._branch_iteration_range = range(self.branch_iterations)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
@@ -45,7 +47,7 @@ class BaselineWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmark
             mask_source = self.routing_logits
             result = self._output_buffer
             result.copy_(self.input)
-            for iteration in range(self.branch_iterations):
+            for iteration in self._branch_iteration_range:
                 activations = torch.sigmoid(mask_source)
                 mask = activations > 0.5
 
