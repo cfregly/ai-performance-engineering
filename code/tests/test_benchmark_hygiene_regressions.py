@@ -14313,8 +14313,13 @@ def test_moe_level4_and_level6_defer_verification_slices_after_timing() -> None:
         assert "return metrics" in finalize_section
         assert '"latency_ms": float(self.last_latency_ms)' not in finalize_section
         assert '"tokens_per_sec": float(self.last_tokens_per_sec)' not in finalize_section
-        assert "output_slice = self.output[:, :1, : min(8, self.output.shape[-1])]" in capture_section
-        assert "output=output_slice.detach().float().clone()" in capture_section
+        assert "output_slice = self.output[" in capture_section
+        assert ": self._verify_output_buffer.shape[0]," in capture_section
+        assert ": self._verify_output_buffer.shape[1]," in capture_section
+        assert ": self._verify_output_buffer.shape[2]," in capture_section
+        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=output_slice.detach().float().clone()" not in capture_section
 
 
 def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:

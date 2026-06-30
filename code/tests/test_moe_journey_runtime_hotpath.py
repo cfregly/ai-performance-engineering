@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 from labs.moe_optimization_journey import get_config
 from labs.moe_optimization_journey.level4_triton import GroupedMoEExperts, Level4Triton
@@ -179,26 +180,29 @@ def test_level4_grouped_moe_unsort_scatter_matches_reference() -> None:
     torch.testing.assert_close(sorted_weight_column[:, 0], layer._sorted_weight_buffer)
 
 
-def test_moe_route_weight_normalization_uses_inplace_inference_guard() -> None:
+def test_moe_route_weight_normalization_uses_selected_logit_softmax() -> None:
     targets = (
         (
             "moe_model.py",
             "class MoELayer",
             "class MoEBlock",
+            "self.num_experts_per_tok",
         ),
         (
             "level4_triton.py",
             "class TritonMoELayer",
             "class TritonMoEBlock",
+            "self.top_k",
         ),
         (
             "level6_full_stack.py",
             "class CUDAGraphMoELayer",
             "class CUDAGraphMoEBlock",
+            "self.top_k",
         ),
     )
 
-    for filename, start_marker, end_marker in targets:
+    for filename, start_marker, end_marker, top_k_expr in targets:
         source = (
             Path(__file__).resolve().parents[1]
             / "labs"
@@ -210,12 +214,23 @@ def test_moe_route_weight_normalization_uses_inplace_inference_guard() -> None:
             maxsplit=1,
         )[0]
 
-        assert "expert_weight_sums = expert_weights.sum(dim=-1, keepdim=True)" in layer_section
-        assert "if torch.is_grad_enabled() and expert_weights.requires_grad:" in layer_section
-        assert "expert_weights = expert_weights / expert_weight_sums" in layer_section
-        assert "expert_weights.div_(expert_weight_sums)" in layer_section
+        assert f"top_logits, expert_indices = torch.topk(router_logits.float(), {top_k_expr}, dim=-1)" in layer_section
+        assert "expert_weights = F.softmax(top_logits, dim=-1)" in layer_section
+        assert "routing_weights = F.softmax(" not in layer_section
+        assert "torch.topk(routing_weights" not in layer_section
+        assert "expert_weight_sums =" not in layer_section
         assert "expert_weights / expert_weights.sum" not in layer_section
         assert "(expert_weights / expert_weights.sum" not in layer_section
+
+    logits = torch.randn(6, 8)
+    full_probs = torch.softmax(logits.float(), dim=-1)
+    old_weights, old_indices = torch.topk(full_probs, 2, dim=-1)
+    old_weights = old_weights / old_weights.sum(dim=-1, keepdim=True)
+    top_logits, new_indices = torch.topk(logits.float(), 2, dim=-1)
+    new_weights = F.softmax(top_logits, dim=-1)
+
+    torch.testing.assert_close(new_indices, old_indices)
+    torch.testing.assert_close(new_weights, old_weights)
 
 
 def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
