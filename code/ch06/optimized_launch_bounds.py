@@ -46,7 +46,7 @@ class OptimizedLaunchBoundsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: kernel with launch bounds."""
         assert self._extension is not None and self.input_data is not None and self.output_data is not None
-        with self._nvtx_range("optimized_launch_bounds"):
+        with torch.inference_mode(), self._nvtx_range("optimized_launch_bounds"):
             self._extension.launch_bounds_optimized(
                 self.input_data,
                 self.output_data,

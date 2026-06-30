@@ -43,7 +43,7 @@ class BaselineWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmark
     def benchmark_fn(self) -> None:
         """Benchmark: ILP operations with warp divergence."""
         assert self.input is not None and self.routing_logits is not None and self._output_buffer is not None
-        with self._nvtx_range("baseline_warp_divergence_ilp"):
+        with torch.inference_mode(), self._nvtx_range("baseline_warp_divergence_ilp"):
             mask_source = self.routing_logits
             result = self._output_buffer
             result.copy_(self.input)

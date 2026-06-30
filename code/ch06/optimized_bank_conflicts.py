@@ -44,7 +44,7 @@ class OptimizedBankConflictsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: padding eliminates bank conflicts."""
         assert self._extension is not None and self.input is not None
         assert self._output_buffer is not None and self._output_buffer.shape == self.input.shape
-        with self._nvtx_range("bank_conflicts_optimized"):
+        with torch.inference_mode(), self._nvtx_range("bank_conflicts_optimized"):
             for _ in self._repeat_range:
                 self._extension.bank_conflicts_padded(self._output_buffer, self.input)
             self.output = self._output_buffer

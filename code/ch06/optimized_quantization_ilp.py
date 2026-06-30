@@ -55,7 +55,7 @@ class OptimizedQuantizationILPBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def benchmark_fn(self) -> None:
         """Benchmark: FP16 element-wise operations (2x less memory traffic)."""
         assert self.input_fp16 is not None and self._output_fp16_buffer is not None
-        with self._nvtx_range("optimized_quantization_ilp"):
+        with torch.inference_mode(), self._nvtx_range("optimized_quantization_ilp"):
             # Simple multiply-add in FP16 - half the memory bandwidth
             torch.mul(self.input_fp16, 2.0, out=self._output_fp16_buffer)
             self._output_fp16_buffer.add_(1.0)

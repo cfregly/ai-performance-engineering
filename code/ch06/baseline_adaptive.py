@@ -54,7 +54,7 @@ class BaselineAdaptiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self._output_buffer is not None and self._output_buffer.shape == self.input.shape
         if not self._chunk_views:
             raise RuntimeError("setup() must initialize chunk views")
-        with self._nvtx_range("baseline_adaptive"):
+        with torch.inference_mode(), self._nvtx_range("baseline_adaptive"):
             for window, out_window in self._chunk_views:
                 self._transform(window, out_window)
             self.output = self._output_buffer

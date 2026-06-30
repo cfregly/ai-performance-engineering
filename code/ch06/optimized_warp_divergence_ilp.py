@@ -180,7 +180,7 @@ class OptimizedWarpDivergenceILPBenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def benchmark_fn(self) -> None:
         assert self.input is not None and self.routing_logits is not None
-        with self._nvtx_range("optimized_warp_divergence_ilp"):
+        with torch.inference_mode(), self._nvtx_range("optimized_warp_divergence_ilp"):
             # Single compiled call on full tensor - no chunking, no concat
             assert self._compiled_fn is not None
             self.output, self.routing_logits = self._compiled_fn(self.input, self.routing_logits)

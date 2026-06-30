@@ -42,7 +42,7 @@ class BaselineQuantizationILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: Full precision ILP operations."""
         assert self.input is not None and self._output_buffer is not None
-        with self._nvtx_range("baseline_quantization_ilp"):
+        with torch.inference_mode(), self._nvtx_range("baseline_quantization_ilp"):
             torch.mul(self.input, 2.0, out=self._output_buffer)
             self._output_buffer.add_(1.0)
             self.output = self._output_buffer

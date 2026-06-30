@@ -3987,14 +3987,26 @@ def test_ch06_optimized_add_reuses_output_buffer() -> None:
     assert "torch.add(self.A, self.B, out=self.C)" in benchmark_section
 
 
-def test_ch06_add_and_ilp_wrappers_use_inference_mode() -> None:
+def test_ch06_inference_wrappers_use_inference_mode() -> None:
     cases = (
         ("baseline_add.py", "baseline_add_sequential"),
         ("optimized_add.py", "add_vectorized"),
+        ("baseline_quantization_ilp.py", "baseline_quantization_ilp"),
+        ("optimized_quantization_ilp.py", "optimized_quantization_ilp"),
         ("baseline_elementwise_ilp.py", "elementwise_ilp_baseline"),
         ("optimized_elementwise_ilp.py", "elementwise_ilp_optimized"),
         ("baseline_attention_ilp.py", "baseline_attention_ilp"),
         ("optimized_attention_ilp.py", "optimized_attention_ilp"),
+        ("baseline_bank_conflicts.py", "bank_conflicts_baseline"),
+        ("optimized_bank_conflicts.py", "bank_conflicts_optimized"),
+        ("baseline_adaptive.py", "baseline_adaptive"),
+        ("optimized_adaptive.py", "optimized_adaptive"),
+        ("baseline_autotuning.py", "baseline_autotuning"),
+        ("optimized_autotuning.py", "optimized_autotuning"),
+        ("baseline_launch_bounds.py", "baseline_launch_bounds"),
+        ("optimized_launch_bounds.py", "optimized_launch_bounds"),
+        ("baseline_warp_divergence_ilp.py", "baseline_warp_divergence_ilp"),
+        ("optimized_warp_divergence_ilp.py", "optimized_warp_divergence_ilp"),
     )
 
     for filename, label in cases:
