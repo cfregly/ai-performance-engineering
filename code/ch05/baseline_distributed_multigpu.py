@@ -22,6 +22,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.data: List[torch.Tensor] = []
         self.local_sums: List[torch.Tensor] = []
         self.host_sums: List[torch.Tensor] = []
+        self._sum_groups: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self.device_ids: List[int] = []
         self.output: Optional[torch.Tensor] = None
         self._cpu_total: Optional[float] = None
@@ -50,6 +51,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.empty(1, dtype=torch.float32, pin_memory=True)
             for _ in self.data
         ]
+        self._sum_groups = list(zip(self.data, self.local_sums, self.host_sums, strict=True))
         self._host_total = torch.empty(1, dtype=torch.float32, pin_memory=True)
         self._output_tensor = torch.empty(1, device=f"cuda:{self.device_ids[0]}", dtype=torch.float32)
         self._verify_output_buffer = torch.empty_like(self._output_tensor)
@@ -72,10 +74,10 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if not self.local_sums or not self.host_sums or self._host_total is None:
                 raise RuntimeError("Reduction staging buffers not initialized")
             self._host_total.zero_()
-            for idx, tensor in enumerate(self.data):
-                torch.sum(tensor, dim=0, keepdim=True, out=self.local_sums[idx])
-                self.host_sums[idx].copy_(self.local_sums[idx], non_blocking=False)
-                self._host_total.add_(self.host_sums[idx])
+            for tensor, local_sum, host_sum in self._sum_groups:
+                torch.sum(tensor, dim=0, keepdim=True, out=local_sum)
+                host_sum.copy_(local_sum, non_blocking=False)
+                self._host_total.add_(host_sum)
             self._cpu_total = float(self._host_total[0])
 
     def capture_verification_payload(self) -> None:
@@ -112,6 +114,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.data = []
         self.local_sums = []
         self.host_sums = []
+        self._sum_groups = []
         self.output = None
         self._cpu_total = None
         self._host_total = None

@@ -10012,6 +10012,8 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     assert "torch.tensor(" not in baseline_benchmark
     assert "self.local_sums = [torch.empty(1, device=t.device, dtype=torch.float32) for t in self.data]" in baseline_setup
     assert "self.host_sums = [" in baseline_setup
+    assert "self._sum_groups: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in baseline_source
+    assert "self._sum_groups = list(zip(self.data, self.local_sums, self.host_sums, strict=True))" in baseline_setup
     assert "torch.empty(1, dtype=torch.float32, pin_memory=True)" in baseline_setup
     assert "self._host_total = torch.empty(1, dtype=torch.float32, pin_memory=True)" in baseline_setup
     assert "self._output_tensor: Optional[torch.Tensor] = None" in baseline_source
@@ -10021,9 +10023,11 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     assert "self._verify_output_buffer = torch.empty_like(self._output_tensor)" in baseline_setup
     assert "self._verify_probe_buffer = torch.empty(256, dtype=self.data[0].dtype, pin_memory=True)" in baseline_setup
     assert "with torch.inference_mode(), self._nvtx_range(\"baseline_distributed_multigpu\"):" in baseline_benchmark
-    assert "torch.sum(tensor, dim=0, keepdim=True, out=self.local_sums[idx])" in baseline_benchmark
-    assert "self.host_sums[idx].copy_(self.local_sums[idx], non_blocking=False)" in baseline_benchmark
-    assert "self._host_total.add_(self.host_sums[idx])" in baseline_benchmark
+    assert "for tensor, local_sum, host_sum in self._sum_groups:" in baseline_benchmark
+    assert "torch.sum(tensor, dim=0, keepdim=True, out=local_sum)" in baseline_benchmark
+    assert "host_sum.copy_(local_sum, non_blocking=False)" in baseline_benchmark
+    assert "self._host_total.add_(host_sum)" in baseline_benchmark
+    assert "enumerate(self.data)" not in baseline_benchmark
     assert "self._cpu_total = float(self._host_total[0])" in baseline_benchmark
     assert "tensor.sum().cpu()" not in baseline_benchmark
     assert "cpu_total = 0.0" not in baseline_benchmark
@@ -10038,6 +10042,8 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     assert "output=self.output.detach().clone()" not in baseline_capture
     assert "torch.tensor(" not in baseline_capture
     assert "self.local_sums = [torch.empty(1, device=t.device, dtype=torch.float32) for t in self.data]" in optimized_setup
+    assert "self._sum_pairs: List[tuple[torch.Tensor, torch.Tensor]] = []" in optimized_source
+    assert "self._sum_pairs = list(zip(self.data, self.local_sums, strict=True))" in optimized_setup
     assert "self.reduced_sums = [torch.empty_like(t) for t in self.local_sums]" in optimized_setup
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._verify_probe_buffer: Optional[torch.Tensor] = None" in optimized_source
@@ -10046,7 +10052,9 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     assert "torch.zeros(1" not in optimized_setup
     assert "torch.zeros_like" not in optimized_setup
     assert "with torch.inference_mode(), self._nvtx_range(\"optimized_distributed_multigpu\"):" in optimized_benchmark
-    assert "torch.sum(tensor, dim=0, keepdim=True, out=self.local_sums[idx])" in optimized_benchmark
+    assert "for tensor, local_sum in self._sum_pairs:" in optimized_benchmark
+    assert "torch.sum(tensor, dim=0, keepdim=True, out=local_sum)" in optimized_benchmark
+    assert "enumerate(self.data)" not in optimized_benchmark
     assert "tensor.sum().view(1)" not in optimized_benchmark
     assert ".copy_(tensor.sum()" not in optimized_benchmark
     assert "self.output = self.reduced_sums[0].detach().clone()" not in optimized_benchmark

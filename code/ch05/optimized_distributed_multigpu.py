@@ -20,6 +20,7 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.data: List[torch.Tensor] = []
         self.local_sums: List[torch.Tensor] = []
+        self._sum_pairs: List[tuple[torch.Tensor, torch.Tensor]] = []
         self.reduced_sums: List[torch.Tensor] = []
         self.device_ids: List[int] = []
         self.output: Optional[torch.Tensor] = None
@@ -42,6 +43,7 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for device_id in self.device_ids
         ]
         self.local_sums = [torch.empty(1, device=t.device, dtype=torch.float32) for t in self.data]
+        self._sum_pairs = list(zip(self.data, self.local_sums, strict=True))
         self.reduced_sums = [torch.empty_like(t) for t in self.local_sums]
         self._verify_output_buffer = torch.empty_like(self.local_sums[0])
         self._verify_probe_buffer = torch.empty(256, dtype=self.data[0].dtype, pin_memory=True)
@@ -62,8 +64,8 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 raise RuntimeError("setup() must be called before benchmark_fn()")
             if not self.local_sums or not self.reduced_sums:
                 raise RuntimeError("setup() must be called before benchmark_fn()")
-            for idx, tensor in enumerate(self.data):
-                torch.sum(tensor, dim=0, keepdim=True, out=self.local_sums[idx])
+            for tensor, local_sum in self._sum_pairs:
+                torch.sum(tensor, dim=0, keepdim=True, out=local_sum)
             torch.cuda.nccl.all_reduce(self.local_sums, outputs=self.reduced_sums)
             self.output = self.reduced_sums[0]
 
@@ -98,6 +100,7 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.data = []
         self.local_sums = []
+        self._sum_pairs = []
         self.reduced_sums = []
         self.output = None
         self._verify_output_buffer = None
