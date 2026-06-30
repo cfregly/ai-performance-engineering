@@ -674,8 +674,7 @@ class FP8StaticDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: Static FP8 inference."""
         with torch.inference_mode():
-            output = self.model(self.x)
-            self.output = output.detach()
+            self.output = self.model(self.x)
         if self._verify_input is None or self.output is None:
             raise RuntimeError("Verification input/output not initialized")
 

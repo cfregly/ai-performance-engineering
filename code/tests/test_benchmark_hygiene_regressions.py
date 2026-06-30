@@ -15510,6 +15510,9 @@ def test_ch13_static_fp8_wrappers_sample_verification_outputs() -> None:
         assert "output=self._verify_output_buffer" in capture_section
         assert "output=self.output.detach().clone()" not in capture_section
         assert ".detach().clone()" not in benchmark_section
+        if filename == "fp8_static_demo.py":
+            assert "self.output = self.model(self.x)" in benchmark_section
+            assert "output.detach()" not in benchmark_section
         assert "self._verify_output_buffer = None" in teardown_section
 
 
