@@ -166,6 +166,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_event_count = 0
         self._pending_metrics: Dict[str, float] = {}
         self._kv_buffers: Dict[int, torch.Tensor] = {}
+        self._reload_buffers: Dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
         self._worker_caches: List[Dict[int, torch.Tensor]] = []
         self._worker_cache_count = 0
         self._owners: Dict[int, int] = {}
@@ -263,6 +264,25 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             for plan in self.request_plans
         }
+        self._reload_buffers = {
+            plan.request_idx: (
+                torch.empty(
+                    self.cfg.batch_size,
+                    self.cfg.context_window,
+                    self.cfg.hidden_size,
+                    device=self.device,
+                    dtype=self.cfg.dtype,
+                ),
+                torch.empty(
+                    self.cfg.batch_size,
+                    self.cfg.context_window,
+                    self.cfg.hidden_size,
+                    device=self.device,
+                    dtype=self.cfg.dtype,
+                ),
+            )
+            for plan in self.request_plans
+        }
         self._worker_caches = [{} for _ in range(self._logical_decode_worker_count)]
         self._worker_cache_count = len(self._worker_caches)
         self._owners = {}
@@ -333,6 +353,47 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Empty KV template not initialized")
         return self._empty_kv_template
 
+    def _reload_cache_buffer_pair(self, request_idx: int, source: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        reload_buffers = self._reload_buffers.get(request_idx)
+        required_tokens = int(source.size(1))
+        if (
+            reload_buffers is None
+            or reload_buffers[0].device != source.device
+            or reload_buffers[0].dtype != source.dtype
+            or reload_buffers[0].size(1) < required_tokens
+        ):
+            buffer_tokens = max(self.cfg.context_window, required_tokens)
+            reload_buffers = (
+                torch.empty(
+                    self.cfg.batch_size,
+                    buffer_tokens,
+                    self.cfg.hidden_size,
+                    device=source.device,
+                    dtype=source.dtype,
+                ),
+                torch.empty(
+                    self.cfg.batch_size,
+                    buffer_tokens,
+                    self.cfg.hidden_size,
+                    device=source.device,
+                    dtype=source.dtype,
+                ),
+            )
+            self._reload_buffers[request_idx] = reload_buffers
+        return reload_buffers
+
+    def _materialize_reload_cache(self, request_idx: int, source: torch.Tensor) -> torch.Tensor:
+        primary, secondary = self._reload_cache_buffer_pair(request_idx, source)
+        source_tokens = int(source.size(1))
+        views = (primary[:, :source_tokens], secondary[:, :source_tokens])
+        cache = views[0]
+        cache.copy_(source)
+        for pass_idx in range(self.reload_materialization_passes):
+            next_cache = views[(pass_idx + 1) & 1]
+            next_cache.copy_(cache)
+            cache = next_cache
+        return cache
+
     def _choose_worker(
         self,
         request_idx: int,
@@ -375,9 +436,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             source = self._empty_kv()
 
         if source.numel() > 0:
-            cache = source.clone()
-            for _ in range(self.reload_materialization_passes):
-                cache = cache.clone()
+            cache = self._materialize_reload_cache(request_idx, source)
             metrics["kv_transfer_bytes"] += float(
                 cache.numel()
                 * cache.element_size()
@@ -595,6 +654,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_event_count = 0
         self._pending_metrics = {}
         self._kv_buffers = {}
+        self._reload_buffers = {}
         self._worker_caches = []
         self._worker_cache_count = 0
         self._owners = {}

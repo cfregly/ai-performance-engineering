@@ -11309,8 +11309,16 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    load_cache_section = source.split("def _load_request_cache", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
     )[0]
 
     assert "torch.cuda.Event(enable_timing=True)" in setup_section
@@ -11367,6 +11375,16 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert 'metrics["cache_hits"] = 0.0' in benchmark_section
     assert 'metrics["warm_requests"] = float(self._warm_request_count)' in benchmark_section
     assert "metrics = {" not in benchmark_section
+    assert "self._reload_buffers: Dict[int, tuple[torch.Tensor, torch.Tensor]] = {}" in setup_section
+    assert "self._reload_buffers = {" in setup_section
+    assert "def _reload_cache_buffer_pair(" in source
+    assert "def _materialize_reload_cache(" in source
+    assert "cache.copy_(source)" in source
+    assert "next_cache.copy_(cache)" in source
+    assert "cache = self._materialize_reload_cache(request_idx, source)" in load_cache_section
+    assert "source.clone()" not in load_cache_section
+    assert "cache.clone()" not in load_cache_section
+    assert "self._reload_buffers = {}" in teardown_section
     assert "worker_caches = [{} for _ in range(self.cfg.logical_decode_workers)]" not in benchmark_section
     assert "owners: Dict[int, int] = {}" not in benchmark_section
     assert "for cache in worker_caches:" in benchmark_section

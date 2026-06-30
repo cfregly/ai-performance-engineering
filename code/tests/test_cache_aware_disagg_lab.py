@@ -100,6 +100,31 @@ def test_cache_aware_disagg_single_gpu_extend_cache_buffer_reuses_storage() -> N
     torch.testing.assert_close(second[:, 2:4], second_chunk)
 
 
+def test_cache_aware_disagg_single_gpu_reload_materialization_reuses_storage() -> None:
+    cfg = CacheAwareDisaggConfig(
+        hidden_size=4,
+        batch_size=1,
+        context_window=6,
+        dtype=torch.float32,
+    )
+    bench = CacheAwareDisaggBenchmark(
+        optimized=False,
+        label="baseline_cache_aware_disagg_test",
+        cfg=cfg,
+    )
+    bench.reload_materialization_passes = 2
+    first_source = torch.arange(8, dtype=torch.float32).view(1, 2, 4)
+    second_source = first_source + 100.0
+
+    first = bench._materialize_reload_cache(7, first_source)
+    first_storage = first.data_ptr()
+    second = bench._materialize_reload_cache(7, second_source)
+
+    assert second.data_ptr() == first_storage
+    assert second.data_ptr() != second_source.data_ptr()
+    torch.testing.assert_close(second, second_source)
+
+
 def test_cache_aware_disagg_multigpu_extend_cache_buffer_reuses_storage() -> None:
     cfg = CacheAwareDisaggMultiGPUConfig(
         hidden_size=4,
