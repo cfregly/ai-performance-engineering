@@ -236,11 +236,7 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._reference is None or self._output is None:
             return None
         if self._validation_scalars is None:
-            self._validation_scalars = torch.empty(
-                2,
-                dtype=torch.float32,
-                device=self._output.device,
-            )
+            return "Validation scalar buffer not initialized"
         validation_scalars = self._validation_scalars
         validation_scalars[0].copy_((self._output - self._reference).abs().max().float())
         validation_scalars[1].copy_(torch.isnan(self._output).any().to(torch.float32))

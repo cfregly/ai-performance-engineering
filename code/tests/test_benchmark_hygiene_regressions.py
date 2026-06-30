@@ -6465,6 +6465,7 @@ def test_occupancy_tuning_variants_match_their_filenames() -> None:
     assert "with torch.no_grad():\n            self._reference = torch.matmul(self._a, self._b)" not in schedule_source
     assert "self._validation_scalars: Optional[torch.Tensor] = None" in schedule_source
     assert "self._validation_scalars = torch.empty(2, dtype=torch.float32, device=device)" in schedule_source
+    assert "Validation scalar buffer not initialized" in validate_section
     assert "validation_scalars = self._validation_scalars" in validate_section
     assert "validation_scalars[0].copy_((self._output - self._reference).abs().max().float())" in validate_section
     assert "validation_scalars[1].copy_(torch.isnan(self._output).any().to(torch.float32))" in validate_section
@@ -6472,6 +6473,7 @@ def test_occupancy_tuning_variants_match_their_filenames() -> None:
     assert "diff = float(validation_scalars_host[0])" in validate_section
     assert "has_nan = bool(validation_scalars_host[1])" in validate_section
     assert "validation_scalars = torch.stack(" not in validate_section
+    assert "torch.empty(" not in validate_section
     assert "(self._output - self._reference).abs().max().float()" in validate_section
     assert "torch.isnan(self._output).any().to(torch.float32)" in validate_section
     assert ".detach().cpu().tolist()" not in validate_section
