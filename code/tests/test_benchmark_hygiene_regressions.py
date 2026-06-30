@@ -10929,21 +10929,34 @@ def test_nanochat_dist_adamw_reuses_update_buffers() -> None:
     source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "adamw.py").read_text(
         encoding="utf-8"
     )
+    init_section = source.split("def __init__", maxsplit=1)[1].split(
+        "@torch.compile",
+        maxsplit=1,
+    )[0]
     step_section = source.split("def step", maxsplit=1)[1]
 
     assert "self._reduce_scatter_futures: list[torch.Future] = []" in source
     assert "self._all_gather_futures: list[torch.Future] = []" in source
     assert "self._grad_slices: list[Tensor] = []" in source
+    assert "world_size = dist.get_world_size() if dist.is_initialized() else 1" in init_section
+    assert 'state["_grad_slice"] = torch.empty_like(p_slice)' in init_section
+    assert 'state["step"] = torch.tensor(0, dtype=torch.int64, device=p.device)' in init_section
+    assert 'state["exp_avg"] = torch.zeros_like(p_slice)' in init_section
+    assert 'state["exp_avg_sq"] = torch.zeros_like(p_slice)' in init_section
+    assert 'state["denom"] = torch.empty_like(p_slice)' in init_section
     assert "reduce_scatter_futures = self._reduce_scatter_futures" in step_section
     assert "all_gather_futures = self._all_gather_futures" in step_section
     assert "grad_slices = self._grad_slices" in step_section
     assert "reduce_scatter_futures: list[torch.Future] = []" not in step_section
     assert "all_reduce_futures: list[torch.Future] = []" not in step_section
     assert "grad_slices = []" not in step_section
-    assert 'if "_grad_slice" not in state:' in step_section
+    assert 'if "_grad_slice" not in state:' not in step_section
     assert 'grad_slice = state["_grad_slice"]' in step_section
-    assert 'if "step" not in state:' in step_section
-    assert "state['denom'] = torch.empty_like(p_slice)" in step_section
+    assert 'if "step" not in state:' not in step_section
+    assert "torch.empty_like(grad[:rank_size])" not in step_section
+    assert "torch.tensor(0, dtype=torch.int64, device=p.device)" not in step_section
+    assert "torch.zeros_like(p_slice)" not in step_section
+    assert "state['denom'] = torch.empty_like(p_slice)" not in step_section
     assert "torch.sqrt(exp_avg_sq, out=denom)" in step_section
     assert "torch.div(exp_avg, denom, out=g_slice)" in step_section
     assert "denom = exp_avg_sq.sqrt()" not in step_section

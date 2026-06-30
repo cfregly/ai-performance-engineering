@@ -18,6 +18,17 @@ class DistAdamW(torch.optim.Optimizer):
         self._reduce_scatter_futures: list[torch.Future] = []
         self._all_gather_futures: list[torch.Future] = []
         self._grad_slices: list[Tensor] = []
+        world_size = dist.get_world_size() if dist.is_initialized() else 1
+        for group in self.param_groups:
+            for p in group["params"]:
+                rank_size = p.shape[0] // world_size
+                p_slice = p[:rank_size]
+                state = self.state[p]
+                state["_grad_slice"] = torch.empty_like(p_slice)
+                state["step"] = torch.tensor(0, dtype=torch.int64, device=p.device)
+                state["exp_avg"] = torch.zeros_like(p_slice)
+                state["exp_avg_sq"] = torch.zeros_like(p_slice)
+                state["denom"] = torch.empty_like(p_slice)
 
     @torch.compile
     @torch.no_grad()
@@ -37,8 +48,6 @@ class DistAdamW(torch.optim.Optimizer):
                 grad = p.grad
                 rank_size = grad.shape[0] // world_size
                 state = self.state[p]
-                if "_grad_slice" not in state:
-                    state["_grad_slice"] = torch.empty_like(grad[:rank_size])
                 grad_slice = state["_grad_slice"]
                 reduce_scatter_futures.append(dist.reduce_scatter_tensor(grad_slice, grad, op=dist.ReduceOp.AVG, async_op=True).get_future())
                 grad_slices.append(grad_slice)
@@ -57,12 +66,6 @@ class DistAdamW(torch.optim.Optimizer):
                 lr = group['lr'] * getattr(p, "lr_mul", 1.0)
                 state = self.state[p]
                 g_slice = grad_slices[idx]
-                # State init
-                if "step" not in state:
-                    state['step'] = torch.tensor(0, dtype=torch.int64, device=p.device)
-                    state['exp_avg'] = torch.zeros_like(p_slice)
-                    state['exp_avg_sq'] = torch.zeros_like(p_slice)
-                    state['denom'] = torch.empty_like(p_slice)
                 exp_avg = state['exp_avg']
                 exp_avg_sq = state['exp_avg_sq']
                 denom = state['denom']
