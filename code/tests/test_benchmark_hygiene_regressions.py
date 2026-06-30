@@ -18739,6 +18739,37 @@ def test_ch19_adaptive_worker_pool_demo_accumulates_concurrent_results() -> None
     assert "import psutil" not in source
 
 
+def test_ch19_adaptive_worker_pool_counts_prompt_tokens_without_split_list() -> None:
+    from ch19.adaptive_parallelism_worker_pool import _count_whitespace_separated_tokens
+
+    source = (REPO_ROOT / "ch19" / "adaptive_parallelism_worker_pool.py").read_text(
+        encoding="utf-8"
+    )
+    helper_section = source.split("def _count_whitespace_separated_tokens", maxsplit=1)[
+        1
+    ].split(
+        "class WorkerPool",
+        maxsplit=1,
+    )[0]
+    inference_section = source.split("def inference", maxsplit=1)[1].split(
+        "def get_cluster_stats",
+        maxsplit=1,
+    )[0]
+
+    assert "for char in text:" in helper_section
+    assert "char.isspace()" in helper_section
+    assert "count += 1" in helper_section
+    assert "now = time.time()" in inference_section
+    assert 'request_id=f"req_{now}"' in inference_section
+    assert "seq_len=_count_whitespace_separated_tokens(prompt)" in inference_section
+    assert "arrival_time=now" in inference_section
+    assert "len(prompt.split())" not in inference_section
+    assert ".split()" not in helper_section
+    assert "time.time()" not in inference_section.split("now = time.time()", maxsplit=1)[1]
+    for prompt in ("", "  one  two\nthree\t", "single", " spaced   words "):
+        assert _count_whitespace_separated_tokens(prompt) == len(prompt.split())
+
+
 def test_ch19_adaptive_parallelism_elapsed_timing_uses_monotonic_clock() -> None:
     strategy_source = (REPO_ROOT / "ch19" / "adaptive_parallelism_strategy.py").read_text(
         encoding="utf-8"

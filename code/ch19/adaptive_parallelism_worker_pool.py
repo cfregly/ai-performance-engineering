@@ -70,6 +70,19 @@ class GPUMetrics:
     temperature: float
     
 
+def _count_whitespace_separated_tokens(text: str) -> int:
+    """Count split-like tokens without allocating a list of substrings."""
+    count = 0
+    in_token = False
+    for char in text:
+        if char.isspace():
+            in_token = False
+        elif not in_token:
+            count += 1
+            in_token = True
+    return count
+
+
 class WorkerPool:
     """
     A worker pool managing a specific parallelism configuration.
@@ -444,14 +457,15 @@ class AdaptiveParallelismManager:
             Inference result
         """
         # Create request
+        now = time.time()
         request = InferenceRequest(
-            request_id=f"req_{time.time()}",
+            request_id=f"req_{now}",
             prompt=prompt,
             max_tokens=max_tokens,
             temperature=temperature,
-            seq_len=len(prompt.split()),  # Rough approximation
+            seq_len=_count_whitespace_separated_tokens(prompt),  # Rough approximation
             sla_latency_ms=sla_latency_ms,
-            arrival_time=time.time()
+            arrival_time=now
         )
         
         # Choose worker pool
