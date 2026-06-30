@@ -17817,6 +17817,14 @@ def test_ch13_token_kv_cache_attention_skips_contiguous_for_single_token_decode(
         assert "else:" in forward_section
         assert f"{output_name} = {output_name}.contiguous().view(batch_size, seq_len, hidden_dim)" in forward_section
         assert f"{output_name}.transpose(1, 2).contiguous().view" not in forward_section
+        assert "self._qkv_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._qkv_weight_t: Optional[torch.Tensor] = None" in source
+        assert "def prepare_inference(self) -> None:" in source
+        assert "self._qkv_weight_t = self.qkv.weight.t()" in source
+        assert "def _qkv_buffer_for(self, x: torch.Tensor) -> torch.Tensor:" in source
+        assert "torch.matmul(x_2d, self._qkv_weight_t, out=qkv_2d)" in source
+        assert "qkv = self._project_qkv(x)" in forward_section
+        assert "qkv = self.qkv(x)" not in forward_section
 
     x = torch.randn(2, 3, 1, 5)
     transposed = x.transpose(1, 2)

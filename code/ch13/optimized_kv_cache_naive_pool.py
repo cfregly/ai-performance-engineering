@@ -103,14 +103,44 @@ class SimpleAttentionLayer(nn.Module):
         super().__init__()
         self.output = None
         self._verify_input = None
+        self.hidden_dim = hidden_dim
         self.num_heads = num_heads
         self.head_dim = head_dim
         self.qkv = nn.Linear(hidden_dim, hidden_dim * 3, dtype=dtype)
         self.proj = nn.Linear(hidden_dim, hidden_dim, dtype=dtype)
+        self._qkv_buffer: Optional[torch.Tensor] = None
+        self._qkv_weight_t: Optional[torch.Tensor] = None
+
+    def prepare_inference(self) -> None:
+        self._qkv_weight_t = self.qkv.weight.t()
+
+    def _qkv_buffer_for(self, x: torch.Tensor) -> torch.Tensor:
+        rows = int(x.size(0) * x.size(1))
+        width = self.hidden_dim * 3
+        if (
+            self._qkv_buffer is None
+            or self._qkv_buffer.device != x.device
+            or self._qkv_buffer.dtype != x.dtype
+            or self._qkv_buffer.size(0) < rows
+        ):
+            self._qkv_buffer = torch.empty(rows, width, device=x.device, dtype=x.dtype)
+        return self._qkv_buffer[:rows]
+
+    def _project_qkv(self, x: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled():
+            return self.qkv(x)
+        if self._qkv_weight_t is None:
+            self.prepare_inference()
+        x_2d = x.reshape(x.size(0) * x.size(1), self.hidden_dim)
+        qkv_2d = self._qkv_buffer_for(x)
+        qkv = torch.matmul(x_2d, self._qkv_weight_t, out=qkv_2d)
+        if self.qkv.bias is not None:
+            qkv.add_(self.qkv.bias)
+        return qkv.view(x.size(0), x.size(1), self.hidden_dim * 3)
     
     def forward(self, x: torch.Tensor, kv_cache: OptimizedKVCache, request_id: str, layer_idx: int, cache_pos: int) -> torch.Tensor:
         batch_size, seq_len, hidden_dim = x.shape
-        qkv = self.qkv(x)
+        qkv = self._project_qkv(x)
         q, k, v = qkv.chunk(3, dim=-1)
         
         q = q.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
@@ -180,6 +210,8 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
                 for _ in range(self.num_layers)
             ]
         ).to(self.device).eval()
+        for layer in self.model:
+            layer.prepare_inference()
         self._layer_groups = list(enumerate(self.model))
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
