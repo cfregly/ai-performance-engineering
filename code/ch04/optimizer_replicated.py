@@ -67,7 +67,7 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
         with self._nvtx_range("baseline_optimizer_replicated"):
             for model, mom, x in self._update_groups:
                 y = model(x)
-                loss = y.pow(2).mean()
+                loss = y.square().mean()
                 loss.backward()
                 # Local momentum update (per-GPU state)
                 with torch.no_grad():

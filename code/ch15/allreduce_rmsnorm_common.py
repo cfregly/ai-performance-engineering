@@ -33,7 +33,7 @@ def build_shards(device: torch.device, cfg: AllReduceRMSNormConfig) -> torch.Ten
 
 def rms_norm(x: torch.Tensor, eps: float) -> torch.Tensor:
     """Reference RMSNorm (no weight) used by both baseline and optimized."""
-    variance = x.pow(2).mean(dim=-1, keepdim=True)
+    variance = x.square().mean(dim=-1, keepdim=True)
     return x * torch.rsqrt(variance + eps)
 
 

@@ -92,7 +92,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         with self._nvtx_range("optimized_optimizer_central_nvlink"):
             for model, master_w, mom, grad_root_buf, x in self._update_groups:
                 y = model(x)
-                loss = y.pow(2).mean()
+                loss = y.square().mean()
                 loss.backward()
 
                 # Ship gradient to root over NVLink (non-blocking if available)

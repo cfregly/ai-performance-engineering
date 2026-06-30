@@ -74,7 +74,7 @@ def _activation_scale(calibration: torch.Tensor) -> torch.Tensor:
 
 
 def _hessian_proxy(calibration: torch.Tensor) -> torch.Tensor:
-    return torch.clamp(calibration.pow(2).mean(dim=0).sqrt(), min=0.25, max=4.0)
+    return torch.clamp(calibration.square().mean(dim=0).sqrt(), min=0.25, max=4.0)
 
 
 def _smoothquant_scale(weight: torch.Tensor, calibration: torch.Tensor) -> torch.Tensor:

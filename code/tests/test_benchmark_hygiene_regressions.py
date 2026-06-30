@@ -822,6 +822,43 @@ def test_ch04_optimizer_variants_reuse_update_groups() -> None:
         assert "self._verify_output_buffer = None" in teardown_section
 
 
+def test_square_mean_paths_use_dedicated_square_kernel() -> None:
+    ch04_files = (
+        "ch04/optimizer_replicated.py",
+        "ch04/optimizer_central_nvlink.py",
+        "ch04/ddp_nvlink_naive.py",
+        "ch04/ddp_nvlink_overlap.py",
+    )
+    for relative in ch04_files:
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "loss = y.square().mean()" in benchmark_section
+        assert ".pow(2).mean()" not in benchmark_section
+
+    rms_source = (REPO_ROOT / "ch15" / "allreduce_rmsnorm_common.py").read_text(
+        encoding="utf-8"
+    )
+    rms_section = rms_source.split("def rms_norm", maxsplit=1)[1].split(
+        "def naive_allreduce",
+        maxsplit=1,
+    )[0]
+    assert "variance = x.square().mean(dim=-1, keepdim=True)" in rms_section
+    assert ".pow(2)" not in rms_section
+
+    ptq_source = (
+        REPO_ROOT / "ch16" / "awq_gptq_smoothquant_benchmarks.py"
+    ).read_text(encoding="utf-8")
+    hessian_section = ptq_source.split("def _hessian_proxy", maxsplit=1)[1].split(
+        "def _smoothquant_scale",
+        maxsplit=1,
+    )[0]
+    assert "calibration.square().mean(dim=0).sqrt()" in hessian_section
+    assert ".pow(2)" not in hessian_section
+
+
 def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     naive_source = (REPO_ROOT / "ch04" / "ddp_nvlink_naive.py").read_text(encoding="utf-8")
     source = (REPO_ROOT / "ch04" / "ddp_nvlink_overlap.py").read_text(encoding="utf-8")

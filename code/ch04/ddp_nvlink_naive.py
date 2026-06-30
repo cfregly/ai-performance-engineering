@@ -103,7 +103,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for micro in self._microbatch_range:
                 for model_idx, model, x in self._micro_model_groups[micro]:
                     y = model(x)
-                    loss = y.pow(2).mean()
+                    loss = y.square().mean()
                     loss.backward()
                     grad = model.weight.grad
                     if grad is None:
