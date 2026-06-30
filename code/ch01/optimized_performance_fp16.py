@@ -95,7 +95,7 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
 
         # Match baseline input signature: verification inputs are FP32.
         self._verify_input = self.microbatches[0].float().clone()
-        self._verify_output = None
+        self._verify_output = torch.empty(self._verify_input.shape[0], 10, device=self.device, dtype=torch.float32)
 
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-3)
         for _ in range(3):
@@ -138,12 +138,13 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
                 self.optimizer.step()
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self._verify_input is None:
+        if self.model is None or self._verify_input is None or self._verify_output is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        with torch.no_grad():
+        with torch.inference_mode():
             verify_input = self._verify_input
             verify_input = verify_input.to(dtype=self._model_dtype, device=self.device)
-            self._verify_output = self.model(verify_input).float().clone()
+            verify_output = self.model(verify_input)
+            self._verify_output.copy_(verify_output)
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
             output=self._verify_output,
@@ -163,6 +164,8 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
         self._microbatch_groups = None
         self._target_groups = None
         self._group_sizes = None
+        self._verify_input = None
+        self._verify_output = None
         self._model_dtype = torch.float32
         restore_tf32_state(self._tf32_state)
         if torch.cuda.is_available():
