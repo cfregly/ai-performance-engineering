@@ -301,16 +301,18 @@ class CausalSelfAttention(nn.Module):
         return attn_mask
 
     def _rotary_buffer(self, name, tensor):
+        shape = tuple(int(dim) for dim in tensor.shape)
+        numel = int(tensor.numel())
         buffer = getattr(self, name)
         if (
             buffer is None
             or buffer.device != tensor.device
             or buffer.dtype != tensor.dtype
-            or tuple(buffer.shape) != tuple(tensor.shape)
+            or buffer.numel() < numel
         ):
-            buffer = torch.empty_like(tensor)
+            buffer = torch.empty(numel, dtype=tensor.dtype, device=tensor.device)
             setattr(self, name, buffer)
-        return buffer
+        return buffer[:numel].view(shape)
 
     def _flash3_attention(self, q, k, v, kv_cache, enable_gqa, use_clustering=False):
         """Varlen FlashAttention-3 path (no masks). Returns None on fallback."""

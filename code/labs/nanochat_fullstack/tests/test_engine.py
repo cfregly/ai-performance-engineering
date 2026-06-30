@@ -1120,6 +1120,14 @@ def test_attention_reuses_rotary_buffers_for_inference():
     assert attn._rotary_buffer("_rotary_q_cache", q).data_ptr() == q_buf.data_ptr()
     assert attn._rotary_buffer("_rotary_k_cache", k).data_ptr() == k_buf.data_ptr()
 
+    q_smaller = torch.empty(1, 1, 1, 4)
+    q_small_buf = attn._rotary_buffer("_rotary_q_cache", q_smaller)
+
+    assert q_small_buf.shape == q_smaller.shape
+    assert q_small_buf.is_contiguous()
+    assert q_small_buf.data_ptr() == q_buf.data_ptr()
+    assert attn._rotary_q_cache.numel() >= q.numel()
+
     source = Path(__file__).resolve().parents[1] / "nanochat" / "gpt.py"
     gpt_source = source.read_text(encoding="utf-8")
     forward_section = gpt_source.split("def forward(self, x, cos_sin", maxsplit=1)[1].split(
@@ -1130,6 +1138,8 @@ def test_attention_reuses_rotary_buffers_for_inference():
     assert "self._rotary_q_cache = None" in gpt_source
     assert "self._rotary_k_cache = None" in gpt_source
     assert "def _rotary_buffer(self, name, tensor)" in gpt_source
+    assert "buffer.numel() < numel" in gpt_source
+    assert "return buffer[:numel].view(shape)" in gpt_source
     assert "out=self._rotary_buffer(\"_rotary_q_cache\", q)" in forward_section
     assert "out=self._rotary_buffer(\"_rotary_k_cache\", k)" in forward_section
 
