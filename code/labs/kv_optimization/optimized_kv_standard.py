@@ -188,15 +188,18 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
     
     def _compute_scale(self, x: torch.Tensor) -> torch.Tensor:
         """Compute dynamic scaling factor."""
+        shape = tuple(int(dim) for dim in x.shape)
+        numel = int(x.numel())
         if (
             self._scale_abs_buffer is None
-            or self._scale_abs_buffer.shape != x.shape
             or self._scale_abs_buffer.device != x.device
             or self._scale_abs_buffer.dtype != x.dtype
+            or self._scale_abs_buffer.numel() < numel
         ):
-            self._scale_abs_buffer = torch.empty_like(x)
-        torch.abs(x, out=self._scale_abs_buffer)
-        absmax = self._scale_abs_buffer.amax().float()
+            self._scale_abs_buffer = torch.empty(numel, dtype=x.dtype, device=x.device)
+        abs_buffer = self._scale_abs_buffer[:numel].view(shape)
+        torch.abs(x, out=abs_buffer)
+        absmax = abs_buffer.amax().float()
         
         if self.use_fp4:
             max_val = 6.0  # FP4 range

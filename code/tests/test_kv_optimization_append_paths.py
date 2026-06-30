@@ -155,8 +155,10 @@ def test_fp8_append_paths_reuse_quantization_buffers() -> None:
     assert "self._scale_abs_buffer = torch.empty_like(self._generated_k_steps[0])" in setup_source
     assert "self._k_quantized_layer_view = self._k_quantized_step.unsqueeze(1)" in setup_source
     assert "self._v_quantized_layer_view = self._v_quantized_step.unsqueeze(1)" in setup_source
-    assert "torch.abs(x, out=self._scale_abs_buffer)" in compute_scale_source
-    assert "absmax = self._scale_abs_buffer.amax().float()" in compute_scale_source
+    assert "or self._scale_abs_buffer.numel() < numel" in compute_scale_source
+    assert "abs_buffer = self._scale_abs_buffer[:numel].view(shape)" in compute_scale_source
+    assert "torch.abs(x, out=abs_buffer)" in compute_scale_source
+    assert "absmax = abs_buffer.amax().float()" in compute_scale_source
     assert "x.abs().amax().float()" not in compute_scale_source
     assert "torch.mul(x, scale, out=out)" in quantize_source
     assert "k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)" in append_source
@@ -172,6 +174,31 @@ def test_fp8_append_paths_reuse_quantization_buffers() -> None:
     assert "(k * k_scale).to(self.cache_dtype)" not in append_active_source
     assert "(v * v_scale).to(self.cache_dtype)" not in append_active_source
     assert "self._scale_abs_buffer = None" in teardown_source
+
+    bench = OptimizedKVFP8Compressed(
+        batch_size=2,
+        num_layers=2,
+        num_heads=2,
+        head_dim=4,
+        max_seq_length=4,
+        active_layers=1,
+        num_decode_steps=1,
+    )
+    bench.device = torch.device("cpu")
+    bench.cache_dtype = torch.float32
+    bench.use_fp8 = True
+    bench.use_fp4 = False
+    large = torch.randn(2, 2, 4)
+    small = torch.randn(1, 2, 4)
+
+    large_scale = bench._compute_scale(large)
+    buffer_ptr = bench._scale_abs_buffer.data_ptr()
+    small_scale = bench._compute_scale(small)
+
+    assert torch.isfinite(large_scale)
+    assert torch.isfinite(small_scale)
+    assert bench._scale_abs_buffer.data_ptr() == buffer_ptr
+    assert bench._scale_abs_buffer.numel() >= large.numel()
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for KV append parity")
