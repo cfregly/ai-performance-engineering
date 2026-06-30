@@ -19961,6 +19961,33 @@ def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path(
             assert "self._decode_graph.replay()" in stream_section
 
 
+def test_decode_common_reuses_cached_decode_step_range() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    init_section = source.split("def __init__", maxsplit=1)[1].split(
+        "def setup",
+        maxsplit=1,
+    )[0]
+    graph_section = source.split("def _capture_decode_graph", maxsplit=1)[1].split(
+        "# Core math",
+        maxsplit=1,
+    )[0]
+    prefill_decode_section = source.split("def _run_prefill_decode", maxsplit=1)[1].split(
+        "def _benchmark_prefetch_batches",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+
+    assert "self._decode_step_range = range(self.cfg.decode_tokens)" in init_section
+    for section in (graph_section, prefill_decode_section, benchmark_section):
+        assert "for _ in self._decode_step_range:" in section
+        assert "for _ in range(self.cfg.decode_tokens):" not in section
+
+
 def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> None:
     baseline_pipeline = (REPO_ROOT / "ch10" / "baseline_pipeline_3stage.py").read_text(encoding="utf-8")
     optimized_pipeline = (REPO_ROOT / "ch10" / "optimized_pipeline_3stage.py").read_text(encoding="utf-8")

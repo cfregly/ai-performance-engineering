@@ -135,6 +135,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._custom_metrics: Dict[str, float] = {}
         self._iteration_ttft_times = [0.0]
         self._iteration_tpot_times = [0.0] * self.cfg.decode_tokens
+        self._decode_step_range = range(self.cfg.decode_tokens)
         self._iteration_metric_payload: Dict[str, list[float]] = {
             "ttft_times_ms": self._iteration_ttft_times,
             "tpot_times_ms": self._iteration_tpot_times,
@@ -574,7 +575,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.cuda.graph(self.decode_graph, stream=self.graph_stream):
                 if self.cfg.graph_full_iteration:
                     _prime_decode_state()
-                for _ in range(self.cfg.decode_tokens):
+                for _ in self._decode_step_range:
                     next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                     self.state_buffer.copy_(next_state)
                     self.current_tokens.copy_(next_token)
@@ -686,7 +687,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             prefill_state = self.prefill_fn(prompt)
             self.state_buffer.copy_(prefill_state)
             self.current_tokens.copy_(prompt_last_token)
-            for _ in range(self.cfg.decode_tokens):
+            for _ in self._decode_step_range:
                 next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                 self.state_buffer.copy_(next_state)
                 self.current_tokens.copy_(next_token)
@@ -819,7 +820,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     self.decode_graph.replay()
             else:
                 with torch.cuda.stream(decode_stream):
-                    for _ in range(self.cfg.decode_tokens):
+                    for _ in self._decode_step_range:
                         next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                         self.state_buffer.copy_(next_state)
                         self.current_tokens.copy_(next_token)
