@@ -17059,7 +17059,10 @@ def test_ch19_nvfp4_training_defers_verification_forward_outside_hot_loop() -> N
         assert "with torch.inference_mode():" in capture_section
         assert "with torch.no_grad():" not in capture_section
         assert "self.model(self._verify_input)" in capture_section
-        assert ".float().clone()" in capture_section
+        assert "self._verify_output_buffer = torch.empty_like(" in capture_section
+        assert "self._verify_output_buffer.copy_(" in capture_section
+        assert "self.output = self._verify_output_buffer" in capture_section
+        assert ".float().clone()" not in capture_section
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
         assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
         assert "get_config()" not in benchmark_section

@@ -85,6 +85,7 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs: List[torch.Tensor] = []
         self.targets: List[torch.Tensor] = []
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         
         # NVFP4 recipe with calibration
@@ -194,7 +195,14 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with torch.inference_mode():
             with te_autocast(enabled=True, recipe=self.active_recipe):
                 out = self.model(self._verify_input)
-            self.output = out.float().clone()
+            if (
+                self._verify_output_buffer is None
+                or self._verify_output_buffer.shape != out.shape
+                or self._verify_output_buffer.device != out.device
+            ):
+                self._verify_output_buffer = torch.empty_like(out, dtype=torch.float32)
+            self._verify_output_buffer.copy_(out)
+            self.output = self._verify_output_buffer
         precision_flags = {
             "fp16": False,
             "bf16": True,
@@ -237,6 +245,9 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer = None
         self.inputs = []
         self.targets = []
+        self._verify_input = None
+        self._verify_output_buffer = None
+        self.output = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

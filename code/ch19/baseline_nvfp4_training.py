@@ -58,6 +58,7 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs: List[torch.Tensor] = []
         self.targets: List[torch.Tensor] = []
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         tokens = self.batch_size * self.seq_len * self.micro_batches
         self._workload = WorkloadMetadata(
@@ -125,7 +126,15 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._verify_input is None or self.model is None:
             raise RuntimeError("Verification input/model missing")
         with torch.inference_mode():
-            self.output = self.model(self._verify_input).float().clone()
+            verify_output = self.model(self._verify_input)
+            if (
+                self._verify_output_buffer is None
+                or self._verify_output_buffer.shape != verify_output.shape
+                or self._verify_output_buffer.device != verify_output.device
+            ):
+                self._verify_output_buffer = torch.empty_like(verify_output, dtype=torch.float32)
+            self._verify_output_buffer.copy_(verify_output)
+            self.output = self._verify_output_buffer
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
             output=self.output,
@@ -162,6 +171,9 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer = None
         self.inputs = []
         self.targets = []
+        self._verify_input = None
+        self._verify_output_buffer = None
+        self.output = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
