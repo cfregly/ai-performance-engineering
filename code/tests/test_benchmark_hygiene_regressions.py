@@ -15807,6 +15807,13 @@ def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
         assert "with torch.inference_mode():" in benchmark_section
         assert "self._payload_parameter_count = 0" in source
         assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
+        if relative.endswith("optimized_moe_router_uniform_topology.py"):
+            assert "def __init__(self, *, spill_period: int = 8) -> None:" in source
+            assert "self.spill_period = int(spill_period)" in source
+            assert "if self.spill_period > 0:" in setup_section
+            assert "spill = (token_ids % self.spill_period == 0)" in setup_section
+            assert '"moe.remote_tokens": remote_tokens' in source
+            assert '"moe.spill_period": float(self.spill_period)' in source
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "probe_cols = min(256, self.hidden_size)" in setup_section
         assert "self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)" in setup_section
@@ -15825,6 +15832,18 @@ def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
         assert "torch.index_select(flat, 0, self._remote_idx, out=self._remote_buf_a[:, : self.hidden_size])" in benchmark_section
         assert "self._remote_buf_b.copy_(self._remote_buf_a)" in benchmark_section
         assert "self._remote_buf_a.copy_(self._remote_buf_b)" in benchmark_section
+
+
+def test_ch17_moe_router_local_capacity_wrappers_configure_spill_policy() -> None:
+    baseline_source = (REPO_ROOT / "ch17" / "baseline_moe_router_local_capacity.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_source = (REPO_ROOT / "ch17" / "optimized_moe_router_local_capacity.py").read_text(
+        encoding="utf-8"
+    )
+    assert "OptimizedMoERouterTopologyBenchmark" in baseline_source
+    assert "super().__init__(spill_period=8)" in baseline_source
+    assert "super().__init__(spill_period=0)" in optimized_source
 
 
 def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:

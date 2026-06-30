@@ -36,7 +36,7 @@ def _pseudo_uniform_expert_ids(token_ids: torch.Tensor, num_experts: int) -> tor
 class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized: topology-aware routing with low remote-transfer fraction."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, spill_period: int = 8) -> None:
         super().__init__()
         self.hidden_size = 1024
         self.ffn_size = 128
@@ -47,6 +47,7 @@ class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.seq = 64
         self.dtype = torch.bfloat16
         self.remote_round_trips = 256
+        self.spill_period = int(spill_period)
 
         tokens = self.batch * self.seq
         self._workload = WorkloadMetadata(
@@ -99,12 +100,12 @@ class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmar
         local_experts = _pseudo_uniform_expert_ids(token_ids, experts_per_island)
         expert_ids = local_island * experts_per_island + local_experts
 
-        # Controlled spill: every 8th token routes to the next island to simulate overflow.
-        spill = (token_ids % 8 == 0)
-        spill_island = (local_island + 1) % int(self.num_islands)
-        spill_local = _pseudo_uniform_expert_ids(token_ids + 17, experts_per_island)
-        spill_ids = spill_island * experts_per_island + spill_local
-        expert_ids = torch.where(spill, spill_ids, expert_ids)
+        if self.spill_period > 0:
+            spill = (token_ids % self.spill_period == 0)
+            spill_island = (local_island + 1) % int(self.num_islands)
+            spill_local = _pseudo_uniform_expert_ids(token_ids + 17, experts_per_island)
+            spill_ids = spill_island * experts_per_island + spill_local
+            expert_ids = torch.where(spill, spill_ids, expert_ids)
 
         self.expert_ids = expert_ids.view(self.batch, self.seq)
 
@@ -211,6 +212,15 @@ class OptimizedMoERouterTopologyBenchmark(VerificationPayloadMixin, BaseBenchmar
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def get_custom_metrics(self) -> Optional[dict]:
+        remote_tokens = float(self._remote_idx.numel()) if self._remote_idx is not None else 0.0
+        total_tokens = float(self.batch * self.seq)
+        return {
+            "moe.remote_tokens": remote_tokens,
+            "moe.remote_fraction_pct": (remote_tokens / total_tokens) * 100.0 if total_tokens else 0.0,
+            "moe.spill_period": float(self.spill_period),
+        }
 
     def validate_result(self) -> Optional[str]:
         if self.output is None:
