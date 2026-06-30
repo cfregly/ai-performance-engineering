@@ -37,6 +37,7 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
         self._work: Optional[torch.Tensor] = None
         self._verify_probe_a: Optional[torch.Tensor] = None
         self._verify_probe_b: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._enable_nvtx = False
 
         self.repeats = 12
@@ -63,6 +64,7 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
         self._work = torch.empty(self.N, device=self.device, dtype=self._compute_dtype)
         self._verify_probe_a = self.tensor_a[:1024].detach().cpu()
         self._verify_probe_b = self.tensor_b[:1024].detach().cpu()
+        self._verify_output_buffer = torch.empty(4096, dtype=torch.float32)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -76,12 +78,18 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
             raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or self._verify_probe_a is None or self._verify_probe_b is None:
+        if (
+            self.output is None
+            or self._verify_probe_a is None
+            or self._verify_probe_b is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
-        output_slice = self.output[:4096].detach().cpu().float().clone()
+        output_slice = self.output[: self._verify_output_buffer.numel()].detach()
+        self._verify_output_buffer.copy_(output_slice, non_blocking=False)
         self._set_verification_payload(
             inputs={"probe_a": self._verify_probe_a, "probe_b": self._verify_probe_b},
-            output=output_slice,
+            output=self._verify_output_buffer,
             batch_size=self.N,
             parameter_count=0,
             output_tolerance=(0.1, 1.0),
@@ -96,6 +104,7 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
         self._work = None
         self._verify_probe_a = None
         self._verify_probe_b = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

@@ -6257,9 +6257,15 @@ def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
     baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    baseline_capture = baseline_source.split(
+        "def capture_verification_payload", maxsplit=1
+    )[1].split("def teardown", maxsplit=1)[0]
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
     )[0]
 
     assert "_cached_a_fp16" not in source
@@ -6270,11 +6276,19 @@ def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
     assert "self.output = self._work" in benchmark_section
     assert "self._work.detach()" not in benchmark_section
     assert ".to(self._compute_dtype)" not in benchmark_section
-    for setup, benchmark in ((baseline_setup, baseline_benchmark), (setup_section, benchmark_section)):
+    for setup, benchmark, capture in (
+        (baseline_setup, baseline_benchmark, baseline_capture),
+        (setup_section, benchmark_section, capture_section),
+    ):
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup
         assert "get_config()" not in benchmark
         assert "get_nvtx_enabled(" not in benchmark
         assert "enable=self._enable_nvtx" in benchmark
+        assert "self._verify_output_buffer = torch.empty(4096, dtype=torch.float32)" in setup
+        assert "output_slice = self.output[: self._verify_output_buffer.numel()].detach()" in capture
+        assert "self._verify_output_buffer.copy_(output_slice, non_blocking=False)" in capture
+        assert "output=self._verify_output_buffer" in capture
+        assert ".cpu().float().clone()" not in capture
 
 
 def test_ch19_optimized_mxfp8_moe_builds_topk_assignments_without_stack() -> None:
