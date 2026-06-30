@@ -80,6 +80,9 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
         self.output: Optional[torch.Tensor] = None
         self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._num_items = min(self.batch, self.num_programs)
+        self._launch_grid = (max(1, self._num_items),)
+        self._block_k_const = self.block_k
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -91,19 +94,17 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
         self._synchronize()
 
         # Precompile the Triton kernel to keep measurement under benchmark timeouts.
-        grid = (max(1, min(self.batch, self.num_programs)),)
-        BLOCK_K = self.block_k
-        persistent_decode_kernel[grid](
+        persistent_decode_kernel[self._launch_grid](
             self.inputs.q,
             self.inputs.k,
             self.inputs.v,
             self.inputs.out,
             self.inputs.work_seq_ids,
             self.inputs.work_steps,
-            self.batch,
+            self._num_items,
             head_dim=self.head_dim,
             max_steps=self.seq_len,
-            BLOCK_K=BLOCK_K,
+            BLOCK_K=self._block_k_const,
             num_warps=2,
             num_stages=1,
         )
@@ -113,21 +114,18 @@ class OptimizedPersistentDecodeTritonBenchmark(VerificationPayloadMixin, BaseBen
         if self.inputs is None or self._output_view is None:
             raise RuntimeError("Inputs not initialized")
 
-        num_items = min(self.batch, self.num_programs)
-        grid = (max(1, num_items),)
-        BLOCK_K = self.block_k
         with torch.inference_mode(), self._nvtx_range("persistent_decode_triton"):
-            persistent_decode_kernel[grid](
+            persistent_decode_kernel[self._launch_grid](
                 self.inputs.q,
                 self.inputs.k,
                 self.inputs.v,
                 self.inputs.out,
                 self.inputs.work_seq_ids,
                 self.inputs.work_steps,
-                num_items,
+                self._num_items,
                 head_dim=self.head_dim,
                 max_steps=self.seq_len,
-                BLOCK_K=BLOCK_K,
+                BLOCK_K=self._block_k_const,
                 num_warps=2,
                 num_stages=1,
             )

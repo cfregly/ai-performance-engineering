@@ -135,9 +135,11 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._memmap_path: Optional[Path] = None
 
         self.page_cursor: int = 0
+        self._repeat_pages = 1
         self._bytes_per_iteration: float = 0.0
         self.output: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._verify_head_dim = min(8, self.cfg.head_dim)
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     # -------------------- Setup helpers --------------------
@@ -311,7 +313,8 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             * torch.finfo(self.runtime_dtype).bits
             / 8.0
         )
-        self._bytes_per_iteration = float(bytes_per_page * max(1, self.cfg.repeat_pages))
+        self._repeat_pages = max(1, self.cfg.repeat_pages)
+        self._bytes_per_iteration = float(bytes_per_page * self._repeat_pages)
         self.register_workload_metadata(bytes_per_iteration=self._bytes_per_iteration)
 
         self._start_host_prefetch_thread()
@@ -333,7 +336,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             q = q.to(dtype=q_dtype)
         self.q = q
         self._verify_output_buffer = torch.empty(
-            (self.cfg.batch_size, self.cfg.num_heads, 1, min(8, self.cfg.head_dim)),
+            (self.cfg.batch_size, self.cfg.num_heads, 1, self._verify_head_dim),
             device=self.device,
             dtype=torch.float32,
         )
@@ -435,7 +438,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return None
 
     def benchmark_fn(self) -> None:
-        repeats = max(1, self.cfg.repeat_pages)
+        repeats = self._repeat_pages
         attn_out = None
         use_host_prefetch = bool(self.cfg.use_host_prefetch_thread and self.cfg.prefetch_next_page)
         current_stream = torch.cuda.current_stream() if self.copy_stream is not None else None
@@ -521,7 +524,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if attn_out is None:
             raise RuntimeError("benchmark_fn() did not produce output")
         # Capture a slice of attention output for verification
-        self.output = attn_out[:, :, :1, : min(8, attn_out.shape[-1])]
+        self.output = attn_out[:, :, :1, : self._verify_head_dim]
         fp8_enabled = _FLOAT8_E4M3FN is not None and self.runtime_dtype == _FLOAT8_E4M3FN
         self._payload_fp8_enabled = fp8_enabled
         self._payload_k = k

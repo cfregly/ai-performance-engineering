@@ -11219,10 +11219,12 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "torch.cuda.current_stream().wait_event(self.prefetch_event)" not in benchmark_section
     assert "wait_stream=current_stream" in benchmark_section
     assert "Prefetch event not initialized for async two-buffer prefetch" in benchmark_section
-    assert "self.output = attn_out[:, :, :1, : min(8, attn_out.shape[-1])]" in benchmark_section
+    assert "self.output = attn_out[:, :, :1, : self._verify_head_dim]" in benchmark_section
     assert "attn_out[:, :, :1, : min(8, attn_out.shape[-1])].detach()" not in benchmark_section
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_head_dim = min(8, self.cfg.head_dim)" in source
     assert "self._verify_output_buffer = torch.empty(" in setup_section
+    assert "(self.cfg.batch_size, self.cfg.num_heads, 1, self._verify_head_dim)" in setup_section
     assert "self._verify_output_buffer.copy_(self.output)" in source
     assert "output=self._verify_output_buffer" in source
     assert "self.output.float().clone()" not in source
@@ -11234,6 +11236,13 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert 'getattr(torch, "float8_e4m3fn"' not in benchmark_section
     assert "self.copy_stream is not None and self._hot_buffer_count > 1" in benchmark_section
     assert "len(self.hot_k_bufs)" not in benchmark_section
+    assert "self._repeat_pages = 1" in source
+    assert "self._repeat_pages = max(1, self.cfg.repeat_pages)" in setup_section
+    assert "self._bytes_per_iteration = float(bytes_per_page * self._repeat_pages)" in setup_section
+    assert "repeats = self._repeat_pages" in benchmark_section
+    assert "max(1, self.cfg.repeat_pages)" not in benchmark_section
+    assert "self.output = attn_out[:, :, :1, : self._verify_head_dim]" in benchmark_section
+    assert "min(8, attn_out.shape[-1])" not in benchmark_section
 
 
 def test_paged_kv_offload_hot_page_buffers_avoid_zero_fill() -> None:
@@ -21440,6 +21449,19 @@ def test_persistent_decode_verification_clone_stays_out_of_hot_path() -> None:
             assert "self._output_view.detach()" not in hot_section
             assert "self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" not in hot_section
             assert "self._output_view = None" in teardown_section
+            if path.name == "optimized_persistent_decode_triton.py":
+                assert "self._num_items = min(self.batch, self.num_programs)" in text
+                assert "self._launch_grid = (max(1, self._num_items),)" in text
+                assert "self._block_k_const = self.block_k" in text
+                assert "persistent_decode_kernel[self._launch_grid](" in setup_section
+                assert "persistent_decode_kernel[self._launch_grid](" in hot_section
+                assert "self._num_items," in setup_section
+                assert "self._num_items," in hot_section
+                assert "BLOCK_K=self._block_k_const" in setup_section
+                assert "BLOCK_K=self._block_k_const" in hot_section
+                assert "num_items = min(" not in hot_section
+                assert "grid = (max(" not in hot_section
+                assert "BLOCK_K = self.block_k" not in hot_section
 
 
 def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path() -> None:
