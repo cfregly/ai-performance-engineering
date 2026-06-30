@@ -461,8 +461,16 @@ def grouped_ffn_cuda(
     flat_slots = num_experts * packed.max_count
 
     padded_tokens = padded_tokens_buffer
-    if padded_tokens is None or tuple(padded_tokens.shape) != (flat_slots, hidden_dim):
-        padded_tokens = torch.empty(flat_slots, hidden_dim, device=device, dtype=packed_tokens.dtype)
+    padded_numel = flat_slots * hidden_dim
+    if (
+        padded_tokens is None
+        or padded_tokens.device != device
+        or padded_tokens.dtype != packed_tokens.dtype
+        or not padded_tokens.is_contiguous()
+        or padded_tokens.numel() < padded_numel
+    ):
+        padded_tokens = torch.empty(padded_numel, device=device, dtype=packed_tokens.dtype)
+    padded_tokens = padded_tokens.view(-1)[:padded_numel].view(flat_slots, hidden_dim)
     padded_tokens.index_copy_(0, packed.padded_indices, packed_tokens)
     padded_tokens = padded_tokens.view(num_experts, packed.max_count, hidden_dim)
 
@@ -483,8 +491,17 @@ def combine_weighted_outputs(
     consume_sorted_outputs: bool = False,
 ) -> torch.Tensor:
     combined = output_buffer
-    if combined is None or tuple(combined.shape) != (num_tokens, sorted_outputs.shape[1]):
-        combined = torch.empty(num_tokens, sorted_outputs.shape[1], device=sorted_outputs.device, dtype=sorted_outputs.dtype)
+    output_shape = (int(num_tokens), int(sorted_outputs.shape[1]))
+    output_numel = output_shape[0] * output_shape[1]
+    if (
+        combined is None
+        or combined.device != sorted_outputs.device
+        or combined.dtype != sorted_outputs.dtype
+        or not combined.is_contiguous()
+        or combined.numel() < output_numel
+    ):
+        combined = torch.empty(output_numel, device=sorted_outputs.device, dtype=sorted_outputs.dtype)
+    combined = combined.view(-1)[:output_numel].view(output_shape)
     weighted_outputs = sorted_outputs
     weights = getattr(packed, "packed_weight_column", None)
     if weights is None:

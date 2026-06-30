@@ -117,6 +117,9 @@ def test_combine_weighted_outputs_can_consume_sorted_outputs() -> None:
     assert "consume_sorted_outputs: bool = False" in source
     assert "weighted_outputs.mul_(weights)" in source
     assert "combined = torch.empty(" in source
+    assert "or not combined.is_contiguous()" in source
+    assert "or combined.numel() < output_numel" in source
+    assert "combined = combined.view(-1)[:output_numel].view(output_shape)" in source
     assert "combined.zero_()" not in source
     assert "combined = torch.zeros(" not in source
     assert "combined.index_add_(" not in source
@@ -151,6 +154,17 @@ def test_combine_weighted_outputs_can_consume_sorted_outputs() -> None:
     )
     assert combined_reused.data_ptr() == output_buffer.data_ptr()
     torch.testing.assert_close(combined_reused, torch.tensor([[2.75, 5.5], [2.5, 5.0]]))
+
+    oversized_output_buffer = torch.full((8, 2), float("nan"))
+    combined_oversized = moe_common.combine_weighted_outputs(
+        original,
+        packed,
+        num_tokens=2,
+        output_buffer=oversized_output_buffer,
+    )
+    assert combined_oversized.shape == (2, 2)
+    assert combined_oversized.data_ptr() == oversized_output_buffer.data_ptr()
+    torch.testing.assert_close(combined_oversized, torch.tensor([[2.75, 5.5], [2.5, 5.0]]))
 
     precomputed_packed = SimpleNamespace(
         token_indices=packed.token_indices,
@@ -228,6 +242,9 @@ def test_pack_topk_routes_reuses_start_offsets_without_cat() -> None:
 def test_grouped_ffn_cuda_does_not_clear_discarded_padding_rows() -> None:
     source = inspect.getsource(moe_common.grouped_ffn_cuda)
     assert "padded_tokens = torch.empty(" in source
+    assert "or not padded_tokens.is_contiguous()" in source
+    assert "or padded_tokens.numel() < padded_numel" in source
+    assert "padded_tokens = padded_tokens.view(-1)[:padded_numel].view(flat_slots, hidden_dim)" in source
     assert "padded_tokens.zero_()" not in source
     assert "torch.zeros(flat_slots" not in source
 
@@ -246,6 +263,7 @@ def test_grouped_ffn_cuda_does_not_clear_discarded_padding_rows() -> None:
     up_proj = torch.randn(3, 3, 5)
     down_proj = torch.randn(3, 5, 3)
     padded = torch.empty(3 * packed.max_count, 3).fill_(float("nan"))
+    oversized_padded = torch.empty(3 * packed.max_count + 8, 3).fill_(float("nan"))
 
     expected = moe_common.grouped_ffn_reference(
         packed.packed_tokens,
@@ -262,9 +280,19 @@ def test_grouped_ffn_cuda_does_not_clear_discarded_padding_rows() -> None:
         down_proj,
         padded_tokens_buffer=padded,
     )
+    actual_oversized = moe_common.grouped_ffn_cuda(
+        packed.packed_tokens,
+        packed,
+        gate_proj,
+        up_proj,
+        down_proj,
+        padded_tokens_buffer=oversized_padded,
+    )
 
     assert not torch.isnan(actual).any()
     torch.testing.assert_close(actual, expected)
+    assert not torch.isnan(actual_oversized).any()
+    torch.testing.assert_close(actual_oversized, expected)
 
 
 def test_moe_cuda_ptx_swiglu_paths_use_grad_safe_inplace_helper() -> None:
