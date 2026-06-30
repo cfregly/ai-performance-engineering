@@ -307,6 +307,7 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.parameter_count: int = 0
         self._verification_payload = None
         self.output = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._enable_nvtx = False
         
         tokens = self.batch_size * self.seq_len
@@ -343,6 +344,13 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=dtype,
         )
+        self._verify_output_buffer = torch.empty(
+            self.batch_size,
+            min(128, self.seq_len),
+            min(256, self.hidden_dim),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
         self.attn._get_block_mask(self.batch_size, self.seq_len, self.device)
         
@@ -361,10 +369,18 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_dtype = self.x.dtype
 
     def capture_verification_payload(self) -> None:
+        if self.x is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("capture_verification_payload() requires completed run")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+            : self._verify_output_buffer.shape[2],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         dtype = self._payload_dtype
         self._set_verification_payload(
             inputs={"input": self.x},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={
@@ -381,6 +397,8 @@ class FlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.attn = None
         self.model = None
         self.x = None
+        self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

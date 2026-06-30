@@ -2096,6 +2096,36 @@ def test_ch14_optimized_attention_modules_reuse_projection_buffers() -> None:
         assert "self.out_proj.weight.t()" not in forward_section
 
 
+def test_ch14_flex_attention_sparse_samples_verification_outputs() -> None:
+    for filename in (
+        "baseline_flex_attention_sparse.py",
+        "optimized_flex_attention_sparse.py",
+    ):
+        source = (REPO_ROOT / "ch14" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "min(128, self.seq_len)" in setup_section
+        assert "min(256," in setup_section
+        assert "output_slice = self.output[" in capture_section
+        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.output.detach().float().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch14_triton_persistent_demo_batches_correctness_error_reads() -> None:
     source = (REPO_ROOT / "ch14" / "triton_persistent_demo.py").read_text(
         encoding="utf-8"

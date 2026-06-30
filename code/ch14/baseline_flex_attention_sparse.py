@@ -53,6 +53,7 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
         self.x: Optional[torch.Tensor] = None
         self.allowed_mask: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
 
         self.batch_size = 1
@@ -94,6 +95,13 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
         self.allowed_mask = self.allowed_mask.unsqueeze(0).unsqueeze(0)  # [1, 1, S, S]
 
         self.x = torch.randn(self.batch_size, self.seq_len, self.embed_dim, device=self.device, dtype=self.dtype)
+        self._verify_output_buffer = torch.empty(
+            self.batch_size,
+            min(128, self.seq_len),
+            min(256, self.embed_dim),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
         for _ in range(3):
             with torch.inference_mode():
@@ -109,11 +117,17 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
             raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
-        if self.x is None or self.output is None:
+        if self.x is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("capture_verification_payload() requires completed run")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+            : self._verify_output_buffer.shape[2],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"input": self.x},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={
@@ -130,6 +144,7 @@ class BaselineFlexAttentionSparseBenchmark(VerificationPayloadMixin, BaseBenchma
         self.x = None
         self.allowed_mask = None
         self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
         super().teardown()
 
