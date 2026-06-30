@@ -20489,6 +20489,7 @@ def test_ch19_nvfp4_training_preallocates_verification_outputs() -> None:
 
 def test_ch08_to_ch12_kernel_wrappers_use_inference_mode() -> None:
     paths = (
+        "ch08/baseline_tcgen05_custom_vs_cublas.py",
         "ch08/optimized_tcgen05_custom_vs_cublas.py",
         "ch09/baseline_tcgen05_tma_pipeline.py",
         "ch09/optimized_tcgen05_tma_pipeline.py",
@@ -20557,6 +20558,7 @@ def test_ch08_tcgen05_custom_vs_cublas_reuses_output_buffers() -> None:
     assert "self._verify_output_buffer = self._new_output_buffer()" in base_setup
     assert "self._cublas_output_buffer = self._new_output_buffer()" in baseline_setup
     assert "torch.mm(self.matrix_a, self.matrix_b, out=self._cublas_output_buffer)" in cublas_helper
+    assert "torch.inference_mode()" not in cublas_helper
     assert "torch.matmul(self.matrix_a, self.matrix_b)" not in cublas_helper
     assert "self._verify_output_buffer.copy_(self.output)" in capture_section
     assert "output=self._verify_output_buffer" in capture_section

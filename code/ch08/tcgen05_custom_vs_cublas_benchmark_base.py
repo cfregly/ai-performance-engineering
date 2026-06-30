@@ -71,8 +71,7 @@ class Tcgen05CustomVsCublasBase(VerificationPayloadMixin, BaseBenchmark):
     def _run_cublas_reference(self) -> torch.Tensor:
         if self.matrix_a is None or self.matrix_b is None or self._cublas_output_buffer is None:
             raise RuntimeError("Inputs not initialized")
-        with torch.inference_mode():
-            torch.mm(self.matrix_a, self.matrix_b, out=self._cublas_output_buffer)
+        torch.mm(self.matrix_a, self.matrix_b, out=self._cublas_output_buffer)
         return self._cublas_output_buffer
 
     def capture_verification_payload(self) -> None:
