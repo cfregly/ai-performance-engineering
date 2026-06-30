@@ -112,6 +112,7 @@ class DecodeConfig:
     use_cuda_graphs: bool = False
     graph_full_iteration: bool = False
     use_torch_compile: bool = False
+    reuse_device_prompt: bool = False
     iterations: int = 8
     warmup: int = 10
     label: str = "decode_optimization"
@@ -348,6 +349,14 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         metrics["use_torch_compile"] = float(
             self.cfg.use_torch_compile and not self._compile_error
         )
+        metrics["reuse_device_prompt"] = float(self.cfg.reuse_device_prompt)
+        prompt_copy_count = (
+            0.0 if self.cfg.reuse_device_prompt else float(self.cfg.prefetch_batches)
+        )
+        metrics["prompt_copies_per_iteration"] = prompt_copy_count
+        metrics["payload_copies_per_iteration"] = (
+            prompt_copy_count if self.cfg.host_payload_mb else 0.0
+        )
         metrics["use_fp8"] = float(self._fp8_enabled)
         metrics["fp8_fallback"] = float(1.0 if (self.cfg.use_fp8 and not self._fp8_enabled) else 0.0)
         metrics["use_fp4"] = float(self._fp4_enabled)
@@ -533,6 +542,16 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device="cpu",
             dtype=torch.int64,
         )
+        if self.cfg.reuse_device_prompt:
+            self._populate_device_resident_inputs()
+
+    def _populate_device_resident_inputs(self) -> None:
+        """Seed static prompt/payload buffers once for prefix-cache-style serving."""
+        for idx, gpu_prompt in enumerate(self.gpu_prompts):
+            gpu_prompt.copy_(self.host_prompts[idx], non_blocking=False)
+        for idx, gpu_payload in enumerate(self.gpu_payloads):
+            gpu_payload.copy_(self.host_payloads[idx], non_blocking=False)
+        torch.cuda.synchronize()
 
     # Compiled / graphed helpers
     def _maybe_compile(self) -> None:
@@ -639,6 +658,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         non_blocking = bool(self.cfg.use_pinned_host)
         current_stream = torch.cuda.current_stream()
         active_stream = self.copy_stream or wait_stream or current_stream
+        if self.cfg.reuse_device_prompt:
+            if wait_stream is not None and active_stream is not wait_stream:
+                wait_stream.wait_stream(active_stream)
+            elif wait_stream is None and active_stream is not current_stream:
+                current_stream.wait_stream(active_stream)
+            return
         with torch.cuda.stream(active_stream):
             self.gpu_prompt.copy_(self.host_prompt, non_blocking=non_blocking)
             if self.host_payload is not None and self.gpu_payload is not None:
@@ -659,6 +684,14 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise ValueError(f"prompt index {idx} out of range")
         non_blocking = bool(self.cfg.use_pinned_host)
         active_stream = stream or torch.cuda.current_stream()
+        if self.cfg.reuse_device_prompt:
+            if record_event:
+                if idx >= len(self._copy_done_events):
+                    raise RuntimeError("copy events not initialized")
+                event = self._copy_done_events[idx]
+                event.record(active_stream)
+                return event
+            return None
         with torch.cuda.stream(active_stream):
             self.gpu_prompts[idx].copy_(self.host_prompts[idx], non_blocking=non_blocking)
             if self.host_payloads and self.gpu_payloads:

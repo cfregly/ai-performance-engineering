@@ -8,7 +8,13 @@ from labs.decode_optimization.baseline_decode import get_benchmark as get_baseli
 from labs.decode_optimization.baseline_decode_pinned import (
     get_benchmark as get_baseline_decode_pinned,
 )
+from labs.decode_optimization.baseline_decode_device_resident import (
+    get_benchmark as get_baseline_decode_device_resident,
+)
 from labs.decode_optimization.decode_common import DecodeBenchmark, DecodeConfig
+from labs.decode_optimization.optimized_decode_device_resident import (
+    get_benchmark as get_optimized_decode_device_resident,
+)
 from labs.decode_optimization.optimized_decode_graph import (
     get_benchmark as get_optimized_decode_graph,
 )
@@ -35,6 +41,8 @@ def test_decode_variants_inherit_subprocess_execution() -> None:
     for factory in (
         get_baseline_decode,
         get_baseline_decode_pinned,
+        get_baseline_decode_device_resident,
+        get_optimized_decode_device_resident,
         get_optimized_decode_pinned,
         get_optimized_decode_graph,
         get_optimized_decode_ultimate,
@@ -405,6 +413,62 @@ def test_decode_prefetch_overlaps_second_copy_only_when_async_safe() -> None:
     assert first_copy_idx < early_second_copy_idx < batch0_compute_idx
     assert batch0_compute_idx < fallback_second_copy_idx
     assert "if event1 is None:" in prefetch_section
+
+
+def test_decode_device_resident_path_skips_hot_loop_staging() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    config_section = source.split("@dataclass", maxsplit=1)[1].split(
+        "class DecodeBenchmark",
+        maxsplit=1,
+    )[0]
+    init_section = source.split("def _init_buffers", maxsplit=1)[1].split(
+        "# Compiled / graphed helpers",
+        maxsplit=1,
+    )[0]
+    populate_section = source.split("def _populate_device_resident_inputs", maxsplit=1)[1].split(
+        "# Compiled / graphed helpers",
+        maxsplit=1,
+    )[0]
+    copy_section = source.split("def _copy_prompts_to_device", maxsplit=1)[1].split(
+        "def _copy_prompt_to_device_idx",
+        maxsplit=1,
+    )[0]
+    copy_idx_section = source.split("def _copy_prompt_to_device_idx", maxsplit=1)[1].split(
+        "def _timing_event",
+        maxsplit=1,
+    )[0]
+
+    assert "reuse_device_prompt: bool = False" in config_section
+    assert "if self.cfg.reuse_device_prompt:" in init_section
+    assert "self._populate_device_resident_inputs()" in init_section
+    assert "gpu_prompt.copy_(self.host_prompts[idx], non_blocking=False)" in populate_section
+    assert "gpu_payload.copy_(self.host_payloads[idx], non_blocking=False)" in populate_section
+    assert "torch.cuda.synchronize()" in populate_section
+    assert 'metrics["reuse_device_prompt"] = float(self.cfg.reuse_device_prompt)' in source
+    assert 'metrics["prompt_copies_per_iteration"] = prompt_copy_count' in source
+    assert "if self.cfg.reuse_device_prompt:" in copy_section
+    assert "return" in copy_section.split("if self.cfg.reuse_device_prompt:", maxsplit=1)[1]
+    assert "if self.cfg.reuse_device_prompt:" in copy_idx_section
+    assert "event.record(active_stream)" in copy_idx_section
+
+
+def test_decode_device_resident_pair_changes_only_residency_policy() -> None:
+    baseline = get_baseline_decode_device_resident()
+    optimized = get_optimized_decode_device_resident()
+
+    assert baseline.cfg.batch_size == optimized.cfg.batch_size == 64
+    assert baseline.cfg.prompt_tokens == optimized.cfg.prompt_tokens == 2048
+    assert baseline.cfg.decode_tokens == optimized.cfg.decode_tokens == 16
+    assert baseline.cfg.prefetch_batches == optimized.cfg.prefetch_batches == 1
+    assert baseline.cfg.host_payload_mb == optimized.cfg.host_payload_mb == 512
+    assert baseline.cfg.hidden_size == optimized.cfg.hidden_size == 256
+    assert baseline.cfg.use_pinned_host is optimized.cfg.use_pinned_host is True
+    assert baseline.cfg.use_copy_stream is optimized.cfg.use_copy_stream is False
+    assert baseline.cfg.use_compute_stream is optimized.cfg.use_compute_stream is False
+    assert baseline.cfg.reuse_device_prompt is False
+    assert optimized.cfg.reuse_device_prompt is True
 
 
 def test_decode_pinned_pair_uses_transfer_heavy_workload_with_only_pin_state_changed() -> None:
