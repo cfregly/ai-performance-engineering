@@ -150,6 +150,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         self.layers = None
         self.kv_cache = None
         self.inputs = None
+        self._input_count = 0
         self._request_ids: list[str] = []
         self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []
         self._request_block_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []
@@ -212,6 +213,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         for seq_len in self.sequence_lengths:
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=self.workload.dtype)
             self.inputs.append(x)
+        self._input_count = len(self.inputs)
         self._verify_output_buffer = torch.empty(
             self.batch_size,
             1,
@@ -245,11 +247,12 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
     def benchmark_fn(self) -> None:
         if self.layers is None or self.kv_cache is None or self.inputs is None:
             raise RuntimeError("Benchmark not configured")
-        if len(self._request_ids) != len(self.inputs):
+        input_count = self._input_count
+        if len(self._request_ids) != input_count:
             raise RuntimeError("Request IDs not initialized")
-        if len(self._input_block_views) != len(self.inputs):
+        if len(self._input_block_views) != input_count:
             raise RuntimeError("Input block views not initialized")
-        if len(self._request_block_groups) != len(self.inputs):
+        if len(self._request_block_groups) != input_count:
             raise RuntimeError("Request block groups not initialized")
         if not self._layer_groups:
             raise RuntimeError("Layer groups not initialized")
@@ -291,6 +294,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         self.layers = None
         self.kv_cache = None
         self.inputs = None
+        self._input_count = 0
         self._request_ids = []
         self._input_block_views = []
         self._request_block_groups = []

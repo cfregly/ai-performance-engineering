@@ -198,6 +198,7 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.layers = None
         self.kv_cache = None
         self.inputs = None
+        self._input_count = 0
         self._request_ids: list[str] = []
         self._input_token_views: list[list[torch.Tensor]] = []
         self._input_token_steps: list[list[tuple[int, torch.Tensor]]] = []
@@ -254,6 +255,7 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         for seq_len in self.sequence_lengths:
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=self.workload.dtype)
             self.inputs.append(x)
+        self._input_count = len(self.inputs)
         self._verify_output_buffer = torch.empty(
             self.batch_size,
             1,
@@ -288,11 +290,12 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark token-by-token decode with paged cache allocation."""
         if self.layers is None or self.kv_cache is None or self.inputs is None:
             raise RuntimeError("Benchmark not configured")
-        if len(self._request_ids) != len(self.inputs):
+        input_count = self._input_count
+        if len(self._request_ids) != input_count:
             raise RuntimeError("Request IDs not initialized")
-        if len(self._input_token_views) != len(self.inputs):
+        if len(self._input_token_views) != input_count:
             raise RuntimeError("Input token views not initialized")
-        if len(self._request_token_groups) != len(self.inputs):
+        if len(self._request_token_groups) != input_count:
             raise RuntimeError("Request token groups not initialized")
         if not self._layer_groups:
             raise RuntimeError("Layer groups not initialized")
@@ -336,6 +339,7 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.layers = None
         self.kv_cache = None
         self.inputs = None
+        self._input_count = 0
         self._request_ids = []
         self._input_token_views = []
         self._input_token_steps = []
