@@ -10096,10 +10096,27 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._stage_devices: List[torch.device] = []" in source
     assert "self._final_output_slots: List[torch.Tensor] = []" in source
     assert "self._final_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._pipeline_stage_count = 0" in source
+    assert "self._stage_reuse_counts: tuple[int, ...] = ()" in source
+    assert "self._expected_stage_reuse_counts: tuple[int, ...] = ()" in source
+    assert "self._stage_buffer_row_counts: tuple[int, ...] = ()" in source
+    assert "self._expected_stage_buffer_row_counts: tuple[int, ...] = ()" in source
+    assert "self._transfer_buffer_row_counts: tuple[int, ...] = ()" in source
+    assert "self._expected_transfer_buffer_row_counts: tuple[int, ...] = ()" in source
     assert "self._last_final_output_count: int = 0" in source
     assert "self._stage_buffers = [" in setup_section
     assert "self._pipeline_stage_groups = list(enumerate(self.pipeline_stages))" in setup_section
     assert "self._stage_buffers[0] = list(self.microbatch_inputs)" in setup_section
+    assert "self._pipeline_stage_count = 1" in setup_section
+    assert "self._stage_reuse_counts = (len(self._last_stage_durations_ms),)" in setup_section
+    assert "stage_count = len(self.pipeline_stages)" in setup_section
+    assert "self._pipeline_stage_count = stage_count" in setup_section
+    assert "self._stage_reuse_counts = (" in setup_section
+    assert "self._expected_stage_reuse_counts = (" in setup_section
+    assert "self._stage_buffer_row_counts = tuple(len(stage_row) for stage_row in self._stage_buffers)" in setup_section
+    assert "self._expected_stage_buffer_row_counts = (self.micro_batches,) * (stage_count + 1)" in setup_section
+    assert "self._transfer_buffer_row_counts = tuple(" in setup_section
+    assert "self._expected_transfer_buffer_row_counts = (self.micro_batches,) * stage_count" in setup_section
     assert "stage_output_features = [" in setup_section
     assert "self._stage_transfer_buffers = []" in setup_section
     assert "transfer_buffer.copy_(out, non_blocking=True)" in benchmark_section
@@ -10108,10 +10125,28 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "stage_buffers: List[List[Optional[torch.Tensor]]] = [" not in benchmark_section
     assert "stage_buffers[0] = list(self.microbatch_inputs)" not in benchmark_section
     assert "for stage_row in stage_buffers:" not in benchmark_section
+    assert "for stage_row in self._stage_buffers:" not in benchmark_section
+    assert "for transfer_row in self._stage_transfer_buffers:" not in benchmark_section
     assert "for micro_idx, micro_input in enumerate(self.microbatch_inputs):" not in benchmark_section
+    assert "num_stages = self._pipeline_stage_count" in benchmark_section
+    assert "if self._stage_reuse_counts != self._expected_stage_reuse_counts:" in benchmark_section
+    assert "self._stage_reuse_counts != self._expected_stage_reuse_counts" in benchmark_section
+    assert "self._stage_buffer_row_counts != self._expected_stage_buffer_row_counts" in benchmark_section
+    assert "self._transfer_buffer_row_counts != self._expected_transfer_buffer_row_counts" in benchmark_section
     assert "pipeline_stage_groups = self._pipeline_stage_groups" in benchmark_section
     assert "for stage_idx, stage in pipeline_stage_groups:" in benchmark_section
     assert "for stage_idx, stage in enumerate(self.pipeline_stages):" not in benchmark_section
+    assert "len(self._last_stage_durations_ms)" not in benchmark_section
+    assert "len(self.pipeline_stages)" not in benchmark_section
+    assert "len(self._pipeline_stage_groups)" not in benchmark_section
+    assert "len(self._stage_buffers)" not in benchmark_section
+    assert "len(self._stage_transfer_buffers)" not in benchmark_section
+    assert "len(self._stage_devices)" not in benchmark_section
+    assert "len(self._final_output_slots)" not in benchmark_section
+    assert "len(stage_row)" not in benchmark_section
+    assert "len(transfer_row)" not in benchmark_section
+    assert "len(stage_devices)" not in benchmark_section
+    assert "if next_stage_idx < num_stages:" in benchmark_section
     assert "stage_devices = [next(stage.parameters()).device for stage in self.pipeline_stages]" not in benchmark_section
     assert ".to(stage_devices[stage_idx])" not in benchmark_section
     assert ".to(next_device)" not in benchmark_section
@@ -10127,6 +10162,13 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._last_final_outputs[: self._last_final_output_count]" not in capture_section
     assert "self._final_output_buffer = None" in teardown_section
     assert "self._pipeline_stage_groups = []" in teardown_section
+    assert "self._pipeline_stage_count = 0" in teardown_section
+    assert "self._stage_reuse_counts = ()" in teardown_section
+    assert "self._expected_stage_reuse_counts = ()" in teardown_section
+    assert "self._stage_buffer_row_counts = ()" in teardown_section
+    assert "self._expected_stage_buffer_row_counts = ()" in teardown_section
+    assert "self._transfer_buffer_row_counts = ()" in teardown_section
+    assert "self._expected_transfer_buffer_row_counts = ()" in teardown_section
 
 
 def test_ch17_baseline_memory_reuses_transfer_staging_buffers() -> None:
