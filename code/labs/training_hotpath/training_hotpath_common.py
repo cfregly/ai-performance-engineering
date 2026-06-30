@@ -538,10 +538,14 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.segment_ids, self.segment_lengths = build_segment_metadata(self.offsets)
         self._baseline_out = torch.empty(self.workload.num_segments, device=self.device, dtype=torch.float32)
         self._baseline_abs = torch.empty_like(self.flat) if not self.optimized else None
-        self.output = None
+        self.output = (
+            torch.empty(self.workload.num_segments, device=self.device, dtype=torch.float32)
+            if self.optimized
+            else None
+        )
         if self.optimized:
             self._extension = load_training_hotpath_extension()
-            self._extension.segment_abs_mean(self.flat, self.offsets)
+            self._extension.segment_abs_mean_out(self.flat, self.offsets, self.output)
         else:
             self._extension = None
         self._custom_metrics = {
@@ -558,7 +562,13 @@ class MetricReductionCudaBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.optimized:
             if self._extension is None:
                 raise RuntimeError("CUDA extension not loaded")
-            self.output = self._extension.segment_abs_mean(self.flat, self.offsets)
+            if self.output is None:
+                raise RuntimeError("Segment output buffer not initialized")
+            self.output = self._extension.segment_abs_mean_out(
+                self.flat,
+                self.offsets,
+                self.output,
+            )
         else:
             if (
                 self.segment_ids is None

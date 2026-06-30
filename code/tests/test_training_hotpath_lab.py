@@ -327,6 +327,18 @@ def test_metric_reduction_fused_optimized_path_reuses_output_buffer_source() -> 
     assert "scalar_metric_reduction(self.preds, self.targets)" not in common_source
 
 
+def test_segment_abs_mean_optimized_path_reuses_output_buffer_source() -> None:
+    common_source = (LAB_DIR / "training_hotpath_common.py").read_text(encoding="utf-8")
+    kernel_source = (LAB_DIR / "training_hotpath_kernels.cu").read_text(encoding="utf-8")
+
+    assert "segment_abs_mean_out" in kernel_source
+    assert "torch::Tensor segment_abs_mean_dispatch" in kernel_source
+    assert "auto out = reuse_output ? reusable_out.zero_() : torch::zeros" in kernel_source
+    assert "torch.empty(self.workload.num_segments" in common_source
+    assert "segment_abs_mean_out(self.flat, self.offsets, self.output)" in common_source
+    assert "self.output = self._extension.segment_abs_mean(self.flat, self.offsets)" not in common_source
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for fused metric output reuse check")
 def test_metric_reduction_vectorized_optimized_reuses_output_buffer() -> None:
     bench = MetricReductionVectorizedBenchmark(
@@ -334,6 +346,29 @@ def test_metric_reduction_vectorized_optimized_reuses_output_buffer() -> None:
         label="optimized_metric_reduction_vectorized_reuse_test",
     )
     bench.apply_target_overrides(["--batch-size", "2", "--max-num-tokens", "16", "--responders", "16"])
+    bench.setup()
+    try:
+        assert bench.output is not None
+        data_ptr = bench.output.data_ptr()
+
+        bench.benchmark_fn()
+        assert bench.output is not None
+        assert bench.output.data_ptr() == data_ptr
+
+        bench.benchmark_fn()
+        assert bench.output is not None
+        assert bench.output.data_ptr() == data_ptr
+    finally:
+        bench.teardown()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for fused segment output reuse check")
+def test_metric_reduction_cuda_optimized_reuses_output_buffer() -> None:
+    bench = MetricReductionCudaBenchmark(
+        optimized=True,
+        label="optimized_metric_reduction_cuda_reuse_test",
+    )
+    bench.apply_target_overrides(["--num-segments", "4", "--min-segment-length", "64", "--max-segment-length", "128"])
     bench.setup()
     try:
         assert bench.output is not None

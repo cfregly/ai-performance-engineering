@@ -332,7 +332,10 @@ __global__ void scatter_rows_kernel(
 
 }  // namespace
 
-torch::Tensor segment_abs_mean(torch::Tensor flat, torch::Tensor offsets) {
+torch::Tensor segment_abs_mean_dispatch(
+    torch::Tensor flat,
+    torch::Tensor offsets,
+    torch::Tensor reusable_out) {
   TORCH_CHECK(flat.is_cuda(), "flat must be a CUDA tensor");
   TORCH_CHECK(offsets.is_cuda(), "offsets must be a CUDA tensor");
   TORCH_CHECK(flat.dtype() == torch::kFloat32, "flat must be float32");
@@ -344,7 +347,17 @@ torch::Tensor segment_abs_mean(torch::Tensor flat, torch::Tensor offsets) {
   auto flat_contig = flat.contiguous();
   auto offsets_contig = offsets.contiguous();
   auto num_segments = offsets_contig.size(0) - 1;
-  auto out = torch::zeros({num_segments}, flat.options());
+  const bool reuse_output = reusable_out.defined();
+  if (reuse_output) {
+    TORCH_CHECK(reusable_out.is_cuda(), "out must be a CUDA tensor");
+    TORCH_CHECK(reusable_out.dtype() == torch::kFloat32, "out must be float32");
+    TORCH_CHECK(reusable_out.get_device() == flat_contig.get_device(), "out must be on the same device as flat");
+    TORCH_CHECK(reusable_out.is_contiguous(), "out must be contiguous");
+    TORCH_CHECK(
+        reusable_out.dim() == 1 && reusable_out.size(0) == num_segments,
+        "out must have shape (num_segments,)");
+  }
+  auto out = reuse_output ? reusable_out.zero_() : torch::zeros({num_segments}, flat.options());
 
   // Query the SM count once per process; the attribute query costs ~10us per
   // call on some driver paths, which would dominate this microsecond kernel.
@@ -368,6 +381,14 @@ torch::Tensor segment_abs_mean(torch::Tensor flat, torch::Tensor offsets) {
       num_segments);
   CHECK_CUDA(cudaGetLastError());
   return out;
+}
+
+torch::Tensor segment_abs_mean(torch::Tensor flat, torch::Tensor offsets) {
+  return segment_abs_mean_dispatch(flat, offsets, torch::Tensor());
+}
+
+torch::Tensor segment_abs_mean_out(torch::Tensor flat, torch::Tensor offsets, torch::Tensor out) {
+  return segment_abs_mean_dispatch(flat, offsets, out);
 }
 
 namespace {
@@ -603,6 +624,10 @@ torch::Tensor scatter_rows(torch::Tensor packed, torch::Tensor row_indices, int6
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("segment_abs_mean", &segment_abs_mean, "Segmented abs-mean reduction");
+  m.def(
+      "segment_abs_mean_out",
+      &segment_abs_mean_out,
+      "Segmented abs-mean reduction into a reusable output tensor");
   m.def(
       "metric_reduction_fused",
       &metric_reduction_fused,
