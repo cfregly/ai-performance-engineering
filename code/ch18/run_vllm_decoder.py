@@ -402,6 +402,8 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._page_faults_count: int = 0
         self._memory_total_gb: float = 0.0
         self._memory_count: int = 0
+        self._memory_bytes_to_gb = 1.0 / (1024 ** 3)
+        self._memory_poll_pending = False
         self._iteration = 0
         self._router_prefix_cache_lengths: List[int] = []
         self._router_prefix_count: int = 0
@@ -542,6 +544,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph_mode = GraphMode.EAGER
         self._refresh_router_metrics()
         torch.cuda.synchronize(self.device)
+        self._memory_poll_pending = False
         if self._cuda_available and _RESET_PEAK_MEMORY_STATS is not None:
             _RESET_PEAK_MEMORY_STATS(self.device)
             log_path = resolve_gpu_log_path(None)
@@ -810,8 +813,6 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         paged_cache = self.paged_cache  # type: ignore[assignment]
         spec = self.spec_decoder  # type: ignore[assignment]
 
-        if self._cuda_available and _RESET_PEAK_MEMORY_STATS is not None:
-            _RESET_PEAK_MEMORY_STATS(self.device)
         logical_index = self.device.index if self.device.index is not None else None
         telemetry_before = query_gpu_telemetry(logical_index)
 
@@ -973,11 +974,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._paged_hit_count += 1
         self._page_faults_total += float(paged_cache.page_faults)
         self._page_faults_count += 1
-        if self._cuda_available:
-            peak_bytes = torch.cuda.max_memory_allocated(self.device)  # type: ignore[arg-type]
-            if peak_bytes:
-                self._memory_total_gb += peak_bytes / (1024 ** 3)
-                self._memory_count += 1
+        self._memory_poll_pending = self._cuda_available
 
         if tokens is not None:
             self.output = tokens
@@ -1004,6 +1001,19 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             output_tolerance=(1e-2, 1e-2),
         )
 
+    def finalize_iteration_metrics(self) -> Optional[Dict[str, float]]:
+        if not self._memory_poll_pending:
+            return None
+        self._memory_poll_pending = False
+        if self._cuda_available:
+            peak_bytes = torch.cuda.max_memory_allocated(self.device)  # type: ignore[arg-type]
+            if peak_bytes:
+                self._memory_total_gb += peak_bytes * self._memory_bytes_to_gb
+                self._memory_count += 1
+            if _RESET_PEAK_MEMORY_STATS is not None:
+                _RESET_PEAK_MEMORY_STATS(self.device)
+        return None
+
     def _compute_nvlink_delta(
         self,
         telemetry_before: Dict[str, Optional[float]],
@@ -1027,6 +1037,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     # ------------------------------------------------------------------ lifecycle
     def teardown(self) -> None:
+        self.finalize_iteration_metrics()
         self.model = None
         self.draft_model = None
         self.prompts = None
@@ -1056,6 +1067,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._workload_metadata
 
     def get_custom_metrics(self) -> Optional[Dict[str, float]]:
+        self.finalize_iteration_metrics()
         if not self._throughput_count:
             return None
         def mean(total: float, count: int) -> float:

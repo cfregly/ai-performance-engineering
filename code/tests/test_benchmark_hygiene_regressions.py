@@ -9420,8 +9420,16 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    finalize_section = benchmark_section.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def _compute_nvlink_delta",
+        maxsplit=1,
+    )[0]
     teardown_section = benchmark_section.split("def teardown", maxsplit=1)[1].split(
         "def get_config",
+        maxsplit=1,
+    )[0]
+    metrics_section = benchmark_section.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "def validate_result",
         maxsplit=1,
     )[0]
 
@@ -9439,6 +9447,8 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._tpot_count: int = 0" in benchmark_section
     assert "self._throughput_total: float = 0.0" in benchmark_section
     assert "self._throughput_count: int = 0" in benchmark_section
+    assert "self._memory_bytes_to_gb = 1.0 / (1024 ** 3)" in benchmark_section
+    assert "self._memory_poll_pending = False" in benchmark_section
     assert "self._iteration_ttft_times: List[float] = [0.0]" in benchmark_section
     assert "self._iteration_tpot_times: List[float] = [0.0] * self.config.decode_tokens" in benchmark_section
     assert "self._iteration_metric_payload: Dict[str, object] = {" in benchmark_section
@@ -9480,8 +9490,8 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "len(router_requests)" not in hot_section
     assert "for idx in self._router_batch_range:" in hot_section
     assert "for idx in range(cfg.batch_size):" not in hot_section
-    assert "self._cuda_available and _RESET_PEAK_MEMORY_STATS is not None" in hot_section
-    assert "if self._cuda_available:" in hot_section
+    assert "self._cuda_available and _RESET_PEAK_MEMORY_STATS is not None" in setup_section
+    assert "if self._cuda_available:" not in hot_section
     assert "torch.cuda.is_available()" not in hot_section
     assert "req = router_requests[idx]" in hot_section
     assert "req = Request(" not in hot_section
@@ -9491,8 +9501,16 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "len(self._router_prefix_cache_lengths)" not in hot_section
     assert "prompt_stub = [0] * cfg.context_window" not in hot_section
     assert '_RESET_PEAK_MEMORY_STATS = getattr(torch.cuda, "reset_peak_memory_stats", None)' in source
-    assert "if self._cuda_available and _RESET_PEAK_MEMORY_STATS is not None:" in hot_section
-    assert "_RESET_PEAK_MEMORY_STATS(self.device)" in hot_section
+    assert "_RESET_PEAK_MEMORY_STATS(self.device)" in setup_section
+    assert "_RESET_PEAK_MEMORY_STATS(self.device)" not in hot_section
+    assert "torch.cuda.max_memory_allocated(self.device)" not in hot_section
+    assert "self._memory_poll_pending = self._cuda_available" in hot_section
+    assert "if not self._memory_poll_pending:" in finalize_section
+    assert "self._memory_poll_pending = False" in finalize_section
+    assert "torch.cuda.max_memory_allocated(self.device)" in finalize_section
+    assert "self._memory_total_gb += peak_bytes * self._memory_bytes_to_gb" in finalize_section
+    assert "self._memory_count += 1" in finalize_section
+    assert "_RESET_PEAK_MEMORY_STATS(self.device)" in finalize_section
     assert "any(" not in hot_section
     assert "obj is None for obj in" not in hot_section
     assert 'hasattr(torch.cuda, "reset_peak_memory_stats")' not in hot_section
@@ -9526,6 +9544,8 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._router_requests = []" in teardown_section
     assert "self._router_request_count = 0" in teardown_section
     assert "self._router_batch_range = range(0)" in teardown_section
+    assert "self.finalize_iteration_metrics()" in teardown_section
+    assert "self.finalize_iteration_metrics()" in metrics_section
 
 
 def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
