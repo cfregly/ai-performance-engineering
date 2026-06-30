@@ -262,9 +262,8 @@ class LoadBalancedRouter(nn.Module):
             logits = logits + expert_bias
         log_route_probs = F.log_softmax(logits, dim=-1)
         route_probs = log_route_probs.exp()
-        _, top_indices = torch.topk(logits, self.top_k, dim=-1)
-        top_weights = route_probs.gather(-1, top_indices)
-        top_weights = F.softmax(top_weights, dim=-1)
+        top_logits, top_indices = torch.topk(logits, self.top_k, dim=-1)
+        top_weights = F.softmax(top_logits, dim=-1)
         expert_usage = route_probs.mean(dim=0)
         balance_loss = torch.var(expert_usage) * float(self.num_experts)
         sorted_usage = torch.sort(expert_usage)[0]
