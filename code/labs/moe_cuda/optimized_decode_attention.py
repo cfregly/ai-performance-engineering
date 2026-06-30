@@ -62,6 +62,7 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._iteration_metric_payload: Dict[str, List[float]] = {
             "decode_ms": self._latency_metric_values,
         }
+        self._verification_payload = None
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -139,7 +140,7 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
         # Verification re-runs can perturb the FP32 source tensors in place. Refresh the
         # BF16 mirrors only for that path so steady-state measurements stay cache-only.
-        if getattr(self, "_verification_payload", None) is not None:
+        if self._verification_payload is not None:
             self._refresh_bf16_cache()
 
         with nvtx_range("moe_cuda_decode_optimized", enable=self._enable_nvtx):

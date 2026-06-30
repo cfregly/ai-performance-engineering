@@ -6934,6 +6934,9 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     assert "self._refresh_bf16_cache(force=True)" in setup_section
     assert "self._q_bf16 = self.q.to(torch.bfloat16)" not in benchmark_section
     assert "self._refresh_bf16_cache()" in source
+    assert "self._verification_payload = None" in setup_section
+    assert "if self._verification_payload is not None:" in benchmark_section
+    assert "getattr(self, \"_verification_payload\", None)" not in benchmark_section
     assert "q = self._q_bf16" in benchmark_section
     assert "k = self._k_bf16" in benchmark_section
     assert "v = self._v_bf16" in benchmark_section
@@ -7359,6 +7362,9 @@ def test_ch20_bf16_mlp_preconverts_activation_dtype_outside_hot_loop() -> None:
 
     assert "self._model_dtype =" in setup_section
     assert "self._x_model_dtype = self.x.to(dtype=self._model_dtype)" in setup_section
+    assert "self._verification_payload = None" in setup_section
+    assert "if self._verification_payload is not None:" in benchmark_section
+    assert "getattr(self, \"_verification_payload\", None)" not in benchmark_section
     assert "next(self.model.parameters()).dtype" not in benchmark_section
     assert ".to(dtype=" not in benchmark_section
     assert "self.output = self.model(self._x_model_dtype)" in benchmark_section

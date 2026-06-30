@@ -68,6 +68,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self._payload_parameter_count = 0
+        self._verification_payload = None
     
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -97,7 +98,7 @@ class OptimizedBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.model is not None and self.x is not None and self._x_model_dtype is not None
         assert self._materialization_buffer is not None
 
-        if getattr(self, "_verification_payload", None) is not None:
+        if self._verification_payload is not None:
             self._refresh_model_input()
 
         with self._nvtx_range("multiple_techniques_optimized"):
