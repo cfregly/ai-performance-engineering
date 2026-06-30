@@ -113,6 +113,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.hot_v: Optional[torch.Tensor] = None
         self.hot_k_bufs: list[torch.Tensor] = []
         self.hot_v_bufs: list[torch.Tensor] = []
+        self._hot_buffer_count = 0
         self.active_buf_idx: int = 0
         self.prefetch_buf_idx: Optional[int] = None
         self.prefetch_slice_len: Optional[int] = None
@@ -261,6 +262,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         buffer_count = 2 if (self.cfg.prefetch_next_page and self.cfg.use_async_stream) else 1
         self.hot_k_bufs = [torch.empty(head_shape, device=self.device, dtype=self.runtime_dtype) for _ in range(buffer_count)]
         self.hot_v_bufs = [torch.empty_like(self.hot_k_bufs[0]) for _ in range(buffer_count)]
+        self._hot_buffer_count = buffer_count
         self.hot_k = self.hot_k_bufs[0]
         self.hot_v = self.hot_v_bufs[0]
         self.active_buf_idx = 0
@@ -495,7 +497,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     staged_prefetch, pref_len = self._stage_page(next_start, into_prefetch=True)
                 self.prefetched_range = (next_start, next_start + pref_len)
                 self.prefetch_slice_len = pref_len
-                if self.copy_stream is not None and len(self.hot_k_bufs) > 1:
+                if self.copy_stream is not None and self._hot_buffer_count > 1:
                     prefetch_idx = 1 - active_idx
                     self.prefetch_buf_idx = prefetch_idx
                     if self.prefetch_event is None:
@@ -556,6 +558,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.hot_v = None
         self.hot_k_bufs = []
         self.hot_v_bufs = []
+        self._hot_buffer_count = 0
         self.active_buf_idx = 0
         self.prefetch_buf_idx = None
         self.prefetch_slice_len = None
