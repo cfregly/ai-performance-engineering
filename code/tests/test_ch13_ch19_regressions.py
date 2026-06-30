@@ -351,6 +351,8 @@ def test_native_fp4_fp8_bridge_reuses_weight_activation_and_scale_buffers() -> N
     assert "self.register_buffer('_fp8_scale_b'" in source
     assert "def _get_weight_fp8(self) -> torch.Tensor:" in source
     assert "def _activation_fp8_buffer(self, x_2d: torch.Tensor)" in source
+    assert "or input_fp8.size(0) < x_2d.size(0)" in source
+    assert "return input_fp8[: x_2d.size(0)]" in source
     assert "def _fp8_scale_buffers(self, device: torch.device)" in source
     assert "self._weight_fp8_cache = None" in inspect.getsource(native_fp4.FP4Linear.quantize)
     assert "self._weight_fp8_cache = None" in inspect.getsource(native_fp4.FP4Linear.clear_cache)
@@ -360,6 +362,16 @@ def test_native_fp4_fp8_bridge_reuses_weight_activation_and_scale_buffers() -> N
     assert "scale_a, scale_b = self._fp8_scale_buffers(x.device)" in forward_fp8_source
     assert ".to(torch.float8_e4m3fn)" not in forward_fp8_source
     assert "torch.ones(1, device=x.device, dtype=torch.float32)" not in forward_fp8_source
+
+    for linear_cls in (native_fp4.FP4Linear, optimized_fp4.OptimizedFP4Linear):
+        layer = linear_cls(8, 4, dtype=torch.float32, mode="fp8")
+        first = layer._activation_fp8_buffer(torch.empty((6, 8), dtype=torch.float32))
+        first_ptr = first.data_ptr()
+        smaller = layer._activation_fp8_buffer(torch.empty((3, 8), dtype=torch.float32))
+
+        assert smaller.shape == (3, 8)
+        assert smaller.data_ptr() == first_ptr
+        assert layer._input_fp8_buffer.shape == (6, 8)
 
 
 def test_fp4_dequantization_decodes_signed_lookup_without_where() -> None:

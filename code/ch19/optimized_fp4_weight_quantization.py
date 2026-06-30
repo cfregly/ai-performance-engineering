@@ -301,7 +301,9 @@ class OptimizedFP4Linear(nn.Module):
     def _activation_fp8_buffer(self, x_2d: torch.Tensor) -> torch.Tensor:
         input_fp8 = self._input_fp8_buffer
         if (
-            input_fp8.shape != x_2d.shape
+            input_fp8.dim() != x_2d.dim()
+            or input_fp8.size(0) < x_2d.size(0)
+            or tuple(input_fp8.shape[1:]) != tuple(x_2d.shape[1:])
             or input_fp8.device != x_2d.device
             or input_fp8.dtype != torch.float8_e4m3fn
         ):
@@ -311,7 +313,7 @@ class OptimizedFP4Linear(nn.Module):
                 dtype=torch.float8_e4m3fn,
             )
             self._input_fp8_buffer = input_fp8
-        return input_fp8
+        return input_fp8[: x_2d.size(0)]
 
     def _fp8_scale_buffers(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         if self._fp8_scale_a.device != device or self._fp8_scale_a.dtype != torch.float32:

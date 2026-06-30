@@ -6408,6 +6408,8 @@ def test_ch19_optimized_fp4_fp8_bridge_reuses_activation_and_scale_buffers() -> 
     assert "self.register_buffer('_weight_fp8_t_cache', None)" in source
     assert "def _get_weight_fp8_t(self) -> torch.Tensor" in source
     assert "def _activation_fp8_buffer(self, x_2d: torch.Tensor)" in source
+    assert "or input_fp8.size(0) < x_2d.size(0)" in source
+    assert "return input_fp8[: x_2d.size(0)]" in source
     assert "def _fp8_scale_buffers(self, device: torch.device)" in source
     assert "weight_fp8_t = self._get_weight_fp8_t()" in forward_fp8_section
     assert "x_fp8 = self._activation_fp8_buffer(x_2d)" in forward_fp8_section
