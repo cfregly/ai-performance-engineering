@@ -2122,9 +2122,14 @@ def test_ch16_symmetric_memory_speculative_reuses_topk_buffers() -> None:
     assert "topk_values = torch.empty(4, device=device, dtype=torch.float16)" in speculative_section
     assert "topk_indices = torch.empty(4, device=device, dtype=torch.long)" in speculative_section
     assert "topk_display = [0] * 4" in speculative_section
-    assert "torch.topk(probs, k=4, out=(topk_values, topk_indices))" in speculative_section
+    assert "scores = torch.randn(256" in speculative_section
+    assert "coordinator.publish(scores, step)" in speculative_section
+    assert "scores = coordinator.consume(step)" in speculative_section
+    assert "torch.topk(scores, k=4, out=(topk_values, topk_indices))" in speculative_section
     assert "topk_host.copy_(topk_indices, non_blocking=False)" in speculative_section
     assert "topk_display[topk_idx] = int(topk_host[topk_idx])" in speculative_section
+    assert "torch.softmax" not in speculative_section
+    assert "torch.topk(probs" not in speculative_section
     assert "torch.topk(probs, k=4).indices.tolist()" not in speculative_section
     assert ".indices.tolist()" not in speculative_section
 
@@ -23224,20 +23229,3 @@ def test_ch15_greedy_sampler_skips_softmax_on_optimized_path() -> None:
     assert "output_tolerance=(0.0, 0.0)" in common_source
     assert "materialize_probabilities=True" in baseline_source
     assert "materialize_probabilities=False" in optimized_source
-
-
-def test_ch16_symmetric_memory_speculative_topk_uses_logits_ordering() -> None:
-    source = (REPO_ROOT / "ch16" / "symmetric_memory_inference.py").read_text(
-        encoding="utf-8"
-    )
-    demo_section = source.split("def demo_speculative", maxsplit=1)[1].split(
-        "# ============================================================================",
-        maxsplit=1,
-    )[0]
-
-    assert "scores = torch.randn(256" in demo_section
-    assert "coordinator.publish(scores, step)" in demo_section
-    assert "scores = coordinator.consume(step)" in demo_section
-    assert "torch.topk(scores, k=4, out=(topk_values, topk_indices))" in demo_section
-    assert "torch.softmax" not in demo_section
-    assert "torch.topk(probs" not in demo_section
