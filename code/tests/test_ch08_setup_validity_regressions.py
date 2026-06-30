@@ -97,7 +97,10 @@ def test_ch08_base_benchmarks_use_cached_nvtx_range() -> None:
             maxsplit=1,
         )[0]
 
-        assert "with self._nvtx_range(self.nvtx_label):" in benchmark_section
+        assert "self._nvtx_range(self.nvtx_label)" in benchmark_section
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert "with nvtx_range(" not in benchmark_section
         assert "from core.profiling.nvtx_helper" not in source

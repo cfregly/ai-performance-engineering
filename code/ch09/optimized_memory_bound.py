@@ -69,7 +69,7 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Output buffer not initialized")
         if self._compiled_run is None:
             raise RuntimeError("Compiled kernel not initialized")
-        with self._nvtx_range("memory_bound"):
+        with torch.inference_mode(), self._nvtx_range("memory_bound"):
             self.output = self._compiled_run(self.data, self.output_buffer)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

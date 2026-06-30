@@ -89,7 +89,7 @@ class OptimizedTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: Triton kernel operations."""
         assert self.input is not None and self._output_buffer is not None
-        with self._nvtx_range("triton"):
+        with torch.inference_mode(), self._nvtx_range("triton"):
             # Optimization: Triton kernel
             # Uses Triton for efficient custom GPU kernels
             # Triton: Python-like syntax for GPU kernel programming
@@ -158,4 +158,3 @@ class OptimizedTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return OptimizedTritonBenchmark()
-

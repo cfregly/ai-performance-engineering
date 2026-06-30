@@ -3672,6 +3672,10 @@ def test_ch09_optimized_compute_bound_reuses_graph_mlp_buffers() -> None:
         "def benchmark_fn",
         maxsplit=1,
     )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
     graph_capture_section = setup_section.split("with torch.cuda.graph(graph):", maxsplit=1)[1]
 
     assert "self._fc1_buffer: Optional[torch.Tensor] = None" in model_section
@@ -3689,12 +3693,17 @@ def test_ch09_optimized_compute_bound_reuses_graph_mlp_buffers() -> None:
     assert "for _ in self._repeat_range:" in graph_capture_section
     assert "for _ in range(self.repeats):" not in graph_capture_section
     assert "out = self.model(out)" in graph_capture_section
+    assert 'with torch.inference_mode(), self._nvtx_range("optimized_compute_bound"):' in benchmark_section
+    assert "with self._nvtx_range(" not in benchmark_section
+    assert "torch.no_grad()" not in benchmark_section
 
 
 def test_ch09_memory_and_triton_baselines_use_cached_nvtx() -> None:
     for filename, label in (
         ("baseline_memory_bound.py", "baseline_memory_bound"),
+        ("optimized_memory_bound.py", "memory_bound"),
         ("baseline_triton.py", "baseline_triton"),
+        ("optimized_triton.py", "triton"),
     ):
         source = (REPO_ROOT / "ch09" / filename).read_text(encoding="utf-8")
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
@@ -3702,7 +3711,10 @@ def test_ch09_memory_and_triton_baselines_use_cached_nvtx() -> None:
             maxsplit=1,
         )[0]
 
-        assert f'with self._nvtx_range("{label}"):' in benchmark_section
+        assert f'self._nvtx_range("{label}")' in benchmark_section
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert "with nvtx_range(" not in benchmark_section
         assert "from core.profiling.nvtx_helper" not in source
@@ -3733,6 +3745,9 @@ def test_ch09_optimized_memory_bound_reuses_compiled_output_buffer() -> None:
     assert "for _ in self._repeat_range:" in setup_section
     assert "for _ in range(self.repeats):" not in setup_section
     assert "out.mul_(1.0001).add_(0.0001)" in setup_section
+    assert 'with torch.inference_mode(), self._nvtx_range("memory_bound"):' in benchmark_section
+    assert "with self._nvtx_range(" not in benchmark_section
+    assert "torch.no_grad()" not in benchmark_section
     assert "self._compiled_run(self.data, self.output_buffer)" in benchmark_section
     assert "self._compiled_run(self.data)" not in benchmark_section
     assert "self.output_buffer = None" in teardown_section
@@ -3746,6 +3761,9 @@ def test_ch09_baseline_memory_bound_reuses_repeat_range() -> None:
     )[0]
 
     assert "self._repeat_range = range(self.repeats)" in source
+    assert 'with torch.inference_mode(), self._nvtx_range("baseline_memory_bound"):' in benchmark_section
+    assert "with self._nvtx_range(" not in benchmark_section
+    assert "torch.no_grad()" not in benchmark_section
     assert "for _ in self._repeat_range:" in benchmark_section
     assert "for _ in range(self.repeats):" not in benchmark_section
 
@@ -14328,6 +14346,9 @@ def test_ch08_benchmark_bases_reuse_inner_iteration_range() -> None:
             maxsplit=1,
         )[0]
 
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
         assert "self._inner_iteration_range = range(self.inner_iterations)" in source
         assert "for _ in self._inner_iteration_range:" in benchmark_section
         assert "for _ in range(self.inner_iterations):" not in benchmark_section

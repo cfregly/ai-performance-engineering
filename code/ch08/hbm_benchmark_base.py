@@ -61,7 +61,7 @@ class HBMBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        with self._nvtx_range(self.nvtx_label):
+        with torch.inference_mode(), self._nvtx_range(self.nvtx_label):
             if self._output_buffer is None:
                 raise RuntimeError("setup() must initialize the output buffer")
             self.output = self._output_buffer

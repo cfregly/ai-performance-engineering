@@ -48,7 +48,7 @@ class NcclBenchmarkBase(BaseBenchmark):
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        with self._nvtx_range(self.nvtx_label):
+        with torch.inference_mode(), self._nvtx_range(self.nvtx_label):
             self._invoke_kernel()
 
     def teardown(self) -> None:

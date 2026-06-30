@@ -82,7 +82,7 @@ class TilingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must initialize the output buffer")
         self.output = self._output_buffer
 
-        with self._nvtx_range(self.nvtx_label):
+        with torch.inference_mode(), self._nvtx_range(self.nvtx_label):
             for _ in self._inner_iteration_range:
                 self._invoke_kernel()
 

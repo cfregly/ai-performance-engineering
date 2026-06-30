@@ -53,7 +53,7 @@ class BaselineTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        with self._nvtx_range("baseline_triton"):
+        with torch.inference_mode(), self._nvtx_range("baseline_triton"):
             if self._output_buffer is None:
                 raise RuntimeError("setup() must initialize _output_buffer")
             baseline_elementwise(self.input, self._output_buffer)

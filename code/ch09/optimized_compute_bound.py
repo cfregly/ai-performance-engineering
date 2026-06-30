@@ -121,7 +121,7 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: replay captured CUDA graph."""
         if self._graph is None or self._static_output is None:
             raise RuntimeError("CUDA graph not initialized")
-        with self._nvtx_range("optimized_compute_bound"):
+        with torch.inference_mode(), self._nvtx_range("optimized_compute_bound"):
             self._graph.replay()
             self.output = self._static_output
         if self.output is None:

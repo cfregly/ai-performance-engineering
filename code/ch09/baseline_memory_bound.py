@@ -39,7 +39,7 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer = torch.empty(4096, device=self.device, dtype=torch.float32)
 
     def benchmark_fn(self) -> None:
-        with self._nvtx_range("baseline_memory_bound"):
+        with torch.inference_mode(), self._nvtx_range("baseline_memory_bound"):
             t = self.tensor
             for _ in self._repeat_range:
                 t = t * 1.0001 + 0.0001

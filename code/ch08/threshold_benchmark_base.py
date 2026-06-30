@@ -57,7 +57,7 @@ class ThresholdBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
-        with self._nvtx_range(self.nvtx_label):
+        with torch.inference_mode(), self._nvtx_range(self.nvtx_label):
             for _ in self._inner_iteration_range:
                 self._invoke_kernel()
         if self.inputs is None or self.outputs is None:
