@@ -50,6 +50,8 @@ class BaselineDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 dtype=torch.float32,
                 pin_memory=True,
             ),
+            policy_metrics_buffer=torch.empty(4, device="cpu", dtype=torch.float32),
+            policy_metric_values=[0.0] * 4,
             policy_top2_values=torch.empty((self.cfg.batch_size, 2), device="cpu", dtype=torch.float32),
             policy_top2_indices=torch.empty((self.cfg.batch_size, 2), device="cpu", dtype=torch.long),
         )

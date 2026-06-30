@@ -5384,6 +5384,8 @@ def test_ch19_dynamic_precision_benchmarks_reuse_decode_workspaces() -> None:
     assert "self._decode_workspace: Optional[FixedDecodeWorkspace] = None" in baseline_source
     assert "self._decode_workspace = FixedDecodeWorkspace(" in baseline_setup
     assert "host_logits_buffer=torch.empty(" in baseline_setup
+    assert 'policy_metrics_buffer=torch.empty(4, device="cpu", dtype=torch.float32)' in baseline_setup
+    assert "policy_metric_values=[0.0] * 4" in baseline_setup
     assert "policy_top2_values=torch.empty((self.cfg.batch_size, 2), device=\"cpu\", dtype=torch.float32)" in baseline_setup
     assert "policy_top2_indices=torch.empty((self.cfg.batch_size, 2), device=\"cpu\", dtype=torch.long)" in baseline_setup
     assert "self._verify_prompt_buffer: Optional[torch.Tensor] = None" in baseline_source
