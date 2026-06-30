@@ -12354,6 +12354,9 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
 
         assert "self._k_gather_buffer = torch.empty(" in setup_section
         assert "self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)" in setup_section
@@ -12363,6 +12366,17 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert "self._k_gather_prefix_views = [" in setup_section
         assert "self._v_gather_prefix_views = [" in setup_section
         assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
+        assert "self._slot_counts" in source
+        assert "self._expected_slot_counts" in source
+        assert "self._slot_counts = (" in setup_section
+        assert "self._expected_slot_counts = (" in setup_section
+        assert "if self._slot_counts != self._expected_slot_counts:" in benchmark_section
+        assert "len(self._local_key_slots)" not in benchmark_section
+        assert "len(self._cache_key_slots)" not in benchmark_section
+        assert "len(self._host_key_slots)" not in benchmark_section
+        assert "len(self._decode_step_inputs)" not in benchmark_section
+        assert "len(self._k_gather_step_views)" not in benchmark_section
+        assert "max(self.seq_len - self.local_cache_limit" not in benchmark_section
         assert "_slots" in setup_section
         assert "gathered_k" not in benchmark_section
         assert "gathered_v" not in benchmark_section
@@ -12394,6 +12408,8 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
             assert "host_v = tv.cpu()" not in benchmark_section
         assert "k_all = k_gather_prefixes[gather_idx - 1]" in benchmark_section
         assert "v_all = v_gather_prefixes[gather_idx - 1]" in benchmark_section
+        assert "self._slot_counts = ()" in teardown_section
+        assert "self._expected_slot_counts = ()" in teardown_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "sum(p.numel()" not in capture_section
 
@@ -12421,6 +12437,9 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
 
         assert "self._k_gather_buffer = torch.empty(" in setup_section
         assert "self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)" in setup_section
@@ -12436,9 +12455,35 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert "self._host_value_slots = [" in setup_section
         assert "pin_memory=True" in setup_section
         assert "self._tier_slots = [\"\"] * self.seq_len" in setup_section
+        assert "self._cache_slot_count = 0" in source
+        assert "self._host_slot_count = 0" in source
+        assert "self._gather_view_count = 0" in source
+        assert "self._slot_counts" in source
+        assert "self._expected_slot_counts" in source
+        assert "self._gather_view_counts" in source
+        assert "self._expected_gather_view_counts" in source
+        assert "self._cache_slot_count = self.seq_len" in setup_section
+        assert "self._host_slot_count = host_capacity" in setup_section
+        assert "self._gather_view_count = self.seq_len" in setup_section
+        assert "self._slot_counts = (" in setup_section
+        assert "self._expected_slot_counts = (" in setup_section
+        assert "self._gather_view_counts = (" in setup_section
+        assert "self._expected_gather_view_counts = (" in setup_section
+        assert "if self._slot_counts != self._expected_slot_counts:" in benchmark_section
         assert "host_k.copy_(k, non_blocking=True)" in place_section
         assert "host_v.copy_(v, non_blocking=True)" in place_section
+        assert "if host_idx >= self._host_slot_count:" in place_section
+        assert "len(self._host_key_slots)" not in place_section
+        assert "len(self._host_value_slots)" not in place_section
         assert ".cpu()" not in place_section
+        assert "gathered_len = self._cache_slot_count if cache_len is None else cache_len" in gather_section
+        assert "len(cache_k)" not in gather_section
+        assert "gathered_len > self._gather_view_count" in gather_section
+        assert "self._gather_view_counts != self._expected_gather_view_counts" in gather_section
+        assert "len(self._k_gather_step_views)" not in gather_section
+        assert "len(self._v_gather_step_views)" not in gather_section
+        assert "len(self._k_gather_prefix_views)" not in gather_section
+        assert "len(self._v_gather_prefix_views)" not in gather_section
         assert "self._k_gather_step_views[idx].copy_(tk, non_blocking=non_blocking)" in gather_section
         assert "self._v_gather_step_views[idx].copy_(tv, non_blocking=non_blocking)" in gather_section
         assert "self._k_gather_prefix_views[gathered_len - 1]" in gather_section
@@ -12451,8 +12496,19 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
         assert "for step, q, k, v in self._decode_step_inputs:" in benchmark_section
         assert "for step in range(self.seq_len):" not in benchmark_section
+        assert "len(self._cache_key_slots)" not in benchmark_section
+        assert "len(self._cache_value_slots)" not in benchmark_section
+        assert "len(self._tier_slots)" not in benchmark_section
+        assert "len(self._decode_step_inputs)" not in benchmark_section
         assert "self._query_steps[step]" not in benchmark_section
         assert "self._gather_kv_into_buffers(cache_k, cache_v, tiers, step + 1)" in benchmark_section
+        assert "self._cache_slot_count = 0" in teardown_section
+        assert "self._host_slot_count = 0" in teardown_section
+        assert "self._gather_view_count = 0" in teardown_section
+        assert "self._slot_counts = ()" in teardown_section
+        assert "self._expected_slot_counts = ()" in teardown_section
+        assert "self._gather_view_counts = (0, 0, 0, 0)" in teardown_section
+        assert "self._expected_gather_view_counts = (0, 0, 0, 0)" in teardown_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "sum(p.numel()" not in capture_section
 
@@ -12471,10 +12527,15 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         bench._v_gather_step_views = [bench._v_gather_buffer[:, idx : idx + 1, :] for idx in range(3)]
         bench._k_gather_prefix_views = [bench._k_gather_buffer[:, : idx + 1, :] for idx in range(3)]
         bench._v_gather_prefix_views = [bench._v_gather_buffer[:, : idx + 1, :] for idx in range(3)]
+        bench._cache_slot_count = 3
+        bench._gather_view_count = 3
+        bench._gather_view_counts = (3, 3, 3, 3)
+        bench._expected_gather_view_counts = (3, 3, 3, 3)
         bench.local_cache_limit = 1
         bench.peer_cache_limit = 0
         bench._host_key_slots = [torch.empty(2, 1, 4)]
         bench._host_value_slots = [torch.empty(2, 1, 4)]
+        bench._host_slot_count = 1
         cache_k = [torch.full((2, 1, 4), float(idx)) for idx in range(3)]
         cache_v = [torch.full((2, 1, 4), float(idx + 10)) for idx in range(3)]
 

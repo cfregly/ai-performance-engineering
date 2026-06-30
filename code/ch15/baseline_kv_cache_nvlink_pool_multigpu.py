@@ -55,6 +55,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._cache_value_slots: List[torch.Tensor] = []
         self._tier_slots: List[str] = []
         self._peer_target_slots: List[Optional[torch.device]] = []
+        self._slot_counts: Tuple[int, ...] = ()
+        self._expected_slot_counts: Tuple[int, ...] = ()
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
@@ -110,6 +112,28 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         ]
         self._tier_slots = [""] * self.seq_len
         self._peer_target_slots = [None] * self.seq_len
+        self._slot_counts = (
+            len(self._cache_key_slots),
+            len(self._cache_value_slots),
+            len(self._tier_slots),
+            len(self._peer_target_slots),
+            len(self._decode_step_inputs),
+            len(self._k_gather_step_views),
+            len(self._v_gather_step_views),
+            len(self._k_gather_prefix_views),
+            len(self._v_gather_prefix_views),
+        )
+        self._expected_slot_counts = (
+            self.seq_len,
+            self.seq_len,
+            self.seq_len,
+            self.seq_len,
+            self.seq_len,
+            self.seq_len,
+            self.seq_len,
+            self.seq_len,
+            self.seq_len,
+        )
         self._verify_q = self._query_steps[0, :1].detach().clone()
         self._synchronize()
 
@@ -126,17 +150,7 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         assert self._query_steps is not None and self._key_steps is not None and self._value_steps is not None
         assert self._k_gather_buffer is not None and self._v_gather_buffer is not None
         with torch.inference_mode(), self._nvtx_range("baseline_kv_cache_local_only"):
-            if (
-                len(self._cache_key_slots) != self.seq_len
-                or len(self._cache_value_slots) != self.seq_len
-                or len(self._tier_slots) != self.seq_len
-                or len(self._peer_target_slots) != self.seq_len
-                or len(self._decode_step_inputs) != self.seq_len
-                or len(self._k_gather_step_views) != self.seq_len
-                or len(self._v_gather_step_views) != self.seq_len
-                or len(self._k_gather_prefix_views) != self.seq_len
-                or len(self._v_gather_prefix_views) != self.seq_len
-            ):
+            if self._slot_counts != self._expected_slot_counts:
                 raise RuntimeError("KV cache slots not initialized")
             cache_k = self._cache_key_slots
             cache_v = self._cache_value_slots
@@ -215,6 +229,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._cache_value_slots = []
         self._tier_slots = []
         self._peer_target_slots = []
+        self._slot_counts = ()
+        self._expected_slot_counts = ()
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
