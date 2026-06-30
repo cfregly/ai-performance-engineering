@@ -30,6 +30,7 @@ from core.common.device_utils import resolve_local_rank
 
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.attention.flex_attention import (
@@ -929,7 +930,6 @@ class TensorParallelMultiGPU:
         self.model = self.model.to(self.device)
         
         # Initialize process group if not already done
-        import torch.distributed as dist
         if not dist.is_initialized():
             os.environ.setdefault("MASTER_ADDR", "localhost")
             os.environ.setdefault("MASTER_PORT", "12355")
@@ -967,7 +967,6 @@ class TensorParallelMultiGPU:
         outputs = self.model(input_ids)
         
         # All-gather outputs across GPUs
-        import torch.distributed as dist
         if dist.is_initialized():
             expected_shape = (*outputs.shape[:-1], outputs.shape[-1] * self.num_gpus)
             needs_buffer = (

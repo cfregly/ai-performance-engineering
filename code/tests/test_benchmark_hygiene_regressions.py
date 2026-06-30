@@ -13232,6 +13232,12 @@ def test_ch16_blackwell_tensor_parallel_reuses_gather_buffers() -> None:
 
     assert "self._gathered_outputs = None" in init_section
     assert "self._final_output = None" in init_section
+    assert "import torch.distributed as dist" in source.split(
+        "from torch.nn.attention.flex_attention import",
+        maxsplit=1,
+    )[0]
+    assert "import torch.distributed as dist" not in init_section
+    assert "import torch.distributed as dist" not in forward_section
     assert "if input_ids.device != self.device:" in forward_section
     assert "input_ids = input_ids.to(self.device, non_blocking=True)" in forward_section
     assert "input_ids = input_ids.to(self.device)\n" not in forward_section
