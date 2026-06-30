@@ -170,29 +170,34 @@ class MoEExperts(nn.Module):
         device: torch.device,
         dtype: torch.dtype,
     ) -> torch.Tensor:
+        shape = tuple(int(dim) for dim in shape)
+        numel = 1
+        for dim in shape:
+            numel *= dim
         cached = getattr(self, name, None)
         if (
-            isinstance(cached, torch.Tensor)
-            and cached.shape == shape
-            and cached.device == device
-            and cached.dtype == dtype
+            not isinstance(cached, torch.Tensor)
+            or cached.device != device
+            or cached.dtype != dtype
+            or cached.numel() < numel
         ):
-            return cached
-        workspace = torch.empty(shape, device=device, dtype=dtype)
-        setattr(self, name, workspace)
-        return workspace
+            cached = torch.empty(numel, device=device, dtype=dtype)
+            setattr(self, name, cached)
+        return cached[:numel].view(shape)
 
     def _naive_output_like(self, x: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled() and x.requires_grad:
             return torch.empty_like(x)
+        shape = tuple(int(dim) for dim in x.shape)
+        numel = int(x.numel())
         if (
             self._naive_output is None
-            or self._naive_output.shape != x.shape
             or self._naive_output.device != x.device
             or self._naive_output.dtype != x.dtype
+            or self._naive_output.numel() < numel
         ):
-            self._naive_output = torch.empty_like(x)
-        return self._naive_output
+            self._naive_output = torch.empty(numel, device=x.device, dtype=x.dtype)
+        return self._naive_output[:numel].view(shape)
 
     def _flat_topk_token_ids_for(self, num_tokens: int, top_k: int, device: torch.device) -> torch.Tensor:
         key = (num_tokens, top_k, device)

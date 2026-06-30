@@ -16,6 +16,40 @@ def _make_experts(*, use_cuda_graphs: bool) -> MoEExperts:
     return MoEExperts(num_experts=2, hidden_size=4, intermediate_size=8, opts=opts)
 
 
+def test_moe_expert_workspaces_reuse_larger_capacity_views() -> None:
+    experts = _make_experts(use_cuda_graphs=False)
+    device = torch.device("cpu")
+
+    large = experts._bmm_workspace(
+        "_capacity_test_workspace",
+        (5, 4),
+        device=device,
+        dtype=torch.float32,
+    )
+    workspace_ptr = experts._capacity_test_workspace.data_ptr()
+    small = experts._bmm_workspace(
+        "_capacity_test_workspace",
+        (2, 4),
+        device=device,
+        dtype=torch.float32,
+    )
+
+    assert large.shape == (5, 4)
+    assert small.shape == (2, 4)
+    assert small.data_ptr() == workspace_ptr
+    assert experts._capacity_test_workspace.data_ptr() == workspace_ptr
+    assert experts._capacity_test_workspace.numel() >= large.numel()
+
+    large_output = experts._naive_output_like(torch.empty(5, 4))
+    output_ptr = experts._naive_output.data_ptr()
+    small_output = experts._naive_output_like(torch.empty(2, 4))
+
+    assert large_output.shape == (5, 4)
+    assert small_output.shape == (2, 4)
+    assert small_output.data_ptr() == output_ptr
+    assert experts._naive_output.numel() >= large_output.numel()
+
+
 def test_moe_forward_prefers_cuda_graph_path_when_enabled() -> None:
     experts = _make_experts(use_cuda_graphs=True)
     x = torch.randn(3, 4)
@@ -163,6 +197,10 @@ def test_level5_bmm_path_reuses_padding_workspaces() -> None:
 
     assert "def _bmm_workspace" in text
     assert "cached = getattr(self, name, None)" in text
+    assert "or cached.numel() < numel" in text
+    assert "return cached[:numel].view(shape)" in text
+    assert "or self._naive_output.numel() < numel" in text
+    assert "return self._naive_output[:numel].view(shape)" in text
     assert "self._bmm_padded_tokens: Optional[torch.Tensor] = None" in text
     assert "self._bmm_padded_weights: Optional[torch.Tensor] = None" in text
     assert "self._bmm_valid_out: Optional[torch.Tensor] = None" in text
