@@ -35,4 +35,3 @@ class OptimizedTilingBenchmarkTCGen05(TilingBenchmarkBaseTCGen05):
 def get_benchmark() -> OptimizedTilingBenchmarkTCGen05:
     return OptimizedTilingBenchmarkTCGen05()
 
-

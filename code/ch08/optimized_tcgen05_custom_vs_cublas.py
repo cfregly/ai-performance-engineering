@@ -19,6 +19,7 @@ class OptimizedTcgen05CustomVsCublasBenchmark(Tcgen05CustomVsCublasBase):
         super().__init__()
         self.extension = None
         self.matrix_b_t = None
+        self._tcgen05_output_buffer = None
 
     def setup(self) -> None:
         ensure_tcgen05_supported(
@@ -31,18 +32,32 @@ class OptimizedTcgen05CustomVsCublasBenchmark(Tcgen05CustomVsCublasBase):
         if self.extension is None:
             self.extension = load_tiling_tcgen05_module()
         self.matrix_b_t = self.matrix_b.t().contiguous()
+        self._tcgen05_output_buffer = torch.empty(
+            self.matrix_rows,
+            self.matrix_cols,
+            device=self.device,
+            dtype=torch.float32,
+        )
 
     def benchmark_fn(self) -> None:
-        if self.extension is None or self.matrix_a is None or self.matrix_b_t is None:
+        if (
+            self.extension is None
+            or self.matrix_a is None
+            or self.matrix_b_t is None
+            or self._tcgen05_output_buffer is None
+        ):
             raise RuntimeError("Inputs or extension not initialized")
         with self._nvtx_range(self.nvtx_label):
             with torch.inference_mode():
-                self.output = self.extension.matmul_tiling_tcgen05_pretransposed(
-                    self.matrix_a, self.matrix_b_t
+                self.output = self.extension.matmul_tiling_tcgen05_pretransposed_out(
+                    self.matrix_a,
+                    self.matrix_b_t,
+                    self._tcgen05_output_buffer,
                 )
 
     def teardown(self) -> None:
         self.matrix_b_t = None
+        self._tcgen05_output_buffer = None
         self.extension = None
         super().teardown()
 

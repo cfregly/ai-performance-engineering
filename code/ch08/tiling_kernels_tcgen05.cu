@@ -60,12 +60,11 @@ struct VariantCTA1 {
 };
 
 template <class SharedStorageT,
-          class ATensor, class BTensor, class CTensor, class DTensor,
+          class ATensor, class BTensor, class DTensor,
           class MmaTiler_MNK, class TiledMMA, class ClusterShape_MNK,
           class TmaAtomA, class TmaAtomB>
 __global__ void gemm_device(ATensor mA,
                             BTensor mB,
-                            CTensor mC,
                             DTensor mD,
                             MmaTiler_MNK mma_tiler,
                             TiledMMA tiled_mma,
@@ -76,7 +75,6 @@ __global__ void gemm_device(ATensor mA,
 
   Tensor gA = local_tile(mA, mma_tiler, mma_coord, Step<_1, X, _1>{});
   Tensor gB = local_tile(mB, mma_tiler, mma_coord, Step<X, _1, _1>{});
-  Tensor gC = local_tile(mC, mma_tiler, mma_coord, Step<_1, _1, X>{});
   Tensor gD = local_tile(mD, mma_tiler, mma_coord, Step<_1, _1, X>{});
 
   extern __shared__ char shared_memory[];
@@ -89,12 +87,11 @@ __global__ void gemm_device(ATensor mA,
   auto cta_mma = tiled_mma.get_slice(Int<0>{});
   Tensor tCgA = cta_mma.partition_A(gA);
   Tensor tCgB = cta_mma.partition_B(gB);
-  Tensor tCgC = cta_mma.partition_C(gC);
   Tensor tCgD = cta_mma.partition_C(gD);
 
   Tensor tCrA = cta_mma.make_fragment_A(tCsA);
   Tensor tCrB = cta_mma.make_fragment_B(tCsB);
-  Tensor tCtAcc = cta_mma.make_fragment_C(tCgC);
+  Tensor tCtAcc = cta_mma.make_fragment_C(tCgD);
 
   uint32_t elect_one_thr = cute::elect_one_sync();
   uint32_t elect_one_warp = (threadIdx.x / 32 == 0);
@@ -163,17 +160,11 @@ __global__ void gemm_device(ATensor mA,
   auto tiled_t2r_copy = make_tmem_copy(SM100_TMEM_LOAD_32dp32b1x{}, tCtAcc);
   auto thr_t2r_copy = tiled_t2r_copy.get_slice(threadIdx.x);
 
-  Tensor tDgC = thr_t2r_copy.partition_D(tCgC);
-  Tensor tDrC = make_fragment_like(tDgC);
-  copy(tDgC, tDrC);
-
   Tensor tDtAcc = thr_t2r_copy.partition_S(tCtAcc);
   Tensor tDgD = thr_t2r_copy.partition_D(tCgD);
   Tensor tDrAcc = make_tensor<Accumulator>(shape(tDgD));
   copy(tiled_t2r_copy, tDtAcc, tDrAcc);
-
-  axpby(1.0f, tDrAcc, 0.0f, tDrC);
-  copy(tDrC, tDgD);
+  copy(tDrAcc, tDgD);
 
   __syncthreads();
   if (elect_one_warp) {
@@ -184,6 +175,9 @@ __global__ void gemm_device(ATensor mA,
   }
 }
 
+torch::Tensor run_tcgen05_matmul_pretransposed(torch::Tensor a,
+                                               torch::Tensor b_transposed);
+
 torch::Tensor run_tcgen05_matmul(torch::Tensor a, torch::Tensor b) {
   TORCH_CHECK(a.dim() == 2 && b.dim() == 2, "expected 2D inputs");
   TORCH_CHECK(a.size(1) == b.size(0), "incompatible matmul shapes: A[M,K] @ B[K,N]");
@@ -191,17 +185,38 @@ torch::Tensor run_tcgen05_matmul(torch::Tensor a, torch::Tensor b) {
               "tcgen05 kernel expects float16 tensors");
   TORCH_CHECK(a.is_cuda() && b.is_cuda(), "tensors must be CUDA tensors");
 
-  auto a_contig = a.contiguous();
   // B is KxN in standard notation, but UMMA expects NxK layout (K-major)
   // So we transpose B to get NxK layout
   auto b_transposed = b.t().contiguous();
+  return run_tcgen05_matmul_pretransposed(a, b_transposed);
+}
+
+void launch_tcgen05_matmul_pretransposed(torch::Tensor a,
+                                         torch::Tensor b_transposed,
+                                         torch::Tensor d_buffer) {
+  TORCH_CHECK(a.dim() == 2 && b_transposed.dim() == 2, "expected 2D inputs");
+  TORCH_CHECK(a.size(1) == b_transposed.size(1),
+              "incompatible matmul shapes: A[M,K] @ B^T[N,K]");
+  TORCH_CHECK(a.dtype() == torch::kFloat16 && b_transposed.dtype() == torch::kFloat16,
+              "tcgen05 kernel expects float16 tensors");
+  TORCH_CHECK(d_buffer.dtype() == torch::kFloat32,
+              "tcgen05 output buffer must be float32");
+  TORCH_CHECK(a.is_cuda() && b_transposed.is_cuda() && d_buffer.is_cuda(),
+              "tensors must be CUDA tensors");
+  TORCH_CHECK(b_transposed.is_contiguous(),
+              "pre-transposed B must be contiguous (N x K)");
+  TORCH_CHECK(d_buffer.is_contiguous(),
+              "tcgen05 output buffer must be contiguous");
+
+  auto a_contig = a.contiguous();
   auto m = a_contig.size(0);
   auto k = a_contig.size(1);
-  auto n = b_transposed.size(0);  // After transpose, B is NxK
+  auto n = b_transposed.size(0);
 
-  auto options = a.options().dtype(torch::kFloat32);
-  auto c_buffer = torch::zeros({m, n}, options);
-  auto d_buffer = torch::empty_like(c_buffer);
+  TORCH_CHECK(d_buffer.size(0) == m && d_buffer.size(1) == n,
+              "tcgen05 output buffer has incompatible shape");
+  TORCH_CHECK(d_buffer.device() == a.device(),
+              "tcgen05 output buffer must be on the same device as A");
 
   auto tiled_mma = make_tiled_mma(typename VariantCTA1::Mma{});
 
@@ -240,9 +255,6 @@ torch::Tensor run_tcgen05_matmul(torch::Tensor a, torch::Tensor b) {
       make_gmem_ptr(reinterpret_cast<TypeB const*>(
           b_transposed.data_ptr<at::Half>())),
       make_layout(make_shape(n, k), make_stride(k, Int<1>{})));
-  Tensor mC = make_tensor(
-      make_gmem_ptr(c_buffer.data_ptr<TypeC>()),
-      make_layout(make_shape(m, n), make_stride(n, Int<1>{})));
   Tensor mD = make_tensor(
       make_gmem_ptr(d_buffer.data_ptr<TypeD>()),
       make_layout(make_shape(m, n), make_stride(n, Int<1>{})));
@@ -263,7 +275,7 @@ torch::Tensor run_tcgen05_matmul(torch::Tensor a, torch::Tensor b) {
   auto *kernel_ptr = &gemm_device<
       SharedStorageT,
       decltype(mA), decltype(mB),
-      decltype(mC), decltype(mD),
+      decltype(mD),
       decltype(mma_tiler), decltype(tiled_mma),
       ClusterShape,
       decltype(tma_atom_A), decltype(tma_atom_B)>;
@@ -276,17 +288,15 @@ torch::Tensor run_tcgen05_matmul(torch::Tensor a, torch::Tensor b) {
   gemm_device<
       SharedStorageT,
       decltype(mA), decltype(mB),
-      decltype(mC), decltype(mD),
+      decltype(mD),
       decltype(mma_tiler), decltype(tiled_mma),
       ClusterShape,
       decltype(tma_atom_A), decltype(tma_atom_B)>
       <<<dimGrid, dimBlock, smem_bytes, at::cuda::getCurrentCUDAStream()>>>(
-          mA, mB, mC, mD,
+          mA, mB, mD,
           mma_tiler, tiled_mma, cluster_shape,
           tma_atom_A, tma_atom_B);
   AT_CUDA_CHECK(cudaGetLastError());
-
-  return d_buffer.to(torch::kFloat16);
 }
 
 torch::Tensor run_tcgen05_matmul_pretransposed(torch::Tensor a, torch::Tensor b_transposed) {
@@ -299,99 +309,20 @@ torch::Tensor run_tcgen05_matmul_pretransposed(torch::Tensor a, torch::Tensor b_
   TORCH_CHECK(b_transposed.is_contiguous(),
               "pre-transposed B must be contiguous (N x K)");
 
-  auto a_contig = a.contiguous();
-  auto m = a_contig.size(0);
-  auto k = a_contig.size(1);
+  auto m = a.size(0);
   auto n = b_transposed.size(0);
 
-  auto options = a.options().dtype(torch::kFloat32);
-  auto c_buffer = torch::zeros({m, n}, options);
-  auto d_buffer = torch::empty_like(c_buffer);
-
-  auto tiled_mma = make_tiled_mma(typename VariantCTA1::Mma{});
-
-  auto bM = tile_size<0>(tiled_mma);
-  auto bN = tile_size<1>(tiled_mma);
-  auto bK = tile_size<2>(tiled_mma) * Int<4>{};
-  auto mma_tiler = make_shape(bM, bN, bK);
-
-  TORCH_CHECK(evenly_divides(shape(mma_tiler), tile_shape(tiled_mma)),
-              "tcgen05 MMA tile must divide instruction tile");
-  TORCH_CHECK(evenly_divides(make_shape(m, n, k), mma_tiler),
-              "Problem size must be divisible by the tcgen05 tile");
-
-  auto mma_shape_A =
-      partition_shape_A(tiled_mma,
-                        make_shape(size<0>(mma_tiler), size<2>(mma_tiler)));
-  auto mma_shape_B =
-      partition_shape_B(tiled_mma,
-                        make_shape(size<1>(mma_tiler), size<2>(mma_tiler)));
-
-  auto sA_layout =
-      UMMA::tile_to_mma_shape(UMMA::Layout_K_SW128_Atom<TypeA>{},
-                        mma_shape_A);
-  auto sB_layout =
-      UMMA::tile_to_mma_shape(UMMA::Layout_K_SW128_Atom<TypeB>{},
-                        mma_shape_B);
-
-  using SharedStorageT =
-      SharedStorage<TypeA, TypeB, decltype(sA_layout), decltype(sB_layout)>;
-
-  Tensor mA = make_tensor(
-      make_gmem_ptr(reinterpret_cast<TypeA const*>(
-          a_contig.data_ptr<at::Half>())),
-      make_layout(make_shape(m, k), make_stride(k, Int<1>{})));
-  Tensor mB = make_tensor(
-      make_gmem_ptr(reinterpret_cast<TypeB const*>(
-          b_transposed.data_ptr<at::Half>())),
-      make_layout(make_shape(n, k), make_stride(k, Int<1>{})));
-  Tensor mC = make_tensor(
-      make_gmem_ptr(c_buffer.data_ptr<TypeC>()),
-      make_layout(make_shape(m, n), make_stride(n, Int<1>{})));
-  Tensor mD = make_tensor(
-      make_gmem_ptr(d_buffer.data_ptr<TypeD>()),
-      make_layout(make_shape(m, n), make_stride(n, Int<1>{})));
-
-  auto tma_atom_A =
-      make_tma_atom(SM90_TMA_LOAD{}, mA, sA_layout, select<0, 2>(mma_tiler));
-  auto tma_atom_B =
-      make_tma_atom(SM90_TMA_LOAD{}, mB, sB_layout, select<1, 2>(mma_tiler));
-
-  dim3 dimBlock(128);
-  dim3 dimGrid((m + size(bM) - 1) / size(bM),
-               (n + size(bN) - 1) / size(bN));
-
-  int smem_bytes = sizeof(SharedStorageT);
-
-  using ClusterShape = decltype(VariantCTA1::cluster_shape());
-
-  auto *kernel_ptr = &gemm_device<
-      SharedStorageT,
-      decltype(mA), decltype(mB),
-      decltype(mC), decltype(mD),
-      decltype(mma_tiler), decltype(tiled_mma),
-      ClusterShape,
-      decltype(tma_atom_A), decltype(tma_atom_B)>;
-
-  AT_CUDA_CHECK(cudaFuncSetAttribute(
-      kernel_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes));
-
-  ClusterShape cluster_shape = VariantCTA1::cluster_shape();
-
-  gemm_device<
-      SharedStorageT,
-      decltype(mA), decltype(mB),
-      decltype(mC), decltype(mD),
-      decltype(mma_tiler), decltype(tiled_mma),
-      ClusterShape,
-      decltype(tma_atom_A), decltype(tma_atom_B)>
-      <<<dimGrid, dimBlock, smem_bytes, at::cuda::getCurrentCUDAStream()>>>(
-          mA, mB, mC, mD,
-          mma_tiler, tiled_mma, cluster_shape,
-          tma_atom_A, tma_atom_B);
-  AT_CUDA_CHECK(cudaGetLastError());
-
+  auto d_options = a.options().dtype(torch::kFloat32);
+  auto d_buffer = torch::empty({m, n}, d_options);
+  launch_tcgen05_matmul_pretransposed(a, b_transposed, d_buffer);
   return d_buffer.to(torch::kFloat16);
+}
+
+torch::Tensor run_tcgen05_matmul_pretransposed_out(torch::Tensor a,
+                                                   torch::Tensor b_transposed,
+                                                   torch::Tensor d_buffer) {
+  launch_tcgen05_matmul_pretransposed(a, b_transposed, d_buffer);
+  return d_buffer;
 }
 
 }  // namespace tiling_tcgen05_impl
@@ -404,7 +335,15 @@ torch::Tensor matmul_tiling_tcgen05_pretransposed(torch::Tensor a, torch::Tensor
   return tiling_tcgen05_impl::run_tcgen05_matmul_pretransposed(a, b_transposed);
 }
 
+torch::Tensor matmul_tiling_tcgen05_pretransposed_out(torch::Tensor a,
+                                                      torch::Tensor b_transposed,
+                                                      torch::Tensor output) {
+  return tiling_tcgen05_impl::run_tcgen05_matmul_pretransposed_out(
+      a, b_transposed, output);
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("matmul_tiling_tcgen05", &matmul_tiling_tcgen05);
   m.def("matmul_tiling_tcgen05_pretransposed", &matmul_tiling_tcgen05_pretransposed);
+  m.def("matmul_tiling_tcgen05_pretransposed_out", &matmul_tiling_tcgen05_pretransposed_out);
 }
