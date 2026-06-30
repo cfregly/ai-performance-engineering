@@ -23428,21 +23428,30 @@ def test_ch17_monolithic_prefill_reuses_random_input_buffer() -> None:
 
     assert 'self.register_buffer("_prefill_input_buffer", torch.empty(0), persistent=False)' in init_section
     assert "self._prefill_input_buffer = torch.empty(" in helper_section
-    assert "self._prefill_input_buffer.normal_()" in helper_section
+    assert "self._prefill_input_buffer.numel() < numel" in helper_section
+    assert "self._prefill_input_buffer.shape != shape" not in helper_section
+    assert "prefill_input = self._prefill_input_buffer[:numel].view(shape)" in helper_section
+    assert "prefill_input.normal_()" in helper_section
+    assert "return prefill_input" in helper_section
     assert "x = self._prefill_input(prompt_tokens)" in prefill_section
     assert "torch.randn(" not in prefill_section
 
     from ch17.prefill_decode_disagg_monolithic_common import SimpleLLM
 
     model = SimpleLLM(hidden_dim=4, num_layers=1).to(dtype=torch.bfloat16).eval()
-    prompt = torch.zeros(2, 3, dtype=torch.long)
+    prompt = torch.zeros(2, 5, dtype=torch.long)
     with torch.inference_mode():
-        model.prefill(prompt)
+        large = model.prefill(prompt)
         first_ptr = model._prefill_input_buffer.data_ptr()
-        model.prefill(prompt)
+        small = model.prefill(torch.zeros(1, 2, dtype=torch.long))
         second_ptr = model._prefill_input_buffer.data_ptr()
+        grown = model.prefill(torch.zeros(3, 4, dtype=torch.long))
 
     assert first_ptr == second_ptr
+    assert large.shape == (2, 1, 4)
+    assert small.shape == (1, 1, 4)
+    assert grown.shape == (3, 1, 4)
+    assert model._prefill_input_buffer.numel() == 3 * 4 * 4
 
 
 def test_ch17_monolithic_decode_fast_paths_single_token() -> None:
