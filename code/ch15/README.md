@@ -63,7 +63,7 @@ python -m cli.aisp bench run --targets ch15:kv_cache_nvlink_pool --profile deep_
 | `baseline_continuous_batching.py`, `optimized_continuous_batching.py` | Single-GPU continuous batching scheduler for TTFT-aware queueing. |
 | `baseline_continuous_batching_multigpu.py`, `optimized_continuous_batching_multigpu.py` | Multi-GPU continuous batching scheduler for scaled queueing throughput. |
 | `baseline_moe_inference.py`, `optimized_moe_inference.py` | Inference-specific MoE workloads that pair router load with communication control. |
-| `baseline_moe_overlap.py`, `optimized_moe_overlap_shared_expert.py`, `baseline_wide_ep.py`, `optimized_wide_ep.py`, `baseline_moe_dispatch.py`, `optimized_moe_dispatch.py`, `baseline_moe_routing_topology_aware.py`, `optimized_moe_routing_topology_aware.py` | MoE expert-parallel microbenchmarks that now split dispatch-path optimization from topology-aware routing locality so attribution stays clean. |
+| `baseline_moe_overlap.py`, `optimized_moe_overlap_shared_expert.py`, `baseline_moe_overlap_local_route.py`, `optimized_moe_overlap_local_route.py`, `moe_overlap_local_route_common.py`, `baseline_wide_ep.py`, `optimized_wide_ep.py`, `baseline_moe_dispatch.py`, `optimized_moe_dispatch.py`, `baseline_moe_routing_topology_aware.py`, `optimized_moe_routing_topology_aware.py` | MoE expert-parallel microbenchmarks that now split dispatch-path optimization, direct local routed placement, and topology-aware routing locality so attribution stays clean. |
 | `compare.py`, `requirements.txt`, `expectations_{hardware_key}.json`, `Makefile` | Harness entry and dependencies for inference-focused validation. |
 
 ## Running the Benchmarks

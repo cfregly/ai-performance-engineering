@@ -19594,6 +19594,39 @@ def test_ch15_moe_overlap_reuses_comm_chunk_views() -> None:
     assert "self._output_view = None" in baseline_teardown
 
 
+def test_ch15_moe_overlap_local_route_skips_remote_transfer_in_direct_variant() -> None:
+    baseline_source = (REPO_ROOT / "ch15" / "baseline_moe_overlap_local_route.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_source = (REPO_ROOT / "ch15" / "optimized_moe_overlap_local_route.py").read_text(
+        encoding="utf-8"
+    )
+    common_source = (REPO_ROOT / "ch15" / "moe_overlap_local_route_common.py").read_text(
+        encoding="utf-8"
+    )
+    remote_benchmark = common_source.split("def _benchmark_remote_overlap", maxsplit=1)[1].split(
+        "def _benchmark_local_direct",
+        maxsplit=1,
+    )[0]
+    local_benchmark = common_source.split("def _benchmark_local_direct", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert 'variant="remote_overlap"' in baseline_source
+    assert 'variant="local_direct"' in optimized_source
+    assert "with torch.cuda.stream(self._comm_stream):" in remote_benchmark
+    assert "comm_chunk.copy_(remote_chunk, non_blocking=True)" in remote_benchmark
+    assert "dispatch_shared_expert_packed_scatter(" in remote_benchmark
+    assert "shared_out.add_(self._routed_out_flat)" in remote_benchmark
+
+    assert "shared_out.add_(self.routed_expert(flat))" in local_benchmark
+    assert "dispatch_shared_expert_packed_scatter(" not in local_benchmark
+    assert "comm_chunk.copy_(" not in local_benchmark
+    assert "wait_stream" not in local_benchmark
+    assert "self._routed_out_flat" not in local_benchmark
+
+
 def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
     source = (REPO_ROOT / "ch15" / "moe_comm_exchange_benchmarks.py").read_text(
         encoding="utf-8"
