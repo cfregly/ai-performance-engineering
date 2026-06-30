@@ -76,7 +76,7 @@ class TokenPrecisionController:
             self._token_buffer is None
             or self._token_buffer.device != input_ids.device
             or self._token_buffer.dtype != input_ids.dtype
-            or self._token_buffer.size(0) != batch_size
+            or self._token_buffer.size(0) < batch_size
             or self._token_buffer.size(1) < total_len
         ):
             self._token_buffer = torch.empty(
@@ -84,7 +84,7 @@ class TokenPrecisionController:
                 device=input_ids.device,
                 dtype=input_ids.dtype,
             )
-        return self._token_buffer[:, :total_len]
+        return self._token_buffer[:batch_size, :total_len]
 
     def _confidence(self, logits: torch.Tensor, temperature: float = 1.0) -> ConfidenceMetrics:
         scaled = logits / temperature

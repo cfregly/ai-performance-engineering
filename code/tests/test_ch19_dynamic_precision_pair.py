@@ -24,6 +24,7 @@ from ch19.dynamic_precision_switching import (
     should_use_low_precision,
 )
 from ch19.optimized_dynamic_precision import OptimizedDynamicPrecisionBenchmark
+from ch19.token_precision_switching import TokenPrecisionController
 
 
 def test_high_confidence_decoder_applies_target_bias_without_full_tensor() -> None:
@@ -139,6 +140,20 @@ def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:
     assert "torch.topk(last, k=2, dim=topk_dim, out=(top2_values, top2_indices))" in dynamic_source
     assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in dynamic_source
     assert "next_token = torch.argmax(last_step_logits" not in dynamic_source
+
+
+def test_token_precision_controller_reuses_generation_buffer_capacity() -> None:
+    controller = TokenPrecisionController(torch.nn.Identity())
+    large_prompt = torch.ones((4, 3), dtype=torch.long)
+    large_buffer = controller._generation_token_buffer(large_prompt, total_len=8)
+    large_ptr = large_buffer.data_ptr()
+
+    smaller_prompt = torch.ones((2, 3), dtype=torch.long)
+    smaller_buffer = controller._generation_token_buffer(smaller_prompt, total_len=5)
+
+    assert smaller_buffer.shape == (2, 5)
+    assert smaller_buffer.data_ptr() == large_ptr
+    assert controller._token_buffer.shape == (4, 8)
 
 
 def test_dynamic_precision_decoders_accept_reusable_workspaces_on_cpu() -> None:
