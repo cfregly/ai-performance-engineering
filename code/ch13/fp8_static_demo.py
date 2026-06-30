@@ -160,9 +160,9 @@ class StaticFP8Linear(nn.Module):
         self.fp8_max = 448.0  # E4M3
         
         # Static scales (frozen after calibration)
-        self.register_buffer('input_scale', torch.tensor(1.0))
-        self.register_buffer('weight_scale', torch.tensor(1.0))
-        self.register_buffer('is_calibrated', torch.tensor(False))
+        self.register_buffer('input_scale', torch.tensor(1.0, dtype=torch.float32, device=device))
+        self.register_buffer('weight_scale', torch.tensor(1.0, dtype=torch.float32, device=device))
+        self.register_buffer('is_calibrated', torch.tensor(False, device=device))
         self.register_buffer(
             '_calibration_info_values',
             torch.empty(3, dtype=torch.float32, device=device),

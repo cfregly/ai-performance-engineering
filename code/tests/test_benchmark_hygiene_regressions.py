@@ -14360,6 +14360,9 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
         assert "self.running_amax = max(self.running_amax, current_amax)" not in stats_section
 
     demo_source = (REPO_ROOT / "ch13" / "fp8_static_demo.py").read_text(encoding="utf-8")
+    optimized_static_source = (REPO_ROOT / "ch13" / "optimized_fp8_static.py").read_text(
+        encoding="utf-8"
+    )
     scale_section = demo_source.split("def get_all_scales", maxsplit=1)[1].split(
         "#============================================================================",
         maxsplit=1,
@@ -14369,6 +14372,12 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
         maxsplit=1,
     )[0]
 
+    assert "torch.tensor(1.0, dtype=torch.float32, device=device)" in demo_source
+    assert "torch.tensor(False, device=device)" in demo_source
+    assert "torch.tensor(False, device=device)" in optimized_static_source
+    assert "torch.tensor(1.0))" not in demo_source
+    assert "torch.tensor(False))" not in demo_source
+    assert "torch.tensor(False))" not in optimized_static_source
     assert "self._scale_values: Optional[torch.Tensor] = None" in demo_source
     assert "self._scale_values_host: Optional[torch.Tensor] = None" in demo_source
     assert "scale_slice = self._scale_values[:count]" in scale_section

@@ -118,7 +118,7 @@ class StaticFP8Linear(nn.Module):
         self.fp8_max = 448.0
         self.register_buffer('input_scale', torch.tensor(1.0, dtype=torch.float32, device=device))
         self.register_buffer('weight_scale', torch.tensor(1.0, dtype=torch.float32, device=device))
-        self.register_buffer('is_calibrated', torch.tensor(False))
+        self.register_buffer('is_calibrated', torch.tensor(False, device=device))
         self.register_buffer('weight_fp8', torch.empty(0, device=device, dtype=torch.float8_e4m3fn))
         self._weight_fp8_t: Optional[torch.Tensor] = None
         self.register_buffer(
