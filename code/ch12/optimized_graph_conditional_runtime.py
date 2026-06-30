@@ -116,7 +116,7 @@ class OptimizedGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark CUDA graph replay - much faster than fresh launches."""
-        with self._nvtx_range("graph_replay"):
+        with torch.inference_mode(), self._nvtx_range("graph_replay"):
             self._graph.replay()
         if self._verify_input is None or self.data is None:
             raise RuntimeError("Verification input/output not initialized")

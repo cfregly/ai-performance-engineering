@@ -65,10 +65,9 @@ class OptimizedKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
-        with self._nvtx_range("kernel_launches"):
-            with torch.inference_mode():
-                self.graph.replay()
-                self.output = self.graph_output
+        with torch.inference_mode(), self._nvtx_range("kernel_launches"):
+            self.graph.replay()
+            self.output = self.graph_output
         if self._verify_input is None or self.graph_output is None:
             raise RuntimeError("Verification input or captured output missing")
         dtype = self._verify_input.dtype

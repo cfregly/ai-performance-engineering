@@ -51,7 +51,7 @@ class BaselineCudaGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: Separate kernel launches."""
-        with self._nvtx_range("cuda_graphs"):
+        with torch.inference_mode(), self._nvtx_range("cuda_graphs"):
             self._extension.separate_kernel_launches(self.data, self.iterations)
         if self.data is None or self._verify_input is None:
             raise RuntimeError("Data or verification input not initialized")

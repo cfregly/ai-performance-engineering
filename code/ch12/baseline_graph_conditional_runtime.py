@@ -89,7 +89,7 @@ class BaselineGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark fresh kernel launches."""
-        with self._nvtx_range("fresh_kernel_launches"):
+        with torch.inference_mode(), self._nvtx_range("fresh_kernel_launches"):
             self._compute_ops()
     
     def teardown(self) -> None:

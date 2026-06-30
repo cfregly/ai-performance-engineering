@@ -64,7 +64,7 @@ class OptimizedGraphBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: CUDA graph kernel."""
-        with self._nvtx_range("optimized_graph_bandwidth_graph"):
+        with torch.inference_mode(), self._nvtx_range("optimized_graph_bandwidth_graph"):
             # Call CUDA extension with graph kernel
             self._extension.graph_kernel(self.dst, self.src, self.iterations)
         if self._verify_input is None or self.dst is None:

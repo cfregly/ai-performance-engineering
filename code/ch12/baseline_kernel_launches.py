@@ -63,9 +63,8 @@ class BaselineKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
-        with self._nvtx_range("kernel_launches"):
-            with torch.inference_mode():
-                self.output = many_small_ops_regular(self.x, self.iterations)
+        with torch.inference_mode(), self._nvtx_range("kernel_launches"):
+            self.output = many_small_ops_regular(self.x, self.iterations)
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
         dtype = self._verify_input.dtype

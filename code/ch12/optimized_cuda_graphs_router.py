@@ -51,7 +51,7 @@ class CUDAGraphRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._extension is None or self.data is None:
             raise RuntimeError("SKIPPED: graph not initialized")
 
-        with self._nvtx_range("cuda_graphs_router"):
+        with torch.inference_mode(), self._nvtx_range("cuda_graphs_router"):
             # Flip route between iterations to emulate a conditional branch.
             self.route_flag ^= 1
             self._extension.graph_replay(self.data, self.iterations)

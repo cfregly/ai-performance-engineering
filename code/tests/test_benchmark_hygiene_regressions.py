@@ -20763,6 +20763,8 @@ def test_ch12_core_benchmarks_use_cached_nvtx_range() -> None:
         "baseline_graph_bandwidth.py": "graph_bandwidth",
         "optimized_graph_bandwidth.py": "optimized_graph_bandwidth_graph",
         "optimized_cuda_graphs_router.py": "cuda_graphs_router",
+        "baseline_graph_conditional_runtime.py": "fresh_kernel_launches",
+        "optimized_graph_conditional_runtime.py": "graph_replay",
     }
 
     for filename, label in expected_labels.items():
@@ -20771,7 +20773,10 @@ def test_ch12_core_benchmarks_use_cached_nvtx_range() -> None:
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
-        assert f'with self._nvtx_range("{label}"):' in benchmark_section
+        assert f'self._nvtx_range("{label}")' in benchmark_section
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert "with nvtx_range(" not in benchmark_section
         assert "from core.profiling.nvtx_helper" not in source

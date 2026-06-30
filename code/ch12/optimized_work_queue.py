@@ -59,7 +59,7 @@ class OptimizedWorkQueueBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: Dynamic work queue with atomics."""
-        with self._nvtx_range("work_queue"):
+        with torch.inference_mode(), self._nvtx_range("work_queue"):
             # Call CUDA extension with dynamic work queue
             self._extension.dynamic_work_queue(self.input_data, self.output_data, self.iterations)
         if self._verify_input is None or self.output_data is None:

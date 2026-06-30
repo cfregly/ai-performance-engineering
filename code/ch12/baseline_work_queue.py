@@ -58,7 +58,7 @@ class BaselineWorkQueueBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: Static work distribution."""
-        with self._nvtx_range("work_queue"):
+        with torch.inference_mode(), self._nvtx_range("work_queue"):
             # Call CUDA extension with static work distribution
             self._extension.static_work_distribution(self.input_data, self.output_data, self.iterations)
         if self._verify_input is None or self.output_data is None:

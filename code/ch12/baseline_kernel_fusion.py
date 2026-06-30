@@ -55,7 +55,7 @@ class BaselineKernelFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: Separate kernel launches (3 memory round trips)."""
-        with self._nvtx_range("kernel_fusion"):
+        with torch.inference_mode(), self._nvtx_range("kernel_fusion"):
             # Call CUDA extension with separate kernels
             self._extension.separate_kernels(self.data, self.iterations)
         if self.data is None:

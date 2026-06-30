@@ -56,7 +56,7 @@ class BaselineGraphBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: Separate kernel launches (memory copy)."""
-        with self._nvtx_range("graph_bandwidth"):
+        with torch.inference_mode(), self._nvtx_range("graph_bandwidth"):
             # Keep Python overhead out of the comparison: launch the kernel loop
             # inside the extension so baseline vs optimized differs only by
             # kernel-launch vs graph-launch overhead.
