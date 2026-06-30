@@ -40,6 +40,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._verify_numel = 0
 
     def setup(self) -> None:
@@ -50,6 +51,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self.local_tensor = torch.randn(self.numel, device=self.device, dtype=torch.float32)
         self.peer_buffer = torch.empty_like(self.local_tensor)
         self._verify_input, self._verify_numel = build_square_verification_probe(self.local_tensor)
+        self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         self._timing_pair = (
             torch.cuda.Event(enable_timing=True),
             torch.cuda.Event(enable_timing=True),
@@ -89,21 +91,27 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
+        if self._verify_output_buffer is None and self._verify_input is not None:
+            self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         if self.peer_buffer is None:
             if self._verify_input is None:
                 torch.manual_seed(42)
                 torch.cuda.manual_seed_all(42)
                 self._verify_input = torch.randn(128, 128, device=self.device, dtype=torch.float32)
                 self._verify_numel = self._verify_input.numel()
-            output = self._verify_input.detach().clone()
+                self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
             probe = self._verify_input
         else:
+            if self._verify_input is None:
+                raise RuntimeError("Verification input not initialized")
             probe = self.peer_buffer[: self._verify_numel].view_as(self._verify_input).detach()
-            output = probe.clone()
+        if self._verify_output_buffer is None:
+            raise RuntimeError("Verification output buffer not initialized")
+        self._verify_output_buffer.copy_(probe)
 
         self._set_verification_payload(
             inputs={"tensor": probe},
-            output=output,
+            output=self._verify_output_buffer,
             batch_size=int(probe.shape[0]),
             parameter_count=0,
             precision_flags={
@@ -119,6 +127,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
     def teardown(self) -> None:
         self.local_tensor = None
         self.peer_buffer = None
+        self._verify_output_buffer = None
         self._timing_pair = None
         self._pending_timing_pair = None
         if torch.cuda.is_available():

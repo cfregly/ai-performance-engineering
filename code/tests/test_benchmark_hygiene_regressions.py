@@ -15781,6 +15781,27 @@ def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() 
             assert "self._pending_timing_pairs = []" not in finalize_section
 
 
+def test_ch04_optimized_symmetric_memory_perf_reuses_verification_buffer() -> None:
+    source = (REPO_ROOT / "ch04" / "optimized_symmetric_memory_perf.py").read_text(encoding="utf-8")
+    setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)" in setup_section
+    assert "self._verify_output_buffer.copy_(probe)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "output = probe.clone()" not in capture_section
+    assert "self._verify_input.detach().clone()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch04_symmetric_queue_batches_head_tail_reads() -> None:
     source = (REPO_ROOT / "ch04" / "symmetric_memory_data_structures.py").read_text(
         encoding="utf-8"
