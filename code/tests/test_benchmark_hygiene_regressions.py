@@ -7721,7 +7721,14 @@ def test_ch20_optimized_memory_standard_uses_scalar_addcmul_constants() -> None:
 
 
 def test_ch20_integrated_kv_cache_releases_slabs_without_zero_fill() -> None:
+    baseline_source = (REPO_ROOT / "ch20" / "baseline_integrated_kv_cache.py").read_text(
+        encoding="utf-8"
+    )
     source = (REPO_ROOT / "ch20" / "optimized_integrated_kv_cache.py").read_text(encoding="utf-8")
+    baseline_allocate = baseline_source.split("def allocate", maxsplit=1)[1].split(
+        "def append",
+        maxsplit=1,
+    )[0]
     acquire_section = source.split("def _acquire_buffer", maxsplit=1)[1].split(
         "def _release_buffer", maxsplit=1
     )[0]
@@ -7729,6 +7736,9 @@ def test_ch20_integrated_kv_cache_releases_slabs_without_zero_fill() -> None:
         "def allocate", maxsplit=1
     )[0]
 
+    assert "k = torch.empty(self.max_seq_len, self.num_heads, self.head_dim" in baseline_allocate
+    assert "v = torch.empty_like(k)" in baseline_allocate
+    assert "torch.zeros(" not in baseline_allocate
     assert "torch.empty(length" in acquire_section
     assert "torch.empty_like(k_buf)" in acquire_section
     assert "torch.zeros(" not in acquire_section

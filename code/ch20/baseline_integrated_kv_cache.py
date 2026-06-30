@@ -42,8 +42,8 @@ class NaiveKVCache:
         if request_id not in self.cache:
             self.cache[request_id] = []
             for _ in range(self.num_layers):
-                k = torch.zeros(self.max_seq_len, self.num_heads, self.head_dim, dtype=self.dtype, device=self.device)
-                v = torch.zeros(self.max_seq_len, self.num_heads, self.head_dim, dtype=self.dtype, device=self.device)
+                k = torch.empty(self.max_seq_len, self.num_heads, self.head_dim, dtype=self.dtype, device=self.device)
+                v = torch.empty_like(k)
                 self.cache[request_id].append((k, v))
     
     def append(self, request_id: str, layer_idx: int, k: torch.Tensor, v: torch.Tensor, pos: int) -> None:
