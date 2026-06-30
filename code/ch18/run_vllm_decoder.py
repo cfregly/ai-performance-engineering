@@ -265,9 +265,10 @@ class SpeculativeDecoder:
         total_tokens: int,
         paged_cache: PagedKVCache,
         base_position: int,
-    ) -> Tuple[torch.Tensor, List[float], int]:
+    ) -> Tuple[torch.Tensor, List[float], int, float]:
         tokens = seed_tokens
         emitted = 0
+        decode_total_ms = 0.0
         if len(self._per_token_times) < total_tokens:
             self._per_token_times = [0.0] * total_tokens
         per_token_times = self._per_token_times
@@ -311,13 +312,15 @@ class SpeculativeDecoder:
                     match_count = int(match_summary.item())
                     all_matches = match_count == matches.numel()
                     self.accepted_tokens += int(match_count)
-                    per_token_times[emitted] = (time.perf_counter() - start) * 1000.0
+                    elapsed_ms = (time.perf_counter() - start) * 1000.0
+                    per_token_times[emitted] = elapsed_ms
+                    decode_total_ms += elapsed_ms
                     emitted += 1
 
                     if not all_matches:
                         break
         self._maybe_adjust_chunk()
-        return tokens, per_token_times, emitted
+        return tokens, per_token_times, emitted, decode_total_ms
 
     def _maybe_adjust_chunk(self) -> None:
         if self._fallback_chunk is None:
@@ -410,9 +413,11 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._mem_log_path: Optional[Path] = None
         self._nvlink_warned: bool = False
         self._nvlink_status: str = "unknown"
+        self._iteration_ttft_times: List[float] = [0.0]
+        self._iteration_tpot_times: List[float] = [0.0] * self.config.decode_tokens
         self._iteration_metric_payload: Dict[str, object] = {
-            "ttft_times_ms": [],
-            "tpot_times_ms": [],
+            "ttft_times_ms": self._iteration_ttft_times,
+            "tpot_times_ms": self._iteration_tpot_times,
             "graph_path": "eager",
         }
         self._payload_parameter_count = 0
@@ -638,7 +643,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._prefill_next_token_from_logits(logits)
             if self._full_prefill_done is not None:
                 self._full_prefill_done.record()
-            _tokens, _, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
+            _tokens, _, _, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
                 self._prefill_next_tokens,
                 cfg.decode_tokens,
                 self.paged_cache,  # type: ignore[arg-type]
@@ -677,7 +682,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         # Decode graph: reuse prefetched tokens and capture decode path.
         with torch.cuda.graph(self._piecewise_decode_graph):
-            _tokens, _, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
+            _tokens, _, _, _ = self.spec_decoder.decode(  # type: ignore[call-arg]
                 self._prefill_next_tokens,
                 cfg.decode_tokens,
                 self.paged_cache,  # type: ignore[arg-type]
@@ -699,12 +704,12 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _can_use_piecewise_graph(self) -> bool:
         return self._piecewise_prefill_graph is not None and self._piecewise_decode_graph is not None
 
-    def _replay_full_graph(self) -> Tuple[List[float], List[float], str]:
+    def _replay_full_graph(self) -> Tuple[List[float], List[float], str, float, float, int, int]:
         if not self._can_use_full_graph():
             raise RuntimeError("Full graph replay requested but not captured")
         assert self._full_prefill_done is not None and self._full_decode_done is not None
-        ttft_times: List[float] = []
-        tpot_times: List[float] = []
+        ttft_times = self._iteration_ttft_times
+        tpot_times = self._iteration_tpot_times
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
         current_stream = torch.cuda.current_stream(self.device)
@@ -714,19 +719,21 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize(self.device)
         ttft_ms = start.elapsed_time(self._full_prefill_done)
         decode_total_ms = self._full_prefill_done.elapsed_time(self._full_decode_done)
-        per_token_ms = decode_total_ms / max(1, self.config.decode_tokens)
-        ttft_times.append(ttft_ms)
-        tpot_times.extend([per_token_ms] * self.config.decode_tokens)
-        return ttft_times, tpot_times, "full_graph"
+        decode_count = self.config.decode_tokens
+        per_token_ms = decode_total_ms / max(1, decode_count)
+        ttft_times[0] = ttft_ms
+        for idx in range(decode_count):
+            tpot_times[idx] = per_token_ms
+        return ttft_times, tpot_times, "full_graph", ttft_ms, decode_total_ms, 1, decode_count
 
-    def _replay_piecewise_graph(self) -> Tuple[List[float], List[float], str]:
+    def _replay_piecewise_graph(self) -> Tuple[List[float], List[float], str, float, float, int, int]:
         if not self._can_use_piecewise_graph():
             raise RuntimeError("Piecewise graph replay requested but not captured")
         assert self._piecewise_prefill_done is not None and self._piecewise_decode_done is not None
         if self.paged_cache is not None:
             self.paged_cache.reset()
-        ttft_times: List[float] = []
-        tpot_times: List[float] = []
+        ttft_times = self._iteration_ttft_times
+        tpot_times = self._iteration_tpot_times
         start_prefill = torch.cuda.Event(enable_timing=True)
         start_decode = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
@@ -739,12 +746,14 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize(self.device)
         ttft_ms = start_prefill.elapsed_time(self._piecewise_prefill_done)
         decode_total_ms = self._piecewise_prefill_done.elapsed_time(self._piecewise_decode_done)
-        per_token_ms = decode_total_ms / max(1, self.config.decode_tokens)
-        ttft_times.append(ttft_ms)
-        tpot_times.extend([per_token_ms] * self.config.decode_tokens)
-        return ttft_times, tpot_times, "piecewise_graph"
+        decode_count = self.config.decode_tokens
+        per_token_ms = decode_total_ms / max(1, decode_count)
+        ttft_times[0] = ttft_ms
+        for idx in range(decode_count):
+            tpot_times[idx] = per_token_ms
+        return ttft_times, tpot_times, "piecewise_graph", ttft_ms, decode_total_ms, 1, decode_count
 
-    def _run_eager_path(self) -> Tuple[List[float], List[float], str, float, float, torch.Tensor]:
+    def _run_eager_path(self) -> Tuple[List[float], List[float], str, float, float, torch.Tensor, float, float, int, int]:
         if self.model is None or self.prompts is None or self.paged_cache is None or self.spec_decoder is None:
             raise RuntimeError("Benchmark not initialized")
 
@@ -754,28 +763,40 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         paged_cache.reset()
         spec.reset()
 
-        ttft_times: List[float] = []
-        tpot_times: List[float] = []
+        ttft_times = self._iteration_ttft_times
+        tpot_times = self._iteration_tpot_times
 
         with torch.inference_mode(), self._nvtx_range("prefill_dualpipe"):
             prefill_start = self._record_start()
             hidden, logits = self.model.prefill(self.prompts, kv_cache=paged_cache.buffer, cache_start=0)
             torch.cuda.synchronize(self.device)
             ttft_ms = self._record_stop(prefill_start)
-            ttft_times.append(ttft_ms)
+            ttft_times[0] = ttft_ms
             paged_cache.mark_prefill(cfg.context_window)
 
         next_tokens = self._prefill_next_token_from_logits(logits)
         with torch.inference_mode(), self._nvtx_range("speculative_decode"):
             chunk_used = spec.current_chunk_size()
-            tokens, decode_times, decode_count = spec.decode(
+            tokens, decode_times, decode_count, decode_total_ms = spec.decode(
                 next_tokens,
                 cfg.decode_tokens,
                 paged_cache,
                 base_position=cfg.context_window,
             )
-            tpot_times.extend(decode_times[:decode_count])
-        return ttft_times, tpot_times, "eager", spec.acceptance_rate(), float(chunk_used), tokens
+            for idx in range(decode_count):
+                tpot_times[idx] = decode_times[idx]
+        return (
+            ttft_times,
+            tpot_times,
+            "eager",
+            spec.acceptance_rate(),
+            float(chunk_used),
+            tokens,
+            ttft_ms,
+            decode_total_ms,
+            1,
+            decode_count,
+        )
 
     # --------------------------------------------------------------- benchmark_fn
     def benchmark_fn(self) -> Dict[str, object]:
@@ -817,8 +838,12 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 else:
                     decode_assignments += 1
 
-        ttft_times: List[float] = []
-        tpot_times: List[float] = []
+        ttft_times = self._iteration_ttft_times
+        tpot_times = self._iteration_tpot_times
+        ttft_total_ms = 0.0
+        tpot_total_ms = 0.0
+        ttft_count = 0
+        tpot_count = 0
         graph_path = "eager"
         spec_accept_used: Optional[float] = None
         spec_chunk_used: Optional[float] = None
@@ -827,46 +852,96 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Select execution mode based on requested graph mode and capture viability.
         with self._nvtx_range("graph_mode_select"):
             if self.graph_mode == GraphMode.EAGER:
-                ttft_times, tpot_times, graph_path, spec_accept_used, spec_chunk_used, tokens = self._run_eager_path()
+                (
+                    ttft_times,
+                    tpot_times,
+                    graph_path,
+                    spec_accept_used,
+                    spec_chunk_used,
+                    tokens,
+                    ttft_total_ms,
+                    tpot_total_ms,
+                    ttft_count,
+                    tpot_count,
+                ) = self._run_eager_path()
             elif self.graph_mode == GraphMode.FULL and self._can_use_full_graph():
-                ttft_times, tpot_times, graph_path = self._replay_full_graph()
+                (
+                    ttft_times,
+                    tpot_times,
+                    graph_path,
+                    ttft_total_ms,
+                    tpot_total_ms,
+                    ttft_count,
+                    tpot_count,
+                ) = self._replay_full_graph()
                 spec_accept_used = self._captured_full_spec_accept
                 spec_chunk_used = self._captured_full_spec_chunk
             elif self.graph_mode == GraphMode.PIECEWISE and self._can_use_piecewise_graph():
-                ttft_times, tpot_times, graph_path = self._replay_piecewise_graph()
+                (
+                    ttft_times,
+                    tpot_times,
+                    graph_path,
+                    ttft_total_ms,
+                    tpot_total_ms,
+                    ttft_count,
+                    tpot_count,
+                ) = self._replay_piecewise_graph()
                 spec_accept_used = self._captured_piecewise_spec_accept
                 spec_chunk_used = self._captured_piecewise_spec_chunk
             elif self.graph_mode == GraphMode.FULL_AND_PIECEWISE and self._can_use_full_graph():
-                ttft_times, tpot_times, graph_path = self._replay_full_graph()
+                (
+                    ttft_times,
+                    tpot_times,
+                    graph_path,
+                    ttft_total_ms,
+                    tpot_total_ms,
+                    ttft_count,
+                    tpot_count,
+                ) = self._replay_full_graph()
                 spec_accept_used = self._captured_full_spec_accept
                 spec_chunk_used = self._captured_full_spec_chunk
             elif self.graph_mode == GraphMode.FULL_AND_PIECEWISE and self._can_use_piecewise_graph():
                 # Fallback for prompts that exceed the capture boundary
                 with self._nvtx_range("graph_fallback_piecewise"):
-                    ttft_times, tpot_times, graph_path = self._replay_piecewise_graph()
+                    (
+                        ttft_times,
+                        tpot_times,
+                        graph_path,
+                        ttft_total_ms,
+                        tpot_total_ms,
+                        ttft_count,
+                        tpot_count,
+                    ) = self._replay_piecewise_graph()
                     spec_accept_used = self._captured_piecewise_spec_accept
                     spec_chunk_used = self._captured_piecewise_spec_chunk
             else:
-                ttft_times, tpot_times, graph_path, spec_accept_used, spec_chunk_used, tokens = self._run_eager_path()
+                (
+                    ttft_times,
+                    tpot_times,
+                    graph_path,
+                    spec_accept_used,
+                    spec_chunk_used,
+                    tokens,
+                    ttft_total_ms,
+                    tpot_total_ms,
+                    ttft_count,
+                    tpot_count,
+                ) = self._run_eager_path()
 
         telemetry_after = query_gpu_telemetry(logical_index)
 
-        ttft_total_ms = sum(ttft_times)
-        tpot_total_ms = sum(tpot_times)
         total_time_s = (ttft_total_ms + tpot_total_ms) / 1000.0
         throughput = cfg.tokens_per_iteration / max(total_time_s, 1e-6)
         prefill_bytes = cfg.batch_size * cfg.context_window * cfg.hidden_size * self._dtype_bytes
         nvlink_gbps = 0.0
-        if ttft_times and ttft_times[0] > 0:
-            nvlink_gbps = (prefill_bytes * 8.0 / 1e9) / (ttft_times[0] / 1000.0)
+        if ttft_count and ttft_total_ms > 0:
+            nvlink_gbps = (prefill_bytes * 8.0 / 1e9) / (ttft_total_ms / 1000.0)
         measured_nvlink = self._compute_nvlink_delta(telemetry_before, telemetry_after, total_time_s)
         self._nvlink_status = telemetry_after.get("nvlink_status", "unknown")
 
-        ttft_count = len(ttft_times)
         if ttft_count:
             self._ttft_total_ms += ttft_total_ms
             self._ttft_count += ttft_count
-        tpot_count = len(tpot_times)
         if tpot_count:
             self._tpot_total_ms += tpot_total_ms
             self._tpot_count += tpot_count
@@ -906,8 +981,6 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._iteration += 1
         self._refresh_router_metrics()
         iteration_payload = self._iteration_metric_payload
-        iteration_payload["ttft_times_ms"] = ttft_times
-        iteration_payload["tpot_times_ms"] = tpot_times
         iteration_payload["graph_path"] = graph_path
         return iteration_payload
 
