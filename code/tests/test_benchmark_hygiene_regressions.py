@@ -11390,6 +11390,11 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "record_event.record(self.copy_stream)" in copy_section
     assert "record_event.record(torch.cuda.current_stream())" in copy_section
     assert "record_event.record()" not in copy_section
+    assert "self.hot_kv_bufs: list[torch.Tensor] = []" in source
+    assert "target_kv[..., :slice_len, :].copy_(" in copy_section
+    assert "staged[..., :slice_len, :]" in copy_section
+    assert "use_page_major_host_cache: bool = False" in source
+    assert "def _host_page_view(" in source
     assert "torch.cuda.Event(" not in benchmark_section
     assert "current_stream = torch.cuda.current_stream() if self.copy_stream is not None else None" in benchmark_section
     assert "current_stream.wait_event(self.prefetch_event)" in benchmark_section
@@ -11425,6 +11430,11 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "max(1, self.cfg.repeat_pages)" not in benchmark_section
     assert "self.output = attn_out[:, :, :1, : self._verify_head_dim]" in benchmark_section
     assert "min(8, attn_out.shape[-1])" not in benchmark_section
+    prefetch_optimized = (
+        REPO_ROOT / "labs" / "persistent_decode" / "optimized_paged_kv_offload_prefetch.py"
+    ).read_text(encoding="utf-8")
+    assert "use_direct_h2d=True" in prefetch_optimized
+    assert "use_page_major_host_cache=True" in prefetch_optimized
 
 
 def test_paged_kv_offload_hot_page_buffers_avoid_zero_fill() -> None:

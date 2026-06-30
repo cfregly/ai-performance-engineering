@@ -7,6 +7,8 @@
   dominates them and inverts the result to ~0.57x. Async-stream prefetch without
   the thread wins (~1.22x), so use_host_prefetch_thread is False.
 - Uses a pinned host cache (memmap disabled) to isolate overlap effects.
+- Stores host pages page-major so prefetched page slices are contiguous H2D
+  sources instead of strided views through the full sequence dimension.
 """
 
 from __future__ import annotations
@@ -33,8 +35,9 @@ def get_benchmark() -> PagedKVOffloadBenchmark:
         require_fused_fp8=False,
         fallback_dtype=torch.float16,
         prefetch_next_page=True,
-        use_direct_h2d=False,
+        use_direct_h2d=True,
         use_host_prefetch_thread=False,
+        use_page_major_host_cache=True,
     )
     return attach_benchmark_metadata(
         PagedKVOffloadBenchmark(cfg, label="paged_kv_offload_prefetch_optimized"),

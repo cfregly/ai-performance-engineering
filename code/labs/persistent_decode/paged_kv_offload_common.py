@@ -95,6 +95,7 @@ class PagedKVConfig:
     prefetch_next_page: bool = False
     use_direct_h2d: bool = False
     use_host_prefetch_thread: bool = False
+    use_page_major_host_cache: bool = False
 
 
 class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -111,6 +112,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.hot_k: Optional[torch.Tensor] = None
         self.hot_v: Optional[torch.Tensor] = None
+        self.hot_kv_bufs: list[torch.Tensor] = []
         self.hot_k_bufs: list[torch.Tensor] = []
         self.hot_v_bufs: list[torch.Tensor] = []
         self._hot_buffer_count = 0
@@ -131,10 +133,12 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._prefetch_stop = threading.Event()
 
         self.host_cache: Optional[torch.Tensor] = None
+        self._host_cache_is_pinned: bool = False
         self.host_memmap: Optional[np.memmap] = None
         self._memmap_path: Optional[Path] = None
 
         self.page_cursor: int = 0
+        self._page_count: int = 0
         self._repeat_pages = 1
         self._repeat_page_range = range(0)
         self._bytes_per_iteration: float = 0.0
@@ -168,22 +172,71 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return _FLOAT8_E4M3FN
         return self.cfg.fallback_dtype
 
+    def _page_major_shape(self) -> Tuple[int, ...]:
+        self._page_count = (self.cfg.max_seq_len + self.cfg.page_tokens - 1) // self.cfg.page_tokens
+        return (
+            self._page_count,
+            2,  # k and v
+            self.cfg.batch_size,
+            self.cfg.num_heads,
+            self.cfg.page_tokens,
+            self.cfg.head_dim,
+        )
+
+    def _copy_canonical_to_page_major(self, canonical: torch.Tensor, page_major: torch.Tensor) -> None:
+        for page_idx in range(self._page_count):
+            start = page_idx * self.cfg.page_tokens
+            end = min(start + self.cfg.page_tokens, self.cfg.max_seq_len)
+            slice_len = end - start
+            page_major[page_idx, ..., :slice_len, :].copy_(canonical[..., start:end, :])
+            if slice_len < self.cfg.page_tokens:
+                page_major[page_idx, ..., slice_len:, :].zero_()
+
     def _init_host_cache(self, shape: Tuple[int, ...]) -> None:
         generator = torch.Generator().manual_seed(42)
+        self._host_cache_is_pinned = False
         if self.cfg.use_memmap:
             np_dtype = _np_dtype_for(self.runtime_dtype)
             tmp_dir = Path(tempfile.mkdtemp(prefix="paged_kv_cache_"))
             self._memmap_path = tmp_dir / "kv_cache.bin"
-            self.host_memmap = np.memmap(self._memmap_path, mode="w+", dtype=np_dtype, shape=shape)
-            host = torch.randn(shape, dtype=torch.float16, generator=generator).numpy().astype(np_dtype, copy=False)
+            memmap_shape = self._page_major_shape() if self.cfg.use_page_major_host_cache else shape
+            self.host_memmap = np.memmap(self._memmap_path, mode="w+", dtype=np_dtype, shape=memmap_shape)
+            if self.cfg.use_page_major_host_cache:
+                canonical = torch.randn(shape, dtype=torch.float16, generator=generator)
+                page_major = torch.empty(memmap_shape, dtype=torch.float16)
+                self._copy_canonical_to_page_major(canonical, page_major)
+                host = page_major.numpy().astype(np_dtype, copy=False)
+            else:
+                host = torch.randn(shape, dtype=torch.float16, generator=generator).numpy().astype(np_dtype, copy=False)
             self.host_memmap[:] = host
+            self.host_cache = torch.from_numpy(self.host_memmap)
         else:
-            self.host_cache = torch.randn(
-                shape,
-                dtype=torch.float16,
-                generator=generator,
-                pin_memory=self.cfg.use_pinned_stage,
-            )
+            if self.cfg.use_page_major_host_cache:
+                page_major_shape = self._page_major_shape()
+                canonical = torch.randn(shape, dtype=torch.float16, generator=generator)
+                self.host_cache = torch.empty(
+                    page_major_shape,
+                    dtype=torch.float16,
+                    pin_memory=self.cfg.use_pinned_stage,
+                )
+                self._copy_canonical_to_page_major(canonical, self.host_cache)
+            else:
+                self.host_cache = torch.randn(
+                    shape,
+                    dtype=torch.float16,
+                    generator=generator,
+                    pin_memory=self.cfg.use_pinned_stage,
+                )
+            self._host_cache_is_pinned = self.cfg.use_pinned_stage
+
+    def _host_page_view(self, start: int, slice_len: int) -> torch.Tensor:
+        if self.host_cache is None:
+            raise RuntimeError("Host cache not initialized")
+        if self.cfg.use_page_major_host_cache:
+            page_idx = start // self.cfg.page_tokens
+            return self.host_cache[page_idx, ..., :slice_len, :]
+        end = start + slice_len
+        return self.host_cache[..., start:end, :]
 
     def _stage_page(self, start: int, into_prefetch: bool = False) -> Tuple[torch.Tensor, int]:
         end = min(start + self.cfg.page_tokens, self.cfg.max_seq_len)
@@ -191,14 +244,13 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         target = self.prefetch_staging if into_prefetch else self.staging
         assert target is not None
 
-        if self.cfg.use_direct_h2d and self.cfg.use_pinned_stage and self.host_cache is not None:
-            return self.host_cache[..., start:end, :], slice_len
+        if self.cfg.use_direct_h2d and self._host_cache_is_pinned and self.host_cache is not None:
+            return self._host_page_view(start, slice_len), slice_len
 
         if self.host_memmap is not None:
-            np_slice = self.host_memmap[..., start:end, :]
-            target[..., :slice_len, :].copy_(torch.from_numpy(np_slice))
+            target[..., :slice_len, :].copy_(self._host_page_view(start, slice_len))
         elif self.host_cache is not None:
-            target[..., :slice_len, :].copy_(self.host_cache[..., start:end, :])
+            target[..., :slice_len, :].copy_(self._host_page_view(start, slice_len))
         else:
             raise RuntimeError("Host cache not initialized")
         return target, slice_len
@@ -216,15 +268,23 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Device KV buffers are not initialized")
         target_k = self.hot_k_bufs[buffer_idx]
         target_v = self.hot_v_bufs[buffer_idx]
+        target_kv = self.hot_kv_bufs[buffer_idx] if self.hot_kv_bufs else None
         direct_copy = self.cfg.use_direct_h2d and staged.dtype == self.runtime_dtype
 
         def _copy_planes() -> None:
-            src_k = staged[0, ..., :slice_len, :]
-            src_v = staged[1, ..., :slice_len, :]
-            if direct_copy:
+            if direct_copy and target_kv is not None:
+                target_kv[..., :slice_len, :].copy_(
+                    staged[..., :slice_len, :],
+                    non_blocking=self.cfg.use_pinned_stage,
+                )
+            elif direct_copy:
+                src_k = staged[0, ..., :slice_len, :]
+                src_v = staged[1, ..., :slice_len, :]
                 target_k[..., :slice_len, :].copy_(src_k, non_blocking=self.cfg.use_pinned_stage)
                 target_v[..., :slice_len, :].copy_(src_v, non_blocking=self.cfg.use_pinned_stage)
             else:
+                src_k = staged[0, ..., :slice_len, :]
+                src_v = staged[1, ..., :slice_len, :]
                 target_k[..., :slice_len, :].copy_(
                     src_k.to(self.device, dtype=self.runtime_dtype, non_blocking=self.cfg.use_pinned_stage)
                 )
@@ -262,9 +322,20 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.cfg.page_tokens,
             self.cfg.head_dim,
         )
+        staging_dtype = torch.float16
         buffer_count = 2 if (self.cfg.prefetch_next_page and self.cfg.use_async_stream) else 1
-        self.hot_k_bufs = [torch.empty(head_shape, device=self.device, dtype=self.runtime_dtype) for _ in range(buffer_count)]
-        self.hot_v_bufs = [torch.empty_like(self.hot_k_bufs[0]) for _ in range(buffer_count)]
+        if self.cfg.use_direct_h2d and self.runtime_dtype == staging_dtype:
+            combined_shape = (2, *head_shape)
+            self.hot_kv_bufs = [
+                torch.empty(combined_shape, device=self.device, dtype=self.runtime_dtype)
+                for _ in range(buffer_count)
+            ]
+            self.hot_k_bufs = [buf[0] for buf in self.hot_kv_bufs]
+            self.hot_v_bufs = [buf[1] for buf in self.hot_kv_bufs]
+        else:
+            self.hot_kv_bufs = []
+            self.hot_k_bufs = [torch.empty(head_shape, device=self.device, dtype=self.runtime_dtype) for _ in range(buffer_count)]
+            self.hot_v_bufs = [torch.empty_like(self.hot_k_bufs[0]) for _ in range(buffer_count)]
         self._hot_buffer_count = buffer_count
         self.hot_k = self.hot_k_bufs[0]
         self.hot_v = self.hot_v_bufs[0]
@@ -273,7 +344,6 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefetch_slice_len = None
         self.prefetch_event = torch.cuda.Event() if buffer_count == 2 else None
 
-        staging_dtype = torch.float16
         staging_shape = (
             2,  # k and v planes
             self.cfg.batch_size,
@@ -561,6 +631,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._stop_host_prefetch_thread()
         self.hot_k = None
         self.hot_v = None
+        self.hot_kv_bufs = []
         self.hot_k_bufs = []
         self.hot_v_bufs = []
         self._hot_buffer_count = 0
@@ -573,6 +644,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefetch_staging = None
         self.copy_stream = None
         self.host_cache = None
+        self._host_cache_is_pinned = False
         self._verify_output_buffer = None
         if self.host_memmap is not None:
             self.host_memmap._mmap.close()  # type: ignore[attr-defined]
