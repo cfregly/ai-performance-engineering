@@ -17584,6 +17584,9 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
     model_section = source.split("class BufferedMicrobatchMlp", maxsplit=1)[1].split(
         "class OptimizedMemoryDoubleBufferingBenchmark", maxsplit=1
     )[0]
@@ -17618,6 +17621,10 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "torch.matmul(fc1_out, self.fc2.weight.t(), out=fc2_out)" not in model_section
     assert "self.copy_events = [torch.cuda.Event(blocking=False) for _ in range(2)]" in setup_section
     assert "self.buffers = [self.buffer_a, self.buffer_b]" in setup_section
+    assert "self._buffer_event_counts: tuple[int, int] = (0, 0)" in source
+    assert "self._expected_buffer_event_counts: tuple[int, int] = (0, 0)" in source
+    assert "self._buffer_event_counts = (len(self.buffers), len(self.copy_events))" in setup_section
+    assert "self._expected_buffer_event_counts = (2, 2)" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
     assert "get_config()" not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
@@ -17628,12 +17635,17 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "with torch.no_grad():" not in benchmark_section
     assert "copy_events = self.copy_events" in benchmark_section
     assert "Double buffers or copy events not initialized" in benchmark_section
+    assert "if self._buffer_event_counts != self._expected_buffer_event_counts:" in benchmark_section
+    assert "len(buffers)" not in benchmark_section
+    assert "len(copy_events)" not in benchmark_section
     assert "copy_events[0].record(self.copy_stream)" in benchmark_section
     assert "next_event.record(self.copy_stream)" in benchmark_section
     assert "copy_events[0].record()" not in benchmark_section
     assert "next_event.record()" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
+    assert "self._buffer_event_counts = (0, 0)" in teardown_section
+    assert "self._expected_buffer_event_counts = (0, 0)" in teardown_section
 
 
 def test_ch04_single_gpu_transfer_reuses_inner_iteration_range() -> None:

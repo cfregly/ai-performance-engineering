@@ -93,6 +93,8 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         self.copy_stream = None
         self.compute_stream = None
         self.copy_events: list[torch.cuda.Event] = []
+        self._buffer_event_counts: tuple[int, int] = (0, 0)
+        self._expected_buffer_event_counts: tuple[int, int] = (0, 0)
         self.batch_size = 4
         self.seq_len = 1024
         self.hidden_dim = 1024
@@ -146,6 +148,8 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         self.copy_stream = torch.cuda.Stream()
         self.compute_stream = torch.cuda.Stream()
         self.copy_events = [torch.cuda.Event(blocking=False) for _ in range(2)]
+        self._buffer_event_counts = (len(self.buffers), len(self.copy_events))
+        self._expected_buffer_event_counts = (2, 2)
     
     def benchmark_fn(self) -> None:
         """Benchmark: Double buffering with overlapping operations."""
@@ -154,7 +158,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
             with torch.inference_mode():
                 buffers = self.buffers
                 copy_events = self.copy_events
-                if len(buffers) != 2 or len(copy_events) < len(buffers):
+                if self._buffer_event_counts != self._expected_buffer_event_counts:
                     raise RuntimeError("Double buffers or copy events not initialized")
 
                 # Preload first buffer on the copy stream and signal completion.
@@ -206,6 +210,8 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         self.compute_stream = None
         self.buffers = []
         self.copy_events = []
+        self._buffer_event_counts = (0, 0)
+        self._expected_buffer_event_counts = (0, 0)
         self.host_batches = []
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
