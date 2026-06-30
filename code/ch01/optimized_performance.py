@@ -56,6 +56,7 @@ class OptimizedPerformanceBatchBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.fusion = 8
         self.hidden_dim = self.workload.performance_hidden_dim
         self._verify_input = None
+        self._verify_model_input = None
         self._verify_output = None
         self.parameter_count = 0
         self._model_dtype = torch.float32
@@ -94,6 +95,7 @@ class OptimizedPerformanceBatchBenchmark(VerificationPayloadMixin, BaseBenchmark
         
         # Keep verification inputs in FP32 so the signature stays stable across variants.
         self._verify_input = self.microbatches[0].float().clone()
+        self._verify_model_input = self._verify_input.to(dtype=dtype, device=self.device)
         self._verify_output = torch.empty(self._verify_input.shape[0], 10, device=self.device, dtype=torch.float32)
         
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-3)
@@ -125,12 +127,15 @@ class OptimizedPerformanceBatchBenchmark(VerificationPayloadMixin, BaseBenchmark
                 self.optimizer.step()
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self._verify_input is None or self._verify_output is None:
+        if (
+            self.model is None
+            or self._verify_input is None
+            or self._verify_model_input is None
+            or self._verify_output is None
+        ):
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         with torch.inference_mode():
-            verify_input = self._verify_input
-            verify_input = verify_input.to(dtype=self._model_dtype, device=self.device)
-            verify_output = self.model(verify_input)
+            verify_output = self.model(self._verify_model_input)
             self._verify_output.copy_(verify_output)
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
@@ -153,6 +158,7 @@ class OptimizedPerformanceBatchBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._fused_batches = None
         self._fused_targets = None
         self._verify_input = None
+        self._verify_model_input = None
         self._verify_output = None
         self._model_dtype = torch.float32
         restore_tf32_state(self._tf32_state)

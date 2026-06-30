@@ -58,6 +58,7 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
         self.targets = None
         self.optimizer = None
         self._verify_input = None
+        self._verify_model_input = None
         self._verify_output = None
         self.parameter_count = 0
         self._microbatch_groups = None
@@ -95,6 +96,7 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
 
         # Match baseline input signature: verification inputs are FP32.
         self._verify_input = self.microbatches[0].float().clone()
+        self._verify_model_input = self._verify_input.to(dtype=dtype, device=self.device)
         self._verify_output = torch.empty(self._verify_input.shape[0], 10, device=self.device, dtype=torch.float32)
 
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-3)
@@ -138,12 +140,15 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
                 self.optimizer.step()
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self._verify_input is None or self._verify_output is None:
+        if (
+            self.model is None
+            or self._verify_input is None
+            or self._verify_model_input is None
+            or self._verify_output is None
+        ):
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         with torch.inference_mode():
-            verify_input = self._verify_input
-            verify_input = verify_input.to(dtype=self._model_dtype, device=self.device)
-            verify_output = self.model(verify_input)
+            verify_output = self.model(self._verify_model_input)
             self._verify_output.copy_(verify_output)
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
@@ -165,6 +170,7 @@ class OptimizedPerformanceFP16Benchmark(VerificationPayloadMixin, BaseBenchmark)
         self._target_groups = None
         self._group_sizes = None
         self._verify_input = None
+        self._verify_model_input = None
         self._verify_output = None
         self._model_dtype = torch.float32
         restore_tf32_state(self._tf32_state)

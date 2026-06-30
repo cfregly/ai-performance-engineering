@@ -181,14 +181,17 @@ def test_ch01_optimized_verification_reuses_cached_model_dtype() -> None:
 
         assert "self._model_dtype = torch.float32" in source
         assert "self._model_dtype = dtype" in setup_section
+        assert "self._verify_model_input = None" in source
+        assert "self._verify_model_input = self._verify_input.to(dtype=dtype, device=self.device)" in setup_section
         assert (
             "self._verify_output = torch.empty("
             "self._verify_input.shape[0], 10, device=self.device, dtype=torch.float32)"
             in setup_section
         )
         assert "with torch.inference_mode():" in capture_section
-        assert "verify_input = verify_input.to(dtype=self._model_dtype, device=self.device)" in capture_section
-        assert "verify_output = self.model(verify_input)" in capture_section
+        assert "or self._verify_model_input is None" in capture_section
+        assert "verify_input = verify_input.to(dtype=self._model_dtype, device=self.device)" not in capture_section
+        assert "verify_output = self.model(self._verify_model_input)" in capture_section
         assert "self._verify_output.copy_(verify_output)" in capture_section
         assert "self.model(verify_input).float().clone()" not in capture_section
         assert "list(self.model.parameters())" not in capture_section
