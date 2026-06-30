@@ -170,7 +170,7 @@ class SlidingWindowSelfAttention(nn.Module):
             mask = mask.unsqueeze(0).unsqueeze(0)  # [1, 1, chunk_q, chunk_kv]
             
             # Apply mask
-            scores = scores.masked_fill(~mask, float('-inf'))
+            scores.masked_fill_(~mask, float('-inf'))
             
             # Softmax and weighted sum
             attn = F.softmax(scores, dim=-1)

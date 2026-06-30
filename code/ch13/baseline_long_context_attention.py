@@ -73,7 +73,7 @@ class BaselineLongContextAttentionBenchmark(VerificationPayloadMixin, BaseBenchm
         with torch.inference_mode():
             scores = torch.matmul(self.q, self._k_t)
             scores.mul_(self._scale)
-            scores = scores.masked_fill(self._mask, float("-inf"))
+            scores.masked_fill_(self._mask, float("-inf"))
             attn = torch.softmax(scores, dim=-1)
             self.output = torch.matmul(attn, self.v)
         if self.output is None:

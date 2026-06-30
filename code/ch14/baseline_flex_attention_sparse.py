@@ -37,7 +37,7 @@ class DenseMaskedSlidingWindowAttention(nn.Module):
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale  # [B, H, S, S]
-        scores = scores.masked_fill(~allowed_mask, float("-inf"))
+        scores.masked_fill_(~allowed_mask, float("-inf"))
         attn = torch.softmax(scores, dim=-1)
         out = torch.matmul(attn, v)  # [B, H, S, D]
         out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, self.embed_dim)

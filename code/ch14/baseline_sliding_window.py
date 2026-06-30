@@ -73,7 +73,7 @@ class NaiveAttentionModule(nn.Module):
         
         # Causal mask
         causal_mask = self._causal_mask_for(S, x.device)
-        scores = scores.masked_fill(causal_mask, float('-inf'))
+        scores.masked_fill_(causal_mask, float('-inf'))
         
         # Softmax and weighted sum
         attn = F.softmax(scores, dim=-1)

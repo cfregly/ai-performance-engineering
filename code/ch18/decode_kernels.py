@@ -138,7 +138,7 @@ class VLLMDecodeKernel:
 
         flat = out.view(batch, self.hidden)
         if mask is not None:
-            flat = flat.masked_fill(~mask[:, None], float("-inf"))
+            flat.masked_fill_(~mask[:, None], float("-inf"))
         return flat
 
     @property
@@ -152,7 +152,7 @@ def _torch_decode(hidden: int) -> Callable[[torch.Tensor, torch.Tensor, Optional
     def _decode(tokens: torch.Tensor, kv: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         attn_scores = torch.tanh(tokens + kv)
         if mask is not None:
-            attn_scores = attn_scores.masked_fill(~mask[:, None], float("-inf"))
+            attn_scores.masked_fill_(~mask[:, None], float("-inf"))
         return attn_scores
 
     try:

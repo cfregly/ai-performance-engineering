@@ -122,7 +122,7 @@ class BaselineDenseAttentionFlashBenchmark(VerificationPayloadMixin, BaseBenchma
         # Causal mask
         if self._causal_mask is None:
             raise RuntimeError("Causal mask not initialized")
-        scores = scores.masked_fill(self._causal_mask[:S, :S], float('-inf'))
+        scores.masked_fill_(self._causal_mask[:S, :S], float('-inf'))
         
         attn = F.softmax(scores, dim=-1)
         output = torch.matmul(attn, v)

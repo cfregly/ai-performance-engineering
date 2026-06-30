@@ -1039,6 +1039,8 @@ def test_ch14_flex_attention_sparse_uses_longer_and_sparser_window() -> None:
     for source in (baseline_text, optimized_text):
         assert "self.seq_len = 4096" in source
         assert "self.window_size = 128" in source
+    assert "scores.masked_fill_(~allowed_mask, float(\"-inf\"))" in baseline_text
+    assert "scores = scores.masked_fill(~allowed_mask, float(\"-inf\"))" not in baseline_text
 
 
 def test_ch17_memory_uses_larger_replayed_transfer_workload() -> None:

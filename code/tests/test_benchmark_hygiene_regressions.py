@@ -3781,6 +3781,8 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "def _causal_mask_for" in ch14_source
     assert "causal_mask = self._causal_mask_for(S, x.device)" in ch14_forward
     assert "torch.ones(S, S" not in ch14_forward
+    assert "scores.masked_fill_(causal_mask, float('-inf'))" in ch14_forward
+    assert "scores = scores.masked_fill(causal_mask, float('-inf'))" not in ch14_forward
     ch14_mask_for = ch14_source.split("def _causal_mask_for", maxsplit=1)[1].split(
         "def forward",
         maxsplit=1,
@@ -3800,6 +3802,8 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "def _causal_mask_for" in ch10_source
     assert "mask = self._causal_mask_for(seq_len, x.device)" in ch10_forward
     assert "torch.ones(seq_len, seq_len" not in ch10_forward
+    assert "scores.masked_fill_(mask, float('-inf'))" in ch10_forward
+    assert "scores = scores.masked_fill(mask, float('-inf'))" not in ch10_forward
     ch10_mask_for = ch10_source.split("def _causal_mask_for", maxsplit=1)[1].split(
         "def forward",
         maxsplit=1,
@@ -3815,15 +3819,25 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         "def benchmark_fn",
         maxsplit=1,
     )[0]
+    ch13_benchmark = ch13_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
     assert "torch.triu(torch.ones(" not in ch13_setup
     assert "pos = torch.arange(self.seq_len, device=self.device)" in ch13_setup
     assert "mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch13_setup
+    assert "scores.masked_fill_(self._mask, float(\"-inf\"))" in ch13_benchmark
+    assert "scores = scores.masked_fill(self._mask, float(\"-inf\"))" not in ch13_benchmark
 
     llama_source = (
         REPO_ROOT / "labs" / "real_world_models" / "llama_3_1_8b_optimization.py"
     ).read_text(encoding="utf-8")
     llama_attention = llama_source.split("class SimplifiedAttention", maxsplit=1)[1].split(
         "def forward",
+        maxsplit=1,
+    )[0]
+    llama_forward = llama_source.split("def forward(self, x):", maxsplit=1)[1].split(
+        "attn = attn.transpose",
         maxsplit=1,
     )[0]
     llama_mlp = llama_source.split("class SimplifiedMLP", maxsplit=1)[1].split(
@@ -3833,6 +3847,8 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "torch.triu(torch.ones(" not in llama_attention
     assert "pos = torch.arange(seq_len)" in llama_attention
     assert "causal = pos.unsqueeze(0) > pos.unsqueeze(1)" in llama_attention
+    assert "scores.masked_fill_(self._causal_mask, float(\"-inf\"))" in llama_forward
+    assert "scores = scores.masked_fill(self._causal_mask, float(\"-inf\"))" not in llama_forward
     assert "gate = self.gate_proj(x)" in llama_mlp
     assert "up = self.up_proj(x)" in llama_mlp
     assert "F.silu(gate, inplace=True)" in llama_mlp
@@ -3846,9 +3862,18 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         "def benchmark_fn",
         maxsplit=1,
     )[0]
+    ch16_forward = ch16_source.split("def _forward_naive", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     assert "torch.triu(" not in ch16_setup
     assert "torch.ones(self.max_seq_len" not in ch16_setup
     assert "self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch16_setup
+    assert "scores.masked_fill_(self._causal_mask[:S, :S], float('-inf'))" in ch16_forward
+    assert (
+        "scores = scores.masked_fill(self._causal_mask[:S, :S], float('-inf'))"
+        not in ch16_forward
+    )
 
     for filename in (
         "baseline_dense_attention_flash.py",
@@ -4180,6 +4205,8 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     )
     assert "torch.triu(\n                torch.ones(seq_len, seq_len" not in ch14_demo_source
     assert "causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch14_demo_source
+    assert "scores.masked_fill_(~mask, float('-inf'))" in ch14_demo_source
+    assert "scores = scores.masked_fill(~mask, float('-inf'))" not in ch14_demo_source
 
 
 def test_ch10_attention_reuses_verification_buffers() -> None:
@@ -7793,6 +7820,8 @@ def test_ch18_flexattention_demos_use_cuda_event_timing() -> None:
     assert "k_position_row = position_index.view(1, max_kv_len)" in flexdecoding_sdpa
     assert "q_positions = q_position_column[:seq_q] + offset" in flexdecoding_sdpa
     assert "k_positions = k_position_row[:, :seq_k]" in flexdecoding_sdpa
+    assert "attn.masked_fill_(~in_window, -1e9)" in flexdecoding_sdpa
+    assert "attn = attn.masked_fill(~in_window, -1e9)" not in flexdecoding_sdpa
     assert "torch.arange(seq_q" not in flexdecoding_sdpa
     assert "torch.arange(seq_k" not in flexdecoding_sdpa
 
@@ -7876,6 +7905,26 @@ def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None
     )[0]
     assert "seq_lens[:batch_size].fill_" not in run_section
     assert "seq_lens[batch_size:bucket].zero_()" not in run_section
+
+
+def test_ch18_decode_kernels_mask_temporary_outputs_in_place() -> None:
+    source = (REPO_ROOT / "ch18" / "decode_kernels.py").read_text(encoding="utf-8")
+    vllm_call_section = source.split("class VLLMDecodeKernel", maxsplit=1)[1].split(
+        "    @property",
+        maxsplit=1,
+    )[0]
+    torch_decode_section = source.split("def _torch_decode", maxsplit=1)[1].split(
+        "def build_decode_kernel",
+        maxsplit=1,
+    )[0]
+
+    assert "flat.masked_fill_(~mask[:, None], float(\"-inf\"))" in vllm_call_section
+    assert "attn_scores.masked_fill_(~mask[:, None], float(\"-inf\"))" in torch_decode_section
+    assert "flat = flat.masked_fill(~mask[:, None], float(\"-inf\"))" not in vllm_call_section
+    assert (
+        "attn_scores = attn_scores.masked_fill(~mask[:, None], float(\"-inf\"))"
+        not in torch_decode_section
+    )
 
 
 def test_ch18_v1_bucketed_decode_reuses_bucket_inputs_and_mask() -> None:

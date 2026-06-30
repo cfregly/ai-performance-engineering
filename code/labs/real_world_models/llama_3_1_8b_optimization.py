@@ -105,7 +105,7 @@ class Llama31_8B_Optimization:
                     k_fp32 = k.float()
                     v_fp32 = v.float()
                     scores = torch.matmul(q_fp32, k_fp32.transpose(-2, -1)) * self._scale
-                    scores = scores.masked_fill(self._causal_mask, float("-inf"))
+                    scores.masked_fill_(self._causal_mask, float("-inf"))
                     probs = torch.softmax(scores, dim=-1)
                     attn = torch.matmul(probs, v_fp32).to(dtype=q.dtype)
                 

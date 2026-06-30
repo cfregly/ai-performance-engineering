@@ -180,7 +180,7 @@ class FlexDecodingModule(torch.nn.Module):
                 k_positions = k_position_row[:, :seq_k]
                 delta = q_positions - k_positions
                 in_window = (delta >= 0) & (delta <= window)
-                attn = attn.masked_fill(~in_window, -1e9)
+                attn.masked_fill_(~in_window, -1e9)
                 probs = torch.softmax(attn, dim=-1)
                 out = torch.matmul(probs, vh)
                 return out.transpose(1, 2)

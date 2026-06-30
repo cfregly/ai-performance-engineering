@@ -104,7 +104,7 @@ class BaselineFlashAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             # Apply a causal mask so the baseline matches the optimized SDPA path.
             if self._causal_mask is None:
                 raise RuntimeError("Causal mask missing - setup() must initialize it")
-            attn_weights = attn_weights.masked_fill(self._causal_mask, float("-inf"))
+            attn_weights.masked_fill_(self._causal_mask, float("-inf"))
         attn_weights = torch.softmax(attn_weights, dim=-1)
         
         # attn_weights @ V

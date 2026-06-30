@@ -108,7 +108,7 @@ class BaselineFlashAttention3(nn.Module):
         # Apply causal mask if needed
         if is_causal:
             mask = self._causal_mask_for(seq_len, x.device)
-            scores = scores.masked_fill(mask, float('-inf'))
+            scores.masked_fill_(mask, float('-inf'))
         
         # Softmax (full matrix in memory)
         attn_weights = F.softmax(scores, dim=-1)

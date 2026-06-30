@@ -65,11 +65,20 @@ def test_baseline_flash_attention_builds_causal_mask_directly() -> None:
         "def _manual_attention",
         maxsplit=1,
     )[0]
+    manual_source = source.split("def _manual_attention", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
 
     assert "torch.ones(" not in setup_source
     assert ".triu(" not in setup_source
     assert "pos = torch.arange(self.seq_len, device=self.device)" in setup_source
     assert "self._causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in setup_source
+    assert "attn_weights.masked_fill_(self._causal_mask, float(\"-inf\"))" in manual_source
+    assert (
+        "attn_weights = attn_weights.masked_fill(self._causal_mask, float(\"-inf\"))"
+        not in manual_source
+    )
 
 
 def test_optimized_flash_attention_reuses_projection_buffers_in_inference() -> None:
