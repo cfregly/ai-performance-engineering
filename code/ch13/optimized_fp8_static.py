@@ -119,6 +119,7 @@ class StaticFP8Linear(nn.Module):
         self.register_buffer('input_scale', torch.tensor(1.0, dtype=torch.float32, device=device))
         self.register_buffer('weight_scale', torch.tensor(1.0, dtype=torch.float32, device=device))
         self.register_buffer('is_calibrated', torch.tensor(False, device=device))
+        self._is_calibrated = False
         self.register_buffer('weight_fp8', torch.empty(0, device=device, dtype=torch.float8_e4m3fn))
         self._weight_fp8_t: Optional[torch.Tensor] = None
         self.register_buffer(
@@ -157,6 +158,7 @@ class StaticFP8Linear(nn.Module):
         self.input_scale.fill_(input_scale)
         self.weight_scale.fill_(weight_scale)
         self.is_calibrated.fill_(True)
+        self._is_calibrated = True
         weight_fp8 = (self.weight / self.weight_scale).to(torch.float8_e4m3fn)
         self.weight_fp8 = weight_fp8.contiguous()
         self._weight_fp8_t = self.weight_fp8.T
@@ -193,7 +195,7 @@ class StaticFP8Linear(nn.Module):
             self._weight_stats.update(self.weight)
             output = F.linear(x, self.weight, self.bias)
             
-        elif self.is_calibrated:
+        elif self._is_calibrated:
             if not hasattr(torch, "_scaled_mm"):
                 raise RuntimeError("torch._scaled_mm is required for static FP8 benchmark")
             if not hasattr(torch, "float8_e4m3fn"):

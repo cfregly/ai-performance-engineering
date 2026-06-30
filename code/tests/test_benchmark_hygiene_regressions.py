@@ -14375,6 +14375,11 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
     assert "torch.tensor(1.0, dtype=torch.float32, device=device)" in demo_source
     assert "torch.tensor(False, device=device)" in demo_source
     assert "torch.tensor(False, device=device)" in optimized_static_source
+    for static_source in (demo_source, optimized_static_source):
+        assert "self._is_calibrated = False" in static_source
+        assert "self._is_calibrated = True" in static_source
+        assert "elif self._is_calibrated:" in static_source
+        assert "elif self.is_calibrated:" not in static_source
     assert "torch.tensor(1.0))" not in demo_source
     assert "torch.tensor(False))" not in demo_source
     assert "torch.tensor(False))" not in optimized_static_source

@@ -163,6 +163,7 @@ class StaticFP8Linear(nn.Module):
         self.register_buffer('input_scale', torch.tensor(1.0, dtype=torch.float32, device=device))
         self.register_buffer('weight_scale', torch.tensor(1.0, dtype=torch.float32, device=device))
         self.register_buffer('is_calibrated', torch.tensor(False, device=device))
+        self._is_calibrated = False
         self.register_buffer(
             '_calibration_info_values',
             torch.empty(3, dtype=torch.float32, device=device),
@@ -205,6 +206,7 @@ class StaticFP8Linear(nn.Module):
         self.input_scale.fill_(input_scale)
         self.weight_scale.fill_(weight_scale)
         self.is_calibrated.fill_(True)
+        self._is_calibrated = True
         
         return {
             "input_scale": input_scale,
@@ -249,7 +251,7 @@ class StaticFP8Linear(nn.Module):
             # Run in full precision during calibration
             output = torch.nn.functional.linear(x, self.weight, self.bias)
             
-        elif self.is_calibrated:
+        elif self._is_calibrated:
             # Static FP8 inference
             x_q = self._quantize_static(x, self.input_scale)
             w_q = self._quantize_static(self.weight, self.weight_scale)
