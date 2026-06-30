@@ -24,6 +24,7 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.device_ids: List[int] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._verify_probe_buffer: Optional[torch.Tensor] = None
         self.num_elements = 200_000_000
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -43,6 +44,7 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.local_sums = [torch.empty(1, device=t.device, dtype=torch.float32) for t in self.data]
         self.reduced_sums = [torch.empty_like(t) for t in self.local_sums]
         self._verify_output_buffer = torch.empty_like(self.local_sums[0])
+        self._verify_probe_buffer = torch.empty(256, dtype=self.data[0].dtype, pin_memory=True)
         total_tokens = self.num_elements * len(self.device_ids)
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(len(self.device_ids)),
@@ -72,10 +74,15 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must be called before capture_verification_payload()")
         if self._verify_output_buffer is None:
             raise RuntimeError("setup() must initialize verification output buffer")
+        if self._verify_probe_buffer is None:
+            raise RuntimeError("setup() must initialize verification input buffer")
         self._verify_output_buffer.copy_(self.output)
-        probe = self.data[0][:256].detach().cpu()
+        self._verify_probe_buffer.copy_(
+            self.data[0][: self._verify_probe_buffer.numel()],
+            non_blocking=False,
+        )
         self._set_verification_payload(
-            inputs={"data_probe": probe},
+            inputs={"data_probe": self._verify_probe_buffer},
             output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=0,
@@ -94,6 +101,7 @@ class OptimizedDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.reduced_sums = []
         self.output = None
         self._verify_output_buffer = None
+        self._verify_probe_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

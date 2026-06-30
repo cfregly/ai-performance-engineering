@@ -9545,8 +9545,10 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     assert "self._host_total = torch.empty(1, dtype=torch.float32, pin_memory=True)" in baseline_setup
     assert "self._output_tensor: Optional[torch.Tensor] = None" in baseline_source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._verify_probe_buffer: Optional[torch.Tensor] = None" in baseline_source
     assert "self._output_tensor = torch.empty(1, device=f\"cuda:{self.device_ids[0]}\", dtype=torch.float32)" in baseline_setup
     assert "self._verify_output_buffer = torch.empty_like(self._output_tensor)" in baseline_setup
+    assert "self._verify_probe_buffer = torch.empty(256, dtype=self.data[0].dtype, pin_memory=True)" in baseline_setup
     assert "with torch.inference_mode(), self._nvtx_range(\"baseline_distributed_multigpu\"):" in baseline_benchmark
     assert "torch.sum(tensor, dim=0, keepdim=True, out=self.local_sums[idx])" in baseline_benchmark
     assert "self.host_sums[idx].copy_(self.local_sums[idx], non_blocking=False)" in baseline_benchmark
@@ -9557,13 +9559,19 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
     assert "self._output_tensor[0] = self._cpu_total" in baseline_capture
     assert "self.output = self._output_tensor" in baseline_capture
     assert "self._verify_output_buffer.copy_(self.output)" in baseline_capture
+    assert "self._verify_probe_buffer.copy_(" in baseline_capture
+    assert "self.data[0][: self._verify_probe_buffer.numel()]" in baseline_capture
+    assert 'inputs={"data_probe": self._verify_probe_buffer}' in baseline_capture
+    assert ".detach().cpu()" not in baseline_capture
     assert "output=self._verify_output_buffer" in baseline_capture
     assert "output=self.output.detach().clone()" not in baseline_capture
     assert "torch.tensor(" not in baseline_capture
     assert "self.local_sums = [torch.empty(1, device=t.device, dtype=torch.float32) for t in self.data]" in optimized_setup
     assert "self.reduced_sums = [torch.empty_like(t) for t in self.local_sums]" in optimized_setup
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._verify_probe_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._verify_output_buffer = torch.empty_like(self.local_sums[0])" in optimized_setup
+    assert "self._verify_probe_buffer = torch.empty(256, dtype=self.data[0].dtype, pin_memory=True)" in optimized_setup
     assert "torch.zeros(1" not in optimized_setup
     assert "torch.zeros_like" not in optimized_setup
     assert "with torch.inference_mode(), self._nvtx_range(\"optimized_distributed_multigpu\"):" in optimized_benchmark
@@ -9578,6 +9586,10 @@ def test_ch05_distributed_reduction_defers_verification_scalars_outside_hot_loop
         "def teardown", maxsplit=1
     )[0]
     assert "self._verify_output_buffer.copy_(self.output)" in optimized_capture
+    assert "self._verify_probe_buffer.copy_(" in optimized_capture
+    assert "self.data[0][: self._verify_probe_buffer.numel()]" in optimized_capture
+    assert 'inputs={"data_probe": self._verify_probe_buffer}' in optimized_capture
+    assert ".detach().cpu()" not in optimized_capture
     assert "output=self._verify_output_buffer" in optimized_capture
     assert "output=self.output.detach().clone()" not in optimized_capture
 

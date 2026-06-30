@@ -28,6 +28,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._host_total: Optional[torch.Tensor] = None
         self._output_tensor: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._verify_probe_buffer: Optional[torch.Tensor] = None
         self.num_elements = 200_000_000
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -52,6 +53,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._host_total = torch.empty(1, dtype=torch.float32, pin_memory=True)
         self._output_tensor = torch.empty(1, device=f"cuda:{self.device_ids[0]}", dtype=torch.float32)
         self._verify_output_buffer = torch.empty_like(self._output_tensor)
+        self._verify_probe_buffer = torch.empty(256, dtype=self.data[0].dtype, pin_memory=True)
         total_tokens = self.num_elements * len(self.device_ids)
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(len(self.device_ids)),
@@ -85,10 +87,15 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = self._output_tensor
         if self._verify_output_buffer is None:
             raise RuntimeError("setup() must initialize verification output buffer")
+        if self._verify_probe_buffer is None:
+            raise RuntimeError("setup() must initialize verification input buffer")
         self._verify_output_buffer.copy_(self.output)
-        probe = self.data[0][:256].detach().cpu()
+        self._verify_probe_buffer.copy_(
+            self.data[0][: self._verify_probe_buffer.numel()],
+            non_blocking=False,
+        )
         self._set_verification_payload(
-            inputs={"data_probe": probe},
+            inputs={"data_probe": self._verify_probe_buffer},
             output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=0,
@@ -110,6 +117,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._host_total = None
         self._output_tensor = None
         self._verify_output_buffer = None
+        self._verify_probe_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
