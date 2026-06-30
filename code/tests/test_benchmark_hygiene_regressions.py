@@ -18058,9 +18058,13 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "self._output_buffer = torch.empty(output_buffer_shape, dtype=torch.long, device=self.device)" in setup_section
     assert "self._metadata_inputs: Dict[str, torch.Tensor] = {}" in source
     assert "self._request_prompt_outputs: List[tuple[int, torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._request_output_counts: tuple[int, int] = (0, 0)" in source
+    assert "self._expected_request_output_counts: tuple[int, int] = (0, 0)" in source
     assert "self._decode_positions = range(" in source
     assert "self._request_prompt_outputs = list(" in setup_section
     assert "zip(range(self.cfg.requests_per_rank), self.prompts, self._pending_outputs, strict=True)" in setup_section
+    assert "self._request_output_counts = (" in setup_section
+    assert "self._expected_request_output_counts = (" in setup_section
     assert "for position in self._decode_positions:" in source
     assert "position=position" in source
     assert "for step in range(self.cfg.decode_tokens):" not in source
@@ -18079,6 +18083,9 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "outputs: List[torch.Tensor] = []" not in baseline_benchmark
     assert "outputs = self._pending_outputs" in baseline_benchmark
     assert "request_prompt_outputs = self._request_prompt_outputs" in baseline_benchmark
+    assert "if self._request_output_counts != self._expected_request_output_counts:" in baseline_benchmark
+    assert "len(outputs)" not in baseline_benchmark
+    assert "len(request_prompt_outputs)" not in baseline_benchmark
     assert "for output_idx, prompt, output_slot in request_prompt_outputs:" in baseline_benchmark
     assert "with torch.inference_mode():" in baseline_benchmark
     assert "for idx in range(self.cfg.requests_per_rank):" not in baseline_benchmark
@@ -18103,6 +18110,8 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert '"num_experts": self._metadata_inputs["num_experts"]' in capture_section
     assert "self.prompts[0].detach().cpu()" not in capture_section
     assert "torch.zeros(" not in capture_section
+    assert "self._request_output_counts = (0, 0)" in source
+    assert "self._expected_request_output_counts = (0, 0)" in source
 
 
 def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache() -> None:
@@ -18121,6 +18130,8 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
 
     assert "self._pending_outputs: List[torch.Tensor] = []" in base_section
     assert "self._request_prompt_outputs: List[tuple[int, torch.Tensor, torch.Tensor]] = []" in base_section
+    assert "self._request_output_counts: tuple[int, int] = (0, 0)" in base_section
+    assert "self._expected_request_output_counts: tuple[int, int] = (0, 0)" in base_section
     assert "self._output_stack: Optional[torch.Tensor] = None" in base_section
     assert "self._metadata_inputs: Dict[str, torch.Tensor] = {}" in base_section
     assert "self._verify_prompt_buffer: Optional[torch.Tensor] = None" in base_section
@@ -18132,6 +18143,8 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in base_section
     assert "self._request_prompt_outputs = list(" in base_section
     assert "zip(range(self.cfg.requests_per_rank), self.prompts, self._pending_outputs, strict=True)" in base_section
+    assert "self._request_output_counts = (" in base_section
+    assert "self._expected_request_output_counts = (" in base_section
     assert "self._output_stack = torch.empty(" in base_section
     assert '"decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype)' in base_section
     assert "torch.stack(self._pending_outputs, dim=0, out=self._output_stack)" in base_section
@@ -18147,7 +18160,9 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "kv_cache.copy_(self._kv_host_staging, non_blocking=False)" in baseline_benchmark
     assert "outputs = self._pending_outputs" in baseline_benchmark
     assert "request_prompt_outputs = self._request_prompt_outputs" in baseline_benchmark
-    assert "if len(request_prompt_outputs) != self.cfg.requests_per_rank:" in baseline_benchmark
+    assert "if self._request_output_counts != self._expected_request_output_counts:" in baseline_benchmark
+    assert "len(outputs)" not in baseline_benchmark
+    assert "len(request_prompt_outputs)" not in baseline_benchmark
     assert "with torch.inference_mode():" in baseline_benchmark
     assert "for output_idx, prompt, _output_slot in request_prompt_outputs:" in baseline_benchmark
     assert "kv_cache, seed = self.prefill_model.prefill(prompt)" in baseline_benchmark
@@ -18159,6 +18174,8 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "outputs: List[torch.Tensor] = []" not in baseline_benchmark
     assert "outputs.append(" not in baseline_benchmark
     assert "torch.stack(" not in baseline_benchmark
+    assert "self._request_output_counts = (0, 0)" in base_section
+    assert "self._expected_request_output_counts = (0, 0)" in base_section
     assert "or self._flat_prompts is None" in optimized_benchmark
     assert "kv_cache, seed = self.prefill_model.prefill(self._flat_prompts)" in optimized_benchmark
     assert "self.prompts.reshape(" not in optimized_benchmark

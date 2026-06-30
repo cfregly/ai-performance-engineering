@@ -128,6 +128,8 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._output_buffer: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
         self._request_prompt_outputs: List[tuple[int, torch.Tensor, torch.Tensor]] = []
+        self._request_output_counts: tuple[int, int] = (0, 0)
+        self._expected_request_output_counts: tuple[int, int] = (0, 0)
         self._decode_positions = range(
             self.cfg.context_window,
             self.cfg.context_window + self.cfg.decode_tokens,
@@ -174,6 +176,14 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         ]
         self._request_prompt_outputs = list(
             zip(range(self.cfg.requests_per_rank), self.prompts, self._pending_outputs, strict=True)
+        )
+        self._request_output_counts = (
+            len(self._pending_outputs),
+            len(self._request_prompt_outputs),
+        )
+        self._expected_request_output_counts = (
+            self.cfg.requests_per_rank,
+            self.cfg.requests_per_rank,
         )
         self._decode_positions = range(
             self.cfg.context_window,
@@ -306,6 +316,8 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._output_buffer = None
         self._pending_outputs = []
         self._request_prompt_outputs = []
+        self._request_output_counts = (0, 0)
+        self._expected_request_output_counts = (0, 0)
         self._next_token_buffer = None
         self._next_token_values = None
         self._metadata_inputs = {}
@@ -362,10 +374,8 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
             raise RuntimeError("Baseline KV staging buffers not initialized")
 
         outputs = self._pending_outputs
-        if len(outputs) != self.cfg.requests_per_rank:
-            raise RuntimeError("Decode output slots not initialized")
         request_prompt_outputs = self._request_prompt_outputs
-        if len(request_prompt_outputs) != self.cfg.requests_per_rank:
+        if self._request_output_counts != self._expected_request_output_counts:
             raise RuntimeError("Request prompt/output groups not initialized")
         with torch.inference_mode():
             for output_idx, prompt, output_slot in request_prompt_outputs:
