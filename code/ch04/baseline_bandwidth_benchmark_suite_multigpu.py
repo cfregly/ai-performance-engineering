@@ -61,6 +61,7 @@ class BandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         self.pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self.chunk_pairs: list[list[tuple[torch.Tensor, torch.Tensor]]] = []
         self._flat_chunk_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
+        self._pair_count = 0
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
@@ -87,15 +88,16 @@ class BandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             chunk_pairs = list(zip(src_chunks, dst_chunks))
             self.chunk_pairs.append(chunk_pairs)
             self._flat_chunk_pairs.extend(chunk_pairs)
+        self._pair_count = len(self.pairs)
         self.register_workload_metadata(
             requests_per_iteration=1.0,
-            bytes_per_iteration=float(bytes_per_iter * self.inner_iterations * len(self.pairs)),
+            bytes_per_iteration=float(bytes_per_iter * self.inner_iterations * self._pair_count),
         )
 
     def benchmark_fn(self) -> None:
         if not self._flat_chunk_pairs:
             raise RuntimeError("Benchmark not initialized")
-        total_bytes = self.size_mb * 1024 * 1024 * len(self.pairs) * self.inner_iterations
+        total_bytes = self.size_mb * 1024 * 1024 * self._pair_count * self.inner_iterations
         start = time.perf_counter()
         for _ in self._inner_iteration_range:
             for src_chunk, dst_chunk in self._flat_chunk_pairs:

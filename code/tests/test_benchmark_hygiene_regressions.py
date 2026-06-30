@@ -3313,6 +3313,7 @@ def test_ch04_cpu_staged_reduction_baselines_reuse_buffered_mlp_and_outputs() ->
         assert "self._output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._cpu_shard_buffers: list[torch.Tensor] = []" in source
         assert "self._cpu_shard_copy_pairs: list[tuple[int, torch.Tensor]] = []" in source
+        assert "self._cpu_shard_count = 0" in source
         assert "self._reduced_rows = 0" in source
         assert "self.model = ReusableReductionMlp(self.hidden_dim, self.inner_dim).to(self.device).eval()" in setup_section
         assert "nn.Sequential(" not in setup_section
@@ -3320,8 +3321,11 @@ def test_ch04_cpu_staged_reduction_baselines_reuse_buffered_mlp_and_outputs() ->
         assert "use_pinned_host = self.input.device.type == \"cuda\" and torch.cuda.is_available()" in setup_section
         assert "self._cpu_shard_buffers = [" in setup_section
         assert "self._cpu_shard_copy_pairs = list(enumerate(self._cpu_shard_buffers))" in setup_section
+        assert "self._cpu_shard_count = len(self._cpu_shard_buffers)" in setup_section
         assert "pin_memory=use_pinned_host" in setup_section
         assert "self._bytes_transferred = float(" in setup_section
+        assert "self._cpu_shard_count == self.num_shards" in benchmark_section
+        assert "len(self._cpu_shard_buffers)" not in benchmark_section
         assert "shards = output.view(self.num_shards, self._reduced_rows, self.hidden_dim)" in benchmark_section
         assert "for idx, shard in self._cpu_shard_copy_pairs:" in benchmark_section
         assert "enumerate(self._cpu_shard_buffers)" not in benchmark_section
@@ -3339,6 +3343,7 @@ def test_ch04_cpu_staged_reduction_baselines_reuse_buffered_mlp_and_outputs() ->
         assert "self._output_buffer = None" in teardown_section
         assert "self._cpu_shard_buffers = []" in teardown_section
         assert "self._cpu_shard_copy_pairs = []" in teardown_section
+        assert "self._cpu_shard_count = 0" in teardown_section
         assert "self._reduced_rows = 0" in teardown_section
 
 
@@ -17953,11 +17958,16 @@ def test_ch04_baseline_bandwidth_suite_flattens_chunk_copy_schedule() -> None:
     )[0]
 
     assert "self._flat_chunk_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in setup_section
+    assert "self._pair_count = 0" in setup_section
     assert "self._inner_iteration_range = range(self.inner_iterations)" in setup_section
     assert "self._flat_chunk_pairs = []" in setup_section
     assert "chunk_pairs = list(zip(src_chunks, dst_chunks))" in setup_section
     assert "self._flat_chunk_pairs.extend(chunk_pairs)" in setup_section
+    assert "self._pair_count = len(self.pairs)" in setup_section
+    assert "bytes_per_iteration=float(bytes_per_iter * self.inner_iterations * self._pair_count)" in setup_section
     assert "if not self._flat_chunk_pairs:" in benchmark_section
+    assert "total_bytes = self.size_mb * 1024 * 1024 * self._pair_count * self.inner_iterations" in benchmark_section
+    assert "len(self.pairs)" not in benchmark_section
     assert "for _ in self._inner_iteration_range:" in benchmark_section
     assert "for _ in range(self.inner_iterations):" not in benchmark_section
     assert "for src_chunk, dst_chunk in self._flat_chunk_pairs:" in benchmark_section

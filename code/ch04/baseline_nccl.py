@@ -39,6 +39,7 @@ class BaselineNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_buffer: Optional[torch.Tensor] = None
         self._cpu_shard_buffers: list[torch.Tensor] = []
         self._cpu_shard_copy_pairs: list[tuple[int, torch.Tensor]] = []
+        self._cpu_shard_count = 0
         self._reduced_rows = 0
         self._bytes_transferred: float = 0.0
         self._payload_parameter_count = 0
@@ -73,6 +74,7 @@ class BaselineNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for _ in range(self.num_shards)
         ]
         self._cpu_shard_copy_pairs = list(enumerate(self._cpu_shard_buffers))
+        self._cpu_shard_count = len(self._cpu_shard_buffers)
         element_size = self.input.element_size()
         self._bytes_transferred = float(
             (self.batch_size * self.hidden_dim + self._reduced_rows * self.hidden_dim)
@@ -84,7 +86,7 @@ class BaselineNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: CPU-based reduction (inefficient)."""
         assert self.input is not None and self.model is not None
         assert self._output_buffer is not None
-        assert len(self._cpu_shard_buffers) == self.num_shards
+        assert self._cpu_shard_count == self.num_shards
 
         with self._nvtx_range("baseline_nccl"):
             with torch.inference_mode():
@@ -128,6 +130,7 @@ class BaselineNcclBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_buffer = None
         self._cpu_shard_buffers = []
         self._cpu_shard_copy_pairs = []
+        self._cpu_shard_count = 0
         self._reduced_rows = 0
         torch.cuda.empty_cache()
     
