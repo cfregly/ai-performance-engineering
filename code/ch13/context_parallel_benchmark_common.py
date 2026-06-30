@@ -37,6 +37,7 @@ class AttentionWorkspace:
 
 
 _CAUSAL_MASK_POSITION_CACHE: dict[tuple[int, int, int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
+_CAUSAL_MASK_CACHE: dict[tuple[int, int, int, torch.device], torch.Tensor] = {}
 _RING_POSITION_VIEW_CACHE: dict[tuple[int, int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
 
 
@@ -120,8 +121,8 @@ def _apply_causal_mask(
     seq_shard: int,
     world_size: int,
 ) -> torch.Tensor:
-    global_q, global_k = _causal_mask_position_views(rank, seq_shard, world_size, scores.device)
-    return scores.masked_fill(global_k > global_q, float("-inf"))
+    mask = _causal_mask_for(rank, seq_shard, world_size, scores.device)
+    return scores.masked_fill_(mask, float("-inf"))
 
 
 def _causal_mask_position_views(
@@ -140,6 +141,21 @@ def _causal_mask_position_views(
         cached = (global_q, global_k)
         _CAUSAL_MASK_POSITION_CACHE[key] = cached
     return cached
+
+
+def _causal_mask_for(
+    rank: int,
+    seq_shard: int,
+    world_size: int,
+    device: torch.device,
+) -> torch.Tensor:
+    key = (int(rank), int(seq_shard), int(world_size), torch.device(device))
+    mask = _CAUSAL_MASK_CACHE.get(key)
+    if mask is None:
+        global_q, global_k = _causal_mask_position_views(rank, seq_shard, world_size, device)
+        mask = global_k > global_q
+        _CAUSAL_MASK_CACHE[key] = mask
+    return mask
 
 
 def _ring_position_views(

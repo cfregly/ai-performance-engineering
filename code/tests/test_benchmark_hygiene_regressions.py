@@ -14122,9 +14122,13 @@ def test_ch13_context_parallel_all_gather_reuses_full_kv_buffers() -> None:
     assert "k_full = torch.cat(gather_k, dim=2)" not in all_gather_section
     assert "v_full = torch.cat(gather_v, dim=2)" not in all_gather_section
     assert "_CAUSAL_MASK_POSITION_CACHE" in source
+    assert "_CAUSAL_MASK_CACHE" in source
     assert "_RING_POSITION_VIEW_CACHE" in source
-    assert "global_q, global_k = _causal_mask_position_views(rank, seq_shard, world_size, scores.device)" in mask_section
-    assert "return scores.masked_fill(global_k > global_q, float(\"-inf\"))" in mask_section
+    assert "def _causal_mask_for" in source
+    assert "mask = _causal_mask_for(rank, seq_shard, world_size, scores.device)" in mask_section
+    assert "return scores.masked_fill_(mask, float(\"-inf\"))" in mask_section
+    assert "global_q, global_k = _causal_mask_position_views(rank, seq_shard, world_size, device)" in mask_section
+    assert "return scores.masked_fill(global_k > global_q, float(\"-inf\"))" not in mask_section
     assert "global_q, k_indices = _ring_position_views(rank, seq_shard, q.device)" in ring_section
     assert "(rank * seq_shard) + torch.arange(seq_shard, device=scores.device)" not in mask_section
     assert "torch.arange(seq_total, device=scores.device)" not in mask_section
@@ -14134,14 +14138,19 @@ def test_ch13_context_parallel_all_gather_reuses_full_kv_buffers() -> None:
     from ch13 import context_parallel_benchmark_common as cp_common
 
     cp_common._CAUSAL_MASK_POSITION_CACHE.clear()
+    cp_common._CAUSAL_MASK_CACHE.clear()
     cp_common._RING_POSITION_VIEW_CACHE.clear()
     mask_q, mask_k = cp_common._causal_mask_position_views(1, 4, 2, torch.device("cpu"))
     mask_q_again, mask_k_again = cp_common._causal_mask_position_views(1, 4, 2, torch.device("cpu"))
+    mask = cp_common._causal_mask_for(1, 4, 2, torch.device("cpu"))
+    mask_again = cp_common._causal_mask_for(1, 4, 2, torch.device("cpu"))
     ring_q, ring_k = cp_common._ring_position_views(1, 4, torch.device("cpu"))
     ring_q_again, ring_k_again = cp_common._ring_position_views(1, 4, torch.device("cpu"))
 
     assert mask_q_again.data_ptr() == mask_q.data_ptr()
     assert mask_k_again.data_ptr() == mask_k.data_ptr()
+    assert mask_again.data_ptr() == mask.data_ptr()
+    torch.testing.assert_close(mask, mask_k > mask_q)
     assert ring_q_again.data_ptr() == ring_q.data_ptr()
     assert ring_k_again.data_ptr() == ring_k.data_ptr()
 
