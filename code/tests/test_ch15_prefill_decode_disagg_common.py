@@ -104,6 +104,11 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "self._request_groups.extend(" in setup_section
     assert "batch_slice[idx : idx + 1]" in setup_section
     assert "self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]" in setup_section
+    assert "probe_width = min(256, self.hidden_size)" in setup_section
+    assert "probe_shape = torch.Size((1, 1, probe_width))" in setup_section
+    assert "self._verify_probe = self._empty_cpu_staging(probe_shape, torch.bfloat16)" in setup_section
+    assert "self._verify_probe.copy_(" in setup_section
+    assert "self.prefill_inputs[0][:1, :1, :probe_width]" in setup_section
     assert "self._verify_output_stack: Optional[torch.Tensor] = None" in source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
     assert "verify_shape = torch.Size((min(2, self.batch_size), min(256, self.hidden_size)))" in setup_section
@@ -132,9 +137,12 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "self._output_shards[output_idx][:verify_width]" in capture_section
     assert "verify_output = self._verify_output_buffer[:selected_count]" in capture_section
     assert "verify_output.copy_(self._verify_output_stack[:selected_count], non_blocking=False)" in capture_section
+    assert 'inputs={"probe": self._verify_probe}' in capture_section
     assert "output=verify_output" in capture_section
+    assert "self._verify_probe.detach().cpu()" not in capture_section
     assert ".float().clone()" not in capture_section
     assert "torch.stack([tensor.detach().cpu() for tensor in selected], dim=0)" not in capture_section
     assert "output_cpu[:, :256]" not in capture_section
+    assert "self._verify_probe = None" in teardown_section
     assert "self._verify_output_stack = None" in teardown_section
     assert "self._verify_output_buffer = None" in teardown_section

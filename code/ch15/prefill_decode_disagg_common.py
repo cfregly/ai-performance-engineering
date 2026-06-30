@@ -150,6 +150,9 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._handoff_staging = {}
         self._request_groups = []
         self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]
+        probe_width = min(256, self.hidden_size)
+        probe_shape = torch.Size((1, 1, probe_width))
+        self._verify_probe = self._empty_cpu_staging(probe_shape, torch.bfloat16)
         verify_shape = torch.Size((min(2, self.batch_size), min(256, self.hidden_size)))
         self._verify_output_stack = self._empty_cpu_staging(verify_shape, torch.bfloat16)
         self._verify_output_buffer = self._empty_cpu_staging(verify_shape, torch.float32)
@@ -191,7 +194,10 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 )
             offset = slice_end
 
-        self._verify_probe = self.prefill_inputs[0][:1, :1, :256].detach()
+        self._verify_probe.copy_(
+            self.prefill_inputs[0][:1, :1, :probe_width],
+            non_blocking=False,
+        )
         for prefill_device, decode_device in self.pairs:
             torch.cuda.synchronize(prefill_device)
             torch.cuda.synchronize(decode_device)
@@ -259,7 +265,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         verify_output = self._verify_output_buffer[:selected_count]
         verify_output.copy_(self._verify_output_stack[:selected_count], non_blocking=False)
         self._set_verification_payload(
-            inputs={"probe": self._verify_probe.detach().cpu()},
+            inputs={"probe": self._verify_probe},
             output=verify_output,
             batch_size=int(self.batch_size),
             parameter_count=int(self._parameter_count),
