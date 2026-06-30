@@ -19594,6 +19594,11 @@ def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path(
         assert "self._finalize_output()" not in benchmark_section
         assert "current_stream = torch.cuda.current_stream()" in benchmark_section
         if name.startswith("baseline"):
+            assert "self._prefilled_state: torch.Tensor | None = None" in source
+            assert "self._prefilled_tokens: torch.Tensor | None = None" in source
+            assert "if self._prefilled_state is None or self._prefilled_tokens is None:" in benchmark_section
+            assert "hasattr(self, \"_prefilled_state\")" not in benchmark_section
+            assert "hasattr(self, \"_prefilled_tokens\")" not in benchmark_section
             assert "stream = self.compute_stream or current_stream" in benchmark_section
             assert "current_stream.wait_stream(stream)" in benchmark_section
             assert "torch.cuda.current_stream().wait_stream(stream)" not in benchmark_section

@@ -16,6 +16,11 @@ from labs.decode_optimization.decode_common import DecodeBenchmark, DecodeConfig
 class PersistentPrefillBaselineBenchmark(DecodeBenchmark):
     """Baseline that matches the optimized persistent-prefill execution model."""
 
+    def __init__(self, cfg: DecodeConfig) -> None:
+        super().__init__(cfg)
+        self._prefilled_state: torch.Tensor | None = None
+        self._prefilled_tokens: torch.Tensor | None = None
+
     def setup(self) -> None:
         super().setup()
         # Match optimized path: do prefill ONCE and benchmark decode-only iterations.
@@ -30,7 +35,7 @@ class PersistentPrefillBaselineBenchmark(DecodeBenchmark):
         )
 
     def benchmark_fn(self) -> None:
-        if not hasattr(self, "_prefilled_state") or not hasattr(self, "_prefilled_tokens"):
+        if self._prefilled_state is None or self._prefilled_tokens is None:
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         current_stream = torch.cuda.current_stream()
