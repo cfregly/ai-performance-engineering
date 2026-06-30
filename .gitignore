@@ -9,6 +9,8 @@ code/ch14/torch_compile_debug/
 code/ch16/gpt_oss_120b_results.json
 code/ch16/gpt_quick_results.txt
 zymtrace-official/
+.env
+.env.local
 code/third_party/mlperf_inference/
 code/third_party/mlperf_training/
 BENCHMARK_*.json
