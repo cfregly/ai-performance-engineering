@@ -119,6 +119,26 @@ def test_top_k_verification_tensor_reuses_output_buffer() -> None:
     assert "return torch.cat(pieces, dim=0)" not in source
 
 
+def test_top_k_benchmark_only_detaches_backward_probs() -> None:
+    source = (REPO_ROOT / "labs" / "top_k_kernel" / "top_k_kernel_common.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "q_grad = self.inputs.q.grad" in benchmark_section
+    assert "k_grad = self.inputs.k.grad" in benchmark_section
+    assert "probs = probs.detach()" in benchmark_section
+    assert "probs=probs" in benchmark_section
+    assert "indices=indices" in benchmark_section
+    assert "self.inputs.q.grad.detach()" not in benchmark_section
+    assert "self.inputs.k.grad.detach()" not in benchmark_section
+    assert "indices.detach()" not in benchmark_section
+    assert "probs=probs.detach()" not in benchmark_section
+
+
 def test_compare_top_k_matrix_uses_cuda_event_timing() -> None:
     source = (REPO_ROOT / "labs" / "top_k_kernel" / "compare_top_k_matrix.py").read_text(
         encoding="utf-8"

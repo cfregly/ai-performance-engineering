@@ -961,12 +961,13 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if self.workload.mode == "fwd_bwd":
                 loss = (probs * self.inputs.loss_weights).sum()
                 loss.backward()
-                q_grad = self.inputs.q.grad.detach()
-                k_grad = self.inputs.k.grad.detach()
+                q_grad = self.inputs.q.grad
+                k_grad = self.inputs.k.grad
+                probs = probs.detach()
 
         self.outputs = TopKKernelOutputs(
-            probs=probs.detach(),
-            indices=indices.detach(),
+            probs=probs,
+            indices=indices,
             q_grad=q_grad,
             k_grad=k_grad,
         )
