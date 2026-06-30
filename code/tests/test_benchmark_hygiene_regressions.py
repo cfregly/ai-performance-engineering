@@ -7416,14 +7416,23 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
             )[0]
             assert "self._compute_chunk_specs: List[tuple[torch.Tensor, torch.Tensor, torch.cuda.Event]] = []" in source
             assert "self._copy_chunk_specs: List[tuple[torch.Tensor, torch.Tensor, torch.cuda.Event]] = []" in source
+            assert "self._chunk_spec_counts: tuple[int, int] = (0, 0)" in source
+            assert "self._expected_chunk_spec_counts: tuple[int, int] = (0, 0)" in source
             assert "self._compute_chunk_specs = list(zip(input_views, workspace_views, self.compute_done_events, strict=True))" in setup_section
             assert "self._copy_chunk_specs = list(zip(workspace_views, dest_views, self.compute_done_events, strict=True))" in setup_section
+            assert "self._chunk_spec_counts = (" in setup_section
+            assert "self._expected_chunk_spec_counts = (self.num_chunks, self.num_chunks)" in setup_section
+            assert "if self._chunk_spec_counts != self._expected_chunk_spec_counts:" in benchmark_section
+            assert "len(self._compute_chunk_specs)" not in benchmark_section
+            assert "len(self._copy_chunk_specs)" not in benchmark_section
             assert "for chunk, workspace_chunk, compute_event in self._compute_chunk_specs:" in benchmark_section
             assert "for workspace_chunk, dest_chunk, compute_event in self._copy_chunk_specs:" in benchmark_section
             assert "self.input_chunks[idx]" not in launch_compute_section
             assert "self.workspace[idx]" not in launch_compute_section
             assert "self._compute_chunk_specs = []" in teardown_section
             assert "self._copy_chunk_specs = []" in teardown_section
+            assert "self._chunk_spec_counts = (0, 0)" in teardown_section
+            assert "self._expected_chunk_spec_counts = (0, 0)" in teardown_section
         elif name == "optimized_kv_transfer_graphs.py":
             graph_section = source.split("def _maybe_capture_graph", maxsplit=1)[1].split(
                 "def benchmark_fn",

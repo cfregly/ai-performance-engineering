@@ -34,6 +34,8 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._compute_chunk_specs: List[tuple[torch.Tensor, torch.Tensor, torch.cuda.Event]] = []
         self._copy_chunk_specs: List[tuple[torch.Tensor, torch.Tensor, torch.cuda.Event]] = []
+        self._chunk_spec_counts: tuple[int, int] = (0, 0)
+        self._expected_chunk_spec_counts: tuple[int, int] = (0, 0)
         tokens = self.num_chunks * self.chunk_size
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.num_chunks),
@@ -73,6 +75,11 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         dest_views = self.kv_dest.unbind(0)
         self._compute_chunk_specs = list(zip(input_views, workspace_views, self.compute_done_events, strict=True))
         self._copy_chunk_specs = list(zip(workspace_views, dest_views, self.compute_done_events, strict=True))
+        self._chunk_spec_counts = (
+            len(self._compute_chunk_specs),
+            len(self._copy_chunk_specs),
+        )
+        self._expected_chunk_spec_counts = (self.num_chunks, self.num_chunks)
         self._output_view = self.kv_dest[0, :1, : min(8, self.hidden_size)]
         self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
         self._payload_meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
@@ -113,7 +120,7 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.kv_dest is None
         ):
             raise RuntimeError("Buffers not initialized")
-        if len(self._compute_chunk_specs) != self.num_chunks or len(self._copy_chunk_specs) != self.num_chunks:
+        if self._chunk_spec_counts != self._expected_chunk_spec_counts:
             raise RuntimeError("Chunk views not initialized")
 
         with nvtx_range("moe_cuda_kv_overlap", enable=self._enable_nvtx):
@@ -153,6 +160,8 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.kv_dest = None
         self._compute_chunk_specs = []
         self._copy_chunk_specs = []
+        self._chunk_spec_counts = (0, 0)
+        self._expected_chunk_spec_counts = (0, 0)
         self.output = None
         self._output_view = None
         self._verify_output_buffer = None
