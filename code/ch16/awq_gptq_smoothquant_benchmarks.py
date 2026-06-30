@@ -122,10 +122,37 @@ class PTQLinear(nn.Module):
         self.register_buffer("weight_q_t", weight_q_t)
         self.register_buffer("weight_scale", weight_scale)
         self.register_buffer("input_transform", input_transform.detach().float())
+        self.register_buffer("_input_scaled_buffer", torch.empty(0), persistent=False)
+        self.register_buffer("_input_abs_buffer", torch.empty(0), persistent=False)
+        self.register_buffer("_input_int8_buffer", torch.empty(0, dtype=torch.int8), persistent=False)
+        self.register_buffer("_output_float_buffer", torch.empty(0), persistent=False)
         if bias is not None:
             self.register_buffer("bias", bias.detach().float().clone())
         else:
             self.bias = None
+
+    def prepare_buffers(self, batch_size: int, device: torch.device) -> None:
+        in_features = int(self.weight_q_t.shape[0])
+        out_features = int(self.weight_q_t.shape[1])
+        self._input_scaled_buffer = torch.empty(
+            batch_size,
+            in_features,
+            device=device,
+            dtype=torch.float32,
+        )
+        self._input_abs_buffer = torch.empty_like(self._input_scaled_buffer)
+        self._input_int8_buffer = torch.empty(
+            batch_size,
+            in_features,
+            device=device,
+            dtype=torch.int8,
+        )
+        self._output_float_buffer = torch.empty(
+            batch_size,
+            out_features,
+            device=device,
+            dtype=torch.float32,
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() != 2:
@@ -136,12 +163,26 @@ class PTQLinear(nn.Module):
             raise RuntimeError("Input width does not match quantized weight")
         if x.size(1) % 8 != 0 or self.weight_q_t.size(1) % 8 != 0:
             raise RuntimeError("torch._int_mm requires K and N to be multiples of 8")
+        if (
+            self._input_scaled_buffer.shape != x.shape
+            or self._input_scaled_buffer.device != x.device
+        ):
+            self.prepare_buffers(x.shape[0], x.device)
 
-        transformed_x = x.float() * self.input_transform
-        input_scale = torch.clamp(transformed_x.abs().amax() / INT8_MAX, min=1e-8)
-        x_q = torch.clamp((transformed_x / input_scale).round(), -INT8_MAX, INT8_MAX).to(torch.int8)
-        out_int32 = torch._int_mm(x_q, self.weight_q_t)
-        output = out_int32.float() * (input_scale * self.weight_scale)
+        transformed_x = self._input_scaled_buffer
+        transformed_x.copy_(x)
+        transformed_x.mul_(self.input_transform)
+        torch.abs(transformed_x, out=self._input_abs_buffer)
+        input_scale = torch.clamp(self._input_abs_buffer.amax() / INT8_MAX, min=1e-8)
+        torch.div(transformed_x, input_scale, out=transformed_x)
+        torch.round(transformed_x, out=transformed_x)
+        torch.clamp(transformed_x, -INT8_MAX, INT8_MAX, out=transformed_x)
+        self._input_int8_buffer.copy_(transformed_x)
+        out_int32 = torch._int_mm(self._input_int8_buffer, self.weight_q_t)
+        output = self._output_float_buffer
+        output.copy_(out_int32)
+        output.mul_(input_scale)
+        output.mul_(self.weight_scale)
         if self.bias is not None:
             output.add_(self.bias)
         return output
@@ -155,6 +196,10 @@ class PTQMLP(nn.Module):
         hidden_calibration = torch.nn.functional.gelu(reference.fc1(calibration), approximate="tanh")
         self.fc1 = PTQLinear(reference.fc1.weight, reference.fc1.bias, calibration, scheme=scheme)
         self.fc2 = PTQLinear(reference.fc2.weight, reference.fc2.bias, hidden_calibration, scheme=scheme)
+
+    def prepare_buffers(self, batch_size: int, device: torch.device) -> None:
+        self.fc1.prepare_buffers(batch_size, device)
+        self.fc2.prepare_buffers(batch_size, device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         hidden = torch.nn.functional.gelu(self.fc1(x), approximate="tanh")
@@ -226,6 +271,7 @@ class PTQQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=self.workload.dtype,
         )
         quantized = PTQMLP(self.reference_model, calibration, scheme=self.scheme).to(self.device).eval()
+        quantized.prepare_buffers(self.workload.batch_size, self.device)
         if hasattr(torch, "compile"):
             self.optimized_model = torch.compile(quantized, mode="max-autotune")
         else:

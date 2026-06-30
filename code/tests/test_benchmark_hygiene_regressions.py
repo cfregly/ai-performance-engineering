@@ -17481,6 +17481,44 @@ def test_ch16_ch19_quantized_linears_add_bias_in_place() -> None:
         assert "output = output + self.bias" not in forward_section
 
 
+def test_ch16_ptq_linear_preallocates_activation_buffers() -> None:
+    source = (REPO_ROOT / "ch16" / "awq_gptq_smoothquant_benchmarks.py").read_text(
+        encoding="utf-8"
+    )
+    linear_section = source.split("class PTQLinear", maxsplit=1)[1].split(
+        "class PTQMLP", maxsplit=1
+    )[0]
+    forward_section = linear_section.split("def forward", maxsplit=1)[1]
+    mlp_section = source.split("class PTQMLP", maxsplit=1)[1].split(
+        "class PTQQuantizationBenchmark", maxsplit=1
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+
+    assert 'self.register_buffer("_input_scaled_buffer", torch.empty(0), persistent=False)' in source
+    assert 'self.register_buffer("_input_abs_buffer", torch.empty(0), persistent=False)' in source
+    assert 'self.register_buffer("_input_int8_buffer", torch.empty(0, dtype=torch.int8), persistent=False)' in source
+    assert 'self.register_buffer("_output_float_buffer", torch.empty(0), persistent=False)' in source
+    assert "def prepare_buffers(self, batch_size: int, device: torch.device) -> None:" in linear_section
+    assert "self.fc1.prepare_buffers(batch_size, device)" in mlp_section
+    assert "self.fc2.prepare_buffers(batch_size, device)" in mlp_section
+    assert "quantized.prepare_buffers(self.workload.batch_size, self.device)" in setup_section
+    assert "transformed_x = self._input_scaled_buffer" in forward_section
+    assert "transformed_x.copy_(x)" in forward_section
+    assert "transformed_x.mul_(self.input_transform)" in forward_section
+    assert "torch.abs(transformed_x, out=self._input_abs_buffer)" in forward_section
+    assert "torch.div(transformed_x, input_scale, out=transformed_x)" in forward_section
+    assert "self._input_int8_buffer.copy_(transformed_x)" in forward_section
+    assert "output = self._output_float_buffer" in forward_section
+    assert "output.copy_(out_int32)" in forward_section
+    assert "output.mul_(input_scale)" in forward_section
+    assert "output.mul_(self.weight_scale)" in forward_section
+    assert "x.float() * self.input_transform" not in forward_section
+    assert "out_int32.float()" not in forward_section
+    assert "input_scale * self.weight_scale" not in forward_section
+
+
 def test_ch19_fp8_compiled_matmul_uses_cuda_event_timing() -> None:
     source = (REPO_ROOT / "ch19" / "fp8_compiled_matmul.py").read_text(encoding="utf-8")
     benchmark_section = source.split("def benchmark_matmul", maxsplit=1)[1].split(
