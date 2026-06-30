@@ -4684,9 +4684,13 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "log_probs = torch.log_softmax(logits, dim=-1)" in decision_section
     assert "probs = log_probs.exp()" in decision_section
     assert "entropy_values = -(probs * log_probs).sum(dim=-1)" in decision_section
-    assert "confidence_stats = torch.stack(" in decision_section
-    assert "entropy = float(confidence_stats[0])" in decision_section
-    assert "max_prob = float(confidence_stats[1])" in decision_section
+    assert "confidence_stats = torch.empty(2, device=logits.device, dtype=torch.float32)" in decision_section
+    assert "confidence_stats[0].copy_(entropy_values.mean())" in decision_section
+    assert "confidence_stats[1].copy_(probs.max(dim=-1).values.mean())" in decision_section
+    assert "confidence_stats_host = confidence_stats.detach().cpu()" in decision_section
+    assert "entropy = float(confidence_stats_host[0])" in decision_section
+    assert "max_prob = float(confidence_stats_host[1])" in decision_section
+    assert "confidence_stats = torch.stack(" not in decision_section
     assert ").tolist()" not in decision_section
     assert "compute_entropy(logits).mean()" not in decision_section
     assert "compute_entropy(logits).mean().item()" not in decision_section
@@ -4698,9 +4702,13 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "ema_conf.mul_(1 - alpha).add_(margin_mean, alpha=alpha)" in decode_section
     assert "margin = (top2_values[:, 0] - top2_values[:, 1]).mean()" not in decode_section
     assert "ema_conf = (1 - alpha) *" not in decode_section
-    assert "entropy_stats = torch.stack(" in demo_entropy_section
-    assert "high_entropy = float(entropy_stats[0])" in demo_entropy_section
-    assert "low_entropy = float(entropy_stats[1])" in demo_entropy_section
+    assert "entropy_stats = torch.empty(2, device=device, dtype=torch.float32)" in demo_entropy_section
+    assert "entropy_stats[0].copy_(compute_entropy(high_conf_logits).mean())" in demo_entropy_section
+    assert "entropy_stats[1].copy_(compute_entropy(low_conf_logits).mean())" in demo_entropy_section
+    assert "entropy_stats_host = entropy_stats.detach().cpu()" in demo_entropy_section
+    assert "high_entropy = float(entropy_stats_host[0])" in demo_entropy_section
+    assert "low_entropy = float(entropy_stats_host[1])" in demo_entropy_section
+    assert "entropy_stats = torch.stack(" not in demo_entropy_section
     assert ").tolist()" not in demo_entropy_section
     assert "compute_entropy(high_conf_logits).item()" not in demo_entropy_section
     assert "compute_entropy(low_conf_logits).item()" not in demo_entropy_section
