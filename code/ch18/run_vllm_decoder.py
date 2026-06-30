@@ -235,19 +235,23 @@ class SpeculativeDecoder:
             self._selected_tokens is None
             or self._selected_tokens.device != reference.device
             or self._selected_tokens.dtype != reference.dtype
-            or tuple(self._selected_tokens.shape) != tuple(reference.shape)
+            or self._selected_tokens.dim() != reference.dim()
+            or self._selected_tokens.size(0) < reference.size(0)
+            or tuple(self._selected_tokens.shape[1:]) != tuple(reference.shape[1:])
         ):
             self._selected_tokens = torch.empty_like(reference)
-        return self._selected_tokens
+        return self._selected_tokens[: reference.size(0)]
 
     def _matches_buffer(self, reference: torch.Tensor) -> torch.Tensor:
         if (
             self._matches_workspace is None
             or self._matches_workspace.device != reference.device
-            or tuple(self._matches_workspace.shape) != tuple(reference.shape)
+            or self._matches_workspace.dim() != reference.dim()
+            or self._matches_workspace.size(0) < reference.size(0)
+            or tuple(self._matches_workspace.shape[1:]) != tuple(reference.shape[1:])
         ):
             self._matches_workspace = torch.empty(reference.shape, dtype=torch.bool, device=reference.device)
-        return self._matches_workspace
+        return self._matches_workspace[: reference.size(0)]
 
     def prepare_workspaces(self, batch_size: int, dtype: torch.dtype, device: torch.device) -> None:
         shape = (batch_size, 1)
@@ -590,18 +594,22 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._prefill_next_values is None
             or self._prefill_next_values.device != last_logits.device
             or self._prefill_next_values.dtype != last_logits.dtype
-            or tuple(self._prefill_next_values.shape) != shape
+            or self._prefill_next_values.size(0) < shape[0]
+            or self._prefill_next_values.size(1) != shape[1]
         ):
             self._prefill_next_values = torch.empty(shape, dtype=last_logits.dtype, device=last_logits.device)
         if (
             self._prefill_next_tokens is None
             or self._prefill_next_tokens.device != last_logits.device
             or self._prefill_next_tokens.dtype != torch.long
-            or tuple(self._prefill_next_tokens.shape) != shape
+            or self._prefill_next_tokens.size(0) < shape[0]
+            or self._prefill_next_tokens.size(1) != shape[1]
         ):
             self._prefill_next_tokens = torch.empty(shape, device=last_logits.device, dtype=torch.long)
-        torch.max(last_logits, dim=-1, keepdim=True, out=(self._prefill_next_values, self._prefill_next_tokens))
-        return self._prefill_next_tokens
+        values = self._prefill_next_values[: shape[0]]
+        tokens = self._prefill_next_tokens[: shape[0]]
+        torch.max(last_logits, dim=-1, keepdim=True, out=(values, tokens))
+        return tokens
 
     # ----------------------------------------------------------- graph preparation
     def _prepare_graphs(self) -> None:

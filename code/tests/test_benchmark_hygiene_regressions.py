@@ -9514,6 +9514,10 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "def _match_count_workspace(self, device: torch.device) -> torch.Tensor:" in decoder_section
     assert "self._match_summary_workspace = torch.empty((), dtype=torch.long, device=device)" in decoder_section
     assert "def prepare_workspaces(self, batch_size: int, dtype: torch.dtype, device: torch.device)" in decoder_section
+    assert "or self._selected_tokens.size(0) < reference.size(0)" in decoder_section
+    assert "return self._selected_tokens[: reference.size(0)]" in decoder_section
+    assert "or self._matches_workspace.size(0) < reference.size(0)" in decoder_section
+    assert "return self._matches_workspace[: reference.size(0)]" in decoder_section
     assert "torch.max(last_logits, dim=-1, keepdim=True, out=(values, token_ids))" in decoder_section
     assert "torch.eq(candidate, target_next, out=matches)" in decode_section
     assert "torch.where(matches, candidate, target_next, out=tokens)" in decode_section
@@ -9653,8 +9657,12 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._router_batch_range = range(cfg.batch_size)" in setup_section
     assert "Request(" in setup_section
     assert "def _prefill_next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor" in benchmark_section
+    assert "or self._prefill_next_values.size(0) < shape[0]" in benchmark_section
+    assert "or self._prefill_next_tokens.size(0) < shape[0]" in benchmark_section
+    assert "values = self._prefill_next_values[: shape[0]]" in benchmark_section
+    assert "tokens = self._prefill_next_tokens[: shape[0]]" in benchmark_section
     assert (
-        "torch.max(last_logits, dim=-1, keepdim=True, out=(self._prefill_next_values, self._prefill_next_tokens))"
+        "torch.max(last_logits, dim=-1, keepdim=True, out=(values, tokens))"
         in benchmark_section
     )
     assert "self.spec_decoder.prepare_workspaces(cfg.batch_size, cfg.dtype_obj, self.device)" in benchmark_section
@@ -9729,6 +9737,42 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._router_batch_range = range(0)" in teardown_section
     assert "self.finalize_iteration_metrics()" in teardown_section
     assert "self.finalize_iteration_metrics()" in metrics_section
+
+
+def test_ch18_vllm_decoder_reuses_larger_sampling_buffers_at_smaller_batch() -> None:
+    from ch18.run_vllm_decoder import SpeculativeDecoder, VLLMMoEInferenceBenchmark
+
+    spec = SpeculativeDecoder.__new__(SpeculativeDecoder)
+    spec._selected_tokens = torch.empty((4, 1), dtype=torch.long)
+    spec._matches_workspace = torch.empty((4, 1), dtype=torch.bool)
+
+    reference = torch.empty((2, 1), dtype=torch.long)
+    selected = SpeculativeDecoder._selection_workspace(spec, reference)
+    matches = SpeculativeDecoder._matches_buffer(spec, reference)
+
+    assert selected.shape == reference.shape
+    assert matches.shape == reference.shape
+    assert selected.data_ptr() == spec._selected_tokens.data_ptr()
+    assert matches.data_ptr() == spec._matches_workspace.data_ptr()
+    assert spec._selected_tokens.shape == (4, 1)
+    assert spec._matches_workspace.shape == (4, 1)
+
+    bench = VLLMMoEInferenceBenchmark.__new__(VLLMMoEInferenceBenchmark)
+    bench._prefill_next_values = torch.empty((4, 1), dtype=torch.float32)
+    bench._prefill_next_tokens = torch.empty((4, 1), dtype=torch.long)
+    values_ptr = bench._prefill_next_values.data_ptr()
+    tokens_ptr = bench._prefill_next_tokens.data_ptr()
+
+    logits = torch.tensor([[1.0, 3.0, 2.0], [5.0, 4.0, 0.0]], dtype=torch.float32)
+    next_tokens = VLLMMoEInferenceBenchmark._prefill_next_token_from_logits(bench, logits)
+
+    assert next_tokens.shape == (2, 1)
+    assert next_tokens.data_ptr() == tokens_ptr
+    assert bench._prefill_next_values.data_ptr() == values_ptr
+    assert bench._prefill_next_tokens.data_ptr() == tokens_ptr
+    assert bench._prefill_next_values.shape == (4, 1)
+    assert bench._prefill_next_tokens.shape == (4, 1)
+    torch.testing.assert_close(next_tokens, torch.tensor([[1], [0]], dtype=torch.long))
 
 
 def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
