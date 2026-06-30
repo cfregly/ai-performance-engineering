@@ -7189,6 +7189,10 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     source = (REPO_ROOT / "ch20" / "optimized_integrated_kv_cache.py").read_text(
         encoding="utf-8"
     )
+    cache_section = source.split("class PagedKVCache", maxsplit=1)[1].split(
+        "class AttentionLayer",
+        maxsplit=1,
+    )[0]
     attention_section = source.split("class AttentionLayer", maxsplit=1)[1].split(
         "class OptimizedIntegratedKVCacheBenchmark",
         maxsplit=1,
@@ -7210,6 +7214,10 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     assert "self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []" in source
     assert "self._request_block_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []" in source
     assert "self._layer_groups: list[tuple[int, nn.Module]] = []" in source
+    assert "CacheEntry = dict[str, object]" in source
+    assert "def append_block_entry(" in cache_section
+    assert "def get_entry(" in cache_section
+    assert "return per_layer" in cache_section
     assert "self.request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
     assert "(block_idx * self.block_size, block_view)" in setup_section
     assert "enumerate(x.split(self.block_size, dim=1))" in setup_section
@@ -7219,9 +7227,13 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     assert "if len(self._input_block_views) != len(self.inputs):" in benchmark_section
     assert "if len(self._request_block_groups) != len(self.inputs):" in benchmark_section
     assert "for request_id, seq_len, block_views in self._request_block_groups:" in benchmark_section
+    assert "request_entries = kv_cache.allocate(request_id, seq_len)" in benchmark_section
     assert "for layer_idx, layer in self._layer_groups:" in benchmark_section
+    assert "hidden = layer(hidden, kv_cache, request_entries[layer_idx], pos)" in benchmark_section
     assert "self.output = hidden[:, -1:, :] if hidden is not None else None" in benchmark_section
     assert "hidden[:, -1:, :].detach()" not in benchmark_section
+    assert "self.kv_cache.allocate(request_id, seq_len)" not in benchmark_section
+    assert "hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)" not in benchmark_section
     assert "zip(self.request_ids, self._input_block_views)" not in benchmark_section
     assert "enumerate(self.layers)" not in benchmark_section
     assert "for pos, block_view in block_views:" in benchmark_section
@@ -7239,6 +7251,10 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     assert "v_block = v.permute(0, 2, 1, 3).contiguous()" not in attention_section
     assert "k[batch_idx].transpose(0, 1)" not in attention_section
     assert "v[batch_idx].transpose(0, 1)" not in attention_section
+    assert "kv_cache.append_block_entry(cache_entry, k[0], v[0], cache_pos)" in attention_section
+    assert "cached_k, cached_v = kv_cache.get_entry(cache_entry, 0, cache_pos)" in attention_section
+    assert "kv_cache.append_block(" not in attention_section
+    assert "kv_cache.get(request_id" not in attention_section
     assert "k[batch_idx]," in attention_section
     assert "v[batch_idx]," in attention_section
 
@@ -7254,7 +7270,12 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     )
     k = torch.arange(12, dtype=torch.float32).view(1, 2, 2, 3)
     v = k + 20.0
-    cache.append_block("req", 0, k[0], v[0], 0)
+    entries = cache.allocate("req", 4)
+    assert entries is cache.allocations["req"]
+    cache.append_block_entry(entries[0], k[0], v[0], 0)
+    entry_k, entry_v = cache.get_entry(entries[0], 0, 4)
+    torch.testing.assert_close(entry_k, k[0])
+    torch.testing.assert_close(entry_v, v[0])
     actual_k, actual_v = cache.get("req", 0, 0, 4)
     torch.testing.assert_close(actual_k, k[0])
     torch.testing.assert_close(actual_v, v[0])
