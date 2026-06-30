@@ -15960,6 +15960,43 @@ def test_hf_decoder_cache_defers_verification_copy_outside_hot_loop() -> None:
     assert 'eos_sync_mode="async_streamed"' in optimized_source
 
 
+def test_ch18_eos_early_exit_skips_tail_decode_after_forced_eos() -> None:
+    source = (REPO_ROOT / "ch18" / "eos_early_exit_common.py").read_text(
+        encoding="utf-8"
+    )
+    baseline_source = (REPO_ROOT / "ch18" / "baseline_eos_early_exit.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_source = (REPO_ROOT / "ch18" / "optimized_eos_early_exit.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _refresh_static_metrics",
+        maxsplit=1,
+    )[0]
+
+    assert "force_eos_after_tokens: int = 16" in source
+    assert "if cfg.force_eos_after_tokens < 1:" in source
+    assert "if cfg.force_eos_after_tokens > cfg.decode_tokens:" in source
+    assert "self.logits_buffer = torch.empty(" in setup_section
+    assert "torch.mm(self.state_buffer, self.lm_head_weight.t(), out=self.logits_buffer)" in source
+    assert benchmark_section.index("next_token.fill_(self.cfg.eos_token_id)") < benchmark_section.index(
+        "self.generated_tokens[:, step].copy_(next_token)"
+    )
+    assert "if self.cfg.stop_on_all_done:" in benchmark_section
+    assert "if bool(self.done_mask_buffer.all().item()):" in benchmark_section
+    assert "self.generated_tokens[:, filled:].fill_(self.cfg.eos_token_id)" in benchmark_section
+    assert 'metrics["eos_early_exit.decoded_steps"] = float(filled)' in benchmark_section
+    assert 'metrics["eos_early_exit.skipped_decode_steps"] = float(self.cfg.decode_tokens - filled)' in benchmark_section
+    assert "return BenchmarkConfig(" in source
+    assert 'stop_on_all_done=False' in baseline_source
+    assert 'stop_on_all_done=True' in optimized_source
+
+
 def test_continuous_batching_reuses_state_buffers() -> None:
     source = (REPO_ROOT / "core" / "utils" / "continuous_batching.py").read_text(
         encoding="utf-8"
