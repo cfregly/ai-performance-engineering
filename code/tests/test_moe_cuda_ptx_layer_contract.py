@@ -390,13 +390,14 @@ def test_moe_cuda_ptx_verification_reuses_capture_buffers() -> None:
     capture_source = inspect.getsource(moe_common.MoECudaPtxBenchmark.capture_verification_payload)
     teardown_source = inspect.getsource(moe_common.MoECudaPtxBenchmark.teardown)
 
-    assert "out: Optional[torch.Tensor] = None" in helper_source
+    assert "out: torch.Tensor" in helper_source
     assert "rows = min(32, output.shape[0])" in helper_source
     assert "cols = min(32, output.shape[1])" in helper_source
     assert "output_slice = output[:rows, :cols]" in helper_source
     assert "verification = out[: rows * cols]" in helper_source
     assert "verification.view(rows, cols).copy_(output_slice)" in helper_source
-    assert "output_slice.reshape(-1).float().clone()" in helper_source
+    assert "if out is None" not in helper_source
+    assert "output_slice.reshape(-1).float().clone()" not in helper_source
     assert "self._verify_output_buffer = torch.empty(" in setup_source
     assert "self._quant_shape_tensor = torch.tensor(" in setup_source
     assert "self._verification_shape_tensor = torch.tensor(" in setup_source

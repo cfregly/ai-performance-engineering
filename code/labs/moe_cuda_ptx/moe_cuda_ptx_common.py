@@ -631,13 +631,11 @@ def build_quant_verification_tensor(bundle: QuantizedBundle) -> torch.Tensor:
 
 def build_tensor_slice_verification(
     output: torch.Tensor,
-    out: Optional[torch.Tensor] = None,
+    out: torch.Tensor,
 ) -> torch.Tensor:
     rows = min(32, output.shape[0])
     cols = min(32, output.shape[1])
     output_slice = output[:rows, :cols]
-    if out is None:
-        return output_slice.reshape(-1).float().clone()
     verification = out[: rows * cols]
     verification.view(rows, cols).copy_(output_slice)
     return verification
