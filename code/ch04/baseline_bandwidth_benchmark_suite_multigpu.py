@@ -56,6 +56,7 @@ class BandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         self.last_bandwidth_gbps: Optional[float] = None
         self.size_mb = 512
         self.inner_iterations = 12
+        self._inner_iteration_range = range(self.inner_iterations)
         self.num_chunks = 32
         self.pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self.chunk_pairs: list[list[tuple[torch.Tensor, torch.Tensor]]] = []
@@ -69,6 +70,7 @@ class BandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         bytes_per_iter = int(self.size_mb * 1024 * 1024)
         numel = bytes_per_iter // 4  # float32
         device_count = torch.cuda.device_count()
+        self._inner_iteration_range = range(self.inner_iterations)
         self.pairs = []
         self.chunk_pairs = []
         self._flat_chunk_pairs = []
@@ -95,7 +97,7 @@ class BandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Benchmark not initialized")
         total_bytes = self.size_mb * 1024 * 1024 * len(self.pairs) * self.inner_iterations
         start = time.perf_counter()
-        for _ in range(self.inner_iterations):
+        for _ in self._inner_iteration_range:
             for src_chunk, dst_chunk in self._flat_chunk_pairs:
                 dst_chunk.copy_(src_chunk, non_blocking=False)
         elapsed = time.perf_counter() - start

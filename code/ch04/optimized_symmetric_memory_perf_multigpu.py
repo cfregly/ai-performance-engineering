@@ -76,6 +76,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._last_gbps = 0.0
         self._bytes_transferred = 0.0
         self._inner_iterations = 2000
+        self._inner_iteration_range = range(self._inner_iterations)
         self._timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._empty_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = self._empty_timing_pairs
@@ -133,6 +134,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
             for _ in range(2)
         ]
         self._stream_timing_pairs = list(zip(self._copy_streams, self._timing_pairs, strict=True))
+        self._inner_iteration_range = range(self._inner_iterations)
         
         torch.cuda.synchronize()
 
@@ -156,7 +158,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         for stream, (start_event, _) in self._stream_timing_pairs:
             with torch.cuda.stream(stream):
                 start_event.record()
-        for _ in range(self._inner_iterations):
+        for _ in self._inner_iteration_range:
             with torch.cuda.stream(send_stream):
                 self._peer_buffer.copy_(self._local_buffer, non_blocking=True)
             with torch.cuda.stream(recv_stream):

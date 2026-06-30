@@ -53,6 +53,7 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         self.last_bandwidth_gbps: Optional[float] = None
         self.size_mb = 512
         self.inner_iterations = 12
+        self._inner_iteration_range = range(self.inner_iterations)
         self.num_chunks = 8
         self.pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self.chunk_pairs: list[list[tuple[torch.Tensor, torch.Tensor]]] = []
@@ -71,6 +72,7 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         bytes_per_iter = int(self.size_mb * 1024 * 1024)
         numel = bytes_per_iter // 4  # float32
         device_count = torch.cuda.device_count()
+        self._inner_iteration_range = range(self.inner_iterations)
         self.pairs = []
         self.chunk_pairs = []
         self.streams = []
@@ -113,7 +115,7 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         for stream, (start_event, _) in self._stream_timing_pairs:
             with torch.cuda.stream(stream):
                 start_event.record()
-        for _ in range(self.inner_iterations):
+        for _ in self._inner_iteration_range:
             for stream, chunk_list in self._stream_chunk_pairs:
                 with torch.cuda.stream(stream):
                     for src_chunk, dst_chunk in chunk_list:

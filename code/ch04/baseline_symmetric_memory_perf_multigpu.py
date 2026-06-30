@@ -61,6 +61,7 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         self._last_gbps = 0.0
         self._bytes_transferred = 0.0
         self._inner_iterations = 2000
+        self._inner_iteration_range = range(self._inner_iterations)
         self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self.register_workload_metadata(requests_per_iteration=1.0)
@@ -86,6 +87,7 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
             torch.cuda.Event(enable_timing=True),
             torch.cuda.Event(enable_timing=True),
         )
+        self._inner_iteration_range = range(self._inner_iterations)
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> Optional[Dict[str, float]]:
@@ -100,7 +102,7 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         start.record()
         next_rank = (self.rank + 1) % self.world_size
         prev_rank = (self.rank - 1) % self.world_size
-        for _ in range(self._inner_iterations):
+        for _ in self._inner_iteration_range:
             if self.rank % 2 == 0:
                 dist.send(self.tensor, dst=next_rank)
                 dist.recv(self.recv_tensor, src=prev_rank)

@@ -30,6 +30,7 @@ class SingleGPUTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.size_mb = int(size_mb)
         self.inner_iterations = int(inner_iterations)
+        self._inner_iteration_range = range(self.inner_iterations)
         self.num_chunks = int(num_chunks)
         self.use_streams = bool(use_streams)
         self.sync_per_chunk = bool(sync_per_chunk)
@@ -52,6 +53,7 @@ class SingleGPUTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         bytes_per_iter = self.size_mb * 1024 * 1024
         numel = bytes_per_iter // 4  # float32
+        self._inner_iteration_range = range(self.inner_iterations)
         self.src = torch.randn(numel, device=self.device, dtype=torch.float32)
         self.dst = torch.empty_like(self.src, device=self.device)
         src_chunks = torch.chunk(self.src, self.num_chunks)
@@ -69,7 +71,7 @@ class SingleGPUTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must run before benchmark_fn()")
         total_bytes = self.size_mb * 1024 * 1024 * self.inner_iterations
         start = time.perf_counter()
-        for _ in range(self.inner_iterations):
+        for _ in self._inner_iteration_range:
             if self.use_streams:
                 if not self.streams:
                     raise RuntimeError("use_streams=True requires at least one CUDA stream")

@@ -16969,6 +16969,21 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "sum(p.numel()" not in capture_section
 
 
+def test_ch04_single_gpu_transfer_reuses_inner_iteration_range() -> None:
+    source = (REPO_ROOT / "ch04" / "single_gpu_transfer_common.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._inner_iteration_range = range(self.inner_iterations)" in setup_section
+    assert "for _ in self._inner_iteration_range:" in benchmark_section
+    assert "for _ in range(self.inner_iterations):" not in benchmark_section
+
+
 def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() -> None:
     targets = (
         ("baseline_symmetric_memory_perf_multigpu.py", "self._timing_pair"),
@@ -16986,6 +17001,9 @@ def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() 
         )[0]
 
         assert "torch.cuda.Event(enable_timing=True)" in setup_section
+        assert "self._inner_iteration_range = range(self._inner_iterations)" in setup_section
+        assert "for _ in self._inner_iteration_range:" in benchmark_section
+        assert "for _ in range(self._inner_iterations):" not in benchmark_section
         assert "torch.cuda.Event(" not in benchmark_section
         assert expected_field in benchmark_section
         assert "Timing events not initialized" in benchmark_section
@@ -17107,10 +17125,13 @@ def test_ch04_baseline_bandwidth_suite_flattens_chunk_copy_schedule() -> None:
     )[0]
 
     assert "self._flat_chunk_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in setup_section
+    assert "self._inner_iteration_range = range(self.inner_iterations)" in setup_section
     assert "self._flat_chunk_pairs = []" in setup_section
     assert "chunk_pairs = list(zip(src_chunks, dst_chunks))" in setup_section
     assert "self._flat_chunk_pairs.extend(chunk_pairs)" in setup_section
     assert "if not self._flat_chunk_pairs:" in benchmark_section
+    assert "for _ in self._inner_iteration_range:" in benchmark_section
+    assert "for _ in range(self.inner_iterations):" not in benchmark_section
     assert "for src_chunk, dst_chunk in self._flat_chunk_pairs:" in benchmark_section
     assert "for chunk_list in self.chunk_pairs:" not in benchmark_section
 
@@ -17133,11 +17154,14 @@ def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() 
     assert "self._stream_timing_pairs: list[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []" in setup_section
     assert "self._empty_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []" in setup_section
     assert "self._pending_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = self._empty_timing_pairs" in setup_section
+    assert "self._inner_iteration_range = range(self.inner_iterations)" in setup_section
     assert "self._stream_chunk_pairs = list(zip(self.streams, self.chunk_pairs, strict=True))" in setup_section
     assert "self._stream_timing_pairs = list(zip(self.streams, self._timing_pairs, strict=True))" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
     assert "self._pending_timing_pairs = self._timing_pairs" in benchmark_section
     assert "self._timing_pairs[: len(self.streams)]" not in benchmark_section
+    assert "for _ in self._inner_iteration_range:" in benchmark_section
+    assert "for _ in range(self.inner_iterations):" not in benchmark_section
     assert "for stream, (start_event, _) in self._stream_timing_pairs:" in benchmark_section
     assert "for stream, chunk_list in self._stream_chunk_pairs:" in benchmark_section
     assert "for stream, (_, end_event) in self._stream_timing_pairs:" in benchmark_section
