@@ -71,6 +71,7 @@ class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._key_t = None
         self.value = None
         self.output = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._scale = 0.0
         
         # SDPA benchmark - fixed dimensions for attention comparison
@@ -92,6 +93,7 @@ class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.key = torch.randn(shape, device=self.device, dtype=torch.float16)
         self.value = torch.randn(shape, device=self.device, dtype=torch.float16)
         self._key_t = self.key.transpose(-2, -1)
+        self._verify_output_buffer = torch.empty_like(self.query)
         self._scale = 1.0 / (self.head_dim ** 0.5)
         
         torch.cuda.synchronize(self.device)
@@ -121,13 +123,16 @@ class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
                 "query": self.query,
                 "key": self.key,
                 "value": self.value,
             },
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=0,
             precision_flags={
@@ -144,6 +149,8 @@ class BaselineSDPAAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.key = None
         self._key_t = None
         self.value = None
+        self.output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
