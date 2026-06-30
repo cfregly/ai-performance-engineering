@@ -13870,7 +13870,14 @@ def test_ch17_moe_router_remote_buffers_avoid_zero_fill() -> None:
         assert "self._payload_parameter_count = 0" in source
         assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "probe_cols = min(256, self.hidden_size)" in setup_section
+        assert "self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)" in setup_section
+        assert "self._verify_probe.copy_(" in setup_section
+        assert "self.inputs[:1, :1, :probe_cols]" in setup_section
+        assert ".detach().cpu()" not in setup_section
         assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "self._verify_probe = None" in source
+        assert "self._verify_meta = None" in source
         assert "param_count = sum(" not in capture_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "verify_output = self._verify_output_buffer" in capture_section
@@ -16892,10 +16899,17 @@ def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
         assert "param_count = sum(" not in capture_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "probe_cols = min(256, self.hidden_size)" in setup_section
+        assert "self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)" in setup_section
+        assert "self._verify_probe.copy_(" in setup_section
+        assert "self.inputs[:1, :1, :probe_cols]" in setup_section
+        assert ".detach().cpu()" not in setup_section
         assert "self._verify_output_buffer = torch.empty((2, 2, 256), dtype=torch.float32)" in setup_section
         assert "self._verify_output_buffer.copy_(output_slice, non_blocking=False)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert ".detach().cpu().float().clone()" not in capture_section
+        assert "self._verify_probe = None" in teardown_section
+        assert "self._verify_meta = None" in teardown_section
         assert "self._verify_output_buffer = None" in teardown_section
 
     assert "self._dest_ranks = torch.div(" in baseline_setup

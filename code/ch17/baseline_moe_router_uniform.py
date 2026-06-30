@@ -108,7 +108,12 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
             self._remote_buf_a = torch.empty((remote_tokens, payload_dim), device=self.device, dtype=self.dtype)
             self._remote_buf_b = torch.empty((remote_tokens, payload_dim), device=self.device, dtype=self.dtype)
 
-        self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
+        probe_cols = min(256, self.hidden_size)
+        self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)
+        self._verify_probe.copy_(
+            self.inputs[:1, :1, :probe_cols],
+            non_blocking=False,
+        )
         self._verify_meta = torch.tensor(
             [int(self.num_islands), int(self.experts_per_island), int(self.num_experts)],
             dtype=torch.int64,
@@ -185,6 +190,8 @@ class BaselineMoERouterUniformBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._remote_buf_a = None
         self._remote_buf_b = None
         self.output = None
+        self._verify_probe = None
+        self._verify_meta = None
         self._verify_output_buffer = None
         super().teardown()
 

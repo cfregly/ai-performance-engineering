@@ -135,7 +135,12 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             self._active_dispatch_indices = None
         self._out_flat = torch.empty(self.batch * self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
         self._output_view = self._out_flat.view(self.batch, self.seq, self.hidden_size)
-        self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
+        probe_cols = min(256, self.hidden_size)
+        self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)
+        self._verify_probe.copy_(
+            self.inputs[:1, :1, :probe_cols],
+            non_blocking=False,
+        )
         self._verify_meta = torch.zeros(self.num_experts, dtype=torch.int8)
         self._verify_output_buffer = torch.empty((2, 2, 256), dtype=torch.float32)
 
@@ -225,6 +230,8 @@ class SharedExpertMoEBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._out_flat = None
         self._output_view = None
         self.output = None
+        self._verify_probe = None
+        self._verify_meta = None
         self._verify_output_buffer = None
         super().teardown()
 
