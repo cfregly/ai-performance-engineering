@@ -88,7 +88,12 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._maybe_capture_graph()
 
     def _maybe_capture_graph(self) -> None:
-        if any(t is None for t in (self.input_chunks, self.weight, self.workspace, self.kv_dest)):
+        if (
+            self.input_chunks is None
+            or self.weight is None
+            or self.workspace is None
+            or self.kv_dest is None
+        ):
             raise RuntimeError("Buffers not initialized")
         if len(self._graph_chunk_triplets) != self.num_chunks:
             raise RuntimeError("Chunk views not initialized")
@@ -102,7 +107,12 @@ class GraphedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        if any(t is None for t in (self.input_chunks, self.weight, self.workspace, self.kv_dest)):
+        if (
+            self.input_chunks is None
+            or self.weight is None
+            or self.workspace is None
+            or self.kv_dest is None
+        ):
             raise RuntimeError("Buffers not initialized")
         if self.graph is None:
             raise RuntimeError("CUDA graph not captured (setup() must run)")

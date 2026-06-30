@@ -94,7 +94,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._timing_pair
 
     def benchmark_fn(self) -> Dict[str, List[float]]:
-        if any(t is None for t in (self.q, self.k, self.v, self._k_t)):
+        if self.q is None or self.k is None or self.v is None or self._k_t is None:
             raise RuntimeError("Decode tensors missing")
 
         with nvtx_range("moe_cuda_decode_naive", enable=self._enable_nvtx):

@@ -116,7 +116,7 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
         return self._timing_pair
 
     def _refresh_bf16_cache(self, *, force: bool = False) -> None:
-        if any(t is None for t in (self.q, self.k, self.v)):
+        if self.q is None or self.k is None or self.v is None:
             raise RuntimeError("Decode tensors missing")
 
         for source_name, cache_name, version_name in (
@@ -133,9 +133,9 @@ class OptimizedDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 setattr(self, version_name, current_version)
 
     def benchmark_fn(self) -> Dict[str, List[float]]:
-        if any(t is None for t in (self.q, self.k, self.v)):
+        if self.q is None or self.k is None or self.v is None:
             raise RuntimeError("Decode tensors missing")
-        if any(t is None for t in (self._q_bf16, self._k_bf16, self._v_bf16)):
+        if self._q_bf16 is None or self._k_bf16 is None or self._v_bf16 is None:
             raise RuntimeError("BF16 decode tensors missing")
 
         # Verification re-runs can perturb the FP32 source tensors in place. Refresh the

@@ -7130,6 +7130,7 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
         assert "end_event.record(current_stream)" in section
         assert "start_event.record()" not in section
         assert "end_event.record()" not in section
+        assert "any(" not in section
     assert "self.output = attn_out" in benchmark_section
     assert "attn_out.detach()" not in benchmark_section
     assert "self._k_t = self.k.transpose(-2, -1)" in baseline_setup
@@ -7221,6 +7222,8 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
         )[0]
 
         assert "torch.tensor(" not in benchmark_section
+        assert "any(" not in benchmark_section
+        assert "t is None for t in" not in benchmark_section
         assert ".clone()" not in benchmark_section
         assert ".float()" not in benchmark_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
@@ -7265,6 +7268,8 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
             assert "self._graph_chunk_triplets: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
             assert "self._graph_chunk_triplets = list(" in setup_section
             assert "for input_chunk, workspace_chunk, dest_chunk in self._graph_chunk_triplets:" in graph_section
+            assert "any(" not in graph_section
+            assert "t is None for t in" not in graph_section
             assert "self.input_chunks[i]" not in graph_section
             assert "self.workspace[i]" not in graph_section
             assert "self.kv_dest[i]" not in graph_section

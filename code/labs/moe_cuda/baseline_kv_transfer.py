@@ -72,7 +72,12 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        if any(t is None for t in (self.input_chunks, self.weight, self.workspace, self.kv_dest)):
+        if (
+            self.input_chunks is None
+            or self.weight is None
+            or self.workspace is None
+            or self.kv_dest is None
+        ):
             raise RuntimeError("Buffers not initialized")
 
         with nvtx_range("moe_cuda_kv_baseline", enable=self._enable_nvtx):

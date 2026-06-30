@@ -106,7 +106,12 @@ class OptimizedKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         dest_chunk.copy_(workspace_chunk)
 
     def benchmark_fn(self) -> None:
-        if any(t is None for t in (self.input_chunks, self.weight, self.workspace, self.kv_dest)):
+        if (
+            self.input_chunks is None
+            or self.weight is None
+            or self.workspace is None
+            or self.kv_dest is None
+        ):
             raise RuntimeError("Buffers not initialized")
         if len(self._compute_chunk_specs) != self.num_chunks or len(self._copy_chunk_specs) != self.num_chunks:
             raise RuntimeError("Chunk views not initialized")
