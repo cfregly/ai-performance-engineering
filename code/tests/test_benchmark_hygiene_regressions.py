@@ -17125,10 +17125,27 @@ def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
     assert "param_count = sum(" not in capture_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "probe_cols = min(256, self.hidden_size)" in setup_section
+    assert "self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)" in setup_section
+    assert "self._verify_probe.copy_(" in setup_section
+    assert "self.inputs[:1, :1, :probe_cols]" in setup_section
+    setup_without_staging = setup_section.replace(
+        "self._remote_cpu_sorted = flat.index_select(0, self._remote_perm).detach().cpu().pin_memory()",
+        "",
+    ).replace(
+        "self._hierarchical_cpu_sorted = flat.index_select(0, self._hierarchical_perm).detach().cpu().pin_memory()",
+        "",
+    ).replace(
+        "group_offsets_host = self._group_offsets.detach().cpu()",
+        "",
+    )
+    assert ".detach().cpu()" not in setup_without_staging
     assert "self._verify_output_buffer = torch.empty((2, 2, 256), dtype=torch.float32)" in setup_section
     assert "self._verify_output_buffer.copy_(output_slice, non_blocking=False)" in capture_section
     assert "output=self._verify_output_buffer" in capture_section
     assert ".detach().cpu().float().clone()" not in capture_section
+    assert "self._verify_probe = None" in teardown_section
+    assert "self._verify_meta = None" in teardown_section
     assert "self._verify_output_buffer = None" in teardown_section
     assert "self._flat_inputs: Optional[torch.Tensor] = None" in source
     assert "self._flat_inputs = self.inputs.view(-1, self.hidden_size)" in setup_section

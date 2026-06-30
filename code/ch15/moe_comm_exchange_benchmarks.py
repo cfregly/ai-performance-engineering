@@ -153,7 +153,12 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._comm_stream = torch.cuda.Stream(device=self.device)
 
-        self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
+        probe_cols = min(256, self.hidden_size)
+        self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)
+        self._verify_probe.copy_(
+            self.inputs[:1, :1, :probe_cols],
+            non_blocking=False,
+        )
         self._verify_meta = torch.tensor(
             [int(self.logical_world_size), int(self.ranks_per_group), int(self.num_experts)],
             dtype=torch.int64,
@@ -321,6 +326,8 @@ class MoeCommExchangeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._group_offsets = None
         self._group_ranges = None
         self._comm_stream = None
+        self._verify_probe = None
+        self._verify_meta = None
         self._verify_output_buffer = None
         super().teardown()
 

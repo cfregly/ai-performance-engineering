@@ -99,7 +99,12 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._out_flat = torch.empty_like(flat)
         self._output_view = self._out_flat.view(self.batch, self.seq, self.hidden_size)
 
-        self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
+        probe_cols = min(256, self.hidden_size)
+        self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)
+        self._verify_probe.copy_(
+            self.inputs[:1, :1, :probe_cols],
+            non_blocking=False,
+        )
         self._verify_meta = torch.tensor(
             [int(self.world_size), int(self.experts_per_rank), int(self.num_experts)],
             dtype=torch.int64,
@@ -180,6 +185,8 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._out_flat = None
         self._output_view = None
         self.output = None
+        self._verify_probe = None
+        self._verify_meta = None
         self._verify_output_buffer = None
         super().teardown()
 
