@@ -31,6 +31,8 @@ class NVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._benchmark_argv: list[str] = []
+        self._original_argv: Optional[list[str]] = None
+        self._original_env: dict[str, Optional[str]] = {}
         self._verify_input: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
@@ -53,33 +55,33 @@ class NVSHMEMPipelineParallelMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             "--hidden-dim",
             "32",
         ]
+        self._original_argv = sys.argv
+        self._original_env = {
+            "AISP_DISABLE_SYMMEM_PIPELINE": os.environ.get("AISP_DISABLE_SYMMEM_PIPELINE"),
+            "AISP_SYMMEM_PIPELINE_ASYNC": os.environ.get("AISP_SYMMEM_PIPELINE_ASYNC"),
+        }
+        os.environ["AISP_DISABLE_SYMMEM_PIPELINE"] = "0"
+        os.environ["AISP_SYMMEM_PIPELINE_ASYNC"] = "0"
+        sys.argv = self._benchmark_argv
         self._verify_input = torch.randn(64, 64, device=self.device, dtype=torch.float32)
 
     def benchmark_fn(self) -> None:
         if not self._benchmark_argv:
             raise RuntimeError("setup() must initialize benchmark argv before benchmark_fn()")
-        original_argv = sys.argv
-        original_disable = os.environ.get("AISP_DISABLE_SYMMEM_PIPELINE")
-        original_async = os.environ.get("AISP_SYMMEM_PIPELINE_ASYNC")
-        try:
-            os.environ["AISP_DISABLE_SYMMEM_PIPELINE"] = "0"
-            os.environ["AISP_SYMMEM_PIPELINE_ASYNC"] = "0"
-            sys.argv = self._benchmark_argv
-            nvshmem_main()
-        finally:
-            sys.argv = original_argv
-            if original_disable is None:
-                os.environ.pop("AISP_DISABLE_SYMMEM_PIPELINE", None)
-            else:
-                os.environ["AISP_DISABLE_SYMMEM_PIPELINE"] = original_disable
-            if original_async is None:
-                os.environ.pop("AISP_SYMMEM_PIPELINE_ASYNC", None)
-            else:
-                os.environ["AISP_SYMMEM_PIPELINE_ASYNC"] = original_async
+        nvshmem_main()
 
     def teardown(self) -> None:
         if dist.is_initialized():
             dist.destroy_process_group()
+        if self._original_argv is not None:
+            sys.argv = self._original_argv
+            self._original_argv = None
+        for key, value in self._original_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        self._original_env = {}
         self._benchmark_argv = []
         torch.cuda.empty_cache()
 

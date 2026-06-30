@@ -2362,29 +2362,40 @@ def test_ch04_nvshmem_wrappers_cache_benchmark_argv() -> None:
         assert "original_argv = sys.argv[:]" not in benchmark_section
         assert "sys.argv = [" not in benchmark_section
         assert "self._benchmark_argv = []" in teardown_section
-        if "/optimized_" in relative_path:
-            assert "self._original_argv: Optional[list[str]] = None" in source
-            assert "self._original_argv = sys.argv" in setup_section
-            assert "sys.argv = self._benchmark_argv" in setup_section
-            assert "original_argv = sys.argv" not in benchmark_section
-            assert "sys.argv = self._benchmark_argv" not in benchmark_section
-            assert "sys.argv = self._original_argv" in teardown_section
-        else:
-            assert "original_argv = sys.argv" in benchmark_section
-            assert "sys.argv = self._benchmark_argv" in benchmark_section
+        assert "self._original_argv: Optional[list[str]] = None" in source
+        assert "self._original_argv = sys.argv" in setup_section
+        assert "sys.argv = self._benchmark_argv" in setup_section
+        assert "original_argv = sys.argv" not in benchmark_section
+        assert "sys.argv = self._benchmark_argv" not in benchmark_section
+        assert "sys.argv = self._original_argv" in teardown_section
 
 
-def test_ch04_optimized_nvshmem_wrappers_cache_env_outside_hot_path() -> None:
+def test_ch04_nvshmem_wrappers_cache_env_outside_hot_path() -> None:
     wrapper_cases = {
+        "ch04/baseline_nvshmem_pipeline_parallel_multigpu.py": (
+            "AISP_DISABLE_SYMMEM_PIPELINE",
+            "AISP_SYMMEM_PIPELINE_ASYNC",
+        ),
         "ch04/optimized_nvshmem_pipeline_parallel_multigpu.py": (
             "AISP_DISABLE_SYMMEM_PIPELINE",
             "AISP_SYMMEM_PIPELINE_ASYNC",
         ),
+        "ch04/baseline_nvshmem_training_example_multigpu.py": (
+            "AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS",
+        ),
         "ch04/optimized_nvshmem_training_example_multigpu.py": (
             "AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS",
         ),
+        "ch04/baseline_nvshmem_training_patterns_multigpu.py": (
+            "AISP_GRAD_SYNC_NAIVE",
+        ),
         "ch04/optimized_nvshmem_training_patterns_multigpu.py": (
             "AISP_GRAD_SYNC_NAIVE",
+        ),
+        "ch04/baseline_nvshmem_vs_nccl_benchmark_multigpu.py": (
+            "AISP_DISABLE_SYMMETRIC_MEMORY",
+            "AISP_BROADCAST_OVERLAP",
+            "AISP_BROADCAST_COMPUTE_PASSES",
         ),
         "ch04/optimized_nvshmem_vs_nccl_benchmark_multigpu.py": (
             "AISP_DISABLE_SYMMETRIC_MEMORY",
@@ -2419,7 +2430,7 @@ def test_ch04_optimized_nvshmem_wrappers_cache_env_outside_hot_path() -> None:
             assert f'"{env_key}": os.environ.get("{env_key}")' in setup_section
             assert f'os.environ["{env_key}"] =' in setup_section
 
-        if relative_path.endswith("optimized_nvshmem_vs_nccl_benchmark_multigpu.py"):
+        if relative_path.endswith("nvshmem_vs_nccl_benchmark_multigpu.py"):
             assert "self._benchmark_args: Optional[argparse.Namespace] = None" in source
             assert "self._benchmark_args = argparse.Namespace(" in setup_section
             assert "benchmark(self._benchmark_args)" in benchmark_section

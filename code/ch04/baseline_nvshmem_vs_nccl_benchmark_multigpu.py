@@ -30,6 +30,8 @@ class NVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
+        self._benchmark_args: Optional[argparse.Namespace] = None
+        self._original_env: dict[str, Optional[str]] = {}
 
     def setup(self) -> None:
         if torch.cuda.device_count() < 2:
@@ -38,41 +40,44 @@ class NVSHMEMVsNCCLBenchmarkMultiGPU(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("SKIPPED: nvshmem_vs_nccl_benchmark requires NVSHMEM or SymmetricMemory support")
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
-        self._verify_input = torch.randn(64, 64, device=self.device, dtype=torch.float32)
-
-    def benchmark_fn(self) -> None:
-        args = argparse.Namespace(
+        self._benchmark_args = argparse.Namespace(
             min_bytes=1048576,
             max_bytes=1048576,
             steps=1,
             iterations=500,
             mode="nccl",
         )
-        original_disable = os.environ.get("AISP_DISABLE_SYMMETRIC_MEMORY")
-        original_overlap = os.environ.get("AISP_BROADCAST_OVERLAP")
-        original_compute = os.environ.get("AISP_BROADCAST_COMPUTE_PASSES")
+        self._original_env = {
+            "AISP_DISABLE_SYMMETRIC_MEMORY": os.environ.get("AISP_DISABLE_SYMMETRIC_MEMORY"),
+            "AISP_BROADCAST_OVERLAP": os.environ.get("AISP_BROADCAST_OVERLAP"),
+            "AISP_BROADCAST_COMPUTE_PASSES": os.environ.get("AISP_BROADCAST_COMPUTE_PASSES"),
+        }
+        os.environ["AISP_DISABLE_SYMMETRIC_MEMORY"] = "0"
+        os.environ["AISP_BROADCAST_OVERLAP"] = "0"
+        os.environ["AISP_BROADCAST_COMPUTE_PASSES"] = "8"
+        self._verify_input = torch.randn(64, 64, device=self.device, dtype=torch.float32)
+
+    def benchmark_fn(self) -> None:
+        if self._benchmark_args is None:
+            raise RuntimeError("setup() must initialize benchmark args before benchmark_fn()")
         init_distributed()
         try:
-            os.environ["AISP_DISABLE_SYMMETRIC_MEMORY"] = "0"
-            os.environ["AISP_BROADCAST_OVERLAP"] = "0"
-            os.environ["AISP_BROADCAST_COMPUTE_PASSES"] = "8"
-            args.mode = "nccl"
-            benchmark(args)
+            self._benchmark_args.mode = "nccl"
+            benchmark(self._benchmark_args)
         finally:
             if dist.is_initialized():
                 dist.barrier()
-            if original_disable is None:
-                os.environ.pop("AISP_DISABLE_SYMMETRIC_MEMORY", None)
+
+    def teardown(self) -> None:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+        for key, value in self._original_env.items():
+            if value is None:
+                os.environ.pop(key, None)
             else:
-                os.environ["AISP_DISABLE_SYMMETRIC_MEMORY"] = original_disable
-            if original_overlap is None:
-                os.environ.pop("AISP_BROADCAST_OVERLAP", None)
-            else:
-                os.environ["AISP_BROADCAST_OVERLAP"] = original_overlap
-            if original_compute is None:
-                os.environ.pop("AISP_BROADCAST_COMPUTE_PASSES", None)
-            else:
-                os.environ["AISP_BROADCAST_COMPUTE_PASSES"] = original_compute
+                os.environ[key] = value
+        self._original_env = {}
+        self._benchmark_args = None
 
     def capture_verification_payload(self) -> None:
         if self._verify_input is None:
