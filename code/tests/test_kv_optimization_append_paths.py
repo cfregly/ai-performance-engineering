@@ -123,15 +123,23 @@ def test_baseline_append_kv_vectorizes_full_batch_writes() -> None:
 
 
 def test_fp8_append_paths_reuse_quantization_buffers() -> None:
+    init_source = inspect.getsource(OptimizedKVFP8Compressed.__init__)
     setup_source = inspect.getsource(OptimizedKVFP8Compressed.setup)
+    compute_scale_source = inspect.getsource(OptimizedKVFP8Compressed._compute_scale)
     quantize_source = inspect.getsource(OptimizedKVFP8Compressed._quantize_step_into)
     append_source = inspect.getsource(OptimizedKVFP8Compressed.append_kv)
     append_active_source = inspect.getsource(OptimizedKVFP8Compressed.append_active_layers)
+    teardown_source = inspect.getsource(OptimizedKVFP8Compressed.teardown)
 
+    assert "self._scale_abs_buffer: Optional[torch.Tensor] = None" in init_source
     assert "self._k_quantized_step = torch.empty(" in setup_source
     assert "self._v_quantized_step = torch.empty_like(self._k_quantized_step)" in setup_source
+    assert "self._scale_abs_buffer = torch.empty_like(self._generated_k_steps[0])" in setup_source
     assert "self._k_quantized_layer_view = self._k_quantized_step.unsqueeze(1)" in setup_source
     assert "self._v_quantized_layer_view = self._v_quantized_step.unsqueeze(1)" in setup_source
+    assert "torch.abs(x, out=self._scale_abs_buffer)" in compute_scale_source
+    assert "absmax = self._scale_abs_buffer.amax().float()" in compute_scale_source
+    assert "x.abs().amax().float()" not in compute_scale_source
     assert "torch.mul(x, scale, out=out)" in quantize_source
     assert "k_quantized = self._quantize_step_into(k, k_scale, self._k_quantized_step)" in append_source
     assert "v_quantized = self._quantize_step_into(v, v_scale, self._v_quantized_step)" in append_source
@@ -145,6 +153,7 @@ def test_fp8_append_paths_reuse_quantization_buffers() -> None:
     assert "(v * v_scale).to(self.cache_dtype)" not in append_source
     assert "(k * k_scale).to(self.cache_dtype)" not in append_active_source
     assert "(v * v_scale).to(self.cache_dtype)" not in append_active_source
+    assert "self._scale_abs_buffer = None" in teardown_source
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for KV append parity")

@@ -67,6 +67,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._v_quantized_step: Optional[torch.Tensor] = None
         self._k_quantized_layer_view: Optional[torch.Tensor] = None
         self._v_quantized_layer_view: Optional[torch.Tensor] = None
+        self._scale_abs_buffer: Optional[torch.Tensor] = None
         self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._seq_lengths_host: list[int] = [0] * batch_size
@@ -142,6 +143,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
             dtype=self.cache_dtype,
         )
         self._v_quantized_step = torch.empty_like(self._k_quantized_step)
+        self._scale_abs_buffer = torch.empty_like(self._generated_k_steps[0])
         self._k_quantized_layer_view = self._k_quantized_step.unsqueeze(1)
         self._v_quantized_layer_view = self._v_quantized_step.unsqueeze(1)
         self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]
@@ -179,7 +181,15 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
     
     def _compute_scale(self, x: torch.Tensor) -> torch.Tensor:
         """Compute dynamic scaling factor."""
-        absmax = x.abs().amax().float()
+        if (
+            self._scale_abs_buffer is None
+            or self._scale_abs_buffer.shape != x.shape
+            or self._scale_abs_buffer.device != x.device
+            or self._scale_abs_buffer.dtype != x.dtype
+        ):
+            self._scale_abs_buffer = torch.empty_like(x)
+        torch.abs(x, out=self._scale_abs_buffer)
+        absmax = self._scale_abs_buffer.amax().float()
         
         if self.use_fp4:
             max_val = 6.0  # FP4 range
@@ -383,6 +393,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._v_quantized_step = None
         self._k_quantized_layer_view = None
         self._v_quantized_layer_view = None
+        self._scale_abs_buffer = None
         self._output_view = None
         self._verify_output_buffer = None
         self.output = None
