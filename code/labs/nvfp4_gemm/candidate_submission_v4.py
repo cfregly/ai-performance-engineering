@@ -653,13 +653,42 @@ gemm = torch.ops.my_module.gemm
 
 
 start = 0
-BIG_BUFFER = torch.zeros(int(2e10), dtype=torch.float, device="cuda")
+BIG_BUFFER = None
+BIG_BUFFER_NUMEL = 0
+ALLOC_REPEAT = 50
+ALLOC_CUR_NUMEL = 0
+
+
+def _ensure_big_buffer(required_numel: int, template: torch.Tensor) -> torch.Tensor:
+    global BIG_BUFFER
+    global BIG_BUFFER_NUMEL
+    global start
+
+    if (
+        BIG_BUFFER is None
+        or BIG_BUFFER_NUMEL < required_numel
+        or BIG_BUFFER.device != template.device
+    ):
+        BIG_BUFFER = torch.zeros(required_numel, dtype=torch.float, device=template.device)
+        BIG_BUFFER_NUMEL = required_numel
+        start = 0
+    return BIG_BUFFER
 
 
 def allocate(c: torch.Tensor):
     global start
+    global ALLOC_CUR_NUMEL
+    required = c.numel()
+    big_buffer = _ensure_big_buffer(required * ALLOC_REPEAT, c)
+    if required != ALLOC_CUR_NUMEL:
+        ALLOC_CUR_NUMEL = required
+        start = 0
+        big_buffer.zero_()
+    if start + required > big_buffer.numel():
+        start = 0
+        big_buffer.zero_()
     end = start + c.numel()
-    buf = BIG_BUFFER[start:end].as_strided(c.shape, c.stride())
+    buf = big_buffer[start:end].as_strided(c.shape, c.stride())
     start = end
     return buf
 

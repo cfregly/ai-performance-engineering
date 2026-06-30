@@ -1118,12 +1118,31 @@ gemm_case0_v4_alt = None
 if _selected_case0_module is not None and _selected_case0_module != "my_module_v4":
     gemm_case0_v4_alt = getattr(torch.ops, _selected_case0_module).gemm
 
-BIG_BUFFER = torch.zeros(int(1e10), dtype=torch.float, device="cuda")
+BIG_BUFFER = None
+BIG_BUFFER_NUMEL = 0
 start = 0
 ALLOC_CALL_MOD = 0
 ALLOC_CUR_NUMEL = 0
 ALLOC_REPEAT = 50
 CASE0_PHASE_ANCHOR = None
+
+
+def _ensure_big_buffer(required_numel: int, template: torch.Tensor) -> torch.Tensor:
+    global BIG_BUFFER
+    global BIG_BUFFER_NUMEL
+    global start
+    global ALLOC_CALL_MOD
+
+    if (
+        BIG_BUFFER is None
+        or BIG_BUFFER_NUMEL < required_numel
+        or BIG_BUFFER.device != template.device
+    ):
+        BIG_BUFFER = torch.empty(required_numel, dtype=torch.float, device=template.device)
+        BIG_BUFFER_NUMEL = required_numel
+        start = 0
+        ALLOC_CALL_MOD = 0
+    return BIG_BUFFER
 
 
 def allocate(c: torch.Tensor, zero_slab: bool = False):
@@ -1132,19 +1151,21 @@ def allocate(c: torch.Tensor, zero_slab: bool = False):
     global ALLOC_CUR_NUMEL
 
     required = c.numel()
+    slab_numel = required * ALLOC_REPEAT
+    big_buffer = _ensure_big_buffer(slab_numel, c)
 
     if required != ALLOC_CUR_NUMEL:
         ALLOC_CUR_NUMEL = required
         ALLOC_CALL_MOD = 0
 
     # Keep 50-call batches contiguous to avoid aliasing within one official repeat.
-    if ALLOC_CALL_MOD == 0 and (start + required * ALLOC_REPEAT) > BIG_BUFFER.numel():
+    if ALLOC_CALL_MOD == 0 and (start + slab_numel) > big_buffer.numel():
         start = 0
     if zero_slab and ALLOC_CALL_MOD == 0:
-        BIG_BUFFER[start:start + required * ALLOC_REPEAT].zero_()
+        big_buffer[start:start + slab_numel].zero_()
 
     end = start + c.numel()
-    buf = BIG_BUFFER[start:end].as_strided(c.shape, c.stride())
+    buf = big_buffer[start:end].as_strided(c.shape, c.stride())
     start = end
     ALLOC_CALL_MOD = (ALLOC_CALL_MOD + 1) % ALLOC_REPEAT
     return buf

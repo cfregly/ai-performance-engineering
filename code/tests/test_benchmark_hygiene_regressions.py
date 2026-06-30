@@ -5462,6 +5462,28 @@ def test_nvfp4_gemm_local_eval_timing_records_on_current_stream() -> None:
         assert implicit_end not in timing_section
 
 
+def test_nvfp4_gemm_submissions_lazy_allocate_scratch_slabs() -> None:
+    source_by_file = {
+        "labs/nvfp4_gemm/optimized_submission.py": "torch.empty(required_numel",
+        "labs/nvfp4_gemm/candidate_submission_mix.py": "torch.zeros(required_numel",
+        "labs/nvfp4_gemm/candidate_submission_v4.py": "torch.zeros(required_numel",
+    }
+
+    for filename, allocation_marker in source_by_file.items():
+        source = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        allocator_section = source.split("def _ensure_big_buffer", maxsplit=1)[1].split(
+            "def custom_kernel",
+            maxsplit=1,
+        )[0]
+
+        assert "torch.zeros(int(1e10)" not in source
+        assert "torch.zeros(int(2e10)" not in source
+        assert "BIG_BUFFER = None" in source
+        assert allocation_marker in allocator_section
+        assert "device=template.device" in allocator_section
+        assert "required * ALLOC_REPEAT" in allocator_section or "slab_numel = required * ALLOC_REPEAT" in allocator_section
+
+
 def test_nvfp4_local_eval_sample_stats_reuse_sorted_samples() -> None:
     source_by_file = {
         "labs/nvfp4_dual_gemm/local_eval.py": (
