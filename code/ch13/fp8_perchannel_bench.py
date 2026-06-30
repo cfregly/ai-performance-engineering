@@ -142,17 +142,6 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ).to(self.device, self.dtype).eval()
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
         
-        # Create reference model for error calculation
-        self.ref_model = nn.Linear(
-            self.in_features, self.out_features
-        ).to(self.device, self.dtype).eval()
-        
-        # Copy weights
-        with torch.inference_mode():
-            self.ref_model.weight.copy_(self.model.weight)
-            if self.model.bias is not None:
-                self.ref_model.bias.copy_(self.model.bias)
-        
         self.x = torch.randn(
             self.batch_size, self.seq_len, self.in_features,
             device=self.device, dtype=self.dtype
@@ -176,13 +165,7 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: Per-channel FP8 forward pass."""
         with torch.inference_mode():
-            output = self.model(self.x)
-            ref_output = self.ref_model(self.x)
-            
-            # Track error for accuracy comparison
-            error = (output - ref_output).abs().mean() / ref_output.abs().mean()
-            self._error_sum = error.detach()
-            self.output = output.detach()
+            self.output = self.model(self.x).detach()
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
         dtype = self._verify_input.dtype
@@ -215,7 +198,6 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         self.model = None
-        self.ref_model = None
         self.x = None
         self.output = None
         self._verify_input = None

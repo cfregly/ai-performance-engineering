@@ -18311,6 +18311,10 @@ def test_ch13_fp8_perchannel_bench_caches_weight_quantization() -> None:
         "def benchmark_fn",
         maxsplit=1,
     )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
     forward_section = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[
         1
     ].split(
@@ -18323,6 +18327,9 @@ def test_ch13_fp8_perchannel_bench_caches_weight_quantization() -> None:
     assert "self.model.prepare_fp8_weights()" in setup_section
     assert "torch.inference_mode()" in setup_section
     assert "torch.no_grad()" not in setup_section
+    assert "self.ref_model = nn.Linear" not in setup_section
+    assert "ref_output = self.ref_model(self.x)" not in benchmark_section
+    assert "self.output = self.model(self.x).detach()" in benchmark_section
     assert "weight_q = self._weight_q" in forward_section
     assert "weight_scale = self._weight_scale" in forward_section
     assert "output_q.mul_(input_scale)" in forward_section
