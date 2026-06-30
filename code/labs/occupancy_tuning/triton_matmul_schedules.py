@@ -139,6 +139,7 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._a: Optional[torch.Tensor] = None
         self._b: Optional[torch.Tensor] = None
         self._scratch: Optional[torch.Tensor] = None
+        self._validation_scalars: Optional[torch.Tensor] = None
         # Keep harness runs fast; enable profiling/proton explicitly for analysis.
         self._config = BenchmarkConfig(
             iterations=iterations,
@@ -176,6 +177,7 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._a = torch.randn((self._size_m, self._size_k), dtype=self._dtype, device=device)
         self._b = torch.randn((self._size_k, self._size_n), dtype=self._dtype, device=device)
         self._scratch = torch.empty((self._size_m, self._size_n), dtype=self._dtype, device=device)
+        self._validation_scalars = torch.empty(2, dtype=torch.float32, device=device)
         with torch.inference_mode():
             self._reference = torch.matmul(self._a, self._b)
 
@@ -233,14 +235,18 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def validate_result(self) -> Optional[str]:
         if self._reference is None or self._output is None:
             return None
-        validation_scalars = torch.stack(
-            (
-                (self._output - self._reference).abs().max().float(),
-                torch.isnan(self._output).any().to(torch.float32),
+        if self._validation_scalars is None:
+            self._validation_scalars = torch.empty(
+                2,
+                dtype=torch.float32,
+                device=self._output.device,
             )
-        ).detach().cpu().tolist()
-        diff = float(validation_scalars[0])
-        has_nan = bool(validation_scalars[1])
+        validation_scalars = self._validation_scalars
+        validation_scalars[0].copy_((self._output - self._reference).abs().max().float())
+        validation_scalars[1].copy_(torch.isnan(self._output).any().to(torch.float32))
+        validation_scalars_host = validation_scalars.detach().cpu()
+        diff = float(validation_scalars_host[0])
+        has_nan = bool(validation_scalars_host[1])
         if has_nan:
             return "NaNs detected in Triton output"
         if diff > 2.0:
@@ -254,6 +260,7 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._a = None
         self._b = None
         self._scratch = None
+        self._validation_scalars = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
