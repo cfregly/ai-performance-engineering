@@ -5580,7 +5580,12 @@ def test_ch10_optimized_batch_reuses_mlp_buffers() -> None:
     assert "def cache_weight_views(self) -> None:" in model_section
     assert "self._fc1_weight_t = self.fc1.weight.t()" in model_section
     assert "self._fc2_weight_t = self.fc2.weight.t()" in model_section
+    assert "def _workspace(" in model_section
     assert "def _ensure_forward_buffers(" in model_section
+    assert "or buffer.numel() < numel" in model_section
+    assert "return buffer[:numel].view(rows, width)" in model_section
+    assert "self._fc1_buffer.shape != fc1_shape" not in model_section
+    assert "self._fc2_buffer.shape != fc2_shape" not in model_section
     assert "if torch.is_grad_enabled():" in model_section
     assert "torch.mm(x, self._fc1_weight_t, out=fc1_out)" in forward_section
     assert "fc1_out.add_(self.fc1.bias)" in model_section
@@ -5599,6 +5604,27 @@ def test_ch10_optimized_batch_reuses_mlp_buffers() -> None:
     assert "output=self._verify_output_buffer" in capture_section
     assert "self.output.detach().float().clone()" not in capture_section
     assert "self._verify_output_buffer = None" in teardown_section
+
+
+def test_ch10_buffered_batch_mlp_reuses_larger_workspace_capacity() -> None:
+    from ch10.optimized_batch import BufferedBatchMlp
+
+    model = BufferedBatchMlp(hidden_dim=4, ffn_dim=6).eval()
+    with torch.inference_mode():
+        large = model(torch.randn(8, 4))
+        fc1_ptr = model._fc1_buffer.data_ptr()
+        fc2_ptr = model._fc2_buffer.data_ptr()
+        small = model(torch.randn(3, 4))
+        grown = model(torch.randn(9, 4))
+
+    assert large.shape == (8, 4)
+    assert small.shape == (3, 4)
+    assert small.data_ptr() == fc2_ptr
+    assert model._fc1_buffer.numel() == 9 * 6
+    assert model._fc2_buffer.numel() == 9 * 4
+    assert model._fc1_buffer.data_ptr() != fc1_ptr or model._fc1_buffer.numel() > 8 * 6
+    assert model._fc2_buffer.data_ptr() != fc2_ptr or model._fc2_buffer.numel() > 8 * 4
+    assert grown.shape == (9, 4)
 
 
 def test_ch16_optimized_dense_attention_flash_reuses_projection_buffers() -> None:
