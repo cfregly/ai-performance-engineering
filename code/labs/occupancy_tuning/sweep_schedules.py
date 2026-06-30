@@ -143,15 +143,15 @@ def benchmark_schedule(
     for time_ms in times_ms:
         total_ms += time_ms
 
-    times_sorted = sorted(times_ms)
+    times_ms.sort()
     midpoint = sample_count // 2
     if sample_count % 2:
-        median_ms = times_sorted[midpoint]
+        median_ms = times_ms[midpoint]
     else:
-        median_ms = (times_sorted[midpoint - 1] + times_sorted[midpoint]) / 2.0
+        median_ms = (times_ms[midpoint - 1] + times_ms[midpoint]) / 2.0
     mean_ms = total_ms / sample_count
-    min_ms = times_sorted[0]
-    max_ms = times_sorted[-1]
+    min_ms = times_ms[0]
+    max_ms = times_ms[-1]
 
     total_flops = 2.0 * size_m * size_n * size_k
     tflops = (total_flops / (mean_ms / 1e3)) / 1e12

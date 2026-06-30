@@ -5516,7 +5516,7 @@ def test_nvfp4_gemm_local_eval_timing_records_on_current_stream() -> None:
         ),
         "labs/nvfp4_gemm/local_eval_submission.py": (
             "for _ in range(max(0, warmup)):",
-            "samples_sorted = sorted(samples_us)",
+            "samples_us.sort()",
             "start.record(current_stream)",
             "end.record(current_stream)",
             "start.record()",
@@ -5591,7 +5591,8 @@ def test_nvfp4_local_eval_sample_stats_reuse_sorted_samples() -> None:
             end_marker,
             maxsplit=1,
         )[0]
-        assert stats_section.count("sorted(") == 1
+        assert f"{sample_name}.sort()" in stats_section
+        assert "sorted(" not in stats_section
         assert "statistics.mean" not in source
         assert "statistics.median" not in source
         assert "statistics.pstdev" not in source
@@ -14405,6 +14406,8 @@ def test_ch13_optimized_autograd_uses_output_buffer_directly() -> None:
 
 
 def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
+    from ch13.fp8_static_demo import CalibrationStats
+
     targets = ("fp8_static_demo.py", "optimized_fp8_static.py")
 
     for name in targets:
@@ -14434,6 +14437,10 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
     optimized_static_source = (REPO_ROOT / "ch13" / "optimized_fp8_static.py").read_text(
         encoding="utf-8"
     )
+    demo_stats_section = demo_source.split("class CalibrationStats", maxsplit=1)[1].split(
+        "class StaticFP8Linear",
+        maxsplit=1,
+    )[0]
     scale_section = demo_source.split("def get_all_scales", maxsplit=1)[1].split(
         "#============================================================================",
         maxsplit=1,
@@ -14446,6 +14453,10 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
     assert "torch.tensor(1.0, dtype=torch.float32, device=device)" in demo_source
     assert "torch.tensor(False, device=device)" in demo_source
     assert "torch.tensor(False, device=device)" in optimized_static_source
+    assert "import heapq" in demo_source
+    assert "heapq.nsmallest(idx + 1, self.amax_history)[-1]" in demo_stats_section
+    assert "heapq.nlargest(len(self.amax_history) - idx, self.amax_history)[-1]" in demo_stats_section
+    assert "sorted_amax = sorted(self.amax_history)" not in demo_stats_section
     for static_source in (demo_source, optimized_static_source):
         assert "self._is_calibrated = False" in static_source
         assert "self._is_calibrated = True" in static_source
@@ -14468,6 +14479,12 @@ def test_ch13_static_fp8_calibration_defers_amax_scalar_reads() -> None:
     assert "self.is_calibrated.item()" not in info_section
     assert "self._calibration_info_host: Optional[torch.Tensor] = None" in demo_source
     assert "def _calibration_info_list(self)" in demo_source
+
+    stats = CalibrationStats()
+    stats.amax_history = [4.0, 1.0, 3.0, 2.0]
+    assert stats.get_percentile_scale(0.0, fp8_max=1.0) == 1.0
+    assert stats.get_percentile_scale(50.0, fp8_max=1.0) == 3.0
+    assert stats.get_percentile_scale(95.0, fp8_max=1.0) == 4.0
     assert "values[0].copy_(self.is_calibrated)" in info_section
     assert "values[1].copy_(self.input_scale)" in info_section
     assert "values[2].copy_(self.weight_scale)" in info_section

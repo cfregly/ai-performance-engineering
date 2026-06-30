@@ -33,6 +33,7 @@ REQUIREMENTS:
 
 from __future__ import annotations
 
+import heapq
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -119,9 +120,12 @@ class CalibrationStats:
         if not self.amax_history:
             return 1e-12
         
-        sorted_amax = sorted(self.amax_history)
-        idx = int(len(sorted_amax) * percentile / 100)
-        amax = sorted_amax[min(idx, len(sorted_amax) - 1)]
+        idx = int(len(self.amax_history) * percentile / 100)
+        idx = max(0, min(idx, len(self.amax_history) - 1))
+        if idx <= len(self.amax_history) // 2:
+            amax = heapq.nsmallest(idx + 1, self.amax_history)[-1]
+        else:
+            amax = heapq.nlargest(len(self.amax_history) - idx, self.amax_history)[-1]
         return max(amax / fp8_max, 1e-12)
 
 

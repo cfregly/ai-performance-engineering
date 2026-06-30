@@ -42,7 +42,8 @@ def test_benchmark_schedule_uses_reused_cuda_events_for_samples() -> None:
     assert "end_event.record()" not in sample_loop
     assert "end_event.synchronize()" in sample_loop
     assert "times_ms.append(start_event.elapsed_time(end_event))" in sample_loop
-    assert "times_sorted = sorted(times_ms)" in benchmark_section
+    assert "times_ms.sort()" in benchmark_section
+    assert "times_sorted = sorted(times_ms)" not in benchmark_section
     assert "statistics.mean" not in benchmark_section
     assert "statistics.median" not in benchmark_section
     assert "min(times_ms)" not in benchmark_section

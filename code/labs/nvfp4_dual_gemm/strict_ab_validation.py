@@ -42,12 +42,12 @@ def _summarize_deltas(deltas: list[float]) -> tuple[float, float, float]:
         total_squares += delta * delta
 
     mean = total / count
-    deltas_sorted = sorted(deltas)
+    deltas.sort()
     midpoint = count // 2
     if count % 2:
-        median = deltas_sorted[midpoint]
+        median = deltas[midpoint]
     else:
-        median = (deltas_sorted[midpoint - 1] + deltas_sorted[midpoint]) / 2.0
+        median = (deltas[midpoint - 1] + deltas[midpoint]) / 2.0
 
     if count > 1:
         variance = max(0.0, (total_squares - (total * total / count)) / (count - 1))

@@ -121,19 +121,19 @@ def _summarize(values: list[float]) -> dict[str, float]:
 
     mean = total / count
     variance = max(0.0, (total_squares / count) - mean * mean)
-    values_sorted = sorted(values)
+    values.sort()
     midpoint = count // 2
     if count % 2:
-        median = values_sorted[midpoint]
+        median = values[midpoint]
     else:
-        median = (values_sorted[midpoint - 1] + values_sorted[midpoint]) / 2.0
+        median = (values[midpoint - 1] + values[midpoint]) / 2.0
 
     return {
         "mean": float(mean),
         "median": float(median),
         "stdev": float(math.sqrt(variance)) if count > 1 else 0.0,
-        "min": float(values_sorted[0]),
-        "max": float(values_sorted[-1]),
+        "min": float(values[0]),
+        "max": float(values[-1]),
     }
 
 
@@ -179,6 +179,7 @@ def main() -> int:
     pair_rows = []
     baseline_values = []
     optimized_values = []
+    deltas = []
 
     lock_ctx = (
         lock_gpu_clocks(device=0, sm_clock_mhz=args.sm_clock_mhz, mem_clock_mhz=args.mem_clock_mhz)
@@ -192,20 +193,21 @@ def main() -> int:
             o = _run_binary(optimized_bin, timeout_seconds=args.timeout_seconds)
             b_ms = float(b["geomean_ms"])
             o_ms = float(o["geomean_ms"])
+            delta_ms = o_ms - b_ms
             baseline_values.append(b_ms)
             optimized_values.append(o_ms)
+            deltas.append(delta_ms)
             pair_rows.append(
                 {
                     "pair": pair_idx + 1,
                     "baseline_geomean_ms": b_ms,
                     "optimized_geomean_ms": o_ms,
-                    "delta_ms_optimized_minus_baseline": o_ms - b_ms,
+                    "delta_ms_optimized_minus_baseline": delta_ms,
                 }
             )
 
     baseline_stats = _summarize(baseline_values)
     optimized_stats = _summarize(optimized_values)
-    deltas = [o - b for b, o in zip(baseline_values, optimized_values)]
     delta_stats = _summarize(deltas)
 
     payload = {

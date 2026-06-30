@@ -136,12 +136,12 @@ def _run_case(
         total_us += sample_us
         total_squares_us += sample_us * sample_us
 
-    samples_sorted = sorted(samples_us)
+    samples_us.sort()
     mean_us = float(total_us / sample_count)
     variance_us = max(0.0, (total_squares_us / sample_count) - mean_us * mean_us)
     stdev_us = float(math.sqrt(variance_us)) if sample_count > 1 else 0.0
-    p50_us = float(samples_sorted[len(samples_sorted) // 2])
-    p99_us = float(samples_sorted[max(0, int(len(samples_sorted) * 0.99) - 1)])
+    p50_us = float(samples_us[len(samples_us) // 2])
+    p99_us = float(samples_us[max(0, int(len(samples_us) * 0.99) - 1)])
 
     return {
         "name": case["name"],
@@ -154,8 +154,8 @@ def _run_case(
         "stdev_us": stdev_us,
         "p50_us": p50_us,
         "p99_us": p99_us,
-        "min_us": float(samples_sorted[0]),
-        "max_us": float(samples_sorted[-1]),
+        "min_us": float(samples_us[0]),
+        "max_us": float(samples_us[-1]),
         "repeats": int(repeats),
         "warmup": int(warmup),
         "inputs_per_repeat": int(inputs_per_repeat),
