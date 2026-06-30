@@ -318,6 +318,14 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert 'self.register_buffer(\n            "_gini_index",' in router_section
     assert "def _gini_index_for" in router_section
     assert "torch.arange(1, n + 1" not in router_section
+    assert "log_route_probs = F.log_softmax(logits, dim=-1)" in router_section
+    assert "route_probs = log_route_probs.exp()" in router_section
+    assert "_, top_indices = torch.topk(logits, self.top_k, dim=-1)" in router_section
+    assert "top_weights = route_probs.gather(-1, top_indices)" in router_section
+    assert '"router_entropy": -(route_probs * log_route_probs).sum(dim=-1).mean()' in router_section
+    assert "route_probs = F.softmax(logits, dim=-1)" not in router_section
+    assert "torch.topk(route_probs" not in router_section
+    assert "torch.log(route_probs.clamp_min" not in router_section
     assert "F.silu(gate, inplace=True)" in expert_forward
     assert "gate.mul_(up)" in expert_forward
     assert "F.silu(self.gate_proj(x)) * self.up_proj(x)" not in expert_forward
@@ -461,6 +469,27 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
     assert "value = float(host_buffer[index])" in reduce_section
     assert "host_buffer.tolist()" not in reduce_section
     assert "for key, value in metrics.items()" not in reduce_section
+
+
+def test_fullstack_router_uses_log_softmax_topk_without_changing_weights() -> None:
+    from labs.fullstack_cluster.moe_hybrid_ep_common import LoadBalancedRouter
+
+    router = LoadBalancedRouter(hidden_size=4, num_experts=5, top_k=2).eval()
+    x = torch.randn(7, 4)
+    bias = torch.linspace(-0.2, 0.2, 5)
+
+    with torch.inference_mode():
+        logits = router.gate(x) + bias
+        route_probs = torch.softmax(logits, dim=-1)
+        expected_selected, expected_indices = torch.topk(route_probs, router.top_k, dim=-1)
+        expected_weights = torch.softmax(expected_selected, dim=-1)
+        expected_entropy = -(route_probs * torch.log(route_probs.clamp_min(1e-9))).sum(dim=-1).mean()
+
+        actual_weights, actual_indices, aux = router(x, expert_bias=bias)
+
+    torch.testing.assert_close(actual_indices, expected_indices)
+    torch.testing.assert_close(actual_weights, expected_weights)
+    torch.testing.assert_close(aux["router_entropy"], expected_entropy)
 
 
 def test_moe_hybrid_ep_list_all_to_all_returns_preallocated_recv(
