@@ -7297,6 +7297,24 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
         assert "any(" not in section
     assert "self.output = attn_out" in benchmark_section
     assert "attn_out.detach()" not in benchmark_section
+    for source_text in (baseline_source, source):
+        assert "self._attn_layout_buffer: Optional[torch.Tensor] = None" in source_text
+        assert "self._attn_layout_bhld: Optional[torch.Tensor] = None" in source_text
+        assert "self._attn_out_view: Optional[torch.Tensor] = None" in source_text
+    for setup, benchmark, teardown in (
+        (baseline_setup, baseline_benchmark, baseline_teardown),
+        (setup_section, benchmark_section, teardown_section),
+    ):
+        assert "self._attn_layout_buffer = torch.empty(" in setup
+        assert "self._attn_layout_bhld = self._attn_layout_buffer.transpose(1, 2)" in setup
+        assert "self._attn_out_view = self._attn_layout_buffer.view(" in setup
+        assert "layout_bhld = self._attn_layout_bhld" in benchmark
+        assert "attn_out = self._attn_out_view" in benchmark
+        assert "layout_bhld.copy_(attn)" in benchmark
+        assert "attn.transpose(1, 2).reshape" not in benchmark
+        assert "self._attn_layout_buffer = None" in teardown
+        assert "self._attn_layout_bhld = None" in teardown
+        assert "self._attn_out_view = None" in teardown
     assert "self._k_t = self.k.transpose(-2, -1)" in baseline_setup
     assert "self._scale = 1.0 / math.sqrt(self.head_dim)" in baseline_setup
     assert "scores = torch.matmul(q, self._k_t)" in baseline_benchmark
