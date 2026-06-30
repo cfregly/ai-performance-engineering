@@ -176,10 +176,14 @@ def test_adaptive_parallelism_baseline_benchmark_reuses_result_buffers() -> None
     assert "self._feature_rows: Optional[torch.Tensor] = None" in source
     assert "self._feature_rows_cpu: Optional[torch.Tensor] = None" in source
     assert "self._strategy_ids_cpu: Optional[torch.Tensor] = None" in source
+    assert "self._verify_input_buffers: Optional[Dict[str, torch.Tensor]] = None" in source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._result_buffer = torch.empty(" in source
     assert "self._feature_rows = torch.empty(" in source
     assert "self._feature_rows_cpu = torch.empty(" in source
     assert "self._strategy_ids_cpu = torch.empty(" in source
+    assert "self._verify_input_buffers = {" in source
+    assert "self._verify_output_buffer = torch.empty(" in source
     assert "pin_memory=True" in source
     assert "materialize_baseline_feature_rows(" in source
     assert "feature_rows=self._feature_rows" in source
@@ -187,6 +191,12 @@ def test_adaptive_parallelism_baseline_benchmark_reuses_result_buffers() -> None
     assert "refresh_feature_rows=False" in source
     assert "strategy_ids_cpu=self._strategy_ids_cpu" in source
     assert "result=self._result_buffer" in source
+    assert "self._verify_input_buffers[name].copy_(tensor, non_blocking=False)" in source
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in source
+    assert "inputs=self._verify_input_buffers" in source
+    assert "output=self._verify_output_buffer" in source
+    assert "tensor.detach().cpu()" not in source
+    assert "self.output.detach().cpu()" not in source
     assert "self.output = classify_baseline(self.workload, device=self.device)" not in source
 
 
@@ -197,11 +207,22 @@ def test_adaptive_parallelism_optimized_benchmark_reuses_mask_buffers() -> None:
     assert "self._steady_decode_mask: Optional[torch.Tensor] = None" in source
     assert "self._data_mask: Optional[torch.Tensor] = None" in source
     assert "self._doubled_decode_tokens: Optional[torch.Tensor] = None" in source
+    assert "self._verify_input_buffers: Optional[Dict[str, torch.Tensor]] = None" in source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._result_buffer = torch.empty(" in source
     assert "self._steady_decode_mask = torch.empty(" in source
     assert "self._data_mask = torch.empty_like(self._steady_decode_mask)" in source
     assert "self._doubled_decode_tokens = torch.empty_like(self.workload[\"decode_tokens\"])" in source
+    assert "self._verify_input_buffers = {" in source
+    assert "self._verify_output_buffer = torch.empty(" in source
+    assert "pin_memory=True" in source
     assert "self.output = classify_vectorized_out(" in source
+    assert "self._verify_input_buffers[name].copy_(tensor, non_blocking=False)" in source
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in source
+    assert "inputs=self._verify_input_buffers" in source
+    assert "output=self._verify_output_buffer" in source
+    assert "tensor.detach().cpu()" not in source
+    assert "self.output.detach().cpu()" not in source
     assert "self.output = classify_vectorized(self.workload)" not in source
 
 

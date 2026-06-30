@@ -26,6 +26,8 @@ class BaselineAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchma
         self._feature_rows: Optional[torch.Tensor] = None
         self._feature_rows_cpu: Optional[torch.Tensor] = None
         self._strategy_ids_cpu: Optional[torch.Tensor] = None
+        self._verify_input_buffers: Optional[Dict[str, torch.Tensor]] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.num_requests),
             tokens_per_iteration=float(self.cfg.num_requests),
@@ -64,6 +66,21 @@ class BaselineAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchma
             feature_rows=self._feature_rows,
             feature_rows_cpu=self._feature_rows_cpu,
         )
+        self._verify_input_buffers = {
+            name: torch.empty(
+                tensor.shape,
+                device="cpu",
+                dtype=tensor.dtype,
+                pin_memory=True,
+            )
+            for name, tensor in self.workload.items()
+        }
+        self._verify_output_buffer = torch.empty(
+            self.cfg.num_requests,
+            device="cpu",
+            dtype=torch.int64,
+            pin_memory=True,
+        )
 
     def benchmark_fn(self) -> None:
         if (
@@ -85,11 +102,16 @@ class BaselineAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchma
         )
 
     def capture_verification_payload(self) -> None:
-        if self.workload is None or self.output is None:
+        if self.workload is None or self.output is None or self._verify_input_buffers is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        if self._verify_output_buffer is None:
+            raise RuntimeError("benchmark verification buffers are not initialized")
+        for name, tensor in self.workload.items():
+            self._verify_input_buffers[name].copy_(tensor, non_blocking=False)
+        self._verify_output_buffer.copy_(self.output, non_blocking=False)
         self._set_verification_payload(
-            inputs={name: tensor.detach().cpu() for name, tensor in self.workload.items()},
-            output=self.output.detach().cpu(),
+            inputs=self._verify_input_buffers,
+            output=self._verify_output_buffer,
             batch_size=self.cfg.num_requests,
             parameter_count=0,
             precision_flags={
@@ -100,6 +122,17 @@ class BaselineAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchma
             },
             output_tolerance=(0.0, 0.0),
         )
+
+    def teardown(self) -> None:
+        self.workload = None
+        self.output = None
+        self._result_buffer = None
+        self._feature_rows = None
+        self._feature_rows_cpu = None
+        self._strategy_ids_cpu = None
+        self._verify_input_buffers = None
+        self._verify_output_buffer = None
+        super().teardown()
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
