@@ -319,7 +319,7 @@ class DeepSeekHybridEPModule(nn.Module):
         self.router = LoadBalancedRouter(hidden_size, num_experts, top_k)
         self.experts = nn.ModuleList([ExpertMLP(hidden_size, self.ffn_size) for _ in range(local_experts)])
         self._cached_bias: Optional[torch.Tensor] = None
-        self._buffer_cache: Dict[Tuple[str, torch.device, Tuple[int, ...], torch.dtype], torch.Tensor] = {}
+        self._buffer_cache: Dict[Tuple[str, torch.device, torch.dtype], torch.Tensor] = {}
         self._token_index_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
         self._range_index_cache: Dict[Tuple[int, torch.device], torch.Tensor] = {}
         self._event_pair_cache: Dict[str, Tuple[torch.cuda.Event, torch.cuda.Event]] = {}
@@ -377,14 +377,18 @@ class DeepSeekHybridEPModule(nn.Module):
         device: Optional[torch.device] = None,
     ) -> torch.Tensor:
         target_device = device if device is not None else self.cuda_device
+        shape = tuple(int(dim) for dim in shape)
         if not reuse:
             return torch.empty(shape, device=target_device, dtype=dtype)
-        key = (name, target_device, shape, dtype)
+        numel = 1
+        for dim in shape:
+            numel *= dim
+        key = (name, target_device, dtype)
         cached = self._buffer_cache.get(key)
-        if cached is None:
-            cached = torch.empty(shape, device=target_device, dtype=dtype)
+        if cached is None or cached.numel() < numel:
+            cached = torch.empty(numel, device=target_device, dtype=dtype)
             self._buffer_cache[key] = cached
-        return cached
+        return cached[:numel].view(shape)
 
     def _event_pair(self, name: str) -> Tuple[torch.cuda.Event, torch.cuda.Event]:
         cached = self._event_pair_cache.get(name)

@@ -312,9 +312,11 @@ def test_moe_hybrid_ep_reuses_forward_and_step_events_and_batches_count_reductio
 
     assert "def _event_pair" in source
     assert "def _phase_events" in source
-    assert "self._buffer_cache: Dict[Tuple[str, torch.device, Tuple[int, ...], torch.dtype], torch.Tensor]" in source
+    assert "self._buffer_cache: Dict[Tuple[str, torch.device, torch.dtype], torch.Tensor]" in source
     assert "device: Optional[torch.device] = None" in source
-    assert "key = (name, target_device, shape, dtype)" in source
+    assert "key = (name, target_device, dtype)" in source
+    assert "or cached.numel() < numel" in source
+    assert "return cached[:numel].view(shape)" in source
     assert 'self.register_buffer(\n            "_gini_index",' in router_section
     assert "def _gini_index_for" in router_section
     assert "torch.arange(1, n + 1" not in router_section
@@ -533,6 +535,68 @@ def test_moe_hybrid_ep_list_all_to_all_returns_preallocated_recv(
     assert result.shape == source.shape
     assert result.data_ptr() != source.data_ptr()
     torch.testing.assert_close(result, source)
+
+
+def test_moe_hybrid_ep_buffer_reuses_larger_capacity_for_smaller_views() -> None:
+    from labs.fullstack_cluster import moe_hybrid_ep_common as common
+
+    topology = common.TopologyInfo(
+        rank=0,
+        world_size=1,
+        local_rank=0,
+        local_world_size=1,
+        node_rank=0,
+        num_nodes=1,
+        initialized=False,
+        local_group=None,
+    )
+    module = common.DeepSeekHybridEPModule(
+        hidden_size=2,
+        num_experts=1,
+        local_experts=1,
+        top_k=1,
+        topology=topology,
+        route_mode="rank",
+        optimized=False,
+    )
+    key = ("scratch", torch.device("cpu"), torch.float32)
+
+    large = module._buffer(
+        "scratch",
+        (4, 3),
+        torch.float32,
+        reuse=True,
+        device=torch.device("cpu"),
+    )
+    backing = module._buffer_cache[key]
+    small = module._buffer(
+        "scratch",
+        (2, 3),
+        torch.float32,
+        reuse=True,
+        device=torch.device("cpu"),
+    )
+    fresh = module._buffer(
+        "scratch",
+        (2, 3),
+        torch.float32,
+        reuse=False,
+        device=torch.device("cpu"),
+    )
+    resized = module._buffer(
+        "scratch",
+        (5, 3),
+        torch.float32,
+        reuse=True,
+        device=torch.device("cpu"),
+    )
+
+    assert large.shape == (4, 3)
+    assert small.shape == (2, 3)
+    assert small.data_ptr() == backing.data_ptr()
+    assert fresh.data_ptr() != backing.data_ptr()
+    assert resized.shape == (5, 3)
+    assert module._buffer_cache[key].numel() == 15
 
 
 def test_moe_hybrid_ep_wrapper_reuses_latest_metrics_dict() -> None:
