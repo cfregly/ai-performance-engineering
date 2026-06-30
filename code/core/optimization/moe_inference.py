@@ -182,24 +182,27 @@ class MoEFeedForward(nn.Module):
 
     def _topk_route_scores(
         self,
-        probs: torch.Tensor,
+        logits: torch.Tensor,
         *,
         reusable: bool,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         if torch.is_grad_enabled() or not reusable:
-            return torch.topk(probs, k=self.top_k, dim=-1)
+            top_logits, top_indices = torch.topk(logits, k=self.top_k, dim=-1)
+            top_scores = torch.exp(top_logits - torch.logsumexp(logits, dim=-1, keepdim=True))
+            return top_scores, top_indices
 
-        output_shape = (probs.shape[0], self.top_k)
+        output_shape = (logits.shape[0], self.top_k)
         if (
             self._topk_scores is None
             or self._topk_indices is None
-            or self._topk_scores.device != probs.device
-            or self._topk_scores.dtype != probs.dtype
+            or self._topk_scores.device != logits.device
+            or self._topk_scores.dtype != logits.dtype
             or tuple(self._topk_scores.shape) != output_shape
         ):
-            self._topk_scores = torch.empty(output_shape, dtype=probs.dtype, device=probs.device)
-            self._topk_indices = torch.empty(output_shape, dtype=torch.long, device=probs.device)
-        torch.topk(probs, k=self.top_k, dim=-1, out=(self._topk_scores, self._topk_indices))
+            self._topk_scores = torch.empty(output_shape, dtype=logits.dtype, device=logits.device)
+            self._topk_indices = torch.empty(output_shape, dtype=torch.long, device=logits.device)
+        torch.topk(logits, k=self.top_k, dim=-1, out=(self._topk_scores, self._topk_indices))
+        self._topk_scores.sub_(torch.logsumexp(logits, dim=-1, keepdim=True)).exp_()
         return self._topk_scores, self._topk_indices
 
     def forward(self, x: torch.Tensor, *, collect_router_stats: bool = False) -> torch.Tensor | Tuple[torch.Tensor, Optional[dict]]:
@@ -208,12 +211,13 @@ class MoEFeedForward(nn.Module):
         logits = self.router(flat)
         if self.router_noise > 0:
             logits = logits + torch.randn_like(logits) * self.router_noise
-        probs = torch.softmax(logits, dim=-1)
         router_entropy = None
         if collect_router_stats:
             with torch.no_grad():
-                router_entropy = -(probs * torch.log(probs + 1e-9)).sum(dim=-1).mean()
-        top_scores, top_indices = self._topk_route_scores(probs, reusable=not collect_router_stats)
+                log_probs = torch.log_softmax(logits, dim=-1)
+                probs = log_probs.exp()
+                router_entropy = -(probs * log_probs).sum(dim=-1).mean()
+        top_scores, top_indices = self._topk_route_scores(logits, reusable=not collect_router_stats)
         drop_mask = None
         overflow_mask = None
         expert_counts = None
@@ -271,12 +275,13 @@ class MoEFeedForwardNoHostSync(MoEFeedForward):
         logits = self.router(flat)
         if self.router_noise > 0:
             logits = logits + torch.randn_like(logits) * self.router_noise
-        probs = torch.softmax(logits, dim=-1)
         router_entropy = None
         if collect_router_stats:
             with torch.no_grad():
-                router_entropy = -(probs * torch.log(probs + 1e-9)).sum(dim=-1).mean()
-        top_scores, top_indices = self._topk_route_scores(probs, reusable=not collect_router_stats)
+                log_probs = torch.log_softmax(logits, dim=-1)
+                probs = log_probs.exp()
+                router_entropy = -(probs * log_probs).sum(dim=-1).mean()
+        top_scores, top_indices = self._topk_route_scores(logits, reusable=not collect_router_stats)
 
         drop_mask = None
         overflow_mask = None
@@ -418,12 +423,13 @@ class MoEFeedForwardSortedDispatch(MoEFeedForward):
         logits = self.router(flat)
         if self.router_noise > 0:
             logits = logits + torch.randn_like(logits) * self.router_noise
-        probs = torch.softmax(logits, dim=-1)
         router_entropy = None
         if collect_router_stats:
             with torch.no_grad():
-                router_entropy = -(probs * torch.log(probs + 1e-9)).sum(dim=-1).mean()
-        top_scores, top_indices = self._topk_route_scores(probs, reusable=not collect_router_stats)
+                log_probs = torch.log_softmax(logits, dim=-1)
+                probs = log_probs.exp()
+                router_entropy = -(probs * log_probs).sum(dim=-1).mean()
+        top_scores, top_indices = self._topk_route_scores(logits, reusable=not collect_router_stats)
 
         drop_mask = None
         overflow_mask = None

@@ -25,7 +25,6 @@ from core.benchmark.utils import scalar_tensor_to_float
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 @dataclass(frozen=True)
@@ -138,8 +137,9 @@ class Top2MoE(nn.Module):
         if self._local_streams is None:
             raise RuntimeError("init_local_streams() must be called before forward_local()")
         batch, seq, hidden = tokens.shape
-        probs = F.softmax(self.gate(tokens), dim=-1)
-        top2_w, top2_idx = torch.topk(probs, k=2, dim=-1)
+        logits = self.gate(tokens)
+        top2_logits, top2_idx = torch.topk(logits, k=2, dim=-1)
+        top2_w = torch.exp(top2_logits - torch.logsumexp(logits, dim=-1, keepdim=True))
         flat_idx = top2_idx.view(batch * seq, 2)
         flat_w = top2_w.view(batch * seq, 2)
         flat_tokens = tokens.view(batch * seq, hidden)
@@ -176,8 +176,9 @@ class Top2MoE(nn.Module):
 
     def forward_distributed(self, tokens: torch.Tensor, *, ctx: DistributedContext) -> torch.Tensor:
         batch, seq, hidden = tokens.shape
-        probs = F.softmax(self.gate(tokens), dim=-1)
-        top2_w, top2_idx = torch.topk(probs, k=2, dim=-1)
+        logits = self.gate(tokens)
+        top2_logits, top2_idx = torch.topk(logits, k=2, dim=-1)
+        top2_w = torch.exp(top2_logits - torch.logsumexp(logits, dim=-1, keepdim=True))
         flat_idx = top2_idx.view(batch * seq, 2)
         flat_tokens = tokens.view(batch * seq, hidden)
 

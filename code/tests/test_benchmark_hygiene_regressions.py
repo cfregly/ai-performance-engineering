@@ -12887,6 +12887,11 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
     )[0]
 
     for section in (local_section, distributed_section):
+        assert "logits = self.gate(tokens)" in section
+        assert "top2_logits, top2_idx = torch.topk(logits, k=2, dim=-1)" in section
+        assert "top2_w = torch.exp(top2_logits - torch.logsumexp(logits, dim=-1, keepdim=True))" in section
+        assert "F.softmax(self.gate(tokens), dim=-1)" not in section
+        assert "torch.topk(probs, k=2, dim=-1)" not in section
         assert "overflow_flags_host = mask_overflow.detach().cpu()" in section
         assert "mask_overflow.detach().cpu().tolist()" not in section
         assert "if bool(overflow_flags_host[eid_int]):" in section
@@ -12895,6 +12900,7 @@ def test_ch15_expert_parallelism_batches_expert_metadata_reads() -> None:
     assert "self._local_out_buffers: list[torch.Tensor] = []" in source
     assert "self._local_accum_buffer: Optional[torch.Tensor] = None" in source
     assert "self._distributed_workspaces: dict[str, torch.Tensor] = {}" in source
+    assert "import torch.nn.functional as F" not in source
     assert "def _local_buffers(self, flat_tokens: torch.Tensor, slots: int)" in source
     assert "def _distributed_workspace(" in source
     assert "workspace = self._distributed_workspaces.get(name)" in source

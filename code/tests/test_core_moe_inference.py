@@ -105,8 +105,11 @@ def test_sorted_dispatch_inference_reuses_route_workspaces() -> None:
     assert "def _topk_route_scores(" in source
     assert "self._topk_scores: Optional[torch.Tensor] = None" in source
     assert "self._topk_indices: Optional[torch.Tensor] = None" in source
-    assert "torch.topk(probs, k=self.top_k, dim=-1, out=(self._topk_scores, self._topk_indices))" in source
-    assert "self._topk_route_scores(probs, reusable=not collect_router_stats)" in forward_source
+    assert "torch.topk(logits, k=self.top_k, dim=-1, out=(self._topk_scores, self._topk_indices))" in source
+    assert "self._topk_scores.sub_(torch.logsumexp(logits, dim=-1, keepdim=True)).exp_()" in source
+    assert "top_scores = torch.exp(top_logits - torch.logsumexp(logits, dim=-1, keepdim=True))" in source
+    assert "self._topk_route_scores(logits, reusable=not collect_router_stats)" in forward_source
+    assert "probs = torch.softmax(logits, dim=-1)" not in source
 
     torch.manual_seed(123)
     baseline = MoEFeedForward(
@@ -126,6 +129,14 @@ def test_sorted_dispatch_inference_reuses_route_workspaces() -> None:
         dtype=torch.float32,
     )
     sorted_dispatch.load_state_dict(baseline.state_dict(), strict=True)
+
+    logits = torch.randn(5, 4)
+    with torch.inference_mode():
+        top_scores, top_indices = sorted_dispatch._topk_route_scores(logits, reusable=True)
+    expected_scores, expected_indices = torch.topk(torch.softmax(logits, dim=-1), k=2, dim=-1)
+    torch.testing.assert_close(top_scores, expected_scores)
+    torch.testing.assert_close(top_indices, expected_indices)
+
     x = torch.randn(2, 3, 8)
 
     with torch.inference_mode():
