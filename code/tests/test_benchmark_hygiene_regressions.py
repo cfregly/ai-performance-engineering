@@ -12181,6 +12181,9 @@ def test_nanochat_gpt_generate_preallocates_token_buffer() -> None:
     assert "self._generate_probs = None" in source
     assert "self._generate_prompt_host = None" in source
     assert "def _generate_long_buffer" in source
+    assert "shape = tuple(int(dim) for dim in shape)" in source
+    assert "or any(buffer.size(dim) < size for dim, size in enumerate(shape))" in source
+    assert "return buffer[tuple(slice(0, size) for size in shape)]" in source
     assert "def _generate_ids_buffer(self, total_len, device)" in source
     assert "def _generate_like_buffer" in source
     assert "def _generate_token_host_buffer" in source

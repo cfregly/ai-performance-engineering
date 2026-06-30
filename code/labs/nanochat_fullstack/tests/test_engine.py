@@ -647,6 +647,10 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "self._ids_step_buffer = None" in text
     assert "def _sample_host_token_buffer(self, count, source_device)" in text
     assert "def _sample_token_buffers(self, count, device)" in text
+    assert "def _sample_long_buffer(self, name, shape, device)" in text
+    assert "shape = tuple(int(dim) for dim in shape)" in text
+    assert "or any(buffer.size(dim) < size for dim, size in enumerate(shape))" in text
+    assert "return buffer[tuple(slice(0, size) for size in shape)]" in text
     assert "def _sample_active_logits_buffer_for(self, logits, row_count)" in text
     assert "def _sample_workspace(self, logits, top_k, temperature)" in text
     assert "def _single_prompt_ids(self, tokens, device)" in text
@@ -689,6 +693,46 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "active_count = num_samples" in generate_section
     assert "if active_count == 0:" in generate_section
     assert "if all(state.completed for state in row_states):" not in generate_section
+
+
+def test_long_sampling_and_generation_buffers_reuse_capacity_views():
+    engine_owner = SimpleNamespace(_sample_topk_indices_buffer=None)
+    large_sample = Engine._sample_long_buffer(
+        engine_owner,
+        "_sample_topk_indices_buffer",
+        (4, 8),
+        torch.device("cpu"),
+    )
+    sample_ptr = engine_owner._sample_topk_indices_buffer.data_ptr()
+    small_sample = Engine._sample_long_buffer(
+        engine_owner,
+        "_sample_topk_indices_buffer",
+        (2, 3),
+        torch.device("cpu"),
+    )
+
+    assert large_sample.shape == (4, 8)
+    assert small_sample.shape == (2, 3)
+    assert engine_owner._sample_topk_indices_buffer.data_ptr() == sample_ptr
+
+    gpt_owner = SimpleNamespace(_generate_topk_indices=None)
+    large_generate = GPT._generate_long_buffer(
+        gpt_owner,
+        "_generate_topk_indices",
+        (1, 8),
+        torch.device("cpu"),
+    )
+    generate_ptr = gpt_owner._generate_topk_indices.data_ptr()
+    small_generate = GPT._generate_long_buffer(
+        gpt_owner,
+        "_generate_topk_indices",
+        (1, 3),
+        torch.device("cpu"),
+    )
+
+    assert large_generate.shape == (1, 8)
+    assert small_generate.shape == (1, 3)
+    assert gpt_owner._generate_topk_indices.data_ptr() == generate_ptr
 
 
 def test_generate_loops_track_completion_counts_without_rescanning_rows():

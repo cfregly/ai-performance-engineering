@@ -564,11 +564,17 @@ class GPT(nn.Module):
         return offsets[:length]
 
     def _generate_long_buffer(self, name, shape, device):
+        shape = tuple(int(dim) for dim in shape)
         buffer = getattr(self, name)
-        if buffer is None or buffer.device != device or tuple(buffer.shape) != tuple(shape):
+        if (
+            buffer is None
+            or buffer.device != device
+            or buffer.dim() != len(shape)
+            or any(buffer.size(dim) < size for dim, size in enumerate(shape))
+        ):
             buffer = torch.empty(shape, dtype=torch.long, device=device)
             setattr(self, name, buffer)
-        return buffer
+        return buffer[tuple(slice(0, size) for size in shape)]
 
     def _generate_ids_buffer(self, total_len, device):
         buffer = self._generate_ids

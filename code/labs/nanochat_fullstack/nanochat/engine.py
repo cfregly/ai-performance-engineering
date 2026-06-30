@@ -842,11 +842,17 @@ class Engine:
         return self._sample_token_device_buffer[:count], self._sample_host_token_buffer(count, device)
 
     def _sample_long_buffer(self, name, shape, device):
+        shape = tuple(int(dim) for dim in shape)
         buffer = getattr(self, name)
-        if buffer is None or buffer.device != device or tuple(buffer.shape) != tuple(shape):
+        if (
+            buffer is None
+            or buffer.device != device
+            or buffer.dim() != len(shape)
+            or any(buffer.size(dim) < size for dim, size in enumerate(shape))
+        ):
             buffer = torch.empty(shape, dtype=torch.long, device=device)
             setattr(self, name, buffer)
-        return buffer
+        return buffer[tuple(slice(0, size) for size in shape)]
 
     def _sample_like_buffer(self, name, tensor):
         buffer = getattr(self, name)
