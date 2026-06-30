@@ -49,7 +49,7 @@ class OptimizedMemoryTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: pinned-memory H2D transfer using a non-blocking copy."""
         assert self.host_data is not None and self.device_data is not None
-        with self._nvtx_range("memory_transfer_optimized"):
+        with torch.inference_mode(), self._nvtx_range("memory_transfer_optimized"):
             self.device_data.copy_(self.host_data, non_blocking=True)
 
     def capture_verification_payload(self) -> None:

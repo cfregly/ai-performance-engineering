@@ -57,7 +57,7 @@ class OptimizedPageableCopyBenchmark(VerificationPayloadMixin, BaseBenchmark):
             and self.device_buffer is not None
             and self._output_buffer is not None
         )
-        with self._nvtx_range("optimized_pageable_copy"):
+        with torch.inference_mode(), self._nvtx_range("optimized_pageable_copy"):
             self.device_buffer.copy_(self.host_tensor, non_blocking=True)
             torch.sum(self.device_buffer, dim=0, keepdim=True, out=self._output_buffer)
             self.output = self._output_buffer

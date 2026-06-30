@@ -297,6 +297,9 @@ def test_ch02_cublas_benchmarks_reuse_output_buffer() -> None:
         assert "self.C = torch.empty(self.m, self.n, device=self.device, dtype=torch.float32)" in setup_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty_like(self.C)" in setup_section
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
         assert "torch.mm(self.A, self.B, out=self.C)" in benchmark_section
         assert "self.C = torch.matmul(self.A, self.B)" not in benchmark_section
         assert "self._verify_output_buffer.copy_(self.C)" in capture_section
@@ -308,6 +311,9 @@ def test_ch02_cublas_benchmarks_reuse_output_buffer() -> None:
 def test_ch02_memory_transfer_verification_reuses_digest_buffer() -> None:
     for name in ("baseline_memory_transfer.py", "optimized_memory_transfer.py"):
         source = (REPO_ROOT / "ch02" / name).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
         )[0]
@@ -318,6 +324,9 @@ def test_ch02_memory_transfer_verification_reuses_digest_buffer() -> None:
         assert "from ch02.memory_transfer_common import compute_transfer_digest" in source
         assert "self._digest_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
         assert "self._verify_output_buffer = torch.empty(digest_blocks, dtype=torch.int64, device=self.device)" in source
         assert "digest, self._digest_buffer = compute_transfer_digest(self.device_data, self._digest_buffer)" in capture_section
         assert "self.output = digest.detach()" in capture_section
@@ -1201,7 +1210,10 @@ def test_ch03_pageable_copy_reuses_reduction_output_buffer() -> None:
             in setup_section
         )
         assert "self._verify_output_buffer = torch.empty_like(self._output_buffer)" in setup_section
-        assert f'with self._nvtx_range("{label}"):' in benchmark_section
+        assert f'self._nvtx_range("{label}")' in benchmark_section
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
         assert (
             "torch.sum(self.device_buffer, dim=0, keepdim=True, out=self._output_buffer)"
             in benchmark_section
@@ -3030,6 +3042,10 @@ def test_ch03_gemm_and_rack_prep_reuse_verification_output_buffers() -> None:
             "def benchmark_fn",
             maxsplit=1,
         )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown",
             maxsplit=1,
@@ -3041,6 +3057,9 @@ def test_ch03_gemm_and_rack_prep_reuse_verification_output_buffers() -> None:
 
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert allocation in setup_section
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
         assert "self._verify_output_buffer.copy_(self.output)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert "output=self.output.detach().clone()" not in capture_section
@@ -21495,15 +21514,30 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
     for source, label in (
         (baseline_rack_prep, "baseline_rack_prep"),
         (optimized_rack_prep, "optimized_rack_prep"),
-        (baseline_pinned_prefetch_mlp, "baseline_pinned_prefetch_mlp"),
-        (optimized_pinned_prefetch_mlp, "optimized_pinned_prefetch_mlp"),
         (baseline_gemm, "baseline_gemm"),
     ):
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        assert f'self._nvtx_range("{label}")' in benchmark_section
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
+        assert "get_nvtx_enabled(" not in benchmark_section
+        assert "with nvtx_range(" not in benchmark_section
+        assert "from core.profiling.nvtx_helper" not in source
+
+    for source, label in (
+        (baseline_pinned_prefetch_mlp, "baseline_pinned_prefetch_mlp"),
+        (optimized_pinned_prefetch_mlp, "optimized_pinned_prefetch_mlp"),
+    ):
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
         assert f'with self._nvtx_range("{label}"):' in benchmark_section
+        assert "torch.inference_mode()" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert "with nvtx_range(" not in benchmark_section
         assert "from core.profiling.nvtx_helper" not in source

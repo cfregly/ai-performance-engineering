@@ -59,7 +59,7 @@ class BaselineCublasBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Plain cuBLAS FP32 matmul."""
         assert self.A is not None and self.B is not None and self.C is not None
-        with self._nvtx_range("baseline_cublas_fp32"):
+        with torch.inference_mode(), self._nvtx_range("baseline_cublas_fp32"):
             torch.mm(self.A, self.B, out=self.C)
 
         if self.C is None:

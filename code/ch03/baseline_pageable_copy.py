@@ -56,7 +56,7 @@ class BaselinePageableCopyBenchmark(VerificationPayloadMixin, BaseBenchmark):
             and self.device_buffer is not None
             and self._output_buffer is not None
         )
-        with self._nvtx_range("baseline_pageable_copy"):
+        with torch.inference_mode(), self._nvtx_range("baseline_pageable_copy"):
             # Blocking copy from non-pinned memory
             self.device_buffer.copy_(self.host_tensor, non_blocking=False)
             # Simple compute to overlap with in optimized version

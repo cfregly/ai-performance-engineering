@@ -62,7 +62,7 @@ class OptimizedCublasBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """cuBLAS TF32 GEMM."""
         assert self.A is not None and self.B is not None and self.C is not None
-        with self._nvtx_range("optimized_cublas_tf32"):
+        with torch.inference_mode(), self._nvtx_range("optimized_cublas_tf32"):
             torch.mm(self.A, self.B, out=self.C)
 
         if self.C is None:

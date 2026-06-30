@@ -143,7 +143,7 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Copy stream not initialized")
         current_stream = torch.cuda.current_stream()
         current_stream.wait_event(self.copy_events[self.cur_slot])
-        with self._nvtx_range("optimized_rack_prep"):
+        with torch.inference_mode(), self._nvtx_range("optimized_rack_prep"):
             self.output = self.norm(self.device_buffers[self.cur_slot])
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

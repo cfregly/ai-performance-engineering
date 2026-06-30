@@ -53,7 +53,7 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         assert self.host_batch is not None and self.device_batch is not None and self.norm is not None
-        with self._nvtx_range("baseline_rack_prep"):
+        with torch.inference_mode(), self._nvtx_range("baseline_rack_prep"):
             self.device_batch.copy_(self.host_batch, non_blocking=False)
             self.output = self.norm(self.device_batch)
         if self.output is None:

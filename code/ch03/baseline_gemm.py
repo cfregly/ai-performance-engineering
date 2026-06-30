@@ -80,7 +80,7 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Output buffer not initialized")
         result.zero_()
         
-        with self._nvtx_range("baseline_gemm"):
+        with torch.inference_mode(), self._nvtx_range("baseline_gemm"):
             for i in self._block_range:
                 start = i * self.block_size
                 end = start + self.block_size

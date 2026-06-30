@@ -73,8 +73,10 @@ def test_ch02_cublas_benchmark_fn_uses_shared_nvtx_helper_symmetrically() -> Non
     baseline_bench = _benchmark_section("ch02/baseline_cublas.py")
     optimized_bench = _benchmark_section("ch02/optimized_cublas.py")
 
-    assert 'with self._nvtx_range("baseline_cublas_fp32"):' in baseline_bench
-    assert 'with self._nvtx_range("optimized_cublas_tf32"):' in optimized_bench
+    assert 'with torch.inference_mode(), self._nvtx_range("baseline_cublas_fp32"):' in baseline_bench
+    assert 'with torch.inference_mode(), self._nvtx_range("optimized_cublas_tf32"):' in optimized_bench
+    assert "torch.no_grad()" not in baseline_bench
+    assert "torch.no_grad()" not in optimized_bench
     assert "core.profiling.nvtx_helper" not in optimized_bench
     assert "get_config()" not in optimized_bench
     assert "get_nvtx_enabled" not in optimized_bench

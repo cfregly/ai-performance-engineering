@@ -91,7 +91,7 @@ class OptimizedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         assert self.left is not None and self.right is not None
         op = self.fn
         
-        with self._nvtx_range("optimized_gemm"):
+        with torch.inference_mode(), self._nvtx_range("optimized_gemm"):
             result = op(self.left, self.right)
         
         self.output = result
