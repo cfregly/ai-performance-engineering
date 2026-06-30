@@ -67,6 +67,9 @@ class Muon(torch.optim.Optimizer):
         for size in sorted(groups_by_size):
             param_groups.append(dict(params=groups_by_size[size]))
         super().__init__(param_groups, defaults)
+        for group in self.param_groups:
+            for p in group["params"]:
+                self.state[p]["momentum_buffer"] = torch.zeros_like(p)
 
     @torch.no_grad()
     def step(self):
@@ -76,8 +79,6 @@ class Muon(torch.optim.Optimizer):
                 g = p.grad
                 assert g is not None
                 state = self.state[p]
-                if "momentum_buffer" not in state:
-                    state["momentum_buffer"] = torch.zeros_like(g)
                 buf: Tensor = state["momentum_buffer"]
                 buf.lerp_(g, 1 - group["momentum"])
                 g = g.lerp_(buf, group["momentum"]) if group["nesterov"] else buf
@@ -135,6 +136,13 @@ class DistMuon(torch.optim.Optimizer):
                 ],
             ))
         super().__init__(param_groups, defaults)
+        for group in self.param_groups:
+            params = group["params"]
+            for base_i in range(0, len(params), world_size):
+                owner_idx = base_i + rank
+                if owner_idx < len(params):
+                    p = params[owner_idx]
+                    self.state[p]["momentum_buffer"] = torch.zeros_like(p)
 
     @torch.no_grad()
     def step(self):
@@ -183,8 +191,6 @@ class DistMuon(torch.optim.Optimizer):
                     p = params[owner_idx]
                     g = p.grad  # now averaged across ranks
                     state = self.state[p]
-                    if "momentum_buffer" not in state:
-                        state["momentum_buffer"] = torch.zeros_like(g)
                     buf: Tensor = state["momentum_buffer"]
                     buf.lerp_(g, 1.0 - group["momentum"])
                     g = g.lerp_(buf, group["momentum"]) if group["nesterov"] else buf

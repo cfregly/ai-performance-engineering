@@ -10906,6 +10906,7 @@ def test_nanochat_dist_muon_reuses_padding_buffers() -> None:
     assert "for p in params:" in muon_init_section
     assert "groups_by_size.setdefault(p.numel(), []).append(p)" in muon_init_section
     assert "for size in sorted(groups_by_size):" in muon_init_section
+    assert 'self.state[p]["momentum_buffer"] = torch.zeros_like(p)' in muon_init_section
     assert "params=[p for p in params if p.numel() == size]" not in muon_init_section
     assert "groups_by_shape = {}" in init_section
     assert "groups_by_shape.setdefault(p.shape, []).append(p)" in init_section
@@ -10915,9 +10916,13 @@ def test_nanochat_dist_muon_reuses_padding_buffers() -> None:
     assert "group_params = [p for p in params if p.shape == shape]" not in init_section
     assert "scatter_pad_buffer=torch.empty_like(group_params[0])" in init_section
     assert "gather_pad_buffers=[" in init_section
+    assert "owner_idx = base_i + rank" in init_section
+    assert 'self.state[p]["momentum_buffer"] = torch.zeros_like(p)' in init_section
     assert "rs_output = params[owner_idx].grad if owner_idx < len(params) else scatter_pad_buffer" in step_section
     assert "ag_output.extend(gather_pad_buffers[:missing])" in step_section
     assert "torch.empty_like(zero_buffer)" not in step_section
+    assert 'if "momentum_buffer" not in state:' not in step_section
+    assert "torch.zeros_like(g)" not in step_section
 
 
 def test_nanochat_dist_adamw_reuses_update_buffers() -> None:
