@@ -36,6 +36,7 @@ class OptimizedKernelFusionPersistentBufferBenchmark(VerificationPayloadMixin, B
         )
         self._initialized = False
         self._enable_nvtx = False
+        self._verify_output_buffer: Optional[torch.Tensor] = None
     
     def setup(self) -> None:
         """Setup: Initialize tensors and load the fused-kernel extension.
@@ -64,6 +65,7 @@ class OptimizedKernelFusionPersistentBufferBenchmark(VerificationPayloadMixin, B
         # Reset data contents to the canonical initial state without reallocating.
         torch.manual_seed(42)
         self.data.copy_(torch.arange(self.N, dtype=torch.float32, device=self.device))
+        self._verify_output_buffer = torch.empty_like(self.data)
         torch.cuda.synchronize(self.device)
 
         self._initialized = True
@@ -77,9 +79,12 @@ class OptimizedKernelFusionPersistentBufferBenchmark(VerificationPayloadMixin, B
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.data is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._verify_output_buffer.copy_(self.data)
         self._set_verification_payload(
             inputs={"data": self._verify_input},
-            output=self.data.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.N,
             precision_flags={
                 "fp16": False,
@@ -95,6 +100,7 @@ class OptimizedKernelFusionPersistentBufferBenchmark(VerificationPayloadMixin, B
         """Teardown: Clean up resources."""
         self.data = None
         self._verify_input = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

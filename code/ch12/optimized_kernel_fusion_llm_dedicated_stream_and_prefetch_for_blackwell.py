@@ -36,6 +36,7 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
         )
         self._stream = None
         self._prefetch_touch: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._enable_nvtx = False
     
     def setup(self) -> None:
@@ -72,6 +73,7 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
         # Reset data so benchmark iterations always start from same values.
         torch.manual_seed(42)
         self.data = torch.arange(self.N, dtype=torch.float32, device=self.device)
+        self._verify_output_buffer = torch.empty_like(self.data)
 
         # Prefetch-style touch on the same stream to fault in pages and
         # encourage the driver to keep this region resident.
@@ -101,9 +103,12 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.data is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._verify_output_buffer.copy_(self.data)
         self._set_verification_payload(
             inputs={"data": self._verify_input},
-            output=self.data.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.N,
             precision_flags={
                 "fp16": False,
@@ -120,6 +125,7 @@ class OptimizedKernelFusionDedicatedStreamBenchmark(VerificationPayloadMixin, Ba
         self.data = None
         self._verify_input = None
         self._prefetch_touch = None
+        self._verify_output_buffer = None
         # Explicitly delete the stream so that future benchmarks start from
         # a clean state and to avoid holding onto resources.
         self._stream = None

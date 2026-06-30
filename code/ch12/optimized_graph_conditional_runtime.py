@@ -65,6 +65,7 @@ class OptimizedGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._graph: Optional[CUDAGraph] = None
         self._graph_stream: Optional[torch.cuda.Stream] = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -98,19 +99,19 @@ class OptimizedGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device, dtype=dtype
         )
         self._verify_input = self.data.detach().clone()
+        self._verify_output_buffer = torch.empty_like(self.data)
 
         # Non-default stream required for graph capture.
         self._graph_stream = torch.cuda.Stream()
 
         # Capture the execution graph while preserving the initial state so timed
         # iterations begin from the same tensor as the baseline variant.
-        initial_state = self.data.detach().clone()
         self._graph = CUDAGraph()
         self._synchronize()
         with torch.cuda.stream(self._graph_stream):
             with torch.cuda.graph(self._graph, stream=self._graph_stream):
                 self._compute_ops()
-        self.data.copy_(initial_state)
+        self.data.copy_(self._verify_input)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
@@ -121,12 +122,13 @@ class OptimizedGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
-        if self._verify_input is None:
+        if self._verify_input is None or self.data is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         dtype = self._verify_input.dtype
+        self._verify_output_buffer.copy_(self.data)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.data.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=0,
             precision_flags={
@@ -143,6 +145,8 @@ class OptimizedGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.data = None
         self._graph = None
         self._graph_stream = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

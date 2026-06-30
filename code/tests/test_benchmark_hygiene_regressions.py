@@ -18459,6 +18459,20 @@ def test_ch12_core_benchmarks_reuse_capture_output_buffers() -> None:
         "optimized_graph_bandwidth.py": ("self.dst", "src"),
         "optimized_kernel_launches.py": ("self.graph_output", "input"),
         "optimized_cuda_graphs_router.py": ("self.data", "input"),
+        "baseline_graph_conditional_runtime.py": ("self.data", "input"),
+        "optimized_graph_conditional_runtime.py": ("self.data", "input"),
+        "optimized_kernel_fusion_llm_dedicated_stream_and_prefetch_for_blackwell.py": (
+            "self.data",
+            "data",
+        ),
+        "optimized_kernel_fusion_llm_persistent_buffer_and_stream_friendly_setup.py": (
+            "self.data",
+            "data",
+        ),
+        "optimized_kernel_fusion_llm_reuse_static_tensor_and_simplify_setup.py": (
+            "self.data",
+            "data",
+        ),
     }
 
     for filename, (output_expr, input_name) in expectations.items():
@@ -18485,6 +18499,18 @@ def test_ch12_core_benchmarks_reuse_capture_output_buffers() -> None:
         assert f'inputs={{"{input_name}": self._verify_input}}' in capture_section
         assert ".detach().clone()" not in capture_section
         assert "self._verify_output_buffer = None" in teardown_section
+
+    for filename in (
+        "baseline_graph_conditional_runtime.py",
+        "optimized_graph_conditional_runtime.py",
+    ):
+        source = (REPO_ROOT / "ch12" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        assert "initial_state = self.data.detach().clone()" not in setup_section
+        assert "self.data.copy_(self._verify_input)" in setup_section
 
 
 def test_ch12_llm_kernel_fusion_variants_cache_nvtx_enablement() -> None:

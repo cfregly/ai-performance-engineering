@@ -46,6 +46,7 @@ class BaselineGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         self.data: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -78,12 +79,12 @@ class BaselineGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device, dtype=dtype
         )
         self._verify_input = self.data.detach().clone()
+        self._verify_output_buffer = torch.empty_like(self.data)
 
         # Match the optimized variant's unavoidable "one execution" during graph capture:
         # run the ops once, then restore state so timed iterations start from the same tensor.
-        initial_state = self.data.detach().clone()
         self._compute_ops()
-        self.data.copy_(initial_state)
+        self.data.copy_(self._verify_input)
 
     
     def benchmark_fn(self) -> None:
@@ -94,6 +95,8 @@ class BaselineGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Clean up."""
         self.data = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
@@ -122,12 +125,13 @@ class BaselineGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return (0.1, 1.0)
 
     def capture_verification_payload(self) -> None:
-        if self._verify_input is None or self.data is None:
+        if self._verify_input is None or self.data is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         dtype = self._verify_input.dtype
+        self._verify_output_buffer.copy_(self.data)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.data.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=0,
             precision_flags={
@@ -143,4 +147,3 @@ class BaselineGraphBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return BaselineGraphBenchmark()
-
