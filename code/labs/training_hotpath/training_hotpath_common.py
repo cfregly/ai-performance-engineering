@@ -275,11 +275,13 @@ class PackedLinear(nn.Module):
         cached = getattr(self, name)
         if (
             isinstance(cached, torch.Tensor)
-            and cached.shape == shape
             and cached.device == device
             and cached.dtype == dtype
+            and cached.dim() == len(shape)
+            and cached.size(0) >= shape[0]
+            and tuple(cached.shape[1:]) == tuple(shape[1:])
         ):
-            return cached
+            return cached[: shape[0]]
         workspace = torch.empty(shape, device=device, dtype=dtype)
         setattr(self, name, workspace)
         return workspace
