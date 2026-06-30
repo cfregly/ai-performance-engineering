@@ -19088,6 +19088,12 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "def cache_weight_views(self) -> None:" in model_section
     assert "self._fc1_weight_t = self.fc1.weight.t()" in model_section
     assert "self._fc2_weight_t = self.fc2.weight.t()" in model_section
+    assert "def _workspace(" in model_section
+    assert "normalized_shape = tuple(int(dim) for dim in shape)" in model_section
+    assert "or buffer.numel() < numel" in model_section
+    assert "return buffer[:numel].view(normalized_shape)" in model_section
+    assert "self._fc1_buffer.shape != fc1_shape" not in model_section
+    assert "self._fc2_buffer.shape != fc2_shape" not in model_section
     assert "self.model.cache_weight_views()" in setup_section
     assert "def _ensure_forward_buffers(" in model_section
     assert "if torch.is_grad_enabled():" in model_section
@@ -19140,6 +19146,32 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "self._micro_batch_schedule = []" in teardown_section
     assert "self._micro_batch_schedule_count = 0" in teardown_section
     assert "self._expected_micro_batch_schedule_count = 0" in teardown_section
+
+
+def test_ch19_buffered_microbatch_mlp_reuses_larger_workspace_capacity() -> None:
+    from ch19.optimized_memory_double_buffering import BufferedMicrobatchMlp
+
+    model = BufferedMicrobatchMlp(hidden_dim=4).eval()
+
+    with torch.inference_mode():
+        large = model(torch.randn(2, 8, 4))
+        fc1_ptr = model._fc1_buffer.data_ptr()
+        fc2_ptr = model._fc2_buffer.data_ptr()
+
+        small = model(torch.randn(1, 3, 4))
+        assert model._fc1_buffer.data_ptr() == fc1_ptr
+        assert model._fc2_buffer.data_ptr() == fc2_ptr
+        assert model._fc1_buffer.numel() == 2 * 8 * 16
+        assert model._fc2_buffer.numel() == 2 * 8 * 4
+
+        grown = model(torch.randn(3, 7, 4))
+
+    assert large.shape == (2, 8, 4)
+    assert small.shape == (1, 3, 4)
+    assert small.data_ptr() == fc2_ptr
+    assert grown.shape == (3, 7, 4)
+    assert model._fc1_buffer.numel() == 3 * 7 * 16
+    assert model._fc2_buffer.numel() == 3 * 7 * 4
 
 
 def test_ch04_single_gpu_transfer_reuses_inner_iteration_range() -> None:
