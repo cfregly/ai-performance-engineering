@@ -88,14 +88,12 @@ def _routing_stats(indices: torch.Tensor, *, num_experts: int) -> tuple[float, f
         if num_experts > 1
         else counts.new_zeros(())
     )
-    stats_host = torch.stack(
-        (
-            total_tensor,
-            (counts > 0).sum().to(counts.dtype),
-            counts.max(),
-            entropy_tensor,
-        )
-    ).detach().cpu()
+    stats = torch.empty(4, device=counts.device, dtype=counts.dtype)
+    stats[0].copy_(total_tensor)
+    stats[1].copy_((counts > 0).sum().to(counts.dtype))
+    stats[2].copy_(counts.max())
+    stats[3].copy_(entropy_tensor)
+    stats_host = stats.detach().cpu()
     total = float(stats_host[0])
     active_count = float(stats_host[1])
     max_tokens_float = float(stats_host[2])

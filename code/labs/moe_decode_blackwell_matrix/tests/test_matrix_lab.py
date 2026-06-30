@@ -64,8 +64,13 @@ def test_routing_stats_batches_scalar_materialization() -> None:
 
     entropy, active, max_tokens = _routing_stats(indices, num_experts=4)
 
-    assert "stats_host = torch.stack(" in source
-    assert ").detach().cpu()" in source
+    assert "stats = torch.empty(4, device=counts.device, dtype=counts.dtype)" in source
+    assert "stats[0].copy_(total_tensor)" in source
+    assert "stats[1].copy_((counts > 0).sum().to(counts.dtype))" in source
+    assert "stats[2].copy_(counts.max())" in source
+    assert "stats[3].copy_(entropy_tensor)" in source
+    assert "stats_host = stats.detach().cpu()" in source
+    assert "stats_host = torch.stack(" not in source
     assert "total = float(stats_host[0])" in source
     assert "active_count = float(stats_host[1])" in source
     assert "max_tokens_float = float(stats_host[2])" in source
