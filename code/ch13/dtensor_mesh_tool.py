@@ -26,6 +26,7 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._enable_nvtx = False
         self._empty_iteration_result = {}
+        self._to_local = None
 
     def setup(self) -> None:
         try:
@@ -41,6 +42,7 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
         local = torch.randn(4, 4, device=f"cuda:{devices[0]}")
         self._verify_output_buffer = torch.empty_like(local, dtype=torch.float32)
         self.tensor = distribute_tensor(local, placements=[Replicate()], device_mesh=self.mesh)
+        self._to_local = getattr(type(self.tensor), "to_local", None)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
@@ -52,8 +54,9 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.output = (self.tensor * 2).redistribute(self.mesh, placements=self.tensor.placements)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
-        input_local = self.tensor.to_local() if hasattr(self.tensor, "to_local") else self.tensor
-        output_local = self.output.to_local() if hasattr(self.output, "to_local") else self.output
+        to_local = self._to_local
+        input_local = to_local(self.tensor) if to_local is not None else self.tensor
+        output_local = to_local(self.output) if to_local is not None else self.output
         self.output = output_local
         self._payload_input_local = input_local
         return self._empty_iteration_result
@@ -85,6 +88,7 @@ class DTensorMeshBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._payload_input_local = None
         self._verify_output_buffer = None
+        self._to_local = None
         super().teardown()
 
     def get_custom_metrics(self) -> Optional[dict]:

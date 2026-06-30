@@ -19213,6 +19213,13 @@ def test_ch13_dtensor_mesh_caches_nvtx_enablement() -> None:
     assert "get_config()" not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
     assert 'with nvtx_range("dtensor_mesh", enable=self._enable_nvtx):' in benchmark_section
+    assert "self._to_local = None" in source
+    assert 'self._to_local = getattr(type(self.tensor), "to_local", None)' in setup_section
+    assert "to_local = self._to_local" in benchmark_section
+    assert "input_local = to_local(self.tensor) if to_local is not None else self.tensor" in benchmark_section
+    assert "output_local = to_local(self.output) if to_local is not None else self.output" in benchmark_section
+    assert "hasattr(self.tensor, \"to_local\")" not in benchmark_section
+    assert "hasattr(self.output, \"to_local\")" not in benchmark_section
     assert "self._empty_iteration_result = {}" in source
     assert "return self._empty_iteration_result" in benchmark_section
     assert "return {}" not in benchmark_section
@@ -19222,6 +19229,7 @@ def test_ch13_dtensor_mesh_caches_nvtx_enablement() -> None:
     assert "output=self._verify_output_buffer" in capture_section
     assert "output=self.output.detach().float().clone()" not in capture_section
     assert "self._verify_output_buffer = None" in teardown_section
+    assert "self._to_local = None" in teardown_section
 
 
 def test_ch13_multigpu_surrogates_cache_verification_parameter_counts() -> None:
