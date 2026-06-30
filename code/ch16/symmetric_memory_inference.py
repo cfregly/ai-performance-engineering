@@ -291,8 +291,8 @@ class SpeculativeDecodingCoordinator:
         else:
             self.handle = None
 
-    def publish(self, token_probs: torch.Tensor, step: int) -> None:
-        self.buffer[step, : token_probs.size(0)].copy_(token_probs)
+    def publish(self, token_scores: torch.Tensor, step: int) -> None:
+        self.buffer[step, : token_scores.size(0)].copy_(token_scores)
 
     def consume(self, step: int) -> torch.Tensor:
         return self.buffer[step].clone()
@@ -320,16 +320,15 @@ def demo_speculative(num_steps: int = 8) -> None:
 
     for step in range(num_steps):
         if role == "draft":
-            logits = torch.randn(256, device=device, dtype=torch.float16)
-            probs = torch.softmax(logits, dim=0)
-            coordinator.publish(probs, step)
+            scores = torch.randn(256, device=device, dtype=torch.float16)
+            coordinator.publish(scores, step)
         dist.barrier()
         if role == "target":
-            probs = coordinator.consume(step)
+            scores = coordinator.consume(step)
             assert topk_values is not None
             assert topk_indices is not None
             assert topk_host is not None
-            torch.topk(probs, k=4, out=(topk_values, topk_indices))
+            torch.topk(scores, k=4, out=(topk_values, topk_indices))
             topk_host.copy_(topk_indices, non_blocking=False)
             for topk_idx in range(4):
                 topk_display[topk_idx] = int(topk_host[topk_idx])

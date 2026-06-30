@@ -23224,3 +23224,20 @@ def test_ch15_greedy_sampler_skips_softmax_on_optimized_path() -> None:
     assert "output_tolerance=(0.0, 0.0)" in common_source
     assert "materialize_probabilities=True" in baseline_source
     assert "materialize_probabilities=False" in optimized_source
+
+
+def test_ch16_symmetric_memory_speculative_topk_uses_logits_ordering() -> None:
+    source = (REPO_ROOT / "ch16" / "symmetric_memory_inference.py").read_text(
+        encoding="utf-8"
+    )
+    demo_section = source.split("def demo_speculative", maxsplit=1)[1].split(
+        "# ============================================================================",
+        maxsplit=1,
+    )[0]
+
+    assert "scores = torch.randn(256" in demo_section
+    assert "coordinator.publish(scores, step)" in demo_section
+    assert "scores = coordinator.consume(step)" in demo_section
+    assert "torch.topk(scores, k=4, out=(topk_values, topk_indices))" in demo_section
+    assert "torch.softmax" not in demo_section
+    assert "torch.topk(probs" not in demo_section
