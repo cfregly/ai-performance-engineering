@@ -17,6 +17,9 @@ from core.harness.benchmark_harness import (
     WorkloadMetadata,
 )
 
+_HAS_SCALED_MM = hasattr(torch, "_scaled_mm")
+_HAS_FLOAT8_E4M3FN = hasattr(torch, "float8_e4m3fn")
+
 
 class FP8PerChannelLinear(nn.Module):
     """Linear layer with simulated per-output-channel FP8 quantization.
@@ -61,9 +64,9 @@ class FP8PerChannelLinear(nn.Module):
     def prepare_fp8_weights(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA required for fp8_perchannel optimized benchmark")
-        if not hasattr(torch, "_scaled_mm"):
+        if not _HAS_SCALED_MM:
             raise RuntimeError("torch._scaled_mm is required for fp8_perchannel optimized benchmark")
-        if not hasattr(torch, "float8_e4m3fn"):
+        if not _HAS_FLOAT8_E4M3FN:
             raise RuntimeError("torch.float8_e4m3fn is required for fp8_perchannel optimized benchmark")
         with torch.inference_mode():
             weight_amax = self.weight.abs().amax(dim=1)  # [out_features]
@@ -152,9 +155,9 @@ class FP8PerChannelLinear(nn.Module):
             raise RuntimeError("prepare_fp8_weights() must be called before forward()")
         if x.device.type != "cuda":
             raise RuntimeError("CUDA required for fp8_perchannel optimized benchmark")
-        if not hasattr(torch, "_scaled_mm"):
+        if not _HAS_SCALED_MM:
             raise RuntimeError("torch._scaled_mm is required for fp8_perchannel optimized benchmark")
-        if not hasattr(torch, "float8_e4m3fn"):
+        if not _HAS_FLOAT8_E4M3FN:
             raise RuntimeError("torch.float8_e4m3fn is required for fp8_perchannel optimized benchmark")
 
         batch_size, seq_len, hidden = x.shape

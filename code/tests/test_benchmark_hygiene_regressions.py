@@ -15617,6 +15617,12 @@ def test_ch13_optimized_static_fp8_reuses_activation_quant_buffers() -> None:
 
     assert '"_input_scaled_buffer"' in source
     assert '"_input_fp8_buffer"' in source
+    assert '_HAS_SCALED_MM = hasattr(torch, "_scaled_mm")' in source
+    assert '_HAS_FLOAT8_E4M3FN = hasattr(torch, "float8_e4m3fn")' in source
+    assert "if not _HAS_SCALED_MM:" in forward_section
+    assert "if not _HAS_FLOAT8_E4M3FN:" in forward_section
+    assert 'hasattr(torch, "_scaled_mm")' not in forward_section
+    assert 'hasattr(torch, "float8_e4m3fn")' not in forward_section
     assert "self._weight_fp8_t: Optional[torch.Tensor] = None" in source
     assert "self._weight_fp8_t = self.weight_fp8.T" in source
     assert "def _activation_buffers(self, x_2d: torch.Tensor)" in source
@@ -18155,6 +18161,8 @@ def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
     assert 'self.register_buffer("_scale_a_buffer", torch.empty(0), persistent=False)' in source
     assert 'self.register_buffer("_input_scale_buffer", torch.empty(0), persistent=False)' in source
     assert 'self.register_buffer("_input_scaled_buffer", torch.empty(0), persistent=False)' in source
+    assert '_HAS_SCALED_MM = hasattr(torch, "_scaled_mm")' in source
+    assert '_HAS_FLOAT8_E4M3FN = hasattr(torch, "float8_e4m3fn")' in source
     assert '"_input_fp8_buffer"' in source
     assert "self._weight_fp8_t = None" in source
     assert "self._weight_fp8_t = self._weight_fp8.T" in source
@@ -18165,6 +18173,10 @@ def test_ch13_optimized_fp8_perchannel_reuses_input_scale_buffer() -> None:
     assert "x_2d.data_ptr()" in source
     assert "x_2d._version" in source
     assert "input_scale = self._input_scale_for(x_2d)" in forward_section
+    assert "if not _HAS_SCALED_MM:" in forward_section
+    assert "if not _HAS_FLOAT8_E4M3FN:" in forward_section
+    assert 'hasattr(torch, "_scaled_mm")' not in forward_section
+    assert 'hasattr(torch, "float8_e4m3fn")' not in forward_section
     assert "input_amax = x_2d.abs().max()" not in forward_section
     assert "scale_a = self._scale_a_buffer" in forward_section
     assert "scale_a.copy_(input_scale)" in forward_section

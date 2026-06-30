@@ -43,6 +43,9 @@ from core.harness.benchmark_harness import (
     WorkloadMetadata,
 )
 
+_HAS_SCALED_MM = hasattr(torch, "_scaled_mm")
+_HAS_FLOAT8_E4M3FN = hasattr(torch, "float8_e4m3fn")
+
 
 @dataclass
 class CalibrationStats:
@@ -196,9 +199,9 @@ class StaticFP8Linear(nn.Module):
             output = F.linear(x, self.weight, self.bias)
             
         elif self._is_calibrated:
-            if not hasattr(torch, "_scaled_mm"):
+            if not _HAS_SCALED_MM:
                 raise RuntimeError("torch._scaled_mm is required for static FP8 benchmark")
-            if not hasattr(torch, "float8_e4m3fn"):
+            if not _HAS_FLOAT8_E4M3FN:
                 raise RuntimeError("torch.float8_e4m3fn is required for static FP8 benchmark")
             if self.weight_fp8.numel() == 0 or self._weight_fp8_t is None:
                 raise RuntimeError("freeze_scales() must be called before inference")
