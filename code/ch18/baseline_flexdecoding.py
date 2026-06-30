@@ -47,6 +47,9 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
         self._decode_events: Optional[List[tuple[torch.cuda.Event, torch.cuda.Event]]] = None
         self._decode_positions: List[int] = []
         self._decode_schedule: List[tuple[int, torch.cuda.Event, torch.cuda.Event]] = []
+        self._decode_event_count = 0
+        self._decode_position_count = 0
+        self._decode_schedule_count = 0
         self._pending_iteration_metrics = False
         self._prefill_metric_values = [0.0]
         self._decode_metric_values = [0.0] * self.decode_tokens
@@ -103,8 +106,10 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
             (torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True))
             for _ in range(self.decode_tokens)
         ]
+        self._decode_event_count = len(self._decode_events)
         base_position = self.prefill_tokens.size(1)
         self._decode_positions = [base_position + pos for pos in range(self.decode_tokens)]
+        self._decode_position_count = len(self._decode_positions)
         self._decode_schedule = [
             (position, start_evt, end_evt)
             for position, (start_evt, end_evt) in zip(
@@ -113,6 +118,7 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
                 strict=True,
             )
         ]
+        self._decode_schedule_count = len(self._decode_schedule)
         torch.cuda.synchronize(self.device)
 
     def _prefill_step(self) -> torch.Tensor:
@@ -131,11 +137,11 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Model/tokens not initialized")
         if self._prefill_events is None or self._decode_events is None:
             raise RuntimeError("Timing events not initialized")
-        if len(self._decode_events) != self.decode_tokens:
+        if self._decode_event_count != self.decode_tokens:
             raise RuntimeError("Timing event count mismatch")
-        if len(self._decode_positions) != self.decode_tokens:
+        if self._decode_position_count != self.decode_tokens:
             raise RuntimeError("Decode positions not initialized")
-        if len(self._decode_schedule) != self.decode_tokens:
+        if self._decode_schedule_count != self.decode_tokens:
             raise RuntimeError("Decode schedule not initialized")
 
         current_stream = torch.cuda.current_stream(self.device)
@@ -207,6 +213,9 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
         self.prefill_tokens = None
         self.decode_token = None
         self._decode_schedule = []
+        self._decode_event_count = 0
+        self._decode_position_count = 0
+        self._decode_schedule_count = 0
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 

@@ -10599,6 +10599,12 @@ def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
         assert "with torch.inference_mode():" in benchmark_section
         assert "with torch.no_grad():" not in benchmark_section
         assert "for position, start_evt, end_evt in self._decode_schedule:" in benchmark_section
+        assert "self._decode_event_count != self.decode_tokens" in benchmark_section
+        assert "self._decode_position_count != self.decode_tokens" in benchmark_section
+        assert "self._decode_schedule_count != self.decode_tokens" in benchmark_section
+        assert "len(self._decode_events)" not in benchmark_section
+        assert "len(self._decode_positions)" not in benchmark_section
+        assert "len(self._decode_schedule)" not in benchmark_section
         assert "zip(" not in benchmark_section
         assert "self._decode_schedule" in benchmark_section
         assert "for pos in range(self.decode_tokens):" not in benchmark_section
@@ -10640,7 +10646,13 @@ def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
     assert "self._prefill_metric_values = [0.0]" in baseline_source
     assert "self._decode_metric_values = [0.0] * self.decode_tokens" in baseline_source
     assert "self._decode_positions: List[int] = []" in baseline_source
+    assert "self._decode_event_count = 0" in baseline_source
+    assert "self._decode_position_count = 0" in baseline_source
+    assert "self._decode_schedule_count = 0" in baseline_source
+    assert "self._decode_event_count = len(self._decode_events)" in baseline_source
     assert "self._decode_positions = [base_position + pos for pos in range(self.decode_tokens)]" in baseline_source
+    assert "self._decode_position_count = len(self._decode_positions)" in baseline_source
+    assert "self._decode_schedule_count = len(self._decode_schedule)" in baseline_source
     assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in baseline_source
     assert '"prefill_ms": []' not in baseline_source
     assert '"decode_ms": []' not in baseline_source
