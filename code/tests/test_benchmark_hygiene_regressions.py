@@ -10993,14 +10993,31 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "self._logical_decode_worker_count = self.cfg.logical_decode_workers" in setup_section
     assert "self._worker_cache_count = 0" in setup_section
     assert "self._request_plan_count = 0" in setup_section
+    assert "self._request_event_count = 0" in setup_section
+    assert "self._prompt_chunk_count = 0" in setup_section
+    assert "self._request_event_group_count = 0" in setup_section
+    assert "self._last_output_count = 0" in setup_section
     assert "self._request_plan_count = len(self.request_plans)" in setup_section
     assert "self._worker_caches = [{} for _ in range(self._logical_decode_worker_count)]" in setup_section
     assert "self._worker_cache_count = len(self._worker_caches)" in setup_section
+    assert "self._request_event_group_count = len(self._request_event_groups)" in setup_section
+    assert "self._prompt_chunk_count = len(self._prompt_chunks)" in setup_section
+    assert "self._last_output_count = len(self._last_outputs)" in setup_section
+    assert "self._request_event_count = len(self._request_event_pool)" in setup_section
     assert "% self._logical_decode_worker_count" in source
     assert "self._owners = {}" in setup_section
     assert "worker_caches = self._worker_caches" in benchmark_section
-    assert "len(worker_caches) != self._worker_cache_count" in benchmark_section
+    assert "self._worker_cache_count != self._logical_decode_worker_count" in benchmark_section
     assert "request_plan_count = self._request_plan_count" in benchmark_section
+    assert "self._last_output_count != request_plan_count" in benchmark_section
+    assert "self._prompt_chunk_count != request_plan_count" in benchmark_section
+    assert "self._request_event_group_count != request_plan_count" in benchmark_section
+    assert "self._request_event_count != request_plan_count" in benchmark_section
+    assert "len(worker_caches)" not in benchmark_section
+    assert "len(outputs)" not in benchmark_section
+    assert "len(prompt_chunks)" not in benchmark_section
+    assert "len(request_event_groups)" not in benchmark_section
+    assert "len(request_events)" not in benchmark_section
     assert "owners = self._owners" in benchmark_section
     assert '"cache_hits": 0.0' in setup_section
     assert "metrics = self._pending_metrics" in benchmark_section
@@ -21146,11 +21163,23 @@ def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:
 
     assert "self._prompt_chunks: List[Sequence[torch.Tensor]] = []" in source
     assert "self._warm_request_count = 0" in source
+    assert "self._prompt_chunk_count = 0" in source
+    assert "self._request_event_group_count = 0" in source
+    assert "self._request_event_count = 0" in source
+    assert "self._last_output_count = 0" in source
     assert "self._prompt_chunks = [" in setup_section
     assert "_split_prompt(self.prompts[request_idx], self.cfg.chunk_size)" in setup_section
+    assert "self._prompt_chunk_count = len(self._prompt_chunks)" in setup_section
+    assert "self._request_event_group_count = len(self._request_event_groups)" in setup_section
+    assert "self._request_event_count = len(self._request_event_pool)" in setup_section
+    assert "self._last_output_count = len(self._last_outputs)" in setup_section
     assert "self._warm_request_count = sum(1 for plan in self.request_plans if plan.is_warm)" in setup_section
     assert "prompt_chunks = self._prompt_chunks" in benchmark_section
     assert "Prompt chunk views not initialized" in benchmark_section
+    assert "self._prompt_chunk_count != request_plan_count" in benchmark_section
+    assert "self._request_event_group_count != request_plan_count" in benchmark_section
+    assert "self._request_event_count != request_plan_count" in benchmark_section
+    assert "self._last_output_count != request_plan_count" in benchmark_section
     assert "chunks = prompt_chunks[plan.request_idx]" in benchmark_section
     assert "self.cfg.batch_size" in output_stack_section
     assert "self.cfg.hidden_size" in output_stack_section
@@ -21170,6 +21199,10 @@ def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:
     assert "self._request_event_groups = []" in teardown_section
     assert "self._worker_cache_count = 0" in source
     assert "self._request_plan_count = 0" in source
+    assert "self._prompt_chunk_count = 0" in teardown_section
+    assert "self._request_event_group_count = 0" in teardown_section
+    assert "self._request_event_count = 0" in teardown_section
+    assert "self._last_output_count = 0" in teardown_section
     assert "self._prompt_chunks = []" in teardown_section
 
 
