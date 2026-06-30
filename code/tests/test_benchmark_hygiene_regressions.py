@@ -18447,6 +18447,46 @@ def test_ch12_core_benchmarks_use_cached_nvtx_range() -> None:
         assert "from core.profiling.nvtx_helper" not in source
 
 
+def test_ch12_core_benchmarks_reuse_capture_output_buffers() -> None:
+    expectations = {
+        "baseline_kernel_fusion.py": ("self.data", "data"),
+        "optimized_kernel_fusion.py": ("self.data", "data"),
+        "baseline_cuda_graphs.py": ("self.data", "input"),
+        "optimized_cuda_graphs.py": ("self.data", "input"),
+        "baseline_work_queue.py": ("self.output_data", "input"),
+        "optimized_work_queue.py": ("self.output_data", "input"),
+        "baseline_graph_bandwidth.py": ("self.dst", "src"),
+        "optimized_graph_bandwidth.py": ("self.dst", "src"),
+        "optimized_kernel_launches.py": ("self.graph_output", "input"),
+        "optimized_cuda_graphs_router.py": ("self.data", "input"),
+    }
+
+    for filename, (output_expr, input_name) in expectations.items():
+        source = (REPO_ROOT / "ch12" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def ",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(" in setup_section
+        assert f"self._verify_output_buffer.copy_({output_expr})" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert f'inputs={{"{input_name}": self._verify_input}}' in capture_section
+        assert ".detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch12_llm_kernel_fusion_variants_cache_nvtx_enablement() -> None:
     for filename in (
         "optimized_kernel_fusion_llm_dedicated_stream_and_prefetch_for_blackwell.py",

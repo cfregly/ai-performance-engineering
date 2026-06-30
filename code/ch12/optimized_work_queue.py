@@ -32,6 +32,7 @@ class OptimizedWorkQueueBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(self.N * self.iterations),
         )
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
     
     def setup(self) -> None:
         """Setup: Initialize tensors and load CUDA extension."""
@@ -53,6 +54,7 @@ class OptimizedWorkQueueBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input_data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         self.output_data = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._verify_input = self.input_data.detach().clone()
+        self._verify_output_buffer = torch.empty_like(self.output_data)
         torch.cuda.synchronize()
     
     def benchmark_fn(self) -> None:
@@ -64,9 +66,12 @@ class OptimizedWorkQueueBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
+        if self.output_data is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._verify_output_buffer.copy_(self.output_data)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output_data.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=0,
             precision_flags={
@@ -83,6 +88,8 @@ class OptimizedWorkQueueBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.input_data = None
         self.output_data = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

@@ -26,6 +26,7 @@ class OptimizedCudaGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.iterations = 32000  # More iterations to emphasize launch overhead
         self._extension = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(self.N * self.iterations),
@@ -47,6 +48,7 @@ class OptimizedCudaGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.cuda.manual_seed_all(42)
         self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
         self._verify_input = self.data.detach().clone()
+        self._verify_output_buffer = torch.empty_like(self.data)
     
     def benchmark_fn(self) -> None:
         """Benchmark: CUDA graph replay."""
@@ -56,9 +58,12 @@ class OptimizedCudaGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Data or verification input not initialized")
 
     def capture_verification_payload(self) -> None:
+        if self.data is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._verify_output_buffer.copy_(self.data)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.data.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=0,
             precision_flags={
@@ -73,6 +78,8 @@ class OptimizedCudaGraphsBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
         self.data = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

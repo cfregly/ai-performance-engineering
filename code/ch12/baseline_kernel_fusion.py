@@ -26,6 +26,7 @@ class BaselineKernelFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.data = None
         self._verify_input = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.N = 16_000_000  # Larger size to be memory-bound
         self.iterations = 10
         self._extension = None
@@ -49,6 +50,7 @@ class BaselineKernelFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Reset data so benchmark iterations always start from same values
         torch.manual_seed(42)
         self.data = torch.arange(self.N, dtype=torch.float32, device=self.device)
+        self._verify_output_buffer = torch.empty_like(self.data)
         torch.cuda.synchronize()
     
     def benchmark_fn(self) -> None:
@@ -60,9 +62,12 @@ class BaselineKernelFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.data is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._verify_output_buffer.copy_(self.data)
         self._set_verification_payload(
             inputs={"data": self._verify_input},
-            output=self.data.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.N,
             precision_flags={
                 "fp16": False,
@@ -78,6 +83,7 @@ class BaselineKernelFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.data = None
         self._verify_input = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

@@ -27,6 +27,8 @@ class CUDAGraphRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.iterations = 32000
         self._extension = None
         self._workload = WorkloadMetadata(tokens_per_iteration=float(self.N * self.iterations))
+        self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -41,6 +43,8 @@ class CUDAGraphRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.data = torch.linspace(0.0, 1.0, self.N, dtype=torch.float32, device=self.device)
+        self._verify_input = self.data.detach().clone()
+        self._verify_output_buffer = torch.empty_like(self.data)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -55,9 +59,16 @@ class CUDAGraphRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if (
+            self.data is None
+            or self._verify_input is None
+            or self._verify_output_buffer is None
+        ):
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._verify_output_buffer.copy_(self.data)
         self._set_verification_payload(
-            inputs={"input": self.data.detach().clone()},
-            output=self.data.detach().clone(),
+            inputs={"input": self._verify_input},
+            output=self._verify_output_buffer,
             batch_size=self.N,
             precision_flags={
                 "fp16": False,
@@ -67,6 +78,13 @@ class CUDAGraphRouterBenchmark(VerificationPayloadMixin, BaseBenchmark):
             },
             output_tolerance=(0.1, 1.0),
         )
+
+    def teardown(self) -> None:
+        self.data = None
+        self._verify_input = None
+        self._verify_output_buffer = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(

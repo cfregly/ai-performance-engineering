@@ -34,6 +34,7 @@ class OptimizedGraphBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(self.N * self.iterations),
         )
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
     
     def setup(self) -> None:
         """Setup: Initialize tensors and load CUDA extension."""
@@ -59,6 +60,7 @@ class OptimizedGraphBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._extension.graph_kernel(self.dst, self.src, self.iterations)
         torch.cuda.synchronize()
         self._verify_input = self.src.detach().clone()
+        self._verify_output_buffer = torch.empty_like(self.dst)
     
     def benchmark_fn(self) -> None:
         """Benchmark: CUDA graph kernel."""
@@ -69,9 +71,12 @@ class OptimizedGraphBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
+        if self.dst is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output for verification")
+        self._verify_output_buffer.copy_(self.dst)
         self._set_verification_payload(
             inputs={"src": self._verify_input},
-            output=self.dst.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=0,
             precision_flags={
@@ -88,6 +93,8 @@ class OptimizedGraphBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.src = None
         self.dst = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
