@@ -791,17 +791,41 @@ def run_optimized_top_k_select(
     raise ValueError(f"Unsupported optimized backend: {backend}")
 
 
-def build_verification_tensor(outputs: TopKKernelOutputs) -> torch.Tensor:
-    sorted_indices = outputs.indices[:1, :1, :4, :4].sort(dim=-1).values
-    pieces = [
-        outputs.probs[:1, :1, :4, :4].reshape(-1).float(),
-        sorted_indices.reshape(-1).float(),
-    ]
+def _verification_tensor_size(outputs: TopKKernelOutputs) -> int:
+    size = 32
     if outputs.q_grad is not None:
-        pieces.append(outputs.q_grad[:1, :1, :2, :8].reshape(-1).float())
+        size += 16
     if outputs.k_grad is not None:
-        pieces.append(outputs.k_grad[:1, :1, :2, :8].reshape(-1).float())
-    return torch.cat(pieces, dim=0)
+        size += 16
+    return size
+
+
+def _copy_verification_piece(out: torch.Tensor, offset: int, tensor: torch.Tensor) -> int:
+    flat = tensor.reshape(-1)
+    next_offset = offset + int(flat.numel())
+    out[offset:next_offset].copy_(flat)
+    return next_offset
+
+
+def build_verification_tensor(
+    outputs: TopKKernelOutputs,
+    out: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    required_size = _verification_tensor_size(outputs)
+    if out is None:
+        out = torch.empty(required_size, device=outputs.probs.device, dtype=torch.float32)
+    elif out.numel() < required_size or out.dtype != torch.float32 or out.device != outputs.probs.device:
+        raise RuntimeError("verification output buffer has an incompatible shape, dtype, or device")
+
+    sorted_indices = outputs.indices[:1, :1, :4, :4].sort(dim=-1).values
+    offset = 0
+    offset = _copy_verification_piece(out, offset, outputs.probs[:1, :1, :4, :4])
+    offset = _copy_verification_piece(out, offset, sorted_indices)
+    if outputs.q_grad is not None:
+        offset = _copy_verification_piece(out, offset, outputs.q_grad[:1, :1, :2, :8])
+    if outputs.k_grad is not None:
+        offset = _copy_verification_piece(out, offset, outputs.k_grad[:1, :1, :2, :8])
+    return out[:offset]
 
 
 class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -818,6 +842,7 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.outputs: Optional[TopKKernelOutputs] = None
         self.device = resolve_device()
         self._custom_metrics: dict[str, float] = {}
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._refresh_workload_metadata()
 
     def _refresh_workload_metadata(self) -> None:
@@ -835,6 +860,8 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def setup(self) -> None:
         self.inputs = build_inputs(self.workload, self.device)
         self.outputs = None
+        verify_size = 64 if self.workload.mode == "fwd_bwd" else 32
+        self._verify_output_buffer = torch.empty(verify_size, device=self.device, dtype=torch.float32)
         if self.workload.mode == "fwd_bwd":
             self.inputs.q.requires_grad_(True)
             self.inputs.k.requires_grad_(True)
@@ -957,7 +984,7 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "q": self.inputs.q.detach(),
                 "k": self.inputs.k.detach(),
             },
-            output=build_verification_tensor(self.outputs),
+            output=build_verification_tensor(self.outputs, self._verify_output_buffer),
             batch_size=self.workload.batch_size,
             parameter_count=0,
             precision_flags={
@@ -971,6 +998,7 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.inputs = None
         self.outputs = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

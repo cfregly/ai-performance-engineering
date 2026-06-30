@@ -62,6 +62,63 @@ def test_top_k_repeats_k_heads_with_expand_reshape() -> None:
     torch.testing.assert_close(repeated, expected)
 
 
+def test_top_k_verification_tensor_reuses_output_buffer() -> None:
+    source = (REPO_ROOT / "labs" / "top_k_kernel" / "top_k_kernel_common.py").read_text(
+        encoding="utf-8"
+    )
+    probs = torch.arange(16, dtype=torch.float32).view(1, 1, 4, 4)
+    indices = torch.tensor(
+        [3, 1, 2, 0, 7, 5, 4, 6, 8, 11, 10, 9, 13, 12, 15, 14],
+        dtype=torch.long,
+    ).view(1, 1, 4, 4)
+    q_grad = torch.arange(16, dtype=torch.float16).view(1, 1, 2, 8)
+    k_grad = torch.arange(16, 32, dtype=torch.float16).view(1, 1, 2, 8)
+    forward_outputs = topk_common.TopKKernelOutputs(
+        probs=probs,
+        indices=indices,
+        q_grad=None,
+        k_grad=None,
+    )
+    backward_outputs = topk_common.TopKKernelOutputs(
+        probs=probs,
+        indices=indices,
+        q_grad=q_grad,
+        k_grad=k_grad,
+    )
+    buffer = torch.empty(64, dtype=torch.float32)
+
+    forward_verify = topk_common.build_verification_tensor(forward_outputs, buffer)
+    expected_forward = torch.cat(
+        [
+            probs.reshape(-1),
+            indices.sort(dim=-1).values.reshape(-1).float(),
+        ],
+        dim=0,
+    )
+    assert forward_verify.data_ptr() == buffer.data_ptr()
+    assert forward_verify.numel() == expected_forward.numel() == 32
+    torch.testing.assert_close(forward_verify, expected_forward)
+
+    backward_verify = topk_common.build_verification_tensor(backward_outputs, buffer)
+    expected_backward = torch.cat(
+        [
+            expected_forward,
+            q_grad.reshape(-1).float(),
+            k_grad.reshape(-1).float(),
+        ],
+        dim=0,
+    )
+    assert backward_verify.data_ptr() == buffer.data_ptr()
+    assert backward_verify.numel() == expected_backward.numel() == 64
+    torch.testing.assert_close(backward_verify, expected_backward)
+
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert 'verify_size = 64 if self.workload.mode == "fwd_bwd" else 32' in source
+    assert "self._verify_output_buffer = torch.empty(verify_size, device=self.device, dtype=torch.float32)" in source
+    assert "output=build_verification_tensor(self.outputs, self._verify_output_buffer)" in source
+    assert "return torch.cat(pieces, dim=0)" not in source
+
+
 def test_compare_top_k_matrix_uses_cuda_event_timing() -> None:
     source = (REPO_ROOT / "labs" / "top_k_kernel" / "compare_top_k_matrix.py").read_text(
         encoding="utf-8"
