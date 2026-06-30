@@ -48,6 +48,7 @@ class OptimizedMemoryProfilingBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.targets: Optional[torch.Tensor] = None
         self.criterion: Optional[nn.Module] = None
         self.peak_memory_mb = 0.0
+        self._memory_bytes_to_mb = 1.0 / (1024 ** 2)
         self.batch_size = 32
         self.hidden_dim = 2048
         tokens = self.batch_size * self.hidden_dim
@@ -87,7 +88,6 @@ class OptimizedMemoryProfilingBenchmark(VerificationPayloadMixin, BaseBenchmark)
             outputs = self.model(self.inputs)
             loss = self.criterion(outputs, self.targets)
             loss.backward()
-            self.peak_memory_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
             self.output = outputs.detach_()
         if self.inputs is None or self.targets is None or self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
@@ -109,7 +109,14 @@ class OptimizedMemoryProfilingBenchmark(VerificationPayloadMixin, BaseBenchmark)
             output_tolerance=(0.5, 5.0),
         )
 
+    def finalize_iteration_metrics(self) -> Optional[dict]:
+        """Poll allocator peak after harness timing has already finalized."""
+        self.peak_memory_mb = torch.cuda.max_memory_allocated() * self._memory_bytes_to_mb
+        return None
+
     def teardown(self) -> None:
+        if torch.cuda.is_available():
+            self.finalize_iteration_metrics()
         self.model = None
         self.inputs = None
         self.targets = None

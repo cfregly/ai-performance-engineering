@@ -20424,6 +20424,9 @@ def test_ch13_memory_profiling_pair_keeps_compute_dtype_fixed_and_direct_output_
     baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
+    baseline_finalize = baseline_source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
     baseline_teardown = baseline_source.split("def teardown", maxsplit=1)[1].split(
         "def get_config", maxsplit=1
     )[0]
@@ -20434,6 +20437,9 @@ def test_ch13_memory_profiling_pair_keeps_compute_dtype_fixed_and_direct_output_
         "def benchmark_fn", maxsplit=1
     )[0]
     optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+    optimized_finalize = optimized_source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
     optimized_teardown = optimized_source.split("def teardown", maxsplit=1)[1].split(
@@ -20453,12 +20459,17 @@ def test_ch13_memory_profiling_pair_keeps_compute_dtype_fixed_and_direct_output_
     assert "self.output = outputs.detach_()" in optimized_benchmark
     assert "outputs.detach()" not in baseline_benchmark
     assert "outputs.detach()" not in optimized_benchmark
+    assert "torch.cuda.max_memory_allocated()" not in baseline_benchmark
+    assert "torch.cuda.max_memory_allocated()" not in optimized_benchmark
     assert "use_reentrant=False" in optimized_source
     assert "self.model.zero_grad(set_to_none=True)" in optimized_benchmark
-    for source, setup, capture, teardown in (
-        (baseline_source, baseline_setup, baseline_capture, baseline_teardown),
-        (optimized_source, optimized_setup, optimized_capture, optimized_teardown),
+    for source, setup, capture, finalize, teardown in (
+        (baseline_source, baseline_setup, baseline_capture, baseline_finalize, baseline_teardown),
+        (optimized_source, optimized_setup, optimized_capture, optimized_finalize, optimized_teardown),
     ):
+        assert "self._memory_bytes_to_mb = 1.0 / (1024 ** 2)" in source
+        assert "self.peak_memory_mb = torch.cuda.max_memory_allocated() * self._memory_bytes_to_mb" in finalize
+        assert "self.finalize_iteration_metrics()" in teardown
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty_like(self.inputs, dtype=torch.float32)" in setup
         assert "self._verify_output_buffer.copy_(self.output)" in capture
