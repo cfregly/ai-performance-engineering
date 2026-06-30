@@ -21623,12 +21623,19 @@ def test_ch17_prefill_decode_disagg_records_timing_on_explicit_streams() -> None
     assert "elapsed_ms_list" not in optimized_source
     assert "self._history" not in optimized_source
     assert "self._pending_tpot_pairs = []" not in optimized_source
+    assert "self._pending_tpot_count = 0" in optimized_source
+    assert "self._tpot_event_count = 0" in optimized_source
+    assert "self._tpot_metric_count = self.decode_seq" in optimized_source
     assert "pending_tpot_pairs = self._pending_tpot_pairs" in optimized_finalize
-    assert "tpot_times_ms = self._ensure_timing_payload(len(pending_tpot_pairs))" in optimized_finalize
+    assert "pending_tpot_count = self._pending_tpot_count" in optimized_finalize
+    assert "tpot_times_ms = self._ensure_timing_payload(pending_tpot_count)" in optimized_finalize
+    assert "len(pending_tpot_pairs)" not in optimized_finalize
     assert "for idx, event_pair in enumerate(pending_tpot_pairs):" in optimized_finalize
     assert "tpot_times_ms[idx] = token_ms" in optimized_finalize
     assert "self._pending_tpot_pairs = self._empty_tpot_pairs" in optimized_finalize
-    assert "self._tpot_ms = float(tpot_total_ms / len(pending_tpot_pairs))" in optimized_finalize
+    assert "self._pending_tpot_count = 0" in optimized_finalize
+    assert "self._tpot_ms = float(tpot_total_ms / pending_tpot_count)" in optimized_finalize
+    assert "self._tpot_count += pending_tpot_count" in optimized_finalize
     assert "self._ttft_metric_values[0] = ttft_ms" in optimized_finalize
     assert "return self._iteration_metric_payload" in optimized_finalize
     assert '"ttft_times_ms": [ttft_ms]' not in optimized_finalize
@@ -21659,9 +21666,12 @@ def test_ch17_optimized_disaggregated_uses_prebuilt_timing_events() -> None:
     )[0]
 
     assert "or self._ttft_events is None" in benchmark_section
-    assert "or len(self._tpot_events) != self.decode_seq" in benchmark_section
+    assert "or self._tpot_event_count != self.decode_seq" in benchmark_section
+    assert "len(self._tpot_events)" not in benchmark_section
     assert "ttft_events = self._ttft_events" in benchmark_section
     assert "token_event_pairs = self._tpot_events" in benchmark_section
+    assert "token_event_count = self._tpot_event_count" in benchmark_section
+    assert "self._pending_tpot_count = token_event_count" in benchmark_section
     assert "self._get_ttft_events()" not in benchmark_section
     assert "self._get_tpot_events(" not in benchmark_section
 

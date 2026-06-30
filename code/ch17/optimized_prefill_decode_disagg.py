@@ -50,10 +50,13 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._pending_ttft_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._empty_tpot_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_tpot_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._pending_tpot_count = 0
         self._ttft_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._tpot_events: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []
+        self._tpot_event_count = 0
         self._ttft_metric_values = [0.0]
         self._tpot_metric_values = [0.0] * self.decode_seq
+        self._tpot_metric_count = self.decode_seq
         self._iteration_metric_payload: Dict[str, list[float]] = {
             "ttft_times_ms": self._ttft_metric_values,
             "tpot_times_ms": self._tpot_metric_values,
@@ -92,12 +95,16 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             for _ in range(self.decode_seq)
         ]
+        self._tpot_event_count = self.decode_seq
+        self._pending_tpot_count = 0
+        self._tpot_metric_count = self.decode_seq
         self._ttft_count = 0
         self._tpot_count = 0
 
     def _ensure_timing_payload(self, num_tokens: int) -> list[float]:
-        if len(self._tpot_metric_values) != num_tokens:
+        if self._tpot_metric_count != num_tokens:
             self._tpot_metric_values = [0.0] * num_tokens
+            self._tpot_metric_count = num_tokens
             self._iteration_metric_payload["tpot_times_ms"] = self._tpot_metric_values
         return self._tpot_metric_values
 
@@ -110,7 +117,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._ttft_events
 
     def _get_tpot_events(self, num_tokens: int) -> list[tuple[torch.cuda.Event, torch.cuda.Event]]:
-        if len(self._tpot_events) != num_tokens:
+        if self._tpot_event_count != num_tokens:
             self._tpot_events = [
                 (
                     torch.cuda.Event(enable_timing=True),
@@ -118,6 +125,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 )
                 for _ in range(num_tokens)
             ]
+            self._tpot_event_count = num_tokens
         return self._tpot_events
 
     def benchmark_fn(self) -> Dict[str, list[float]]:
@@ -128,7 +136,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.decode_stream is None
             or self._prefill_done is None
             or self._ttft_events is None
-            or len(self._tpot_events) != self.decode_seq
+            or self._tpot_event_count != self.decode_seq
         ):
             raise RuntimeError("Model/inputs/streams not initialized")
 
@@ -146,6 +154,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
                 token_output = kv_cache
                 token_event_pairs = self._tpot_events
+                token_event_count = self._tpot_event_count
                 with torch.cuda.stream(self.decode_stream):
                     self.decode_stream.wait_event(self._prefill_done)
                     for token_start, token_end in token_event_pairs:
@@ -156,6 +165,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.output = token_output
                 self._pending_ttft_pair = ttft_events
                 self._pending_tpot_pairs = token_event_pairs
+                self._pending_tpot_count = token_event_count
                 return self._empty_iteration_result
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, list[float]]]:
@@ -163,7 +173,8 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return None
         ttft_ms = elapsed_ms(self._pending_ttft_pair)
         pending_tpot_pairs = self._pending_tpot_pairs
-        tpot_times_ms = self._ensure_timing_payload(len(pending_tpot_pairs))
+        pending_tpot_count = self._pending_tpot_count
+        tpot_times_ms = self._ensure_timing_payload(pending_tpot_count)
         tpot_total_ms = 0.0
         for idx, event_pair in enumerate(pending_tpot_pairs):
             token_ms = elapsed_ms(event_pair)
@@ -171,13 +182,14 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tpot_total_ms += token_ms
         self._pending_ttft_pair = None
         self._pending_tpot_pairs = self._empty_tpot_pairs
+        self._pending_tpot_count = 0
         self._ttft_ms = ttft_ms
-        self._tpot_ms = float(tpot_total_ms / len(pending_tpot_pairs)) if pending_tpot_pairs else 0.0
+        self._tpot_ms = float(tpot_total_ms / pending_tpot_count) if pending_tpot_count else 0.0
         self.total_tokens = float(self.decode_seq)
         self.total_requests = float(self.batch_size)
         self.max_batch_size = float(self.batch_size)
         self._ttft_count += 1
-        self._tpot_count += len(pending_tpot_pairs)
+        self._tpot_count += pending_tpot_count
         self._ttft_metric_values[0] = ttft_ms
         return self._iteration_metric_payload
 
@@ -214,8 +226,11 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._ttft_events = None
         self._tpot_events = []
+        self._tpot_event_count = 0
         self._pending_ttft_pair = None
         self._pending_tpot_pairs = self._empty_tpot_pairs
+        self._pending_tpot_count = 0
+        self._tpot_metric_count = self.decode_seq
         self._ttft_count = 0
         self._tpot_count = 0
         torch.cuda.empty_cache()

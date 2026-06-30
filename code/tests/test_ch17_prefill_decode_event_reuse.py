@@ -26,6 +26,11 @@ class _FakeLLM:
         assert token.is_cuda
         return self.decode_output
 
+    def decode_step(self, token: torch.Tensor) -> torch.Tensor:
+        self.decode_calls += 1
+        assert token.is_cuda
+        return self.decode_output
+
 
 @CUDA_REQUIRED
 def test_ch17_monolithic_prefill_decode_reuses_timing_events() -> None:
@@ -87,6 +92,7 @@ def test_ch17_disaggregated_prefill_decode_reuses_timing_events() -> None:
         )
         for _ in range(bench.decode_seq)
     ]
+    bench._tpot_event_count = bench.decode_seq
 
     bench.benchmark_fn()
     torch.cuda.synchronize(bench.device)
@@ -96,6 +102,7 @@ def test_ch17_disaggregated_prefill_decode_reuses_timing_events() -> None:
     assert ttft_events is not None
     assert bench._pending_ttft_pair is ttft_events
     assert bench._pending_tpot_pairs is tpot_events
+    assert bench._pending_tpot_count == bench.decode_seq
     assert len(tpot_events) == bench.decode_seq
     assert fake_model.prefill_calls == 1
     assert fake_model.decode_calls == bench.decode_seq
@@ -105,6 +112,7 @@ def test_ch17_disaggregated_prefill_decode_reuses_timing_events() -> None:
     ttft_times = metrics_payload["ttft_times_ms"]
     tpot_times = metrics_payload["tpot_times_ms"]
     assert bench._pending_tpot_pairs is bench._empty_tpot_pairs
+    assert bench._pending_tpot_count == 0
 
     bench.benchmark_fn()
     torch.cuda.synchronize(bench.device)
@@ -117,3 +125,4 @@ def test_ch17_disaggregated_prefill_decode_reuses_timing_events() -> None:
     assert next_metrics_payload["ttft_times_ms"] is ttft_times
     assert next_metrics_payload["tpot_times_ms"] is tpot_times
     assert bench._pending_tpot_pairs is bench._empty_tpot_pairs
+    assert bench._pending_tpot_count == 0
