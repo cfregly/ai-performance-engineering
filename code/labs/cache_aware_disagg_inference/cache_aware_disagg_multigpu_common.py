@@ -1115,7 +1115,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 ttft_total_ms += ttft_ms
                 tpot_total_ms += max(total_ms - ttft_ms, 0.0) / max(self.cfg.decode_tokens, 1)
                 timing_count += 1
-                outputs[output_idx] = output.detach()
+                outputs[output_idx] = output
                 output_idx += 1
 
         self.output = None

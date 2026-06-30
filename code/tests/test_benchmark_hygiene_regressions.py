@@ -10538,7 +10538,8 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._prompts[0][0].detach().cpu()" not in setup_section
     assert "output_idx = 0" in benchmark_section
     assert "outputs.append(" not in benchmark_section
-    assert "outputs[output_idx] = output.detach()" in benchmark_section
+    assert "outputs[output_idx] = output" in benchmark_section
+    assert "output.detach()" not in benchmark_section
     assert "output_idx += 1" in benchmark_section
     assert "self._outputs_ready = True" in benchmark_section
     assert "if not self._outputs_ready or self._verify_prompt is None:" in capture_section
