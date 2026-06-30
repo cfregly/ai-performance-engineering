@@ -42,6 +42,7 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.vocab_size = int(self.cfg.vocab_size)
         self.allowed_count = int(self.cfg.allowed_count)
         self.output_slice = int(self.cfg.output_slice)
+        self._step_range = range(self.steps)
 
         tokens = self.batch_size * self.steps
         self._workload = WorkloadMetadata(
@@ -103,6 +104,7 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=self.logits.dtype,
             device=self.device,
         )
+        self._step_range = range(self.steps)
         self.output = None
 
     def benchmark_fn(self) -> None:
@@ -118,14 +120,13 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         output = self.output_buffer
 
         with self._nvtx_range(self.label):
-            for _ in range(self.steps):
+            for _ in self._step_range:
                 if self.reuse_gpu_mask:
                     if self.disallowed_mask_buffer is None or self.slice_ids is None:
                         raise RuntimeError("GPU mask state not initialized")
                     masked_logits.copy_(logits)
                     masked_logits.masked_fill_(self.disallowed_mask_buffer, float("-inf"))
                     torch.index_select(masked_logits, 1, self.slice_ids, out=output)
-                    self.output = output
                     continue
 
                 if (
@@ -145,7 +146,7 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 masked_logits.copy_(logits)
                 masked_logits.masked_fill_(self.disallowed_mask_buffer, float("-inf"))
                 torch.index_select(masked_logits, 1, self.slice_ids_buffer, out=output)
-                self.output = output
+        self.output = output
 
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
