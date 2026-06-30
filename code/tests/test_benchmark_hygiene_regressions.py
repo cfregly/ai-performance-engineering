@@ -17076,6 +17076,14 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "output_buffer_shape = (" in setup_section
     assert "self._output_buffer = torch.empty(output_buffer_shape, dtype=torch.long, device=self.device)" in setup_section
     assert "self._metadata_inputs: Dict[str, torch.Tensor] = {}" in source
+    assert "self._request_prompt_outputs: List[tuple[int, torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._decode_positions = range(" in source
+    assert "self._request_prompt_outputs = list(" in setup_section
+    assert "zip(range(self.cfg.requests_per_rank), self.prompts, self._pending_outputs, strict=True)" in setup_section
+    assert "for position in self._decode_positions:" in source
+    assert "position=position" in source
+    assert "for step in range(self.cfg.decode_tokens):" not in source
+    assert "position=self.cfg.context_window + step" not in source
     assert '"decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype)' in setup_section
     assert '"num_experts": torch.zeros((self.cfg.num_experts,), dtype=meta_dtype)' in setup_section
     assert "self._verify_prompt_buffer: Optional[torch.Tensor] = None" in source
@@ -17089,14 +17097,17 @@ def test_ch15_single_disaggregated_defers_output_cat_outside_hot_loop() -> None:
     assert "torch.cat(" not in baseline_benchmark
     assert "outputs: List[torch.Tensor] = []" not in baseline_benchmark
     assert "outputs = self._pending_outputs" in baseline_benchmark
-    assert "output_idx = 0" in baseline_benchmark
+    assert "request_prompt_outputs = self._request_prompt_outputs" in baseline_benchmark
+    assert "for output_idx, prompt, output_slot in request_prompt_outputs:" in baseline_benchmark
     assert "with torch.inference_mode():" in baseline_benchmark
+    assert "for idx in range(self.cfg.requests_per_rank):" not in baseline_benchmark
+    assert "prompt = self.prompts[idx]" not in baseline_benchmark
     assert "outputs.append(" not in baseline_benchmark
     assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in baseline_benchmark
     assert "outputs[output_idx] = self._run_decode_loop(" in baseline_benchmark
-    assert "outputs[output_idx]," in baseline_benchmark
+    assert "output_slot," in baseline_benchmark
     assert "torch.argmax(" not in baseline_benchmark
-    assert "output_idx += 1" in baseline_benchmark
+    assert "output_idx += 1" not in baseline_benchmark
     assert "kv_cpu.to(self.device)" not in baseline_benchmark
     assert "hidden.cpu()" not in baseline_benchmark
     assert "self._baseline_kv_cache = self._allocate_kv_cache()" in baseline_benchmark

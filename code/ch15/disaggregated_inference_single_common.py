@@ -127,6 +127,11 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
+        self._request_prompt_outputs: List[tuple[int, torch.Tensor, torch.Tensor]] = []
+        self._decode_positions = range(
+            self.cfg.context_window,
+            self.cfg.context_window + self.cfg.decode_tokens,
+        )
         self._next_token_buffer: Optional[torch.Tensor] = None
         self._next_token_values: Optional[torch.Tensor] = None
         self._metadata_inputs: Dict[str, torch.Tensor] = {}
@@ -167,6 +172,13 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
             torch.empty(output_shape, dtype=torch.long, device=self.device)
             for _ in range(self.cfg.requests_per_rank)
         ]
+        self._request_prompt_outputs = list(
+            zip(range(self.cfg.requests_per_rank), self.prompts, self._pending_outputs, strict=True)
+        )
+        self._decode_positions = range(
+            self.cfg.context_window,
+            self.cfg.context_window + self.cfg.decode_tokens,
+        )
         self._output_buffer = torch.empty(output_buffer_shape, dtype=torch.long, device=self.device)
         self._next_token_buffer = torch.empty((self.cfg.batch_size, 1), dtype=torch.long, device=self.device)
         self._next_token_values = torch.empty((self.cfg.batch_size, 1), dtype=self.cfg.dtype, device=self.device)
@@ -204,11 +216,11 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         if self.decode_model is None:
             raise RuntimeError("Decode model not initialized")
         tokens = seed_tokens
-        for step in range(self.cfg.decode_tokens):
+        for position in self._decode_positions:
             _, decode_logits = self.decode_model.decode(
                 tokens,
                 kv_cache=kv_cache,
-                position=self.cfg.context_window + step,
+                position=position,
             )
             tokens = self._next_token_from_logits(decode_logits[:, -1, :])
         decoded = tokens.squeeze(0)
@@ -293,6 +305,7 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         self._output = None
         self._output_buffer = None
         self._pending_outputs = []
+        self._request_prompt_outputs = []
         self._next_token_buffer = None
         self._next_token_values = None
         self._metadata_inputs = {}
@@ -351,10 +364,11 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
         outputs = self._pending_outputs
         if len(outputs) != self.cfg.requests_per_rank:
             raise RuntimeError("Decode output slots not initialized")
-        output_idx = 0
+        request_prompt_outputs = self._request_prompt_outputs
+        if len(request_prompt_outputs) != self.cfg.requests_per_rank:
+            raise RuntimeError("Request prompt/output groups not initialized")
         with torch.inference_mode():
-            for idx in range(self.cfg.requests_per_rank):
-                prompt = self.prompts[idx]
+            for output_idx, prompt, output_slot in request_prompt_outputs:
                 hidden, logits = self.prefill_model.prefill(prompt)
                 seed_tokens = self._next_token_from_logits(logits[:, -1, :])
                 self._kv_host_staging.copy_(hidden, non_blocking=False)
@@ -365,9 +379,8 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
                 outputs[output_idx] = self._run_decode_loop(
                     self._baseline_kv_cache,
                     seed_tokens,
-                    outputs[output_idx],
+                    output_slot,
                 )
-                output_idx += 1
 
         self._set_output_from_tokens(outputs)
 
@@ -406,11 +419,11 @@ class OptimizedDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceS
             seed_tokens = self._next_token_from_logits(logits[:, -1, :])
             self.batched_kv_cache[:, : self.cfg.context_window] = hidden
             tokens = seed_tokens
-            for step in range(self.cfg.decode_tokens):
+            for position in self._decode_positions:
                 _, decode_logits = self.decode_model.decode(
                     tokens,
                     kv_cache=self.batched_kv_cache,
-                    position=self.cfg.context_window + step,
+                    position=position,
                 )
                 tokens = self._next_token_from_logits(decode_logits[:, -1, :])
 
