@@ -10834,6 +10834,36 @@ def test_nanochat_optimized_inference_reuses_decode_step_views() -> None:
     assert "self.decode_tokens[:, t : t + 1]" not in benchmark_section
 
 
+def test_nanochat_baseline_inference_reuses_decode_step_views() -> None:
+    source = (
+        REPO_ROOT / "labs" / "nanochat_fullstack" / "baseline_nanochat_inference.py"
+    ).read_text(encoding="utf-8")
+    init_section = source.split("def __init__", maxsplit=1)[1].split(
+        "def setup",
+        maxsplit=1,
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self.decode_token_steps: tuple[torch.Tensor, ...] = ()" in init_section
+    assert "self.decode_token_steps = tuple(" in setup_section
+    assert "self.decode_tokens[:, t : t + 1]" in setup_section
+    assert "or not self.decode_token_steps" in benchmark_section
+    assert "for step_ids in self.decode_token_steps:" in benchmark_section
+    assert "self.decode_tokens[:, t : t + 1]" not in benchmark_section
+    assert "self.decode_token_steps = ()" in teardown_section
+
+
 def test_nanochat_prefix_causal_mask_avoids_zero_fill_and_tril_allocations() -> None:
     source = (REPO_ROOT / "labs" / "nanochat_fullstack" / "nanochat" / "gpt.py").read_text(
         encoding="utf-8"

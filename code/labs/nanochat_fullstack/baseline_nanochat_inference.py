@@ -37,6 +37,7 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.kv_cache: Optional[KVCache] = None
         self.prompt: Optional[torch.Tensor] = None
         self.decode_tokens: Optional[torch.Tensor] = None
+        self.decode_token_steps: tuple[torch.Tensor, ...] = ()
         self.output: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
@@ -91,6 +92,10 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
             device=self.device,
             dtype=torch.long,
         )
+        self.decode_token_steps = tuple(
+            self.decode_tokens[:, t : t + 1]
+            for t in range(self.decode_len)
+        )
 
         head_dim = cfg.n_embd // cfg.n_head
         self.kv_cache = KVCache(
@@ -109,15 +114,20 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
 
     def benchmark_fn(self) -> None:
-        if self.model is None or self.kv_cache is None or self.prompt is None or self.decode_tokens is None:
+        if (
+            self.model is None
+            or self.kv_cache is None
+            or self.prompt is None
+            or self.decode_tokens is None
+            or not self.decode_token_steps
+        ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         self.kv_cache.reset()
         with torch.inference_mode():
             self.model(self.prompt, kv_cache=self.kv_cache)
             logits = None
-            for t in range(self.decode_len):
-                step_ids = self.decode_tokens[:, t : t + 1]
+            for step_ids in self.decode_token_steps:
                 logits = self.model(step_ids, kv_cache=self.kv_cache)
             if logits is None:
                 raise RuntimeError("decode loop did not execute")
@@ -167,6 +177,7 @@ class BaselineNanochatInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.kv_cache = None
         self.prompt = None
         self.decode_tokens = None
+        self.decode_token_steps = ()
         self.output = None
         self._verify_output_buffer = None
         super().teardown()
