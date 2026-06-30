@@ -802,7 +802,8 @@ def test_ch04_optimizer_variants_reuse_update_groups() -> None:
         assert setup_zip in setup_section
         assert loop in benchmark_section
         assert "zip(" not in benchmark_section
-        assert "self._update_group_count <= 0 or len(self._update_groups) != self._update_group_count" in benchmark_section
+        assert "self._update_group_count <= 0 or self._update_group_count != self._model_count" in benchmark_section
+        assert "len(self._update_groups)" not in benchmark_section
         assert "len(self.models)" not in benchmark_section
         assert "len(self.momentum)" not in benchmark_section
         assert "len(self.inputs)" not in benchmark_section
@@ -854,6 +855,7 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._grad_slots: List[torch.Tensor] = []" in naive_source
     assert "self._grad_slots: List[torch.Tensor] = []" in source
     assert "self._model_count = 0" in naive_source
+    assert "self._grad_slot_count = 0" in naive_source
     assert "self._model_count = 0" in source
     assert "self._grad_scale = 1.0" in naive_source
     assert "self._grad_scale = 1.0" in source
@@ -866,6 +868,7 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._expected_slot_counts: Tuple[int, ...] = ()" in source
     assert "self._allreduce_buffer = torch.empty_like(" in naive_setup
     assert "self._grad_slots = [" in naive_setup
+    assert "self._grad_slot_count = len(self._grad_slots)" in naive_setup
     assert "self._model_count = len(self.models)" in naive_setup
     assert "self._grad_scale = 1.0 / self._model_count" in naive_setup
     assert "self._microbatch_range = range(self.microbatches)" in naive_setup
@@ -879,7 +882,8 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "for model_idx, model, x in self._micro_model_groups[micro]:" in naive_benchmark
     assert "enumerate(self.models)" not in naive_benchmark
     assert "len(self.models)" not in naive_benchmark
-    assert "len(self._grad_slots) != self._model_count" in naive_benchmark
+    assert "self._grad_slot_count != self._model_count" in naive_benchmark
+    assert "len(self._grad_slots)" not in naive_benchmark
     assert "buf.copy_(grads[0].to(root))" in naive_reduce
     assert "for g in grads[1:]" in naive_reduce
     assert "if self._model_count == 1:" in naive_reduce

@@ -87,7 +87,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        if self._update_group_count <= 0 or len(self._update_groups) != self._update_group_count:
+        if self._update_group_count <= 0 or self._update_group_count != self._model_count:
             raise RuntimeError("setup() must initialize optimizer update groups")
         with self._nvtx_range("optimized_optimizer_central_nvlink"):
             for model, master_w, mom, grad_root_buf, x in self._update_groups:

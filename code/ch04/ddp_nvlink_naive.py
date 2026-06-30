@@ -36,6 +36,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_parameter_count = 0
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._model_count = 0
+        self._grad_slot_count = 0
         self._grad_scale = 1.0
         tokens = self.batch_size * self.hidden * self.microbatches
         self._workload = WorkloadMetadata(
@@ -58,6 +59,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.empty(0, device=model.weight.device)
             for model in self.models
         ]
+        self._grad_slot_count = len(self._grad_slots)
         self._inputs = []
         self._verify_output_buffer = torch.empty(
             (8, 8),
@@ -95,7 +97,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         assert self.models
         with self._nvtx_range("baseline_ddp_multigpu_nvlink_naive"):
-            if len(self._grad_slots) != self._model_count:
+            if self._grad_slot_count != self._model_count:
                 raise RuntimeError("Gradient slots not initialized")
             grads = self._grad_slots
             for micro in self._microbatch_range:
@@ -145,6 +147,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._grad_slots = []
         self._allreduce_buffer = None
         self._model_count = 0
+        self._grad_slot_count = 0
         self._grad_scale = 1.0
         self.output = None
         self._verify_output_buffer = None

@@ -62,7 +62,7 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        if self._update_group_count <= 0 or len(self._update_groups) != self._update_group_count:
+        if self._update_group_count <= 0 or self._update_group_count != self._model_count:
             raise RuntimeError("setup() must initialize optimizer update groups")
         with self._nvtx_range("baseline_optimizer_replicated"):
             for model, mom, x in self._update_groups:
