@@ -463,7 +463,7 @@ class OptimizedProofwrightBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """
         if self.agent is None or self._kernel_spec is None:
             raise RuntimeError("setup() must initialize ProofWright verification state")
-        with self._nvtx_range("optimized_proofwright_verify"):
+        with torch.inference_mode(), self._nvtx_range("optimized_proofwright_verify"):
             # Clear previous proofs for this iteration
             self.agent.proofs = []
             

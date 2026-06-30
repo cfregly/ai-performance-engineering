@@ -345,7 +345,7 @@ class OptimizedCudaPythonBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "Ensure cuda-python is properly installed and CUDA is available."
             )
         
-        with self._nvtx_range("optimized_cuda_python"):
+        with torch.inference_mode(), self._nvtx_range("optimized_cuda_python"):
             self._run_fused_kernel()
         
 
@@ -452,4 +452,3 @@ def demonstrate_cuda_python_api():
         print()
         print("Or use conda:")
         print("  conda install -c nvidia cuda-python")
-

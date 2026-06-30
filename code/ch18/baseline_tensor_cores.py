@@ -63,7 +63,7 @@ class BaselineTensorCoresBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: FP32 matrix multiplication without tensor cores."""
         # Baseline: FP32 matmul without tensor cores
         # Tensor cores accelerate FP16/BF16 operations
-        with self._nvtx_range("baseline_tensor_cores"):
+        with torch.inference_mode(), self._nvtx_range("baseline_tensor_cores"):
             if self.output_buffer is None:
                 raise RuntimeError("Output buffer not initialized")
             torch.matmul(self.A, self.B, out=self.output_buffer)

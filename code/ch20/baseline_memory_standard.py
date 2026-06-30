@@ -45,7 +45,7 @@ class BaselineMemoryStandardBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         assert self.data is not None and self.tmp1 is not None and self.tmp2 is not None and self.result is not None
-        with self._nvtx_range("baseline_memory_standard"):
+        with torch.inference_mode(), self._nvtx_range("baseline_memory_standard"):
             torch.mul(self.data, 2.0, out=self.tmp1)
             torch.add(self.tmp1, 1.0, out=self.tmp2)
             torch.add(self.tmp2, 0.1, out=self.result)

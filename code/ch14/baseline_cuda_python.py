@@ -101,7 +101,7 @@ class BaselineCudaPythonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         Each operation is a separate kernel launch with dispatcher overhead.
         Intermediate tensors are allocated for each step.
         """
-        with self._nvtx_range("baseline_cuda_python"):
+        with torch.inference_mode(), self._nvtx_range("baseline_cuda_python"):
             # Step 1: Layer normalization (separate kernel)
             normalized = F.layer_norm(
                 self.input, 

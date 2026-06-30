@@ -48,7 +48,7 @@ class OptimizedMemoryStandardBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         assert self.data is not None and self.offset is not None and self.scale_tensor is not None and self.result is not None
-        with self._nvtx_range("memory_standard_optimized"):
+        with torch.inference_mode(), self._nvtx_range("memory_standard_optimized"):
             torch.addcmul(self.offset, self.data, self.scale_tensor, out=self.result)
         self.output = self.result
 

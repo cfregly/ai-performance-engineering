@@ -64,7 +64,7 @@ class OptimizedTensorCoresBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark: Tensor core accelerated matrix multiplication."""
         # Optimization: FP16/BF16 matmul with tensor cores
         # Tensor cores provide high throughput for these operations
-        with self._nvtx_range("optimized_tensor_cores"):
+        with torch.inference_mode(), self._nvtx_range("optimized_tensor_cores"):
             if self.output_buffer is None:
                 raise RuntimeError("Output buffer not initialized")
             if self.A_tc is None or self.B_tc is None:

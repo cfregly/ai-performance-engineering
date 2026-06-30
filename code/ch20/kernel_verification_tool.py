@@ -254,7 +254,7 @@ class BaselineKernelVerificationBenchmark(VerificationPayloadMixin, BaseBenchmar
         This runs the full manual verification workflow and measures
         the time and completeness of the approach.
         """
-        with self._nvtx_range("baseline_kernel_verification"):
+        with torch.inference_mode(), self._nvtx_range("baseline_kernel_verification"):
             # Run random tests
             random_pass, random_errors = self.verifier.random_test(
                 self.test_kernel, 

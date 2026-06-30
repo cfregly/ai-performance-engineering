@@ -8004,6 +8004,28 @@ def test_ch20_baseline_inference_paths_use_inference_mode() -> None:
         assert "with torch.no_grad():" not in source
 
 
+def test_late_chapter_forward_wrappers_use_inference_mode() -> None:
+    targets = (
+        "ch14/baseline_cuda_python.py",
+        "ch14/optimized_cuda_python.py",
+        "ch18/baseline_tensor_cores.py",
+        "ch18/optimized_tensor_cores.py",
+        "ch20/baseline_memory_standard.py",
+        "ch20/optimized_memory_standard.py",
+        "ch20/kernel_verification_tool.py",
+        "ch20/proofwright_verify_tool.py",
+    )
+    for relative in targets:
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+
+
 def test_ch20_bf16_mlp_uses_inplace_relu_activations() -> None:
     for relative in (
         "ch20/baseline_bf16_mlp.py",
