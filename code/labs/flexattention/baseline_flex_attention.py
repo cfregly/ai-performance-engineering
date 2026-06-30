@@ -66,15 +66,13 @@ class BaselineFlexAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         with self._nvtx_range("flexattention_baseline"):
             with torch.inference_mode():
-                result = flex_attention(
+                self.output = flex_attention(
                     self.inputs.q,
                     self.inputs.k,
                     self.inputs.v,
                     score_mod=self.score_mod,
                     block_mask=self.inputs.block_mask,
                 )
-            output_tensor = result[0] if isinstance(result, (tuple, list)) else result
-            self.output = output_tensor
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 

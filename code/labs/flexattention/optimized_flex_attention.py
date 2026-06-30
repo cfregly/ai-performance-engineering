@@ -102,13 +102,11 @@ class OptimizedFlexAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         with self._nvtx_range("flexattention_compiled"):
             with torch.inference_mode():
-                result = self.compiled(
+                self.output = self.compiled(
                     self.inputs.q,
                     self.inputs.k,
                     self.inputs.v,
                 )
-            output_tensor = result[0] if isinstance(result, (tuple, list)) else result
-            self.output = output_tensor
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 

@@ -7170,7 +7170,18 @@ def test_flexattention_metrics_use_attention_formula_and_hot_paths_skip_clone() 
 
     assert "self.output = output_tensor.detach().float().clone()" not in flex_baseline_source
     assert "self.output = output_tensor.detach().float().clone()" not in flex_optimized_source
+    baseline_benchmark = flex_baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    optimized_benchmark = flex_optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    assert "self.output = flex_attention(" in baseline_benchmark
+    assert "self.output = self.compiled(" in optimized_benchmark
     for flex_source in (flex_baseline_source, flex_optimized_source):
+        flex_benchmark = flex_source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
         flex_setup = flex_source.split("def setup", maxsplit=1)[1].split(
             "def benchmark_fn", maxsplit=1
         )[0]
@@ -7181,6 +7192,9 @@ def test_flexattention_metrics_use_attention_formula_and_hot_paths_skip_clone() 
         assert "self._verify_output_buffer = torch.empty_like(self.inputs.q, dtype=torch.float32)" in flex_setup
         assert "self._verify_output_buffer.copy_(self.output)" in flex_capture
         assert "output=self._verify_output_buffer" in flex_capture
+        assert "result = " not in flex_benchmark
+        assert "isinstance(result, (tuple, list))" not in flex_benchmark
+        assert "self.output = output_tensor" not in flex_benchmark
         assert "self.output.detach().float().clone()" not in flex_capture
     assert "self.output = result.detach().float().clone()" not in flash4_source
     assert "self._sparsity_ratio = float(self.inputs.dense_mask.float().mean())" in flash4_source
