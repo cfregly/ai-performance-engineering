@@ -28,6 +28,8 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self.grad_root_buffers: List[torch.Tensor] = []
         self.inputs: List[torch.Tensor] = []
         self._update_groups: List[Tuple[nn.Linear, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []
+        self._model_count = 0
+        self._update_group_count = 0
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.batch_size = 8
         self.hidden = 512
@@ -71,9 +73,11 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
             self.momentum.append(master_m)
             self.grad_root_buffers.append(torch.empty_like(master_w, device=self.root_device))
             self.inputs.append(torch.randn(self.batch_size, self.hidden, device=device, dtype=torch.float32))
+        self._model_count = len(self.models)
         self._update_groups = list(
             zip(self.models, self.master_weights, self.momentum, self.grad_root_buffers, self.inputs, strict=True)
         )
+        self._update_group_count = self._model_count
         self._verify_output_buffer = torch.empty(
             (32, 32),
             device=self.models[0].weight.device,
@@ -83,14 +87,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        assert (
-            len(self.models)
-            == len(self.master_weights)
-            == len(self.momentum)
-            == len(self.grad_root_buffers)
-            == len(self.inputs)
-        )
-        if not self._update_groups:
+        if self._update_group_count <= 0 or len(self._update_groups) != self._update_group_count:
             raise RuntimeError("setup() must initialize optimizer update groups")
         with self._nvtx_range("optimized_optimizer_central_nvlink"):
             for model, master_w, mom, grad_root_buf, x in self._update_groups:
@@ -145,6 +142,8 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self.grad_root_buffers.clear()
         self.inputs.clear()
         self._update_groups = []
+        self._model_count = 0
+        self._update_group_count = 0
         self._verify_output_buffer = None
         torch.cuda.empty_cache()
 

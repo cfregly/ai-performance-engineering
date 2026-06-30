@@ -26,6 +26,8 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
         self.momentum: List[torch.Tensor] = []
         self.inputs: List[torch.Tensor] = []
         self._update_groups: List[Tuple[nn.Linear, torch.Tensor, torch.Tensor]] = []
+        self._model_count = 0
+        self._update_group_count = 0
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.batch_size = 8
         self.hidden = 512
@@ -48,7 +50,9 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
             self.models.append(model)
             self.momentum.append(buf)
             self.inputs.append(torch.randn(self.batch_size, self.hidden, device=device, dtype=torch.float32))
+        self._model_count = len(self.models)
         self._update_groups = list(zip(self.models, self.momentum, self.inputs, strict=True))
+        self._update_group_count = self._model_count
         self._verify_output_buffer = torch.empty(
             (32, 32),
             device=self.models[0].weight.device,
@@ -58,8 +62,7 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        assert len(self.models) == len(self.momentum) == len(self.inputs)
-        if not self._update_groups:
+        if self._update_group_count <= 0 or len(self._update_groups) != self._update_group_count:
             raise RuntimeError("setup() must initialize optimizer update groups")
         with self._nvtx_range("baseline_optimizer_replicated"):
             for model, mom, x in self._update_groups:
@@ -101,6 +104,8 @@ class BaselineOptimizerReplicatedBenchmark(VerificationPayloadMixin, BaseBenchma
         self.momentum.clear()
         self.inputs.clear()
         self._update_groups = []
+        self._model_count = 0
+        self._update_group_count = 0
         self._verify_output_buffer = None
         torch.cuda.empty_cache()
 

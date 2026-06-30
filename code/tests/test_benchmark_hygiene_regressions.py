@@ -795,11 +795,23 @@ def test_ch04_optimizer_variants_reuse_update_groups() -> None:
         )[0]
 
         assert group_type in source
+        assert "self._model_count = 0" in source
+        assert "self._update_group_count = 0" in source
+        assert "self._model_count = len(self.models)" in setup_section
+        assert "self._update_group_count = self._model_count" in setup_section
         assert setup_zip in setup_section
         assert loop in benchmark_section
         assert "zip(" not in benchmark_section
+        assert "self._update_group_count <= 0 or len(self._update_groups) != self._update_group_count" in benchmark_section
+        assert "len(self.models)" not in benchmark_section
+        assert "len(self.momentum)" not in benchmark_section
+        assert "len(self.inputs)" not in benchmark_section
+        assert "len(self.master_weights)" not in benchmark_section
+        assert "len(self.grad_root_buffers)" not in benchmark_section
         assert "setup() must initialize optimizer update groups" in benchmark_section
         assert "self._update_groups = []" in teardown_section
+        assert "self._model_count = 0" in teardown_section
+        assert "self._update_group_count = 0" in teardown_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty(" in setup_section
         assert "weight_probe = model0.weight[:32, :32].detach()" in capture_section
