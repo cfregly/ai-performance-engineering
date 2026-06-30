@@ -19062,12 +19062,26 @@ def test_ch10_tcgen05_baseline_epilogue_adds_bias_in_place() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
+    assert "self._epilogue_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._epilogue_buffer = torch.empty(self.M, self.N, device=self.device, dtype=torch.float32)" in setup_section
+    assert "C = self._epilogue_buffer" in benchmark_section
+    assert "C.copy_(self.module.matmul_tcgen05(self.A, self.B))" in benchmark_section
     assert "C.add_(self.bias)" in benchmark_section
     assert "F.silu(C, inplace=True)" in benchmark_section
     assert "self.output.copy_(C)" in benchmark_section
+    assert ".float()" not in benchmark_section
     assert "C = C + self.bias" not in benchmark_section
     assert "self.output = F.silu(C).to(dtype=torch.float16)" not in benchmark_section
+    assert "self._epilogue_buffer = None" in teardown_section
 
 
 def test_ch10_tcgen05_warp_specialized_kernel_uses_direct_epilogue_copy() -> None:
