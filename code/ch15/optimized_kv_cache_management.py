@@ -54,6 +54,8 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._v_attn_views: list[torch.Tensor] = []
         self._output_step_views: list[torch.Tensor] = []
         self._decode_step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []
+        self._view_counts: tuple[int, ...] = ()
+        self._expected_view_counts: tuple[int, ...] = ()
         self._verify_input: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
         self.register_workload_metadata(
@@ -145,6 +147,24 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
                 strict=True,
             )
         )
+        self._view_counts = (
+            len(self._token_step_views),
+            len(self._k_prefix_views),
+            len(self._v_prefix_views),
+            len(self._k_attn_views),
+            len(self._v_attn_views),
+            len(self._output_step_views),
+            len(self._decode_step_groups),
+        )
+        self._expected_view_counts = (
+            self.steps,
+            self.steps,
+            self.steps,
+            self.steps,
+            self.steps,
+            self.steps,
+            self.steps,
+        )
         self._synchronize()
         self._verify_input = self.tokens.detach()
     
@@ -158,13 +178,7 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
         assert self._k_proj_weight_t is not None
         assert self._v_proj_weight_t is not None
         assert self._out_proj_weight_t is not None
-        assert len(self._token_step_views) == self.steps
-        assert len(self._k_prefix_views) == self.steps
-        assert len(self._v_prefix_views) == self.steps
-        assert len(self._k_attn_views) == self.steps
-        assert len(self._v_attn_views) == self.steps
-        assert len(self._output_step_views) == self.steps
-        assert len(self._decode_step_groups) == self.steps
+        assert self._view_counts == self._expected_view_counts
         with self._nvtx_range("optimized_kv_cache_management"):
             with torch.inference_mode():
                 # Model "prefill-produced" KV cache: project the full token buffer once,
@@ -230,6 +244,8 @@ class OptimizedKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._v_attn_views = []
         self._output_step_views = []
         self._decode_step_groups = []
+        self._view_counts = ()
+        self._expected_view_counts = ()
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

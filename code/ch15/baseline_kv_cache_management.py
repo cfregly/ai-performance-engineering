@@ -50,6 +50,8 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._decode_step_groups: list[
             tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
         ] = []
+        self._view_counts: tuple[int, ...] = ()
+        self._expected_view_counts: tuple[int, ...] = ()
         self._verify_input: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
         self.register_workload_metadata(
@@ -110,6 +112,20 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
                 strict=True,
             )
         )
+        self._view_counts = (
+            len(self._query_step_views),
+            len(self._prefix_views),
+            len(self._output_step_views),
+            len(self._output_step_2d_views),
+            len(self._decode_step_groups),
+        )
+        self._expected_view_counts = (
+            self.steps,
+            self.steps,
+            self.steps,
+            self.steps,
+            self.steps,
+        )
         self._synchronize()
         self._verify_input = self.tokens.detach()
     
@@ -120,11 +136,7 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         assert self._output_buffer is not None
         assert self._attn_step_buffer is not None and self._attn_step_2d is not None
         assert self._out_proj_weight_t is not None
-        assert len(self._query_step_views) == self.steps
-        assert len(self._prefix_views) == self.steps
-        assert len(self._output_step_views) == self.steps
-        assert len(self._output_step_2d_views) == self.steps
-        assert len(self._decode_step_groups) == self.steps
+        assert self._view_counts == self._expected_view_counts
         with self._nvtx_range("baseline_kv_cache_management"):
             with torch.inference_mode():
                 outputs = self._output_buffer
@@ -182,6 +194,8 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._output_step_views = []
         self._output_step_2d_views = []
         self._decode_step_groups = []
+        self._view_counts = ()
+        self._expected_view_counts = ()
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
