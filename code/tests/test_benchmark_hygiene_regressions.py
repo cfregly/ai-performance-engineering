@@ -16735,6 +16735,10 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
     run_section = source.split("def run(self) -> torch.Tensor", maxsplit=1)[1].split(
         "def cleanup", maxsplit=1
     )[0]
+    wrapper_section = source.split("class _FP8CalibrationFreeBenchmark", maxsplit=1)[1]
+    wrapper_setup = wrapper_section.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -16754,7 +16758,17 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
     assert "torch.full(" not in run_section
     assert "torch.tensor(" not in benchmark_section
     assert "self._output = output" in benchmark_section
-    assert "output=self._output.detach().float().clone()" in capture_section
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_nan_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty(" in wrapper_setup
+    assert "min(16, self._impl.hidden_size)" in wrapper_setup
+    assert "self._verify_nan_output_buffer = torch.empty((), device=self._impl.device, dtype=torch.float32)" in wrapper_setup
+    assert "verify_output = self._verify_nan_output_buffer" in capture_section
+    assert "verify_output.copy_(self._output, non_blocking=False)" in capture_section
+    assert "verify_output = self._verify_output_buffer" in capture_section
+    assert "verify_output.copy_(output_slice, non_blocking=False)" in capture_section
+    assert "output=verify_output" in capture_section
+    assert "output=self._output.detach().float().clone()" not in capture_section
     assert "self._weight_fp8_cache: Optional[torch.Tensor] = None" in source
     assert "def _weight_fp8(self) -> Tuple[torch.Tensor, torch.Tensor]:" in source
     assert "self._weight_fp8_cache = weight_fp8" in source
