@@ -2256,12 +2256,16 @@ def test_custom_vs_cublas_batches_correctness_scale_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "error_stats = torch.stack(" in verify_section
-    assert "max_diff = float(error_stats[0])" in verify_section
-    assert "ref_abs_max = float(error_stats[1])" in verify_section
+    assert "ref_abs_max = ref_fp32.abs().max()" in verify_section
+    assert "error_stats = torch.empty(2, device=ref_fp32.device, dtype=ref_fp32.dtype)" in verify_section
+    assert "error_stats[0].copy_((ref_fp32 - result_fp32).abs().max())" in verify_section
+    assert "error_stats[1].copy_(ref_abs_max)" in verify_section
+    assert "error_stats_host = error_stats.detach().cpu()" in verify_section
+    assert "max_diff = float(error_stats_host[0])" in verify_section
+    assert "ref_abs_max_host = float(error_stats_host[1])" in verify_section
     assert ".tolist()" not in verify_section
     assert "(ref_fp32 - result_fp32).abs().max()" in verify_section
-    assert "ref_fp32.abs().max()" in verify_section
+    assert verify_section.count("ref_fp32.abs().max()") == 1
     assert ".abs().max().item()" not in verify_section
     assert "C = torch.empty(M, N, device='cuda', dtype=torch.float32)" in source
     assert "C = torch.zeros(M, N, device='cuda', dtype=torch.float32)" not in source
@@ -3482,12 +3486,32 @@ def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
     )[0]
 
     for section in (dual_cta_check, dual_fp8_check, dual_fp8_main, dual_nvfp4_rel):
-        assert "error_stats = torch.stack(" in section
-        assert "max_diff = float(error_stats[0])" in section
-        assert "denom = float(error_stats[1])" in section or "ref_abs_max = float(error_stats[1])" in section
+        assert "error_stats = torch.empty(2" in section or "_relative_error(" in section
+        assert "error_stats[0].copy_(" in section or "_relative_error(" in section
+        assert "error_stats[1].copy_(ref_abs_max)" in section or "_relative_error(" in section
+        assert "error_stats_host = error_stats.detach().cpu()" in section or "_relative_error(" in section
+        assert (
+            "max_diff = float(error_stats_host[0])" in section
+            or "_relative_error(" in section
+        )
+        assert (
+            "denom = float(error_stats_host[1])" in section
+            or "ref_abs_max_host = float(error_stats_host[1])" in section
+            or "_relative_error(" in section
+        )
         assert ".tolist()" not in section
         assert ".abs().max().item()" not in section
         assert ".abs().max().item() /" not in section
+
+    dual_fp8_main_full = dual_fp8.split("def main", maxsplit=1)[1]
+    dual_nvfp4_main = dual_nvfp4.split("def main", maxsplit=1)[1]
+    assert "ref16_for_check = ref.to(torch.float16).float()" in dual_fp8_main_full
+    assert "ref_abs_max = ref16_for_check.abs().max()" in dual_fp8_main_full
+    assert "rel = check(scaled_mm, a, b, ref16_for_check, ref_abs_max, error_stats)" in dual_fp8_main_full
+    assert "if not args.skip_verify:" in dual_nvfp4_main
+    assert "ref = fp32_ref(a_deq, b_deq, sa, sb)" in dual_nvfp4_main
+    assert "ref16_for_check = ref.to(torch.float16).float()" in dual_nvfp4_main
+    assert "ref = fp32_ref(a_deq, b_deq, sa, sb)\n    del a_deq, b_deq" not in dual_nvfp4_main
 
     for bench_section in (dual_cta_bench, dual_fp8_bench, dual_nvfp4_bench):
         assert bench_section.count("torch.cuda.Event(enable_timing=True)") == 2

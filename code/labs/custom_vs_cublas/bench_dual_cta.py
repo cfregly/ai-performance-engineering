@@ -49,17 +49,18 @@ def bench(fn, a, b, warmup=10, iters=50):
     return start.elapsed_time(end) / iters  # ms
 
 
-def check(fn, a, b, ref):
+def check(fn, a, b, ref, ref_abs_max=None, error_stats=None):
     out = fn(a, b).float()
-    error_stats = torch.stack(
-        (
-            (ref - out).abs().max(),
-            ref.abs().max(),
-        )
-    ).detach().cpu()
-    max_diff = float(error_stats[0])
-    ref_abs_max = float(error_stats[1])
-    rel = max_diff / ref_abs_max
+    if ref_abs_max is None:
+        ref_abs_max = ref.abs().max()
+    if error_stats is None:
+        error_stats = torch.empty(2, device=ref.device, dtype=ref.dtype)
+    error_stats[0].copy_((ref - out).abs().max())
+    error_stats[1].copy_(ref_abs_max)
+    error_stats_host = error_stats.detach().cpu()
+    max_diff = float(error_stats_host[0])
+    ref_abs_max_host = float(error_stats_host[1])
+    rel = max_diff / ref_abs_max_host
     return rel
 
 
@@ -98,6 +99,8 @@ def main():
     a = torch.randn(M, K, device="cuda", dtype=torch.float16)
     b = torch.randn(N, K, device="cuda", dtype=torch.float16)
     ref = torch.matmul(a, b.T).float()
+    ref_abs_max = ref.abs().max()
+    error_stats = torch.empty(2, device=ref.device, dtype=ref.dtype)
 
     dev = torch.cuda.get_device_properties(0)
     print(f"\nDevice: {dev.name} (SM {dev.major}.{dev.minor}, {dev.multi_processor_count} SMs)")
@@ -115,13 +118,13 @@ def main():
         configs = [(256, 2, 1), (256, 2, 2)]
 
     arms = [("cuBLAS (target)", cublas, 0.0)]
-    rel = check(matmul_tcgen05_cluster, a, b, ref)
+    rel = check(matmul_tcgen05_cluster, a, b, ref, ref_abs_max, error_stats)
     arms.append(("cluster (incumbent)", matmul_tcgen05_cluster, rel))
     for tile_n, stages, cluster_m in configs:
         name = f"dual_cta n={tile_n} s={stages} cm={cluster_m}"
         try:
             fn = load_dual(tile_n, stages, cluster_m)
-            rel = check(fn, a, b, ref)
+            rel = check(fn, a, b, ref, ref_abs_max, error_stats)
             arms.append((name, fn, rel))
         except Exception as e:  # noqa: BLE001
             print(f"  {name:<28} FAILED: {e}")
@@ -146,7 +149,7 @@ def main():
             name += f" ws={ws} amc={amc}"
         try:
             fn = load_dual_2sm(tile_n, stages, ws, amc)
-            rel = check(fn, a, b, ref)
+            rel = check(fn, a, b, ref, ref_abs_max, error_stats)
             arms.append((name, fn, rel))
         except Exception as e:  # noqa: BLE001
             print(f"  {name:<28} FAILED: {e}")

@@ -201,16 +201,21 @@ def bench(fn, args, warmup=10, iters=50):
     return start.elapsed_time(end) / iters  # ms
 
 
-def rel_err(out: torch.Tensor, ref_f32: torch.Tensor) -> float:
-    ref16 = ref_f32.to(torch.float16).float()
-    error_stats = torch.stack(
-        (
-            (ref16 - out.float()).abs().max(),
-            ref16.abs().max(),
-        )
-    ).detach().cpu()
-    max_diff = float(error_stats[0])
-    denom = float(error_stats[1])
+def rel_err(
+    out: torch.Tensor,
+    ref16: torch.Tensor,
+    ref_abs_max: torch.Tensor | None = None,
+    error_stats: torch.Tensor | None = None,
+) -> float:
+    if ref_abs_max is None:
+        ref_abs_max = ref16.abs().max()
+    if error_stats is None:
+        error_stats = torch.empty(2, device=ref16.device, dtype=ref16.dtype)
+    error_stats[0].copy_((ref16 - out.float()).abs().max())
+    error_stats[1].copy_(ref_abs_max)
+    error_stats_host = error_stats.detach().cpu()
+    max_diff = float(error_stats_host[0])
+    denom = float(error_stats_host[1])
     return max_diff / denom if denom else max_diff
 
 
@@ -245,7 +250,14 @@ def run_gates(size=4096):
         ref8 = torch.matmul(a8.float(), b8.float().T)
     finally:
         torch.backends.cuda.matmul.allow_tf32 = saved
-    r8 = rel_err(matmul_tcgen05_dual_2sm_fp8(a8, b8), ref8)
+    ref8_for_check = ref8.to(torch.float16).float()
+    error_stats = torch.empty(2, device=ref8_for_check.device, dtype=ref8_for_check.dtype)
+    r8 = rel_err(
+        matmul_tcgen05_dual_2sm_fp8(a8, b8),
+        ref8_for_check,
+        ref8_for_check.abs().max(),
+        error_stats,
+    )
     print(f"  fp8 champion  rel_err={r8:.2e} [{'OK' if r8 == 0.0 else 'BAD'}]")
     a16 = a8.float().to(torch.float16)
     b16 = b8.float().to(torch.float16)
@@ -255,7 +267,13 @@ def run_gates(size=4096):
         ref16 = torch.matmul(a16.float(), b16.float().T)
     finally:
         torch.backends.cuda.matmul.allow_tf32 = saved
-    r16 = rel_err(matmul_tcgen05_dual_cta_2sm(a16, b16), ref16)
+    ref16_for_check = ref16.to(torch.float16).float()
+    r16 = rel_err(
+        matmul_tcgen05_dual_cta_2sm(a16, b16),
+        ref16_for_check,
+        ref16_for_check.abs().max(),
+        error_stats,
+    )
     print(f"  fp16 champion rel_err={r16:.2e} [{'OK' if r16 == 0.0 else 'BAD'}]")
     return r8 == 0.0 and r16 == 0.0
 
@@ -286,7 +304,15 @@ def main():
         a_pack, b_pack, a_deq, b_deq, sa, sb = make_randn_data(args.size)
     sfa_blocked = to_blocked(sa.to(torch.float8_e4m3fn))
     sfb_blocked = to_blocked(sb.to(torch.float8_e4m3fn))
-    ref = fp32_ref(a_deq, b_deq, sa, sb)
+    ref16_for_check = None
+    ref_abs_max = None
+    error_stats = None
+    if not args.skip_verify:
+        ref = fp32_ref(a_deq, b_deq, sa, sb)
+        ref16_for_check = ref.to(torch.float16).float()
+        del ref
+        ref_abs_max = ref16_for_check.abs().max()
+        error_stats = torch.empty(2, device=ref16_for_check.device, dtype=ref16_for_check.dtype)
     del a_deq, b_deq
     exact_mode = (args.data == "exact")
 
@@ -304,7 +330,11 @@ def main():
     data = (a_pack, b_pack, sfa_blocked, sfb_blocked)
 
     arms = []
-    rel = 0.0 if args.skip_verify else rel_err(scaled_mm_nvfp4(*data), ref)
+    rel = (
+        0.0
+        if args.skip_verify
+        else rel_err(scaled_mm_nvfp4(*data), ref16_for_check, ref_abs_max, error_stats)
+    )
     arms.append(("cuBLASLt NVFP4 (scaled_mm)", scaled_mm_nvfp4, rel))
 
     for cfg in cfgs:
@@ -312,7 +342,11 @@ def main():
         name = f"nvfp4_2sm n{n}s{s}mb{mb}k{k}rg{rg}te{te}dh{dh}"
         try:
             fn = load_nvfp4(cfg)
-            r = 0.0 if args.skip_verify else rel_err(fn(*data), ref)
+            r = (
+                0.0
+                if args.skip_verify
+                else rel_err(fn(*data), ref16_for_check, ref_abs_max, error_stats)
+            )
             arms.append((name, fn, r))
         except Exception as e:  # noqa: BLE001
             print(f"  {name:<38} FAILED: {type(e).__name__}: {e}")

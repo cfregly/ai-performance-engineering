@@ -354,23 +354,22 @@ def verify_correctness(A, B_T, verbose=True):
         print("\nVerifying correctness...")
     
     ref = torch.matmul(A, B_T.T)
+    ref_fp32 = ref.float()
+    ref_abs_max = ref_fp32.abs().max()
+    error_stats = torch.empty(2, device=ref_fp32.device, dtype=ref_fp32.dtype)
     
     for stage_num, (name, fn) in STAGES.items():
         if stage_num == 0:
             continue
         try:
             result = fn(A, B_T)
-            ref_fp32 = ref.float()
             result_fp32 = result.float()
-            error_stats = torch.stack(
-                (
-                    (ref_fp32 - result_fp32).abs().max(),
-                    ref_fp32.abs().max(),
-                )
-            ).detach().cpu()
-            max_diff = float(error_stats[0])
-            ref_abs_max = float(error_stats[1])
-            rel_err = max_diff / ref_abs_max
+            error_stats[0].copy_((ref_fp32 - result_fp32).abs().max())
+            error_stats[1].copy_(ref_abs_max)
+            error_stats_host = error_stats.detach().cpu()
+            max_diff = float(error_stats_host[0])
+            ref_abs_max_host = float(error_stats_host[1])
+            rel_err = max_diff / ref_abs_max_host
             passed = rel_err < 0.01
             if verbose:
                 status = "✓" if passed else "✗"

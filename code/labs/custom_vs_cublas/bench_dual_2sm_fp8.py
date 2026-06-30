@@ -105,18 +105,22 @@ def bench(fn, a, b, warmup=10, iters=50):
     return start.elapsed_time(end) / iters  # ms
 
 
-def check(fn, a, b, ref_f32):
-    out = fn(a, b).float()
-    ref16 = ref_f32.to(torch.float16).float()
-    error_stats = torch.stack(
-        (
-            (ref16 - out).abs().max(),
-            ref16.abs().max(),
-        )
-    ).detach().cpu()
-    max_diff = float(error_stats[0])
-    denom = float(error_stats[1])
+def _relative_error(out: torch.Tensor, ref16: torch.Tensor, ref_abs_max=None, error_stats=None) -> float:
+    if ref_abs_max is None:
+        ref_abs_max = ref16.abs().max()
+    if error_stats is None:
+        error_stats = torch.empty(2, device=ref16.device, dtype=ref16.dtype)
+    error_stats[0].copy_((ref16 - out.float()).abs().max())
+    error_stats[1].copy_(ref_abs_max)
+    error_stats_host = error_stats.detach().cpu()
+    max_diff = float(error_stats_host[0])
+    denom = float(error_stats_host[1])
     return max_diff / denom if denom else max_diff
+
+
+def check(fn, a, b, ref16, ref_abs_max=None, error_stats=None):
+    out = fn(a, b).float()
+    return _relative_error(out, ref16, ref_abs_max, error_stats)
 
 
 def report(name, ms, rel, M, N, K, exact_mode):
@@ -157,6 +161,10 @@ def main():
     M = N = K = args.size
     a, b = make_fp8_data(args.size, args.data)
     ref = fp32_ref(a, b)
+    ref16_for_check = ref.to(torch.float16).float()
+    del ref
+    ref_abs_max = ref16_for_check.abs().max()
+    error_stats = torch.empty(2, device=ref16_for_check.device, dtype=ref16_for_check.dtype)
     exact_mode = (args.data == "exact")
 
     dev = torch.cuda.get_device_properties(0)
@@ -170,7 +178,7 @@ def main():
         cfgs = [(128, 3, 1, 3, 128, 1, 8, 1)]
 
     arms = []
-    rel = check(scaled_mm, a, b, ref)
+    rel = check(scaled_mm, a, b, ref16_for_check, ref_abs_max, error_stats)
     arms.append(("cuBLASLt FP8 (scaled_mm)", scaled_mm, rel, (a, b)))
 
     for cfg in cfgs:
@@ -181,7 +189,7 @@ def main():
                 + (f"dh{dh}" if dh else "") + (f"eo{eo}" if eo else ""))
         try:
             fn = load_fp8(cfg)
-            rel = check(fn, a, b, ref)
+            rel = check(fn, a, b, ref16_for_check, ref_abs_max, error_stats)
             arms.append((name, fn, rel, (a, b)))
         except Exception as e:  # noqa: BLE001
             print(f"  {name:<34} FAILED: {type(e).__name__}: {e}")
@@ -193,15 +201,8 @@ def main():
         ref16 = fp32_ref(a16, b16)
         out = matmul_tcgen05_dual_cta_2sm(a16, b16).float()
         ref16_for_check = ref16.to(torch.float16).float()
-        error_stats = torch.stack(
-            (
-                (ref16_for_check - out).abs().max(),
-                ref16.abs().max(),
-            )
-        ).detach().cpu()
-        max_diff = float(error_stats[0])
-        denom = float(error_stats[1])
-        rel16 = max_diff / denom if denom else max_diff
+        ref16_abs_max = ref16.abs().max()
+        rel16 = _relative_error(out, ref16_for_check, ref16_abs_max, error_stats)
         arms.append(("fp16_2sm champion (own data)", matmul_tcgen05_dual_cta_2sm, rel16, (a16, b16)))
 
     if args.sol > 0:
