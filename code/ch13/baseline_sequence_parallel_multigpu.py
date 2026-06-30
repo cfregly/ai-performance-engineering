@@ -95,11 +95,13 @@ class BaselineSequenceParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBe
         self._input = None
         self._output = None
         self._full_sequence = None
+        self._layer_triples = None
 
     def setup(self) -> None:
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self._up_proj, self._down_proj, self._norms = build_layers(self._sp_config, self._world_size, self.device)
+        self._layer_triples = tuple(zip(self._up_proj, self._down_proj, self._norms, strict=True))
         self._input = torch.randn(
             self._sp_config.batch_size,
             self._seq_len // self._world_size,
@@ -122,14 +124,15 @@ class BaselineSequenceParallelMultigpuBenchmark(VerificationPayloadMixin, BaseBe
             or self._down_proj is None
             or self._norms is None
             or self._full_sequence is None
+            or self._layer_triples is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
         x = self._input
-        for layer_idx in range(self._sp_config.num_layers):
-            hidden_local = torch.nn.functional.gelu(self._up_proj[layer_idx](x), approximate="tanh")
-            out_partial = self._down_proj[layer_idx](hidden_local)
+        for up_proj, down_proj, norm in self._layer_triples:
+            hidden_local = torch.nn.functional.gelu(up_proj(x), approximate="tanh")
+            out_partial = down_proj(hidden_local)
             _replicate_sequence_shard(out_partial, self._world_size, self._full_sequence)
-            full_sequence = self._norms[layer_idx](self._full_sequence)
+            full_sequence = norm(self._full_sequence)
             x = full_sequence[:, : self._input.size(1)]
         self._output = x
 

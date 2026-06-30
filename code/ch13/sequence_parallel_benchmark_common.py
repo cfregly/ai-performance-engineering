@@ -106,15 +106,16 @@ def run_sequence_parallel(
             device=device,
             dtype=config.dtype,
         )
+    layer_triples = tuple(zip(up_proj, down_proj, norms, strict=True))
 
     def _step() -> torch.Tensor:
         x = x_local
-        for layer_idx in range(config.num_layers):
-            hidden_local = torch.nn.functional.gelu(up_proj[layer_idx](x), approximate="tanh")
-            out_partial = down_proj[layer_idx](hidden_local)
+        for up_layer, down_layer, norm in layer_triples:
+            hidden_local = torch.nn.functional.gelu(up_layer(x), approximate="tanh")
+            out_partial = down_layer(hidden_local)
             dist.all_reduce(out_partial)
             if sequence_parallel:
-                x = norms[layer_idx](out_partial)
+                x = norm(out_partial)
             else:
                 if full_sequence_gather_buf is None:
                     raise RuntimeError("full_sequence gather buffer missing for TP-only path")
@@ -125,7 +126,7 @@ def run_sequence_parallel(
                     seq_per_rank,
                     config.hidden_size,
                 )
-                full_sequence = norms[layer_idx](full_sequence_by_rank)
+                full_sequence = norm(full_sequence_by_rank)
                 x = full_sequence[rank]
         return x
 

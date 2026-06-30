@@ -15091,10 +15091,16 @@ def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
     )[0]
 
     assert "self._full_sequence = torch.empty(" in setup_section
+    assert "self._layer_triples = tuple(zip(self._up_proj, self._down_proj, self._norms, strict=True))" in setup_section
     assert "_replicate_sequence_shard(out_partial, self._world_size, self._full_sequence)" in benchmark_section
+    assert "for up_proj, down_proj, norm in self._layer_triples:" in benchmark_section
+    assert "range(self._sp_config.num_layers)" not in benchmark_section
+    assert "self._up_proj[layer_idx]" not in benchmark_section
+    assert "self._down_proj[layer_idx]" not in benchmark_section
+    assert "self._norms[layer_idx]" not in benchmark_section
     assert "torch.cat([out_partial] * self._world_size" not in benchmark_section
     assert "full_sequence = torch.cat([out_partial]" not in benchmark_section
-    assert "full_sequence = self._norms[layer_idx](self._full_sequence)" in benchmark_section
+    assert "full_sequence = norm(self._full_sequence)" in benchmark_section
 
     out_partial = torch.arange(2 * 3 * 4, dtype=torch.float32).view(2, 3, 4)
     full_sequence = torch.empty(2, 6, 4)
@@ -15105,6 +15111,29 @@ def test_ch13_sequence_parallel_surrogate_reuses_full_sequence_buffer() -> None:
         result,
         torch.cat([out_partial, out_partial], dim=1),
     )
+
+
+def test_ch13_sequence_parallel_surrogates_cache_layer_triples() -> None:
+    for filename in (
+        "baseline_sequence_parallel_multigpu.py",
+        "optimized_sequence_parallel_multigpu.py",
+    ):
+        source = (REPO_ROOT / "ch13" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self._layer_triples = tuple(zip(self._up_proj, self._down_proj, self._norms, strict=True))" in setup_section
+        assert "for up_proj, down_proj, norm in self._layer_triples:" in benchmark_section
+        assert "range(self._sp_config.num_layers)" not in benchmark_section
+        assert "self._up_proj[layer_idx]" not in benchmark_section
+        assert "self._down_proj[layer_idx]" not in benchmark_section
+        assert "self._norms[layer_idx]" not in benchmark_section
 
 
 def test_ch13_sequence_parallel_worker_reuses_rank_major_gather_buffer() -> None:
@@ -15118,6 +15147,12 @@ def test_ch13_sequence_parallel_worker_reuses_rank_major_gather_buffer() -> None
     )[0]
 
     assert "full_sequence_gather_buf = torch.empty(" in run_section
+    assert "layer_triples = tuple(zip(up_proj, down_proj, norms, strict=True))" in run_section
+    assert "for up_layer, down_layer, norm in layer_triples:" in step_section
+    assert "range(config.num_layers)" not in step_section
+    assert "up_proj[layer_idx]" not in step_section
+    assert "down_proj[layer_idx]" not in step_section
+    assert "norms[layer_idx]" not in step_section
     assert "dist.all_gather_into_tensor(full_sequence_gather_buf, out_partial)" in step_section
     assert "full_sequence_by_rank = full_sequence_gather_buf.view(" in step_section
     assert "x = full_sequence[rank]" in step_section
