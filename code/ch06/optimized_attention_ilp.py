@@ -29,6 +29,7 @@ class OptimizedAttentionILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_view0: Optional[torch.Tensor] = None
         self._output_view1: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.workload = WORKLOAD
         self.batch = self.workload.attention_batch
         self.embed_dim = self.workload.attention_embed_dim
@@ -63,6 +64,7 @@ class OptimizedAttentionILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._buf1 = torch.empty_like(self.attention_terms)
         self._output_view0 = self._buf0[:4096]
         self._output_view1 = self._buf1[:4096]
+        self._verify_output_buffer = torch.empty_like(self._output_view0)
         self.output = None
         self._synchronize()
 
@@ -83,9 +85,12 @@ class OptimizedAttentionILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = self._output_view0 if src is buf0 else self._output_view1
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"attention_terms": self.attention_terms},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch,
             parameter_count=0,
             output_tolerance=(1e-5, 1e-5),
@@ -100,6 +105,7 @@ class OptimizedAttentionILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_view0 = None
         self._output_view1 = None
         self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

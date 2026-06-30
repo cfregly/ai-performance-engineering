@@ -3313,6 +3313,37 @@ def test_ch06_quantization_ilp_reuses_output_buffers() -> None:
         assert "* 2.0 + 1.0" not in benchmark_section
 
 
+def test_ch06_ilp_wrappers_reuse_verification_output_buffers() -> None:
+    targets = (
+        ("baseline_elementwise_ilp.py", "self._verify_output_buffer = torch.empty_like(self._output_view0)"),
+        ("optimized_elementwise_ilp.py", "self._verify_output_buffer = torch.empty_like(self._output_view0)"),
+        ("baseline_attention_ilp.py", "self._verify_output_buffer = torch.empty_like(self._output_view0)"),
+        ("optimized_attention_ilp.py", "self._verify_output_buffer = torch.empty_like(self._output_view0)"),
+    )
+
+    for filename, allocation in targets:
+        source = (REPO_ROOT / "ch06" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert allocation in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.output.detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_nccl.py").read_text(encoding="utf-8")
     common_source = (REPO_ROOT / "ch04" / "reduction_common.py").read_text(encoding="utf-8")

@@ -27,6 +27,7 @@ class OptimizedElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_view0: Optional[torch.Tensor] = None
         self._output_view1: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.N = 50_000_000
         self._extension = None
         self.repeats = 10  # Same as baseline for fair comparison
@@ -48,6 +49,7 @@ class OptimizedElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._buf1 = torch.empty(self.N, device=self.device, dtype=torch.float32)
         self._output_view0 = self._buf0[:1024]
         self._output_view1 = self._buf1[:1024]
+        self._verify_output_buffer = torch.empty_like(self._output_view0)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
@@ -71,9 +73,12 @@ class OptimizedElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.N,
             parameter_count=0,
             output_tolerance=(1e-4, 1e-4),
@@ -87,6 +92,7 @@ class OptimizedElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_view0 = None
         self._output_view1 = None
         self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     
