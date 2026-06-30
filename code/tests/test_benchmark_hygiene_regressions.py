@@ -11914,11 +11914,29 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "[kv.to(pair.decode_device" not in benchmark_section
     assert "[seed.to(pair.decode_device" not in benchmark_section
     assert "transfer_slots: Tuple[Tuple[int, torch.Tensor, torch.Tensor], ...]" in source
+    assert "transfer_slot_counts: Tuple[int, int, int]" in source
+    assert "expected_transfer_slot_counts: Tuple[int, int, int]" in source
     assert "transfer_slots = tuple(" in setup_section
+    assert "transfer_slot_counts = (" in setup_section
+    assert "expected_transfer_slot_counts = (" in setup_section
+    assert "transfer_slot_counts=transfer_slot_counts" in setup_section
+    assert "expected_transfer_slot_counts=expected_transfer_slot_counts" in setup_section
     assert "for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:" in benchmark_section
     assert "for req_idx in range(len(kv_chunks)):" not in benchmark_section
     assert "pair.transfer_kv_chunks[req_idx]" not in benchmark_section
     assert "pair.transfer_seed_chunks[req_idx]" not in benchmark_section
+    assert "self._pending_output_count = 0" in source
+    assert "self._expected_output_count = 0" in source
+    assert "self._pending_output_count = len(self._pending_outputs)" in setup_section
+    assert "self._expected_output_count = self.num_pairs * self.cfg.requests_per_rank" in setup_section
+    assert "if self._pending_output_count != self._expected_output_count:" in benchmark_section
+    assert "expected_outputs = self.num_pairs * self.cfg.requests_per_rank" not in benchmark_section
+    assert "len(outputs)" not in benchmark_section
+    assert "len(pair.transfer_kv_chunks)" not in benchmark_section
+    assert "len(pair.transfer_seed_chunks)" not in benchmark_section
+    assert "len(pair.transfer_slots)" not in benchmark_section
+    assert "len(kv_chunks)" not in benchmark_section
+    assert "pair.transfer_slot_counts != pair.expected_transfer_slot_counts" in benchmark_section
     assert "pair.prefill_kv_chunks," in benchmark_section
     assert "pair.prefill_seed_chunks," in benchmark_section
     assert ".to(\n                        pair.decode_device" not in benchmark_section
@@ -12748,7 +12766,13 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "seed_chunks[chunk_idx] = seed_buf" in run_iteration_section
     assert "handles.extend(" not in run_iteration_section
     assert "transfer_slots: Tuple[Tuple[int, torch.Tensor, torch.Tensor], ...]" in source
+    assert "transfer_slot_counts: Tuple[int, int, int]" in source
+    assert "expected_transfer_slot_counts: Tuple[int, int, int]" in source
     assert "transfer_slots = tuple(" in setup_section
+    assert "transfer_slot_counts = (" in setup_section
+    assert "expected_transfer_slot_counts = (" in setup_section
+    assert "transfer_slot_counts=transfer_slot_counts" in setup_section
+    assert "expected_transfer_slot_counts=expected_transfer_slot_counts" in setup_section
     assert "for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:" in benchmark_section
     assert "for req_idx in range(len(kv_chunks)):" not in benchmark_section
     assert "pair.transfer_kv_chunks[req_idx]" not in benchmark_section
@@ -12771,6 +12795,18 @@ def test_ch17_multigpu_prefill_decode_reuses_overlap_events_and_defers_output_st
     assert "seed_buf = torch.empty(" not in run_iteration_section
     assert "expected_outputs = len(self._pairs) * self.cfg.requests_per_rank" in setup_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(expected_outputs)]" in setup_section
+    assert "self._pending_output_count = 0" in class_section
+    assert "self._expected_output_count = 0" in class_section
+    assert "self._pending_output_count = len(self._pending_outputs)" in setup_section
+    assert "self._expected_output_count = expected_outputs" in setup_section
+    assert "if self._pending_output_count != self._expected_output_count:" in benchmark_section
+    assert "expected_outputs = len(self._pairs) * self.cfg.requests_per_rank" not in benchmark_section
+    assert "len(outputs)" not in benchmark_section
+    assert "len(pair.transfer_kv_chunks)" not in benchmark_section
+    assert "len(pair.transfer_seed_chunks)" not in benchmark_section
+    assert "len(pair.transfer_slots)" not in benchmark_section
+    assert "len(kv_chunks)" not in benchmark_section
+    assert "pair.transfer_slot_counts != pair.expected_transfer_slot_counts" in benchmark_section
     assert "self._output_buffer: Optional[torch.Tensor] = None" in class_section
     assert "self._output_buffer = self._allocate_output_buffer()" in setup_section
     assert "self._metadata_inputs: Dict[str, torch.Tensor] = {}" in class_section

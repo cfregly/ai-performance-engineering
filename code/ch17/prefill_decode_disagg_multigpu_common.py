@@ -59,6 +59,8 @@ class _LocalPair:
     transfer_kv_chunks: List[torch.Tensor]
     transfer_seed_chunks: List[torch.Tensor]
     transfer_slots: Tuple[Tuple[int, torch.Tensor, torch.Tensor], ...]
+    transfer_slot_counts: Tuple[int, int, int]
+    expected_transfer_slot_counts: Tuple[int, int, int]
     decode_output_chunks: List[torch.Tensor]
 
 
@@ -622,6 +624,8 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
+        self._pending_output_count = 0
+        self._expected_output_count = 0
         self._verify_prompt: Optional[torch.Tensor] = None
         self._metadata_inputs: Dict[str, torch.Tensor] = {}
         self._param_count: int = 0
@@ -726,6 +730,16 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 (req_idx, transfer_kv_chunks[req_idx], transfer_seed_chunks[req_idx])
                 for req_idx in range(self.cfg.requests_per_rank)
             )
+            transfer_slot_counts = (
+                len(transfer_kv_chunks),
+                len(transfer_seed_chunks),
+                len(transfer_slots),
+            )
+            expected_transfer_slot_counts = (
+                self.cfg.requests_per_rank,
+                self.cfg.requests_per_rank,
+                self.cfg.requests_per_rank,
+            )
             self._pairs.append(
                 _LocalPair(
                     prefill_device=prefill_device,
@@ -738,6 +752,8 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     transfer_kv_chunks=transfer_kv_chunks,
                     transfer_seed_chunks=transfer_seed_chunks,
                     transfer_slots=transfer_slots,
+                    transfer_slot_counts=transfer_slot_counts,
+                    expected_transfer_slot_counts=expected_transfer_slot_counts,
                     decode_output_chunks=[
                         torch.empty(0) for _ in range(self.cfg.requests_per_rank)
                     ],
@@ -750,6 +766,8 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Failed to initialize prompts for verification")
         expected_outputs = len(self._pairs) * self.cfg.requests_per_rank
         self._pending_outputs = [torch.empty(0) for _ in range(expected_outputs)]
+        self._pending_output_count = len(self._pending_outputs)
+        self._expected_output_count = expected_outputs
         self._verify_prompt = self._pairs[0].prompts[0]
         self._output_buffer = self._allocate_output_buffer()
         meta_dtype = torch.float32
@@ -766,9 +784,8 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not self._pairs:
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        expected_outputs = len(self._pairs) * self.cfg.requests_per_rank
         outputs = self._pending_outputs
-        if len(outputs) != expected_outputs:
+        if self._pending_output_count != self._expected_output_count:
             raise RuntimeError("Decode output slots not initialized")
         output_idx = 0
         with torch.inference_mode():
@@ -793,11 +810,7 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         pair.prefill_kv_chunks,
                         pair.prefill_seed_chunks,
                     )
-                    if (
-                        len(pair.transfer_kv_chunks) != len(kv_chunks)
-                        or len(pair.transfer_seed_chunks) != len(seed_chunks)
-                        or len(pair.transfer_slots) != len(kv_chunks)
-                    ):
+                    if pair.transfer_slot_counts != pair.expected_transfer_slot_counts:
                         raise RuntimeError("Transfer chunk slots not initialized")
                     for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:
                         with torch.cuda.device(pair.decode_device):
@@ -877,6 +890,8 @@ class _PrefillDecodeMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output = None
         self._output_buffer = None
         self._pending_outputs = []
+        self._pending_output_count = 0
+        self._expected_output_count = 0
         self._verify_prompt = None
         self._metadata_inputs = {}
         torch.cuda.empty_cache()

@@ -70,6 +70,8 @@ class _LocalPair:
     transfer_kv_chunks: List[torch.Tensor]
     transfer_seed_chunks: List[torch.Tensor]
     transfer_slots: Tuple[Tuple[int, torch.Tensor, torch.Tensor], ...]
+    transfer_slot_counts: Tuple[int, int, int]
+    expected_transfer_slot_counts: Tuple[int, int, int]
 
 
 def _build_moe_config(cfg: DisaggConfig) -> MoeInferenceConfig:
@@ -477,6 +479,8 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         self._output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
+        self._pending_output_count = 0
+        self._expected_output_count = 0
         self._verify_prompt: Optional[torch.Tensor] = None
         self._metadata_inputs: Dict[str, torch.Tensor] = {}
         self._param_count: int = 0
@@ -567,6 +571,16 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                 (req_idx, transfer_kv_chunks[req_idx], transfer_seed_chunks[req_idx])
                 for req_idx in range(self.cfg.requests_per_rank)
             )
+            transfer_slot_counts = (
+                len(transfer_kv_chunks),
+                len(transfer_seed_chunks),
+                len(transfer_slots),
+            )
+            expected_transfer_slot_counts = (
+                self.cfg.requests_per_rank,
+                self.cfg.requests_per_rank,
+                self.cfg.requests_per_rank,
+            )
             prompts = torch.randint(
                 0,
                 self.cfg.vocab_size,
@@ -590,6 +604,8 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                     transfer_kv_chunks=transfer_kv_chunks,
                     transfer_seed_chunks=transfer_seed_chunks,
                     transfer_slots=transfer_slots,
+                    transfer_slot_counts=transfer_slot_counts,
+                    expected_transfer_slot_counts=expected_transfer_slot_counts,
                 )
             )
 
@@ -600,6 +616,8 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         self._pending_outputs = [
             torch.empty(0) for _ in range(self.num_pairs * self.cfg.requests_per_rank)
         ]
+        self._pending_output_count = len(self._pending_outputs)
+        self._expected_output_count = self.num_pairs * self.cfg.requests_per_rank
         self._output_buffer = self._allocate_output_buffer()
         meta_dtype = torch.float32
         self._metadata_inputs = {
@@ -616,9 +634,8 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         if not self._pairs:
             raise RuntimeError("setup() must run before benchmark_fn()")
 
-        expected_outputs = self.num_pairs * self.cfg.requests_per_rank
         outputs = self._pending_outputs
-        if len(outputs) != expected_outputs:
+        if self._pending_output_count != self._expected_output_count:
             raise RuntimeError("Decode output slots not initialized")
         output_idx = 0
         with torch.inference_mode():
@@ -630,11 +647,7 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
                     pair.prefill_kv_chunks,
                     pair.prefill_seed_chunks,
                 )
-                if (
-                    len(pair.transfer_kv_chunks) != len(kv_chunks)
-                    or len(pair.transfer_seed_chunks) != len(seed_chunks)
-                    or len(pair.transfer_slots) != len(kv_chunks)
-                ):
+                if pair.transfer_slot_counts != pair.expected_transfer_slot_counts:
                     raise RuntimeError("Transfer chunk slots not initialized")
                 for req_idx, transfer_kv, transfer_seed in pair.transfer_slots:
                     transfer_kv.copy_(
@@ -724,6 +737,8 @@ class _DisaggregatedInferenceMultiGPUBenchmark(VerificationPayloadMixin, BaseBen
         self._output = None
         self._output_buffer = None
         self._pending_outputs = []
+        self._pending_output_count = 0
+        self._expected_output_count = 0
         self._verify_prompt = None
         self._metadata_inputs = {}
         torch.cuda.empty_cache()
