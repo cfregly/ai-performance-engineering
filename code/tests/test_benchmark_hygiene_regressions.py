@@ -3144,13 +3144,19 @@ def test_ch05_baseline_vectorization_reuses_chunk_views() -> None:
 
     assert "self.chunk = 4096" in source
     assert "self._chunk_views: list[torch.Tensor] = []" in source
+    assert "self._chunk_sum_buffer: Optional[torch.Tensor] = None" in source
     assert "self._chunk_views = list(self.data.split(self.chunk))" in setup_section
+    assert "self._chunk_sum_buffer = torch.empty_like(self._output_buffer)" in setup_section
+    assert "with torch.inference_mode(), self._nvtx_range(\"baseline_vectorization\"):" in benchmark_section
     assert "for chunk_view in self._chunk_views:" in benchmark_section
-    assert "chunk_view.sum()" in benchmark_section
+    assert "torch.sum(chunk_view, dim=0, keepdim=True, out=chunk_sum)" in benchmark_section
+    assert "result.add_(chunk_sum)" in benchmark_section
+    assert "chunk_view.sum()" not in benchmark_section
     assert "range(0, self.N" not in benchmark_section
     assert "self.data[start:start + chunk]" not in benchmark_section
     assert "chunk_elements=self.chunk" in source
     assert "self._chunk_views = []" in teardown_section
+    assert "self._chunk_sum_buffer = None" in teardown_section
 
 
 def test_ch05_baseline_ai_reuses_device_transfer_buffer() -> None:

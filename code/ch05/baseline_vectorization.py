@@ -18,6 +18,7 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.data: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._chunk_sum_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.N = 1_000_000
         self.chunk = 4096
@@ -34,19 +35,22 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         self.data = torch.randn(self.N, device=self.device)
         self._output_buffer = torch.empty(1, device=self.device)
+        self._chunk_sum_buffer = torch.empty_like(self._output_buffer)
         self._verify_output_buffer = torch.empty_like(self._output_buffer)
         self._chunk_views = list(self.data.split(self.chunk))
     
     def benchmark_fn(self) -> None:
         """Benchmark: Chunked reductions to simulate scalar-style overhead."""
         assert self.data is not None
-        with self._nvtx_range("baseline_vectorization"):
+        with torch.inference_mode(), self._nvtx_range("baseline_vectorization"):
             result = self._output_buffer
-            if result is None:
+            chunk_sum = self._chunk_sum_buffer
+            if result is None or chunk_sum is None:
                 raise RuntimeError("Output buffer not initialized")
             result.zero_()
             for chunk_view in self._chunk_views:
-                result += chunk_view.sum()
+                torch.sum(chunk_view, dim=0, keepdim=True, out=chunk_sum)
+                result.add_(chunk_sum)
         self.output = result
 
     def capture_verification_payload(self) -> None:
@@ -71,6 +75,7 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.data = None
         self._output_buffer = None
+        self._chunk_sum_buffer = None
         self._verify_output_buffer = None
         self._chunk_views = []
         torch.cuda.empty_cache()
