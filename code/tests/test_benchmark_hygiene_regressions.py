@@ -18156,13 +18156,28 @@ def test_ch19_nvfp4_training_defers_verification_forward_outside_hot_loop() -> N
             "def get_input_signature",
             maxsplit=1,
         )[0]
+        calibration_section = (
+            source.split("def _calibration_warmup", maxsplit=1)[1].split("def _train_step", maxsplit=1)[0]
+            if filename.startswith("optimized")
+            else ""
+        )
 
         assert ".float().clone()" not in benchmark_section
         assert "self.output = None" in benchmark_section
+        assert "self._micro_batch_pairs: List[tuple[torch.Tensor, torch.Tensor]] = []" in source
+        assert "self._micro_batch_pairs = list(zip(self.inputs, self.targets, strict=True))" in setup_section
+        assert "for inp, target in self._micro_batch_pairs:" in benchmark_section
+        assert "self._train_step(inp, target)" in benchmark_section
+        assert "for idx in range(self.micro_batches):" not in benchmark_section
+        assert "self._train_step(idx)" not in source
+        if filename.startswith("optimized"):
+            assert "for inp, target in self._micro_batch_pairs:" in calibration_section
+            assert "self._train_step(inp, target)" in calibration_section
         assert "with torch.inference_mode():" in capture_section
         assert "with torch.no_grad():" not in capture_section
         assert "self.model(self._verify_input)" in capture_section
-        assert "self._verify_output_buffer = torch.empty_like(" in capture_section
+        assert "self._verify_output_buffer = torch.empty_like(" in setup_section
+        assert "self._verify_output_buffer = torch.empty_like(" not in capture_section
         assert "self._verify_output_buffer.copy_(" in capture_section
         assert "self.output = self._verify_output_buffer" in capture_section
         assert ".float().clone()" not in capture_section

@@ -57,6 +57,7 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.inputs: List[torch.Tensor] = []
         self.targets: List[torch.Tensor] = []
+        self._micro_batch_pairs: List[tuple[torch.Tensor, torch.Tensor]] = []
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
@@ -95,6 +96,7 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for _ in range(self.micro_batches)
         ]
         self.targets = [torch.randn_like(self.inputs[0]) for _ in range(self.micro_batches)]
+        self._micro_batch_pairs = list(zip(self.inputs, self.targets, strict=True))
         self._verify_input = torch.randn(
             self.batch_size,
             self.seq_len,
@@ -105,10 +107,8 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         torch.cuda.synchronize(self.device)
 
-    def _train_step(self, idx: int) -> None:
+    def _train_step(self, inp: torch.Tensor, target: torch.Tensor) -> None:
         assert self.model is not None and self.optimizer is not None
-        inp = self.inputs[idx]
-        target = self.targets[idx]
 
         self.optimizer.zero_grad(set_to_none=True)
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
@@ -119,8 +119,8 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         with nvtx_range("nvfp4_training_baseline", enable=self._enable_nvtx):
-            for idx in range(self.micro_batches):
-                self._train_step(idx)
+            for inp, target in self._micro_batch_pairs:
+                self._train_step(inp, target)
         self.output = None
 
     def capture_verification_payload(self) -> None:
@@ -168,6 +168,7 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer = None
         self.inputs = []
         self.targets = []
+        self._micro_batch_pairs = []
         self._verify_input = None
         self._verify_output_buffer = None
         self.output = None
