@@ -288,7 +288,7 @@ class ScaledDotProductAttentionLayer(nn.Module):
 
         attn_out = attn_out.transpose(1, 2).reshape(batch_size, seq_len, self.embed_dim)
         output = self.out_proj(attn_out)
-        return output, k.detach(), v.detach()
+        return output, k, v
 
 
 class PrefillKernel(nn.Module):

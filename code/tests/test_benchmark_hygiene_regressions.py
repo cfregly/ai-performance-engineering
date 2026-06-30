@@ -11305,6 +11305,9 @@ def test_ch15_sdpa_attention_reuses_kv_concat_buffers() -> None:
     assert "k, v = self._concat_kv_cache(past_k, past_v, k, v)" in attention_section
     assert "ScaledDotProductAttentionLayer expects inputs in compute_dtype" in forward_section
     assert "x = x.to(dtype=self.compute_dtype)" not in forward_section
+    assert "return output, k, v" in forward_section
+    assert "k.detach()" not in forward_section
+    assert "v.detach()" not in forward_section
     assert "token_embed = token_embed.to(device=self.device, dtype=self.compute_dtype)" not in generate_next_section
     assert "torch.cat([past_k, k]" not in attention_section
     assert "torch.cat([past_v, v]" not in attention_section
