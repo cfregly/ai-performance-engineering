@@ -748,6 +748,15 @@ def test_ch04_optimized_torchcomms_overlaps_aux_compute_before_comm_wait() -> No
         assert output_marker in post_launch_section
         assert "_ = reduced + aux_out" not in post_launch_section
 
+    multigpu_source = (REPO_ROOT / "ch04" / "optimized_torchcomms_multigpu.py").read_text(encoding="utf-8")
+    multigpu_benchmark = multigpu_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    assert "self._aux_pass_range = range(_AUX_PASSES)" in multigpu_source
+    assert "for _ in self._aux_pass_range:" in multigpu_benchmark
+    assert "for _ in range(_AUX_PASSES):" not in multigpu_benchmark
+
 
 def test_ch04_optimizer_central_nvlink_uses_direct_copy_staging() -> None:
     source = (REPO_ROOT / "ch04" / "optimizer_central_nvlink.py").read_text(
@@ -1818,6 +1827,16 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
             assert "proj_out.add_(aux_out)" in benchmark_section
             assert "x = proj_out + aux_out" not in worker_section
             assert "x = proj_out + aux_out" not in benchmark_section
+            assert "self._layer_range = range(_DEFAULT_LAYERS)" in source
+            assert "for layer_idx in self._layer_range:" in benchmark_section
+            assert "for layer_idx in range(_DEFAULT_LAYERS):" not in benchmark_section
+        if filename in {
+            "optimized_tensor_parallel_allgather_multigpu.py",
+            "optimized_tensor_parallel_multigpu.py",
+        }:
+            assert "self._aux_pass_range = range(_AUX_PASSES)" in source
+            assert "for _ in self._aux_pass_range:" in benchmark_section
+            assert "for _ in range(_AUX_PASSES):" not in benchmark_section
         if filename in {"optimized_tensor_parallel_async.py", "optimized_tensor_parallel_multigpu.py"}:
             linear_helper_section = source.split("def _linear_no_bias_into", maxsplit=1)[1].split(
                 "def _replicate_tensor_parallel_shard",

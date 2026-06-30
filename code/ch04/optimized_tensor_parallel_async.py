@@ -225,6 +225,7 @@ class OptimizedTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._hidden = _DEFAULT_HIDDEN
         self._hidden_per_rank = _DEFAULT_HIDDEN
         self._payload_parameter_count = 0
+        self._layer_range = range(_DEFAULT_LAYERS)
 
     def setup(self) -> None:
         require_min_gpus(2, "optimized_tensor_parallel_async.py")
@@ -278,7 +279,7 @@ class OptimizedTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must run before benchmark_fn()")
         with torch.inference_mode():
             x = self._input
-            for layer_idx in range(_DEFAULT_LAYERS):
+            for layer_idx in self._layer_range:
                 local_out = _linear_no_bias_into(self._shard_layers[layer_idx], x, self._local_out)
                 _replicate_tensor_parallel_shard(local_out, self._world_size, self._full_out)
                 aux_out = _linear_no_bias_into(self._aux_layers[layer_idx], x, self._aux_out)

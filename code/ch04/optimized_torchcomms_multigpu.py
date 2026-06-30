@@ -139,6 +139,7 @@ class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output: Optional[torch.Tensor] = None
         self._world_size = 1
         self._payload_parameter_count = 0
+        self._aux_pass_range = range(_AUX_PASSES)
 
     def setup(self) -> None:
         require_min_gpus(2, "optimized_torchcomms_multigpu.py")
@@ -162,7 +163,7 @@ class OptimizedTorchcommsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with torch.inference_mode():
             comm_out = self._comm_block(self._input)
             aux_out = self._input
-            for _ in range(_AUX_PASSES):
+            for _ in self._aux_pass_range:
                 aux_out = self._aux_block(aux_out)
             comm_out.add_(aux_out)
             self._output = comm_out
