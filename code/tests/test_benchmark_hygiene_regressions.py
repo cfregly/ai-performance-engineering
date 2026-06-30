@@ -8964,6 +8964,13 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
 
     assert "self.cache = torch.empty(" in baseline_setup
     assert "self.cache = torch.zeros(" not in baseline_setup
+    assert "self._input_step_views: list[torch.Tensor] = []" in baseline_source
+    assert "self._cache_step_views: list[torch.Tensor] = []" in baseline_source
+    assert "self._cos_step_views: list[torch.Tensor] = []" in baseline_source
+    assert "self._sin_step_views: list[torch.Tensor] = []" in baseline_source
+    assert "self._input_step_views = list(self.inputs.unbind(0))" in baseline_setup
+    assert "self._cache_step_views = [self.cache[:, :, step, :] for step in range(self.cfg.steps)]" in baseline_setup
+    assert "self._output_view = self._cache_step_views[self.cfg.steps - 1]" in baseline_setup
     assert "emb = torch.cat([freqs, freqs], dim=-1)" not in common_source
     assert "cos[:, :half].copy_(cos_half)" in common_source
     assert "sin[:, half:].copy_(sin_half)" in common_source
@@ -8972,9 +8979,15 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "out1.addcmul_(q2, sin[..., :half], value=-1)" in common_source
     assert "torch.mul(q2, cos[..., half:], out=out2)" in common_source
     assert "out2.addcmul_(q1, sin[..., half:])" in common_source
-    assert "cos_t = self.cos[step].view(1, 1, self.cfg.head_dim)" in baseline_benchmark
-    assert "sin_t = self.sin[step].view(1, 1, self.cfg.head_dim)" in baseline_benchmark
+    assert "for x, cache_step, cos_t, sin_t in zip(" in baseline_benchmark
+    assert "cos_t = self.cos[step].view(1, 1, self.cfg.head_dim)" not in baseline_benchmark
+    assert "sin_t = self.sin[step].view(1, 1, self.cfg.head_dim)" not in baseline_benchmark
     assert "q = apply_rope(q, cos_t, sin_t)" in baseline_benchmark
+    assert "cache_step.copy_(q)" in baseline_benchmark
+    assert "self.cache[:, :, step, :] = q" not in baseline_benchmark
+    assert "self.output = self._output_view" in baseline_benchmark
+    assert "self.output = self.cache[:, :, self.cfg.steps - 1, :]" not in baseline_benchmark
+    assert "for step in range(self.cfg.steps):" not in baseline_benchmark
     assert "for h in range(self.cfg.heads):" not in baseline_benchmark
     assert "q[:, h, :]" not in baseline_benchmark
     assert "self.cache = torch.empty(" in setup_section

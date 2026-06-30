@@ -22,6 +22,11 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cos: Optional[torch.Tensor] = None
         self.sin: Optional[torch.Tensor] = None
         self.cache: Optional[torch.Tensor] = None
+        self._input_step_views: list[torch.Tensor] = []
+        self._cache_step_views: list[torch.Tensor] = []
+        self._cos_step_views: list[torch.Tensor] = []
+        self._sin_step_views: list[torch.Tensor] = []
+        self._output_view: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.batch_size),
@@ -64,21 +69,46 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
+        self._input_step_views = list(self.inputs.unbind(0))
+        self._cache_step_views = [self.cache[:, :, step, :] for step in range(self.cfg.steps)]
+        self._cos_step_views = [
+            self.cos[step].view(1, 1, self.cfg.head_dim)
+            for step in range(self.cfg.steps)
+        ]
+        self._sin_step_views = [
+            self.sin[step].view(1, 1, self.cfg.head_dim)
+            for step in range(self.cfg.steps)
+        ]
+        self._output_view = self._cache_step_views[self.cfg.steps - 1]
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        if self.inputs is None or self.q_weight is None or self.cos is None or self.sin is None or self.cache is None:
+        if (
+            self.inputs is None
+            or self.q_weight is None
+            or self.cos is None
+            or self.sin is None
+            or self.cache is None
+            or self._output_view is None
+            or len(self._input_step_views) != self.cfg.steps
+            or len(self._cache_step_views) != self.cfg.steps
+            or len(self._cos_step_views) != self.cfg.steps
+            or len(self._sin_step_views) != self.cfg.steps
+        ):
             raise RuntimeError("Benchmark not initialized")
         with torch.inference_mode():
-            for step in range(self.cfg.steps):
-                x = self.inputs[step]
+            for x, cache_step, cos_t, sin_t in zip(
+                self._input_step_views,
+                self._cache_step_views,
+                self._cos_step_views,
+                self._sin_step_views,
+                strict=True,
+            ):
                 q = x @ self.q_weight
                 q = q.view(self.cfg.batch_size, self.cfg.heads, self.cfg.head_dim)
-                cos_t = self.cos[step].view(1, 1, self.cfg.head_dim)
-                sin_t = self.sin[step].view(1, 1, self.cfg.head_dim)
                 q = apply_rope(q, cos_t, sin_t)
-                self.cache[:, :, step, :] = q
-            self.output = self.cache[:, :, self.cfg.steps - 1, :]
+                cache_step.copy_(q)
+            self.output = self._output_view
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
