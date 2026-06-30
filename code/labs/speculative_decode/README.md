@@ -49,6 +49,7 @@ python -m cli.aisp bench run --targets labs/speculative_decode:speculative_decod
 | `baseline_speculative_decode.py` | Target-only greedy decode baseline. |
 | `optimized_speculative_decode.py` | Draft proposals plus batched target verification. |
 | `baseline_speculative_decode_trusted.py`, `optimized_speculative_decode_trusted.py` | Trusted-draft serving variant that compares verified speculative decode with direct draft-token placement. |
+| `baseline_speculative_decode_transition_table.py`, `optimized_speculative_decode_transition_table.py` | Token-local transition cache variant that removes draft-model calls from repeated trusted decode. |
 | `speculative_decode_common.py` | Toy-model helpers and workload setup used by both paths. |
 | `expectations_{hardware_key}.json` | Regression thresholds for the benchmark pair. |
 

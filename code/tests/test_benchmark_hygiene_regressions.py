@@ -18334,6 +18334,36 @@ def test_labs_trusted_speculative_decode_skips_target_verification_hot_path() ->
     assert 'self._metrics["speculative.trusted_draft"] = 1.0' in benchmark_section
 
 
+def test_labs_transition_table_speculative_decode_uses_lookup_hot_path() -> None:
+    baseline_source = (
+        REPO_ROOT / "labs" / "speculative_decode" / "baseline_speculative_decode_transition_table.py"
+    ).read_text(encoding="utf-8")
+    optimized_source = (
+        REPO_ROOT / "labs" / "speculative_decode" / "optimized_speculative_decode_transition_table.py"
+    ).read_text(encoding="utf-8")
+    setup_section = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+
+    assert "OptimizedSpeculativeDecodeTrustedBenchmark" in baseline_source
+    assert '"speculative.transition_table": 0.0' in baseline_source
+    assert '"speculative.draft_model_calls": 0.0' in baseline_source
+    assert "self._transition_table = torch.empty(" in setup_section
+    assert "draft_forward_into(token_ids[:, start:end], logits_view)" in setup_section
+    assert "self.draft_model = None" in setup_section
+    assert "torch.index_select(transition_table, 0, output_token_views[t], out=next_token)" in benchmark_section
+    assert "draft_forward_into" not in benchmark_section
+    assert "target_forward_into" not in benchmark_section
+    assert "match_host.copy_" not in benchmark_section
+    assert 'self._metrics["speculative.transition_table"] = 1.0' in benchmark_section
+    assert 'self._metrics["speculative.draft_model_calls"] = 0.0' in benchmark_section
+
+
 def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     source = (
         REPO_ROOT / "labs" / "speculative_decode" / "baseline_speculative_decode.py"
