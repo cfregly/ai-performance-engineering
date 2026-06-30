@@ -119,7 +119,7 @@ class GuidedDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         masked_logits = self.masked_logits_buffer
         output = self.output_buffer
 
-        with self._nvtx_range(self.label):
+        with torch.inference_mode(), self._nvtx_range(self.label):
             for _ in self._step_range:
                 if self.reuse_gpu_mask:
                     if self.disallowed_mask_buffer is None or self.slice_ids is None:

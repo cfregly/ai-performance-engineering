@@ -12961,6 +12961,9 @@ def test_ch15_guided_decoding_reuses_mask_and_slice_buffers() -> None:
     assert "disallowed[self.allowed_token_ids.to(self.device)] = False" in setup_section
     assert "self.slice_ids = self.allowed_slice_cpu.to(self.device)" in setup_section
     assert "masked = logits.masked_fill" not in benchmark_section
+    assert "with torch.inference_mode(), self._nvtx_range(self.label):" in benchmark_section
+    assert "with self._nvtx_range(self.label):" not in benchmark_section
+    assert "torch.no_grad()" not in benchmark_section
     assert "for _ in self._step_range:" in benchmark_section
     assert "for _ in range(self.steps):" not in benchmark_section
     assert ".index_select(1, self.slice_ids)" not in benchmark_section
