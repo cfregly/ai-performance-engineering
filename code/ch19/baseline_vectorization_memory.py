@@ -31,6 +31,7 @@ class VectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Use a large tensor that exceeds L2 so the kernel is HBM bandwidth bound.
         # Keep the iteration count low to avoid kernel-launch overhead dominating.
         self.repeats = 12
+        self._repeat_range = range(self.repeats)
         self.N = 67_108_864
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repeats),
@@ -61,13 +62,14 @@ class VectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
             non_blocking=False,
         )
         self._verify_output_buffer = torch.empty(4096, dtype=torch.float32)
+        self._repeat_range = range(self.repeats)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
         if self.tensor_a is None or self.tensor_b is None or self._work is None:
             raise RuntimeError("setup() must be called before benchmark_fn()")
         with nvtx_range("baseline_vectorization", enable=self._enable_nvtx):
-            for _ in range(self.repeats):
+            for _ in self._repeat_range:
                 torch.add(self.tensor_a, self.tensor_b, out=self._work)
             self.output = self._work
 

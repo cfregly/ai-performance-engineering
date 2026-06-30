@@ -6881,6 +6881,9 @@ def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
         assert "get_config()" not in benchmark
         assert "get_nvtx_enabled(" not in benchmark
         assert "enable=self._enable_nvtx" in benchmark
+        assert "self._repeat_range = range(self.repeats)" in setup
+        assert "for _ in self._repeat_range:" in benchmark
+        assert "for _ in range(self.repeats):" not in benchmark
         assert "self._verify_probe_a = torch.empty(1024, dtype=torch.float32, pin_memory=True)" in setup
         assert "self._verify_probe_b = torch.empty(1024, dtype=torch.float32, pin_memory=True)" in setup
         assert "self._verify_probe_a.copy_(" in setup

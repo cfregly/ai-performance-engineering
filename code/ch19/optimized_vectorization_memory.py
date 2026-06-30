@@ -41,6 +41,7 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
         self._enable_nvtx = False
 
         self.repeats = 12
+        self._repeat_range = range(self.repeats)
         self.N = 67_108_864
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repeats),
@@ -73,13 +74,14 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
             non_blocking=False,
         )
         self._verify_output_buffer = torch.empty(4096, dtype=torch.float32)
+        self._repeat_range = range(self.repeats)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
         if self._work is None or self._tensor_a_fp16 is None or self._tensor_b_fp16 is None:
             raise RuntimeError("setup() must be called before benchmark_fn()")
         with nvtx_range("optimized_vectorization", enable=self._enable_nvtx):
-            for _ in range(self.repeats):
+            for _ in self._repeat_range:
                 torch.add(self._tensor_a_fp16, self._tensor_b_fp16, out=self._work)
             self.output = self._work
         if self.tensor_a is None or self.tensor_b is None or self.output is None:
