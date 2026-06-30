@@ -741,9 +741,13 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._model_update_groups: List[Tuple[int, nn.Linear, torch.Tensor]] = []" in source
     assert "self._allreduce_buffer = torch.empty_like(" in naive_setup
     assert "self._grad_slots = [" in naive_setup
+    assert "self._microbatch_range = range(self.microbatches)" in naive_setup
+    assert "for _micro in self._microbatch_range:" in naive_setup
     assert "self._allreduce_buffer = torch.zeros_like(" not in naive_setup
     assert "grads = []" not in naive_benchmark
     assert "grads.append(" not in naive_benchmark
+    assert "for micro in self._microbatch_range:" in naive_benchmark
+    assert "for micro in range(self.microbatches):" not in naive_benchmark
     assert "buf.copy_(grads[0].to(root))" in naive_reduce
     assert "for g in grads[1:]" in naive_reduce
     assert "buf.zero_()" not in naive_reduce
@@ -755,6 +759,8 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._ordered_bucket_indices = [bucket_idx for _, bucket_idx in bucket_order]" in setup_section
     assert "self._reduction_results = [" in setup_section
     assert "self._model_update_groups = [" in setup_section
+    assert "self._microbatch_range = range(self.microbatches)" in setup_section
+    assert "for _micro in self._microbatch_range:" in setup_section
     assert "zip(self.models, self._update_buffers, strict=True)" in setup_section
     assert "torch.cuda.Event()" not in reduce_section
     assert "g.to(self.root_device" not in reduce_section
@@ -762,6 +768,8 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "for idx, g in enumerate(grads[1:], start=1)" in reduce_section
     assert "grads = []" not in benchmark_section
     assert "reduction_results: List[torch.Tensor] = []" not in benchmark_section
+    assert "for micro in self._microbatch_range:" in benchmark_section
+    assert "for micro in range(self.microbatches):" not in benchmark_section
     assert "sorted(zip(grads, _bucket_order())" not in benchmark_section
     assert "ordered_grads = [g for g, _ in ordered]" not in benchmark_section
     assert "reduction_results[micro] = self._async_reduce_to_root(ordered_grads, micro)" in benchmark_section
@@ -3610,8 +3618,11 @@ def test_ch04_pipeline_wrappers_cache_micro_batch_views() -> None:
         )[0]
 
         assert "self._micro_batch: Optional[torch.Tensor] = None" in source
+        assert "self._world_size_range = range(self._world_size)" in setup_section
         assert "self._micro_batch = self._input.narrow(" in setup_section
         assert "x = self._micro_batch" in benchmark_section
+        assert benchmark_section.count("for _ in self._world_size_range:") == 2
+        assert "for _ in range(self._world_size):" not in benchmark_section
         assert "micro_batch_size = self._batch_size // self._micro_batches" not in benchmark_section
         assert "self._input[:micro_batch_size]" not in benchmark_section
         assert "self._micro_batch = None" in teardown_section

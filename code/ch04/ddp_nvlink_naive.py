@@ -29,6 +29,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._allreduce_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.microbatches = 2
+        self._microbatch_range = range(self.microbatches)
         self.batch_size = 8
         self.hidden = 512
         self._payload_parameter_count = 0
@@ -58,7 +59,8 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.models[0].weight.device,
             dtype=torch.float32,
         )
-        for _micro in range(self.microbatches):
+        self._microbatch_range = range(self.microbatches)
+        for _micro in self._microbatch_range:
             micro_inputs: List[torch.Tensor] = []
             for model in self.models:
                 micro_inputs.append(torch.randn(self.batch_size, self.hidden, device=model.weight.device))
@@ -87,7 +89,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if len(self._grad_slots) != len(self.models):
                 raise RuntimeError("Gradient slots not initialized")
             grads = self._grad_slots
-            for micro in range(self.microbatches):
+            for micro in self._microbatch_range:
                 for model_idx, model in enumerate(self.models):
                     x = self._inputs[micro][model_idx]
                     y = model(x)

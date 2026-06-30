@@ -268,6 +268,7 @@ class BaselinePipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._micro_batch: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
         self._world_size = 1
+        self._world_size_range = range(self._world_size)
         self._num_layers = _DEFAULT_LAYERS
         self._batch_size = _DEFAULT_BATCH
         self._micro_batches = _DEFAULT_MICRO_BATCHES
@@ -276,6 +277,7 @@ class BaselinePipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def setup(self) -> None:
         require_min_gpus(2, "baseline_pipeline_parallel_multigpu.py")
         self._world_size = torch.cuda.device_count()
+        self._world_size_range = range(self._world_size)
         self._num_layers = _resolve_num_layers(None, self._world_size)
         self._batch_size, self._micro_batches = _resolve_batch_config(None, None, self._world_size)
         self._layers_per_stage = self._num_layers // self._world_size
@@ -304,10 +306,10 @@ class BaselinePipelineParallelBenchmark(VerificationPayloadMixin, BaseBenchmark)
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
         x = self._micro_batch
-        for _ in range(self._world_size):
+        for _ in self._world_size_range:
             for layer in self._fwd_layers:
                 x = torch.relu_(layer(x))
-        for _ in range(self._world_size):
+        for _ in self._world_size_range:
             for layer in self._bwd_layers:
                 x = torch.relu_(layer(x))
         self._output = x
