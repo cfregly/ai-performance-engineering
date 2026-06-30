@@ -365,6 +365,8 @@ class BlackwellGroupedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._flat_packed_tokens: Optional[torch.Tensor] = None
         self._packed_tokens_view: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._verification_shape_tensor: Optional[torch.Tensor] = None
         self._workload_metadata = WorkloadMetadata(
             requests_per_iteration=float(self.workload.num_tokens),
             tokens_per_iteration=float(self.workload.num_tokens),
@@ -408,6 +410,23 @@ class BlackwellGroupedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.workload.expert_ffn_dim,
             device=device,
             dtype=self.workload.dtype,
+        )
+        self._verify_output_buffer = torch.empty(
+            min(2, self.workload.num_experts),
+            min(16, self.state.max_count),
+            min(32, self.workload.expert_ffn_dim),
+            device=device,
+            dtype=self.workload.dtype,
+        )
+        self._verification_shape_tensor = torch.tensor(
+            [
+                self.workload.num_tokens,
+                self.workload.num_experts,
+                self.workload.hidden_dim,
+                self.workload.expert_ffn_dim,
+            ],
+            device="cpu",
+            dtype=torch.int64,
         )
         schedule = resolve_schedule(self.variant)
         grouped_units = grouped_work_unit_count(
@@ -461,21 +480,17 @@ class BlackwellGroupedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.state is None or self.output is None:
             raise RuntimeError("benchmark_fn() must produce output before verification capture")
-        verification = self.output[: min(2, self.output.shape[0]), : min(16, self.output.shape[1]), : min(32, self.output.shape[2])]
+        if self._verify_output_buffer is None or self._verification_shape_tensor is None:
+            raise RuntimeError("setup() must initialize verification buffers")
+        verification_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+            : self._verify_output_buffer.shape[2],
+        ]
+        self._verify_output_buffer.copy_(verification_slice)
         self._set_verification_payload(
-            inputs={
-                "shape": torch.tensor(
-                    [
-                        self.workload.num_tokens,
-                        self.workload.num_experts,
-                        self.workload.hidden_dim,
-                        self.workload.expert_ffn_dim,
-                    ],
-                    device="cpu",
-                    dtype=torch.int64,
-                )
-            },
-            output=verification,
+            inputs={"shape": self._verification_shape_tensor},
+            output=self._verify_output_buffer,
             batch_size=self.workload.num_tokens,
             parameter_count=int(self.state.expert_weights.numel()),
             precision_flags={
@@ -492,6 +507,8 @@ class BlackwellGroupedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._flat_packed_tokens = None
         self._packed_tokens_view = None
         self._output_buffer = None
+        self._verify_output_buffer = None
+        self._verification_shape_tensor = None
         torch.cuda.empty_cache()
         super().teardown()
 

@@ -141,6 +141,10 @@ def test_blackwell_grouped_gemm_reuses_packed_token_view() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
 
     assert "out_view: Optional[torch.Tensor] = None" in gather_section
     assert "if out_view is not None:" in gather_section
@@ -155,6 +159,17 @@ def test_blackwell_grouped_gemm_reuses_packed_token_view() -> None:
     assert "out.mul_(route_weight_factors)" in kernel_source
     assert "self._packed_tokens_view = self._flat_packed_tokens.view(" in setup_section
     assert "packed_tokens_view=self._packed_tokens_view" in benchmark_section
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verification_shape_tensor: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty(" in setup_section
+    assert "self._verification_shape_tensor = torch.tensor(" in setup_section
+    assert "verification_slice = self.output[" in capture_section
+    assert "self._verify_output_buffer.copy_(verification_slice)" in capture_section
+    assert 'inputs={"shape": self._verification_shape_tensor}' in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "torch.tensor(" not in capture_section
+    assert "self._verify_output_buffer = None" in source
+    assert "self._verification_shape_tensor = None" in source
 
     workload = BlackwellGroupedGemmWorkload(
         num_tokens=17,
