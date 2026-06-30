@@ -69,6 +69,8 @@ def test_cpu_decompression_defers_full_output_clone_to_capture() -> None:
     assert 'self._result_metrics["decompressed_len"] = self._decompressed_len' in benchmark_section
     assert "return self._result_metrics" in benchmark_section
     assert 'return {"latency_ms": latency_ms' not in benchmark_section
+    assert "self.output = decompressed" in benchmark_section
+    assert "decompressed.detach()" not in benchmark_section
     assert "self.counts[0].item()" not in source
     assert "run_length = self._run_len if run_count > 0 else 0" in source
 

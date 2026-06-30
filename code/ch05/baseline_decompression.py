@@ -48,7 +48,7 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with self._nvtx_range("cpu_decompress"):
             decompressed = torch.repeat_interleave(self.values, self.counts)
         latency_ms = self._record_stop(start)
-        self.output = decompressed.detach()
+        self.output = decompressed
         self._payload_counts = self.counts
         self._payload_values = self.values
         self._result_metrics["latency_ms"] = latency_ms
