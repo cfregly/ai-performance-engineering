@@ -388,6 +388,42 @@ def test_ch04_optimized_dataparallel_reuses_gradient_staging_buffers() -> None:
     assert "master_grad = master_param.grad" in benchmark_section
 
 
+def test_ch04_baseline_dataparallel_reuses_blocking_h2d_buffers() -> None:
+    source = (REPO_ROOT / "ch04" / "baseline_dataparallel.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._gpu_data: Optional[torch.Tensor] = None" in source
+    assert "self._gpu_target: Optional[torch.Tensor] = None" in source
+    assert (
+        "self._gpu_data = torch.empty(self.batch_size, self.input_size, device=self.device, dtype=torch.float32)"
+        in setup_section
+    )
+    assert (
+        "self._gpu_target = torch.empty(self.batch_size, 1, device=self.device, dtype=torch.float32)"
+        in setup_section
+    )
+    assert "gpu_data = self._gpu_data" in benchmark_section
+    assert "gpu_target = self._gpu_target" in benchmark_section
+    assert "gpu_data.copy_(self.data, non_blocking=False)" in benchmark_section
+    assert "gpu_target.copy_(self.target, non_blocking=False)" in benchmark_section
+    assert ".to(self.device" not in benchmark_section
+    assert "self._gpu_data = None" in teardown_section
+    assert "self._gpu_target = None" in teardown_section
+
+
 def test_ch04_dataparallel_and_reduction_payloads_cache_parameter_counts() -> None:
     for relative, parameter_expr in (
         ("ch04/baseline_cpu_reduction.py", "self.model.parameters()"),
