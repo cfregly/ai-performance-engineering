@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from types import SimpleNamespace
 
 import torch
@@ -66,6 +67,10 @@ def test_dense_attention_mask_for_windowed_mode_is_causal_and_bounded() -> None:
 
 
 def test_reference_attention_runs_for_softcap_mode_on_cpu() -> None:
+    source = inspect.getsource(reference_attention)
+    assert 'scores.masked_fill_(~inputs.dense_mask, float("-inf"))' in source
+    assert "scores = scores.masked_fill(" not in source
+
     cfg = FlashAttention4Config(
         batch=1,
         heads=2,

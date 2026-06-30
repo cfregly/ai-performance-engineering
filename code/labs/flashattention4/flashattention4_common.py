@@ -534,7 +534,7 @@ def reference_attention(inputs: FlashAttention4Inputs) -> torch.Tensor:
         scores = inputs.softcap_scale * torch.tanh(scores / inputs.softcap_scale)
 
     if inputs.dense_mask is not None:
-        scores = scores.masked_fill(~inputs.dense_mask, float("-inf"))
+        scores.masked_fill_(~inputs.dense_mask, float("-inf"))
 
     probs = torch.softmax(scores, dim=-1)
     return torch.matmul(probs, inputs.v.float())
