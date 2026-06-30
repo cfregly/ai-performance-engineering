@@ -44,6 +44,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         super().__init__()
         self.models: List[nn.Linear] = []
         self._inputs: List[List[torch.Tensor]] = []
+        self._micro_model_groups: list[list[tuple[int, nn.Linear, torch.Tensor]]] = []
         self.output: Optional[torch.Tensor] = None
         self.microbatches = 2
         self._microbatch_range = range(self.microbatches)
@@ -58,6 +59,9 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._grad_slots: List[torch.Tensor] = []
         self._ordered_grad_slots: List[torch.Tensor] = []
         self._ordered_bucket_indices: List[int] = []
+        self._bucket_reorder_pairs: List[Tuple[int, int]] = []
+        self._model_index_range = range(0)
+        self._tail_model_index_range = range(1, 1)
         self._reduction_results: List[torch.Tensor] = []
         self._model_update_groups: List[Tuple[int, nn.Linear, torch.Tensor]] = []
         self._verify_output_buffer: Optional[torch.Tensor] = None
@@ -94,6 +98,9 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
         bucket_order = sorted(_bucket_order(), key=lambda kv: kv[0])
         self._ordered_bucket_indices = [bucket_idx for _, bucket_idx in bucket_order]
+        self._bucket_reorder_pairs = list(enumerate(self._ordered_bucket_indices))
+        self._model_index_range = range(len(self.models))
+        self._tail_model_index_range = range(1, len(self.models))
         self._inputs = []
         self._microbatch_range = range(self.microbatches)
         for _micro in self._microbatch_range:
@@ -101,6 +108,10 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
             for model in self.models:
                 micro_inputs.append(torch.randn(self.batch_size, self.hidden, device=model.weight.device))
             self._inputs.append(micro_inputs)
+        self._micro_model_groups = [
+            list(zip(range(len(self.models)), self.models, micro_inputs, strict=True))
+            for micro_inputs in self._inputs
+        ]
         self._reduce_buffers = [
             torch.empty_like(self.models[0].weight, device=self.root_device)
             for _ in self._microbatch_range
@@ -135,7 +146,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         root_buf = self._reduce_buffers[buffer_index]
         event_row = self._grad_ready_events[buffer_index]
         staging_row = self._root_grad_staging[buffer_index]
-        for idx, _ in enumerate(grads):
+        for idx in self._model_index_range:
             event_row[idx].record()
 
         with torch.cuda.stream(self.comm_stream):
@@ -148,7 +159,8 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
                 staging.copy_(first, non_blocking=True)
                 root_buf.copy_(staging)
 
-            for idx, g in enumerate(grads[1:], start=1):
+            for idx in self._tail_model_index_range:
+                g = grads[idx]
                 evt = event_row[idx]
                 self.comm_stream.wait_event(evt)
                 if g.device == self.root_device:
@@ -175,8 +187,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
             reduction_results = self._reduction_results
             # Process microbatches; overlap reduction of previous with compute of next
             for micro in self._microbatch_range:
-                for model_idx, model in enumerate(self.models):
-                    x = self._inputs[micro][model_idx]
+                for model_idx, model, x in self._micro_model_groups[micro]:
                     y = model(x)
                     loss = y.pow(2).mean()
                     loss.backward()
@@ -186,7 +197,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
                     grads[model_idx] = grad
 
                 # Reorder buckets (simple proxy: ascending device id)
-                for ordered_idx, source_idx in enumerate(self._ordered_bucket_indices):
+                for ordered_idx, source_idx in self._bucket_reorder_pairs:
                     ordered_grads[ordered_idx] = grads[source_idx]
 
                 reduction_results[micro] = self._async_reduce_to_root(ordered_grads, micro)
@@ -232,6 +243,7 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
     def teardown(self) -> None:
         self.models.clear()
         self._inputs = []
+        self._micro_model_groups = []
         self._reduce_buffers = []
         self._root_grad_staging = []
         self._grad_ready_events = []
@@ -239,6 +251,9 @@ class OptimizedDdpNvlinkOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._grad_slots = []
         self._ordered_grad_slots = []
         self._ordered_bucket_indices = []
+        self._bucket_reorder_pairs = []
+        self._model_index_range = range(0)
+        self._tail_model_index_range = range(1, 1)
         self._reduction_results = []
         self._model_update_groups = []
         self.output = None

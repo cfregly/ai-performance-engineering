@@ -25,6 +25,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.models: List[nn.Linear] = []
         self._inputs: List[List[torch.Tensor]] = []
+        self._micro_model_groups: list[list[tuple[int, nn.Linear, torch.Tensor]]] = []
         self._grad_slots: List[torch.Tensor] = []
         self._allreduce_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
@@ -65,6 +66,10 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for model in self.models:
                 micro_inputs.append(torch.randn(self.batch_size, self.hidden, device=model.weight.device))
             self._inputs.append(micro_inputs)
+        self._micro_model_groups = [
+            list(zip(range(len(self.models)), self.models, micro_inputs, strict=True))
+            for micro_inputs in self._inputs
+        ]
         self._allreduce_buffer = torch.empty_like(self.models[0].weight, device=self.models[0].weight.device)
         self._synchronize()
 
@@ -90,8 +95,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 raise RuntimeError("Gradient slots not initialized")
             grads = self._grad_slots
             for micro in self._microbatch_range:
-                for model_idx, model in enumerate(self.models):
-                    x = self._inputs[micro][model_idx]
+                for model_idx, model, x in self._micro_model_groups[micro]:
                     y = model(x)
                     loss = y.pow(2).mean()
                     loss.backward()
@@ -133,6 +137,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.models.clear()
         self._inputs = []
+        self._micro_model_groups = []
         self._grad_slots = []
         self._allreduce_buffer = None
         self.output = None

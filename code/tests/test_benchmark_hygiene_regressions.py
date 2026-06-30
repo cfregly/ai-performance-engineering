@@ -748,21 +748,27 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._root_grad_staging: List[List[torch.Tensor]] = []" in source
     assert "self._grad_ready_events: List[List[torch.cuda.Event]] = []" in source
     assert "self._update_buffers: List[torch.Tensor] = []" in source
+    assert "self._micro_model_groups: list[list[tuple[int, nn.Linear, torch.Tensor]]] = []" in naive_source
+    assert "self._micro_model_groups: list[list[tuple[int, nn.Linear, torch.Tensor]]] = []" in source
     assert "self._grad_slots: List[torch.Tensor] = []" in naive_source
     assert "self._grad_slots: List[torch.Tensor] = []" in source
     assert "self._ordered_grad_slots: List[torch.Tensor] = []" in source
     assert "self._ordered_bucket_indices: List[int] = []" in source
+    assert "self._bucket_reorder_pairs: List[Tuple[int, int]] = []" in source
     assert "self._reduction_results: List[torch.Tensor] = []" in source
     assert "self._model_update_groups: List[Tuple[int, nn.Linear, torch.Tensor]] = []" in source
     assert "self._allreduce_buffer = torch.empty_like(" in naive_setup
     assert "self._grad_slots = [" in naive_setup
     assert "self._microbatch_range = range(self.microbatches)" in naive_setup
     assert "for _micro in self._microbatch_range:" in naive_setup
+    assert "self._micro_model_groups = [" in naive_setup
     assert "self._allreduce_buffer = torch.zeros_like(" not in naive_setup
     assert "grads = []" not in naive_benchmark
     assert "grads.append(" not in naive_benchmark
     assert "for micro in self._microbatch_range:" in naive_benchmark
     assert "for micro in range(self.microbatches):" not in naive_benchmark
+    assert "for model_idx, model, x in self._micro_model_groups[micro]:" in naive_benchmark
+    assert "enumerate(self.models)" not in naive_benchmark
     assert "buf.copy_(grads[0].to(root))" in naive_reduce
     assert "for g in grads[1:]" in naive_reduce
     assert "buf.zero_()" not in naive_reduce
@@ -776,15 +782,24 @@ def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:
     assert "self._model_update_groups = [" in setup_section
     assert "self._microbatch_range = range(self.microbatches)" in setup_section
     assert "for _micro in self._microbatch_range:" in setup_section
+    assert "self._micro_model_groups = [" in setup_section
+    assert "self._bucket_reorder_pairs = list(enumerate(self._ordered_bucket_indices))" in setup_section
     assert "zip(self.models, self._update_buffers, strict=True)" in setup_section
     assert "torch.cuda.Event()" not in reduce_section
     assert "g.to(self.root_device" not in reduce_section
     assert "root_buf.copy_(first)" in reduce_section
-    assert "for idx, g in enumerate(grads[1:], start=1)" in reduce_section
+    assert "for idx in self._model_index_range:" in reduce_section
+    assert "for idx in self._tail_model_index_range:" in reduce_section
+    assert "g = grads[idx]" in reduce_section
+    assert "enumerate(grads" not in reduce_section
     assert "grads = []" not in benchmark_section
     assert "reduction_results: List[torch.Tensor] = []" not in benchmark_section
     assert "for micro in self._microbatch_range:" in benchmark_section
     assert "for micro in range(self.microbatches):" not in benchmark_section
+    assert "for model_idx, model, x in self._micro_model_groups[micro]:" in benchmark_section
+    assert "for ordered_idx, source_idx in self._bucket_reorder_pairs:" in benchmark_section
+    assert "enumerate(self.models)" not in benchmark_section
+    assert "enumerate(self._ordered_bucket_indices)" not in benchmark_section
     assert "sorted(zip(grads, _bucket_order())" not in benchmark_section
     assert "ordered_grads = [g for g, _ in ordered]" not in benchmark_section
     assert "reduction_results[micro] = self._async_reduce_to_root(ordered_grads, micro)" in benchmark_section
@@ -3147,16 +3162,19 @@ def test_ch04_cpu_staged_reduction_baselines_reuse_buffered_mlp_and_outputs() ->
         assert "from ch04.reduction_common import ReusableReductionMlp" in source
         assert "self._output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._cpu_shard_buffers: list[torch.Tensor] = []" in source
+        assert "self._cpu_shard_copy_pairs: list[tuple[int, torch.Tensor]] = []" in source
         assert "self._reduced_rows = 0" in source
         assert "self.model = ReusableReductionMlp(self.hidden_dim, self.inner_dim).to(self.device).eval()" in setup_section
         assert "nn.Sequential(" not in setup_section
         assert "self._output_buffer = torch.empty((self._reduced_rows, self.hidden_dim), device=self.device)" in setup_section
         assert "use_pinned_host = self.input.device.type == \"cuda\" and torch.cuda.is_available()" in setup_section
         assert "self._cpu_shard_buffers = [" in setup_section
+        assert "self._cpu_shard_copy_pairs = list(enumerate(self._cpu_shard_buffers))" in setup_section
         assert "pin_memory=use_pinned_host" in setup_section
         assert "self._bytes_transferred = float(" in setup_section
         assert "shards = output.view(self.num_shards, self._reduced_rows, self.hidden_dim)" in benchmark_section
-        assert "for idx, shard in enumerate(self._cpu_shard_buffers):" in benchmark_section
+        assert "for idx, shard in self._cpu_shard_copy_pairs:" in benchmark_section
+        assert "enumerate(self._cpu_shard_buffers)" not in benchmark_section
         assert "shard.copy_(shards[idx], non_blocking=False)" in benchmark_section
         assert "reduced = self._cpu_shard_buffers[0]" in benchmark_section
         assert "for shard in self._cpu_shard_buffers[1:]:" in benchmark_section
@@ -3170,6 +3188,7 @@ def test_ch04_cpu_staged_reduction_baselines_reuse_buffered_mlp_and_outputs() ->
         assert "reduced.to(self.device)" not in benchmark_section
         assert "self._output_buffer = None" in teardown_section
         assert "self._cpu_shard_buffers = []" in teardown_section
+        assert "self._cpu_shard_copy_pairs = []" in teardown_section
         assert "self._reduced_rows = 0" in teardown_section
 
 
@@ -17077,8 +17096,13 @@ def test_ch04_single_gpu_transfer_reuses_inner_iteration_range() -> None:
     )[0]
 
     assert "self._inner_iteration_range = range(self.inner_iterations)" in setup_section
+    assert "self._stream_chunk_pairs: list[tuple[torch.cuda.Stream, torch.Tensor, torch.Tensor]] = []" in setup_section
+    assert "self._stream_chunk_pairs = [" in setup_section
     assert "for _ in self._inner_iteration_range:" in benchmark_section
+    assert "for stream, src_chunk, dst_chunk in self._stream_chunk_pairs:" in benchmark_section
     assert "for _ in range(self.inner_iterations):" not in benchmark_section
+    assert "enumerate(self.chunk_pairs)" not in benchmark_section
+    assert "idx % len(self.streams)" not in benchmark_section
 
 
 def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() -> None:

@@ -41,6 +41,7 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self._cpu_shard_buffers: list[torch.Tensor] = []
+        self._cpu_shard_copy_pairs: list[tuple[int, torch.Tensor]] = []
         self._reduced_rows = 0
         self._bytes_transferred: float = 0.0
         self._payload_parameter_count = 0
@@ -75,6 +76,7 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             for _ in range(self.num_shards)
         ]
+        self._cpu_shard_copy_pairs = list(enumerate(self._cpu_shard_buffers))
         element_size = self.input.element_size()
         self._bytes_transferred = float(
             (self.batch_size * self.hidden_dim + self._reduced_rows * self.hidden_dim)
@@ -95,7 +97,7 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 # Naively copy each shard to CPU to aggregate (slow!)
                 shards = output.view(self.num_shards, self._reduced_rows, self.hidden_dim)
                 # This is the bottleneck: multiple GPU->CPU copies + CPU addition
-                for idx, shard in enumerate(self._cpu_shard_buffers):
+                for idx, shard in self._cpu_shard_copy_pairs:
                     shard.copy_(shards[idx], non_blocking=False)
                 reduced = self._cpu_shard_buffers[0]
                 for shard in self._cpu_shard_buffers[1:]:
@@ -129,6 +131,7 @@ class BaselineCpuReductionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._output_buffer = None
         self._cpu_shard_buffers = []
+        self._cpu_shard_copy_pairs = []
         self._reduced_rows = 0
         torch.cuda.empty_cache()
     

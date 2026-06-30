@@ -38,6 +38,7 @@ class SingleGPUTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.src: Optional[torch.Tensor] = None
         self.dst: Optional[torch.Tensor] = None
         self.chunk_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
+        self._stream_chunk_pairs: list[tuple[torch.cuda.Stream, torch.Tensor, torch.Tensor]] = []
         self.streams: list[torch.cuda.Stream] = []
         self.last_bandwidth_gbps: Optional[float] = None
         bytes_per_iter = self.size_mb * 1024 * 1024
@@ -60,11 +61,16 @@ class SingleGPUTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         dst_chunks = torch.chunk(self.dst, self.num_chunks)
         self.chunk_pairs = list(zip(src_chunks, dst_chunks))
         self.streams = []
+        self._stream_chunk_pairs = []
         if self.use_streams:
             # Keep stream count low so stream auditing stays green for Ch04.
             stream_count = min(2, len(self.chunk_pairs))
             for _ in range(stream_count):
                 self.streams.append(torch.cuda.Stream(device=self.device))
+            self._stream_chunk_pairs = [
+                (self.streams[idx % stream_count], src_chunk, dst_chunk)
+                for idx, (src_chunk, dst_chunk) in enumerate(self.chunk_pairs)
+            ]
 
     def benchmark_fn(self) -> None:
         if self.src is None or self.dst is None or not self.chunk_pairs:
@@ -75,8 +81,7 @@ class SingleGPUTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if self.use_streams:
                 if not self.streams:
                     raise RuntimeError("use_streams=True requires at least one CUDA stream")
-                for idx, (src_chunk, dst_chunk) in enumerate(self.chunk_pairs):
-                    stream = self.streams[idx % len(self.streams)]
+                for stream, src_chunk, dst_chunk in self._stream_chunk_pairs:
                     with torch.cuda.stream(stream):
                         dst_chunk.copy_(src_chunk, non_blocking=True)
                 for stream in self.streams:
@@ -117,6 +122,7 @@ class SingleGPUTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.src = None
         self.dst = None
         self.chunk_pairs = []
+        self._stream_chunk_pairs = []
         self.streams = []
         torch.cuda.empty_cache()
 
