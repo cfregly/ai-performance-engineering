@@ -9380,6 +9380,12 @@ def test_ch18_vllm_decoder_graph_replay_records_timing_on_current_stream() -> No
     assert "start_prefill.record()" not in piecewise_replay
     assert "start_decode.record()" not in piecewise_replay
     assert "end.record()" not in piecewise_replay
+    benchmark_section = source.split("# --------------------------------------------------------------- benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    assert "with torch.inference_mode(), self._nvtx_range(\"graph_mode_select\"):" in benchmark_section
+    assert "with torch.no_grad():" not in benchmark_section
 
 
 def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:

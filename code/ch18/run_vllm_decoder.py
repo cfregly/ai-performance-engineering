@@ -850,7 +850,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         tokens: Optional[torch.Tensor] = None
         # Select execution mode based on requested graph mode and capture viability.
-        with self._nvtx_range("graph_mode_select"):
+        with torch.inference_mode(), self._nvtx_range("graph_mode_select"):
             if self.graph_mode == GraphMode.EAGER:
                 (
                     ttft_times,
