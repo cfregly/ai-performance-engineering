@@ -385,11 +385,17 @@ def test_moe_cuda_ptx_backward_reuses_prepared_autograd_leaves() -> None:
 
 
 def test_moe_cuda_ptx_verification_reuses_capture_buffers() -> None:
+    quant_helper_source = inspect.getsource(moe_common.build_quant_verification_tensor)
     helper_source = inspect.getsource(moe_common.build_tensor_slice_verification)
+    backward_helper_source = inspect.getsource(moe_common.build_backward_verification)
     setup_source = inspect.getsource(moe_common.MoECudaPtxBenchmark.setup)
     capture_source = inspect.getsource(moe_common.MoECudaPtxBenchmark.capture_verification_payload)
     teardown_source = inspect.getsource(moe_common.MoECudaPtxBenchmark.teardown)
 
+    assert "out: torch.Tensor" in quant_helper_source
+    assert "verification = out[: quant_verification_numel(bundle)]" in quant_helper_source
+    assert "verification[offset:next_offset].copy_(flat)" in quant_helper_source
+    assert "torch.cat" not in quant_helper_source
     assert "out: torch.Tensor" in helper_source
     assert "rows = min(32, output.shape[0])" in helper_source
     assert "cols = min(32, output.shape[1])" in helper_source
@@ -398,17 +404,29 @@ def test_moe_cuda_ptx_verification_reuses_capture_buffers() -> None:
     assert "verification.view(rows, cols).copy_(output_slice)" in helper_source
     assert "if out is None" not in helper_source
     assert "output_slice.reshape(-1).float().clone()" not in helper_source
+    assert "out: torch.Tensor" in backward_helper_source
+    assert "verification = out[: backward_verification_numel(" in backward_helper_source
+    assert "verification[offset:next_offset].copy_(flat)" in backward_helper_source
+    assert "torch.cat" not in backward_helper_source
     assert "self._verify_output_buffer = torch.empty(" in setup_source
+    assert "self._quant_verify_output_buffer = torch.empty(" in setup_source
+    assert "self._backward_verify_output_buffer = torch.empty(" in setup_source
+    assert "backward_verification_numel(" in setup_source
     assert "self._quant_shape_tensor = torch.tensor(" in setup_source
     assert "self._verification_shape_tensor = torch.tensor(" in setup_source
     assert "self._routing_verification_tensor = self.state.expert_indices[" in setup_source
     assert 'inputs={"shape": self._quant_shape_tensor}' in capture_source
+    assert "build_quant_verification_tensor(" in capture_source
+    assert "self._quant_verify_output_buffer" in capture_source
     assert '"shape": self._verification_shape_tensor' in capture_source
     assert '"routing": self._routing_verification_tensor' in capture_source
     assert "build_tensor_slice_verification(self.outputs, self._verify_output_buffer)" in capture_source
+    assert "self._backward_verify_output_buffer" in capture_source
     assert "self.state.expert_indices[: min(32" not in capture_source
     assert "torch.tensor(" not in capture_source
     assert "self._verify_output_buffer = None" in teardown_source
+    assert "self._quant_verify_output_buffer = None" in teardown_source
+    assert "self._backward_verify_output_buffer = None" in teardown_source
     assert "self._quant_shape_tensor = None" in teardown_source
     assert "self._verification_shape_tensor = None" in teardown_source
     assert "self._routing_verification_tensor = None" in teardown_source
@@ -421,6 +439,58 @@ def test_moe_cuda_ptx_verification_reuses_capture_buffers() -> None:
     assert first.data_ptr() == out.data_ptr()
     assert second.data_ptr() == out.data_ptr()
     torch.testing.assert_close(second, (output + 1).reshape(-1).float())
+
+    bwd_output = torch.arange(24, dtype=torch.bfloat16).view(4, 6)
+    x_grad = torch.arange(35, dtype=torch.float32).view(5, 7)
+    gate_grad = torch.arange(2 * 5 * 7, dtype=torch.bfloat16).view(2, 5, 7)
+    down_grad = torch.arange(2 * 6 * 9, dtype=torch.bfloat16).view(2, 6, 9)
+    bwd_out = torch.empty(
+        moe_common.backward_verification_numel(bwd_output, x_grad, gate_grad, down_grad),
+        dtype=torch.float32,
+    )
+    bwd_result = moe_common.build_backward_verification(
+        bwd_output,
+        x_grad,
+        gate_grad,
+        down_grad,
+        bwd_out,
+    )
+    expected = torch.cat(
+        (
+            bwd_output[:4, :6].reshape(-1).float(),
+            x_grad[:5, :7].reshape(-1).float(),
+            gate_grad[0, :5, :7].reshape(-1).float(),
+            down_grad[0, :6, :8].reshape(-1).float(),
+        ),
+        dim=0,
+    )
+    assert bwd_result.data_ptr() == bwd_out.data_ptr()
+    torch.testing.assert_close(bwd_result, expected)
+
+    forward = moe_common.QuantizedMatrix(
+        quantized=torch.arange(5 * 40, dtype=torch.float32).view(5, 40),
+        scales=torch.arange(5 * 10, dtype=torch.float32).view(5, 10),
+        original_shape=(5, 40),
+    )
+    transpose = moe_common.QuantizedMatrix(
+        quantized=torch.arange(6 * 36, dtype=torch.float32).view(6, 36),
+        scales=torch.arange(6 * 9, dtype=torch.float32).view(6, 9),
+        original_shape=(6, 36),
+    )
+    bundle = moe_common.QuantizedBundle(forward=forward, transpose=transpose)
+    quant_out = torch.empty(moe_common.quant_verification_numel(bundle), dtype=torch.float32)
+    quant_result = moe_common.build_quant_verification_tensor(bundle, quant_out)
+    quant_expected = torch.cat(
+        (
+            forward.quantized[:4, :32].reshape(-1),
+            forward.scales[:4, :8].reshape(-1),
+            transpose.quantized[:4, :32].reshape(-1),
+            transpose.scales[:4, :8].reshape(-1),
+        ),
+        dim=0,
+    )
+    assert quant_result.data_ptr() == quant_out.data_ptr()
+    torch.testing.assert_close(quant_result, quant_expected)
 
 
 def test_moe_cuda_ptx_build_state_reuses_route_count_tuple() -> None:

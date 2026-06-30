@@ -21,6 +21,7 @@ resolve_device = lambda: require_cuda_device("MoE CUDA/PTX lab requires CUDA.")
 _MXFP8_BLOCK_SIZE = 32
 _MXFP8_E4M3_MAX = 448.0
 _MXFP8_E8M0_MIN = float(2.0 ** -127)
+_QUANT_VERIFY_MAX_NUMEL = 2 * (4 * 32 + 4 * 8)
 
 
 @dataclass(frozen=True)
@@ -618,15 +619,30 @@ def dequantize_mxfp8(qmat: QuantizedMatrix, *, dtype: torch.dtype) -> torch.Tens
     return values[:rows, :cols].to(dtype=dtype)
 
 
-def build_quant_verification_tensor(bundle: QuantizedBundle) -> torch.Tensor:
-    pieces = [
-        bundle.forward.quantized[:4, :32].to(torch.float32).reshape(-1),
-        bundle.forward.scales[:4, :8].to(torch.float32).reshape(-1),
+def _quant_verification_pieces(bundle: QuantizedBundle) -> tuple[torch.Tensor, ...]:
+    pieces: list[torch.Tensor] = [
+        bundle.forward.quantized[:4, :32],
+        bundle.forward.scales[:4, :8],
     ]
     if bundle.transpose is not None:
-        pieces.append(bundle.transpose.quantized[:4, :32].to(torch.float32).reshape(-1))
-        pieces.append(bundle.transpose.scales[:4, :8].to(torch.float32).reshape(-1))
-    return torch.cat(pieces, dim=0)
+        pieces.append(bundle.transpose.quantized[:4, :32])
+        pieces.append(bundle.transpose.scales[:4, :8])
+    return tuple(pieces)
+
+
+def quant_verification_numel(bundle: QuantizedBundle) -> int:
+    return sum(piece.numel() for piece in _quant_verification_pieces(bundle))
+
+
+def build_quant_verification_tensor(bundle: QuantizedBundle, out: torch.Tensor) -> torch.Tensor:
+    verification = out[: quant_verification_numel(bundle)]
+    offset = 0
+    for piece in _quant_verification_pieces(bundle):
+        flat = piece.reshape(-1)
+        next_offset = offset + flat.numel()
+        verification[offset:next_offset].copy_(flat)
+        offset = next_offset
+    return verification
 
 
 def build_tensor_slice_verification(
@@ -646,14 +662,35 @@ def build_backward_verification(
     x_grad: torch.Tensor,
     gate_grad: torch.Tensor,
     down_grad: torch.Tensor,
+    out: torch.Tensor,
 ) -> torch.Tensor:
-    pieces = [
-        output[: min(8, output.shape[0]), : min(16, output.shape[1])].reshape(-1).float(),
-        x_grad[: min(8, x_grad.shape[0]), : min(16, x_grad.shape[1])].reshape(-1).float(),
-        gate_grad[0, : min(8, gate_grad.shape[1]), : min(8, gate_grad.shape[2])].reshape(-1).float(),
-        down_grad[0, : min(8, down_grad.shape[1]), : min(8, down_grad.shape[2])].reshape(-1).float(),
-    ]
-    return torch.cat(pieces, dim=0)
+    verification = out[: backward_verification_numel(output, x_grad, gate_grad, down_grad)]
+    offset = 0
+    for piece in (
+        output[: min(8, output.shape[0]), : min(16, output.shape[1])],
+        x_grad[: min(8, x_grad.shape[0]), : min(16, x_grad.shape[1])],
+        gate_grad[0, : min(8, gate_grad.shape[1]), : min(8, gate_grad.shape[2])],
+        down_grad[0, : min(8, down_grad.shape[1]), : min(8, down_grad.shape[2])],
+    ):
+        flat = piece.reshape(-1)
+        next_offset = offset + flat.numel()
+        verification[offset:next_offset].copy_(flat)
+        offset = next_offset
+    return verification
+
+
+def backward_verification_numel(
+    output: torch.Tensor,
+    x_grad: torch.Tensor,
+    gate_grad: torch.Tensor,
+    down_grad: torch.Tensor,
+) -> int:
+    return (
+        min(8, output.shape[0]) * min(16, output.shape[1])
+        + min(8, x_grad.shape[0]) * min(16, x_grad.shape[1])
+        + min(8, gate_grad.shape[1]) * min(8, gate_grad.shape[2])
+        + min(8, down_grad.shape[1]) * min(8, down_grad.shape[2])
+    )
 
 
 def grouped_work_unit_count(
@@ -706,6 +743,8 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._grouped_output_buffer: Optional[torch.Tensor] = None
         self._padded_tokens_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._quant_verify_output_buffer: Optional[torch.Tensor] = None
+        self._backward_verify_output_buffer: Optional[torch.Tensor] = None
         self._quant_shape_tensor: Optional[torch.Tensor] = None
         self._verification_shape_tensor: Optional[torch.Tensor] = None
         self._routing_verification_tensor: Optional[torch.Tensor] = None
@@ -818,6 +857,21 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         verify_cols = min(32, self.workload.hidden_dim)
         self._verify_output_buffer = torch.empty(
             verify_rows * verify_cols,
+            device=self.device,
+            dtype=torch.float32,
+        )
+        self._quant_verify_output_buffer = torch.empty(
+            _QUANT_VERIFY_MAX_NUMEL,
+            device=self.device,
+            dtype=torch.float32,
+        )
+        self._backward_verify_output_buffer = torch.empty(
+            backward_verification_numel(
+                self.state.x,
+                self.state.x,
+                self.state.gate_proj,
+                self.state.down_proj,
+            ),
             device=self.device,
             dtype=torch.float32,
         )
@@ -1140,9 +1194,14 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 raise RuntimeError("benchmark_fn() did not produce quantized outputs")
             if self._quant_shape_tensor is None:
                 raise RuntimeError("setup() must initialize quant verification shape tensor")
+            if self._quant_verify_output_buffer is None:
+                raise RuntimeError("setup() must initialize quant verification output buffer")
             self._set_verification_payload(
                 inputs={"shape": self._quant_shape_tensor},
-                output=build_quant_verification_tensor(self.quantized),
+                output=build_quant_verification_tensor(
+                    self.quantized,
+                    self._quant_verify_output_buffer,
+                ),
                 batch_size=self.workload.num_tokens,
                 parameter_count=0,
                 precision_flags={"bf16": self.workload.dtype == torch.bfloat16, "fp16": self.workload.dtype == torch.float16},
@@ -1164,11 +1223,14 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.target == "moe_grouped_gemm_bwd" or mode == "fwd_bwd":
             if self.x_grad is None or self.gate_grad is None or self.down_grad is None:
                 raise RuntimeError("Backward mode did not capture gradients")
+            if self._backward_verify_output_buffer is None:
+                raise RuntimeError("setup() must initialize backward verification buffer")
             verification = build_backward_verification(
                 self.outputs,
                 self.x_grad,
                 self.gate_grad,
                 self.down_grad,
+                self._backward_verify_output_buffer,
             )
         else:
             verification = build_tensor_slice_verification(self.outputs, self._verify_output_buffer)
@@ -1213,6 +1275,8 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._grouped_output_buffer = None
         self._padded_tokens_buffer = None
         self._verify_output_buffer = None
+        self._quant_verify_output_buffer = None
+        self._backward_verify_output_buffer = None
         self._quant_shape_tensor = None
         self._verification_shape_tensor = None
         self._routing_verification_tensor = None
