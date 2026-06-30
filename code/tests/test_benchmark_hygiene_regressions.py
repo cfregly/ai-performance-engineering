@@ -6907,6 +6907,10 @@ def test_occupancy_tuning_variants_match_their_filenames() -> None:
         "def teardown",
         maxsplit=1,
     )[0]
+    benchmark_section = schedule_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
 
     assert wide_n.schedule.name == "bm64_bn256_bk32"
     assert wide_n.schedule.block_m == 64
@@ -6918,6 +6922,9 @@ def test_occupancy_tuning_variants_match_their_filenames() -> None:
     assert latency.schedule.block_n == 64
     assert latency.schedule.block_k == 32
     assert latency.schedule.num_warps == 2
+    assert "with torch.inference_mode(), self._nvtx_range(self.schedule.name):" in benchmark_section
+    assert "with self._nvtx_range(self.schedule.name):" not in benchmark_section
+    assert "torch.no_grad()" not in benchmark_section
     assert "with torch.inference_mode():\n            self._reference = torch.matmul(self._a, self._b)" in schedule_source
     assert "with torch.no_grad():\n            self._reference = torch.matmul(self._a, self._b)" not in schedule_source
     assert "self._validation_scalars: Optional[torch.Tensor] = None" in schedule_source

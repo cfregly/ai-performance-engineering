@@ -467,7 +467,7 @@ class BlackwellGroupedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._output_buffer is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
-        with self._nvtx_range(self.label):
+        with torch.inference_mode(), self._nvtx_range(self.label):
             result = run_variant(
                 self.state,
                 variant=self.variant,

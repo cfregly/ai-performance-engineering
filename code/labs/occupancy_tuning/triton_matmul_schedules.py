@@ -207,7 +207,7 @@ class TritonMatmulProtonBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         assert self._runner is not None
         try:
-            with self._nvtx_range(self.schedule.name):
+            with torch.inference_mode(), self._nvtx_range(self.schedule.name):
                 self._output = self._runner()
                 # Expose output for harness verification (harness looks for self.output)
                 self.output = self._output

@@ -158,6 +158,9 @@ def test_blackwell_grouped_gemm_reuses_packed_token_view() -> None:
     assert "route_weight_factors = route_weights.unsqueeze(-1).to(out.dtype)" in kernel_source
     assert "out.mul_(route_weight_factors)" in kernel_source
     assert "self._packed_tokens_view = self._flat_packed_tokens.view(" in setup_section
+    assert "with torch.inference_mode(), self._nvtx_range(self.label):" in benchmark_section
+    assert "with self._nvtx_range(self.label):" not in benchmark_section
+    assert "torch.no_grad()" not in benchmark_section
     assert "packed_tokens_view=self._packed_tokens_view" in benchmark_section
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._verification_shape_tensor: Optional[torch.Tensor] = None" in source
