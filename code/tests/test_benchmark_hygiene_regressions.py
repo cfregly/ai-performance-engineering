@@ -10547,14 +10547,17 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._transfer_buffer_row_counts: tuple[int, ...] = ()" in source
     assert "self._expected_transfer_buffer_row_counts: tuple[int, ...] = ()" in source
     assert "self._pipeline_micro_step_range = range(0)" in source
+    assert "self._pipeline_stage_range = range(0)" in source
     assert "self._last_final_output_count: int = 0" in source
     assert "self._stage_buffers = [" in setup_section
     assert "self._pipeline_stage_groups = list(enumerate(self.pipeline_stages))" in setup_section
     assert "self._stage_buffers[0] = list(self.microbatch_inputs)" in setup_section
     assert "self._pipeline_stage_count = 1" in setup_section
+    assert "self._pipeline_stage_range = range(1)" in setup_section
     assert "self._stage_reuse_counts = (len(self._last_stage_durations_ms),)" in setup_section
     assert "stage_count = len(self.pipeline_stages)" in setup_section
     assert "self._pipeline_stage_count = stage_count" in setup_section
+    assert "self._pipeline_stage_range = range(stage_count)" in setup_section
     assert "self._stage_reuse_counts = (" in setup_section
     assert "self._expected_stage_reuse_counts = (" in setup_section
     assert "self._stage_buffer_row_counts = tuple(len(stage_row) for stage_row in self._stage_buffers)" in setup_section
@@ -10574,6 +10577,8 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "for transfer_row in self._stage_transfer_buffers:" not in benchmark_section
     assert "for micro_idx, micro_input in enumerate(self.microbatch_inputs):" not in benchmark_section
     assert "num_stages = self._pipeline_stage_count" in benchmark_section
+    assert "for stage_idx in self._pipeline_stage_range:" in benchmark_section
+    assert "for stage_idx in range(num_stages):" not in benchmark_section
     assert "if self._stage_reuse_counts != self._expected_stage_reuse_counts:" in benchmark_section
     assert "self._stage_reuse_counts != self._expected_stage_reuse_counts" in benchmark_section
     assert "self._stage_buffer_row_counts != self._expected_stage_buffer_row_counts" in benchmark_section
@@ -10617,6 +10622,7 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._transfer_buffer_row_counts = ()" in teardown_section
     assert "self._expected_transfer_buffer_row_counts = ()" in teardown_section
     assert "self._pipeline_micro_step_range = range(0)" in teardown_section
+    assert "self._pipeline_stage_range = range(0)" in teardown_section
 
 
 def test_ch17_baseline_memory_reuses_transfer_staging_buffers() -> None:
@@ -16773,6 +16779,7 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
 
     assert ".detach().float().clone()" not in moe_benchmark
     assert "expert_indices_cpu = torch.randint(0, E, (batch_seq, K))" in moe_setup
+    assert "self._expert_range = range(E)" in moe_setup
     assert "torch.bincount(expert_indices_cpu.view(-1), minlength=E).tolist()" in moe_setup
     assert "torch.bincount(sorted_expert_ids, minlength=E).tolist()" not in moe_setup
     assert "sorted_order = torch.argsort(flat_idx, stable=True)" in moe_setup
@@ -16800,6 +16807,8 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "x.repeat_interleave(self.TOP_K" not in moe_benchmark
     assert "self.expert_weights.view(-1)[self.sorted_order]" not in moe_benchmark
     assert "torch.index_select(x, 0, self._sorted_token_indices, out=self._sorted_tokens)" in moe_benchmark
+    assert "for e in self._expert_range:" in moe_benchmark
+    assert "for e in range(E):" not in moe_benchmark
     assert ".to(torch.float8_e4m3fn)" not in moe_benchmark
     assert "tokens_e = self._expert_token_views[e]" in moe_benchmark
     assert "tokens_fp8_slice = self._expert_tokens_fp8_views[e]" in moe_benchmark

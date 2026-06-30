@@ -66,6 +66,7 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
         I = self.INTERMEDIATE_SIZE
         E = self.NUM_EXPERTS
         K = self.TOP_K
+        self._expert_range = range(E)
         batch_seq = self.BATCH_SIZE * self.SEQ_LEN
         
         print("=" * 60)
@@ -160,13 +161,12 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Run FP8 MoE forward pass."""
         x = self.x
-        E = self.NUM_EXPERTS
         scale = self.scale
         output = self._output_buffer
 
         torch.index_select(x, 0, self._sorted_token_indices, out=self._sorted_tokens)
 
-        for e in range(E):
+        for e in self._expert_range:
             count = self.counts[e]
             if count == 0:
                 continue
@@ -245,6 +245,7 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
             "_tokens_fp8_buffer",
             "_hidden_fp8_buffer",
             "_expert_output_buffer",
+            "_expert_range",
             "output",
             "_verify_output_buffer",
         ):

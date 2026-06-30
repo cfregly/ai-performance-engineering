@@ -57,6 +57,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self._transfer_buffer_row_counts: tuple[int, ...] = ()
         self._expected_transfer_buffer_row_counts: tuple[int, ...] = ()
         self._pipeline_micro_step_range = range(0)
+        self._pipeline_stage_range = range(0)
         self._last_final_output_count: int = 0
         self._single_gpu_mode: bool = False
         self._compiled_model: Optional[nn.Module] = None
@@ -109,6 +110,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                 _ = self._compiled_model(self._input_data)
             self._last_stage_durations_ms = [0.0]
             self._pipeline_stage_count = 1
+            self._pipeline_stage_range = range(1)
             self._stage_reuse_counts = (len(self._last_stage_durations_ms),)
             self._expected_stage_reuse_counts = (1,)
         else:
@@ -186,6 +188,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                     ]
                 )
             self._pipeline_stage_count = stage_count
+            self._pipeline_stage_range = range(stage_count)
             self._stage_reuse_counts = (
                 len(self._last_stage_durations_ms),
                 len(self._pipeline_stage_groups),
@@ -247,7 +250,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
             or self._transfer_buffer_row_counts != self._expected_transfer_buffer_row_counts
         ):
             raise RuntimeError("Pipeline reuse slots not initialized")
-        for stage_idx in range(num_stages):
+        for stage_idx in self._pipeline_stage_range:
             self._last_stage_durations_ms[stage_idx] = 0.0
         stage_buffers = self._stage_buffers
         pipeline_stage_groups = self._pipeline_stage_groups
@@ -375,6 +378,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self._transfer_buffer_row_counts = ()
         self._expected_transfer_buffer_row_counts = ()
         self._pipeline_micro_step_range = range(0)
+        self._pipeline_stage_range = range(0)
         self._last_final_output_count = 0
         self._compiled_model = None
         self._input_data = None
