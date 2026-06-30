@@ -17585,10 +17585,15 @@ def test_ch12_bias_relu_residual_batches_verification_metric_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "error_stats = torch.stack(" in source
-    assert ").detach().cpu()" in correctness_section
-    assert "max_abs_baseline = float(error_stats[0])" in correctness_section
-    assert "l2_fused = float(error_stats[3])" in correctness_section
+    assert "error_stats = torch.empty(4, device=x.device, dtype=torch.float32)" in source
+    assert "error_stats[0].copy_(baseline_error.abs().amax())" in correctness_section
+    assert "error_stats[1].copy_(fused_error.abs().amax())" in correctness_section
+    assert "error_stats[2].copy_(torch.linalg.vector_norm(baseline_error))" in correctness_section
+    assert "error_stats[3].copy_(torch.linalg.vector_norm(fused_error))" in correctness_section
+    assert "error_stats_host = error_stats.detach().cpu()" in correctness_section
+    assert "max_abs_baseline = float(error_stats_host[0])" in correctness_section
+    assert "l2_fused = float(error_stats_host[3])" in correctness_section
+    assert "error_stats = torch.stack(" not in source
     assert ").tolist()" not in correctness_section
     assert "torch.linalg.vector_norm(baseline_error)" in source
     assert ".item()" not in correctness_section
