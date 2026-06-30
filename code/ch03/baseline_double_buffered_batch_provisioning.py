@@ -89,7 +89,7 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
             for p in self._model_parameters:
                 p.grad = None
         
-        self.output = out
+        self.output = out.detach_()
         self._payload_data = data
         self._payload_target = target
 

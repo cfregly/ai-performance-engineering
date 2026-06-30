@@ -174,7 +174,7 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
                 master_grad = master_param.grad
                 if master_grad is None:
                     continue
-                reduced = master_grad.detach()
+                reduced = master_grad
                 for replica_param, staging in replica_pairs:
                     grad = replica_param.grad
                     if grad is None:
@@ -195,7 +195,7 @@ class OptimizedDataParallelMultiGPUBenchmark(VerificationPayloadMixin, BaseBench
 
         if first_output is None:
             raise RuntimeError("No model output captured")
-        self.output = first_output.detach()
+        self.output = first_output.detach_()
 
     def capture_verification_payload(self) -> None:
         if (

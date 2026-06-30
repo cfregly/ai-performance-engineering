@@ -98,7 +98,7 @@ class BaselineDataParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             loss.backward()
             self.optimizer.step()
             self.optimizer.zero_grad()
-        self.output = output.detach()
+        self.output = output.detach_()
 
     def capture_verification_payload(self) -> None:
         if (

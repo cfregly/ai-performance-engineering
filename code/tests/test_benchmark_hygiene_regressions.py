@@ -401,6 +401,10 @@ def test_ch04_optimized_dataparallel_reuses_gradient_staging_buffers() -> None:
     assert "for replica_param, staging in replica_pairs:" in benchmark_section
     assert "for master_param, replica_params in self._broadcast_groups:" in benchmark_section
     assert "master_grad = master_param.grad" in benchmark_section
+    assert "reduced = master_grad" in benchmark_section
+    assert "master_grad.detach()" not in benchmark_section
+    assert "self.output = first_output.detach_()" in benchmark_section
+    assert "first_output.detach()" not in benchmark_section
 
 
 def test_ch04_baseline_dataparallel_reuses_blocking_h2d_buffers() -> None:
@@ -435,8 +439,32 @@ def test_ch04_baseline_dataparallel_reuses_blocking_h2d_buffers() -> None:
     assert "gpu_data.copy_(self.data, non_blocking=False)" in benchmark_section
     assert "gpu_target.copy_(self.target, non_blocking=False)" in benchmark_section
     assert ".to(self.device" not in benchmark_section
+    assert "self.output = output.detach_()" in benchmark_section
+    assert "output.detach()" not in benchmark_section
     assert "self._gpu_data = None" in teardown_section
     assert "self._gpu_target = None" in teardown_section
+
+
+def test_ch04_training_benchmarks_avoid_detach_wrappers() -> None:
+    output_targets = {
+        "ch04/baseline_dataparallel.py": "self.output = output.detach_()",
+        "ch04/baseline_dataparallel_multigpu.py": "self.output = output.detach_()",
+        "ch04/optimized_dataparallel.py": "self.output = output.detach_()",
+        "ch04/optimized_dataparallel_multigpu.py": "self.output = first_output.detach_()",
+        "ch04/ddp_no_overlap.py": "self.output = output.detach_()",
+        "ch04/ddp_overlap.py": "self.output = output.detach_()",
+        "ch04/ddp_nvlink_naive.py": "self.output = self.models[0].weight",
+        "ch04/ddp_nvlink_overlap.py": "self.output = self.models[0].weight",
+    }
+    for relative, expected in output_targets.items():
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert expected in benchmark_section
+        assert ".detach()" not in benchmark_section
 
 
 def test_ch04_dataparallel_and_reduction_payloads_cache_parameter_counts() -> None:
@@ -3095,6 +3123,7 @@ def test_ch03_mlp_training_benchmarks_store_outputs_without_detach() -> None:
         )[0]
 
         assert "self.output = out" in benchmark_section
+        assert "self.output = out.detach_()" in benchmark_section
         assert "out.detach()" not in benchmark_section
 
 

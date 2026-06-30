@@ -109,7 +109,7 @@ class OptimizedDdpBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
             self.optimizer.step()
-        self.output = output.detach()
+        self.output = output.detach_()
 
     def capture_verification_payload(self) -> None:
         if (

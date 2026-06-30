@@ -110,7 +110,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         model.weight.add_(-1e-3, model.weight.grad)
                         model.weight.grad.zero_()
                         model.bias.grad.zero_()
-            self.output = self.models[0].weight.detach()
+            self.output = self.models[0].weight
 
     def capture_verification_payload(self) -> None:
         if self.output is None or not self._inputs:

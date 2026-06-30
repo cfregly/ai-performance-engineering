@@ -110,7 +110,7 @@ class BaselineNoOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 param.grad.mul_(1.0 / self.world_size)
             self.optimizer.step()
             self.optimizer.zero_grad()
-        self.output = output.detach()
+        self.output = output.detach_()
 
     def capture_verification_payload(self) -> None:
         if self.data is None or self.target is None or self.output is None:

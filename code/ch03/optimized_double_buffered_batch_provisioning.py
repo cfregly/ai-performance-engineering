@@ -125,7 +125,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
             for p in self._model_parameters:
                 p.grad = None
         
-        self.output = out
+        self.output = out.detach_()
         
         # Swap slots and start next prefetch
         self.cur_slot, self.next_slot = self.next_slot, self.cur_slot
