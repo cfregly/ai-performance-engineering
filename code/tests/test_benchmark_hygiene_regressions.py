@@ -536,6 +536,41 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
         assert "sum(p.numel()" not in capture_section
 
 
+def test_ch04_ddp_nvlink_verification_reuses_output_buffers() -> None:
+    targets = {
+        "ddp_nvlink_naive.py": "def _simulate_allreduce",
+        "ddp_nvlink_overlap.py": "def _async_reduce_to_root",
+    }
+    for filename, setup_end in targets.items():
+        source = (REPO_ROOT / "ch04" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            setup_end,
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "(8, 8)," in setup_section
+        assert "dtype=torch.float32" in setup_section
+        assert "if self._verify_output_buffer is None:" in capture_section
+        assert 'raise RuntimeError("Verification output buffer not initialized")' in capture_section
+        assert "weight_slice = self.output[:8, :8].detach()" in capture_section
+        assert "self._verify_output_buffer.copy_(weight_slice)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert ".to(dtype=torch.float32).clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch04_optimized_torchcomms_overlaps_aux_compute_before_comm_wait() -> None:
     for relative, aux_marker, output_marker in (
         ("optimized_torchcomms.py", "aux_out = aux_block(inputs)", "reduced.add_(aux_out)"),

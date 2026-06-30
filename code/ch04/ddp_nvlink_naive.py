@@ -32,6 +32,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.batch_size = 8
         self.hidden = 512
         self._payload_parameter_count = 0
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         tokens = self.batch_size * self.hidden * self.microbatches
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size * self.microbatches),
@@ -52,6 +53,11 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for model in self.models
         ]
         self._inputs = []
+        self._verify_output_buffer = torch.empty(
+            (8, 8),
+            device=self.models[0].weight.device,
+            dtype=torch.float32,
+        )
         for _micro in range(self.microbatches):
             micro_inputs: List[torch.Tensor] = []
             for model in self.models:
@@ -103,11 +109,14 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def capture_verification_payload(self) -> None:
         if self.output is None or not self._inputs:
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+        if self._verify_output_buffer is None:
+            raise RuntimeError("Verification output buffer not initialized")
         x_probe = self._inputs[0][0]
-        weight_slice = self.output[:8, :8].to(dtype=torch.float32).clone()
+        weight_slice = self.output[:8, :8].detach()
+        self._verify_output_buffer.copy_(weight_slice)
         self._set_verification_payload(
             inputs={"x": x_probe},
-            output=weight_slice,
+            output=self._verify_output_buffer,
             batch_size=int(x_probe.shape[0]),
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -125,6 +134,7 @@ class BaselineDdpNvlinkNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._grad_slots = []
         self._allreduce_buffer = None
         self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
