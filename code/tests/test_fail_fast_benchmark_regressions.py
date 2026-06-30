@@ -46,6 +46,8 @@ def test_ch18_nvfp4_trtllm_tool_no_longer_uses_placeholder_outputs_or_eager_fall
     assert "self._fp8_autocast = fp8_autocast" in setup_section
     assert "with self._fp8_autocast():" in benchmark_section
     assert "from transformer_engine.pytorch import fp8_autocast" not in benchmark_section
+    assert 'if self._trt_runner is not None and self.inputs is not None:' in benchmark_section
+    assert 'hasattr(self, "_trt_runner")' not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
     assert "self.get_config()" not in benchmark_section
     assert "torch.as_tensor(" not in benchmark_section

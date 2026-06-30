@@ -79,7 +79,7 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("SKIPPED: NVFP4 stack not available")
 
         # TensorRT-LLM path if runner exists.
-        if hasattr(self, "_trt_runner") and self.inputs is not None:
+        if self._trt_runner is not None and self.inputs is not None:
             with nvtx_range("nvfp4_trtllm_engine", enable=self._enable_nvtx):
                 outputs = self._trt_runner.generate(self.inputs)  # type: ignore[attr-defined]
                 try:
