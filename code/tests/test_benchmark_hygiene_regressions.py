@@ -10080,16 +10080,38 @@ def test_persistent_decode_baseline_reuses_decode_step_buffers() -> None:
         "def benchmark_fn",
         maxsplit=1,
     )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
     assert "self._product_buffer: Optional[torch.Tensor] = None" in source
     assert "self._dot_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._decode_step_views: tuple[" in source
+    assert "self._output_view: Optional[torch.Tensor] = None" in source
     assert "self._product_buffer = torch.empty(" in setup_section
     assert "self._dot_buffer = torch.empty(" in setup_section
+    assert "self._decode_step_views = tuple(" in setup_section
+    assert "self.inputs.q.unbind(1)" in setup_section
+    assert "self.inputs.out.unbind(1)" in setup_section
+    assert "self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]" in setup_section
     assert "torch.mul(q_t, k_t, out=product)" in decode_step_section
     assert "torch.sum(product, dim=-1, keepdim=True, out=dot)" in decode_step_section
-    assert "torch.mul(v_t, dot, out=self.inputs.out[:, t, :])" in decode_step_section
+    assert "torch.mul(v_t, dot, out=out_t)" in decode_step_section
     assert "(q_t * k_t).sum" not in decode_step_section
     assert "v_t * dot" not in decode_step_section
+    assert "for q_t, k_t, v_t, out_t in self._decode_step_views:" in benchmark_section
+    assert "self._decode_step(q_t, k_t, v_t, out_t)" in benchmark_section
+    assert "for t in range(self.seq_len):" not in benchmark_section
+    assert "self.inputs.q[:, t, :]" not in benchmark_section
+    assert "self.inputs.out[:, t, :]" not in benchmark_section
+    assert "self.output = self._output_view" in benchmark_section
+    assert "self._decode_step_views = ()" in teardown_section
+    assert "self._output_view = None" in teardown_section
 
 
 def test_persistent_decode_tma_buffers_avoid_zero_fill_before_overwrite() -> None:

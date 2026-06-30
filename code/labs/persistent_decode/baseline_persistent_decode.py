@@ -29,6 +29,11 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.output: Optional[torch.Tensor] = None
         self._product_buffer: Optional[torch.Tensor] = None
         self._dot_buffer: Optional[torch.Tensor] = None
+        self._decode_step_views: tuple[
+            tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+            ...,
+        ] = ()
+        self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         batch, seq_len, head_dim = resolve_shapes()
         self.seq_len = seq_len
@@ -66,33 +71,43 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
             device=self.inputs.out.device,
             dtype=torch.float32,
         )
+        self._decode_step_views = tuple(
+            zip(
+                self.inputs.q.unbind(1),
+                self.inputs.k.unbind(1),
+                self.inputs.v.unbind(1),
+                self.inputs.out.unbind(1),
+                strict=True,
+            )
+        )
+        self._output_view = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
         self._synchronize()
 
-    def _decode_step(self, t: int) -> None:
-        assert self.inputs is not None
+    def _decode_step(
+        self,
+        q_t: torch.Tensor,
+        k_t: torch.Tensor,
+        v_t: torch.Tensor,
+        out_t: torch.Tensor,
+    ) -> None:
         assert self._product_buffer is not None
         assert self._dot_buffer is not None
         # Compute a simple dot per sequence for timestep t, then scale V.
-        q_t = self.inputs.q[:, t, :]  # [batch, head_dim]
-        k_t = self.inputs.k[:, t, :]
-        v_t = self.inputs.v[:, t, :]
         product = self._product_buffer
         dot = self._dot_buffer
 
         torch.mul(q_t, k_t, out=product)
         torch.sum(product, dim=-1, keepdim=True, out=dot)
-        torch.mul(v_t, dot, out=self.inputs.out[:, t, :])
+        torch.mul(v_t, dot, out=out_t)
 
     def benchmark_fn(self) -> None:
-        if self.inputs is None:
+        if self.inputs is None or self._output_view is None or not self._decode_step_views:
             raise RuntimeError("Inputs not initialized")
 
         with self._nvtx_range("baseline_per_token"):
-            for t in range(self.seq_len):
-                self._decode_step(t)
-            if self.inputs is not None:
-                # Capture a slice of the output tensor
-                self.output = self.inputs.out[:1, : min(8, self.inputs.out.shape[1])]
+            for q_t, k_t, v_t, out_t in self._decode_step_views:
+                self._decode_step(q_t, k_t, v_t, out_t)
+            self.output = self._output_view
         if self.inputs is None or self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -123,6 +138,8 @@ class BaselinePersistentDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.output = None
         self._product_buffer = None
         self._dot_buffer = None
+        self._decode_step_views = ()
+        self._output_view = None
         self._verify_output_buffer = None
 
     def get_config(self) -> BenchmarkConfig:
