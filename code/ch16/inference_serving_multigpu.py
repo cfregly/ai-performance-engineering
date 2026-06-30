@@ -196,17 +196,21 @@ class DemoCausalLM(nn.Module):
 
         first = tensors[0]
         shape = (len(tensors), *first.shape)
+        numel = 1
+        for dim in shape:
+            numel *= int(dim)
         buffer = getattr(self, buffer_name)
         if (
             buffer is None
             or buffer.device != first.device
             or buffer.dtype != first.dtype
-            or tuple(buffer.shape) != shape
+            or buffer.numel() < numel
         ):
-            buffer = torch.empty(shape, dtype=first.dtype, device=first.device)
+            buffer = torch.empty(numel, dtype=first.dtype, device=first.device)
             setattr(self, buffer_name, buffer)
-        torch.stack(tensors, dim=0, out=buffer)
-        return buffer
+        buffer_view = buffer[:numel].view(shape)
+        torch.stack(tensors, dim=0, out=buffer_view)
+        return buffer_view
 
     def forward(
         self,

@@ -14907,7 +14907,10 @@ def test_ch16_demo_causal_lm_reuses_kv_stack_buffers() -> None:
     assert "self._local_key_slots: List[torch.Tensor] = []" in model_section
     assert "self._local_value_slots: List[torch.Tensor] = []" in model_section
     assert "def _stack_layer_outputs(self, tensors: List[torch.Tensor], buffer_name: str)" in model_section
-    assert "torch.stack(tensors, dim=0, out=buffer)" in model_section
+    assert "or buffer.numel() < numel" in model_section
+    assert "buffer = torch.empty(numel" in model_section
+    assert "buffer_view = buffer[:numel].view(shape)" in model_section
+    assert "torch.stack(tensors, dim=0, out=buffer_view)" in model_section
     assert "layer_count = len(self.layers)" in forward_section
     assert "if len(self._local_key_slots) != layer_count:" in forward_section
     assert "self._local_key_slots = [hidden] * layer_count" in forward_section
@@ -14924,6 +14927,27 @@ def test_ch16_demo_causal_lm_reuses_kv_stack_buffers() -> None:
     assert "local_values.append(" not in forward_section
     assert "key_stack = torch.stack(local_keys" not in forward_section
     assert "value_stack = torch.stack(local_values" not in forward_section
+
+    from ch16.inference_serving_multigpu import DemoCausalLM
+
+    owner = SimpleNamespace(_key_stack_buffer=None)
+    large = DemoCausalLM._stack_layer_outputs(
+        owner,
+        [torch.ones(2, 3, 4), torch.full((2, 3, 4), 2.0)],
+        "_key_stack_buffer",
+    )
+    buffer_ptr = owner._key_stack_buffer.data_ptr()
+    small = DemoCausalLM._stack_layer_outputs(
+        owner,
+        [torch.ones(1, 1, 4), torch.full((1, 1, 4), 3.0)],
+        "_key_stack_buffer",
+    )
+
+    assert large.shape == (2, 2, 3, 4)
+    assert small.shape == (2, 1, 1, 4)
+    assert small.is_contiguous()
+    assert owner._key_stack_buffer.data_ptr() == buffer_ptr
+    torch.testing.assert_close(small[1], torch.full((1, 1, 4), 3.0))
 
 
 def test_ch08_occupancy_batching_demo_reuses_batched_buffers() -> None:
