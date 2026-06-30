@@ -30,6 +30,7 @@ class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.local_rank = 0
         self.input_tensor = None
         self.tensor = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.initialized = False
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -50,6 +51,7 @@ class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # not bandwidth. Larger tensors would dilute the init/destroy cost.
         self.input_tensor = torch.randn(1, 1, device=self.device, dtype=torch.float32)
         self.tensor = torch.empty_like(self.input_tensor)
+        self._verify_output_buffer = torch.empty_like(self.tensor)
         self._synchronize()
         self.register_workload_metadata(
             requests_per_iteration=self._workload.requests_per_iteration,
@@ -79,12 +81,16 @@ class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dist.all_reduce(self.tensor)
 
     def capture_verification_payload(self) -> None:
-        if self.input_tensor is None or self.tensor is None:
+        if (
+            self.input_tensor is None
+            or self.tensor is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
-        output = self.tensor.detach().clone()
+        self._verify_output_buffer.copy_(self.tensor)
         self._set_verification_payload(
             inputs={"input": self.input_tensor},
-            output=output,
+            output=self._verify_output_buffer,
             batch_size=int(self.input_tensor.shape[0]),
             parameter_count=0,
             precision_flags={
@@ -103,6 +109,7 @@ class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dist.destroy_process_group()
         self.input_tensor = None
         self.tensor = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
@@ -152,4 +159,3 @@ class BaselineReinitCommBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for benchmark discovery."""
     return BaselineReinitCommBenchmark()
-

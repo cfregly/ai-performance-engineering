@@ -3639,6 +3639,38 @@ def test_ch04_reinit_comm_caches_nvtx_enablement() -> None:
         assert 'with nvtx_range("reinit_comm", enable=self._enable_nvtx):' in benchmark_section
 
 
+def test_ch04_comm_wrappers_reuse_verification_output_buffers() -> None:
+    for relative in (
+        "ch04/baseline_reinit_comm.py",
+        "ch04/optimized_reinit_comm.py",
+        "ch04/baseline_reinit_comm_multigpu.py",
+        "ch04/optimized_reinit_comm_multigpu.py",
+        "ch04/nvls_collectives.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(self.tensor)" in setup_section
+        assert "self._verify_output_buffer.copy_(self.tensor)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.tensor.detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_moe_cuda_naive_backend_skips_redundant_mask_any_sync() -> None:
     source = (REPO_ROOT / "labs" / "moe_cuda" / "moe_backend_common.py").read_text(
         encoding="utf-8"
