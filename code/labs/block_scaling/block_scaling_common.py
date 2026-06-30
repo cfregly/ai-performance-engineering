@@ -160,7 +160,7 @@ class BlockScalingProblem:
                 leading_dim=1
             ),
         )
-        return self.c_ref_device.float().clone()
+        return self.c_ref_device
 
     def verify_close(self) -> dict[str, float]:
         """Compare the hardware output against the software reference path."""

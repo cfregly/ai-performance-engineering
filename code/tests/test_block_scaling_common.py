@@ -111,6 +111,14 @@ def test_block_scaling_verify_close_batches_error_materialization() -> None:
     assert "diff.mean().item()" not in source
 
 
+def test_block_scaling_extract_hardware_output_reuses_device_buffer() -> None:
+    source = inspect.getsource(BlockScalingProblem.extract_hardware_output)
+
+    assert "self.c_ref_device = self.c_ref.cuda()" in source
+    assert "return self.c_ref_device" in source
+    assert ".float().clone()" not in source
+
+
 def test_block_scaling_cuda_timing_records_on_current_stream() -> None:
     source = inspect.getsource(measure_cuda_callable)
 
