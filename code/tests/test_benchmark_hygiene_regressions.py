@@ -13188,12 +13188,19 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "outputs.append(" not in baseline_benchmark
     assert "self._attention_scale = 1.0 / math.sqrt(self.head_dim)" in baseline_setup
     assert "self._head_inputs = [" in baseline_setup
+    assert "self._attention_view_counts: tuple[int, int] = (0, 0)" in baseline_source
+    assert "self._expected_attention_view_counts: tuple[int, int] = (0, 0)" in baseline_source
+    assert "self._attention_view_counts = (" in baseline_setup
+    assert "self._expected_attention_view_counts = (expected_outputs, expected_outputs)" in baseline_setup
     assert "self._output_buffer: Optional[torch.Tensor] = None" in baseline_source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in baseline_source
     assert "self._output_buffer = torch.empty(" in baseline_setup
     assert "self._verify_output_buffer = torch.empty_like(self._output_buffer)" in baseline_setup
     assert "(self.q[:, head, :], self.k[:, head, :].transpose(0, 1), self.v[:, head, :])" in baseline_setup
     assert "for qh, kh_t, vh in self._head_inputs:" in baseline_benchmark
+    assert "self._attention_view_counts != self._expected_attention_view_counts" in baseline_benchmark
+    assert "len(self._last_outputs)" not in baseline_benchmark
+    assert "len(self._head_inputs)" not in baseline_benchmark
     assert "self.q[:, head, :]" not in baseline_benchmark
     assert "self.k[:, head, :]" not in baseline_benchmark
     assert ".transpose(0, 1)" not in baseline_benchmark
@@ -13207,6 +13214,12 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "self._verify_output_buffer.copy_(self.output)" in baseline_capture
     assert "output=self._verify_output_buffer" in baseline_capture
     assert "output=self.output.detach().clone()" not in baseline_capture
+    baseline_teardown = baseline_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+    assert "self._attention_view_counts = (0, 0)" in baseline_teardown
+    assert "self._expected_attention_view_counts = (0, 0)" in baseline_teardown
     assert "float(out.sum())" not in optimized_benchmark
     assert "self._q_bhsd: Optional[torch.Tensor] = None" in optimized_source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
