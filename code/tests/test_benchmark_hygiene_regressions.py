@@ -14995,12 +14995,54 @@ def test_ch16_blackwell_kv_cache_reuses_batch_index_scratch() -> None:
     assert "self._next_length_rows = [0] * max_batch_size" in init_section
     assert "self._range_cache_indices = [0] * max_batch_size" in init_section
     assert "self._fill_batch_index_list_from_host(batch_index_host, batch_count)" in update_section
+    assert "or self._updated_key_buffer.size(0) < batch_count" in update_section
+    assert "or self._updated_key_buffer.size(2) < max_end_pos" in update_section
+    assert "updated_keys = self._updated_key_buffer[:batch_count, :, :max_end_pos, :]" in update_section
+    assert "updated_vals = self._updated_value_buffer[:batch_count, :, :max_end_pos, :]" in update_section
     assert ".tolist()" not in update_section
     assert "len(set(" not in update_section
     assert "current_lengths = [" not in update_section
     assert "self._seq_lens_host.copy()" not in update_section
     assert "ranges.append(" not in update_section
     assert "self._seq_lens_host = [0] * self.max_batch_size" not in clear_section
+
+    from ch16 import inference_optimizations_blackwell as blackwell
+
+    old_fp8_available = blackwell.FP8_AVAILABLE
+    blackwell.FP8_AVAILABLE = False
+    try:
+        cache = blackwell.DynamicQuantizedKVCache(
+            num_layers=1,
+            max_batch_size=2,
+            max_seq_len=8,
+            num_heads=2,
+            head_dim=4,
+            device="cpu",
+            dtype=torch.float32,
+        )
+        warm_key = torch.randn(1, 2, 2, 4)
+        warm_value = torch.randn(1, 2, 2, 4)
+        cache.update(0, warm_key, warm_value, batch_idx=0)
+        cache.update(0, warm_key[:, :, :1, :], warm_value[:, :, :1, :], batch_idx=1)
+        indices = torch.tensor([0, 1], dtype=torch.long)
+        key = torch.randn(2, 2, 1, 4)
+        value = torch.randn(2, 2, 1, 4)
+        updated_keys, updated_vals = cache.update(0, key, value, batch_indices=indices)
+        key_ptr = cache._updated_key_buffer.data_ptr()
+        value_ptr = cache._updated_value_buffer.data_ptr()
+
+        cache.clear()
+        cache.update(0, warm_key[:, :, :1, :], warm_value[:, :, :1, :], batch_idx=0)
+        smaller_keys, smaller_vals = cache.update(0, key, value, batch_indices=indices)
+    finally:
+        blackwell.FP8_AVAILABLE = old_fp8_available
+
+    assert updated_keys.shape == (2, 2, 3, 4)
+    assert updated_vals.shape == (2, 2, 3, 4)
+    assert smaller_keys.shape == (2, 2, 2, 4)
+    assert smaller_vals.shape == (2, 2, 2, 4)
+    assert cache._updated_key_buffer.data_ptr() == key_ptr
+    assert cache._updated_value_buffer.data_ptr() == value_ptr
 
 
 def test_ch16_blackwell_tensor_parallel_reuses_gather_buffers() -> None:
@@ -15050,6 +15092,10 @@ def test_ch16_blackwell_decoder_reuses_attention_projection_buffers() -> None:
     assert "def cache_weight_views(self) -> None:" in decoder_section
     assert "def _o_proj_weight_view(self) -> torch.Tensor:" in decoder_section
     assert "def _attention_project_workspace(" in decoder_section
+    assert "rows = int(batch_size * seq_len)" in decoder_section
+    assert "or self._attn_merge_buffer.size(0) < rows" in decoder_section
+    assert "self._attn_merge_view = self._attn_merge_buffer[:rows].view(merge_shape)" in decoder_section
+    assert "self._attn_project_buffer[:rows].view(output_shape)" in decoder_section
     assert "self._attn_merge_buffer = torch.empty(shape" in decoder_section
     assert "self._attn_project_buffer = torch.empty(shape" in decoder_section
     assert "merge_view.copy_(attn_output.transpose(1, 2))" in forward_section
@@ -15073,9 +15119,11 @@ def test_ch16_blackwell_decoder_reuses_attention_projection_buffers() -> None:
         output_ptr = layer._attn_project_buffer.data_ptr()
         weight_view_ptr = layer._o_proj_weight_t.data_ptr()
         out_again = layer(x)
+        out_smaller = layer(torch.randn(1, 1, 8))
 
     assert out.shape == x.shape
     assert out_again.shape == x.shape
+    assert out_smaller.shape == (1, 1, 8)
     assert layer._attn_merge_buffer.data_ptr() == merge_ptr
     assert layer._attn_project_buffer.data_ptr() == output_ptr
     assert layer._o_proj_weight_t.data_ptr() == weight_view_ptr
@@ -15096,9 +15144,54 @@ def test_ch16_blackwell_generate_reuses_output_token_buffer() -> None:
 
     assert "self._generated_token_buffer: Optional[torch.Tensor] = None" in pipeline_section
     assert "def _generated_output_buffer(" in pipeline_section
+    assert "or self._next_token_buffer.size(0) < batch_size" in pipeline_section
+    assert "or self._next_token_values.size(0) < batch_size" in pipeline_section
+    assert "tokens = self._next_token_buffer[:batch_size]" in pipeline_section
+    assert "or self._generated_token_buffer.size(0) < input_ids.size(0)" in pipeline_section
+    assert "or self._generated_token_buffer.size(1) < total_len" in pipeline_section
+    assert "return self._generated_token_buffer[: input_ids.size(0), :total_len]" in pipeline_section
     assert "self._generated_token_buffer = torch.empty(" in pipeline_section
     assert "output_ids = self._generated_output_buffer(input_ids, seq_len + max_new_tokens)" in generate_section
     assert "output_ids = torch.empty(" not in generate_section
+
+    from ch16.inference_optimizations_blackwell import BlackwellInferencePipeline
+
+    pipeline = BlackwellInferencePipeline.__new__(BlackwellInferencePipeline)
+    pipeline._next_token_buffer = None
+    pipeline._next_token_values = None
+    pipeline._generated_token_buffer = None
+    large_logits = torch.tensor(
+        [[0.1, 0.9, 0.2], [0.7, 0.1, 0.4], [0.3, 0.2, 0.8], [0.0, 0.5, 0.4]]
+    )
+    large_tokens = BlackwellInferencePipeline._next_token_from_logits(pipeline, large_logits)
+    token_ptr = pipeline._next_token_buffer.data_ptr()
+    value_ptr = pipeline._next_token_values.data_ptr()
+    small_tokens = BlackwellInferencePipeline._next_token_from_logits(
+        pipeline,
+        large_logits[:2],
+    )
+
+    assert large_tokens.shape == (4, 1)
+    assert small_tokens.shape == (2, 1)
+    assert pipeline._next_token_buffer.data_ptr() == token_ptr
+    assert pipeline._next_token_values.data_ptr() == value_ptr
+    torch.testing.assert_close(small_tokens, torch.tensor([[1], [0]]))
+
+    large_output = BlackwellInferencePipeline._generated_output_buffer(
+        pipeline,
+        torch.ones(4, 6, dtype=torch.long),
+        8,
+    )
+    output_ptr = pipeline._generated_token_buffer.data_ptr()
+    small_output = BlackwellInferencePipeline._generated_output_buffer(
+        pipeline,
+        torch.ones(2, 3, dtype=torch.long),
+        5,
+    )
+
+    assert large_output.shape == (4, 8)
+    assert small_output.shape == (2, 5)
+    assert pipeline._generated_token_buffer.data_ptr() == output_ptr
 
 
 def test_ch16_blackwell_inference_demo_uses_cuda_event_timing() -> None:

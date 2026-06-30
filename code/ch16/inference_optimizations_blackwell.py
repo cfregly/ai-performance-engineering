@@ -345,14 +345,18 @@ class DynamicQuantizedKVCache:
         return_shape = (batch_count, self.num_heads, max_end_pos, self.head_dim)
         if (
             self._updated_key_buffer is None
-            or self._updated_key_buffer.shape != return_shape
+            or self._updated_value_buffer is None
+            or self._updated_key_buffer.size(0) < batch_count
+            or self._updated_key_buffer.size(2) < max_end_pos
             or self._updated_key_buffer.device != key.device
             or self._updated_key_buffer.dtype != return_dtype
+            or self._updated_value_buffer.device != key.device
+            or self._updated_value_buffer.dtype != return_dtype
         ):
             self._updated_key_buffer = torch.empty(return_shape, device=key.device, dtype=return_dtype)
             self._updated_value_buffer = torch.empty(return_shape, device=key.device, dtype=return_dtype)
-        updated_keys = self._updated_key_buffer
-        updated_vals = self._updated_value_buffer
+        updated_keys = self._updated_key_buffer[:batch_count, :, :max_end_pos, :]
+        updated_vals = self._updated_value_buffer[:batch_count, :, :max_end_pos, :]
 
         for local_idx in range(batch_count):
             cache_idx_int = range_cache_indices[local_idx]
@@ -486,26 +490,30 @@ class OptimizedDecoderLayer(nn.Module):
         device: torch.device,
         dtype: torch.dtype,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        shape = (batch_size, seq_len, self.d_model)
+        rows = int(batch_size * seq_len)
+        shape = (rows, self.d_model)
+        output_shape = (batch_size, seq_len, self.d_model)
         merge_shape = (batch_size, seq_len, self.num_heads, self.head_dim)
         if (
             self._attn_merge_buffer is None
             or self._attn_project_buffer is None
-            or self._attn_merge_buffer.shape != shape
+            or self._attn_merge_buffer.size(0) < rows
+            or self._attn_project_buffer.size(0) < rows
             or self._attn_merge_buffer.device != device
             or self._attn_merge_buffer.dtype != dtype
+            or self._attn_project_buffer.device != device
+            or self._attn_project_buffer.dtype != dtype
         ):
             self._attn_merge_buffer = torch.empty(shape, device=device, dtype=dtype)
-            self._attn_merge_view = self._attn_merge_buffer.view(merge_shape)
-            self._attn_merge_2d = self._attn_merge_buffer.view(batch_size * seq_len, self.d_model)
             self._attn_project_buffer = torch.empty(shape, device=device, dtype=dtype)
-            self._attn_project_2d = self._attn_project_buffer.view(batch_size * seq_len, self.d_model)
-        assert self._attn_merge_view is not None and self._attn_merge_2d is not None
-        assert self._attn_project_buffer is not None and self._attn_project_2d is not None
+        assert self._attn_merge_buffer is not None and self._attn_project_buffer is not None
+        self._attn_merge_view = self._attn_merge_buffer[:rows].view(merge_shape)
+        self._attn_merge_2d = self._attn_merge_buffer[:rows]
+        self._attn_project_2d = self._attn_project_buffer[:rows]
         return (
             self._attn_merge_view,
             self._attn_merge_2d,
-            self._attn_project_buffer,
+            self._attn_project_buffer[:rows].view(output_shape),
             self._attn_project_2d,
         )
         
@@ -658,7 +666,7 @@ class BlackwellInferencePipeline:
         if (
             self._next_token_buffer is None
             or self._next_token_buffer.device != logits_last.device
-            or tuple(self._next_token_buffer.shape) != (batch_size, 1)
+            or self._next_token_buffer.size(0) < batch_size
         ):
             self._next_token_buffer = torch.empty(
                 (batch_size, 1),
@@ -669,11 +677,13 @@ class BlackwellInferencePipeline:
             self._next_token_values is None
             or self._next_token_values.device != logits_last.device
             or self._next_token_values.dtype != logits_last.dtype
-            or tuple(self._next_token_values.shape) != (batch_size, 1)
+            or self._next_token_values.size(0) < batch_size
         ):
             self._next_token_values = torch.empty_like(logits_last[:, :1])
-        torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))
-        return self._next_token_buffer
+        values = self._next_token_values[:batch_size]
+        tokens = self._next_token_buffer[:batch_size]
+        torch.max(logits_last, dim=-1, keepdim=True, out=(values, tokens))
+        return tokens
 
     def _generated_output_buffer(
         self,
@@ -685,14 +695,15 @@ class BlackwellInferencePipeline:
             self._generated_token_buffer is None
             or self._generated_token_buffer.device != input_ids.device
             or self._generated_token_buffer.dtype != input_ids.dtype
-            or tuple(self._generated_token_buffer.shape) != output_shape
+            or self._generated_token_buffer.size(0) < input_ids.size(0)
+            or self._generated_token_buffer.size(1) < total_len
         ):
             self._generated_token_buffer = torch.empty(
                 output_shape,
                 device=input_ids.device,
                 dtype=input_ids.dtype,
             )
-        return self._generated_token_buffer
+        return self._generated_token_buffer[: input_ids.size(0), :total_len]
     
     @torch.inference_mode()
     def generate(
