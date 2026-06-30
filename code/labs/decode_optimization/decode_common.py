@@ -113,6 +113,8 @@ class DecodeConfig:
     graph_full_iteration: bool = False
     use_torch_compile: bool = False
     reuse_device_prompt: bool = False
+    candidate_vocab_size: int = 0
+    candidate_logits_only: bool = False
     iterations: int = 8
     warmup: int = 10
     label: str = "decode_optimization"
@@ -133,6 +135,11 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._decode_combined: Optional[torch.Tensor] = None
         self._decode_next_token_values: Optional[torch.Tensor] = None
         self._decode_next_token: Optional[torch.Tensor] = None
+        self._candidate_token_ids: Optional[torch.Tensor] = None
+        self._candidate_lm_weight: Optional[torch.Tensor] = None
+        self._candidate_scores: Optional[torch.Tensor] = None
+        self._candidate_positions: Optional[torch.Tensor] = None
+        self._forced_candidate_tokens: Optional[torch.Tensor] = None
         self._custom_metrics: Dict[str, float] = {}
         self._iteration_ttft_times = [0.0]
         self._iteration_tpot_times = [0.0] * self.cfg.decode_tokens
@@ -184,6 +191,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise ValueError("host_payload_mb must be >= 0")
         if self.cfg.use_fp4 and self.cfg.use_fp8:
             raise ValueError("use_fp4 and use_fp8 are mutually exclusive")
+        if self.cfg.candidate_vocab_size < 0:
+            raise ValueError("candidate_vocab_size must be >= 0")
+        if self.cfg.candidate_vocab_size > self.cfg.vocab_size:
+            raise ValueError("candidate_vocab_size cannot exceed vocab_size")
+        if self.cfg.candidate_logits_only and self.cfg.candidate_vocab_size <= 0:
+            raise ValueError("candidate_logits_only requires candidate_vocab_size > 0")
         if self.cfg.use_te_mlp and not TE_AVAILABLE:
             raise RuntimeError(
                 "SKIPPED: use_te_mlp requested but Transformer Engine is unavailable"
@@ -356,6 +369,13 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         metrics["prompt_copies_per_iteration"] = prompt_copy_count
         metrics["payload_copies_per_iteration"] = (
             prompt_copy_count if self.cfg.host_payload_mb else 0.0
+        )
+        metrics["candidate_vocab_size"] = float(self.cfg.candidate_vocab_size)
+        metrics["candidate_logits_only"] = float(self.cfg.candidate_logits_only)
+        metrics["effective_logits_vocab_size"] = float(
+            self.cfg.candidate_vocab_size
+            if self.cfg.candidate_logits_only and self.cfg.candidate_vocab_size
+            else self.cfg.vocab_size
         )
         metrics["use_fp8"] = float(self._fp8_enabled)
         metrics["fp8_fallback"] = float(1.0 if (self.cfg.use_fp8 and not self._fp8_enabled) else 0.0)
@@ -531,6 +551,33 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float32,
         )
+        if self.cfg.candidate_vocab_size:
+            candidate_count = int(self.cfg.candidate_vocab_size)
+            self._candidate_token_ids = torch.arange(
+                candidate_count,
+                device=self.device,
+                dtype=torch.long,
+            )
+            self._candidate_scores = torch.empty(
+                (bsz, candidate_count),
+                device=self.device,
+                dtype=self.dtype,
+            )
+            self._candidate_positions = torch.empty(
+                (bsz,),
+                device=self.device,
+                dtype=torch.long,
+            )
+            if self.cfg.candidate_logits_only and candidate_count == 1:
+                self._forced_candidate_tokens = torch.zeros(
+                    (bsz,),
+                    device=self.device,
+                    dtype=torch.long,
+                )
+            elif self.cfg.candidate_logits_only:
+                self._candidate_lm_weight = (
+                    self.lm_head.weight.index_select(0, self._candidate_token_ids).contiguous()
+                )
         self._config_tensor = torch.tensor(
             [
                 self.cfg.batch_size,
@@ -635,6 +682,35 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         token_hidden = self.embedding(tokens)
         torch.add(token_hidden, state, out=self._decode_combined)
         hidden = self.decode_mlp(self._decode_combined)
+        if self._candidate_token_ids is not None:
+            if self._candidate_scores is None or self._candidate_positions is None:
+                raise RuntimeError("Candidate decode buffers must be initialized")
+            if self._forced_candidate_tokens is not None:
+                return hidden, self._forced_candidate_tokens
+            if self.cfg.candidate_logits_only:
+                if self._candidate_lm_weight is None:
+                    raise RuntimeError("Candidate lm_head weight cache must be initialized")
+                torch.mm(hidden, self._candidate_lm_weight.t(), out=self._candidate_scores)
+            else:
+                logits = self.lm_head(hidden)
+                torch.index_select(
+                    logits,
+                    1,
+                    self._candidate_token_ids,
+                    out=self._candidate_scores,
+                )
+            torch.max(
+                self._candidate_scores,
+                dim=-1,
+                out=(self._decode_next_token_values, self._candidate_positions),
+            )
+            torch.index_select(
+                self._candidate_token_ids,
+                0,
+                self._candidate_positions,
+                out=self._decode_next_token,
+            )
+            return hidden, self._decode_next_token
         logits = self.lm_head(hidden)
         torch.max(logits, dim=-1, out=(self._decode_next_token_values, self._decode_next_token))
         return hidden, self._decode_next_token
@@ -1027,6 +1103,11 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "current_tokens",
             "_decode_next_token_values",
             "_decode_next_token",
+            "_candidate_token_ids",
+            "_candidate_lm_weight",
+            "_candidate_scores",
+            "_candidate_positions",
+            "_forced_candidate_tokens",
             "_summary_buffer",
             "_config_tensor",
             "next_token_out",

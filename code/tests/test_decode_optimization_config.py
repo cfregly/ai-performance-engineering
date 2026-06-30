@@ -5,6 +5,9 @@ import torch
 
 from core.harness.benchmark_harness import ExecutionMode
 from labs.decode_optimization.baseline_decode import get_benchmark as get_baseline_decode
+from labs.decode_optimization.baseline_decode_candidate_logits import (
+    get_benchmark as get_baseline_decode_candidate_logits,
+)
 from labs.decode_optimization.baseline_decode_pinned import (
     get_benchmark as get_baseline_decode_pinned,
 )
@@ -12,6 +15,9 @@ from labs.decode_optimization.baseline_decode_device_resident import (
     get_benchmark as get_baseline_decode_device_resident,
 )
 from labs.decode_optimization.decode_common import DecodeBenchmark, DecodeConfig
+from labs.decode_optimization.optimized_decode_candidate_logits import (
+    get_benchmark as get_optimized_decode_candidate_logits,
+)
 from labs.decode_optimization.optimized_decode_device_resident import (
     get_benchmark as get_optimized_decode_device_resident,
 )
@@ -40,8 +46,10 @@ def test_decode_benchmark_uses_subprocess_execution() -> None:
 def test_decode_variants_inherit_subprocess_execution() -> None:
     for factory in (
         get_baseline_decode,
+        get_baseline_decode_candidate_logits,
         get_baseline_decode_pinned,
         get_baseline_decode_device_resident,
+        get_optimized_decode_candidate_logits,
         get_optimized_decode_device_resident,
         get_optimized_decode_pinned,
         get_optimized_decode_graph,
@@ -469,6 +477,62 @@ def test_decode_device_resident_pair_changes_only_residency_policy() -> None:
     assert baseline.cfg.use_compute_stream is optimized.cfg.use_compute_stream is False
     assert baseline.cfg.reuse_device_prompt is False
     assert optimized.cfg.reuse_device_prompt is True
+
+
+def test_decode_candidate_logits_path_avoids_full_vocab_projection_when_enabled() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    config_section = source.split("@dataclass", maxsplit=1)[1].split(
+        "class DecodeBenchmark",
+        maxsplit=1,
+    )[0]
+    init_section = source.split("def _init_buffers", maxsplit=1)[1].split(
+        "def _populate_device_resident_inputs",
+        maxsplit=1,
+    )[0]
+    decode_math_section = source.split("def _run_decode_step_math", maxsplit=1)[1].split(
+        "def _get_fp8_context",
+        maxsplit=1,
+    )[0]
+
+    assert "candidate_vocab_size: int = 0" in config_section
+    assert "candidate_logits_only: bool = False" in config_section
+    assert "self._candidate_token_ids: Optional[torch.Tensor] = None" in source
+    assert "self._candidate_lm_weight: Optional[torch.Tensor] = None" in source
+    assert "self._candidate_scores: Optional[torch.Tensor] = None" in source
+    assert "self._forced_candidate_tokens: Optional[torch.Tensor] = None" in source
+    assert "torch.arange(" in init_section
+    assert "if self.cfg.candidate_logits_only and candidate_count == 1:" in init_section
+    assert "self._forced_candidate_tokens = torch.zeros(" in init_section
+    assert "self.lm_head.weight.index_select(0, self._candidate_token_ids).contiguous()" in init_section
+    assert 'metrics["candidate_vocab_size"] = float(self.cfg.candidate_vocab_size)' in source
+    assert 'metrics["candidate_logits_only"] = float(self.cfg.candidate_logits_only)' in source
+    assert 'metrics["effective_logits_vocab_size"] = float(' in source
+    assert "if self._candidate_token_ids is not None:" in decode_math_section
+    assert "if self._forced_candidate_tokens is not None:" in decode_math_section
+    assert "return hidden, self._forced_candidate_tokens" in decode_math_section
+    assert "torch.mm(hidden, self._candidate_lm_weight.t(), out=self._candidate_scores)" in decode_math_section
+    assert "logits = self.lm_head(hidden)" in decode_math_section
+    assert "torch.index_select(\n                    logits," in decode_math_section
+    assert "torch.index_select(\n                self._candidate_token_ids," in decode_math_section
+
+
+def test_decode_candidate_logits_pair_changes_only_projection_policy() -> None:
+    baseline = get_baseline_decode_candidate_logits()
+    optimized = get_optimized_decode_candidate_logits()
+
+    assert baseline.cfg.batch_size == optimized.cfg.batch_size == 32
+    assert baseline.cfg.prompt_tokens == optimized.cfg.prompt_tokens == 128
+    assert baseline.cfg.decode_tokens == optimized.cfg.decode_tokens == 64
+    assert baseline.cfg.prefetch_batches == optimized.cfg.prefetch_batches == 1
+    assert baseline.cfg.host_payload_mb == optimized.cfg.host_payload_mb == 0
+    assert baseline.cfg.hidden_size == optimized.cfg.hidden_size == 512
+    assert baseline.cfg.vocab_size == optimized.cfg.vocab_size == 131072
+    assert baseline.cfg.candidate_vocab_size == optimized.cfg.candidate_vocab_size == 1
+    assert baseline.cfg.reuse_device_prompt is optimized.cfg.reuse_device_prompt is False
+    assert baseline.cfg.candidate_logits_only is False
+    assert optimized.cfg.candidate_logits_only is True
 
 
 def test_decode_pinned_pair_uses_transfer_heavy_workload_with_only_pin_state_changed() -> None:
