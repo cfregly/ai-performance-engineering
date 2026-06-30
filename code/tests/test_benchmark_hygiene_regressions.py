@@ -9411,6 +9411,10 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self._cos_step_count = 0" in baseline_source
     assert "self._sin_step_count = 0" in baseline_source
     assert "self._step_group_count = 0" in baseline_source
+    assert "self.q_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self.q_heads: Optional[torch.Tensor] = None" in baseline_source
+    assert "self.q_buffer = torch.empty(" in baseline_setup
+    assert "self.q_heads = self.q_buffer.view(self.cfg.batch_size, self.cfg.heads, self.cfg.head_dim)" in baseline_setup
     assert "self._input_step_views = list(self.inputs.unbind(0))" in baseline_setup
     assert "self._cache_step_views = [self.cache[:, :, step, :] for step in range(self.cfg.steps)]" in baseline_setup
     assert "self._step_groups = list(" in baseline_setup
@@ -9442,6 +9446,10 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "zip(" not in baseline_benchmark
     assert "cos_t = self.cos[step].view(1, 1, self.cfg.head_dim)" not in baseline_benchmark
     assert "sin_t = self.sin[step].view(1, 1, self.cfg.head_dim)" not in baseline_benchmark
+    assert "torch.mm(x, self.q_weight, out=self.q_buffer)" in baseline_benchmark
+    assert "q = self.q_heads" in baseline_benchmark
+    assert "q = x @ self.q_weight" not in baseline_benchmark
+    assert "q = q.view(" not in baseline_benchmark
     assert "q = apply_rope(q, cos_t, sin_t)" in baseline_benchmark
     assert "cache_step.copy_(q)" in baseline_benchmark
     assert "self.cache[:, :, step, :] = q" not in baseline_benchmark
@@ -9452,6 +9460,8 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self._cos_step_count = 0" in baseline_teardown
     assert "self._sin_step_count = 0" in baseline_teardown
     assert "self._step_group_count = 0" in baseline_teardown
+    assert "self.q_buffer = None" in baseline_teardown
+    assert "self.q_heads = None" in baseline_teardown
     assert "for step in range(self.cfg.steps):" not in baseline_benchmark
     assert "for h in range(self.cfg.heads):" not in baseline_benchmark
     assert "q[:, h, :]" not in baseline_benchmark

@@ -22,6 +22,8 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cos: Optional[torch.Tensor] = None
         self.sin: Optional[torch.Tensor] = None
         self.cache: Optional[torch.Tensor] = None
+        self.q_buffer: Optional[torch.Tensor] = None
+        self.q_heads: Optional[torch.Tensor] = None
         self._input_step_views: list[torch.Tensor] = []
         self._cache_step_views: list[torch.Tensor] = []
         self._cos_step_views: list[torch.Tensor] = []
@@ -75,6 +77,13 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
+        self.q_buffer = torch.empty(
+            self.cfg.batch_size,
+            self.cfg.hidden_size,
+            device=self.device,
+            dtype=self.cfg.dtype,
+        )
+        self.q_heads = self.q_buffer.view(self.cfg.batch_size, self.cfg.heads, self.cfg.head_dim)
         self._input_step_views = list(self.inputs.unbind(0))
         self._cache_step_views = [self.cache[:, :, step, :] for step in range(self.cfg.steps)]
         self._cos_step_views = [
@@ -109,6 +118,8 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.cos is None
             or self.sin is None
             or self.cache is None
+            or self.q_buffer is None
+            or self.q_heads is None
             or self._output_view is None
             or self._input_step_count != self.cfg.steps
             or self._cache_step_count != self.cfg.steps
@@ -119,8 +130,8 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Benchmark not initialized")
         with torch.inference_mode():
             for x, cache_step, cos_t, sin_t in self._step_groups:
-                q = x @ self.q_weight
-                q = q.view(self.cfg.batch_size, self.cfg.heads, self.cfg.head_dim)
+                torch.mm(x, self.q_weight, out=self.q_buffer)
+                q = self.q_heads
                 q = apply_rope(q, cos_t, sin_t)
                 cache_step.copy_(q)
             self.output = self._output_view
@@ -153,6 +164,8 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cos = None
         self.sin = None
         self.cache = None
+        self.q_buffer = None
+        self.q_heads = None
         self._input_step_views = []
         self._cache_step_views = []
         self._cos_step_views = []
