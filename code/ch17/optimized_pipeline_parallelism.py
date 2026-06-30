@@ -32,6 +32,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
     def __init__(self, micro_batches: Optional[int] = None):
         super().__init__()
         self.pipeline_stages: List[nn.Module] = []
+        self._pipeline_stage_groups: List[tuple[int, nn.Module]] = []
         self.hidden_size = 1024
         self.batch_size = 256
         self.micro_batches = 4
@@ -73,6 +74,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         
         # Use single-GPU optimized path when only 1 GPU available
         self._single_gpu_mode = (self.num_gpus == 1)
+        self._pipeline_stage_groups = []
         
         if self._single_gpu_mode:
             # Single GPU: use compiled sequential model (faster than pipeline overhead)
@@ -118,6 +120,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                 gpu_id = stage_id % self.num_gpus
                 stage = nn.Sequential(*layer_stack).to(torch.device(f"cuda:{gpu_id}"), dtype=torch.bfloat16).eval()
                 self.pipeline_stages.append(stage)
+            self._pipeline_stage_groups = list(enumerate(self.pipeline_stages))
             self.parameter_count = sum(
                 p.numel() for stage in self.pipeline_stages for p in stage.parameters()
             )
@@ -204,6 +207,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         num_stages = len(self.pipeline_stages)
         if (
             len(self._last_stage_durations_ms) != num_stages
+            or len(self._pipeline_stage_groups) != num_stages
             or len(self._stage_buffers) != num_stages + 1
             or len(self._stage_transfer_buffers) != num_stages
             or len(self._stage_devices) != num_stages
@@ -219,6 +223,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         for stage_idx in range(num_stages):
             self._last_stage_durations_ms[stage_idx] = 0.0
         stage_buffers = self._stage_buffers
+        pipeline_stage_groups = self._pipeline_stage_groups
 
         stage_devices = self._stage_devices
         transfer_buffers = self._stage_transfer_buffers
@@ -226,7 +231,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         with self._nvtx_range("optimized_pipeline_parallelism"):
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 for micro_idx in range(self.micro_batches + num_stages - 1):
-                    for stage_idx, stage in enumerate(self.pipeline_stages):
+                    for stage_idx, stage in pipeline_stage_groups:
                         chunk_idx = micro_idx - stage_idx
                         if chunk_idx < 0 or chunk_idx >= self.micro_batches:
                             continue
@@ -326,6 +331,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
 
     def teardown(self) -> None:
         self.pipeline_stages = []
+        self._pipeline_stage_groups = []
         self.microbatch_inputs = None
         self.stage_streams = []
         self.stage_events = []

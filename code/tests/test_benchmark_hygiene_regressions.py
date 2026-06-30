@@ -9851,11 +9851,13 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "with torch.inference_mode(), torch.autocast(\"cuda\", dtype=torch.bfloat16):" in benchmark_section
     assert "self._stage_buffers: List[List[Optional[torch.Tensor]]] = []" in source
     assert "self._stage_transfer_buffers: List[List[Optional[torch.Tensor]]] = []" in source
+    assert "self._pipeline_stage_groups: List[tuple[int, nn.Module]] = []" in source
     assert "self._stage_devices: List[torch.device] = []" in source
     assert "self._final_output_slots: List[torch.Tensor] = []" in source
     assert "self._final_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._last_final_output_count: int = 0" in source
     assert "self._stage_buffers = [" in setup_section
+    assert "self._pipeline_stage_groups = list(enumerate(self.pipeline_stages))" in setup_section
     assert "self._stage_buffers[0] = list(self.microbatch_inputs)" in setup_section
     assert "stage_output_features = [" in setup_section
     assert "self._stage_transfer_buffers = []" in setup_section
@@ -9866,6 +9868,9 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "stage_buffers[0] = list(self.microbatch_inputs)" not in benchmark_section
     assert "for stage_row in stage_buffers:" not in benchmark_section
     assert "for micro_idx, micro_input in enumerate(self.microbatch_inputs):" not in benchmark_section
+    assert "pipeline_stage_groups = self._pipeline_stage_groups" in benchmark_section
+    assert "for stage_idx, stage in pipeline_stage_groups:" in benchmark_section
+    assert "for stage_idx, stage in enumerate(self.pipeline_stages):" not in benchmark_section
     assert "stage_devices = [next(stage.parameters()).device for stage in self.pipeline_stages]" not in benchmark_section
     assert ".to(stage_devices[stage_idx])" not in benchmark_section
     assert ".to(next_device)" not in benchmark_section
@@ -9880,6 +9885,7 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self.output = torch.cat(" not in capture_section
     assert "self._last_final_outputs[: self._last_final_output_count]" not in capture_section
     assert "self._final_output_buffer = None" in teardown_section
+    assert "self._pipeline_stage_groups = []" in teardown_section
 
 
 def test_ch17_baseline_memory_reuses_transfer_staging_buffers() -> None:
@@ -14382,6 +14388,10 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "est_ttft = (" in benchmark_section
     assert "reject_low_priority = est_ttft > self.router.TTFT_SLO_MAX" in benchmark_section
     assert "if not self.router.admit_request(req):" not in benchmark_section
+    assert "self._cached_request_groups: List[tuple[int, Request]] = []" in source
+    assert "self._cached_request_groups = list(enumerate(self._cached_requests))" in source
+    assert "for idx, req in self._cached_request_groups:" in benchmark_section
+    assert "for idx, req in enumerate(requests):" not in benchmark_section
     assert "torch.tensor(" not in benchmark_section
     assert "self._output_values: list[float] = [0.0, 0.0, 0.0]" in source
     assert "self._output_values_ready = False" in source
@@ -14405,6 +14415,7 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "self._output_tensor = torch.empty(len(self._output_values), dtype=torch.float32)" in source
     assert "self.output = self._output_tensor" in capture_section
     assert "torch.tensor(self._output_values" not in capture_section
+    assert "self._cached_request_groups = []" in source
 
 
 def test_ch17_dynamic_routing_latency_report_uses_heap_selection() -> None:

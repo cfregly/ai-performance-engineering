@@ -63,6 +63,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._admit_mask: Optional[torch.Tensor] = None
         self._served_offload_mask: Optional[torch.Tensor] = None
         self._count_values: Optional[torch.Tensor] = None
+        self._cached_request_groups: List[tuple[int, Request]] = []
 
     def setup(self) -> None:
         random.seed(42)
@@ -75,6 +76,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Pre-generate requests once (not part of benchmark timing)
         self._cached_requests = self._generate_requests()
+        self._cached_request_groups = list(enumerate(self._cached_requests))
         
         # Pre-allocate tensors for vectorized routing (avoids allocation in hot path)
         if self.vectorized:
@@ -212,7 +214,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 * self.router.avg_decode_time_per_req
             )
             reject_low_priority = est_ttft > self.router.TTFT_SLO_MAX
-            for idx, req in enumerate(requests):
+            for idx, req in self._cached_request_groups:
                 if reject_low_priority and req.priority is Priority.LOW:
                     rejects += 1
                     continue
@@ -284,6 +286,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         self._cached_requests = []
+        self._cached_request_groups = []
         self._prompt_lengths = None
         self._cached_lengths = None
         self._queue_lengths = None
