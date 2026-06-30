@@ -48,6 +48,7 @@ class OptimizedTrainingSingleBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.batch_size = 32
         self.hidden_dim = 8192
         self.train_steps = 6
+        self._train_step_range = range(self.train_steps)
         tokens = self.batch_size * self.hidden_dim
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -75,13 +76,14 @@ class OptimizedTrainingSingleBenchmark(VerificationPayloadMixin, BaseBenchmark):
         except TypeError:
             self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=0.01)
         self.criterion = nn.MSELoss()
+        self._train_step_range = range(self.train_steps)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
         assert self.model is not None and self.inputs is not None and self.targets is not None
         assert self.optimizer is not None and self.criterion is not None
         with self._nvtx_range("training_optimized"):
-            for _ in range(self.train_steps):
+            for _ in self._train_step_range:
                 self.optimizer.zero_grad(set_to_none=True)
                 outputs = self.model(self.inputs)
                 loss = self.criterion(outputs, self.targets)

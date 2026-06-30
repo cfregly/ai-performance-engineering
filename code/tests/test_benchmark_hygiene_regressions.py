@@ -7587,6 +7587,15 @@ def test_ch20_training_and_moe_use_inplace_relu_modules() -> None:
         assert "nn.ReLU(inplace=True)" in source
         assert "nn.ReLU()" not in source
 
+        if relative.endswith("training_single.py"):
+            benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+                "def capture_verification_payload",
+                maxsplit=1,
+            )[0]
+            assert "self._train_step_range = range(self.train_steps)" in source
+            assert "for _ in self._train_step_range:" in benchmark_section
+            assert "for _ in range(self.train_steps):" not in benchmark_section
+
 
 def test_ch20_benchmarks_cache_verification_parameter_count() -> None:
     for relative, parameters_expr in (
