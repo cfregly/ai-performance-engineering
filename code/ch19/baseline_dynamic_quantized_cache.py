@@ -31,6 +31,17 @@ _FP4_PACKED_LAST_DIM = _CACHE_LAST_DIM // 2
 _FP6_PACKED_LAST_DIM = (_CACHE_LAST_DIM // 4) * 3
 
 
+def _coalesce_repeated_bits(schedule_bits: List[int]) -> List[int]:
+    """Collapse consecutive same-width refreshes into one physical copy."""
+    coalesced: List[int] = []
+    previous: Optional[int] = None
+    for bits in schedule_bits:
+        if bits != previous:
+            coalesced.append(bits)
+            previous = bits
+    return coalesced
+
+
 def _pack_int4(values: torch.Tensor, out: torch.Tensor) -> None:
     """Pack signed 4-bit values [-8, 7] into uint8 bytes."""
     unsigned = torch.bitwise_and(values.to(torch.int16), 0x0F).to(torch.uint8)
@@ -92,9 +103,19 @@ def _unpack_int6_to_float(packed: torch.Tensor, scale: torch.Tensor, out: torch.
 class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Base class for KV cache quantization benchmarks."""
 
-    def __init__(self, *, schedule_bits: List[int], use_fp32_baseline: bool = False):
+    def __init__(
+        self,
+        *,
+        schedule_bits: List[int],
+        use_fp32_baseline: bool = False,
+        coalesce_repeated_bits: bool = False,
+    ):
         super().__init__()
         self.schedule_bits = schedule_bits
+        self._refresh_schedule_bits = (
+            _coalesce_repeated_bits(schedule_bits) if coalesce_repeated_bits else list(schedule_bits)
+        )
+        self.coalesce_repeated_bits = coalesce_repeated_bits
         self.use_fp32_baseline = use_fp32_baseline
         self._verification_input = torch.tensor(_CACHE_SHAPE, dtype=torch.int32)
         self._cache_numel = _CACHE_SHAPE[0] * _CACHE_SHAPE[1] * _CACHE_SHAPE[2]
@@ -136,7 +157,7 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._empty_iteration_result: Dict[str, List[float]] = {}
-        self._last_bits = schedule_bits[-1]
+        self._last_bits = self._refresh_schedule_bits[-1]
 
     def setup(self) -> None:
         torch.manual_seed(42)
@@ -335,10 +356,10 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         start_event.record(current_stream)
 
         if self.use_fp32_baseline:
-            for _ in self.schedule_bits:
+            for _ in self._refresh_schedule_bits:
                 self._non_adaptive_cache_update()
         else:
-            for bits in self.schedule_bits:
+            for bits in self._refresh_schedule_bits:
                 self._adaptive_cache_update(bits)
 
         end_event.record(current_stream)
@@ -408,9 +429,9 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         avg_err = self._error_total / self._error_count if self._error_count else 0.0
         elements = self._cache_numel
         if self.use_fp32_baseline:
-            payload_bits = len(self.schedule_bits) * 32 * elements
+            payload_bits = len(self._refresh_schedule_bits) * 32 * elements
         else:
-            payload_bits = sum(bits * elements for bits in self.schedule_bits)
+            payload_bits = sum(bits * elements for bits in self._refresh_schedule_bits)
         throughput_gbps = 0.0
         if avg_ms > 0 and payload_bits:
             throughput_gbps = (payload_bits / avg_ms) / 1e6
@@ -418,6 +439,8 @@ class _DynamicQuantizedCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "kv_cache.mean_latency_ms": float(avg_ms),
             "kv_cache.mean_error": float(avg_err),
             "kv_cache.throughput_gbps": float(throughput_gbps),
+            "kv_cache.logical_refresh_steps": float(len(self.schedule_bits)),
+            "kv_cache.physical_refresh_steps": float(len(self._refresh_schedule_bits)),
         }
 
 

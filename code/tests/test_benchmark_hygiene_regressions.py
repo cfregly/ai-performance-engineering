@@ -1326,6 +1326,9 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     assert "self._latency_count = 0" in source
     assert "self._error_total = 0.0" in source
     assert "self._error_count = 0" in source
+    assert "def _coalesce_repeated_bits(schedule_bits: List[int]) -> List[int]:" in source
+    assert "self._refresh_schedule_bits = (" in source
+    assert "self.coalesce_repeated_bits = coalesce_repeated_bits" in source
     assert "self._empty_iteration_result: Dict[str, List[float]] = {}" in source
     assert '"latency_ms": []' not in source
     assert '"error": []' not in source
@@ -1337,16 +1340,15 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     assert "end_event.record(current_stream)" in benchmark_section
     assert "start_event.record()" not in benchmark_section
     assert "end_event.record()" not in benchmark_section
+    assert "for bits in self._refresh_schedule_bits:" in benchmark_section
     assert "return self._empty_iteration_result" in benchmark_section
     assert "return {}" not in benchmark_section
     assert "dequantized = self._dequantized_cpu" in finalize_section
     assert "scale_cpu.copy_(self._last_scale" in finalize_section
     assert "packed_view = packed_cpu" in finalize_section
-    assert "packed_view.copy_(self._packed_dst_bytes" in finalize_section
+    assert "packed_view.copy_(self._last_packed_dst" in finalize_section
     assert "packed_view = packed_cpu[..., :_FP6_PACKED_LAST_DIM]" in finalize_section
-    assert "self._packed_dst_bytes[..., :_FP6_PACKED_LAST_DIM]" in finalize_section
     assert "packed_view = packed_cpu[..., :_FP4_PACKED_LAST_DIM]" in finalize_section
-    assert "self._packed_dst_bytes[..., :_FP4_PACKED_LAST_DIM]" in finalize_section
     assert "dequantized.copy_(packed_cpu.view(torch.int8))" in finalize_section
     assert "self._error_total += error" in finalize_section
     assert "self._error_count += 1" in finalize_section
@@ -1356,11 +1358,22 @@ def test_ch19_dynamic_quantized_cache_reuses_int8_source_buffer() -> None:
     assert "self._latency_count += 1" in source
     assert "avg_ms = self._latency_total_ms / self._latency_count" in metrics_section
     assert "avg_err = self._error_total / self._error_count if self._error_count else 0.0" in metrics_section
+    assert '"kv_cache.logical_refresh_steps": float(len(self.schedule_bits))' in metrics_section
+    assert '"kv_cache.physical_refresh_steps": float(len(self._refresh_schedule_bits))' in metrics_section
     assert "statistics.mean" not in metrics_section
     assert "self._history" not in source
     assert "self._packed_dst_bytes_cpu = None" in teardown_section
     assert "self._last_scale_cpu = None" in teardown_section
     assert "self._dequantized_cpu = None" in teardown_section
+
+    baseline_coalesced = (
+        REPO_ROOT / "ch19" / "baseline_dynamic_quantized_cache_coalesced.py"
+    ).read_text(encoding="utf-8")
+    optimized_coalesced = (
+        REPO_ROOT / "ch19" / "optimized_dynamic_quantized_cache_coalesced.py"
+    ).read_text(encoding="utf-8")
+    assert "coalesce_repeated_bits=False" in baseline_coalesced
+    assert "coalesce_repeated_bits=True" in optimized_coalesced
 
 
 def test_ch19_dynamic_quantized_cache_demo_uses_shared_scalar_readback() -> None:
