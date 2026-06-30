@@ -44,6 +44,38 @@ def test_decode_variants_inherit_subprocess_execution() -> None:
         assert config.execution_mode == ExecutionMode.SUBPROCESS
 
 
+def test_decode_common_caches_runtime_feature_handles() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "if self.cfg.use_copy_stream", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def _signature_parameter_count", maxsplit=1
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1]
+
+    assert '_GRAPH_POOL_TRIM = getattr(torch.cuda, "graph_pool_trim", None)' in source
+    assert '_CUDA_MATMUL_BACKEND = getattr(torch.backends.cuda, "matmul", None)' in source
+    assert '_CUDNN_BACKEND = getattr(torch.backends, "cudnn", None)' in source
+    assert "if _GRAPH_POOL_TRIM is not None:" in setup_section
+    assert "_GRAPH_POOL_TRIM()" in setup_section
+    assert 'hasattr(torch.cuda, "graph_pool_trim")' not in setup_section
+    assert "if _HAS_CUDA_MATMUL_ALLOW_TF32:" in setup_section
+    assert "_CUDA_MATMUL_BACKEND.allow_tf32 = True" in setup_section
+    assert "if _HAS_CUDNN_ALLOW_TF32:" in setup_section
+    assert "_CUDNN_BACKEND.allow_tf32 = True" in setup_section
+    assert "getattr(torch.backends.cuda.matmul" not in setup_section
+    assert "self.gpu_prompt: Optional[torch.Tensor] = None" in source
+    assert "self.state_buffer: Optional[torch.Tensor] = None" in source
+    assert "if self.gpu_prompt is None or self.state_buffer is None:" in capture_section
+    assert "not hasattr(self, name) or getattr(self, name) is None" not in capture_section
+    assert "if _GRAPH_POOL_TRIM is not None:" in teardown_section
+    assert "_GRAPH_POOL_TRIM()" in teardown_section
+    assert 'hasattr(torch.cuda, "graph_pool_trim")' not in teardown_section
+
+
 def test_decode_graph_capture_avoids_unused_full_vocab_output_copy() -> None:
     source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
         encoding="utf-8"

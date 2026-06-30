@@ -50,6 +50,13 @@ except Exception:  # pragma: no cover - safe fallback
 
 _CUDA_NVTX = None
 _CUDA_NVTX_INITIALIZED = False
+_GRAPH_POOL_TRIM = getattr(torch.cuda, "graph_pool_trim", None)
+_CUDA_MATMUL_BACKEND = getattr(torch.backends.cuda, "matmul", None)
+_CUDNN_BACKEND = getattr(torch.backends, "cudnn", None)
+_HAS_CUDA_MATMUL_ALLOW_TF32 = (
+    _CUDA_MATMUL_BACKEND is not None and hasattr(_CUDA_MATMUL_BACKEND, "allow_tf32")
+)
+_HAS_CUDNN_ALLOW_TF32 = _CUDNN_BACKEND is not None and hasattr(_CUDNN_BACKEND, "allow_tf32")
 
 
 def _cuda_nvtx():
@@ -152,11 +159,13 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_prompts: list[torch.Tensor] = []
         self.gpu_prompts: list[torch.Tensor] = []
         self.gpu_prompt_last_tokens: list[torch.Tensor] = []
+        self.gpu_prompt: Optional[torch.Tensor] = None
         self.host_payloads: list[torch.Tensor] = []
         self.gpu_payloads: list[torch.Tensor] = []
         self.host_payload: Optional[torch.Tensor] = None
         self.gpu_payload: Optional[torch.Tensor] = None
         self.gpu_prompt_last_token: Optional[torch.Tensor] = None
+        self.state_buffer: Optional[torch.Tensor] = None
         self._summary_buffer: Optional[torch.Tensor] = None
         self._config_tensor: Optional[torch.Tensor] = None
         self._copy_done_events: list[torch.cuda.Event] = []
@@ -228,8 +237,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.empty_cache()
 
         try:
-            if hasattr(torch.cuda, "graph_pool_trim"):
-                torch.cuda.graph_pool_trim()
+            if _GRAPH_POOL_TRIM is not None:
+                _GRAPH_POOL_TRIM()
         except Exception:
             pass
 
@@ -261,13 +270,15 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.set_float32_matmul_precision("high")
         # Pin TF32 backend flags explicitly for deterministic verification payloads.
         try:
-            if hasattr(torch.backends.cuda, "matmul") and hasattr(
-                torch.backends.cuda.matmul, "allow_tf32"
-            ):
-                torch.backends.cuda.matmul.allow_tf32 = True
-            if hasattr(torch.backends, "cudnn") and hasattr(torch.backends.cudnn, "allow_tf32"):
-                torch.backends.cudnn.allow_tf32 = True
-            self._tf32_enabled = bool(getattr(torch.backends.cuda.matmul, "allow_tf32", True))
+            if _HAS_CUDA_MATMUL_ALLOW_TF32:
+                _CUDA_MATMUL_BACKEND.allow_tf32 = True
+            if _HAS_CUDNN_ALLOW_TF32:
+                _CUDNN_BACKEND.allow_tf32 = True
+            self._tf32_enabled = (
+                bool(_CUDA_MATMUL_BACKEND.allow_tf32)
+                if _HAS_CUDA_MATMUL_ALLOW_TF32
+                else True
+            )
         except Exception:
             self._tf32_enabled = True
         if self.cfg.use_copy_stream:
@@ -872,10 +883,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = self._summary_buffer
 
     def capture_verification_payload(self) -> None:
-        if any(
-            not hasattr(self, name) or getattr(self, name) is None
-            for name in ("gpu_prompt", "state_buffer")
-        ):
+        if self.gpu_prompt is None or self.state_buffer is None:
             raise RuntimeError(
                 "setup() and benchmark_fn() must be called before capture_verification_payload()"
             )
@@ -997,8 +1005,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 setattr(self, attr, None)
         if torch.cuda.is_available():
             try:
-                if hasattr(torch.cuda, "graph_pool_trim"):
-                    torch.cuda.graph_pool_trim()
+                if _GRAPH_POOL_TRIM is not None:
+                    _GRAPH_POOL_TRIM()
             except Exception:
                 pass
             torch.cuda.empty_cache()
