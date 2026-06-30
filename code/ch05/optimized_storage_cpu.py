@@ -26,6 +26,7 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_buffer: Optional[torch.Tensor] = None
         self.device_buffer: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._host_buffer_view: Optional[np.ndarray] = None
         self._mapped_array: Optional[np.ndarray] = None
         self.size_mb = 64  # Smaller for faster benchmark
@@ -51,6 +52,7 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._host_buffer_view = self.host_buffer.numpy()
         self.device_buffer = torch.empty(self.size, device=self.device, dtype=torch.float32)
         self._output_buffer = torch.empty(1, device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty_like(self._output_buffer)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
@@ -69,9 +71,12 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"data": self.data},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.data.shape[0],
             parameter_count=0,
             precision_flags={
@@ -93,6 +98,7 @@ class OptimizedStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_buffer = None
         self.device_buffer = None
         self._output_buffer = None
+        self._verify_output_buffer = None
         self._host_buffer_view = None
         torch.cuda.empty_cache()
     

@@ -2534,6 +2534,35 @@ def test_ch05_optimized_vectorization_reuses_reduction_output_buffer() -> None:
     assert "torch.empty(" not in benchmark_section
 
 
+def test_ch05_scalar_verification_outputs_reuse_buffers() -> None:
+    for relative_path in (
+        "ch05/baseline_vectorization.py",
+        "ch05/optimized_vectorization.py",
+        "ch05/baseline_storage_cpu.py",
+        "ch05/optimized_storage_cpu.py",
+    ):
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(self._output_buffer)" in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.output.detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch05_optimized_host_reduction_reuses_scalar_output_buffer() -> None:
     source = (REPO_ROOT / "ch05" / "optimized_host_staged_reduction.py").read_text(
         encoding="utf-8"

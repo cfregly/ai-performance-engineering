@@ -18,6 +18,7 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.data: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.N = 1_000_000
         self.chunk = 4096
         self._chunk_views: list[torch.Tensor] = []
@@ -33,6 +34,7 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         self.data = torch.randn(self.N, device=self.device)
         self._output_buffer = torch.empty(1, device=self.device)
+        self._verify_output_buffer = torch.empty_like(self._output_buffer)
         self._chunk_views = list(self.data.split(self.chunk))
     
     def benchmark_fn(self) -> None:
@@ -48,9 +50,12 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = result
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"data": self.data},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.data.shape[0],
             parameter_count=0,
             precision_flags={
@@ -66,6 +71,7 @@ class BaselineVectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.data = None
         self._output_buffer = None
+        self._verify_output_buffer = None
         self._chunk_views = []
         torch.cuda.empty_cache()
     

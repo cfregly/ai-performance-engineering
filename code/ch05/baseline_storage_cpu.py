@@ -25,6 +25,7 @@ class BaselineStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.filepath: Optional[str] = None
         self._host_template: Optional[np.ndarray] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.size_mb = 64  # Smaller for faster benchmark
         self.size = self.size_mb * 1024 * 1024 // 4  # float32 elements
         bytes_per_iter = self.size * 4  # read only; file is materialized in setup
@@ -44,6 +45,7 @@ class BaselineStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         f.close()
         np.save(self.filepath, self._host_template)
         self._output_buffer = torch.empty(1, device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty_like(self._output_buffer)
         self._synchronize()
     
     def benchmark_fn(self) -> None:
@@ -57,9 +59,12 @@ class BaselineStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"data": self.data},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.data.shape[0],
             parameter_count=0,
             precision_flags={
@@ -80,6 +85,7 @@ class BaselineStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.filepath = None
         self._host_template = None
         self._output_buffer = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
