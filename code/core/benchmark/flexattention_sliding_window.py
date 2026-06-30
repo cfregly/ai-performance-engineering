@@ -113,7 +113,7 @@ class SlidingWindowAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with torch.inference_mode():
             scores = torch.matmul(self.q, self._k_t)
             scores.mul_(self.scale)
-            scores = scores.masked_fill(~self.mask, self._mask_fill_value)
+            scores.masked_fill_(~self.mask, self._mask_fill_value)
             attn = torch.softmax(scores, dim=-1)
             self.output = torch.matmul(attn, self.v)
 

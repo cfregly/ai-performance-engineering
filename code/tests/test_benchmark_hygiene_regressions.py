@@ -4209,6 +4209,20 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "scores = scores.masked_fill(~mask, float('-inf'))" not in ch14_demo_source
 
 
+def test_ch14_cuda_python_masks_gelu_activation_in_place() -> None:
+    source = (REPO_ROOT / "ch14" / "baseline_cuda_python.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "activated = F.gelu(normalized)" in benchmark_section
+    assert "activated.masked_fill_(~self.mask.unsqueeze(-1), 0.0)" in benchmark_section
+    assert "self.output = activated + self.input" in benchmark_section
+    assert "masked = activated.masked_fill" not in benchmark_section
+    assert "self.output = masked + self.input" not in benchmark_section
+
+
 def test_ch10_attention_reuses_verification_buffers() -> None:
     for name in ("baseline_attention.py", "optimized_attention.py"):
         source = (REPO_ROOT / "ch10" / name).read_text(encoding="utf-8")
@@ -4291,7 +4305,8 @@ def test_dense_attention_baselines_cache_key_transpose_and_scale() -> None:
         assert " * self.scale" not in benchmark_section
         if relative_path == "core/benchmark/flexattention_sliding_window.py":
             assert "self._mask_fill_value = float(torch.finfo(self.cfg.dtype).min)" in setup_section
-            assert "scores = scores.masked_fill(~self.mask, self._mask_fill_value)" in benchmark_section
+            assert "scores.masked_fill_(~self.mask, self._mask_fill_value)" in benchmark_section
+            assert "scores = scores.masked_fill(~self.mask, self._mask_fill_value)" not in benchmark_section
             assert "-1e9" not in benchmark_section
 
     gluon_source = (
