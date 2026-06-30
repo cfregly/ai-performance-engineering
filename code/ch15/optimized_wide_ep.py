@@ -67,6 +67,7 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._verify_probe: Optional[torch.Tensor] = None
         self._verify_meta: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
@@ -103,6 +104,7 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             [int(self.world_size), int(self.experts_per_rank), int(self.num_experts)],
             dtype=torch.int64,
         )
+        self._verify_output_buffer = torch.empty((2, 2, 256), dtype=torch.float32)
 
         for _ in range(3):
             with torch.inference_mode():
@@ -136,12 +138,22 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 
     def capture_verification_payload(self) -> None:
-        if self.output is None or self._verify_probe is None or self._verify_meta is None:
+        if (
+            self.output is None
+            or self._verify_probe is None
+            or self._verify_meta is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
-        output_slice = self.output[:2, :2, :256].detach().cpu().float().clone()
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+            : self._verify_output_buffer.shape[2],
+        ].detach()
+        self._verify_output_buffer.copy_(output_slice, non_blocking=False)
         self._set_verification_payload(
             inputs={"probe": self._verify_probe, "routing": self._verify_meta},
-            output=output_slice,
+            output=self._verify_output_buffer,
             batch_size=int(self.batch),
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -168,6 +180,7 @@ class OptimizedWideEPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._out_flat = None
         self._output_view = None
         self.output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

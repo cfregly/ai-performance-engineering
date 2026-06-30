@@ -16363,6 +16363,10 @@ def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
             "def teardown",
             maxsplit=1,
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
         assert "self._payload_parameter_count = 0" in source
         assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
         assert "self._flat_inputs: Optional[torch.Tensor] = None" in source
@@ -16371,6 +16375,12 @@ def test_ch15_wide_ep_packs_directly_into_reusable_buffers() -> None:
         assert "self.inputs.view(-1, self.hidden_size)" not in benchmark_section
         assert "param_count = sum(" not in capture_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty((2, 2, 256), dtype=torch.float32)" in setup_section
+        assert "self._verify_output_buffer.copy_(output_slice, non_blocking=False)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert ".detach().cpu().float().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
     assert "self._dest_ranks = torch.div(" in baseline_setup
     assert "self._rank_indices.append(indices)" in baseline_setup
@@ -16425,10 +16435,20 @@ def test_ch15_moe_overlap_and_routing_use_inference_mode() -> None:
             "def teardown",
             maxsplit=1,
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
         assert "with torch.inference_mode():" in setup_section
         assert "with torch.inference_mode():" in benchmark_section
         assert "with torch.no_grad():" not in setup_section
         assert "with torch.no_grad():" not in benchmark_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty((2, 2, 256), dtype=torch.float32)" in setup_section
+        assert "self._verify_output_buffer.copy_(output_slice, non_blocking=False)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert ".detach().cpu().float().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
         if relative.endswith(("baseline_moe_overlap.py", "optimized_moe_overlap_shared_expert.py")):
             assert "self._payload_parameter_count = 0" in source
             assert "self._payload_parameter_count = sum(p.numel() for p in self.shared_expert.parameters())" in setup_section
@@ -16540,6 +16560,10 @@ def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
         "def teardown",
         maxsplit=1,
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
     assert "self._baseline_perm = torch.cat(baseline_perm_parts, dim=0)" in setup_section
     assert "self._baseline_packed = torch.empty_like(flat)" in setup_section
@@ -16556,6 +16580,12 @@ def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:
     assert "self._payload_parameter_count = sum(p.numel() for p in self.expert.parameters())" in setup_section
     assert "param_count = sum(" not in capture_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty((2, 2, 256), dtype=torch.float32)" in setup_section
+    assert "self._verify_output_buffer.copy_(output_slice, non_blocking=False)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert ".detach().cpu().float().clone()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
     assert "self._flat_inputs: Optional[torch.Tensor] = None" in source
     assert "self._flat_inputs = self.inputs.view(-1, self.hidden_size)" in setup_section
     assert "flat = self._flat_inputs" in baseline_section
