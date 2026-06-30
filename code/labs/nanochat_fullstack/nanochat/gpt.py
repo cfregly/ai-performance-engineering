@@ -41,6 +41,16 @@ _NON_FLASH_SDP_BACKENDS = tuple(
     )
     if backend is not None
 )
+_KV_CACHE_CLS = None
+
+
+def _kv_cache_cls():
+    global _KV_CACHE_CLS
+    if _KV_CACHE_CLS is None:
+        from nanochat.engine import KVCache
+
+        _KV_CACHE_CLS = KVCache
+    return _KV_CACHE_CLS
 
 
 def _maybe_make_weight_only_linear(in_features, out_features, config, name="linear"):
@@ -727,7 +737,7 @@ class GPT(nn.Module):
         ids = self._generate_ids_buffer(total_len, device)
         if prompt_len:
             self._copy_generate_prompt(ids, tokens, device)
-        from nanochat.engine import KVCache
+        KVCache = _kv_cache_cls()
 
         head_dim = self.config.n_embd // self.config.n_head
         kv_cache = KVCache(
