@@ -187,6 +187,7 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
         workload.embedding_dim,
     )
     assert workspace.context_flat_ids.shape == (workload.batch_size, workload.num_tables)
+    assert workspace.context_flat_ids_1d.shape == (workload.batch_size * workload.num_tables,)
     assert workspace.candidate_embedding_flat.shape == (
         workload.batch_size * workload.num_candidates,
         workload.embedding_dim,
@@ -198,6 +199,8 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     assert "out=context_embedding_flat" in context_source
     assert "state.context_embeddings[workspace.context_table_index, inputs.context_ids]" in context_source
     assert "prepare_context_workspace_for_inputs(inputs, state, workspace)" in context_source
+    assert "workspace.context_flat_ids_1d[:context_rows]" in context_source
+    assert "workspace.context_flat_ids.reshape(-1)" not in context_source
     assert "workspace.context_flat_ids.copy_(" not in context_source
     assert workspace_sequence.data_ptr() == workspace.sequence_accum.data_ptr()
     assert workspace_context.data_ptr() == workspace.context_accum.data_ptr()

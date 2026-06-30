@@ -83,6 +83,7 @@ class RankingWorkspace:
     sequence_length_recip: torch.Tensor
     context_table_index: torch.Tensor
     context_flat_ids: torch.Tensor
+    context_flat_ids_1d: torch.Tensor
     candidate_embedding_f32: torch.Tensor | None = None
     user_vec_f32: torch.Tensor | None = None
     sequence_metadata_key: tuple[int, int] | None = None
@@ -312,6 +313,12 @@ def build_workspace(workload: SequenceRankingWorkload, device: torch.device) -> 
 
     context_table_index = torch.arange(workload.num_tables, device=device, dtype=torch.int64)
     context_table_index = context_table_index.view(1, workload.num_tables)
+    context_flat_ids = torch.empty(
+        workload.batch_size,
+        workload.num_tables,
+        device=device,
+        dtype=torch.int64,
+    )
     needs_score_cast_workspace = workload.dtype != torch.float32
     return RankingWorkspace(
         sequence_accum=torch.empty(
@@ -364,12 +371,8 @@ def build_workspace(workload: SequenceRankingWorkload, device: torch.device) -> 
             dtype=workload.dtype,
         ),
         context_table_index=context_table_index,
-        context_flat_ids=torch.empty(
-            workload.batch_size,
-            workload.num_tables,
-            device=device,
-            dtype=torch.int64,
-        ),
+        context_flat_ids=context_flat_ids,
+        context_flat_ids_1d=context_flat_ids.view(-1),
         candidate_embedding_f32=(
             torch.empty(
                 workload.batch_size * workload.num_candidates,
@@ -542,7 +545,7 @@ def context_sum_vectorized(
     torch.index_select(
         flat_context_embeddings,
         0,
-        workspace.context_flat_ids.reshape(-1),
+        workspace.context_flat_ids_1d[:context_rows],
         out=context_embedding_flat,
     )
     context_vecs = context_embedding_flat.view(batch_size, num_tables, embedding_dim)
