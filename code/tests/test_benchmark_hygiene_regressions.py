@@ -16974,10 +16974,24 @@ def test_ch15_moe_overlap_and_routing_use_inference_mode() -> None:
         assert "with torch.no_grad():" not in setup_section
         assert "with torch.no_grad():" not in benchmark_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "probe_cols = min(256, self.hidden_size)" in setup_section
+        assert "self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)" in setup_section
+        assert "self._verify_probe.copy_(" in setup_section
+        assert "self.inputs[:1, :1, :probe_cols]" in setup_section
+        setup_without_remote_staging = setup_section.replace(
+            "self._remote_cpu_flat = self._flat_inputs.detach().cpu().pin_memory()",
+            "",
+        ).replace(
+            "self._remote_cpu_flat = self._flat_inputs.index_select(0, self._dispatch_order).detach().cpu().pin_memory()",
+            "",
+        )
+        assert ".detach().cpu()" not in setup_without_remote_staging
         assert "self._verify_output_buffer = torch.empty((2, 2, 256), dtype=torch.float32)" in setup_section
         assert "self._verify_output_buffer.copy_(output_slice, non_blocking=False)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert ".detach().cpu().float().clone()" not in capture_section
+        assert "self._verify_probe = None" in teardown_section
+        assert "self._verify_meta = None" in teardown_section
         assert "self._verify_output_buffer = None" in teardown_section
         if relative.endswith(("baseline_moe_overlap.py", "optimized_moe_overlap_shared_expert.py")):
             assert "self._payload_parameter_count = 0" in source

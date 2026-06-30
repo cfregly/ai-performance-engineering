@@ -118,7 +118,12 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for end in (min(start + chunk_tokens, total_tokens),)
         ]
 
-        self._verify_probe = self.inputs[:1, :1, :256].detach().cpu()
+        probe_cols = min(256, self.hidden_size)
+        self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)
+        self._verify_probe.copy_(
+            self.inputs[:1, :1, :probe_cols],
+            non_blocking=False,
+        )
         self._verify_meta = torch.zeros(self.num_experts, dtype=torch.int8)
         self._verify_output_buffer = torch.empty((2, 2, 256), dtype=torch.float32)
 
@@ -204,6 +209,8 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._routed_out_flat = None
         self._comm_copy_pairs = []
         self.output = None
+        self._verify_probe = None
+        self._verify_meta = None
         self._verify_output_buffer = None
         super().teardown()
 
