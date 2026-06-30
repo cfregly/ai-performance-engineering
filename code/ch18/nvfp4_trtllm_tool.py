@@ -32,6 +32,7 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._enable_nvtx = False
         self._empty_iteration_result = {}
         self._payload_parameter_count = 0
+        self._fp8_autocast = None
 
     def setup(self) -> None:
         config = getattr(self, "_config", None) or self.get_config()
@@ -61,9 +62,10 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         try:
             import transformer_engine.pytorch as te  # type: ignore
-            from transformer_engine.pytorch import fp8_autocast  # noqa: F401
+            from transformer_engine.pytorch import fp8_autocast  # type: ignore
             self._stack_available = True
             self._te = te
+            self._fp8_autocast = fp8_autocast
         except Exception as exc:  # pragma: no cover - optional dependency
             raise RuntimeError(f"SKIPPED: NVFP4 stack not available ({trt_msg})") from exc
 
@@ -102,8 +104,9 @@ class NVFP4TRTLLMBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         with nvtx_range("nvfp4_te_fp8", enable=self._enable_nvtx):
             try:
-                from transformer_engine.pytorch import fp8_autocast  # type: ignore
-                with fp8_autocast():
+                if self._fp8_autocast is None:
+                    raise RuntimeError("Transformer Engine FP8 autocast not initialized")
+                with self._fp8_autocast():
                     self.output = self.linear(self.inputs)
             except Exception as exc:
                 raise RuntimeError(
