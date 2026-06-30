@@ -78,7 +78,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Warm up to reduce first-iteration variance.
         with torch.inference_mode():
             kv_cache = self.model.prefill(self.prompt)
-            _ = self.model.decode(kv_cache, num_tokens=1)
+            _ = self.model.decode_step(kv_cache)
         torch.cuda.synchronize(self.device)
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
         self._ttft_events = (
@@ -150,7 +150,7 @@ class OptimizedDisaggregatedBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     self.decode_stream.wait_event(self._prefill_done)
                     for token_start, token_end in token_event_pairs:
                         token_start.record(self.decode_stream)
-                        token_output = self.model.decode(token_output, num_tokens=1)
+                        token_output = self.model.decode_step(token_output)
                         token_end.record(self.decode_stream)
 
                 self.output = token_output

@@ -37,6 +37,13 @@ class SimpleLLM(nn.Module):
             x = torch.relu_(layer(x))
         return x[:, -1:, :]
 
+    def decode_step(self, kv_cache: torch.Tensor) -> torch.Tensor:
+        """Advance the decode state by one token-equivalent step."""
+        x = kv_cache
+        for layer in self.layers:
+            x = torch.relu_(layer(x))
+        return x
+
     def decode(
         self,
         kv_cache: torch.Tensor,
@@ -48,12 +55,10 @@ class SimpleLLM(nn.Module):
         token_count = int(num_tokens)
         if token_count <= 0:
             return kv_cache[:, :0, :]
-        x = kv_cache
         if token_count == 1:
-            for layer in self.layers:
-                x = torch.relu_(layer(x))
-            return x
+            return self.decode_step(kv_cache)
 
+        x = kv_cache
         output_shape = (kv_cache.shape[0], token_count, kv_cache.shape[-1])
         if output_buffer is None:
             output = torch.empty(output_shape, device=kv_cache.device, dtype=kv_cache.dtype)
@@ -66,7 +71,6 @@ class SimpleLLM(nn.Module):
                 raise ValueError("output_buffer does not match decode shape/device/dtype")
             output = output_buffer
         for token_idx in range(token_count):
-            for layer in self.layers:
-                x = torch.relu_(layer(x))
+            x = self.decode_step(x)
             output[:, token_idx : token_idx + 1, :].copy_(x)
         return output

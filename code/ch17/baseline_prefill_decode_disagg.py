@@ -124,7 +124,7 @@ class BaselinePrefillDecodeMonolithicBenchmark(VerificationPayloadMixin, BaseBen
                 token_output = kv_cache
                 for token_start, token_end in token_event_pairs:
                     token_start.record(current_stream)
-                    token_output = self.model.decode(token_output, num_tokens=1)
+                    token_output = self.model.decode_step(token_output)
                     token_end.record(current_stream)
                 self.output = token_output
 

@@ -20205,6 +20205,18 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
 
 
 def test_ch17_single_token_prefill_decode_skips_redundant_tail_views() -> None:
+    common_source = (
+        REPO_ROOT / "ch17" / "prefill_decode_disagg_monolithic_common.py"
+    ).read_text(encoding="utf-8")
+    decode_section = common_source.split("def decode(", maxsplit=1)[1].split(
+        "return output",
+        maxsplit=1,
+    )[0]
+
+    assert "def decode_step(" in common_source
+    assert "return self.decode_step(kv_cache)" in decode_section
+    assert "x = self.decode_step(x)" in decode_section
+
     for relative in (
         "ch17/baseline_prefill_decode_disagg.py",
         "ch17/optimized_prefill_decode_disagg.py",
@@ -20215,7 +20227,8 @@ def test_ch17_single_token_prefill_decode_skips_redundant_tail_views() -> None:
             maxsplit=1,
         )[0]
 
-        assert "token_output = self.model.decode(token_output, num_tokens=1)" in benchmark_section
+        assert "token_output = self.model.decode_step(token_output)" in benchmark_section
+        assert "token_output = self.model.decode(token_output, num_tokens=1)" not in benchmark_section
         assert "token_output[:, -1:, :]" not in benchmark_section
 
 
