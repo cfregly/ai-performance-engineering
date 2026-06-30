@@ -14646,8 +14646,11 @@ def test_ch13_dataloader_payload_inputs_reuse_dict() -> None:
         assert 'self._payload_input_buffers["data"] = torch.empty(' in setup_section
         assert 'self._payload_input_buffers["labels"] = torch.empty(' in setup_section
         assert "self._verify_output_buffer = torch.empty(" in setup_section
-        assert 'self._payload_inputs["data"] = data.detach()' in benchmark_section
-        assert 'self._payload_inputs["labels"] = labels.detach()' in benchmark_section
+        assert 'self._payload_inputs["data"] = data' in benchmark_section
+        assert 'self._payload_inputs["labels"] = labels' in benchmark_section
+        assert 'self._payload_inputs["data"] = data.detach()' not in benchmark_section
+        assert 'self._payload_inputs["labels"] = labels.detach()' not in benchmark_section
+        assert "self.output = outputs.detach()" in benchmark_section
         assert "self._payload_inputs_ready = True" in benchmark_section
         assert 'self._payload_inputs = {"data": data.detach(), "labels": labels.detach()}' not in benchmark_section
         assert "if not self._payload_inputs_ready or self.output is None:" in capture_section

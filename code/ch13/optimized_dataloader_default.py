@@ -167,8 +167,8 @@ class OptimizedDataloaderTunedBenchmark(VerificationPayloadMixin, BaseBenchmark)
             loss.backward()
             self.optimizer.step()
             self.output = outputs.detach()
-        self._payload_inputs["data"] = data.detach()
-        self._payload_inputs["labels"] = labels.detach()
+        self._payload_inputs["data"] = data
+        self._payload_inputs["labels"] = labels
         self._payload_inputs_ready = True
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
