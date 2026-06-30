@@ -13394,6 +13394,25 @@ def test_ch08_occupancy_batching_demo_reuses_batched_buffers() -> None:
     assert "torch.nn.functional.silu(batched_out, inplace=True)" in batching_section
 
 
+def test_ch08_benchmark_bases_reuse_inner_iteration_range() -> None:
+    for relative in (
+        "ch08/ai_optimization_benchmark_base.py",
+        "ch08/loop_unrolling_benchmark_base.py",
+        "ch08/threshold_benchmark_base.py",
+        "ch08/tiling_benchmark_base.py",
+        "ch08/hbm_benchmark_base.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self._inner_iteration_range = range(self.inner_iterations)" in source
+        assert "for _ in self._inner_iteration_range:" in benchmark_section
+        assert "for _ in range(self.inner_iterations):" not in benchmark_section
+
+
 def test_ch16_inference_serving_tracks_packed_max_tokens_on_host() -> None:
     source = (REPO_ROOT / "ch16" / "inference_serving_multigpu.py").read_text(
         encoding="utf-8"

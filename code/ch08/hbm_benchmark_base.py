@@ -37,6 +37,7 @@ class HBMBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self.host_col: Optional[torch.Tensor] = None
+        self._inner_iteration_range = range(self.inner_iterations)
 
     def setup(self) -> None:
         self.extension = load_cuda_extension(
@@ -64,7 +65,7 @@ class HBMBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             if self._output_buffer is None:
                 raise RuntimeError("setup() must initialize the output buffer")
             self.output = self._output_buffer
-            for _ in range(self.inner_iterations):
+            for _ in self._inner_iteration_range:
                 self._invoke_kernel()
         if self.matrix_row is None or self.matrix_col is None or self.output is None:
             raise RuntimeError("benchmark_fn() must run after setup() initializes tensors")

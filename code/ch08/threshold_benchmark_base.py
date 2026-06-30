@@ -30,6 +30,7 @@ class ThresholdBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.outputs: Optional[torch.Tensor] = None
         self.host_inputs: Optional[torch.Tensor] = None
         self.extension = None
+        self._inner_iteration_range = range(self.inner_iterations)
         self.register_workload_metadata(requests_per_iteration=float(self.inner_iterations))
 
     def _resolve_device(self) -> torch.device:
@@ -57,7 +58,7 @@ class ThresholdBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         with self._nvtx_range(self.nvtx_label):
-            for _ in range(self.inner_iterations):
+            for _ in self._inner_iteration_range:
                 self._invoke_kernel()
         if self.inputs is None or self.outputs is None:
             raise RuntimeError("benchmark_fn() must run after setup() initializes tensors")

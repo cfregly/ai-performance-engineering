@@ -38,6 +38,7 @@ class TilingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.matrix_b: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._inner_iteration_range = range(self.inner_iterations)
         self.register_workload_metadata(requests_per_iteration=float(self.inner_iterations))
 
     def _resolve_device(self) -> torch.device:
@@ -82,7 +83,7 @@ class TilingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.output = self._output_buffer
 
         with self._nvtx_range(self.nvtx_label):
-            for _ in range(self.inner_iterations):
+            for _ in self._inner_iteration_range:
                 self._invoke_kernel()
 
     def capture_verification_payload(self) -> None:

@@ -30,6 +30,7 @@ class AiOptimizationBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.weights: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._inner_iteration_range = range(self.inner_iterations)
         self.register_workload_metadata(requests_per_iteration=float(self.inner_iterations))
 
     def setup(self) -> None:
@@ -57,7 +58,7 @@ class AiOptimizationBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             if self._output_buffer is None:
                 raise RuntimeError("setup() must initialize the output buffer")
             self.output = self._output_buffer
-            for _ in range(self.inner_iterations):
+            for _ in self._inner_iteration_range:
                 self._invoke_kernel()
 
     def capture_verification_payload(self) -> None:

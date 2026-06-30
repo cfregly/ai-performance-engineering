@@ -50,6 +50,7 @@ class LoopUnrollingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.weights: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._inner_iteration_range = range(self.inner_iterations)
         # Loop unrolling benchmark: fixed dimensions for measurement
 
     def setup(self) -> None:
@@ -85,7 +86,7 @@ class LoopUnrollingBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
             if self._output_buffer is None:
                 raise RuntimeError("setup() must initialize the output buffer")
             self.output = self._output_buffer
-            for _ in range(self.inner_iterations):
+            for _ in self._inner_iteration_range:
                 self._invoke_kernel()
         if self.inputs is None or self.weights is None or self.output is None:
             raise RuntimeError("benchmark_fn() must run after setup() initializes tensors")
