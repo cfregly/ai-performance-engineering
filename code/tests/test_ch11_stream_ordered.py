@@ -89,10 +89,13 @@ def test_stream_ordered_benchmark_fn_uses_setup_cached_iteration_count() -> None
         assert "self._inner_iterations_tensor[0] = self.inner_iterations" in source
         assert "self._active_inner_iterations_count = self._active_inner_iterations()" in setup_section
         assert "inner_iterations = self._active_inner_iterations_count" in benchmark_section
+        assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
         assert "self._inner_iterations_tensor[0] = inner_iterations" in benchmark_section
         assert '"elements": self._elements_tensor' in capture_section
         assert '"inner_iterations": self._inner_iterations_tensor' in capture_section
         assert "torch.tensor([self.elements]" not in capture_section
         assert "torch.tensor([self._last_inner_iterations]" not in capture_section
+        assert "torch.no_grad()" not in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
         assert "_active_inner_iterations()" not in benchmark_section
         assert "getattr(self, \"_config\"" not in benchmark_section

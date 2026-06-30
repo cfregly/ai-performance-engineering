@@ -72,7 +72,7 @@ class BaselineDualPipelineBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         assert self.input_a is not None and self.input_b is not None
-        with self._nvtx_range("baseline_dual_pipeline_multistream"):
+        with torch.inference_mode(), self._nvtx_range("baseline_dual_pipeline_multistream"):
             result = self.ext.baseline_warp_specialized_multistream_forward(
                 self.input_a,
                 self.input_b,

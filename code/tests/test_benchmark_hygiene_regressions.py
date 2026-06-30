@@ -20647,6 +20647,10 @@ def test_ch11_dual_pipeline_multistream_reuses_verification_buffers() -> None:
             "def benchmark_fn",
             maxsplit=1,
         )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown",
             maxsplit=1,
@@ -20658,6 +20662,9 @@ def test_ch11_dual_pipeline_multistream_reuses_verification_buffers() -> None:
 
         assert "self._verify_output_buffer: torch.Tensor | None = None" in source
         assert "self._verify_output_buffer = torch.empty(total_elems, device=self.device, dtype=torch.float32)" in setup_section
+        assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
         assert "self._verify_output_buffer.copy_(self.output)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
         assert "output=self.output.detach().float().clone()" not in capture_section

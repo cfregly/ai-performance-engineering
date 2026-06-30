@@ -64,7 +64,7 @@ class OptimizedStreamOrderedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._module is None:
             raise RuntimeError("Stream-ordered allocator module not initialized")
         inner_iterations = self._active_inner_iterations_count
-        with self._nvtx_range("stream_ordered_optimized"):
+        with torch.inference_mode(), self._nvtx_range("stream_ordered_optimized"):
             self.output = self._module.run_stream_ordered_allocator_capture(self.elements, inner_iterations)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
