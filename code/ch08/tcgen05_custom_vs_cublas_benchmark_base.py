@@ -25,6 +25,8 @@ class Tcgen05CustomVsCublasBase(VerificationPayloadMixin, BaseBenchmark):
         self.matrix_a: Optional[torch.Tensor] = None
         self.matrix_b: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._cublas_output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count = 0
         bytes_per_iter = (
             (self.matrix_rows * self.shared_dim)
@@ -53,22 +55,38 @@ class Tcgen05CustomVsCublasBase(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.tensor_dtype,
         ).contiguous()
+        self._verify_output_buffer = self._new_output_buffer()
         self.output = None
         self.parameter_count = int(self.matrix_a.numel() + self.matrix_b.numel())
         self._synchronize()
 
+    def _new_output_buffer(self) -> torch.Tensor:
+        return torch.empty(
+            self.matrix_rows,
+            self.matrix_cols,
+            device=self.device,
+            dtype=self.tensor_dtype,
+        )
+
     def _run_cublas_reference(self) -> torch.Tensor:
-        if self.matrix_a is None or self.matrix_b is None:
+        if self.matrix_a is None or self.matrix_b is None or self._cublas_output_buffer is None:
             raise RuntimeError("Inputs not initialized")
-        with torch.no_grad():
-            return torch.matmul(self.matrix_a, self.matrix_b)
+        with torch.inference_mode():
+            torch.mm(self.matrix_a, self.matrix_b, out=self._cublas_output_buffer)
+        return self._cublas_output_buffer
 
     def capture_verification_payload(self) -> None:
-        if self.matrix_a is None or self.matrix_b is None or self.output is None:
+        if (
+            self.matrix_a is None
+            or self.matrix_b is None
+            or self.output is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"matrix_a": self.matrix_a, "matrix_b": self.matrix_b},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.matrix_rows,
             parameter_count=int(self.parameter_count),
             precision_flags={
@@ -89,6 +107,8 @@ class Tcgen05CustomVsCublasBase(VerificationPayloadMixin, BaseBenchmark):
         self.matrix_a = None
         self.matrix_b = None
         self.output = None
+        self._cublas_output_buffer = None
+        self._verify_output_buffer = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 

@@ -17985,6 +17985,47 @@ def test_ch08_to_ch12_kernel_wrappers_use_inference_mode() -> None:
         assert "torch.no_grad()" not in benchmark_section
 
 
+def test_ch08_tcgen05_custom_vs_cublas_reuses_output_buffers() -> None:
+    base_source = (
+        REPO_ROOT / "ch08" / "tcgen05_custom_vs_cublas_benchmark_base.py"
+    ).read_text(encoding="utf-8")
+    baseline_source = (
+        REPO_ROOT / "ch08" / "baseline_tcgen05_custom_vs_cublas.py"
+    ).read_text(encoding="utf-8")
+    base_setup = base_source.split("def setup", maxsplit=1)[1].split(
+        "def _new_output_buffer",
+        maxsplit=1,
+    )[0]
+    cublas_helper = base_source.split("def _run_cublas_reference", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    capture_section = base_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def validate_result",
+        maxsplit=1,
+    )[0]
+    teardown_section = base_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+
+    assert "self._cublas_output_buffer: Optional[torch.Tensor] = None" in base_source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in base_source
+    assert "self._verify_output_buffer = self._new_output_buffer()" in base_setup
+    assert "self._cublas_output_buffer = self._new_output_buffer()" in baseline_setup
+    assert "torch.mm(self.matrix_a, self.matrix_b, out=self._cublas_output_buffer)" in cublas_helper
+    assert "torch.matmul(self.matrix_a, self.matrix_b)" not in cublas_helper
+    assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "output=self.output.detach().clone()" not in capture_section
+    assert "self._cublas_output_buffer = None" in teardown_section
+    assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch10_flashattention3_pipeline_reuses_verification_payload_buffers() -> None:
     for relative_path in (
         "ch10/baseline_flashattention3_pipeline.py",

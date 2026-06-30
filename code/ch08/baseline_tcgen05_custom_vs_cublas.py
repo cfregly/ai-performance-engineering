@@ -11,6 +11,10 @@ class BaselineTcgen05CustomVsCublasBenchmark(Tcgen05CustomVsCublasBase):
 
     nvtx_label = "baseline_tcgen05_custom_vs_cublas"
 
+    def setup(self) -> None:
+        super().setup()
+        self._cublas_output_buffer = self._new_output_buffer()
+
     def benchmark_fn(self) -> None:
         if self.matrix_a is None or self.matrix_b is None:
             raise RuntimeError("Inputs not initialized")
