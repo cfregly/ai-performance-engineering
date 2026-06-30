@@ -88,6 +88,9 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._slot_cursor = 0
         self._last_slot = 0
         self._last_graph: Optional[torch.cuda.CUDAGraph] = None
+        self._verify_input_buffer: Optional[torch.Tensor] = None
+        self._verify_scale_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.register_workload_metadata(
             requests_per_iteration=1.0,
             samples_per_iteration=float(self.cfg.batch_size),
@@ -128,6 +131,9 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.device_output = torch.empty_like(self.device_input)
 
         self._build_request_slots()
+        self._verify_input_buffer = torch.empty_like(self.host_inputs[0])
+        self._verify_scale_buffer = torch.empty_like(self.host_scales[0])
+        self._verify_output_buffer = torch.empty((2, 16), dtype=torch.float32, device="cpu")
         self._warmup_eager_path()
 
     def _build_request_slots(self) -> None:
@@ -218,8 +224,11 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         return slot_idx
 
     def _current_output_slice(self) -> torch.Tensor:
+        if self._verify_output_buffer is None:
+            raise RuntimeError("verification output buffer is not initialized")
         host_output = self.host_outputs[self._last_slot]
-        return host_output[:2, :16].to(dtype=torch.float32).clone()
+        self._verify_output_buffer.copy_(host_output[:2, :16])
+        return self._verify_output_buffer
 
     def _run_verification_slot(self, slot_idx: int) -> None:
         self._last_slot = slot_idx
@@ -229,10 +238,14 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         slot_idx = 0
         self._run_verification_slot(slot_idx)
         self._synchronize()
+        if self._verify_input_buffer is None or self._verify_scale_buffer is None:
+            raise RuntimeError("verification input buffers are not initialized")
+        self._verify_input_buffer.copy_(self.host_inputs[slot_idx])
+        self._verify_scale_buffer.copy_(self.host_scales[slot_idx])
         self._set_verification_payload(
             inputs={
-                "x": self.host_inputs[slot_idx].clone(),
-                "scale": self.host_scales[slot_idx].clone(),
+                "x": self._verify_input_buffer,
+                "scale": self._verify_scale_buffer,
             },
             output=self._current_output_slice(),
             batch_size=self.cfg.batch_size,
@@ -286,6 +299,9 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.host_scales = []
         self.host_outputs = []
         self._slot_memcpy_bindings = []
+        self._verify_input_buffer = None
+        self._verify_scale_buffer = None
+        self._verify_output_buffer = None
         super().teardown()
 
 

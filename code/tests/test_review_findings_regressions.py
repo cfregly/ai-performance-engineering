@@ -1079,8 +1079,24 @@ def test_parameterized_graph_verification_capture_uses_fixed_request_slot() -> N
     source = _read("labs/parameterized_cuda_graphs/parameterized_cuda_graphs_common.py")
     assert "slot_idx = 0" in source
     assert "self._run_verification_slot(slot_idx)" in source
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _build_request_slots",
+        maxsplit=1,
+    )[0]
     build_slots = source.split("def _build_request_slots", maxsplit=1)[1].split(
         "def _warmup_eager_path",
+        maxsplit=1,
+    )[0]
+    output_slice = source.split("def _current_output_slice", maxsplit=1)[1].split(
+        "def _run_verification_slot",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "class ParameterizedGraphRecaptureBenchmark",
         maxsplit=1,
     )[0]
     assert "self.host_inputs = [torch.empty(0) for _ in range(self.cfg.request_slots)]" in build_slots
@@ -1091,6 +1107,24 @@ def test_parameterized_graph_verification_capture_uses_fixed_request_slot() -> N
     assert "self.host_outputs[slot_idx] = host_output" in build_slots
     assert "self._refresh_slot_memcpy_bindings()" in build_slots
     assert ".append(" not in build_slots
+    assert "self._verify_input_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_scale_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_input_buffer = torch.empty_like(self.host_inputs[0])" in setup_section
+    assert "self._verify_scale_buffer = torch.empty_like(self.host_scales[0])" in setup_section
+    assert 'self._verify_output_buffer = torch.empty((2, 16), dtype=torch.float32, device="cpu")' in setup_section
+    assert "self._verify_output_buffer.copy_(host_output[:2, :16])" in output_slice
+    assert "return self._verify_output_buffer" in output_slice
+    assert "self._verify_input_buffer.copy_(self.host_inputs[slot_idx])" in capture_section
+    assert "self._verify_scale_buffer.copy_(self.host_scales[slot_idx])" in capture_section
+    assert '"x": self._verify_input_buffer' in capture_section
+    assert '"scale": self._verify_scale_buffer' in capture_section
+    assert "self.host_inputs[slot_idx].clone()" not in capture_section
+    assert "self.host_scales[slot_idx].clone()" not in capture_section
+    assert ".to(dtype=torch.float32).clone()" not in output_slice
+    assert "self._verify_input_buffer = None" in teardown_section
+    assert "self._verify_scale_buffer = None" in teardown_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_parameterized_graph_replay_uses_cached_memcpy_bindings() -> None:
