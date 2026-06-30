@@ -20,7 +20,8 @@ class PersistentPrefillBaselineBenchmark(DecodeBenchmark):
         super().setup()
         # Match optimized path: do prefill ONCE and benchmark decode-only iterations.
         self._copy_prompts_to_device()
-        prefill_state = self.prefill_fn(self.gpu_prompt)
+        with torch.inference_mode(), self.sdpa_ctx_factory():
+            prefill_state = self.prefill_fn(self.gpu_prompt)
         self._prefilled_state = prefill_state.detach().clone()
         self._prefilled_tokens = self.gpu_prompt[:, -1].detach().clone()
         self.register_workload_metadata(
@@ -34,7 +35,7 @@ class PersistentPrefillBaselineBenchmark(DecodeBenchmark):
 
         current_stream = torch.cuda.current_stream()
         stream = self.compute_stream or current_stream
-        with torch.cuda.stream(stream):
+        with torch.cuda.stream(stream), torch.inference_mode(), self.sdpa_ctx_factory():
             # Reset on the same stream that consumes the state to keep ordering explicit.
             self.state_buffer.copy_(self._prefilled_state)
             self.current_tokens.copy_(self._prefilled_tokens)

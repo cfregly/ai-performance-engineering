@@ -298,9 +298,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "prefill_decode_1": standardize_nvtx_label("compute_math:prefill_decode_1"),
             }
         self._cache_te_weight_workspaces()
-        # Default to eager helpers; swap in compiled variants below when enabled.
-        self.prefill_fn = self._prefill
-        self.decode_fn = self._decode_step
+        # Default to eager math helpers; hot loops hoist inference/SDPA contexts.
+        self.prefill_fn = self._run_prefill_math
+        self.decode_fn = self._run_decode_step_math
         if self.cfg.use_torch_compile:
             self._maybe_compile()
         if self.cfg.use_cuda_graphs:
@@ -528,8 +528,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # When using explicit CUDA graphs, don't use reduce-overhead mode (which uses internal graphs)
         # as this causes "Cannot prepare for replay during capturing stage" errors
         compile_mode = "default" if self.cfg.use_cuda_graphs else "reduce-overhead"
-        self.prefill_fn = torch.compile(self._prefill, mode=compile_mode, fullgraph=False)
-        self.decode_fn = torch.compile(self._decode_step, mode=compile_mode, fullgraph=True)
+        self.prefill_fn = torch.compile(self._run_prefill_math, mode=compile_mode, fullgraph=False)
+        self.decode_fn = torch.compile(self._run_decode_step_math, mode=compile_mode, fullgraph=True)
         self._compile_error = None
 
     def _capture_decode_graph(self) -> None:
@@ -543,58 +543,68 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.current_tokens.copy_(self.gpu_prompt_last_token)
 
         # NO FALLBACK - CUDA graph capture must succeed
-        # Warm up to populate kernels/caches prior to capture
-        with torch.cuda.stream(self.graph_stream):
+        # Warm up to populate kernels/caches prior to capture.
+        with torch.inference_mode(), self.sdpa_ctx_factory():
+            with torch.cuda.stream(self.graph_stream):
+                if not self.cfg.graph_full_iteration:
+                    _prime_decode_state()
+                for _ in range(2):
+                    if self.cfg.graph_full_iteration:
+                        _prime_decode_state()
+                    next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
+                    self.state_buffer.copy_(next_state)
+                    self.current_tokens.copy_(next_token)
+            torch.cuda.synchronize()
+            self.decode_graph = torch.cuda.CUDAGraph()
             if not self.cfg.graph_full_iteration:
-                _prime_decode_state()
-            for _ in range(2):
+                with torch.cuda.stream(self.graph_stream):
+                    _prime_decode_state()
+            torch.cuda.synchronize()
+            with torch.cuda.graph(self.decode_graph, stream=self.graph_stream):
                 if self.cfg.graph_full_iteration:
                     _prime_decode_state()
-                next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
-                self.state_buffer.copy_(next_state)
-                self.current_tokens.copy_(next_token)
-        torch.cuda.synchronize()
-        self.decode_graph = torch.cuda.CUDAGraph()
-        if not self.cfg.graph_full_iteration:
-            with torch.cuda.stream(self.graph_stream):
-                _prime_decode_state()
-        torch.cuda.synchronize()
-        with torch.cuda.graph(self.decode_graph, stream=self.graph_stream):
-            if self.cfg.graph_full_iteration:
-                _prime_decode_state()
-            for _ in range(self.cfg.decode_tokens):
-                next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
-                self.state_buffer.copy_(next_state)
-                self.current_tokens.copy_(next_token)
-        torch.cuda.synchronize()
+                for _ in range(self.cfg.decode_tokens):
+                    next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
+                    self.state_buffer.copy_(next_state)
+                    self.current_tokens.copy_(next_token)
+            torch.cuda.synchronize()
         self.graph_includes_prefill = bool(self.cfg.graph_full_iteration)
         self._graph_error = None
 
-    # Core math - NOTE: fp8_autocast should be managed at benchmark_fn level
-    # to avoid per-call overhead and memory leaks.
-    # All operations use inference mode since this is inference (no backward pass).
-    def _prefill(self, tokens: torch.Tensor) -> torch.Tensor:
+    # Core math - fp8_autocast, inference_mode, and SDPA contexts are hoisted by
+    # benchmark loops to avoid per-token context-manager churn.
+    def _run_prefill_math(self, tokens: torch.Tensor) -> torch.Tensor:
         """Prefill phase - fp8_autocast managed externally."""
-        with torch.inference_mode(), self.sdpa_ctx_factory():
-            embeds = self.embedding(tokens)
-            hidden = self.prefill_mlp(embeds)
+        embeds = self.embedding(tokens)
+        hidden = self.prefill_mlp(embeds)
         return hidden[:, -1, :]
+
+    def _prefill(self, tokens: torch.Tensor) -> torch.Tensor:
+        """Public prefill wrapper for direct calls outside the benchmark loop."""
+        with torch.inference_mode(), self.sdpa_ctx_factory():
+            return self._run_prefill_math(tokens)
 
     def _decode_step(
         self, tokens: torch.Tensor, state: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Single decode step - fp8_autocast managed externally."""
+        """Public decode wrapper for direct calls outside the benchmark loop."""
+        if (
+            self._decode_combined is None
+            or self._decode_next_token_values is None
+            or self._decode_next_token is None
+        ):
+            raise RuntimeError("Decode buffers must be initialized before _decode_step()")
         with torch.inference_mode(), self.sdpa_ctx_factory():
-            token_hidden = self.embedding(tokens)
-            if (
-                self._decode_combined is None
-                or self._decode_next_token_values is None
-                or self._decode_next_token is None
-            ):
-                raise RuntimeError("Decode buffers must be initialized before _decode_step()")
-            torch.add(token_hidden, state, out=self._decode_combined)
-            hidden = self.decode_mlp(self._decode_combined)
-            logits = self.lm_head(hidden)
+            return self._run_decode_step_math(tokens, state)
+
+    def _run_decode_step_math(
+        self, tokens: torch.Tensor, state: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Single decode step - contexts and fp8_autocast managed externally."""
+        token_hidden = self.embedding(tokens)
+        torch.add(token_hidden, state, out=self._decode_combined)
+        hidden = self.decode_mlp(self._decode_combined)
+        logits = self.lm_head(hidden)
         torch.max(logits, dim=-1, out=(self._decode_next_token_values, self._decode_next_token))
         return hidden, self._decode_next_token
 
@@ -702,7 +712,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if event0 is not None:
             prefill_stream.wait_event(event0)
 
-        with self._get_fp8_context():
+        with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():
             if nvtx:
                 nvtx.range_push(self._nvtx_labels["prefill_decode_0"])
             self._run_prefill_decode(
@@ -769,8 +779,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if nvtx:
             nvtx.range_push(self._nvtx_labels["prefill"])
 
-        # Single FP8 context for entire forward pass to avoid workspace churn
-        with self._get_fp8_context():
+        # Single context stack for entire forward pass to avoid workspace churn.
+        with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():
             # Prefill unless the captured graph already contains the full iteration.
             if self.decode_graph is None or not self.graph_includes_prefill:
                 prefill_state = self.prefill_fn(self.gpu_prompt)

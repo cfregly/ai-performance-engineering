@@ -18322,8 +18322,13 @@ def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path(
             assert "stream = self.compute_stream or current_stream" in benchmark_section
             assert "current_stream.wait_stream(stream)" in benchmark_section
             assert "torch.cuda.current_stream().wait_stream(stream)" not in benchmark_section
-            pre_stream_section = benchmark_section.split("with torch.cuda.stream(stream):", maxsplit=1)[0]
-            stream_section = benchmark_section.split("with torch.cuda.stream(stream):", maxsplit=1)[1]
+            stream_marker = (
+                "with torch.cuda.stream(stream), torch.inference_mode(), "
+                "self.sdpa_ctx_factory():"
+            )
+            assert stream_marker in benchmark_section
+            pre_stream_section = benchmark_section.split(stream_marker, maxsplit=1)[0]
+            stream_section = benchmark_section.split(stream_marker, maxsplit=1)[1]
             assert "self.state_buffer.copy_(self._prefilled_state)" not in pre_stream_section
             assert "self.current_tokens.copy_(self._prefilled_tokens)" not in pre_stream_section
             assert "self.state_buffer.copy_(self._prefilled_state)" in stream_section

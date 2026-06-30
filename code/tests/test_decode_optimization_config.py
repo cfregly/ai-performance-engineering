@@ -170,6 +170,14 @@ def test_decode_common_inference_paths_skip_autograd_bookkeeping() -> None:
     source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
         encoding="utf-8"
     )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _refresh_static_custom_metrics",
+        maxsplit=1,
+    )[0]
+    compile_section = source.split("def _maybe_compile", maxsplit=1)[1].split(
+        "def _capture_decode_graph",
+        maxsplit=1,
+    )[0]
     init_model_section = source.split("def _init_model", maxsplit=1)[1].split(
         "def _cache_te_weight_workspaces",
         maxsplit=1,
@@ -186,10 +194,30 @@ def test_decode_common_inference_paths_skip_autograd_bookkeeping() -> None:
         "def _get_fp8_context",
         maxsplit=1,
     )[0]
+    decode_math_section = source.split("def _run_decode_step_math", maxsplit=1)[1].split(
+        "def _get_fp8_context",
+        maxsplit=1,
+    )[0]
+    prefetch_section = source.split("def _benchmark_prefetch_batches", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
 
+    assert "self.prefill_fn = self._run_prefill_math" in setup_section
+    assert "self.decode_fn = self._run_decode_step_math" in setup_section
+    assert "torch.compile(self._run_prefill_math" in compile_section
+    assert "torch.compile(self._run_decode_step_math" in compile_section
+    assert "with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():" in prefetch_section
+    assert "with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():" in benchmark_section
     assert "with torch.inference_mode(), te.fp8_autocast(enabled=True, fp8_recipe=self.fp8_recipe):" in te_cache_section
     assert "with torch.inference_mode(), self.sdpa_ctx_factory():" in prefill_section
     assert "with torch.inference_mode(), self.sdpa_ctx_factory():" in decode_step_section
+    assert "with torch.inference_mode()" not in decode_math_section
+    assert "self._decode_combined is None" not in decode_math_section
     assert "with torch.inference_mode():" in init_model_section
     assert "with torch.no_grad():" not in init_model_section
     assert "with torch.no_grad(), te.fp8_autocast" not in te_cache_section
