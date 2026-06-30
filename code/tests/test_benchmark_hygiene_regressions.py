@@ -583,6 +583,12 @@ def test_ch04_optimizer_variants_reuse_update_groups() -> None:
             "def capture_verification_payload",
             maxsplit=1,
         )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
         teardown_section = source.split("def teardown", maxsplit=1)[1].split(
             "def get_config",
             maxsplit=1,
@@ -594,6 +600,13 @@ def test_ch04_optimizer_variants_reuse_update_groups() -> None:
         assert "zip(" not in benchmark_section
         assert "setup() must initialize optimizer update groups" in benchmark_section
         assert "self._update_groups = []" in teardown_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "weight_probe = model0.weight[:32, :32].detach()" in capture_section
+        assert "self._verify_output_buffer.copy_(weight_probe)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "model0.weight[:32, :32].detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch04_ddp_nvlink_overlap_reuses_transfer_events_and_buffers() -> None:

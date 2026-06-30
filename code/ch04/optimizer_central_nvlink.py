@@ -28,6 +28,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self.grad_root_buffers: List[torch.Tensor] = []
         self.inputs: List[torch.Tensor] = []
         self._update_groups: List[Tuple[nn.Linear, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.batch_size = 8
         self.hidden = 512
         self.root_device = torch.device("cuda:0")
@@ -73,6 +74,11 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self._update_groups = list(
             zip(self.models, self.master_weights, self.momentum, self.grad_root_buffers, self.inputs, strict=True)
         )
+        self._verify_output_buffer = torch.empty(
+            (32, 32),
+            device=self.models[0].weight.device,
+            dtype=self.models[0].weight.dtype,
+        )
         self._payload_parameter_count = sum(p.numel() for model in self.models for p in model.parameters())
         self._synchronize()
 
@@ -114,10 +120,13 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
         model0 = self.models[0]
         x0 = self.inputs[0]
-        output = model0.weight[:32, :32].detach().clone()
+        if self._verify_output_buffer is None:
+            raise RuntimeError("setup() must initialize verification output buffer")
+        weight_probe = model0.weight[:32, :32].detach()
+        self._verify_output_buffer.copy_(weight_probe)
         self._set_verification_payload(
             inputs={"x": x0},
-            output=output,
+            output=self._verify_output_buffer,
             batch_size=int(self.batch_size),
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -136,6 +145,7 @@ class OptimizedOptimizerCentralNvlinkBenchmark(VerificationPayloadMixin, BaseBen
         self.grad_root_buffers.clear()
         self.inputs.clear()
         self._update_groups = []
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
