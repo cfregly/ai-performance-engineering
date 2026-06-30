@@ -10,6 +10,7 @@ from __future__ import annotations
 import torch
 from typing import Optional
 
+from ch13.matmul_epilogue_extension import load_matmul_epilogue_extension
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import (
     BaseBenchmark,
@@ -25,12 +26,11 @@ def optimized_matmul(
     residual: torch.Tensor,
     out: torch.Tensor,
     scale: float,
+    extension,
 ) -> torch.Tensor:
-    """Use cuBLAS-backed addmm plus in-place epilogue updates."""
-    torch.addmm(bias, A, B, out=out)
-    out.relu_()
-    out.add_(residual)
-    out.mul_(scale)
+    """Keep GEMM on the fastest cuBLAS path and fuse the elementwise epilogue."""
+    torch.mm(A, B, out=out)
+    extension.matmul_epilogue_(out, bias, residual, scale)
     return out
 
 
@@ -48,6 +48,7 @@ class OptimizedMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer = None
         self.bias = None
         self.residual = None
+        self.extension = None
         self.scale = 0.125
         # Match baseline dimensions for fair comparison
         self.m = 4096
@@ -71,6 +72,7 @@ class OptimizedMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
+        self.extension = load_matmul_epilogue_extension()
 
         self.A = torch.randn(self.m, self.k, device=self.device, dtype=torch.float16)
         self.B = torch.randn(self.k, self.n, device=self.device, dtype=torch.float16)
@@ -79,14 +81,37 @@ class OptimizedMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.C = torch.empty(self.m, self.n, device=self.device, dtype=torch.float16)
         self._verify_output_buffer = torch.empty_like(self.C)
         for _ in range(10):
-            _ = optimized_matmul(self.A, self.B, self.bias, self.residual, self.C, self.scale)
+            _ = optimized_matmul(
+                self.A,
+                self.B,
+                self.bias,
+                self.residual,
+                self.C,
+                self.scale,
+                self.extension,
+            )
         self._synchronize()
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - compiled matmul."""
-        assert self.A is not None and self.B is not None and self.bias is not None and self.residual is not None and self.C is not None
+        assert (
+            self.A is not None
+            and self.B is not None
+            and self.bias is not None
+            and self.residual is not None
+            and self.C is not None
+            and self.extension is not None
+        )
         with torch.inference_mode(), self._nvtx_range("matmul_pytorch"):
-            self.C = optimized_matmul(self.A, self.B, self.bias, self.residual, self.C, self.scale)
+            self.C = optimized_matmul(
+                self.A,
+                self.B,
+                self.bias,
+                self.residual,
+                self.C,
+                self.scale,
+                self.extension,
+            )
 
     def capture_verification_payload(self) -> None:
         if self.C is None or self._verify_output_buffer is None:
@@ -113,6 +138,7 @@ class OptimizedMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         """Cleanup."""
         del self.A, self.B, self.bias, self.residual, self.C
+        self.extension = None
         self._verify_output_buffer = None
         super().teardown()
     
