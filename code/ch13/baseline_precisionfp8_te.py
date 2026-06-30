@@ -121,7 +121,7 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         if capture_output:
             if self.output_buffer is None:
                 raise RuntimeError("Output buffer not initialized")
-            with torch.no_grad():
+            with torch.inference_mode():
                 self.output_buffer.copy_(outputs)
             self.output = self.output_buffer
         loss = self.criterion(outputs, self.targets)

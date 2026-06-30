@@ -15498,7 +15498,8 @@ def test_ch13_baseline_precisionfp8_te_reuses_output_buffers() -> None:
     assert "self.output_buffer = torch.empty_like(self.inputs)" in setup_section
     assert "self._verify_output_buffer = torch.empty_like(self.output_buffer)" in setup_section
     assert "self.output = outputs.detach().clone()" not in train_step_section
-    assert "with torch.no_grad():" in train_step_section
+    assert "with torch.inference_mode():" in train_step_section
+    assert "with torch.no_grad():" not in train_step_section
     assert "self.output_buffer.copy_(outputs)" in train_step_section
     assert "self.output = self.output_buffer" in train_step_section
     assert ".detach().clone()" not in benchmark_section
