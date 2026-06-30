@@ -489,7 +489,8 @@ def test_ch18_split_paged_attention_targets_isolate_backend_from_layout() -> Non
     assert "class LayoutPagedAttnBase" in common_text
     assert 'metrics["paged_attn.backend_math"] = 1.0 if self.backend == "math" else 0.0' in common_text
     assert "def _build_block_table" in common_text
-    assert "return torch.stack(" in common_text
+    assert "return (block_ids.unsqueeze(0) - batch_offsets).remainder_(num_blocks)" in common_text
+    assert "return torch.stack(" not in common_text
     assert "return create_block_mask(" in common_text
     assert "dense masked decode versus block-table-driven FlexAttention sparse kernels" in readme_text
     assert "fused FlexAttention block-mask kernel" in readme_text

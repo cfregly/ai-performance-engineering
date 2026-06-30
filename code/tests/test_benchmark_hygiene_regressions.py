@@ -6561,6 +6561,14 @@ def test_ch18_paged_attention_uses_real_block_table_sparse_kernel() -> None:
         "class BaselinePagedAttnLayoutBenchmark",
         maxsplit=1,
     )[0]
+    dense_capture = dense_benchmark.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_workload_metadata",
+        maxsplit=1,
+    )[0]
+    layout_capture = layout_benchmark.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_workload_metadata",
+        maxsplit=1,
+    )[0]
 
     assert "self.block_table" in common_source
     assert "torch.roll(block_ids" not in common_source
@@ -6582,6 +6590,28 @@ def test_ch18_paged_attention_uses_real_block_table_sparse_kernel() -> None:
     assert "return self._empty_iteration_result" in layout_benchmark
     assert "return {}" not in dense_benchmark
     assert "return {}" not in layout_benchmark
+    assert "def _empty_cpu_staging" in common_source
+    assert "pin_memory=True" in common_source
+    assert "self._verify_input_buffers: dict[str, torch.Tensor] = {}" in dense_benchmark
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in dense_benchmark
+    assert '"qkv": _empty_cpu_staging(self.qkv.shape, self.qkv.dtype)' in dense_benchmark
+    assert "self._verify_output_buffer = _empty_cpu_staging(q.shape, self.qkv.dtype)" in dense_benchmark
+    assert 'self._verify_input_buffers["qkv"].copy_(self.qkv, non_blocking=False)' in dense_capture
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in dense_capture
+    assert "inputs=self._verify_input_buffers" in dense_capture
+    assert "output=self._verify_output_buffer" in dense_capture
+    assert ".detach().cpu()" not in dense_capture
+    assert "self._verify_input_buffers: dict[str, torch.Tensor] = {}" in layout_benchmark
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in layout_benchmark
+    assert '"q": _empty_cpu_staging(self.q.shape, self.q.dtype)' in layout_benchmark
+    assert '"block_table": _empty_cpu_staging(self.block_table.shape, self.block_table.dtype)' in layout_benchmark
+    assert "self._verify_output_buffer = _empty_cpu_staging(self.q.shape, self.q.dtype)" in layout_benchmark
+    assert '("block_table", self.block_table)' in layout_capture
+    assert "self._verify_input_buffers[name].copy_(tensor, non_blocking=False)" in layout_capture
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in layout_capture
+    assert "inputs=self._verify_input_buffers" in layout_capture
+    assert "output=self._verify_output_buffer" in layout_capture
+    assert ".detach().cpu()" not in layout_capture
 
 
 def test_ch18_tiny_gemm_fused_accumulates_split_views_in_place() -> None:
