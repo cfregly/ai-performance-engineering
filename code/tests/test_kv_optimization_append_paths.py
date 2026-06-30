@@ -35,9 +35,11 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         if benchmark_cls is BaselineKVStandard:
             assert "self._generated_step_layer_view_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in init_source
             assert "self._generated_step_layer_position_pairs: list[tuple[int, torch.Tensor, torch.Tensor]] = []" in init_source
+            assert "self._generated_step_layer_position_count = 0" in init_source
             assert "self._generated_step_layer_view_pairs = [" in setup_source
             assert "(k_step.unsqueeze(1), v_step.unsqueeze(1))" in setup_source
             assert "self._generated_step_layer_position_pairs = [" in setup_source
+            assert "self._generated_step_layer_position_count = len(self._generated_step_layer_position_pairs)" in setup_source
             assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in init_source
             assert "self._verify_output_buffer = torch.empty(" in setup_source
             assert "self._verify_output_buffer.copy_(self.output)" in capture_source
@@ -46,7 +48,9 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         else:
             build_source = inspect.getsource(benchmark_cls._build_verification_output)
             assert "self._generated_step_position_pairs: list[tuple[int, torch.Tensor, torch.Tensor]] = []" in init_source
+            assert "self._generated_step_position_count = 0" in init_source
             assert "self._generated_step_position_pairs = [" in setup_source
+            assert "self._generated_step_position_count = len(self._generated_step_position_pairs)" in setup_source
             assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in init_source
             assert "self._verify_output_buffer = torch.empty(" in setup_source
             assert "torch.div(kq0.float(), k_scale0, out=self._verify_output_buffer[0, 0, 0, :, 0, :])" in build_source
@@ -70,10 +74,14 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         if benchmark_cls is BaselineKVStandard:
             assert "for pos, new_k_layer, new_v_layer in self._generated_step_layer_position_pairs:" in benchmark_source
             assert "self._generated_step_layer_position_pairs" in benchmark_source
+            assert "self._generated_step_layer_position_count != self.num_decode_steps" in benchmark_source
+            assert "len(self._generated_step_layer_position_pairs)" not in benchmark_source
             assert "self.append_active_layer_views(new_k_layer, new_v_layer, pos=pos)" in benchmark_source
         else:
             assert "for pos, new_k, new_v in self._generated_step_position_pairs:" in benchmark_source
             assert "self._generated_step_position_pairs" in benchmark_source
+            assert "self._generated_step_position_count != self.num_decode_steps" in benchmark_source
+            assert "len(self._generated_step_position_pairs)" not in benchmark_source
         assert "enumerate(self._generated_step" not in benchmark_source
         assert "self.seq_lengths.fill_(num_decode_steps)" in benchmark_source
         assert "self._set_host_seq_lengths(0)" in benchmark_source
@@ -94,8 +102,10 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         if benchmark_cls is BaselineKVStandard:
             assert "self._generated_step_layer_view_pairs = []" in teardown_source
             assert "self._generated_step_layer_position_pairs = []" in teardown_source
+            assert "self._generated_step_layer_position_count = 0" in teardown_source
         else:
             assert "self._generated_step_position_pairs = []" in teardown_source
+            assert "self._generated_step_position_count = 0" in teardown_source
             assert "self._verify_output_buffer = None" in teardown_source
         assert "self._output_view = None" in teardown_source
         assert "self._batch_size_tensor = None" in teardown_source
