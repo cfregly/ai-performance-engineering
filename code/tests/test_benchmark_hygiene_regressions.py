@@ -8496,6 +8496,10 @@ def test_ch18_flexattention_demos_use_cuda_event_timing() -> None:
         "if self.use_flex_attention:",
         maxsplit=1,
     )[0]
+    flexdecoding_compile = flexdecoding.split("def _compile", maxsplit=1)[1].split(
+        "def ensure_compiled",
+        maxsplit=1,
+    )[0]
     assert flexdecoding_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "current_stream = torch.cuda.current_stream()" in flexdecoding_benchmark
     assert "start.record(current_stream)" in flexdecoding_benchmark
@@ -8512,6 +8516,9 @@ def test_ch18_flexattention_demos_use_cuda_event_timing() -> None:
     assert "attn = attn.masked_fill(~in_window, -1e9)" not in flexdecoding_sdpa
     assert "torch.arange(seq_q" not in flexdecoding_sdpa
     assert "torch.arange(seq_k" not in flexdecoding_sdpa
+    assert "device = self.k_cache.device" in flexdecoding_compile
+    assert "dtype = self.k_cache.dtype" in flexdecoding_compile
+    assert "next(self.parameters())" not in flexdecoding_compile
 
     for filename in (
         "flexattention_block_sparse.py",

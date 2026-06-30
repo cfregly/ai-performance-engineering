@@ -148,14 +148,14 @@ class FlexDecodingModule(torch.nn.Module):
             self.compile_mode = "max-autotune"
 
     def _compile(self, pattern: str = "causal") -> None:
-        device = next(self.parameters()).device
+        device = self.k_cache.device
+        dtype = self.k_cache.dtype
         head_dim = self.head_dim
         heads = self.cfg.heads
 
         window = self.cfg.window
         prefill_len = window * 2
         max_kv_len = self.cfg.max_seq_len
-        dtype = next(self.parameters()).dtype
         q_prefill = torch.zeros(1, heads, prefill_len, head_dim, device=device, dtype=dtype)
         kv_prefill = torch.zeros_like(q_prefill)
         q_decode = torch.zeros(1, heads, 1, head_dim, device=device, dtype=dtype)
