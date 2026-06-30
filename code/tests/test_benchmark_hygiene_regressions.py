@@ -17938,6 +17938,36 @@ def test_ch08_to_ch12_kernel_wrappers_use_inference_mode() -> None:
         assert "torch.no_grad()" not in benchmark_section
 
 
+def test_ch10_flashattention3_pipeline_reuses_verification_payload_buffers() -> None:
+    for relative_path in (
+        "ch10/baseline_flashattention3_pipeline.py",
+        "ch10/optimized_flashattention3_pipeline.py",
+    ):
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_input = self.input.detach()" in setup_section
+        assert "self._verify_input = self.input.detach().clone()" not in setup_section
+        assert "self._verify_output_buffer = torch.empty_like(self.input)" in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.output.detach().clone()" not in capture_section
+        assert "self._verify_input = None" in teardown_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch10_optimized_tcgen05_vs_cublas_reuses_output_buffer() -> None:
     source = (
         REPO_ROOT / "ch10" / "optimized_matmul_tcgen05_vs_cublas.py"

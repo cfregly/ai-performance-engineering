@@ -308,6 +308,7 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
         
         self.input: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         
         tokens = self.batch_size * self.seq_len
@@ -364,7 +365,8 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
             device=self.device, dtype=dtype
         )
 
-        self._verify_input = self.input.detach().clone()
+        self._verify_input = self.input.detach()
+        self._verify_output_buffer = torch.empty_like(self.input)
         
         # Use model directly without torch.compile to avoid compilation overhead.
         # The optimization comes from backend/pipelining behavior only.
@@ -387,10 +389,13 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
         self._payload_dtype = dtype
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         dtype = self._payload_dtype
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -407,6 +412,9 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
         self.model = None
         self.compiled_model = None
         self.input = None
+        self._verify_input = None
+        self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:
