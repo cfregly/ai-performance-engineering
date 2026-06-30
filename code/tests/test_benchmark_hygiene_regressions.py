@@ -3644,6 +3644,22 @@ def test_nvfp4_utils_reuse_nonzero_indices_for_mismatch_counts() -> None:
         assert "index.tolist()" not in source
         assert source.count("@torch.inference_mode()") == 2
         assert "@torch.no_grad()" not in source
+        assert "_L2_FLUSH_BUFFERS: dict[tuple[int, int], torch.Tensor] = {}" in source
+        assert "def _clear_l2_cache_numel(numel: int) -> None:" in source
+        assert 'buffer = torch.empty(numel, device=f"cuda:{device_index}", dtype=torch.float32)' in source
+        assert "buffer.zero_()" in source
+        assert "torch.randn((1024, 1024, 1024), device=\"cuda\")" not in source
+        assert "torch.randn((16000, 1024, 1024), device=\"cuda\")" not in source
+
+    official_dual_eval = (
+        REPO_ROOT / "labs" / "nvfp4_dual_gemm" / "official_semantics_eval.py"
+    ).read_text(encoding="utf-8")
+    clear_l2_section = official_dual_eval.split("if clear_l2:", maxsplit=1)[1].split(
+        "outputs_iter = []",
+        maxsplit=1,
+    )[0]
+    assert "clear_l2_cache_large()" in clear_l2_section
+    assert "torch.cuda.empty_cache()" not in clear_l2_section
 
 
 def test_nvfp4_group_gemm_reuses_verification_output_buffer() -> None:

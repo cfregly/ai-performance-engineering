@@ -182,17 +182,22 @@ class DeterministicContext:
         os.environ["CUBLAS_WORKSPACE_CONFIG"] = self.cublas
 
 
+_L2_FLUSH_BUFFERS: dict[tuple[int, int], torch.Tensor] = {}
+
+
+def _clear_l2_cache_numel(numel: int) -> None:
+    device_index = torch.cuda.current_device()
+    key = (device_index, int(numel))
+    buffer = _L2_FLUSH_BUFFERS.get(key)
+    if buffer is None or buffer.device.index != device_index:
+        buffer = torch.empty(numel, device=f"cuda:{device_index}", dtype=torch.float32)
+        _L2_FLUSH_BUFFERS[key] = buffer
+    buffer.zero_()
+
+
 def clear_l2_cache():
-    # import cupy as cp
-    # cp.cuda.runtime.deviceSetLimit(cp.cuda.runtime.cudaLimitPersistingL2CacheSize, 0)
-    # create a large dummy tensor
-    dummy = torch.randn((1024, 1024, 1024), device="cuda")
-    del dummy
+    _clear_l2_cache_numel(1024 * 1024 * 1024)
 
 
 def clear_l2_cache_large():
-    # import cupy as cp
-    # cp.cuda.runtime.deviceSetLimit(cp.cuda.runtime.cudaLimitPersistingL2CacheSize, 0)
-    # create a large dummy tensor
-    dummy = torch.randn((16000, 1024, 1024), device="cuda")
-    del dummy
+    _clear_l2_cache_numel(16000 * 1024 * 1024)

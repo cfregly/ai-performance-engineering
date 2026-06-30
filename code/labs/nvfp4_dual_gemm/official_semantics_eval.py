@@ -136,9 +136,6 @@ def _run_single_benchmark_case(
 
         if clear_l2:
             clear_l2_cache_large()
-            # clear_l2_cache_large allocates a very large tensor; force allocator release
-            # between repeats so benchmark loops don't OOM from cached segments.
-            torch.cuda.empty_cache()
 
         outputs_iter = []
         start = torch.cuda.Event(enable_timing=True)
