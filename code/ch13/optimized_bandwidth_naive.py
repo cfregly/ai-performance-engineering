@@ -95,7 +95,7 @@ class OptimizedBandwidthCoalescedBenchmark(VerificationPayloadMixin, BaseBenchma
     def benchmark_fn(self) -> None:
         """Function to benchmark - optimized bandwidth usage."""
         assert self.A is not None and self.B is not None and self.C is not None
-        with self._nvtx_range("optimized_bandwidth_coalesced"):
+        with torch.inference_mode(), self._nvtx_range("optimized_bandwidth_coalesced"):
             self.ext.bandwidth_add_mul(self.A, self.B, self.C, int(self.stride), int(self.passes))
 
     def capture_verification_payload(self) -> None:

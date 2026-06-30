@@ -96,7 +96,7 @@ class BaselineBandwidthNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Function to benchmark - naive bandwidth usage."""
         assert self.A is not None and self.B is not None and self.C is not None
-        with self._nvtx_range("baseline_bandwidth_naive"):
+        with torch.inference_mode(), self._nvtx_range("baseline_bandwidth_naive"):
             self.ext.bandwidth_add_mul(self.A, self.B, self.C, int(self.stride), int(self.passes))
         if self.C is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

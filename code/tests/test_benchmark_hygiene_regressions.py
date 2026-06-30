@@ -2951,6 +2951,8 @@ def test_ch13_bandwidth_pair_samples_verification_output() -> None:
         assert "verify_step = max(self.size // verify_count, 1)" in setup_section
         assert "self._verify_indices = torch.arange(" in setup_section
         assert "self._verify_output_buffer = torch.empty(verify_count, device=self.device, dtype=torch.float32)" in setup_section
+        assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
         assert "torch.index_select(" not in benchmark_section
         assert "torch.index_select(self.C, 0, self._verify_indices, out=self._verify_output_buffer)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
@@ -17117,6 +17119,8 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
 
         assert ".detach().clone()" not in benchmark_section
         assert output_assignment in benchmark_section
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
         if name == "baseline_kv_cache_naive.py":
             assert "self._request_ids: list[str] = []" in source
             assert "self._input_token_views: list[list[torch.Tensor]] = []" in source

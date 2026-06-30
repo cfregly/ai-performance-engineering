@@ -264,7 +264,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         if not self._layer_groups:
             raise RuntimeError("Layer groups not initialized")
 
-        with self._nvtx_range("kv_cache_naive_flash_blockwise"):
+        with torch.inference_mode(), self._nvtx_range("kv_cache_naive_flash_blockwise"):
             for request_id, seq_len, block_views in self._request_block_groups:
                 self.kv_cache.allocate(request_id, seq_len)
 

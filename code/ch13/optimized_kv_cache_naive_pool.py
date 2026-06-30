@@ -238,7 +238,7 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
         if not self._layer_groups:
             raise RuntimeError("Layer groups not initialized")
 
-        with self._nvtx_range("kv_cache_naive_pool"):
+        with torch.inference_mode(), self._nvtx_range("kv_cache_naive_pool"):
             for request_id, token_steps in self._request_token_groups:
                 self.kv_cache.allocate(request_id)
 
