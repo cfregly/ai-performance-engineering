@@ -254,10 +254,15 @@ def test_triton_fused_moe_benchmark_reuses_precomputed_max_tokens() -> None:
     assert "Sorted_ids_ptr" not in source
     assert "def _flat_topk_token_ids" in source
     assert 'token_ids.div_(top_k, rounding_mode="floor")' in source
+    assert "expert_indices_cpu = torch.randint(0, E, (batch_seq, K), dtype=torch.int64)" in benchmark_section
+    assert "counts_cpu = torch.bincount(expert_indices_cpu.reshape(-1), minlength=E)" in benchmark_section
+    assert "max_tokens = int(counts_cpu.max())" in benchmark_section
+    assert "expert_indices = expert_indices_cpu.to(device=device, non_blocking=True)" in benchmark_section
     assert "x.repeat_interleave(K" not in benchmark_section
     assert "sorted_token_ids = flat_token_ids.index_select(0, sorted_order)" in benchmark_section
     assert "sorted_tokens = x.index_select(0, sorted_token_ids)" in benchmark_section
-    assert "max_tokens = int(counts.max().item())" in benchmark_section
+    assert "max_tokens = int(counts.max().item())" not in benchmark_section
+    assert ".max().item()" not in benchmark_section
     assert benchmark_section.count("max_tokens=max_tokens") == 3
     assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "current_stream = torch.cuda.current_stream()" in benchmark_section

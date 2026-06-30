@@ -175,8 +175,12 @@ def benchmark_triton_moe():
     w_up = torch.randn(E, H, I, device=device, dtype=torch.bfloat16)
     w_down = torch.randn(E, I, H, device=device, dtype=torch.bfloat16)
     
-    # Generate routing
-    expert_indices = torch.randint(0, E, (batch_seq, K), device=device)
+    # Generate routing and precompute the launch bound on CPU to avoid a CUDA
+    # scalar readback before the timed kernel loop.
+    expert_indices_cpu = torch.randint(0, E, (batch_seq, K), dtype=torch.int64)
+    counts_cpu = torch.bincount(expert_indices_cpu.reshape(-1), minlength=E)
+    max_tokens = int(counts_cpu.max())
+    expert_indices = expert_indices_cpu.to(device=device, non_blocking=True)
     expert_weights = F.softmax(torch.randn(batch_seq, K, device=device), dim=-1).to(torch.bfloat16)
     
     # Sort by expert
@@ -193,7 +197,6 @@ def benchmark_triton_moe():
     expert_offsets = torch.empty(E + 1, device=device, dtype=torch.long)
     expert_offsets[0] = 0
     expert_offsets[1:].copy_(counts.cumsum(0))
-    max_tokens = int(counts.max().item())
     
     # Test kernel
     try:
