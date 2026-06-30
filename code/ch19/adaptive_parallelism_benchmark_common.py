@@ -71,6 +71,8 @@ def classify_baseline(
     workload: Dict[str, torch.Tensor],
     *,
     device: torch.device,
+    feature_rows: torch.Tensor | None = None,
+    feature_rows_cpu: torch.Tensor | None = None,
     strategy_ids_cpu: torch.Tensor | None = None,
     result: torch.Tensor | None = None,
 ) -> torch.Tensor:
@@ -81,22 +83,31 @@ def classify_baseline(
     sync per scalar read (~6× per request), which dominates timing and dwarfs the
     actual routing logic—this path keeps the same semantics without that artifact.
     """
-    feature_rows = torch.stack(
-        (
-            workload["seq_len"].to(dtype=torch.float64),
-            workload["gpu_mem_util"].to(dtype=torch.float64),
-            workload["concurrent_reqs"].to(dtype=torch.float64),
-            workload["batch_size"].to(dtype=torch.float64),
-            workload["prefill_tokens"].to(dtype=torch.float64),
-            workload["decode_tokens"].to(dtype=torch.float64),
-        ),
-        dim=1,
-    ).detach().cpu()
+    num_rows = workload["seq_len"].numel()
+    if feature_rows is None:
+        feature_rows = torch.empty(
+            num_rows,
+            6,
+            device=workload["seq_len"].device,
+            dtype=torch.float64,
+        )
+
+    feature_rows[:, 0].copy_(workload["seq_len"])
+    feature_rows[:, 1].copy_(workload["gpu_mem_util"])
+    feature_rows[:, 2].copy_(workload["concurrent_reqs"])
+    feature_rows[:, 3].copy_(workload["batch_size"])
+    feature_rows[:, 4].copy_(workload["prefill_tokens"])
+    feature_rows[:, 5].copy_(workload["decode_tokens"])
+
+    if feature_rows_cpu is None:
+        feature_rows_cpu = feature_rows.detach().cpu()
+    else:
+        feature_rows_cpu.copy_(feature_rows)
 
     if strategy_ids_cpu is None:
-        strategy_ids_cpu = torch.empty(feature_rows.size(0), dtype=torch.int64)
-    for row_idx in range(feature_rows.size(0)):
-        feature_row = feature_rows[row_idx]
+        strategy_ids_cpu = torch.empty(feature_rows_cpu.size(0), dtype=torch.int64)
+    for row_idx in range(feature_rows_cpu.size(0)):
+        feature_row = feature_rows_cpu[row_idx]
         config = choose_worker_pool(
             seq_len=int(feature_row[0]),
             gpu_mem_util=float(feature_row[1]),
