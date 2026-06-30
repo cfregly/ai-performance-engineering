@@ -122,7 +122,8 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs: Optional[List[torch.Tensor]] = None
         self._input_token_views: list[list[torch.Tensor]] = []
         self._request_ids: list[str] = []
-        self._request_token_groups: list[tuple[str, list[torch.Tensor]]] = []
+        self._input_token_steps: list[list[tuple[int, torch.Tensor]]] = []
+        self._request_token_groups: list[tuple[str, list[tuple[int, torch.Tensor]]]] = []
         self._layer_groups: list[tuple[int, nn.Module]] = []
         self.workload = WORKLOAD
         self.num_layers = self.workload.num_layers
@@ -178,8 +179,12 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             [x[:, pos : pos + 1, :] for pos in range(x.size(1))]
             for x in self.inputs
         ]
+        self._input_token_steps = [
+            list(enumerate(token_views))
+            for token_views in self._input_token_views
+        ]
         self._request_token_groups = list(
-            zip(self._request_ids, self._input_token_views, strict=True)
+            zip(self._request_ids, self._input_token_steps, strict=True)
         )
         self._verify_output_buffer = torch.empty(
             self.batch_size,
@@ -199,10 +204,10 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must precompute request and layer groups")
 
         with torch.inference_mode(), self._nvtx_range("kv_cache_baseline_naive"):
-            for request_id, token_views in self._request_token_groups:
+            for request_id, token_steps in self._request_token_groups:
                 self.kv_cache.allocate(request_id)
 
-                for pos, token in enumerate(token_views):
+                for pos, token in token_steps:
                     for layer_idx, layer in self._layer_groups:
                         token = layer(token, self.kv_cache, request_id, layer_idx, pos)
 
@@ -237,6 +242,7 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.kv_cache = None
         self.inputs = None
         self._input_token_views = []
+        self._input_token_steps = []
         self._request_ids = []
         self._request_token_groups = []
         self._layer_groups = []

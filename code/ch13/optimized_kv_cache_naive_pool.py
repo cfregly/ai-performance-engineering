@@ -141,7 +141,8 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.inputs: Optional[list[torch.Tensor]] = None
         self._request_ids: list[str] = []
         self._input_token_views: list[list[torch.Tensor]] = []
-        self._request_token_groups: list[tuple[str, list[torch.Tensor]]] = []
+        self._input_token_steps: list[list[tuple[int, torch.Tensor]]] = []
+        self._request_token_groups: list[tuple[str, list[tuple[int, torch.Tensor]]]] = []
         self._layer_groups: list[tuple[int, nn.Module]] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
@@ -205,7 +206,11 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
             list(x.split(1, dim=1))
             for x in self.inputs
         ]
-        self._request_token_groups = list(zip(self._request_ids, self._input_token_views, strict=True))
+        self._input_token_steps = [
+            list(enumerate(token_views))
+            for token_views in self._input_token_views
+        ]
+        self._request_token_groups = list(zip(self._request_ids, self._input_token_steps, strict=True))
         if self.inputs:
             self._verify_input = self.inputs[0].detach().clone()
         
@@ -224,10 +229,10 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
             raise RuntimeError("Layer groups not initialized")
 
         with self._nvtx_range("kv_cache_naive_pool"):
-            for request_id, token_views in self._request_token_groups:
+            for request_id, token_steps in self._request_token_groups:
                 self.kv_cache.allocate(request_id)
 
-                for pos, token_view in enumerate(token_views):
+                for pos, token_view in token_steps:
                     hidden = token_view
                     for layer_idx, layer in self._layer_groups:
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
@@ -263,6 +268,7 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.inputs = None
         self._request_ids = []
         self._input_token_views = []
+        self._input_token_steps = []
         self._request_token_groups = []
         self._layer_groups = []
         self.output = None

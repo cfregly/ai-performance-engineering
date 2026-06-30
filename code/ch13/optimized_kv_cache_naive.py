@@ -200,7 +200,8 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs = None
         self._request_ids: list[str] = []
         self._input_token_views: list[list[torch.Tensor]] = []
-        self._request_token_groups: list[tuple[str, int, list[torch.Tensor]]] = []
+        self._input_token_steps: list[list[tuple[int, torch.Tensor]]] = []
+        self._request_token_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []
         self._layer_groups: list[tuple[int, nn.Module]] = []
         self.workload = WORKLOAD
         self.page_size = self.workload.page_size
@@ -265,9 +266,18 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             list(x.split(1, dim=1))
             for x in self.inputs
         ]
+        self._input_token_steps = [
+            list(enumerate(token_views))
+            for token_views in self._input_token_views
+        ]
         self._request_token_groups = [
-            (request_id, len(token_views), token_views)
-            for request_id, token_views in zip(self._request_ids, self._input_token_views, strict=True)
+            (request_id, len(token_views), token_steps)
+            for request_id, token_views, token_steps in zip(
+                self._request_ids,
+                self._input_token_views,
+                self._input_token_steps,
+                strict=True,
+            )
         ]
         if self.inputs:
             self._verify_input = self.inputs[0].detach().clone()
@@ -288,10 +298,10 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Layer groups not initialized")
 
         with self._nvtx_range("kv_cache_naive"):
-            for request_id, seq_len, token_views in self._request_token_groups:
+            for request_id, seq_len, token_steps in self._request_token_groups:
                 self.kv_cache.allocate(request_id, seq_len)
 
-                for pos, token_view in enumerate(token_views):
+                for pos, token_view in token_steps:
                     hidden = token_view
                     for layer_idx, layer in self._layer_groups:
                         hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
@@ -328,6 +338,7 @@ class OptimizedKVCachePagedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs = None
         self._request_ids = []
         self._input_token_views = []
+        self._input_token_steps = []
         self._request_token_groups = []
         self._layer_groups = []
         self.output = None
