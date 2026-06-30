@@ -384,6 +384,44 @@ def test_moe_cuda_ptx_backward_reuses_prepared_autograd_leaves() -> None:
     assert "self.state.loss_grad.index_select" not in grouped_run_source
 
 
+def test_moe_cuda_ptx_verification_reuses_capture_buffers() -> None:
+    helper_source = inspect.getsource(moe_common.build_tensor_slice_verification)
+    setup_source = inspect.getsource(moe_common.MoECudaPtxBenchmark.setup)
+    capture_source = inspect.getsource(moe_common.MoECudaPtxBenchmark.capture_verification_payload)
+    teardown_source = inspect.getsource(moe_common.MoECudaPtxBenchmark.teardown)
+
+    assert "out: Optional[torch.Tensor] = None" in helper_source
+    assert "rows = min(32, output.shape[0])" in helper_source
+    assert "cols = min(32, output.shape[1])" in helper_source
+    assert "output_slice = output[:rows, :cols]" in helper_source
+    assert "verification = out[: rows * cols]" in helper_source
+    assert "verification.view(rows, cols).copy_(output_slice)" in helper_source
+    assert "output_slice.reshape(-1).float().clone()" in helper_source
+    assert "self._verify_output_buffer = torch.empty(" in setup_source
+    assert "self._quant_shape_tensor = torch.tensor(" in setup_source
+    assert "self._verification_shape_tensor = torch.tensor(" in setup_source
+    assert "self._routing_verification_tensor = self.state.expert_indices[" in setup_source
+    assert 'inputs={"shape": self._quant_shape_tensor}' in capture_source
+    assert '"shape": self._verification_shape_tensor' in capture_source
+    assert '"routing": self._routing_verification_tensor' in capture_source
+    assert "build_tensor_slice_verification(self.outputs, self._verify_output_buffer)" in capture_source
+    assert "self.state.expert_indices[: min(32" not in capture_source
+    assert "torch.tensor(" not in capture_source
+    assert "self._verify_output_buffer = None" in teardown_source
+    assert "self._quant_shape_tensor = None" in teardown_source
+    assert "self._verification_shape_tensor = None" in teardown_source
+    assert "self._routing_verification_tensor = None" in teardown_source
+
+    output = torch.arange(24, dtype=torch.bfloat16).view(4, 6)
+    out = torch.empty(24, dtype=torch.float32)
+    first = moe_common.build_tensor_slice_verification(output, out)
+    second = moe_common.build_tensor_slice_verification(output + 1, out)
+
+    assert first.data_ptr() == out.data_ptr()
+    assert second.data_ptr() == out.data_ptr()
+    torch.testing.assert_close(second, (output + 1).reshape(-1).float())
+
+
 def test_moe_cuda_ptx_build_state_reuses_route_count_tuple() -> None:
     source = inspect.getsource(moe_common.build_state)
 

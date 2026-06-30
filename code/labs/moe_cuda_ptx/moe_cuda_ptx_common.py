@@ -629,8 +629,18 @@ def build_quant_verification_tensor(bundle: QuantizedBundle) -> torch.Tensor:
     return torch.cat(pieces, dim=0)
 
 
-def build_tensor_slice_verification(output: torch.Tensor) -> torch.Tensor:
-    return output[: min(32, output.shape[0]), : min(32, output.shape[1])].reshape(-1).float().clone()
+def build_tensor_slice_verification(
+    output: torch.Tensor,
+    out: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    rows = min(32, output.shape[0])
+    cols = min(32, output.shape[1])
+    output_slice = output[:rows, :cols]
+    if out is None:
+        return output_slice.reshape(-1).float().clone()
+    verification = out[: rows * cols]
+    verification.view(rows, cols).copy_(output_slice)
+    return verification
 
 
 def build_backward_verification(
@@ -697,6 +707,10 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._combined_buffer: Optional[torch.Tensor] = None
         self._grouped_output_buffer: Optional[torch.Tensor] = None
         self._padded_tokens_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._quant_shape_tensor: Optional[torch.Tensor] = None
+        self._verification_shape_tensor: Optional[torch.Tensor] = None
+        self._routing_verification_tensor: Optional[torch.Tensor] = None
         self._benchmark_impl: Optional[Callable[[], None]] = None
         self._custom_metrics: dict[str, float] = {}
         self._refresh_workload_metadata()
@@ -802,6 +816,37 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._combined_buffer = torch.empty_like(self.state.x)
         self._grouped_output_buffer = None
         self._padded_tokens_buffer = None
+        verify_rows = min(32, max(self.workload.num_tokens, self.workload.routed_tokens))
+        verify_cols = min(32, self.workload.hidden_dim)
+        self._verify_output_buffer = torch.empty(
+            verify_rows * verify_cols,
+            device=self.device,
+            dtype=torch.float32,
+        )
+        self._quant_shape_tensor = torch.tensor(
+            [
+                self.workload.num_tokens,
+                self.workload.hidden_dim,
+                self.workload.top_k,
+                self.workload.num_experts,
+            ],
+            dtype=torch.int64,
+            device="cpu",
+        )
+        self._verification_shape_tensor = torch.tensor(
+            [
+                self.workload.num_tokens,
+                self.workload.hidden_dim,
+                self.workload.expert_ffn_dim,
+                self.workload.num_experts,
+                self.workload.top_k,
+            ],
+            dtype=torch.int64,
+            device="cpu",
+        )
+        self._routing_verification_tensor = self.state.expert_indices[
+            : min(32, self.state.expert_indices.shape[0])
+        ].detach().cpu()
 
         if self.packed is not None:
             self._grouped_output_buffer = torch.empty(
@@ -1095,19 +1140,10 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.target == "moe_quant":
             if self.quantized is None:
                 raise RuntimeError("benchmark_fn() did not produce quantized outputs")
+            if self._quant_shape_tensor is None:
+                raise RuntimeError("setup() must initialize quant verification shape tensor")
             self._set_verification_payload(
-                inputs={
-                    "shape": torch.tensor(
-                        [
-                            self.workload.num_tokens,
-                            self.workload.hidden_dim,
-                            self.workload.top_k,
-                            self.workload.num_experts,
-                        ],
-                        dtype=torch.int64,
-                        device="cpu",
-                    )
-                },
+                inputs={"shape": self._quant_shape_tensor},
                 output=build_quant_verification_tensor(self.quantized),
                 batch_size=self.workload.num_tokens,
                 parameter_count=0,
@@ -1119,20 +1155,12 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         if self.outputs is None:
             raise RuntimeError("benchmark_fn() did not produce outputs")
+        if self._verification_shape_tensor is None or self._routing_verification_tensor is None:
+            raise RuntimeError("setup() must initialize verification input tensors")
 
         inputs = {
-            "shape": torch.tensor(
-                [
-                    self.workload.num_tokens,
-                    self.workload.hidden_dim,
-                    self.workload.expert_ffn_dim,
-                    self.workload.num_experts,
-                    self.workload.top_k,
-                ],
-                dtype=torch.int64,
-                device="cpu",
-            ),
-            "routing": self.state.expert_indices[: min(32, self.state.expert_indices.shape[0])].detach().cpu(),
+            "shape": self._verification_shape_tensor,
+            "routing": self._routing_verification_tensor,
         }
 
         if self.target == "moe_grouped_gemm_bwd" or mode == "fwd_bwd":
@@ -1145,7 +1173,7 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.down_grad,
             )
         else:
-            verification = build_tensor_slice_verification(self.outputs)
+            verification = build_tensor_slice_verification(self.outputs, self._verify_output_buffer)
 
         tolerance = (2e-2, 2e-2)
         if self.target == "moe_layer" and mode == "forward":
@@ -1186,6 +1214,10 @@ class MoECudaPtxBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._combined_buffer = None
         self._grouped_output_buffer = None
         self._padded_tokens_buffer = None
+        self._verify_output_buffer = None
+        self._quant_shape_tensor = None
+        self._verification_shape_tensor = None
+        self._routing_verification_tensor = None
         self._benchmark_impl = None
         torch.cuda.empty_cache()
 
