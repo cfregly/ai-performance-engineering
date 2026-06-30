@@ -90,6 +90,8 @@ class RingAttention(nn.Module):
         self.scale = 1.0 / math.sqrt(self.head_dim)
         self._position_view_cache: dict[tuple[int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
         self._causal_mask_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}
+        self._recv_k_buffers: list[torch.Tensor] = []
+        self._recv_v_buffers: list[torch.Tensor] = []
 
     def _position_views_for(self, seq_shard: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         key = (int(seq_shard), torch.device(device))
@@ -116,6 +118,33 @@ class RingAttention(nn.Module):
             cached = global_k > global_q
             self._causal_mask_cache[key] = cached
         return cached
+
+    def _recv_buffers_for(
+        self,
+        k_template: torch.Tensor,
+        v_template: torch.Tensor,
+        slot: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if (
+            len(self._recv_k_buffers) != 2
+            or len(self._recv_v_buffers) != 2
+            or self._recv_k_buffers[0].shape != k_template.shape
+            or self._recv_v_buffers[0].shape != v_template.shape
+            or self._recv_k_buffers[0].device != k_template.device
+            or self._recv_v_buffers[0].device != v_template.device
+            or self._recv_k_buffers[0].dtype != k_template.dtype
+            or self._recv_v_buffers[0].dtype != v_template.dtype
+        ):
+            self._recv_k_buffers = [
+                torch.empty(k_template.shape, device=k_template.device, dtype=k_template.dtype),
+                torch.empty(k_template.shape, device=k_template.device, dtype=k_template.dtype),
+            ]
+            self._recv_v_buffers = [
+                torch.empty(v_template.shape, device=v_template.device, dtype=v_template.dtype),
+                torch.empty(v_template.shape, device=v_template.device, dtype=v_template.dtype),
+            ]
+        recv_slot = int(slot) & 1
+        return self._recv_k_buffers[recv_slot], self._recv_v_buffers[recv_slot]
 
     def _ring_pass(
         self,
@@ -161,8 +190,7 @@ class RingAttention(nn.Module):
                 next_rank = (self.rank + 1) % self.world_size
                 prev_rank = (self.rank - 1) % self.world_size
 
-                k_recv = torch.empty_like(k_current)
-                v_recv = torch.empty_like(v_current)
+                k_recv, v_recv = self._recv_buffers_for(k_current, v_current, step & 1)
 
                 send_k = dist.isend(k_current.contiguous(), next_rank, group=self.process_group)
                 recv_k = dist.irecv(k_recv, prev_rank, group=self.process_group)

@@ -13887,15 +13887,21 @@ def test_ch13_context_parallel_ring_attention_caches_position_views() -> None:
 
     assert "self._position_view_cache: dict[tuple[int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}" in ring_section
     assert "self._causal_mask_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}" in ring_section
+    assert "self._recv_k_buffers: list[torch.Tensor] = []" in ring_section
+    assert "self._recv_v_buffers: list[torch.Tensor] = []" in ring_section
     assert "def _position_views_for(self, seq_shard: int, device: torch.device)" in ring_section
     assert "def _causal_mask_for(" in ring_section
+    assert "def _recv_buffers_for(" in ring_section
     assert "local_positions = torch.arange(seq_shard, device=device)" in ring_section
     assert "global_q, k_indices = self._position_views_for(seq_shard, device)" in ring_section
     assert "mask = self._causal_mask_for(target_rank, seq_shard, q.device)" in ring_section
     assert "scores.masked_fill_(mask, float(\"-inf\"))" in ring_section
+    assert "k_recv, v_recv = self._recv_buffers_for(k_current, v_current, step & 1)" in ring_section
     assert "(self.rank * seq_shard) + torch.arange(seq_shard, device=q.device)" not in ring_section
     assert "torch.arange(seq_shard, device=q.device).view(1, 1, 1, seq_shard)" not in ring_section
     assert "scores = scores.masked_fill(global_k > global_q, float(\"-inf\"))" not in ring_section
+    assert "k_recv = torch.empty_like(k_current)" not in ring_section
+    assert "v_recv = torch.empty_like(v_current)" not in ring_section
 
     from ch13.context_parallelism import RingAttention
 
@@ -13904,10 +13910,19 @@ def test_ch13_context_parallel_ring_attention_caches_position_views() -> None:
     second_q, second_k = module._position_views_for(4, torch.device("cpu"))
     first_mask = module._causal_mask_for(0, 4, torch.device("cpu"))
     second_mask = module._causal_mask_for(0, 4, torch.device("cpu"))
+    k_template = torch.empty(1, 2, 4, 4)
+    v_template = torch.empty(1, 2, 4, 4)
+    first_recv_k, first_recv_v = module._recv_buffers_for(k_template, v_template, 0)
+    second_recv_k, second_recv_v = module._recv_buffers_for(k_template, v_template, 0)
+    alt_recv_k, alt_recv_v = module._recv_buffers_for(k_template, v_template, 1)
 
     assert second_q.data_ptr() == first_q.data_ptr()
     assert second_k.data_ptr() == first_k.data_ptr()
     assert second_mask.data_ptr() == first_mask.data_ptr()
+    assert second_recv_k.data_ptr() == first_recv_k.data_ptr()
+    assert second_recv_v.data_ptr() == first_recv_v.data_ptr()
+    assert alt_recv_k.data_ptr() != first_recv_k.data_ptr()
+    assert alt_recv_v.data_ptr() != first_recv_v.data_ptr()
     torch.testing.assert_close(first_q[:, :, :, 0], torch.tensor([[[4, 5, 6, 7]]]))
     torch.testing.assert_close(first_k[0, 0, 0], torch.tensor([0, 1, 2, 3]))
     torch.testing.assert_close(first_mask, first_k > first_q)
@@ -14123,9 +14138,13 @@ def test_ch13_context_parallel_all_gather_reuses_full_kv_buffers() -> None:
 
     assert "k_full: Optional[torch.Tensor] = None" in source
     assert "v_full: Optional[torch.Tensor] = None" in source
+    assert "recv_k_alt: Optional[torch.Tensor] = None" in source
+    assert "recv_v_alt: Optional[torch.Tensor] = None" in source
     assert "full_shape = (batch_size, num_heads, seq_shard * world_size, head_dim)" in workspace_section
     assert "k_full=torch.empty(full_shape" in workspace_section
     assert "v_full=torch.empty(full_shape" in workspace_section
+    assert "recv_k_alt=torch.empty(shape" in workspace_section
+    assert "recv_v_alt=torch.empty(shape" in workspace_section
     assert "torch.cat(gather_k, dim=2, out=workspace.k_full)" in all_gather_section
     assert "torch.cat(gather_v, dim=2, out=workspace.v_full)" in all_gather_section
     assert "k_full = torch.cat(gather_k, dim=2)" not in all_gather_section
@@ -14143,6 +14162,10 @@ def test_ch13_context_parallel_all_gather_reuses_full_kv_buffers() -> None:
     assert "global_q, k_indices = _ring_position_views(rank, seq_shard, device)" in mask_section
     assert "mask = _ring_causal_mask_for(rank, target_rank, seq_shard, q.device)" in ring_section
     assert "scores.masked_fill_(mask, float(\"-inf\"))" in ring_section
+    assert "or workspace.recv_k_alt is None" in ring_section
+    assert "or workspace.recv_v_alt is None" in ring_section
+    assert "k_recv = workspace.recv_k_alt" in ring_section
+    assert "k_recv = workspace.recv_k" in ring_section
     assert "scores = scores.masked_fill(global_k > global_q, float(\"-inf\"))" not in ring_section
     assert "(rank * seq_shard) + torch.arange(seq_shard, device=scores.device)" not in mask_section
     assert "torch.arange(seq_total, device=scores.device)" not in mask_section

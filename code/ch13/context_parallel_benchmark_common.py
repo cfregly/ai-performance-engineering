@@ -34,6 +34,8 @@ class AttentionWorkspace:
     v_full: Optional[torch.Tensor] = None
     recv_k: Optional[torch.Tensor] = None
     recv_v: Optional[torch.Tensor] = None
+    recv_k_alt: Optional[torch.Tensor] = None
+    recv_v_alt: Optional[torch.Tensor] = None
 
 
 _CAUSAL_MASK_POSITION_CACHE: dict[tuple[int, int, int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
@@ -78,6 +80,8 @@ def build_attention_workspace(
         v_full=torch.empty(full_shape, device=device, dtype=dtype),
         recv_k=torch.empty(shape, device=device, dtype=dtype),
         recv_v=torch.empty(shape, device=device, dtype=dtype),
+        recv_k_alt=torch.empty(shape, device=device, dtype=dtype),
+        recv_v_alt=torch.empty(shape, device=device, dtype=dtype),
     )
 
 
@@ -293,10 +297,20 @@ def ring_attention(
             next_rank = (rank + 1) % world_size
             prev_rank = (rank - 1) % world_size
 
-            if workspace is None or workspace.recv_k is None or workspace.recv_v is None:
+            if (
+                workspace is None
+                or workspace.recv_k is None
+                or workspace.recv_v is None
+                or workspace.recv_k_alt is None
+                or workspace.recv_v_alt is None
+            ):
                 raise RuntimeError("ring_attention() requires preallocated recv buffers when world_size > 1")
-            k_recv = workspace.recv_k
-            v_recv = workspace.recv_v
+            if step & 1:
+                k_recv = workspace.recv_k_alt
+                v_recv = workspace.recv_v_alt
+            else:
+                k_recv = workspace.recv_k
+                v_recv = workspace.recv_v
 
             ops = [
                 dist.P2POp(dist.isend, k_current, next_rank, group=process_group),
