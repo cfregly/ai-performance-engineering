@@ -41,6 +41,7 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         self._pending_timing_pair: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._verify_numel = 0
 
     def setup(self) -> None:
@@ -50,6 +51,7 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         torch.cuda.manual_seed_all(42)
         self.tensor = torch.randn(self.numel, device=self.device, dtype=torch.float32)
         self._verify_input, self._verify_numel = build_square_verification_probe(self.tensor)
+        self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         self._timing_pair = (
             torch.cuda.Event(enable_timing=True),
             torch.cuda.Event(enable_timing=True),
@@ -97,15 +99,19 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
                 torch.cuda.manual_seed_all(42)
                 self._verify_input = torch.randn(128, 128, device=self.device, dtype=torch.float32)
                 self._verify_numel = self._verify_input.numel()
-            output = self._verify_input.detach().clone()
+                self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
             probe = self._verify_input
         else:
+            if self._verify_input is None:
+                raise RuntimeError("Verification input not initialized")
             probe = self.output[: self._verify_numel].view_as(self._verify_input).detach()
-            output = probe.clone()
+        if self._verify_output_buffer is None:
+            raise RuntimeError("Verification output buffer not initialized")
+        self._verify_output_buffer.copy_(probe)
 
         self._set_verification_payload(
             inputs={"tensor": probe},
-            output=output,
+            output=self._verify_output_buffer,
             batch_size=int(probe.shape[0]),
             parameter_count=0,
             precision_flags={
@@ -123,6 +129,7 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
         self.output = None
         self._timing_pair = None
         self._pending_timing_pair = None
+        self._verify_output_buffer = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
