@@ -37,6 +37,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_step_views: list[torch.Tensor] = []
         self._output_token_views: list[torch.Tensor] = []
         self._output_write_views: list[list[torch.Tensor]] = []
+        self._decode_token_range = range(0)
         self._draft_ids: Optional[torch.Tensor] = None
         self._verify_prev: Optional[torch.Tensor] = None
         self._verify_prev_first: Optional[torch.Tensor] = None
@@ -58,6 +59,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._draft_id_views: list[torch.Tensor] = []
         self._draft_id_column_views: list[torch.Tensor] = []
         self._match_host_views: list[torch.Tensor] = []
+        self._speculation_step_ranges: list[range] = []
         self.output: Optional[torch.Tensor] = None
         self._metrics: Dict[str, float] = {}
         self._payload_parameter_count = 0
@@ -101,6 +103,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_token_views = [
             self._output_ids[:, token_idx] for token_idx in range(wl.total_tokens + 1)
         ]
+        self._decode_token_range = range(wl.total_tokens)
         self._greedy_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
         self._greedy_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
         self.output = None
@@ -128,6 +131,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._draft_id_views = []
             self._draft_id_column_views = []
             self._match_host_views = []
+            self._speculation_step_ranges = []
             return
 
         self._output_write_views = [
@@ -165,6 +169,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._draft_ids[:, token_idx] for token_idx in range(wl.speculative_k)
         ]
         self._match_host_views = [self._match_host[:k] for k in range(1, wl.speculative_k + 1)]
+        self._speculation_step_ranges = [range(k) for k in range(1, wl.speculative_k + 1)]
         if self.target_model is None:
             raise RuntimeError("Target model not initialized")
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
@@ -203,13 +208,12 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ):
             raise RuntimeError("Benchmark not initialized")
 
-        wl = self.workload
         out = self._output_ids
         self._output_token_views[0].copy_(self.input_ids[:, 0])
 
         with self._nvtx_range(self.label):
             with torch.inference_mode():
-                for t in range(wl.total_tokens):
+                for t in self._decode_token_range:
                     logits = self.target_model(self._output_step_views[t])
                     torch.max(logits[:, 0, :], dim=-1, out=(self._greedy_next_values, self._greedy_next_tokens))
                     self._output_token_views[t + 1].copy_(self._greedy_next_tokens)
@@ -244,6 +248,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or len(self._draft_id_views) != self.workload.speculative_k
             or len(self._draft_id_column_views) != self.workload.speculative_k
             or len(self._match_host_views) != self.workload.speculative_k
+            or len(self._speculation_step_ranges) != self.workload.speculative_k
         ):
             raise RuntimeError("Benchmark not initialized")
 
@@ -262,9 +267,11 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     rounds += 1
                     remaining = wl.total_tokens - pos
                     k = wl.speculative_k if remaining >= wl.speculative_k else remaining
+                    view_idx = k - 1
+                    speculation_step_range = self._speculation_step_ranges[view_idx]
 
                     prev = self._output_step_views[pos]
-                    for j in range(k):
+                    for j in speculation_step_range:
                         logits_d = self.draft_model(prev)
                         torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))
                         self._draft_id_column_views[j].copy_(self._draft_next_tokens)
@@ -276,7 +283,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     if k > 1:
                         self._verify_prev_tail_views[k - 2].copy_(self._draft_id_views[k - 2])
 
-                    view_idx = k - 1
                     draft_window = self._draft_id_views[view_idx]
                     logits_t = self.target_model(self._verify_prev_views[view_idx])
                     target_values = self._target_value_views[view_idx]
@@ -288,7 +294,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     match_host = self._match_host_views[view_idx]
                     match_host.copy_(matches[0], non_blocking=False)
                     accept_k = 0
-                    for match_idx in range(k):
+                    for match_idx in speculation_step_range:
                         if not bool(match_host[match_idx]):
                             break
                         accept_k += 1
@@ -333,6 +339,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_step_views = []
         self._output_token_views = []
         self._output_write_views = []
+        self._decode_token_range = range(0)
         self._draft_ids = None
         self._verify_prev = None
         self._verify_prev_first = None
@@ -354,6 +361,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._draft_id_views = []
         self._draft_id_column_views = []
         self._match_host_views = []
+        self._speculation_step_ranges = []
         self.output = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

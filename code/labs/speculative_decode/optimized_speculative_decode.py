@@ -70,6 +70,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._draft_id_views: list[torch.Tensor] = []
         self._draft_id_column_views: list[torch.Tensor] = []
         self._match_host_views: list[torch.Tensor] = []
+        self._speculation_step_ranges: list[range] = []
         self.output: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
@@ -152,6 +153,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             self._draft_ids[:, token_idx] for token_idx in range(wl.speculative_k)
         ]
         self._match_host_views = [self._match_host[:k] for k in range(1, wl.speculative_k + 1)]
+        self._speculation_step_ranges = [range(k) for k in range(1, wl.speculative_k + 1)]
         verify_tail_count = wl.speculative_k - 1 if wl.speculative_k > 1 else 0
         self._view_counts = (
             len(self._output_step_views),
@@ -167,6 +169,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             len(self._draft_id_views),
             len(self._draft_id_column_views),
             len(self._match_host_views),
+            len(self._speculation_step_ranges),
         )
         self._expected_view_counts = (
             wl.total_tokens + 1,
@@ -174,6 +177,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             wl.speculative_k,
             wl.speculative_k,
             verify_tail_count,
+            wl.speculative_k,
             wl.speculative_k,
             wl.speculative_k,
             wl.speculative_k,
@@ -232,6 +236,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         match_host_views = self._match_host_views
         draft_id_views = self._draft_id_views
         draft_id_column_views = self._draft_id_column_views
+        speculation_step_ranges = self._speculation_step_ranges
         draft_next_values = self._draft_next_values
         draft_next_tokens = self._draft_next_tokens
         draft_next_token_view = self._draft_next_token_view
@@ -249,10 +254,12 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 rounds += 1
                 remaining = wl.total_tokens - pos
                 k = wl.speculative_k if remaining >= wl.speculative_k else remaining
+                view_idx = k - 1
+                speculation_step_range = speculation_step_ranges[view_idx]
 
                 # Draft: propose k tokens sequentially.
                 prev = output_step_views[pos]
-                for j in range(k):
+                for j in speculation_step_range:
                     draft_forward_into(prev, draft_logits)
                     torch.max(draft_logits_next, dim=-1, out=(draft_next_values, draft_next_tokens))
                     draft_id_column_views[j].copy_(draft_next_tokens)
@@ -265,7 +272,6 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 if k > 1:
                     verify_prev_tail_views[k - 2].copy_(draft_id_views[k - 2])
 
-                view_idx = k - 1
                 draft_window = draft_id_views[view_idx]
                 logits_t = target_forward_into(
                     verify_prev_views[view_idx],
@@ -280,7 +286,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 match_host = match_host_views[view_idx]
                 match_host.copy_(matches[0], non_blocking=False)
                 accept_k = 0
-                for match_idx in range(k):
+                for match_idx in speculation_step_range:
                     if not bool(match_host[match_idx]):
                         break
                     accept_k += 1
@@ -353,6 +359,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._draft_id_views = []
         self._draft_id_column_views = []
         self._match_host_views = []
+        self._speculation_step_ranges = []
         self.output = None
         for key in self._metrics:
             self._metrics[key] = 0.0

@@ -17940,20 +17940,28 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._draft_id_column_views = [" in setup_section
     assert "self._match_host_views = [self._match_host[:k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._speculation_step_ranges = [range(k) for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._accept_prefix" not in source
     assert "self._accept_count" not in source
     assert "import torch._dynamo as _dynamo" in setup_section
     assert "_dynamo.reset()" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
+    assert "self._decode_token_range = range(wl.total_tokens)" in setup_section
     assert "logits = self.target_model(self._output_step_views[t])" in greedy_section
+    assert "for t in self._decode_token_range:" in greedy_section
+    assert "for t in range(wl.total_tokens):" not in greedy_section
     assert "self._output_token_views[t + 1].copy_(self._greedy_next_tokens)" in greedy_section
     assert "out[:, t : t + 1]" not in greedy_section
     assert "out[:, t + 1]" not in greedy_section
     assert "with torch.inference_mode():" in benchmark_section
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
+    assert "view_idx = k - 1" in benchmark_section
+    assert "speculation_step_range = self._speculation_step_ranges[view_idx]" in benchmark_section
     assert "torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))" in benchmark_section
     assert "self._draft_id_column_views[j].copy_(self._draft_next_tokens)" in benchmark_section
+    assert "for j in speculation_step_range:" in benchmark_section
+    assert "for j in range(k):" not in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
     assert "prev = self._output_step_views[pos]" in benchmark_section
     assert "logits_d = self.draft_model(prev)" in benchmark_section
@@ -17971,7 +17979,8 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert ".argmax(" not in benchmark_section
     assert "match_host = self._match_host_views[view_idx]" in benchmark_section
     assert "match_host.copy_(matches[0], non_blocking=False)" in benchmark_section
-    assert "for match_idx in range(k):" in benchmark_section
+    assert "for match_idx in speculation_step_range:" in benchmark_section
+    assert "for match_idx in range(k):" not in benchmark_section
     assert "if not bool(match_host[match_idx]):" in benchmark_section
     assert "accept_k += 1" in benchmark_section
     assert "torch.cumprod(" not in benchmark_section
@@ -18043,6 +18052,7 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._draft_id_column_views = [" in setup_section
     assert "self._match_host_views = [self._match_host[:k] for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "self._speculation_step_ranges = [range(k) for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._accept_prefix" not in source
     assert "self._accept_count" not in source
     assert "self._output_step_views = [" in setup_section
@@ -18073,11 +18083,13 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "len(self._draft_id_views)" not in benchmark_section
     assert "len(self._draft_id_column_views)" not in benchmark_section
     assert "len(self._match_host_views)" not in benchmark_section
+    assert "len(self._speculation_step_ranges)" not in benchmark_section
     assert "draft_forward_into = self.draft_model.forward_into" in benchmark_section
     assert "target_forward_into = self.target_model.forward_into" in benchmark_section
     assert "output_step_views = self._output_step_views" in benchmark_section
     assert "output_token_views = self._output_token_views" in benchmark_section
     assert "output_write_views = self._output_write_views" in benchmark_section
+    assert "speculation_step_ranges = self._speculation_step_ranges" in benchmark_section
     assert "draft_forward_into(prev, draft_logits)" in benchmark_section
     assert "prev = output_step_views[pos]" in benchmark_section
     assert "prev = draft_next_token_view" in benchmark_section
@@ -18085,6 +18097,7 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "verify_prev_first.copy_(output_token_views[pos])" in benchmark_section
     assert "verify_prev_tail_views[k - 2].copy_(draft_id_views[k - 2])" in benchmark_section
     assert "view_idx = k - 1" in benchmark_section
+    assert "speculation_step_range = speculation_step_ranges[view_idx]" in benchmark_section
     assert "draft_window = draft_id_views[view_idx]" in benchmark_section
     assert "verify_prev_views[view_idx]" in benchmark_section
     assert "target_logits_views[view_idx]" in benchmark_section
@@ -18099,7 +18112,10 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert ".argmax(" not in benchmark_section
     assert "match_host = match_host_views[view_idx]" in benchmark_section
     assert "match_host.copy_(matches[0], non_blocking=False)" in benchmark_section
-    assert "for match_idx in range(k):" in benchmark_section
+    assert "for j in speculation_step_range:" in benchmark_section
+    assert "for j in range(k):" not in benchmark_section
+    assert "for match_idx in speculation_step_range:" in benchmark_section
+    assert "for match_idx in range(k):" not in benchmark_section
     assert "if not bool(match_host[match_idx]):" in benchmark_section
     assert "accept_k += 1" in benchmark_section
     assert "torch.cumprod(" not in benchmark_section
@@ -18125,6 +18141,7 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._match_host[:k]" not in benchmark_section
     assert "self._view_counts = ()" in teardown_section
     assert "self._expected_view_counts = ()" in teardown_section
+    assert "self._speculation_step_ranges = []" in teardown_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
     assert "def forward_into(self, token_ids: torch.Tensor, logits_out: torch.Tensor)" in common_source
@@ -18183,6 +18200,7 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     assert "self._expected_view_counts: tuple[int, int] = (0, 0)" in source
     assert "self._view_counts = (len(self._output_step_views), len(self._output_token_views))" in setup_section
     assert "self._expected_view_counts = (wl.total_tokens + 1, wl.total_tokens + 1)" in setup_section
+    assert "self._token_range = range(wl.total_tokens)" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "or self._view_counts != self._expected_view_counts" in benchmark_section
@@ -18191,6 +18209,9 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     assert "target_forward_into = self.target_model.forward_into" in benchmark_section
     assert "output_step_views = self._output_step_views" in benchmark_section
     assert "output_token_views = self._output_token_views" in benchmark_section
+    assert "token_range = self._token_range" in benchmark_section
+    assert "for t in token_range:" in benchmark_section
+    assert "for t in range(wl.total_tokens):" not in benchmark_section
     assert "target_forward_into(output_step_views[t], target_logits)" in benchmark_section
     assert "logits = self.target_model.forward_into" not in benchmark_section
     assert "logits = self.target_model(self._output_step_views[t])" not in benchmark_section
@@ -18206,6 +18227,7 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     assert "self._target_logits_next = None" in source
     assert "self._view_counts = (0, 0)" in teardown_section
     assert "self._expected_view_counts = (0, 0)" in teardown_section
+    assert "self._token_range = range(0)" in teardown_section
 
 
 def test_ch15_speculative_decode_common_uses_inference_mode_for_setup_mutations() -> None:
