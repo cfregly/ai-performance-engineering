@@ -224,6 +224,8 @@ class PersistentMatmulTMABenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.a = None
         self.b = None
         self.c = None
+        self.output = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         # Match baseline dimensions for fair verification
         self.M = M
         self.N = N
@@ -260,6 +262,12 @@ class PersistentMatmulTMABenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.a = torch.randn(self.M, self.K, device=self.device, dtype=torch.float16)
         self.b = torch.randn(self.K, self.N, device=self.device, dtype=torch.float16)
         self.c = torch.empty(self.M, self.N, device=self.device, dtype=torch.float16)
+        self._verify_output_buffer = torch.empty(
+            min(128, self.M),
+            min(256, self.N),
+            device=self.device,
+            dtype=torch.float32,
+        )
         
         torch.cuda.synchronize(self.device)
 
@@ -289,9 +297,16 @@ class PersistentMatmulTMABenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.a is None or self.b is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"A": self.a, "B": self.b},
-            output=self.c.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.M,
             precision_flags={
                 "fp16": True,
@@ -307,6 +322,8 @@ class PersistentMatmulTMABenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.a = None
         self.b = None
         self.c = None
+        self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

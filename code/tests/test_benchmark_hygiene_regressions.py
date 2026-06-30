@@ -17745,6 +17745,43 @@ def test_ch10_optimized_tcgen05_vs_cublas_reuses_output_buffer() -> None:
     assert "self.output = None" in teardown_section
 
 
+def test_ch10_matmul_wrappers_sample_verification_outputs() -> None:
+    for relative_path in (
+        "ch10/baseline_matmul_tcgen05_vs_cublas.py",
+        "ch10/optimized_matmul_tcgen05_vs_cublas.py",
+        "ch10/baseline_matmul_tcgen05_pipelined.py",
+        "ch10/optimized_matmul_tcgen05_pipelined.py",
+        "ch10/baseline_matmul_tcgen05_epilogue.py",
+        "ch10/optimized_matmul_tcgen05_epilogue.py",
+        "ch10/baseline_persistent_matmul_tma.py",
+        "ch10/optimized_persistent_matmul_tma.py",
+    ):
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "_verify_output_buffer" in source
+        assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert "min(128," in setup_section
+        assert "min(256," in setup_section
+        assert "output_slice = self.output[" in capture_section
+        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert ".detach().float().clone()" not in capture_section
+        assert "self.output = None" in teardown_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch10_tcgen05_base_uses_dtype_metadata_for_element_size() -> None:
     source = (REPO_ROOT / "core" / "benchmark" / "tcgen05_matmul_base.py").read_text(
         encoding="utf-8"

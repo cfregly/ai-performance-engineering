@@ -6,6 +6,8 @@ introducing cluster + TMA multicast in the optimized variant.
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 
 try:
@@ -93,6 +95,7 @@ class BaselinePersistentMatmulTMABenchmark(VerificationPayloadMixin, BaseBenchma
         self.block_n = 128
         self.block_k = 64
         self.output = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.register_workload_metadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(M * N),
@@ -105,6 +108,12 @@ class BaselinePersistentMatmulTMABenchmark(VerificationPayloadMixin, BaseBenchma
         self.A = torch.randn((self.M, self.K), device=self.device, dtype=torch.float16)
         self.B = torch.randn((self.K, self.N), device=self.device, dtype=torch.float16)
         self.C = torch.empty((self.M, self.N), device=self.device, dtype=torch.float16)
+        self._verify_output_buffer = torch.empty(
+            min(128, self.M),
+            min(256, self.N),
+            device=self.device,
+            dtype=torch.float32,
+        )
         grid = lambda META: (triton.cdiv(self.M, META["BLOCK_M"]) * triton.cdiv(self.N, META["BLOCK_N"]),)
         # One warmup to JIT the kernel and populate C
         baseline_matmul_kernel[grid](
@@ -134,9 +143,16 @@ class BaselinePersistentMatmulTMABenchmark(VerificationPayloadMixin, BaseBenchma
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.A is None or self.B is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"A": self.A, "B": self.B},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.M,
             precision_flags={
                 "fp16": True,
@@ -152,6 +168,8 @@ class BaselinePersistentMatmulTMABenchmark(VerificationPayloadMixin, BaseBenchma
         self.A = None
         self.B = None
         self.C = None
+        self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
@@ -160,4 +178,3 @@ class BaselinePersistentMatmulTMABenchmark(VerificationPayloadMixin, BaseBenchma
 
 def get_benchmark() -> BaseBenchmark:
     return BaselinePersistentMatmulTMABenchmark()
-

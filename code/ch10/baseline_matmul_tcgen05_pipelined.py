@@ -42,6 +42,7 @@ class BaselineMatmulTCGen05PipelinedBenchmark(VerificationPayloadMixin, BaseBenc
         self.B: Optional[torch.Tensor] = None
         self.module = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.register_workload_metadata(bytes_per_iteration=float(self.n * self.n * 2 * 3))
 
     def _resolve_device(self) -> torch.device:
@@ -56,6 +57,12 @@ class BaselineMatmulTCGen05PipelinedBenchmark(VerificationPayloadMixin, BaseBenc
         torch.cuda.manual_seed_all(42)
         self.A = torch.randn(self.size, self.size, device=self.device, dtype=self.dtype)
         self.B = torch.randn(self.size, self.size, device=self.device, dtype=self.dtype)
+        self._verify_output_buffer = torch.empty(
+            min(128, self.size),
+            min(256, self.size),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
     def benchmark_fn(self) -> None:
         if not self._tcgen05_available:
@@ -68,9 +75,16 @@ class BaselineMatmulTCGen05PipelinedBenchmark(VerificationPayloadMixin, BaseBenc
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.A is None or self.B is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        output_slice = self.output[
+            : self._verify_output_buffer.shape[0],
+            : self._verify_output_buffer.shape[1],
+        ]
+        self._verify_output_buffer.copy_(output_slice)
         self._set_verification_payload(
             inputs={"A": self.A, "B": self.B},
-            output=self.output.detach().float().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.size,
             precision_flags={
                 "fp16": True,
@@ -84,6 +98,8 @@ class BaselineMatmulTCGen05PipelinedBenchmark(VerificationPayloadMixin, BaseBenc
     def teardown(self) -> None:
         self.A = None
         self.B = None
+        self.output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
