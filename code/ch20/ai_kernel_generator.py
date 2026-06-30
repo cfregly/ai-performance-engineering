@@ -22,6 +22,7 @@ from torch.nn.attention.flex_attention import (
 _COMPILED_FLEX = None
 _DEVICE: torch.device = torch.device("cuda")
 _REFERENCE_POSITION_CACHE: dict[tuple[int, int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
+_REFERENCE_CAUSAL_MASK_CACHE: dict[tuple[int, int, torch.device], torch.Tensor] = {}
 
 
 def _using_cuda() -> bool:
@@ -73,16 +74,27 @@ def _reference_position_views(
     return cached
 
 
+def _reference_causal_mask(q_len: int, kv_len: int, device: torch.device) -> torch.Tensor:
+    key = (int(q_len), int(kv_len), device)
+    mask = _REFERENCE_CAUSAL_MASK_CACHE.get(key)
+    if mask is None:
+        q_pos, kv_pos = _reference_position_views(q_len, kv_len, device)
+        mask = kv_pos > q_pos
+        _REFERENCE_CAUSAL_MASK_CACHE[key] = mask
+    return mask
+
+
 def _reference_attention(q, k, v, scale, causal):
     q_len = q.shape[2]
     kv_len = k.shape[2]
-    logits = torch.einsum("bhqd,bhkd->bhqk", q, k)
-    logits = logits * scale
+    logits = torch.einsum("bhqd,bhkd->bhqk", q, k).float()
+    logits.mul_(scale)
     q_pos, kv_pos = _reference_position_views(q_len, kv_len, q.device)
-    logits = logits + (q_pos - kv_pos) * 1.44269504
+    logits.add_(q_pos, alpha=1.44269504)
+    logits.add_(kv_pos, alpha=-1.44269504)
     if causal:
-        mask = kv_pos > q_pos
-        logits = logits.masked_fill(mask, float("-inf"))
+        mask = _reference_causal_mask(q_len, kv_len, q.device)
+        logits.masked_fill_(mask, float("-inf"))
     probs = torch.softmax(logits, dim=-1).to(q.dtype)
     return torch.einsum("bhqk,bhkd->bhqd", probs, v)
 

@@ -4144,12 +4144,18 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "torch.triu(" not in ch20_reference
     assert "torch.ones(q_len, kv_len" not in ch20_reference
     assert "_REFERENCE_POSITION_CACHE" in ch20_source
+    assert "_REFERENCE_CAUSAL_MASK_CACHE" in ch20_source
     assert "def _reference_position_views" in ch20_source
+    assert "def _reference_causal_mask" in ch20_source
     assert "def _attention_case" in ch20_source
     assert "def _run_fused_attention" in ch20_source
     assert "q_pos, kv_pos = _reference_position_views(q_len, kv_len, q.device)" in ch20_reference
+    assert "logits.add_(q_pos, alpha=1.44269504)" in ch20_reference
+    assert "logits.add_(kv_pos, alpha=-1.44269504)" in ch20_reference
+    assert "mask = _reference_causal_mask(q_len, kv_len, q.device)" in ch20_reference
+    assert "(q_pos - kv_pos)" not in ch20_reference
     assert "torch.arange(q_len, device=q.device)" not in ch20_reference
-    assert "mask = kv_pos > q_pos" in ch20_reference
+    assert "mask = kv_pos > q_pos" not in ch20_reference
     assert "from core.benchmark.utils import scalar_tensor_to_float" in ch20_source
     assert "scalar_tensor_to_float((out_fused - out_ref).abs().max())" in ch20_run_once
     assert ".abs().max().item()" not in ch20_source
