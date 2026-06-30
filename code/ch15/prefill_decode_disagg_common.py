@@ -69,6 +69,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ] = []
         self._verify_probe: Optional[torch.Tensor] = None
         self._output_shards: Optional[list[torch.Tensor]] = None
+        self._output_shard_count = 0
         self._verify_output_stack: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._parameter_count = 0
@@ -156,6 +157,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_output_groups = []
         self._decode_step_range = range(self.decode_length)
         self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]
+        self._output_shard_count = len(self._output_shards)
         probe_width = min(256, self.hidden_size)
         probe_shape = torch.Size((1, 1, probe_width))
         self._verify_probe = self._empty_cpu_staging(probe_shape, torch.bfloat16)
@@ -244,7 +246,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         outputs = self._output_shards
-        if outputs is None or len(outputs) != self.batch_size:
+        if outputs is None or self._output_shard_count != self.batch_size:
             raise RuntimeError("Decode output shards not initialized")
         with self._nvtx_range(self.label):
             with torch.inference_mode():
@@ -306,6 +308,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_output_groups = []
         self._verify_probe = None
         self._output_shards = None
+        self._output_shard_count = 0
         self._verify_output_stack = None
         self._verify_output_buffer = None
         self._parameter_count = 0

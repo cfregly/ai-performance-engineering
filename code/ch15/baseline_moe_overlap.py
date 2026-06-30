@@ -73,6 +73,7 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._routed_out_flat: Optional[torch.Tensor] = None
         self._comm_copy_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._comm_round_range = range(self.comm_round_trips)
+        self._comm_round_count = 0
         self.output: Optional[torch.Tensor] = None
         self._verify_probe: Optional[torch.Tensor] = None
         self._verify_meta: Optional[torch.Tensor] = None
@@ -119,6 +120,7 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for end in (min(start + chunk_tokens, total_tokens),)
         ]
         self._comm_round_range = range(self.comm_round_trips)
+        self._comm_round_count = len(self._comm_round_range)
 
         probe_cols = min(256, self.hidden_size)
         self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)
@@ -148,7 +150,7 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._routed_out_flat is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
-        if not self._comm_copy_pairs or len(self._comm_round_range) != self.comm_round_trips:
+        if not self._comm_copy_pairs or self._comm_round_count != self.comm_round_trips:
             raise RuntimeError("setup() must initialize communication chunk views")
 
         flat = self._flat_inputs
@@ -211,6 +213,7 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._routed_out_flat = None
         self._comm_copy_pairs = []
         self._comm_round_range = range(self.comm_round_trips)
+        self._comm_round_count = 0
         self.output = None
         self._verify_probe = None
         self._verify_meta = None

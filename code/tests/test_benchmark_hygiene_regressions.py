@@ -18695,11 +18695,15 @@ def test_ch15_moe_overlap_reuses_comm_chunk_views() -> None:
         assert "self._flat_inputs: Optional[torch.Tensor] = None" in source
         assert "self._comm_copy_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in source
         assert "self._comm_round_range = range(self.comm_round_trips)" in source
+        assert "self._comm_round_count = 0" in source
         assert "self._flat_inputs = self.inputs.view(-1, self.hidden_size)" in setup_section
         assert "self._comm_copy_pairs = [" in setup_section
         assert "self._comm_round_range = range(self.comm_round_trips)" in setup_section
+        assert "self._comm_round_count = len(self._comm_round_range)" in setup_section
         assert "for start in range(0, total_tokens, chunk_tokens)" in setup_section
         assert "flat = self._flat_inputs" in benchmark_section
+        assert "self._comm_round_count != self.comm_round_trips" in benchmark_section
+        assert "len(self._comm_round_range)" not in benchmark_section
         assert "for _ in self._comm_round_range:" in benchmark_section
         assert "for _ in range(self.comm_round_trips):" not in benchmark_section
         assert "for comm_chunk, remote_chunk in self._comm_copy_pairs:" in benchmark_section
@@ -18710,6 +18714,7 @@ def test_ch15_moe_overlap_reuses_comm_chunk_views() -> None:
         assert "self.inputs.view(-1, self.hidden_size)" not in benchmark_section
         assert "self._comm_copy_pairs = []" in teardown_section
         assert "self._comm_round_range = range(self.comm_round_trips)" in teardown_section
+        assert "self._comm_round_count = 0" in teardown_section
 
     baseline_source = (REPO_ROOT / "ch15" / "baseline_moe_overlap.py").read_text(
         encoding="utf-8"
@@ -21380,6 +21385,8 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.cat(" not in benchmark_section
     assert "self._last_decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]" in source
+    assert "self._decoded_token_count = 0" in source
+    assert "self._decoded_token_count = len(self._last_decoded_tokens)" in setup_section
     assert "self._decode_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._decode_output_buffer = torch.empty(" in setup_section
     assert "self._empty_iteration_result: Dict[str, List[float]] = {}" in source
@@ -21388,6 +21395,8 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "self._tpot_metric_values = [0.0] * self.num_tokens" in source
     assert "self._decode_token_indices = range(self.num_tokens)" in source
     assert "decoded_tokens = self._last_decoded_tokens" in benchmark_section
+    assert "if self._decoded_token_count != self.num_tokens:" in benchmark_section
+    assert "len(decoded_tokens)" not in benchmark_section
     assert "decode_token_indices = self._decode_token_indices" in benchmark_section
     assert "for token_idx in decode_token_indices:" in benchmark_section
     assert "decode_state = self.model.decode_step(decode_state)" in benchmark_section
@@ -21408,6 +21417,7 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "finalize_iteration_metrics" in source
     assert "self._ttft_total_ms = 0.0" in setup_section
     assert "self._tpot_total_ms = 0.0" in setup_section
+    assert "self._decoded_token_count = 0" in source
     assert "self._history" not in source
     assert "tpot_times_ms = self._tpot_metric_values" in finalize_section
     assert "for idx in range(len(tpot_times_ms)):" in finalize_section

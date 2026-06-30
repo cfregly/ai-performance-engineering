@@ -42,6 +42,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self._last_elapsed_ms: Optional[float] = None
         self._metrics_pending = False
         self._last_decoded_tokens: List[torch.Tensor] = []
+        self._decoded_token_count = 0
         self._decode_token_indices = range(self.num_tokens)
         self._decode_output_buffer: Optional[torch.Tensor] = None
         self._ttft_metric_values = [0.0]
@@ -73,6 +74,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self._ttft_count = 0
         self._tpot_count = 0
         self._last_decoded_tokens = [torch.empty(0) for _ in range(self.num_tokens)]
+        self._decoded_token_count = len(self._last_decoded_tokens)
         self._decode_token_indices = range(self.num_tokens)
         self._decode_output_buffer = torch.empty(
             (self.batch_size, self.num_tokens, self.model.hidden_dim),
@@ -92,7 +94,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
             with torch.inference_mode():
                 kv_cache = self.model.prefill(self.prompt)
                 decoded_tokens = self._last_decoded_tokens
-                if len(decoded_tokens) != self.num_tokens:
+                if self._decoded_token_count != self.num_tokens:
                     raise RuntimeError("Decode output slots not initialized")
                 decode_token_indices = self._decode_token_indices
                 decode_state = kv_cache
@@ -174,6 +176,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self.kv_cache = None
         self.output = None
         self._last_decoded_tokens = []
+        self._decoded_token_count = 0
         self._decode_output_buffer = None
         self._last_elapsed_ms = None
         self._metrics_pending = False

@@ -73,6 +73,7 @@ class OptimizedMoeOverlapSharedExpertBenchmark(VerificationPayloadMixin, BaseBen
         self._comm_stream: Optional[torch.cuda.Stream] = None
         self._comm_copy_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._comm_round_range = range(self.comm_round_trips)
+        self._comm_round_count = 0
         self.output: Optional[torch.Tensor] = None
         self._verify_probe: Optional[torch.Tensor] = None
         self._verify_meta: Optional[torch.Tensor] = None
@@ -119,6 +120,7 @@ class OptimizedMoeOverlapSharedExpertBenchmark(VerificationPayloadMixin, BaseBen
             for end in (min(start + chunk_tokens, total_tokens),)
         ]
         self._comm_round_range = range(self.comm_round_trips)
+        self._comm_round_count = len(self._comm_round_range)
 
         probe_cols = min(256, self.hidden_size)
         self._verify_probe = torch.empty((1, 1, probe_cols), dtype=self.inputs.dtype, pin_memory=True)
@@ -154,7 +156,7 @@ class OptimizedMoeOverlapSharedExpertBenchmark(VerificationPayloadMixin, BaseBen
             or self._comm_stream is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
-        if not self._comm_copy_pairs or len(self._comm_round_range) != self.comm_round_trips:
+        if not self._comm_copy_pairs or self._comm_round_count != self.comm_round_trips:
             raise RuntimeError("setup() must initialize communication chunk views")
 
         flat = self._flat_inputs
@@ -219,6 +221,7 @@ class OptimizedMoeOverlapSharedExpertBenchmark(VerificationPayloadMixin, BaseBen
         self._comm_stream = None
         self._comm_copy_pairs = []
         self._comm_round_range = range(self.comm_round_trips)
+        self._comm_round_count = 0
         self.output = None
         self._verify_probe = None
         self._verify_meta = None
