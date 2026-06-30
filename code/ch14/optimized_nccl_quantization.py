@@ -38,6 +38,7 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
             tokens_per_iteration=float(tokens),
         )
         self.output = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._verification_payload = None
         self._enable_nvtx = False
         self.register_workload_metadata(
@@ -60,6 +61,7 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._quant_float = torch.empty_like(self.tensor)
         self.quantized = torch.empty_like(self.tensor, dtype=torch.int8)
         self.dequantized = torch.empty_like(self.tensor)
+        self._verify_output_buffer = torch.empty_like(self.tensor)
         torch.cuda.synchronize(self.device)
     
     def benchmark_fn(self) -> None:
@@ -94,9 +96,12 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
             raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.tensor},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.num_chunks,
             parameter_count=0,
             precision_flags={
@@ -119,6 +124,8 @@ class OptimizedNcclQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._scales = None
         self._dequant_scales = None
         self._quant_float = None
+        self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
     
     def get_config(self) -> BenchmarkConfig:

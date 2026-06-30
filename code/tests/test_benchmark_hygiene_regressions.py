@@ -1978,10 +1978,27 @@ def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
     optimized_capture = optimized_source.split(
         "def capture_verification_payload", maxsplit=1
     )[1].split("def teardown", maxsplit=1)[0]
+    baseline_teardown = baseline_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
+    optimized_teardown = optimized_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
 
     assert "self.tensor.detach().clone()" not in baseline_benchmark
     assert "self.output = self.tensor.detach()" in baseline_benchmark
-    assert "output=self.output.detach().clone()" in baseline_capture
+    assert "self._verify_input_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._verify_input_buffer = torch.empty_like(self.tensor)" in baseline_setup
+    assert "self._verify_output_buffer = torch.empty_like(self.tensor)" in baseline_setup
+    assert "self._verify_input_buffer.copy_(self.tensor)" in baseline_capture
+    assert "self._verify_output_buffer.copy_(self.output)" in baseline_capture
+    assert 'inputs={"input": self._verify_input_buffer}' in baseline_capture
+    assert "output=self._verify_output_buffer" in baseline_capture
+    assert "self.tensor.detach().clone()" not in baseline_capture
+    assert "output=self.output.detach().clone()" not in baseline_capture
+    assert "self._verify_input_buffer = None" in baseline_teardown
+    assert "self._verify_output_buffer = None" in baseline_teardown
     assert "self._host_chunk = torch.empty(self.chunk_len, dtype=torch.float32, pin_memory=use_pinned_host)" in baseline_setup
     assert "self._host_quantized = torch.empty(self.chunk_len, dtype=torch.int8, pin_memory=use_pinned_host)" in baseline_setup
     assert "self._host_dequant = torch.empty_like(self._host_chunk)" in baseline_setup
@@ -2004,6 +2021,8 @@ def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
     assert "self._dequant_scales = torch.empty_like(self._max_abs)" in optimized_setup
     assert "self.quantized = torch.empty_like(self.tensor, dtype=torch.int8)" in optimized_setup
     assert "self.dequantized = torch.empty_like(self.tensor)" in optimized_setup
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._verify_output_buffer = torch.empty_like(self.tensor)" in optimized_setup
     assert "_quantized_float" not in optimized_source
     assert "self.tensor.abs()" not in optimized_benchmark
     assert ".to(torch.int8)" not in optimized_benchmark
@@ -2016,7 +2035,10 @@ def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
     assert "torch.mul(self.quantized, self._dequant_scales, out=self.dequantized)" in optimized_benchmark
     assert "self.output = self.dequantized" in optimized_benchmark
     assert "self.dequantized.detach()" not in optimized_benchmark
-    assert "output=self.output.detach().clone()" in optimized_capture
+    assert "self._verify_output_buffer.copy_(self.output)" in optimized_capture
+    assert "output=self._verify_output_buffer" in optimized_capture
+    assert "output=self.output.detach().clone()" not in optimized_capture
+    assert "self._verify_output_buffer = None" in optimized_teardown
 
 
 def test_ch14_benchmarks_do_not_force_output_sum_syncs() -> None:

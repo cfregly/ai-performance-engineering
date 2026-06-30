@@ -41,6 +41,8 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
             tokens_per_iteration=float(tokens),
         )
         self.output = None
+        self._verify_input_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._verification_payload = None
         self._enable_nvtx = False
         self.register_workload_metadata(
@@ -65,6 +67,8 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._host_scale = torch.empty((), dtype=torch.float32)
         self._host_dequant_scale = torch.empty((), dtype=torch.float32)
         self._host_sum = torch.empty((), dtype=torch.float32)
+        self._verify_input_buffer = torch.empty_like(self.tensor)
+        self._verify_output_buffer = torch.empty_like(self.tensor)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -107,9 +111,18 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
             raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
+        if (
+            self.tensor is None
+            or self.output is None
+            or self._verify_input_buffer is None
+            or self._verify_output_buffer is None
+        ):
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_input_buffer.copy_(self.tensor)
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
-            inputs={"input": self.tensor.detach().clone()},
-            output=self.output.detach().clone(),
+            inputs={"input": self._verify_input_buffer},
+            output=self._verify_output_buffer,
             batch_size=self.num_chunks,
             parameter_count=0,
             precision_flags={
@@ -134,6 +147,9 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._host_scale = None
         self._host_dequant_scale = None
         self._host_sum = None
+        self.output = None
+        self._verify_input_buffer = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
