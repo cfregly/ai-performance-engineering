@@ -9424,6 +9424,7 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._iteration_ttft_times: List[float] = [0.0]" in benchmark_section
     assert "self._iteration_tpot_times: List[float] = [0.0] * self.config.decode_tokens" in benchmark_section
     assert "self._iteration_metric_payload: Dict[str, object] = {" in benchmark_section
+    assert "self._cuda_available = torch.cuda.is_available()" in benchmark_section
     assert '"ttft_times_ms": self._iteration_ttft_times' in benchmark_section
     assert '"tpot_times_ms": self._iteration_tpot_times' in benchmark_section
     assert "MoEFeedForwardSortedDispatch" in source
@@ -9458,6 +9459,9 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "setup() must initialize router requests" in hot_section
     assert "self._router_request_count != cfg.batch_size" in hot_section
     assert "len(router_requests)" not in hot_section
+    assert "self._cuda_available and _RESET_PEAK_MEMORY_STATS is not None" in hot_section
+    assert "if self._cuda_available:" in hot_section
+    assert "torch.cuda.is_available()" not in hot_section
     assert "req = router_requests[idx]" in hot_section
     assert "req = Request(" not in hot_section
     assert "prefix_cache_lengths = self._router_prefix_cache_lengths" in hot_section
@@ -9466,7 +9470,7 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "len(self._router_prefix_cache_lengths)" not in hot_section
     assert "prompt_stub = [0] * cfg.context_window" not in hot_section
     assert '_RESET_PEAK_MEMORY_STATS = getattr(torch.cuda, "reset_peak_memory_stats", None)' in source
-    assert "if torch.cuda.is_available() and _RESET_PEAK_MEMORY_STATS is not None:" in hot_section
+    assert "if self._cuda_available and _RESET_PEAK_MEMORY_STATS is not None:" in hot_section
     assert "_RESET_PEAK_MEMORY_STATS(self.device)" in hot_section
     assert "any(" not in hot_section
     assert "obj is None for obj in" not in hot_section
@@ -12268,6 +12272,16 @@ def test_ch15_disaggregated_multigpu_defers_output_cpu_concat() -> None:
     assert "ready.record(prefill_stream)" in torchrun_worker
     assert "ready.record()" not in torchrun_worker
     assert "ready = torch.cuda.Event()" not in torchrun_worker
+    assert "send_kv_bufs: List[torch.Tensor] = []" in torchrun_worker
+    assert "send_seed_bufs: List[torch.Tensor] = []" in torchrun_worker
+    assert "send_kv_bufs = [" in torchrun_worker
+    assert "send_seed_bufs = [" in torchrun_worker
+    assert "send_kv_bufs[req_idx].copy_(hidden)" in torchrun_worker
+    assert "send_seed_bufs[req_idx].copy_(seed_tokens)" in torchrun_worker
+    assert "send_kv_bufs[req_idx]," in torchrun_worker
+    assert "send_seed_bufs[req_idx]," in torchrun_worker
+    assert "hidden.contiguous()" not in torchrun_worker
+    assert "seed_tokens.contiguous()" not in torchrun_worker
     assert "prefill_pending_slots: List[Optional[List[dist.Work]]]" in torchrun_worker
     assert "recv_pending_slots: List[Optional[List[dist.Work]]]" in torchrun_worker
     assert "pending = prefill_pending_slots" in torchrun_worker
@@ -12667,9 +12681,13 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "self._ttft_metric_values = [0.0]" in source
     assert "self._tpot_metric_values = [0.0] * self.config.decode_tokens" in source
     assert "self._peak_memory_gb = 0.0" in source
+    assert "self._cuda_available = torch.cuda.is_available()" in source
     assert "self._metric_totals = {key: 0.0 for key in self._metric_totals}" in setup_section
     assert "self._metric_counts = {key: 0 for key in self._metric_counts}" in setup_section
     assert "self._peak_memory_gb = 0.0" in setup_section
+    assert "if not self._cuda_available:" in setup_section
+    assert "if not self._cuda_available:" in benchmark_section
+    assert "torch.cuda.is_available()" not in benchmark_section
     assert "def _next_token_from_logits" in source
     assert "with torch.inference_mode():" in benchmark_section
     assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in source
@@ -12678,6 +12696,7 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in benchmark_section
     assert "self.output = seed_tokens" in benchmark_section
     assert "seed_tokens.detach()" not in benchmark_section
+    assert '"tf32": torch.backends.cuda.matmul.allow_tf32 if self._cuda_available else False' in capture_section
     assert "any(" not in benchmark_section
     assert "event is None for event in" not in benchmark_section
     assert "any(" not in finalize_section
@@ -18436,6 +18455,8 @@ def test_ch04_nvshmem_microbench_defers_output_tensor_outside_hot_loop() -> None
     assert "self._last_output_tensor = torch.empty(1, device=device, dtype=torch.float32)" in setup_section
     assert '"mode": torch.empty(1, device=device, dtype=torch.int64)' in setup_section
     assert 'self._payload_input_tensors["world_size"][0] = self.world_size' in setup_section
+    assert "device = self._payload_device" in benchmark_section
+    assert "torch.cuda.is_available()" not in benchmark_section
     assert 'self._last_output_values[0] = self._parsed_metrics.get("bandwidth_gbps", 0.0)' in benchmark_section
     assert "self._last_output_ready = True" in benchmark_section
     assert "self._last_output_values = [" not in benchmark_section

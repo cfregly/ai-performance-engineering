@@ -292,7 +292,7 @@ class NvshmemIbgdaMicrobench(CudaBinaryBenchmark):
     # --------------------------------------------------------------------- Benchmark API
     def benchmark_fn(self) -> None:
         self._last_result = self._run_once()
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = self._payload_device
         self._last_output_values[0] = self._parsed_metrics.get("bandwidth_gbps", 0.0)
         self._last_output_ready = True
         self._last_output = None

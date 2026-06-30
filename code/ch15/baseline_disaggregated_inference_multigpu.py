@@ -278,6 +278,8 @@ def _run_torchrun_worker(
     model = SimpleMoEGPT(moe_cfg, device=device).eval()
 
     prompts: Optional[torch.Tensor] = None
+    send_kv_bufs: List[torch.Tensor] = []
+    send_seed_bufs: List[torch.Tensor] = []
     if is_prefill:
         prompts = torch.randint(
             0,
@@ -286,6 +288,23 @@ def _run_torchrun_worker(
             device=device,
             dtype=torch.long,
         )
+        if overlap:
+            send_kv_bufs = [
+                torch.empty(
+                    (cfg.batch_size, cfg.context_window, cfg.hidden_size),
+                    device=device,
+                    dtype=cfg.dtype,
+                )
+                for _ in range(cfg.requests_per_rank)
+            ]
+            send_seed_bufs = [
+                torch.empty(
+                    (cfg.batch_size, 1),
+                    device=device,
+                    dtype=torch.long,
+                )
+                for _ in range(cfg.requests_per_rank)
+            ]
 
     recv_kv_bufs: List[torch.Tensor] = []
     recv_seed_bufs: List[torch.Tensor] = []
@@ -342,11 +361,13 @@ def _run_torchrun_worker(
                         request_prompt = prompts[req_idx]
                         hidden, logits = model.prefill(request_prompt)
                         seed_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+                        send_kv_bufs[req_idx].copy_(hidden)
+                        send_seed_bufs[req_idx].copy_(seed_tokens)
                         ready = ready_events[req_idx]
                         ready.record(prefill_stream)
                         handles = _batch_isend(
-                            hidden.contiguous(),
-                            seed_tokens.contiguous(),
+                            send_kv_bufs[req_idx],
+                            send_seed_bufs[req_idx],
                             ready_event=ready,
                         )
                         pending[pending_write_idx] = handles

@@ -35,6 +35,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         super().__init__()
         self.label = label
         self.config = self._build_config()
+        self._cuda_available = torch.cuda.is_available()
         self.batch_size = int(self.config.batch_size)
         self.max_batch_size = int(self.config.batch_size)
         self._total_tokens = int(self.config.tokens_per_iteration)
@@ -100,7 +101,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         )
 
     def setup(self) -> None:
-        if not torch.cuda.is_available():
+        if not self._cuda_available:
             raise RuntimeError("SKIPPED: MoE inference benchmark requires CUDA")
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
@@ -171,7 +172,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self.model is None or self.prompts is None or self.kv_cache is None:
             raise RuntimeError("Model, prompts, or KV cache not initialized")
-        if not torch.cuda.is_available():
+        if not self._cuda_available:
             raise RuntimeError("SKIPPED: MoE inference benchmark requires CUDA")
 
         self._prepare_iteration_metrics()
@@ -290,7 +291,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self._prefill_end_event = None
         self._decode_start_event = None
         self._decode_end_event = None
-        if torch.cuda.is_available():
+        if self._cuda_available:
             torch.cuda.empty_cache()
         if self._mem_logger is not None:
             self._mem_logger.stop()
@@ -353,7 +354,7 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
                 "fp16": self.config.dtype_obj == torch.float16,
                 "bf16": self.config.dtype_obj == torch.bfloat16,
                 "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if self._cuda_available else False,
             },
             output_tolerance=(1e-2, 1e-2),
         )

@@ -345,6 +345,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def __init__(self) -> None:
         super().__init__()
         self.config = self._build_config()
+        self._cuda_available = torch.cuda.is_available()
         self.model: Optional[SimpleMoEGPT] = None
         self.draft_model: Optional[SimpleMoEGPT] = None
         self.prompts: Optional[torch.Tensor] = None
@@ -539,7 +540,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph_mode = GraphMode.EAGER
         self._refresh_router_metrics()
         torch.cuda.synchronize(self.device)
-        if torch.cuda.is_available() and _RESET_PEAK_MEMORY_STATS is not None:
+        if self._cuda_available and _RESET_PEAK_MEMORY_STATS is not None:
             _RESET_PEAK_MEMORY_STATS(self.device)
             log_path = resolve_gpu_log_path(None)
             logger = GpuMemoryLogger(
@@ -550,7 +551,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if logger.start():
                 self._mem_logger = logger
                 self._mem_log_path = log_path
-        if self.enable_graphs and torch.cuda.is_available():
+        if self.enable_graphs and self._cuda_available:
             self._prepare_graphs()
 
     def _refresh_router_metrics(self) -> None:
@@ -602,7 +603,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         cfg = self.config
         if not self.enable_graphs:
             return
-        if not torch.cuda.is_available():
+        if not self._cuda_available:
             return
         if self.graph_mode == GraphMode.EAGER:
             return
@@ -626,7 +627,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._capture_piecewise_graphs()
 
     def _capture_full_graph(self) -> None:
-        if self._full_graph is not None or not torch.cuda.is_available():
+        if self._full_graph is not None or not self._cuda_available:
             return
         cfg = self.config
         self._full_graph = torch.cuda.CUDAGraph()
@@ -661,7 +662,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def _capture_piecewise_graphs(self) -> None:
         if self._piecewise_prefill_graph is not None and self._piecewise_decode_graph is not None:
             return
-        if not torch.cuda.is_available():
+        if not self._cuda_available:
             return
         cfg = self.config
         self._piecewise_prefill_graph = torch.cuda.CUDAGraph()
@@ -807,7 +808,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         paged_cache = self.paged_cache  # type: ignore[assignment]
         spec = self.spec_decoder  # type: ignore[assignment]
 
-        if torch.cuda.is_available() and _RESET_PEAK_MEMORY_STATS is not None:
+        if self._cuda_available and _RESET_PEAK_MEMORY_STATS is not None:
             _RESET_PEAK_MEMORY_STATS(self.device)
         logical_index = self.device.index if self.device.index is not None else None
         telemetry_before = query_gpu_telemetry(logical_index)
@@ -970,7 +971,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._paged_hit_count += 1
         self._page_faults_total += float(paged_cache.page_faults)
         self._page_faults_count += 1
-        if torch.cuda.is_available():
+        if self._cuda_available:
             peak_bytes = torch.cuda.max_memory_allocated(self.device)  # type: ignore[arg-type]
             if peak_bytes:
                 self._memory_total_gb += peak_bytes / (1024 ** 3)
@@ -996,7 +997,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 "fp16": self.config.dtype_obj == torch.float16,
                 "bf16": self.config.dtype_obj == torch.bfloat16,
                 "fp8": False,
-                "tf32": torch.backends.cuda.matmul.allow_tf32 if torch.cuda.is_available() else False,
+                "tf32": torch.backends.cuda.matmul.allow_tf32 if self._cuda_available else False,
             },
             output_tolerance=(1e-2, 1e-2),
         )
@@ -1038,7 +1039,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._router_devnull is not None:
             self._router_devnull.close()
             self._router_devnull = None
-        if torch.cuda.is_available():
+        if self._cuda_available:
             torch.cuda.empty_cache()
         if self._mem_logger is not None:
             self._mem_logger.stop()
