@@ -23195,3 +23195,32 @@ def test_ch17_blackwell_profiling_ranks_top_k_without_full_sort() -> None:
     assert "return heapq.nlargest(top_k, rows, key=parse_pct)" in rank_section
     assert 'rows = [row for row in rows if pattern.search(row.get("Name", ""))]' not in rank_section
     assert "sorted(rows, key=parse_pct" not in rank_section
+
+
+def test_ch15_greedy_sampler_skips_softmax_on_optimized_path() -> None:
+    common_source = (REPO_ROOT / "ch15" / "greedy_sampler_common.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = common_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    optimized_branch = benchmark_section.split("else:", maxsplit=1)[1]
+    baseline_source = (REPO_ROOT / "ch15" / "baseline_greedy_sampler.py").read_text(
+        encoding="utf-8"
+    )
+    optimized_source = (REPO_ROOT / "ch15" / "optimized_greedy_sampler.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "materialize_probabilities: bool = True" in common_source
+    assert "self.temperature_column = self.temperature.view" in common_source
+    assert "torch.div(logits, temperature, out=scaled)" in benchmark_section
+    assert "probabilities = torch.softmax(scaled, dim=-1)" in benchmark_section
+    assert "torch.max(probabilities, dim=-1, out=(max_values, next_token))" in benchmark_section
+    assert "torch.max(logits, dim=-1, out=(max_values, next_token))" in optimized_branch
+    assert "softmax" not in optimized_branch
+    assert "greedy_sampler.probability_elements_materialized" in common_source
+    assert "output_tolerance=(0.0, 0.0)" in common_source
+    assert "materialize_probabilities=True" in baseline_source
+    assert "materialize_probabilities=False" in optimized_source
