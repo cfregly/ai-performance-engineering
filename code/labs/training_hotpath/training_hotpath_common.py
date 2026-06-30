@@ -260,15 +260,65 @@ class PackedLinear(nn.Module):
         super().__init__()
         self.weight = nn.Parameter(torch.randn(out_features, in_features, generator=generator) * 0.02)
         self.bias = nn.Parameter(torch.randn(out_features, generator=generator) * 0.01)
+        self._packed_input: Optional[torch.Tensor] = None
+        self._packed_output: Optional[torch.Tensor] = None
+        self._restored_output: Optional[torch.Tensor] = None
+
+    def _workspace(
+        self,
+        name: str,
+        shape: tuple[int, int],
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        cached = getattr(self, name)
+        if (
+            isinstance(cached, torch.Tensor)
+            and cached.shape == shape
+            and cached.device == device
+            and cached.dtype == dtype
+        ):
+            return cached
+        workspace = torch.empty(shape, device=device, dtype=dtype)
+        setattr(self, name, workspace)
+        return workspace
 
     def forward(self, x: torch.Tensor, *, active_rows: torch.Tensor, extension) -> torch.Tensor:
         if extension is None:
             raise RuntimeError("PackedLinear requires the training_hotpath CUDA extension")
         total_rows = x.shape[0] * x.shape[1]
         flat = x.reshape(total_rows, x.shape[-1]).contiguous()
-        packed = extension.pack_rows(flat, active_rows)
-        packed_out = F.linear(packed, self.weight, self.bias)
-        restored = extension.scatter_rows(packed_out.contiguous(), active_rows, total_rows)
+        if torch.is_grad_enabled() and (
+            x.requires_grad or self.weight.requires_grad or self.bias.requires_grad
+        ):
+            packed = extension.pack_rows(flat, active_rows)
+            packed_out = F.linear(packed, self.weight, self.bias)
+            restored = extension.scatter_rows(packed_out.contiguous(), active_rows, total_rows)
+            return restored.reshape(x.shape[0], x.shape[1], packed_out.shape[-1])
+
+        packed = self._workspace(
+            "_packed_input",
+            (active_rows.numel(), flat.shape[1]),
+            device=flat.device,
+            dtype=flat.dtype,
+        )
+        packed = extension.pack_rows_out(flat, active_rows, packed)
+        packed_out = self._workspace(
+            "_packed_output",
+            (packed.shape[0], self.weight.shape[0]),
+            device=packed.device,
+            dtype=packed.dtype,
+        )
+        torch.mm(packed, self.weight.t(), out=packed_out)
+        packed_out.add_(self.bias)
+        restored = self._workspace(
+            "_restored_output",
+            (total_rows, packed_out.shape[1]),
+            device=packed_out.device,
+            dtype=packed_out.dtype,
+        )
+        restored = extension.scatter_rows_out(packed_out, active_rows, total_rows, restored)
         return restored.reshape(x.shape[0], x.shape[1], packed_out.shape[-1])
 
 

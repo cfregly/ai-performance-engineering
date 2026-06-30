@@ -190,6 +190,28 @@ def test_swiglu_helper_reuses_buffer_without_grad_and_preserves_backward() -> No
     torch.testing.assert_close(gate_test.grad, gate_ref.grad)
 
 
+def test_packed_linear_reuses_inference_workspaces_source() -> None:
+    common_source = (LAB_DIR / "training_hotpath_common.py").read_text(encoding="utf-8")
+    kernel_source = (LAB_DIR / "training_hotpath_kernels.cu").read_text(encoding="utf-8")
+    packed_source = common_source.split("class PackedLinear", maxsplit=1)[1].split(
+        "class TransformerBlock",
+        maxsplit=1,
+    )[0]
+
+    assert 'm.def("pack_rows_out"' in kernel_source
+    assert 'm.def("scatter_rows_out"' in kernel_source
+    assert "self._packed_input: Optional[torch.Tensor] = None" in packed_source
+    assert "self._packed_output: Optional[torch.Tensor] = None" in packed_source
+    assert "self._restored_output: Optional[torch.Tensor] = None" in packed_source
+    assert "def _workspace(" in packed_source
+    assert "if torch.is_grad_enabled() and (" in packed_source
+    assert "packed_out = F.linear(packed, self.weight, self.bias)" in packed_source
+    assert "packed = extension.pack_rows_out(flat, active_rows, packed)" in packed_source
+    assert "torch.mm(packed, self.weight.t(), out=packed_out)" in packed_source
+    assert "packed_out.add_(self.bias)" in packed_source
+    assert "restored = extension.scatter_rows_out(packed_out, active_rows, total_rows, restored)" in packed_source
+
+
 def test_padding_aware_transformer_expectation_entry_is_memory_goal() -> None:
     payload = json.loads((LAB_DIR / "expectations_b200.json").read_text(encoding="utf-8"))
     entry = payload["examples"]["padding_aware_transformer"]
@@ -465,3 +487,55 @@ def test_padding_aware_transformer_pair_matches_output_and_metrics() -> None:
     assert optimized_metrics["padding_aware.enabled"] == 1.0
     assert baseline_metrics["padding_aware.uses_cuda_extension"] == 0.0
     assert optimized_metrics["padding_aware.uses_cuda_extension"] == 1.0
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for packed-linear workspace reuse check")
+def test_padding_aware_transformer_reuses_packed_linear_workspaces() -> None:
+    bench = PaddingAwareTransformerBenchmark(
+        optimized=True,
+        label="optimized_padding_aware_transformer_workspace_reuse_test",
+    )
+    bench.apply_target_overrides(
+        [
+            "--batch-size", "2",
+            "--max-num-tokens", "32",
+            "--min-num-tokens", "8",
+            "--input-size", "16",
+            "--hidden-size", "32",
+            "--projection-size", "64",
+            "--num-heads", "4",
+            "--num-blocks", "1",
+            "--output-size", "16",
+        ]
+    )
+    bench.setup()
+    try:
+        assert bench.model is not None
+        packed_layers = [
+            module for module in bench.model.modules() if module.__class__.__name__ == "PackedLinear"
+        ]
+        assert packed_layers
+
+        bench.benchmark_fn()
+        first_ptrs = [
+            (
+                layer._packed_input.data_ptr(),
+                layer._packed_output.data_ptr(),
+                layer._restored_output.data_ptr(),
+            )
+            for layer in packed_layers
+        ]
+
+        bench.benchmark_fn()
+        second_ptrs = [
+            (
+                layer._packed_input.data_ptr(),
+                layer._packed_output.data_ptr(),
+                layer._restored_output.data_ptr(),
+            )
+            for layer in packed_layers
+        ]
+
+        assert second_ptrs == first_ptrs
+    finally:
+        bench.teardown()

@@ -568,7 +568,10 @@ torch::Tensor metric_reduction_fused_out(torch::Tensor preds, torch::Tensor targ
   return metric_reduction_fused_dispatch(preds, targets, out);
 }
 
-torch::Tensor pack_rows(torch::Tensor input, torch::Tensor row_indices) {
+torch::Tensor pack_rows_dispatch(
+    torch::Tensor input,
+    torch::Tensor row_indices,
+    torch::Tensor reusable_out) {
   TORCH_CHECK(input.is_cuda(), "input must be a CUDA tensor");
   TORCH_CHECK(row_indices.is_cuda(), "row_indices must be a CUDA tensor");
   TORCH_CHECK(input.dtype() == torch::kFloat32, "input must be float32");
@@ -580,7 +583,17 @@ torch::Tensor pack_rows(torch::Tensor input, torch::Tensor row_indices) {
   auto rows_contig = row_indices.contiguous();
   auto num_rows = rows_contig.size(0);
   auto num_cols = input_contig.size(1);
-  auto output = torch::empty({num_rows, num_cols}, input.options());
+  const bool reuse_output = reusable_out.defined();
+  if (reuse_output) {
+    TORCH_CHECK(reusable_out.is_cuda(), "out must be a CUDA tensor");
+    TORCH_CHECK(reusable_out.dtype() == torch::kFloat32, "out must be float32");
+    TORCH_CHECK(reusable_out.get_device() == input_contig.get_device(), "out must be on the same device as input");
+    TORCH_CHECK(reusable_out.is_contiguous(), "out must be contiguous");
+    TORCH_CHECK(
+        reusable_out.dim() == 2 && reusable_out.size(0) == num_rows && reusable_out.size(1) == num_cols,
+        "out must have shape (num_rows, num_cols)");
+  }
+  auto output = reuse_output ? reusable_out : torch::empty({num_rows, num_cols}, input.options());
 
   constexpr int threads = 256;
   int64_t total = num_rows * num_cols;
@@ -595,7 +608,19 @@ torch::Tensor pack_rows(torch::Tensor input, torch::Tensor row_indices) {
   return output;
 }
 
-torch::Tensor scatter_rows(torch::Tensor packed, torch::Tensor row_indices, int64_t total_rows) {
+torch::Tensor pack_rows(torch::Tensor input, torch::Tensor row_indices) {
+  return pack_rows_dispatch(input, row_indices, torch::Tensor());
+}
+
+torch::Tensor pack_rows_out(torch::Tensor input, torch::Tensor row_indices, torch::Tensor out) {
+  return pack_rows_dispatch(input, row_indices, out);
+}
+
+torch::Tensor scatter_rows_dispatch(
+    torch::Tensor packed,
+    torch::Tensor row_indices,
+    int64_t total_rows,
+    torch::Tensor reusable_out) {
   TORCH_CHECK(packed.is_cuda(), "packed must be a CUDA tensor");
   TORCH_CHECK(row_indices.is_cuda(), "row_indices must be a CUDA tensor");
   TORCH_CHECK(packed.dtype() == torch::kFloat32, "packed must be float32");
@@ -607,7 +632,17 @@ torch::Tensor scatter_rows(torch::Tensor packed, torch::Tensor row_indices, int6
   auto rows_contig = row_indices.contiguous();
   auto num_rows = rows_contig.size(0);
   auto num_cols = packed_contig.size(1);
-  auto output = torch::zeros({total_rows, num_cols}, packed.options());
+  const bool reuse_output = reusable_out.defined();
+  if (reuse_output) {
+    TORCH_CHECK(reusable_out.is_cuda(), "out must be a CUDA tensor");
+    TORCH_CHECK(reusable_out.dtype() == torch::kFloat32, "out must be float32");
+    TORCH_CHECK(reusable_out.get_device() == packed_contig.get_device(), "out must be on the same device as packed");
+    TORCH_CHECK(reusable_out.is_contiguous(), "out must be contiguous");
+    TORCH_CHECK(
+        reusable_out.dim() == 2 && reusable_out.size(0) == total_rows && reusable_out.size(1) == num_cols,
+        "out must have shape (total_rows, num_cols)");
+  }
+  auto output = reuse_output ? reusable_out.zero_() : torch::zeros({total_rows, num_cols}, packed.options());
 
   constexpr int threads = 256;
   int64_t total = num_rows * num_cols;
@@ -620,6 +655,18 @@ torch::Tensor scatter_rows(torch::Tensor packed, torch::Tensor row_indices, int6
       num_cols);
   CHECK_CUDA(cudaGetLastError());
   return output;
+}
+
+torch::Tensor scatter_rows(torch::Tensor packed, torch::Tensor row_indices, int64_t total_rows) {
+  return scatter_rows_dispatch(packed, row_indices, total_rows, torch::Tensor());
+}
+
+torch::Tensor scatter_rows_out(
+    torch::Tensor packed,
+    torch::Tensor row_indices,
+    int64_t total_rows,
+    torch::Tensor out) {
+  return scatter_rows_dispatch(packed, row_indices, total_rows, out);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -637,5 +684,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       &metric_reduction_fused_out,
       "Fused single-pass metric reduction into a reusable output tensor");
   m.def("pack_rows", &pack_rows, "Pack active rows into a dense tensor");
+  m.def("pack_rows_out", &pack_rows_out, "Pack active rows into a reusable dense tensor");
   m.def("scatter_rows", &scatter_rows, "Scatter packed rows back into padded layout");
+  m.def("scatter_rows_out", &scatter_rows_out, "Scatter packed rows into a reusable padded layout");
 }
