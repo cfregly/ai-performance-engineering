@@ -51,6 +51,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._host_value_slots: list[torch.Tensor] = []
         self._slot_counts: tuple[int, ...] = ()
         self._expected_slot_counts: tuple[int, ...] = ()
+        self._host_gather_ranges: list[range] = []
+        self._local_gather_ranges: list[range] = []
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
@@ -97,6 +99,10 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
             torch.empty(self.batch, 1, self.hidden, dtype=self._value_steps.dtype)
             for _ in range(host_capacity)
         ]
+        self._host_gather_ranges = [range(count) for count in range(host_capacity + 1)]
+        self._local_gather_ranges = [
+            range(count) for count in range(self.local_cache_limit + 1)
+        ]
         self._slot_counts = (
             len(self._local_key_slots),
             len(self._local_value_slots),
@@ -107,6 +113,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
             len(self._v_gather_step_views),
             len(self._k_gather_prefix_views),
             len(self._v_gather_prefix_views),
+            len(self._host_gather_ranges),
+            len(self._local_gather_ranges),
         )
         self._expected_slot_counts = (
             self.local_cache_limit,
@@ -118,6 +126,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
             self.seq_len,
             self.seq_len,
             self.seq_len,
+            host_capacity + 1,
+            self.local_cache_limit + 1,
         )
         self._verify_q = self._query_steps[0, :1].detach().clone()
         self._synchronize()
@@ -137,6 +147,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
             v_gather_steps = self._v_gather_step_views
             k_gather_prefixes = self._k_gather_prefix_views
             v_gather_prefixes = self._v_gather_prefix_views
+            host_gather_ranges = self._host_gather_ranges
+            local_gather_ranges = self._local_gather_ranges
             local_start = 0
             local_count = 0
             host_count = 0
@@ -155,13 +167,13 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 local_values[local_slot] = v
 
                 gather_idx = 0
-                for host_idx in range(host_count):
+                for host_idx in host_gather_ranges[host_count]:
                     hk = host_keys[host_idx]
                     hv = host_values[host_idx]
                     k_gather_steps[gather_idx].copy_(hk)
                     v_gather_steps[gather_idx].copy_(hv)
                     gather_idx += 1
-                for local_offset in range(local_count):
+                for local_offset in local_gather_ranges[local_count]:
                     slot_idx = (local_start + local_offset) % self.local_cache_limit
                     lk = local_keys[slot_idx]
                     lv = local_values[slot_idx]
@@ -210,6 +222,8 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._host_value_slots = []
         self._slot_counts = ()
         self._expected_slot_counts = ()
+        self._host_gather_ranges = []
+        self._local_gather_ranges = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

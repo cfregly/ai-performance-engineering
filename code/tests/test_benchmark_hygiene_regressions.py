@@ -13088,6 +13088,10 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert "self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(" not in benchmark_section
         assert "self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(" not in benchmark_section
         if filename.endswith("_multigpu.py"):
+            assert "self._cache_gather_ranges = [range(step + 1) for step in range(self.seq_len)]" in setup_section
+            assert "cache_gather_ranges = self._cache_gather_ranges" in benchmark_section
+            assert "for cache_idx in cache_gather_ranges[step]:" in benchmark_section
+            assert "for cache_idx in range(step + 1):" not in benchmark_section
             assert "self._peer_host_k_stage: Optional[torch.Tensor] = None" in source
             assert "self._peer_host_v_stage: Optional[torch.Tensor] = None" in source
             assert "self._peer_host_k_stage = torch.empty(" in setup_section
@@ -13099,6 +13103,18 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
             assert "self._peer_host_v_stage" in benchmark_section
             assert "host_k = tk.cpu()" not in benchmark_section
             assert "host_v = tv.cpu()" not in benchmark_section
+            assert "self._cache_gather_ranges = []" in teardown_section
+        else:
+            assert "self._host_gather_ranges = [range(count) for count in range(host_capacity + 1)]" in setup_section
+            assert "self._local_gather_ranges = [" in setup_section
+            assert "host_gather_ranges = self._host_gather_ranges" in benchmark_section
+            assert "local_gather_ranges = self._local_gather_ranges" in benchmark_section
+            assert "for host_idx in host_gather_ranges[host_count]:" in benchmark_section
+            assert "for local_offset in local_gather_ranges[local_count]:" in benchmark_section
+            assert "for host_idx in range(host_count):" not in benchmark_section
+            assert "for local_offset in range(local_count):" not in benchmark_section
+            assert "self._host_gather_ranges = []" in teardown_section
+            assert "self._local_gather_ranges = []" in teardown_section
         assert "k_all = k_gather_prefixes[gather_idx - 1]" in benchmark_section
         assert "v_all = v_gather_prefixes[gather_idx - 1]" in benchmark_section
         assert "self._slot_counts = ()" in teardown_section

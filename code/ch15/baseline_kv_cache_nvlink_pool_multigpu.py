@@ -57,6 +57,7 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._peer_target_slots: List[Optional[torch.device]] = []
         self._slot_counts: Tuple[int, ...] = ()
         self._expected_slot_counts: Tuple[int, ...] = ()
+        self._cache_gather_ranges: List[range] = []
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
@@ -112,6 +113,7 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         ]
         self._tier_slots = [""] * self.seq_len
         self._peer_target_slots = [None] * self.seq_len
+        self._cache_gather_ranges = [range(step + 1) for step in range(self.seq_len)]
         self._slot_counts = (
             len(self._cache_key_slots),
             len(self._cache_value_slots),
@@ -122,8 +124,10 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
             len(self._v_gather_step_views),
             len(self._k_gather_prefix_views),
             len(self._v_gather_prefix_views),
+            len(self._cache_gather_ranges),
         )
         self._expected_slot_counts = (
+            self.seq_len,
             self.seq_len,
             self.seq_len,
             self.seq_len,
@@ -160,6 +164,7 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
             v_gather_steps = self._v_gather_step_views
             k_gather_prefixes = self._k_gather_prefix_views
             v_gather_prefixes = self._v_gather_prefix_views
+            cache_gather_ranges = self._cache_gather_ranges
             for step, q, k, v in self._decode_step_inputs:
                 placed_k, placed_v, tier, peer = self._place_kv(k, v, step)
                 cache_k[step] = placed_k
@@ -168,7 +173,7 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 peer_targets[step] = peer
 
                 gather_idx = 0
-                for cache_idx in range(step + 1):
+                for cache_idx in cache_gather_ranges[step]:
                     tk = cache_k[cache_idx]
                     tv = cache_v[cache_idx]
                     t = tiers[cache_idx]
@@ -231,6 +236,7 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._peer_target_slots = []
         self._slot_counts = ()
         self._expected_slot_counts = ()
+        self._cache_gather_ranges = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
