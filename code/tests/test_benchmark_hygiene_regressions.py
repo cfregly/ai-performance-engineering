@@ -18402,25 +18402,60 @@ def test_ch04_baseline_bandwidth_suite_flattens_chunk_copy_schedule() -> None:
     )
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+    finalize_section = source.split("def finalize_iteration_metrics", maxsplit=1)[1].split(
         "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+    metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "def get_verify_output",
         maxsplit=1,
     )[0]
 
     assert "self._flat_chunk_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []" in setup_section
     assert "self._pair_count = 0" in setup_section
+    assert "self._total_bytes_per_benchmark = 0" in setup_section
+    assert "self._timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []" in setup_section
+    assert "self._empty_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []" in setup_section
+    assert "self._pending_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = self._empty_timing_pairs" in setup_section
+    assert "self._timing_device_pairs: list[tuple[torch.device, tuple[torch.cuda.Event, torch.cuda.Event]]] = []" in setup_section
     assert "self._inner_iteration_range = range(self.inner_iterations)" in setup_section
     assert "self._flat_chunk_pairs = []" in setup_section
+    assert "self._pending_timing_pairs = self._empty_timing_pairs" in setup_section
     assert "chunk_pairs = list(zip(src_chunks, dst_chunks))" in setup_section
     assert "self._flat_chunk_pairs.extend(chunk_pairs)" in setup_section
+    assert "torch.cuda.Event(enable_timing=True)" in setup_section
     assert "self._pair_count = len(self.pairs)" in setup_section
+    assert "self._total_bytes_per_benchmark = bytes_per_iter * self.inner_iterations * self._pair_count" in setup_section
+    assert "self._timing_device_pairs = [" in setup_section
+    assert "zip(self.pairs, self._timing_pairs, strict=True)" in setup_section
+    assert "self._timing_pair_count = len(self._timing_device_pairs)" in setup_section
     assert "bytes_per_iteration=float(bytes_per_iter * self.inner_iterations * self._pair_count)" in setup_section
     assert "if not self._flat_chunk_pairs:" in benchmark_section
-    assert "total_bytes = self.size_mb * 1024 * 1024 * self._pair_count * self.inner_iterations" in benchmark_section
+    assert "self._pending_timing_pairs = self._timing_pairs" in benchmark_section
+    assert "for dst_device, (start_event, _) in self._timing_device_pairs:" in benchmark_section
+    assert "start_event.record(torch.cuda.current_stream(dst_device))" in benchmark_section
+    assert "for dst_device, (_, end_event) in self._timing_device_pairs:" in benchmark_section
+    assert "end_event.record(torch.cuda.current_stream(dst_device))" in benchmark_section
+    assert "total_bytes = self.size_mb * 1024 * 1024 * self._pair_count * self.inner_iterations" not in benchmark_section
+    assert "time.perf_counter()" not in benchmark_section
+    assert "self.last_bandwidth_gbps =" not in benchmark_section
     assert "len(self.pairs)" not in benchmark_section
     assert "for _ in self._inner_iteration_range:" in benchmark_section
     assert "for _ in range(self.inner_iterations):" not in benchmark_section
     assert "for src_chunk, dst_chunk in self._flat_chunk_pairs:" in benchmark_section
     assert "for chunk_list in self.chunk_pairs:" not in benchmark_section
+    assert "elapsed_ms_value = max_elapsed_ms(self._pending_timing_pairs)" in finalize_section
+    assert "self._pending_timing_pairs = self._empty_timing_pairs" in finalize_section
+    assert "self.last_bandwidth_gbps = (self._total_bytes_per_benchmark / elapsed_s) / 1e9" in finalize_section
+    assert "self.finalize_iteration_metrics()" in capture_section
+    assert "self.finalize_iteration_metrics()" in metrics_section
 
 
 def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() -> None:
