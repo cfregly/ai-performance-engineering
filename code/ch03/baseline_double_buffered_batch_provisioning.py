@@ -1,8 +1,9 @@
 """Double-buffered batch provisioning baseline with blocking data loading.
 
-This benchmark demonstrates inefficient data provisioning - allocating new
-tensors and blocking on H2D copies each iteration. The optimized version
-pre-allocates and prefetches data.
+This benchmark demonstrates inefficient data provisioning with pageable host
+batches and blocking H2D copies each iteration. Device staging buffers are
+reused so the comparison focuses on transfer behavior instead of allocator
+noise. The optimized version pins and prefetches data.
 """
 
 from __future__ import annotations
@@ -27,8 +28,11 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
         self.model: Optional[nn.Module] = None
         self.host_batches: List[torch.Tensor] = []
         self.target_batches: List[torch.Tensor] = []
+        self.device_batch: Optional[torch.Tensor] = None
+        self.device_target: Optional[torch.Tensor] = None
         self.batch_idx = 0
         self.output: Optional[torch.Tensor] = None
+        self._model_parameters: tuple[nn.Parameter, ...] = ()
         self._payload_parameter_count = 0
         # Training benchmarks don't support jitter check - outputs change due to weight updates
         # Two float32 batches per step: inputs + targets (512x1024 elements each)
@@ -49,27 +53,32 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
             nn.Linear(1024, 1024),
         ).to(self.device)
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
+        self._model_parameters = tuple(self.model.parameters())
         
         # Pre-allocate host batches for deterministic verification
         num_batches = 4
         for _ in range(num_batches):
             self.host_batches.append(torch.randn(512, 1024, dtype=torch.float32))
             self.target_batches.append(torch.randn(512, 1024, dtype=torch.float32))
+        self.device_batch = torch.empty(512, 1024, device=self.device, dtype=torch.float32)
+        self.device_target = torch.empty(512, 1024, device=self.device, dtype=torch.float32)
         self.batch_idx = 0
         self._synchronize()
 
     def benchmark_fn(self) -> None:
         """Training step with blocking data transfer."""
-        assert self.model is not None
+        assert self.model is not None and self.device_batch is not None and self.device_target is not None
         
         # Get next batch (round-robin)
         idx = self.batch_idx % len(self.host_batches)
         self.batch_idx += 1
         
         with self._nvtx_range("baseline_double_buffered_batch_provisioning"):
-            # Blocking H2D copy (the slow part)
-            data = self.host_batches[idx].to(self.device, non_blocking=False)
-            target = self.target_batches[idx].to(self.device, non_blocking=False)
+            # Blocking H2D copy (the slow part), using reusable device staging.
+            data = self.device_batch
+            target = self.device_target
+            data.copy_(self.host_batches[idx], non_blocking=False)
+            target.copy_(self.target_batches[idx], non_blocking=False)
             
             # Forward
             out = self.model(data)
@@ -77,7 +86,7 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
             loss.backward()
             
             # Clear gradients (simulate optimizer step)
-            for p in self.model.parameters():
+            for p in self._model_parameters:
                 p.grad = None
         
         self.output = out.detach()
@@ -105,7 +114,10 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
         self.model = None
         self.host_batches = []
         self.target_batches = []
+        self.device_batch = None
+        self.device_target = None
         self.output = None
+        self._model_parameters = ()
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

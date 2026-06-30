@@ -3082,6 +3082,47 @@ def test_ch03_ch09_benchmarks_cache_verification_parameter_count() -> None:
         assert "sum(p.numel()" not in capture_section
 
 
+def test_ch03_double_buffered_baseline_reuses_blocking_staging_buffers() -> None:
+    source = (
+        REPO_ROOT / "ch03" / "baseline_double_buffered_batch_provisioning.py"
+    ).read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self.device_batch: Optional[torch.Tensor] = None" in source
+    assert "self.device_target: Optional[torch.Tensor] = None" in source
+    assert "self._model_parameters: tuple[nn.Parameter, ...] = ()" in source
+    assert (
+        "self.device_batch = torch.empty(512, 1024, device=self.device, dtype=torch.float32)"
+        in setup_section
+    )
+    assert (
+        "self.device_target = torch.empty(512, 1024, device=self.device, dtype=torch.float32)"
+        in setup_section
+    )
+    assert "self._model_parameters = tuple(self.model.parameters())" in setup_section
+    assert "data = self.device_batch" in benchmark_section
+    assert "target = self.device_target" in benchmark_section
+    assert "data.copy_(self.host_batches[idx], non_blocking=False)" in benchmark_section
+    assert "target.copy_(self.target_batches[idx], non_blocking=False)" in benchmark_section
+    assert ".to(self.device" not in benchmark_section
+    assert "for p in self._model_parameters:" in benchmark_section
+    assert "for p in self.model.parameters():" not in benchmark_section
+    assert "self.device_batch = None" in teardown_section
+    assert "self.device_target = None" in teardown_section
+    assert "self._model_parameters = ()" in teardown_section
+
+
 def test_ch03_double_buffered_optimized_paths_wait_on_slot_events() -> None:
     for relative in (
         "ch03/optimized_rack_prep.py",
