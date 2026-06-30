@@ -1082,6 +1082,32 @@ def test_ch04_gradient_compression_reuses_verification_output_buffer() -> None:
     assert "self._verify_output_buffer = None" in teardown_section
 
 
+def test_ch04_transfer_wrappers_use_inference_mode() -> None:
+    targets = (
+        ("ch04/baseline_grace_blackwell_locality.py", "def capture_verification_payload"),
+        ("ch04/optimized_grace_blackwell_locality.py", "def capture_verification_payload"),
+        ("ch04/baseline_pcie_staging.py", "def capture_verification_payload"),
+        ("ch04/optimized_pcie_staging.py", "def capture_verification_payload"),
+        ("ch04/baseline_nvlink_topology_aware.py", "def capture_verification_payload"),
+        ("ch04/optimized_nvlink_topology_aware.py", "def capture_verification_payload"),
+        ("ch04/baseline_nvlink_multigpu.py", "def capture_verification_payload"),
+        ("ch04/optimized_nvlink_multigpu.py", "def capture_verification_payload"),
+        ("ch04/baseline_nvlink_topology_aware_multigpu.py", "def capture_verification_payload"),
+        ("ch04/optimized_nvlink_topology_aware_multigpu.py", "def capture_verification_payload"),
+        ("ch04/gradient_compression_common.py", "def _prepare_int8_buffers"),
+    )
+
+    for relative, end_marker in targets:
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            end_marker,
+            maxsplit=1,
+        )[0]
+
+        assert "torch.inference_mode()" in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
+
+
 def test_ch05_optimized_storage_cpu_opens_mmap_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch05" / "optimized_storage_cpu.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(

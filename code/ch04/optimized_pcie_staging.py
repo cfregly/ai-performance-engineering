@@ -58,7 +58,7 @@ class OptimizedPcieStagingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: pinned CPU buffer with nonblocking staged copies."""
-        with self._nvtx_range("optimized_pcie_staging"):
+        with torch.inference_mode(), self._nvtx_range("optimized_pcie_staging"):
             self.host_buffer.copy_(self.data_gpu0, non_blocking=True)
             self.data_gpu1.copy_(self.host_buffer, non_blocking=True)
 

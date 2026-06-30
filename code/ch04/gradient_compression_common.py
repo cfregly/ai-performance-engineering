@@ -125,7 +125,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if not self.inputs:
             raise RuntimeError("Inputs not initialized")
-        with self._nvtx_range(f"gradient_compression_{self.compression}"):
+        with torch.inference_mode(), self._nvtx_range(f"gradient_compression_{self.compression}"):
             if self.compression == "none":
                 if self.multi_gpu:
                     torch.cuda.nccl.all_reduce(self.inputs, outputs=self._fp32_outputs)

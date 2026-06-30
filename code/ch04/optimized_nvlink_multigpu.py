@@ -74,7 +74,7 @@ class OptimizedNVLinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._sync_all()
 
     def benchmark_fn(self) -> None:
-        with self._nvtx_range("optimized_nvlink_multigpu"):
+        with torch.inference_mode(), self._nvtx_range("optimized_nvlink_multigpu"):
             for stream, dst_id, src, dst in self._copy_groups:
                 with torch.cuda.device(dst_id), torch.cuda.stream(stream):
                     dst.copy_(src, non_blocking=True)
@@ -136,4 +136,3 @@ class OptimizedNVLinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return OptimizedNVLinkBenchmark()
-

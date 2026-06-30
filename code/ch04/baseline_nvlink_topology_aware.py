@@ -47,7 +47,7 @@ class BaselineNvlinkTopologyAwareBenchmark(VerificationPayloadMixin, BaseBenchma
         assert self.src is not None and self.dst is not None and self.host_buffer is not None
         if not self._chunk_groups:
             raise RuntimeError("setup() must initialize chunk views")
-        with self._nvtx_range("baseline_nvlink_topology_aware"):
+        with torch.inference_mode(), self._nvtx_range("baseline_nvlink_topology_aware"):
             # Naive: default stream copy, peer access may be disabled
             for host_chunk, src_chunk, dst_chunk in self._chunk_groups:
                 host_chunk.copy_(src_chunk, non_blocking=False)

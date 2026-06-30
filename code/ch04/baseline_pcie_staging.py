@@ -59,7 +59,7 @@ class BaselinePcieStagingBenchmark(VerificationPayloadMixin, BaseBenchmark):
     
     def benchmark_fn(self) -> None:
         """Benchmark: pageable CPU buffer with blocking staged copies."""
-        with self._nvtx_range("baseline_pcie_staging"):
+        with torch.inference_mode(), self._nvtx_range("baseline_pcie_staging"):
             self.host_buffer.copy_(self.data_gpu0, non_blocking=False)
             self.data_gpu1.copy_(self.host_buffer, non_blocking=False)
 

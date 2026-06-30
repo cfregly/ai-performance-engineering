@@ -68,7 +68,7 @@ class BaselineNVLinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._sync_all()
 
     def benchmark_fn(self) -> None:
-        with self._nvtx_range("baseline_nvlink_multigpu"):
+        with torch.inference_mode(), self._nvtx_range("baseline_nvlink_multigpu"):
             for host_buffer, src, dst in self._copy_groups:
                 host_buffer.copy_(src, non_blocking=False)
                 dst.copy_(host_buffer, non_blocking=False)
@@ -123,4 +123,3 @@ class BaselineNVLinkBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return BaselineNVLinkBenchmark()
-

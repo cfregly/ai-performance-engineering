@@ -47,12 +47,13 @@ class OptimizedGb200LocalityBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         assert self.device_buf is not None and self.device_template is not None
         assert self._output_view is not None and self._materialization_buffer is not None
-        with self._nvtx_range("device_only_compute"):
-            # Reset from a device-resident template to avoid host traffic while keeping outputs identical
-            self.device_buf.copy_(self.device_template)
-            self.device_buf.add_(1.0)
-        torch.sum(self.device_buf, dim=0, out=self._materialization_buffer)
-        self.output = self._output_view
+        with torch.inference_mode():
+            with self._nvtx_range("device_only_compute"):
+                # Reset from a device-resident template to avoid host traffic while keeping outputs identical
+                self.device_buf.copy_(self.device_template)
+                self.device_buf.add_(1.0)
+            torch.sum(self.device_buf, dim=0, out=self._materialization_buffer)
+            self.output = self._output_view
 
     def capture_verification_payload(self) -> None:
         if self._verify_probe is None or self.output is None:

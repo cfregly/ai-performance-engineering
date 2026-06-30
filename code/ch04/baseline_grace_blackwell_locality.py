@@ -49,12 +49,13 @@ class BaselineGb200LocalityBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         assert self.host_buf is not None and self.device_buf is not None
         assert self._output_view is not None and self._materialization_buffer is not None
-        with self._nvtx_range("host_to_device+compute"):
-            self.device_buf.copy_(self.host_buf, non_blocking=True)
-            self.device_buf.add_(1.0)
-        # Keep the reduction in the workload, but verify via a representative slice.
-        torch.sum(self.device_buf, dim=0, out=self._materialization_buffer)
-        self.output = self._output_view
+        with torch.inference_mode():
+            with self._nvtx_range("host_to_device+compute"):
+                self.device_buf.copy_(self.host_buf, non_blocking=True)
+                self.device_buf.add_(1.0)
+            # Keep the reduction in the workload, but verify via a representative slice.
+            torch.sum(self.device_buf, dim=0, out=self._materialization_buffer)
+            self.output = self._output_view
 
     def capture_verification_payload(self) -> None:
         if self._verify_probe is None or self.output is None:
