@@ -9137,6 +9137,12 @@ def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None
     assert "self._fc1_weight_t = self.fc1.weight.t()" in ch17_model
     assert "self._fc2_weight_t = self.fc2.weight.t()" in ch17_model
     assert "self._fc3_weight_t = self.fc3.weight.t()" in ch17_model
+    assert "def _workspace(" in ch17_model
+    assert "or buffer.numel() < numel" in ch17_model
+    assert "return buffer[:numel].view(rows, width)" in ch17_model
+    assert "self._fc1_buffer.shape != fc1_shape" not in ch17_model
+    assert "self._fc2_buffer.shape != fc2_shape" not in ch17_model
+    assert "self._fc3_buffer.shape != out_shape" not in ch17_model
     assert "def forward_into(" in ch17_model
     assert "torch.mm(x, self._fc1_weight_t, out=fc1_out)" in ch17_forward_into
     assert "F.gelu(fc1_out, out=fc1_out)" in ch17_model
@@ -9182,6 +9188,36 @@ def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None
     assert "self.output = self._output_buffer.detach()" in ch20_capture
     assert "stacked_inputs = torch.stack(self.inputs)" not in ch20_capture
     assert "self.output = torch.stack([out.detach() for out in outputs], dim=0)" not in ch20_capture
+
+
+def test_ch17_buffered_gelu_mlp_reuses_larger_workspace_capacity() -> None:
+    from ch17.optimized_memory import BufferedGeluMlp
+
+    model = BufferedGeluMlp(input_dim=4, hidden_dim=6).eval()
+
+    with torch.inference_mode():
+        large = model(torch.randn(8, 4))
+        fc1_ptr = model._fc1_buffer.data_ptr()
+        fc2_ptr = model._fc2_buffer.data_ptr()
+        fc3_ptr = model._fc3_buffer.data_ptr()
+
+        small = model(torch.randn(3, 4))
+        assert model._fc1_buffer.data_ptr() == fc1_ptr
+        assert model._fc2_buffer.data_ptr() == fc2_ptr
+        assert model._fc3_buffer.data_ptr() == fc3_ptr
+        assert model._fc1_buffer.numel() == 8 * 6
+        assert model._fc2_buffer.numel() == 8 * 6
+        assert model._fc3_buffer.numel() == 8 * 4
+
+        grown = model(torch.randn(9, 4))
+
+    assert large.shape == (8, 4)
+    assert small.shape == (3, 4)
+    assert small.data_ptr() == fc3_ptr
+    assert grown.shape == (9, 4)
+    assert model._fc1_buffer.numel() == 9 * 6
+    assert model._fc2_buffer.numel() == 9 * 6
+    assert model._fc3_buffer.numel() == 9 * 4
 
 
 def test_ch20_kernel_verifiers_defer_contiguous_payload_slice_outside_hot_loop() -> None:
