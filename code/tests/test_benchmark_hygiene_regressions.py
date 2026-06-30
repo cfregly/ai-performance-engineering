@@ -17800,6 +17800,14 @@ def test_ch04_multigpu_symmetric_memory_reuses_timing_events_outside_hot_loop() 
             assert "self._empty_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []" in setup_section
             assert "self._pending_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = self._empty_timing_pairs" in setup_section
             assert "self._stream_timing_pairs = list(zip(self._copy_streams, self._timing_pairs, strict=True))" in setup_section
+            assert "self._timing_pair_count = 0" in setup_section
+            assert "self._stream_timing_pair_count = 0" in setup_section
+            assert "self._timing_pair_count = len(self._timing_pairs)" in setup_section
+            assert "self._stream_timing_pair_count = len(self._stream_timing_pairs)" in setup_section
+            assert "self._timing_pair_count < 2" in benchmark_section
+            assert "self._stream_timing_pair_count < 2" in benchmark_section
+            assert "len(timing_pairs)" not in benchmark_section
+            assert "len(self._stream_timing_pairs)" not in benchmark_section
             assert "current_stream = torch.cuda.current_stream()" in benchmark_section
             assert "send_stream.wait_stream(current_stream)" in benchmark_section
             assert "recv_stream.wait_stream(current_stream)" in benchmark_section
@@ -17940,14 +17948,21 @@ def test_ch04_optimized_bandwidth_suite_reuses_timing_events_outside_hot_loop() 
     assert "torch.cuda.Event(enable_timing=True)" in setup_section
     assert "self._stream_chunk_pairs: list[tuple[torch.cuda.Stream, list[tuple[torch.Tensor, torch.Tensor]]]] = []" in setup_section
     assert "self._stream_timing_pairs: list[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []" in setup_section
+    assert "self._stream_timing_pair_count = 0" in setup_section
+    assert "self._expected_stream_timing_pair_count = 0" in setup_section
     assert "self._empty_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = []" in setup_section
     assert "self._pending_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = self._empty_timing_pairs" in setup_section
     assert "self._inner_iteration_range = range(self.inner_iterations)" in setup_section
     assert "self._stream_chunk_pairs = list(zip(self.streams, self.chunk_pairs, strict=True))" in setup_section
     assert "self._stream_timing_pairs = list(zip(self.streams, self._timing_pairs, strict=True))" in setup_section
+    assert "self._stream_timing_pair_count = len(self._stream_timing_pairs)" in setup_section
+    assert "self._expected_stream_timing_pair_count = len(self.streams)" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
     assert "self._pending_timing_pairs = self._timing_pairs" in benchmark_section
     assert "self._timing_pairs[: len(self.streams)]" not in benchmark_section
+    assert "self._stream_timing_pair_count != self._expected_stream_timing_pair_count" in benchmark_section
+    assert "len(self._stream_timing_pairs)" not in benchmark_section
+    assert "len(self.streams)" not in benchmark_section
     assert "for _ in self._inner_iteration_range:" in benchmark_section
     assert "for _ in range(self.inner_iterations):" not in benchmark_section
     assert "for stream, (start_event, _) in self._stream_timing_pairs:" in benchmark_section

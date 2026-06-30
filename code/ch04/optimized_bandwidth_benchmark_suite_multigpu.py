@@ -63,6 +63,8 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         self._pending_timing_pairs: list[tuple[torch.cuda.Event, torch.cuda.Event]] = self._empty_timing_pairs
         self._stream_chunk_pairs: list[tuple[torch.cuda.Stream, list[tuple[torch.Tensor, torch.Tensor]]]] = []
         self._stream_timing_pairs: list[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []
+        self._stream_timing_pair_count = 0
+        self._expected_stream_timing_pair_count = 0
         self.register_workload_metadata(requests_per_iteration=1.0)
 
     def setup(self) -> None:
@@ -80,6 +82,8 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         self._pending_timing_pairs = self._empty_timing_pairs
         self._stream_chunk_pairs = []
         self._stream_timing_pairs = []
+        self._stream_timing_pair_count = 0
+        self._expected_stream_timing_pair_count = 0
         src_buffers = [
             torch.randn(numel, device=f"cuda:{idx}", dtype=torch.float32)
             for idx in range(device_count)
@@ -101,6 +105,8 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._stream_chunk_pairs = list(zip(self.streams, self.chunk_pairs, strict=True))
         self._stream_timing_pairs = list(zip(self.streams, self._timing_pairs, strict=True))
+        self._stream_timing_pair_count = len(self._stream_timing_pairs)
+        self._expected_stream_timing_pair_count = len(self.streams)
         self.register_workload_metadata(
             requests_per_iteration=1.0,
             bytes_per_iteration=float(bytes_per_iter * self.inner_iterations * len(self.pairs)),
@@ -109,7 +115,10 @@ class OptimizedBandwidthSuiteMultiGPU(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if not self.chunk_pairs:
             raise RuntimeError("Benchmark not initialized")
-        if not self._stream_timing_pairs or len(self._stream_timing_pairs) != len(self.streams):
+        if (
+            not self._stream_timing_pairs
+            or self._stream_timing_pair_count != self._expected_stream_timing_pair_count
+        ):
             raise RuntimeError("Timing events not initialized")
         self._pending_timing_pairs = self._timing_pairs
         for stream, (start_event, _) in self._stream_timing_pairs:

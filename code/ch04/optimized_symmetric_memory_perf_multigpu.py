@@ -81,6 +81,8 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._empty_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_timing_pairs: List[tuple[torch.cuda.Event, torch.cuda.Event]] = self._empty_timing_pairs
         self._stream_timing_pairs: List[tuple[torch.cuda.Stream, tuple[torch.cuda.Event, torch.cuda.Event]]] = []
+        self._timing_pair_count = 0
+        self._stream_timing_pair_count = 0
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_output: Optional[torch.Tensor] = None
@@ -134,6 +136,8 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
             for _ in range(2)
         ]
         self._stream_timing_pairs = list(zip(self._copy_streams, self._timing_pairs, strict=True))
+        self._timing_pair_count = len(self._timing_pairs)
+        self._stream_timing_pair_count = len(self._stream_timing_pairs)
         self._inner_iteration_range = range(self._inner_iterations)
         
         torch.cuda.synchronize()
@@ -149,7 +153,11 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
             raise RuntimeError("Tensors not initialized")
 
         timing_pairs = self._timing_pairs
-        if self._copy_streams is None or len(timing_pairs) < 2 or len(self._stream_timing_pairs) < 2:
+        if (
+            self._copy_streams is None
+            or self._timing_pair_count < 2
+            or self._stream_timing_pair_count < 2
+        ):
             raise RuntimeError("Timing events not initialized")
         send_stream, recv_stream = self._copy_streams
         current_stream = torch.cuda.current_stream()
@@ -235,6 +243,8 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._timing_pairs = []
         self._pending_timing_pairs = self._empty_timing_pairs
         self._stream_timing_pairs = []
+        self._timing_pair_count = 0
+        self._stream_timing_pair_count = 0
         self._verify_output = None
         self._verify_output_buffer = None
         self._local_buffer = None
