@@ -56,6 +56,18 @@ def _total_latency_percentiles(values: list[float]) -> tuple[float, float]:
     return round(p50, 2), round(p95, 2)
 
 
+def _count_whitespace_separated_tokens(text: str) -> int:
+    count = 0
+    in_token = False
+    for char in text:
+        if char.isspace():
+            in_token = False
+        elif not in_token:
+            count += 1
+            in_token = True
+    return count
+
+
 @dataclass(slots=True)
 class PipelineResult:
     """Terminal record for one item across all three stages."""
@@ -139,7 +151,7 @@ def cpu_parse_payload(payload: str, cpu_rounds: int) -> dict[str, Any]:
         checksum ^= (i << 1) & 0xFFFF
 
     transformed = payload.strip().upper()
-    token_count = len(transformed.split())
+    token_count = _count_whitespace_separated_tokens(transformed)
 
     return {
         "text": transformed,

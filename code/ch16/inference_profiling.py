@@ -170,7 +170,7 @@ class DynamicBatcher:
             'prompt': prompt,
             'priority': priority,
             'timestamp': time.time(),
-            'tokens': len(prompt.split())  # Simplified token count
+            'tokens': _count_whitespace_separated_tokens(prompt)
         }
         self.request_queue.append(request)
         return True
@@ -355,28 +355,27 @@ class PrefixCache:
         """Generate cache key for prompt."""
         return hashlib.md5(prompt.encode()).hexdigest()
 
-    @staticmethod
-    def _prefix_cache_keys(words: List[str]) -> List[Tuple[str, int]]:
+    def find_longest_prefix(self, prompt: str) -> Tuple[str, int]:
+        """Find the longest cached prefix for a prompt."""
+        words = prompt.split()
         digest = hashlib.md5()
-        prefix_keys = []
+        longest_cache_key: Optional[str] = None
+        longest_prefix_length = 0
+
         for idx, word in enumerate(words, start=1):
             if idx > 1:
                 digest.update(b" ")
             digest.update(word.encode())
-            prefix_keys.append((digest.hexdigest(), idx))
-        return prefix_keys
-        
-    def find_longest_prefix(self, prompt: str) -> Tuple[str, int]:
-        """Find the longest cached prefix for a prompt."""
-        words = prompt.split()
-        prefix_keys = self._prefix_cache_keys(words)
-
-        for cache_key, length in reversed(prefix_keys):
+            cache_key = digest.hexdigest()
             if cache_key in self.cache:
-                self.hit_count += 1
-                self.access_times[cache_key] = time.time()
-                prefix = ' '.join(words[:length])
-                return prefix, length
+                longest_cache_key = cache_key
+                longest_prefix_length = idx
+
+        if longest_cache_key is not None:
+            self.hit_count += 1
+            self.access_times[longest_cache_key] = time.time()
+            prefix = ' '.join(words[:longest_prefix_length])
+            return prefix, longest_prefix_length
                 
         self.miss_count += 1
         return "", 0

@@ -77,6 +77,18 @@ def _latency_percentiles(values: list[float]) -> tuple[float, float]:
     return round(p50, 2), round(p95, 2)
 
 
+def _count_whitespace_separated_tokens(text: str) -> int:
+    count = 0
+    in_token = False
+    for char in text:
+        if char.isspace():
+            in_token = False
+        elif not in_token:
+            count += 1
+            in_token = True
+    return count
+
+
 class TransientStageError(RuntimeError):
     """Retryable stage error (safe to retry by policy)."""
 
@@ -266,7 +278,7 @@ def cpu_transform(payload: str, cpu_rounds: int, force_fail: bool) -> dict[str, 
     return {
         "text": transformed,
         "checksum": checksum,
-        "token_count": len(transformed.split()),
+        "token_count": _count_whitespace_separated_tokens(transformed),
     }
 
 

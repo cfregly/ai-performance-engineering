@@ -4408,6 +4408,8 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert "np.max(recent_values)" not in monitoring_report
     assert "token_total = 0" in batcher_section
     assert "token_total += request['tokens']" in batcher_section
+    assert "'tokens': _count_whitespace_separated_tokens(prompt)" in batcher_section
+    assert "len(prompt.split())" not in batcher_section
     assert "np.mean([r['tokens'] for r in batch])" not in batcher_section
     assert "_mean_recent_dict_value(self.batch_history, 'batch_size')" in batcher_section
     assert "_mean_recent_dict_value(self.batch_history, 'avg_tokens')" in batcher_section
@@ -4424,8 +4426,11 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert "self.request_queue.remove(request)" not in batcher_section
     assert "digest = hashlib.md5()" in prefix_cache_section
     assert "digest.update(b\" \")" in prefix_cache_section
-    assert "prefix_keys.append((digest.hexdigest(), idx))" in prefix_cache_section
-    assert "for cache_key, length in reversed(prefix_keys):" in prefix_lookup_section
+    assert "longest_cache_key: Optional[str] = None" in prefix_lookup_section
+    assert "longest_prefix_length = 0" in prefix_lookup_section
+    assert "longest_cache_key = cache_key" in prefix_lookup_section
+    assert "prefix_keys.append(" not in prefix_cache_section
+    assert "reversed(prefix_keys)" not in prefix_lookup_section
     assert "for length in range(len(words), 0, -1)" not in prefix_lookup_section
     assert "self.get_cache_key(prefix)" not in prefix_lookup_section
     assert "def _count_whitespace_separated_tokens" in profiling_source
@@ -10420,12 +10425,18 @@ def test_python_concurrency_summaries_reuse_sorted_latency_samples() -> None:
     assert "def _success_latency_percentiles" in round2_source
     assert "def _latency_percentiles" in all_in_one_source
     assert "def _total_latency_percentiles" in hybrid_source
+    assert "def _count_whitespace_separated_tokens" in all_in_one_source
+    assert "def _count_whitespace_separated_tokens" in hybrid_source
 
     assert "p50_ms, p95_ms = _latency_percentiles(latencies)" in round1_summary
     assert "p50_success_ms, p95_success_ms = _success_latency_percentiles(success_latencies)" in round2_summary
     assert "p50_total_ms, p95_total_ms = _latency_percentiles(totals)" in all_in_one_summary
     assert "p50_success_ms, _ = _latency_percentiles(success_totals)" in all_in_one_summary
     assert "p50_total_ms, p95_total_ms = _total_latency_percentiles(totals)" in hybrid_summary
+    assert '"token_count": _count_whitespace_separated_tokens(transformed)' in all_in_one_source
+    assert "token_count = _count_whitespace_separated_tokens(transformed)" in hybrid_source
+    assert "len(transformed.split())" not in all_in_one_source
+    assert "len(transformed.split())" not in hybrid_source
 
     assert "for result in results:" in round1_summary
     assert "latencies = [r.latency_ms for r in results]" not in round1_summary
