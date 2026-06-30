@@ -24,6 +24,7 @@ class BaselineStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self.filepath: Optional[str] = None
         self._host_template: Optional[np.ndarray] = None
+        self._device_buffer: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.size_mb = 64  # Smaller for faster benchmark
@@ -44,6 +45,7 @@ class BaselineStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.filepath = f.name
         f.close()
         np.save(self.filepath, self._host_template)
+        self._device_buffer = torch.empty(self.size, device=self.device, dtype=torch.float32)
         self._output_buffer = torch.empty(1, device=self.device, dtype=torch.float32)
         self._verify_output_buffer = torch.empty_like(self._output_buffer)
         self._synchronize()
@@ -51,10 +53,12 @@ class BaselineStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: read the on-disk tensor through pageable host memory."""
         assert self.filepath is not None
+        assert self._device_buffer is not None
         assert self._output_buffer is not None
         with torch.inference_mode(), self._nvtx_range("storage_cpu"):
             cpu_loaded = np.load(self.filepath)
-            self.data = torch.from_numpy(cpu_loaded).to(self.device)
+            self._device_buffer.copy_(torch.from_numpy(cpu_loaded), non_blocking=False)
+            self.data = self._device_buffer
             torch.sum(self.data, dim=0, keepdim=True, out=self._output_buffer)
         self.output = self._output_buffer
 
@@ -84,6 +88,7 @@ class BaselineStorageCpuBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self.filepath = None
         self._host_template = None
+        self._device_buffer = None
         self._output_buffer = None
         self._verify_output_buffer = None
         torch.cuda.empty_cache()

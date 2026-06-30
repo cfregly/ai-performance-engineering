@@ -902,13 +902,19 @@ def test_ch05_baseline_storage_cpu_reuses_output_buffer() -> None:
         maxsplit=1,
     )[0]
 
+    assert "self._device_buffer: Optional[torch.Tensor] = None" in source
     assert "self._output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._device_buffer = torch.empty(self.size, device=self.device, dtype=torch.float32)" in setup_section
     assert "self._output_buffer = torch.empty(1, device=self.device, dtype=torch.float32)" in setup_section
     assert "with torch.inference_mode(), self._nvtx_range(\"storage_cpu\"):" in benchmark_section
+    assert "self._device_buffer.copy_(torch.from_numpy(cpu_loaded), non_blocking=False)" in benchmark_section
+    assert "self.data = self._device_buffer" in benchmark_section
     assert "torch.sum(self.data, dim=0, keepdim=True, out=self._output_buffer)" in benchmark_section
     assert "self.output = self._output_buffer" in benchmark_section
+    assert "torch.from_numpy(cpu_loaded).to(self.device)" not in benchmark_section
     assert "self.data.sum().unsqueeze(0)" not in benchmark_section
     assert "torch.empty(" not in benchmark_section
+    assert "self._device_buffer = None" in teardown_section
     assert "self._output_buffer = None" in teardown_section
 
 
