@@ -9219,8 +9219,10 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self._cache_step_views: list[torch.Tensor] = []" in baseline_source
     assert "self._cos_step_views: list[torch.Tensor] = []" in baseline_source
     assert "self._sin_step_views: list[torch.Tensor] = []" in baseline_source
+    assert "self._step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []" in baseline_source
     assert "self._input_step_views = list(self.inputs.unbind(0))" in baseline_setup
     assert "self._cache_step_views = [self.cache[:, :, step, :] for step in range(self.cfg.steps)]" in baseline_setup
+    assert "self._step_groups = list(" in baseline_setup
     assert "self._output_view = self._cache_step_views[self.cfg.steps - 1]" in baseline_setup
     assert "emb = torch.cat([freqs, freqs], dim=-1)" not in common_source
     assert "cos[:, :half].copy_(cos_half)" in common_source
@@ -9230,7 +9232,8 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "out1.addcmul_(q2, sin[..., :half], value=-1)" in common_source
     assert "torch.mul(q2, cos[..., half:], out=out2)" in common_source
     assert "out2.addcmul_(q1, sin[..., half:])" in common_source
-    assert "for x, cache_step, cos_t, sin_t in zip(" in baseline_benchmark
+    assert "for x, cache_step, cos_t, sin_t in self._step_groups:" in baseline_benchmark
+    assert "zip(" not in baseline_benchmark
     assert "cos_t = self.cos[step].view(1, 1, self.cfg.head_dim)" not in baseline_benchmark
     assert "sin_t = self.sin[step].view(1, 1, self.cfg.head_dim)" not in baseline_benchmark
     assert "q = apply_rope(q, cos_t, sin_t)" in baseline_benchmark
@@ -9250,11 +9253,15 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self._cache_step_views: list[torch.Tensor] = []" in source
     assert "self._cos_step_views: list[torch.Tensor] = []" in source
     assert "self._sin_step_views: list[torch.Tensor] = []" in source
+    assert "self._step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
     assert "self.q_buffer = torch.empty(" in setup_section
     assert "self.q_heads = self.q_buffer.view(" in setup_section
     assert "self._input_step_views = list(self.inputs.unbind(0))" in setup_section
     assert "self._cache_step_views = [self.cache[:, :, step, :] for step in range(self.cfg.steps)]" in setup_section
+    assert "self._step_groups = list(" in setup_section
     assert "self._output_view = self._cache_step_views[self.cfg.steps - 1]" in setup_section
+    assert "for x, cache_step, cos_t, sin_t in self._step_groups:" in benchmark_section
+    assert "zip(" not in benchmark_section
     assert "torch.mm(x, self.q_weight, out=self.q_buffer)" in benchmark_section
     assert "apply_rope_inplace(self.q_heads, cos_t, sin_t, self.rope_scratch)" in benchmark_section
     assert "apply_rope(q, cos_t, sin_t)" not in benchmark_section
@@ -9263,6 +9270,7 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self.output = self.cache[:, :, self.cfg.steps - 1, :]" not in benchmark_section
     assert "self._input_step_views = []" in teardown_section
     assert "self._cache_step_views = []" in teardown_section
+    assert "self._step_groups = []" in teardown_section
 
     q = torch.randn(2, 3, 8, dtype=torch.float32)
     cos = torch.randn(1, 1, 8, dtype=torch.float32)
@@ -10491,8 +10499,9 @@ def test_optimized_flexdecode_graph_preprojects_static_decode_token() -> None:
     assert "self.model._update_cache(self.static_decode_k, self.static_decode_v, position)" in benchmark_section
     assert "self.model._set_offset(position)" in benchmark_section
     assert "self.base_position + pos" not in benchmark_section
-    assert "zip(" in benchmark_section
-    assert "self._decode_positions" in benchmark_section
+    assert "for position, start_evt, end_evt in self._decode_schedule:" in benchmark_section
+    assert "zip(" not in benchmark_section
+    assert "self._decode_schedule" in benchmark_section
     assert "default_stream = torch.cuda.current_stream(device=self.device)" in benchmark_section
     assert "prefill_start.record(default_stream)" in benchmark_section
     assert "prefill_end.record(default_stream)" in benchmark_section
@@ -10516,8 +10525,9 @@ def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
 
         assert "with torch.inference_mode():" in benchmark_section
         assert "with torch.no_grad():" not in benchmark_section
-        assert "zip(" in benchmark_section
-        assert "self._decode_positions" in benchmark_section
+        assert "for position, start_evt, end_evt in self._decode_schedule:" in benchmark_section
+        assert "zip(" not in benchmark_section
+        assert "self._decode_schedule" in benchmark_section
         assert "for pos in range(self.decode_tokens):" not in benchmark_section
         assert "base_position + pos" not in benchmark_section
         assert "prefill_start.record()" not in benchmark_section

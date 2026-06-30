@@ -89,6 +89,8 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
             raise RuntimeError("Timing event count mismatch")
         if len(self._decode_positions) != self.decode_tokens:
             raise RuntimeError("Decode positions not initialized")
+        if len(self._decode_schedule) != self.decode_tokens:
+            raise RuntimeError("Decode schedule not initialized")
 
         default_stream = torch.cuda.current_stream(device=self.device)
         with torch.inference_mode():
@@ -99,11 +101,7 @@ class OptimizedFlexDecodingGraphsBenchmark(FlexDecodingHarness):
                 prefill_end.record(default_stream)
 
             with self._nvtx_range("flex_decode_graph"):
-                for position, (start_evt, end_evt) in zip(
-                    self._decode_positions,
-                    self._decode_events,
-                    strict=True,
-                ):
+                for position, start_evt, end_evt in self._decode_schedule:
                     start_evt.record(default_stream)
                     self.model._update_cache(self.static_decode_k, self.static_decode_v, position)
                     self.model._set_offset(position)

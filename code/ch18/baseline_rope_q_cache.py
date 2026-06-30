@@ -26,6 +26,7 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._cache_step_views: list[torch.Tensor] = []
         self._cos_step_views: list[torch.Tensor] = []
         self._sin_step_views: list[torch.Tensor] = []
+        self._step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self._output_view: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
@@ -79,6 +80,15 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.sin[step].view(1, 1, self.cfg.head_dim)
             for step in range(self.cfg.steps)
         ]
+        self._step_groups = list(
+            zip(
+                self._input_step_views,
+                self._cache_step_views,
+                self._cos_step_views,
+                self._sin_step_views,
+                strict=True,
+            )
+        )
         self._output_view = self._cache_step_views[self.cfg.steps - 1]
         torch.cuda.synchronize(self.device)
 
@@ -94,16 +104,11 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or len(self._cache_step_views) != self.cfg.steps
             or len(self._cos_step_views) != self.cfg.steps
             or len(self._sin_step_views) != self.cfg.steps
+            or len(self._step_groups) != self.cfg.steps
         ):
             raise RuntimeError("Benchmark not initialized")
         with torch.inference_mode():
-            for x, cache_step, cos_t, sin_t in zip(
-                self._input_step_views,
-                self._cache_step_views,
-                self._cos_step_views,
-                self._sin_step_views,
-                strict=True,
-            ):
+            for x, cache_step, cos_t, sin_t in self._step_groups:
                 q = x @ self.q_weight
                 q = q.view(self.cfg.batch_size, self.cfg.heads, self.cfg.head_dim)
                 q = apply_rope(q, cos_t, sin_t)

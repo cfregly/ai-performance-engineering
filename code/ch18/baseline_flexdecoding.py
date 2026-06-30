@@ -46,6 +46,7 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
         self._prefill_events: Optional[tuple[torch.cuda.Event, torch.cuda.Event]] = None
         self._decode_events: Optional[List[tuple[torch.cuda.Event, torch.cuda.Event]]] = None
         self._decode_positions: List[int] = []
+        self._decode_schedule: List[tuple[int, torch.cuda.Event, torch.cuda.Event]] = []
         self._pending_iteration_metrics = False
         self._prefill_metric_values = [0.0]
         self._decode_metric_values = [0.0] * self.decode_tokens
@@ -104,6 +105,14 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
         ]
         base_position = self.prefill_tokens.size(1)
         self._decode_positions = [base_position + pos for pos in range(self.decode_tokens)]
+        self._decode_schedule = [
+            (position, start_evt, end_evt)
+            for position, (start_evt, end_evt) in zip(
+                self._decode_positions,
+                self._decode_events,
+                strict=True,
+            )
+        ]
         torch.cuda.synchronize(self.device)
 
     def _prefill_step(self) -> torch.Tensor:
@@ -126,6 +135,8 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Timing event count mismatch")
         if len(self._decode_positions) != self.decode_tokens:
             raise RuntimeError("Decode positions not initialized")
+        if len(self._decode_schedule) != self.decode_tokens:
+            raise RuntimeError("Decode schedule not initialized")
 
         current_stream = torch.cuda.current_stream(self.device)
 
@@ -137,11 +148,7 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
                 prefill_end.record(current_stream)
 
             with self._nvtx_range("flex_decode"):
-                for position, (start_evt, end_evt) in zip(
-                    self._decode_positions,
-                    self._decode_events,
-                    strict=True,
-                ):
+                for position, start_evt, end_evt in self._decode_schedule:
                     start_evt.record(current_stream)
                     decode_out = self._decode_step(self.decode_token, position)
                     end_evt.record(current_stream)
@@ -199,6 +206,7 @@ class FlexDecodingHarness(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.prefill_tokens = None
         self.decode_token = None
+        self._decode_schedule = []
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
