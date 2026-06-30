@@ -64,6 +64,7 @@ class BaselineNoOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.hidden_size = 1024
         self._enable_nvtx = False
         self._payload_parameter_count = 0
+        self._model_parameters: tuple[nn.Parameter, ...] = ()
         tokens = self.batch_size * self.hidden_size
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -86,8 +87,9 @@ class BaselineNoOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         model = MultiLayerNet(self.hidden_size).to(self.device)
         self.model = model
-        self.optimizer = optim.SGD(self.model.parameters(), lr=0.01)
-        self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
+        self._model_parameters = tuple(self.model.parameters())
+        self.optimizer = optim.SGD(self._model_parameters, lr=0.01)
+        self._payload_parameter_count = sum(p.numel() for p in self._model_parameters)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
 
@@ -101,7 +103,7 @@ class BaselineNoOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
             output = self.model(self.data)
             loss = nn.functional.mse_loss(output, self.target)
             loss.backward()
-            for param in self.model.parameters():
+            for param in self._model_parameters:
                 if param.grad is None:
                     continue
                 dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)
@@ -136,6 +138,7 @@ class BaselineNoOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer = None
         self.data = None
         self.target = None
+        self._model_parameters = ()
         torch.cuda.empty_cache()
         self._config = None
     

@@ -3809,7 +3809,7 @@ def test_ch04_optimized_gpu_reduction_uses_single_gpu_sum_kernel() -> None:
 
 def test_ch04_distributed_benchmarks_cache_nvtx_and_parameter_counts() -> None:
     for relative, label, parameter_expr in (
-        ("ch04/ddp_no_overlap.py", "no_overlap", "self.model.parameters()"),
+        ("ch04/ddp_no_overlap.py", "no_overlap", "self._model_parameters"),
         ("ch04/ddp_overlap.py", "overlap_ddp", "self.model.parameters()"),
         ("ch04/baseline_disaggregated.py", "baseline_disaggregated", "self.model.parameters()) * 2"),
         (
@@ -3831,12 +3831,23 @@ def test_ch04_distributed_benchmarks_cache_nvtx_and_parameter_counts() -> None:
             "def teardown",
             maxsplit=1,
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
 
         assert "self._enable_nvtx = get_nvtx_enabled(config) if config else False" in setup_section
         assert (
             f"self._payload_parameter_count = sum(p.numel() for p in {parameter_expr}"
             in setup_section
         )
+        if relative == "ch04/ddp_no_overlap.py":
+            assert "self._model_parameters: tuple[nn.Parameter, ...] = ()" in source
+            assert "self._model_parameters = tuple(self.model.parameters())" in setup_section
+            assert "self.optimizer = optim.SGD(self._model_parameters, lr=0.01)" in setup_section
+            assert "for param in self._model_parameters:" in benchmark_section
+            assert "for param in self.model.parameters():" not in benchmark_section
+            assert "self._model_parameters = ()" in teardown_section
         assert "get_config()" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert f'with nvtx_range("{label}", enable=self._enable_nvtx):' in benchmark_section
