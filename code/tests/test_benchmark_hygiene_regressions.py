@@ -11177,6 +11177,11 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "aux_loss_dict = self._aux_loss_dict" in router_forward
     assert "aux_loss_dict[\"balance_loss\"] = balance_loss" in router_forward
     assert "aux_loss_dict = {" not in router_forward
+    assert "log_probs = F.log_softmax(routing_logits, dim=-1)" in router_forward
+    assert "probs = log_probs.exp()" in router_forward
+    assert "aux_loss_dict[\"router_entropy\"] = -(probs * log_probs).sum(dim=-1).mean()" in router_forward
+    assert "probs = F.softmax(routing_logits, dim=-1)" not in router_forward
+    assert "torch.log(probs + 1e-10)" not in router_forward
     assert "torch.arange(1, n + 1" not in router_forward
     assert "F.silu(gate, inplace=True)" in expert_forward
     assert "gate.mul_(up)" in expert_forward

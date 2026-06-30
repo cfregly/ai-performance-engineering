@@ -75,7 +75,8 @@ class LoadBalancedRouter(nn.Module):
         
         # Load balancing auxiliary loss (encourages balanced expert usage)
         # Based on DeepSeek-V2/V3 approach
-        probs = F.softmax(routing_logits, dim=-1)
+        log_probs = F.log_softmax(routing_logits, dim=-1)
+        probs = log_probs.exp()
         expert_usage = probs.mean(dim=[0, 1])  # [num_experts]
         
         # Compute load balance loss (encourage uniform distribution)
@@ -91,7 +92,7 @@ class LoadBalancedRouter(nn.Module):
         aux_loss_dict["balance_loss"] = balance_loss
         aux_loss_dict["expert_usage_variance"] = torch.var(expert_usage)
         aux_loss_dict["gini_coefficient"] = gini
-        aux_loss_dict["router_entropy"] = -(probs * torch.log(probs + 1e-10)).sum(dim=-1).mean()
+        aux_loss_dict["router_entropy"] = -(probs * log_probs).sum(dim=-1).mean()
         
         return routing_weights, selected_experts, aux_loss_dict
 
