@@ -145,6 +145,29 @@ class FA3PipelinedAttention(nn.Module):
         self._v_proj_weight_t = self.v_proj.weight.t()
         self._out_proj_weight_t = self.out_proj.weight.t()
 
+    def _projection_workspace(
+        self,
+        name: str,
+        shape: tuple[int, ...],
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        shape = tuple(int(dim) for dim in shape)
+        numel = 1
+        for dim in shape:
+            numel *= dim
+        buffer = getattr(self, name)
+        if (
+            not isinstance(buffer, torch.Tensor)
+            or buffer.device != device
+            or buffer.dtype != dtype
+            or buffer.numel() < numel
+        ):
+            buffer = torch.empty(numel, device=device, dtype=dtype)
+            setattr(self, name, buffer)
+        return buffer[:numel].view(shape)
+
     def _ensure_projection_buffers(
         self,
         x: torch.Tensor,
@@ -154,35 +177,16 @@ class FA3PipelinedAttention(nn.Module):
         q_shape = (batch_size, seq_len, self.num_heads * self.head_dim)
         kv_shape = (batch_size, seq_len, self.num_kv_heads * self.head_dim)
         output_shape = (batch_size, seq_len, self.hidden_dim)
-        if (
-            self._q_buffer is None
-            or self._q_buffer.shape != q_shape
-            or self._q_buffer.device != x.device
-            or self._q_buffer.dtype != x.dtype
-        ):
-            self._q_buffer = torch.empty(q_shape, device=x.device, dtype=x.dtype)
-        if (
-            self._k_buffer is None
-            or self._k_buffer.shape != kv_shape
-            or self._k_buffer.device != x.device
-            or self._k_buffer.dtype != x.dtype
-        ):
-            self._k_buffer = torch.empty(kv_shape, device=x.device, dtype=x.dtype)
-        if (
-            self._v_buffer is None
-            or self._v_buffer.shape != kv_shape
-            or self._v_buffer.device != x.device
-            or self._v_buffer.dtype != x.dtype
-        ):
-            self._v_buffer = torch.empty(kv_shape, device=x.device, dtype=x.dtype)
-        if (
-            self._output_buffer is None
-            or self._output_buffer.shape != output_shape
-            or self._output_buffer.device != x.device
-            or self._output_buffer.dtype != x.dtype
-        ):
-            self._output_buffer = torch.empty(output_shape, device=x.device, dtype=x.dtype)
-        return self._q_buffer, self._k_buffer, self._v_buffer, self._output_buffer
+        q_buffer = self._projection_workspace("_q_buffer", q_shape, device=x.device, dtype=x.dtype)
+        k_buffer = self._projection_workspace("_k_buffer", kv_shape, device=x.device, dtype=x.dtype)
+        v_buffer = self._projection_workspace("_v_buffer", kv_shape, device=x.device, dtype=x.dtype)
+        output_buffer = self._projection_workspace(
+            "_output_buffer",
+            output_shape,
+            device=x.device,
+            dtype=x.dtype,
+        )
+        return q_buffer, k_buffer, v_buffer, output_buffer
         
     def _check_fp8_support(self) -> bool:
         """Check if FP8 is supported on current GPU."""

@@ -1241,6 +1241,11 @@ def test_ch10_flashattention3_pair_keeps_shared_warmup_and_unfused_qkv_structure
     assert "self._out_proj_weight_t: Optional[torch.Tensor] = None" in optimized_source
     assert "def cache_weight_views(self) -> None:" in optimized_source
     assert "self.model.cache_weight_views()" in optimized_source
+    assert "def _projection_workspace(" in optimized_source
+    assert "or buffer.numel() < numel" in optimized_source
+    assert "return buffer[:numel].view(shape)" in optimized_source
+    assert "self._q_buffer.shape != q_shape" not in optimized_source
+    assert "self._output_buffer.shape != output_shape" not in optimized_source
     optimized_forward = optimized_source.split("def forward", maxsplit=1)[1].split(
         "class OptimizedFlashAttention3Benchmark",
         maxsplit=1,
@@ -1255,6 +1260,63 @@ def test_ch10_flashattention3_pair_keeps_shared_warmup_and_unfused_qkv_structure
     assert "self.k_proj.weight.t()" not in optimized_forward
     assert "self.v_proj.weight.t()" not in optimized_forward
     assert "self.out_proj.weight.t()" not in optimized_forward
+
+
+def test_ch10_flashattention3_projection_buffers_reuse_capacity() -> None:
+    from ch10.optimized_flashattention3_pipeline import FA3PipelinedAttention
+
+    module = FA3PipelinedAttention(
+        hidden_dim=8,
+        num_heads=2,
+        num_kv_heads=1,
+        use_fp8=False,
+    ).eval()
+    large_input = torch.empty(4, 5, 8)
+    small_input = torch.empty(2, 3, 8)
+    grown_input = torch.empty(5, 5, 8)
+
+    large_q, large_k, large_v, large_out = module._ensure_projection_buffers(
+        large_input,
+        4,
+        5,
+    )
+    ptrs = (
+        module._q_buffer.data_ptr(),
+        module._k_buffer.data_ptr(),
+        module._v_buffer.data_ptr(),
+        module._output_buffer.data_ptr(),
+    )
+    small_q, small_k, small_v, small_out = module._ensure_projection_buffers(
+        small_input,
+        2,
+        3,
+    )
+    grown_q, grown_k, grown_v, grown_out = module._ensure_projection_buffers(
+        grown_input,
+        5,
+        5,
+    )
+
+    assert large_q.shape == (4, 5, 8)
+    assert large_k.shape == (4, 5, 4)
+    assert large_v.shape == (4, 5, 4)
+    assert large_out.shape == (4, 5, 8)
+    assert small_q.shape == (2, 3, 8)
+    assert small_k.shape == (2, 3, 4)
+    assert small_v.shape == (2, 3, 4)
+    assert small_out.shape == (2, 3, 8)
+    assert small_q.data_ptr() == ptrs[0]
+    assert small_k.data_ptr() == ptrs[1]
+    assert small_v.data_ptr() == ptrs[2]
+    assert small_out.data_ptr() == ptrs[3]
+    assert grown_q.shape == (5, 5, 8)
+    assert grown_k.shape == (5, 5, 4)
+    assert grown_v.shape == (5, 5, 4)
+    assert grown_out.shape == (5, 5, 8)
+    assert module._q_buffer.numel() == 5 * 5 * 8
+    assert module._k_buffer.numel() == 5 * 5 * 4
+    assert module._v_buffer.numel() == 5 * 5 * 4
+    assert module._output_buffer.numel() == 5 * 5 * 8
 
 
 def test_persistent_decode_keeps_canonical_iteration_parity_and_marks_cuda_variant_informational() -> None:
