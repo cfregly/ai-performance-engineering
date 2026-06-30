@@ -8999,6 +8999,8 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "torch.argmax(logits[:, -1, :]" not in benchmark_section
     assert 'with torch.inference_mode(), self._nvtx_range("prefill_dualpipe"):' in eager_section
     assert 'with torch.inference_mode(), self._nvtx_range("speculative_decode"):' in eager_section
+    assert "any(" not in eager_section
+    assert "obj is None for obj in" not in eager_section
     assert "prompt_stub = self._router_prompt_stub" in hot_section
     assert "setup() must initialize router prompt stub" in hot_section
     assert "router_requests = self._router_requests" in hot_section
@@ -9010,6 +9012,8 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert '_RESET_PEAK_MEMORY_STATS = getattr(torch.cuda, "reset_peak_memory_stats", None)' in source
     assert "if torch.cuda.is_available() and _RESET_PEAK_MEMORY_STATS is not None:" in hot_section
     assert "_RESET_PEAK_MEMORY_STATS(self.device)" in hot_section
+    assert "any(" not in hot_section
+    assert "obj is None for obj in" not in hot_section
     assert 'hasattr(torch.cuda, "reset_peak_memory_stats")' not in hot_section
     assert 'router_assignments = {"prefill": 0, "decode": 0}' not in hot_section
     assert "prefill_assignments = 0" in hot_section
@@ -11928,6 +11932,10 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in benchmark_section
     assert "self.output = seed_tokens" in benchmark_section
     assert "seed_tokens.detach()" not in benchmark_section
+    assert "any(" not in benchmark_section
+    assert "event is None for event in" not in benchmark_section
+    assert "any(" not in finalize_section
+    assert "event is None for event in" not in finalize_section
     assert 'self._metric_totals["ttft"] += prefill_ms' in finalize_section
     assert 'self._metric_totals["tpot"] += avg_tpot_ms * decode_count' in finalize_section
     assert 'self._metric_totals["throughput"] += throughput' in finalize_section

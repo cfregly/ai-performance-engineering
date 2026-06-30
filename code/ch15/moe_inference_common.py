@@ -180,14 +180,11 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
 
         with torch.inference_mode():
             with self._nvtx_range(self.label):
-                if any(
-                    event is None
-                    for event in (
-                        self._prefill_start_event,
-                        self._prefill_end_event,
-                        self._decode_start_event,
-                        self._decode_end_event,
-                    )
+                if (
+                    self._prefill_start_event is None
+                    or self._prefill_end_event is None
+                    or self._decode_start_event is None
+                    or self._decode_end_event is None
                 ):
                     raise RuntimeError("Iteration timing events not initialized")
                 self._prefill_start_event.record(stream)
@@ -207,14 +204,11 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
                 self.output = seed_tokens
 
     def finalize_iteration_metrics(self) -> Optional[Dict[str, List[float]]]:
-        if any(
-            event is None
-            for event in (
-                self._prefill_start_event,
-                self._prefill_end_event,
-                self._decode_start_event,
-                self._decode_end_event,
-            )
+        if (
+            self._prefill_start_event is None
+            or self._prefill_end_event is None
+            or self._decode_start_event is None
+            or self._decode_end_event is None
         ):
             return None
 

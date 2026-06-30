@@ -739,7 +739,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return ttft_times, tpot_times, "piecewise_graph"
 
     def _run_eager_path(self) -> Tuple[List[float], List[float], str, float, float, torch.Tensor]:
-        if any(obj is None for obj in (self.model, self.prompts, self.paged_cache, self.spec_decoder)):
+        if self.model is None or self.prompts is None or self.paged_cache is None or self.spec_decoder is None:
             raise RuntimeError("Benchmark not initialized")
 
         cfg = self.config
@@ -773,7 +773,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     # --------------------------------------------------------------- benchmark_fn
     def benchmark_fn(self) -> Dict[str, object]:
-        if any(obj is None for obj in (self.model, self.prompts, self.paged_cache, self.spec_decoder)):
+        if self.model is None or self.prompts is None or self.paged_cache is None or self.spec_decoder is None:
             raise RuntimeError("Benchmark not initialized")
 
         cfg = self.config
