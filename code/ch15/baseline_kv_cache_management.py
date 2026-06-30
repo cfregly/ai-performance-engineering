@@ -40,15 +40,35 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         )
         self.output = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._q_buffer: Optional[torch.Tensor] = None
+        self._k_buffer: Optional[torch.Tensor] = None
+        self._v_buffer: Optional[torch.Tensor] = None
+        self._q_attn_view: Optional[torch.Tensor] = None
+        self._attn_step_bhld: Optional[torch.Tensor] = None
         self._attn_step_buffer: Optional[torch.Tensor] = None
         self._attn_step_2d: Optional[torch.Tensor] = None
+        self._q_proj_weight_t: Optional[torch.Tensor] = None
+        self._k_proj_weight_t: Optional[torch.Tensor] = None
+        self._v_proj_weight_t: Optional[torch.Tensor] = None
         self._out_proj_weight_t: Optional[torch.Tensor] = None
         self._query_step_views: list[torch.Tensor] = []
         self._prefix_views: list[torch.Tensor] = []
+        self._k_prefix_views: list[torch.Tensor] = []
+        self._v_prefix_views: list[torch.Tensor] = []
+        self._k_attn_views: list[torch.Tensor] = []
+        self._v_attn_views: list[torch.Tensor] = []
         self._output_step_views: list[torch.Tensor] = []
         self._output_step_2d_views: list[torch.Tensor] = []
         self._decode_step_groups: list[
-            tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+            tuple[
+                torch.Tensor,
+                torch.Tensor,
+                torch.Tensor,
+                torch.Tensor,
+                torch.Tensor,
+                torch.Tensor,
+                torch.Tensor,
+            ]
         ] = []
         self._view_counts: tuple[int, ...] = ()
         self._expected_view_counts: tuple[int, ...] = ()
@@ -69,6 +89,9 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.out_proj = nn.Linear(self.hidden_dim, self.hidden_dim, bias=False).to(self.device, dtype=torch.bfloat16)
         for module in (self.q_proj, self.k_proj, self.v_proj, self.out_proj):
             module.eval()
+        self._q_proj_weight_t = self.q_proj.weight.t()
+        self._k_proj_weight_t = self.k_proj.weight.t()
+        self._v_proj_weight_t = self.v_proj.weight.t()
         self._out_proj_weight_t = self.out_proj.weight.t()
         self._payload_parameter_count = sum(
             p.numel()
@@ -90,6 +113,21 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._q_buffer = torch.empty(
+            self.batch_size,
+            1,
+            self.hidden_dim,
+            device=self.device,
+            dtype=torch.bfloat16,
+        )
+        self._k_buffer = torch.empty_like(self._output_buffer)
+        self._v_buffer = torch.empty_like(self._output_buffer)
+        self._q_attn_view = self._q_buffer.view(
+            self.batch_size,
+            1,
+            self.num_heads,
+            self.head_dim,
+        ).transpose(1, 2)
         self._attn_step_buffer = torch.empty(
             self.batch_size,
             1,
@@ -98,16 +136,30 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._attn_step_bhld = self._attn_step_buffer.transpose(1, 2)
         self._attn_step_2d = self._attn_step_buffer.view(self.batch_size, self.hidden_dim)
         self._query_step_views = [self.tokens[:, t : t + 1, :] for t in range(self.steps)]
         self._prefix_views = [self.tokens[:, : t + 1, :] for t in range(self.steps)]
+        self._k_prefix_views = [self._k_buffer[:, : t + 1, :] for t in range(self.steps)]
+        self._v_prefix_views = [self._v_buffer[:, : t + 1, :] for t in range(self.steps)]
+        self._k_attn_views = [
+            prefix.view(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+            for prefix in self._k_prefix_views
+        ]
+        self._v_attn_views = [
+            prefix.view(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+            for prefix in self._v_prefix_views
+        ]
         self._output_step_views = [self._output_buffer[:, t : t + 1, :] for t in range(self.steps)]
         self._output_step_2d_views = [self._output_buffer[:, t, :] for t in range(self.steps)]
         self._decode_step_groups = list(
             zip(
                 self._query_step_views,
                 self._prefix_views,
-                self._output_step_views,
+                self._k_prefix_views,
+                self._v_prefix_views,
+                self._k_attn_views,
+                self._v_attn_views,
                 self._output_step_2d_views,
                 strict=True,
             )
@@ -115,11 +167,19 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._view_counts = (
             len(self._query_step_views),
             len(self._prefix_views),
+            len(self._k_prefix_views),
+            len(self._v_prefix_views),
+            len(self._k_attn_views),
+            len(self._v_attn_views),
             len(self._output_step_views),
             len(self._output_step_2d_views),
             len(self._decode_step_groups),
         )
         self._expected_view_counts = (
+            self.steps,
+            self.steps,
+            self.steps,
+            self.steps,
             self.steps,
             self.steps,
             self.steps,
@@ -134,26 +194,29 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         assert self.q_proj is not None and self.k_proj is not None and self.v_proj is not None and self.out_proj is not None
         assert self.tokens is not None
         assert self._output_buffer is not None
-        assert self._attn_step_buffer is not None and self._attn_step_2d is not None
+        assert self._q_buffer is not None and self._q_attn_view is not None
+        assert self._k_buffer is not None and self._v_buffer is not None
+        assert self._attn_step_buffer is not None and self._attn_step_bhld is not None
+        assert self._attn_step_2d is not None
+        assert self._q_proj_weight_t is not None
+        assert self._k_proj_weight_t is not None
+        assert self._v_proj_weight_t is not None
         assert self._out_proj_weight_t is not None
         assert self._view_counts == self._expected_view_counts
         with self._nvtx_range("baseline_kv_cache_management"):
             with torch.inference_mode():
                 outputs = self._output_buffer
-                for query, prefix, _output_step, output_step_2d in self._decode_step_groups:
-                    q = self.q_proj(query)
-                    k = self.k_proj(prefix)
-                    v = self.v_proj(prefix)
-
-                    q = q.reshape(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-                    k = k.reshape(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-                    v = v.reshape(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+                q = self._q_attn_view
+                for query, prefix, k_out, v_out, k, v, output_step_2d in self._decode_step_groups:
+                    torch.matmul(query, self._q_proj_weight_t, out=self._q_buffer)
+                    torch.matmul(prefix, self._k_proj_weight_t, out=k_out)
+                    torch.matmul(prefix, self._v_proj_weight_t, out=v_out)
 
                     # q_len=1 and k/v contain only the prefix (no future tokens),
                     # so a causal mask is unnecessary here; is_causal=True would
                     # incorrectly mask all but the first key.
                     attn = F.scaled_dot_product_attention(q, k, v, is_causal=False)
-                    self._attn_step_buffer.copy_(attn.transpose(1, 2))
+                    self._attn_step_bhld.copy_(attn)
                     torch.mm(self._attn_step_2d, self._out_proj_weight_t, out=output_step_2d)
 
                 self.output = outputs
@@ -186,11 +249,23 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.out_proj = None
         self.tokens = None
         self._output_buffer = None
+        self._q_buffer = None
+        self._k_buffer = None
+        self._v_buffer = None
+        self._q_attn_view = None
+        self._attn_step_bhld = None
         self._attn_step_buffer = None
         self._attn_step_2d = None
+        self._q_proj_weight_t = None
+        self._k_proj_weight_t = None
+        self._v_proj_weight_t = None
         self._out_proj_weight_t = None
         self._query_step_views = []
         self._prefix_views = []
+        self._k_prefix_views = []
+        self._v_prefix_views = []
+        self._k_attn_views = []
+        self._v_attn_views = []
         self._output_step_views = []
         self._output_step_2d_views = []
         self._decode_step_groups = []

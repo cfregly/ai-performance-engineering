@@ -18333,21 +18333,47 @@ def test_ch15_baseline_kv_cache_management_reuses_step_views() -> None:
     assert "self._prefix_views: list[torch.Tensor] = []" in source
     assert "self._output_step_views: list[torch.Tensor] = []" in source
     assert "self._output_step_2d_views: list[torch.Tensor] = []" in source
+    assert "self._q_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._k_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._v_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._q_attn_view: Optional[torch.Tensor] = None" in source
+    assert "self._attn_step_bhld: Optional[torch.Tensor] = None" in source
     assert "self._attn_step_buffer: Optional[torch.Tensor] = None" in source
     assert "self._out_proj_weight_t: Optional[torch.Tensor] = None" in source
-    assert "tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]" in source
+    assert "self._q_proj_weight_t: Optional[torch.Tensor] = None" in source
+    assert "self._k_proj_weight_t: Optional[torch.Tensor] = None" in source
+    assert "self._v_proj_weight_t: Optional[torch.Tensor] = None" in source
+    assert "self._k_prefix_views: list[torch.Tensor] = []" in source
+    assert "self._v_prefix_views: list[torch.Tensor] = []" in source
+    assert "self._k_attn_views: list[torch.Tensor] = []" in source
+    assert "self._v_attn_views: list[torch.Tensor] = []" in source
     assert "self._view_counts: tuple[int, ...] = ()" in source
     assert "self._expected_view_counts: tuple[int, ...] = ()" in source
+    assert "self._q_proj_weight_t = self.q_proj.weight.t()" in setup_section
+    assert "self._k_proj_weight_t = self.k_proj.weight.t()" in setup_section
+    assert "self._v_proj_weight_t = self.v_proj.weight.t()" in setup_section
     assert "self._out_proj_weight_t = self.out_proj.weight.t()" in setup_section
+    assert "self._q_buffer = torch.empty(" in setup_section
+    assert "self._k_buffer = torch.empty_like(self._output_buffer)" in setup_section
+    assert "self._v_buffer = torch.empty_like(self._output_buffer)" in setup_section
+    assert "self._q_attn_view = self._q_buffer.view(" in setup_section
     assert "self._attn_step_buffer = torch.empty(" in setup_section
+    assert "self._attn_step_bhld = self._attn_step_buffer.transpose(1, 2)" in setup_section
     assert "self._attn_step_2d = self._attn_step_buffer.view(" in setup_section
     assert "self._query_step_views = [self.tokens[:, t : t + 1, :] for t in range(self.steps)]" in setup_section
     assert "self._prefix_views = [self.tokens[:, : t + 1, :] for t in range(self.steps)]" in setup_section
+    assert "self._k_prefix_views = [self._k_buffer[:, : t + 1, :] for t in range(self.steps)]" in setup_section
+    assert "self._v_prefix_views = [self._v_buffer[:, : t + 1, :] for t in range(self.steps)]" in setup_section
+    assert "self._k_attn_views = [" in setup_section
+    assert "self._v_attn_views = [" in setup_section
+    assert "prefix.view(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)" in setup_section
     assert "self._output_step_views = [self._output_buffer[:, t : t + 1, :] for t in range(self.steps)]" in setup_section
     assert "self._output_step_2d_views = [self._output_buffer[:, t, :] for t in range(self.steps)]" in setup_section
     assert "self._decode_step_groups = list(" in setup_section
     assert "self._view_counts = (" in setup_section
     assert "len(self._query_step_views)" in setup_section
+    assert "len(self._k_attn_views)" in setup_section
+    assert "len(self._v_attn_views)" in setup_section
     assert "len(self._decode_step_groups)" in setup_section
     assert "self._expected_view_counts = (" in setup_section
     assert "assert self._view_counts == self._expected_view_counts" in benchmark_section
@@ -18356,10 +18382,18 @@ def test_ch15_baseline_kv_cache_management_reuses_step_views() -> None:
     assert "len(self._output_step_views)" not in benchmark_section
     assert "len(self._output_step_2d_views)" not in benchmark_section
     assert "len(self._decode_step_groups)" not in benchmark_section
-    assert "for query, prefix, _output_step, output_step_2d in self._decode_step_groups:" in benchmark_section
-    assert "k = self.k_proj(prefix)" in benchmark_section
-    assert "v = self.v_proj(prefix)" in benchmark_section
-    assert "self._attn_step_buffer.copy_(attn.transpose(1, 2))" in benchmark_section
+    assert "for query, prefix, k_out, v_out, k, v, output_step_2d in self._decode_step_groups:" in benchmark_section
+    assert "q = self._q_attn_view" in benchmark_section
+    assert "torch.matmul(query, self._q_proj_weight_t, out=self._q_buffer)" in benchmark_section
+    assert "torch.matmul(prefix, self._k_proj_weight_t, out=k_out)" in benchmark_section
+    assert "torch.matmul(prefix, self._v_proj_weight_t, out=v_out)" in benchmark_section
+    assert "q = self.q_proj(query)" not in benchmark_section
+    assert "k = self.k_proj(prefix)" not in benchmark_section
+    assert "v = self.v_proj(prefix)" not in benchmark_section
+    assert ".reshape(self.batch_size, -1, self.num_heads, self.head_dim)" not in benchmark_section
+    assert ".transpose(1, 2)" not in benchmark_section
+    assert "self._attn_step_bhld.copy_(attn)" in benchmark_section
+    assert "attn.transpose(1, 2)" not in benchmark_section
     assert "torch.mm(self._attn_step_2d, self._out_proj_weight_t, out=output_step_2d)" in benchmark_section
     assert "attn.transpose(1, 2).contiguous()" not in benchmark_section
     assert "out = self.out_proj(attn)" not in benchmark_section
@@ -18371,6 +18405,10 @@ def test_ch15_baseline_kv_cache_management_reuses_step_views() -> None:
     assert "outputs[:, t : t + 1, :] = out" not in benchmark_section
     assert "self._query_step_views = []" in teardown_section
     assert "self._prefix_views = []" in teardown_section
+    assert "self._k_prefix_views = []" in teardown_section
+    assert "self._v_prefix_views = []" in teardown_section
+    assert "self._k_attn_views = []" in teardown_section
+    assert "self._v_attn_views = []" in teardown_section
     assert "self._output_step_views = []" in teardown_section
     assert "self._output_step_2d_views = []" in teardown_section
     assert "self._decode_step_groups = []" in teardown_section
