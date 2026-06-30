@@ -10114,7 +10114,11 @@ def test_optimized_flexdecode_graph_preprojects_static_decode_token() -> None:
     assert "self.static_decode_in" not in source
     assert "self.model.k_proj(self.decode_token)" not in benchmark_section
     assert "self.model.v_proj(self.decode_token)" not in benchmark_section
-    assert "self.model._update_cache(self.static_decode_k, self.static_decode_v, self.base_position + pos)" in benchmark_section
+    assert "self.model._update_cache(self.static_decode_k, self.static_decode_v, position)" in benchmark_section
+    assert "self.model._set_offset(position)" in benchmark_section
+    assert "self.base_position + pos" not in benchmark_section
+    assert "zip(" in benchmark_section
+    assert "self._decode_positions" in benchmark_section
     assert "default_stream = torch.cuda.current_stream(device=self.device)" in benchmark_section
     assert "prefill_start.record(default_stream)" in benchmark_section
     assert "prefill_end.record(default_stream)" in benchmark_section
@@ -10138,6 +10142,10 @@ def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
 
         assert "with torch.inference_mode():" in benchmark_section
         assert "with torch.no_grad():" not in benchmark_section
+        assert "zip(" in benchmark_section
+        assert "self._decode_positions" in benchmark_section
+        assert "for pos in range(self.decode_tokens):" not in benchmark_section
+        assert "base_position + pos" not in benchmark_section
         assert "prefill_start.record()" not in benchmark_section
         assert "prefill_end.record()" not in benchmark_section
         assert "start_evt.record()" not in benchmark_section
@@ -10174,6 +10182,8 @@ def test_ch18_flexdecoding_benchmarks_use_inference_mode() -> None:
     assert "self._decode_count = 0" in baseline_source
     assert "self._prefill_metric_values = [0.0]" in baseline_source
     assert "self._decode_metric_values = [0.0] * self.decode_tokens" in baseline_source
+    assert "self._decode_positions: List[int] = []" in baseline_source
+    assert "self._decode_positions = [base_position + pos for pos in range(self.decode_tokens)]" in baseline_source
     assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in baseline_source
     assert '"prefill_ms": []' not in baseline_source
     assert '"decode_ms": []' not in baseline_source

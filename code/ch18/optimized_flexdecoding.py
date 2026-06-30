@@ -53,8 +53,7 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
         self._decode_base_position = self.prefill_tokens.size(1)
         self._decode_k_window_views = []
         self._decode_v_window_views = []
-        for pos in range(self.decode_tokens):
-            position = self._decode_base_position + pos
+        for position in self._decode_positions:
             start = position - window
             if start < 0:
                 raise RuntimeError("Windowed decode expects position >= window size")
@@ -118,8 +117,9 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
             raise RuntimeError("Timing events not initialized")
         if len(self._decode_events) != self.decode_tokens:
             raise RuntimeError("Timing event count mismatch")
+        if len(self._decode_positions) != self.decode_tokens:
+            raise RuntimeError("Decode positions not initialized")
 
-        base_position = self.prefill_tokens.size(1)
         current_stream = torch.cuda.current_stream(self.device)
 
         with torch.inference_mode():
@@ -133,14 +133,17 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
 
             with self._nvtx_range("flex_decode"):
                 with sdpa_kernel(self._flash_attention_backends):
-                    for pos in range(self.decode_tokens):
-                        start_evt, end_evt = self._decode_events[pos]
+                    for position, (start_evt, end_evt) in zip(
+                        self._decode_positions,
+                        self._decode_events,
+                        strict=True,
+                    ):
                         start_evt.record(current_stream)
                         decode_out = self._decode_projected_step(
                             decode_q,
                             decode_k,
                             decode_v,
-                            base_position + pos,
+                            position,
                         )
                         end_evt.record(current_stream)
 
