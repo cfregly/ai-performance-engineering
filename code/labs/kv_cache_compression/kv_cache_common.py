@@ -27,6 +27,12 @@ class KVCache:
     cache_v: torch.Tensor
 
 
+@dataclass
+class TokenMajorKVCache:
+    cache_k: torch.Tensor
+    cache_v: torch.Tensor
+
+
 def allocate_kv_cache(
     batch_size: int,
     total_tokens: int,
@@ -39,6 +45,23 @@ def allocate_kv_cache(
     """Allocate K/V cache tensors for the lab."""
     cache_shape = (batch_size, total_tokens, num_heads, head_dim)
     return KVCache(
+        cache_k=torch.empty(cache_shape, device=device, dtype=dtype),
+        cache_v=torch.empty(cache_shape, device=device, dtype=dtype),
+    )
+
+
+def allocate_token_major_kv_cache(
+    batch_size: int,
+    total_tokens: int,
+    num_heads: int,
+    head_dim: int,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> TokenMajorKVCache:
+    """Allocate token-major K/V tensors for direct projection writes."""
+    cache_shape = (total_tokens, batch_size, num_heads, head_dim)
+    return TokenMajorKVCache(
         cache_k=torch.empty(cache_shape, device=device, dtype=dtype),
         cache_v=torch.empty(cache_shape, device=device, dtype=dtype),
     )
@@ -138,6 +161,131 @@ class KVCacheAttention(nn.Module):
                 q_t,
                 k_t,
                 v_t,
+                dropout_p=0.0,
+                is_causal=False,
+                scale=self.scale,
+            )
+        out = out.transpose(1, 2).contiguous().reshape(batch, seq_len, self.hidden_dim)
+        return self.proj(out)
+
+
+def _linear_weight_bias(module: nn.Module) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+    layer = getattr(module, "layer", module)
+    weight = getattr(layer, "weight", None)
+    if weight is None:
+        raise TypeError("linear module must expose weight or layer.weight")
+    bias = getattr(layer, "bias", None)
+    return weight, bias
+
+
+class DirectWriteKVCacheAttention(nn.Module):
+    """Inference attention that projects K/V directly into token-major cache storage."""
+
+    def __init__(
+        self,
+        *,
+        hidden_dim: int,
+        num_heads: int,
+        linear_cls: Type[nn.Module],
+        layernorm_cls: Type[nn.Module],
+        params_dtype: torch.dtype = torch.bfloat16,
+        device: Optional[torch.device] = None,
+    ) -> None:
+        super().__init__()
+        if hidden_dim % num_heads != 0:
+            raise ValueError("hidden_dim must be divisible by num_heads")
+        self.hidden_dim = hidden_dim
+        self.num_heads = num_heads
+        self.head_dim = hidden_dim // num_heads
+        self.scale = self.head_dim**-0.5
+        self._q_buffer: Optional[torch.Tensor] = None
+
+        try:
+            self.ln = layernorm_cls(hidden_dim, params_dtype=params_dtype, device=device)
+        except TypeError as exc:
+            raise TypeError("layernorm_cls must accept params_dtype and device") from exc
+
+        try:
+            self.q_proj = linear_cls(
+                hidden_dim,
+                hidden_dim,
+                bias=True,
+                params_dtype=params_dtype,
+                device=device,
+            )
+            self.k_proj = linear_cls(
+                hidden_dim,
+                hidden_dim,
+                bias=True,
+                params_dtype=params_dtype,
+                device=device,
+            )
+            self.v_proj = linear_cls(
+                hidden_dim,
+                hidden_dim,
+                bias=True,
+                params_dtype=params_dtype,
+                device=device,
+            )
+            self.proj = linear_cls(
+                hidden_dim,
+                hidden_dim,
+                bias=True,
+                params_dtype=params_dtype,
+                device=device,
+            )
+        except TypeError as exc:
+            raise TypeError("linear_cls must accept params_dtype and device") from exc
+
+    def _q_buffer_for(self, x: torch.Tensor) -> torch.Tensor:
+        batch, seq_len, _ = x.shape
+        if (
+            self._q_buffer is None
+            or self._q_buffer.device != x.device
+            or self._q_buffer.dtype != x.dtype
+            or self._q_buffer.size(0) < batch
+            or self._q_buffer.size(1) < seq_len
+        ):
+            self._q_buffer = torch.empty(
+                (batch, seq_len, self.hidden_dim),
+                device=x.device,
+                dtype=x.dtype,
+            )
+        return self._q_buffer[:batch, :seq_len]
+
+    @staticmethod
+    def _project_into(x: torch.Tensor, linear: nn.Module, out: torch.Tensor) -> torch.Tensor:
+        weight, bias = _linear_weight_bias(linear)
+        torch.matmul(x, weight.t(), out=out)
+        if bias is not None:
+            out.add_(bias)
+        return out
+
+    def forward(self, tokens: torch.Tensor, cache: TokenMajorKVCache, start_offset: int) -> torch.Tensor:
+        """Compute attention and append K/V without materializing a full QKV tensor."""
+        if tokens.dim() != 3:
+            raise ValueError(f"tokens must have shape [batch, seq, hidden], got {tuple(tokens.shape)}")
+        batch, seq_len, _ = tokens.shape
+        x = self.ln(tokens)
+
+        q_buffer = self._q_buffer_for(x)
+        q = self._project_into(x, self.q_proj, q_buffer).view(batch, seq_len, self.num_heads, self.head_dim)
+
+        token_slice = slice(start_offset, start_offset + seq_len)
+        x_t = x.transpose(0, 1)
+        k_dest = cache.cache_k[token_slice].flatten(2)
+        v_dest = cache.cache_v[token_slice].flatten(2)
+        self._project_into(x_t, self.k_proj, k_dest)
+        self._project_into(x_t, self.v_proj, v_dest)
+
+        k_ctx = cache.cache_k[: start_offset + seq_len].permute(1, 2, 0, 3)
+        v_ctx = cache.cache_v[: start_offset + seq_len].permute(1, 2, 0, 3)
+        q_t = q.transpose(1, 2)
+        with prefer_sdpa_backends():
+            out = F.scaled_dot_product_attention(
+                q_t,
+                k_ctx,
+                v_ctx,
                 dropout_p=0.0,
                 is_causal=False,
                 scale=self.scale,

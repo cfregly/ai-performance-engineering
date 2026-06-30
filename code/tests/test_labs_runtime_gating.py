@@ -12,8 +12,10 @@ from core.harness.benchmark_harness import ExecutionMode
 from labs.kv_cache_compression import kv_cache_common
 from labs.kv_cache_compression.baseline_kv_cache import BaselineKVCacheBenchmark
 from labs.kv_cache_compression.kv_cache_common import (
+    DirectWriteKVCacheAttention,
     KVCacheAttention,
     allocate_kv_cache,
+    allocate_token_major_kv_cache,
     build_token_batches,
 )
 from labs.kv_cache_compression.optimized_kv_cache_nvfp4 import OptimizedKVCacheNVFP4Benchmark
@@ -113,6 +115,9 @@ def test_kv_cache_verification_output_is_built_after_benchmark(
     )
     bench.cache.cache_k.copy_(torch.arange(bench.cache.cache_k.numel()).view_as(bench.cache.cache_k))
     bench.cache.cache_v.copy_(torch.arange(bench.cache.cache_v.numel()).view_as(bench.cache.cache_v).mul_(2))
+    bench._batch_size_tensor = torch.tensor([bench.batch_size], dtype=torch.int64)
+    bench._seq_meta_tensor = torch.tensor([bench.prefill_seq, bench.decode_seq, bench.decode_steps], dtype=torch.int64)
+    bench._verify_output_buffer = torch.empty(2, 2, 1, 1, 4, dtype=torch.float32)
 
     def fail_stack(*args, **kwargs):
         raise AssertionError("benchmark_fn() should not stack verification output")
@@ -197,6 +202,95 @@ def test_kv_cache_attention_routes_through_sdpa(monkeypatch: pytest.MonkeyPatch)
         "is_causal": False,
         "scale": bench_attn.scale,
     }
+
+
+def _dummy_linear(module: nn.Module) -> nn.Linear:
+    return module.layer  # type: ignore[return-value]
+
+
+def test_direct_write_kv_cache_attention_writes_projection_outputs_into_cache() -> None:
+    source = inspect.getsource(DirectWriteKVCacheAttention.forward)
+
+    assert "qkv = self.qkv(x)" not in source
+    assert ".copy_(" not in source
+    assert "k_dest = cache.cache_k[token_slice].flatten(2)" in source
+    assert "v_dest = cache.cache_v[token_slice].flatten(2)" in source
+    assert "self._project_into(x_t, self.k_proj, k_dest)" in source
+    assert "self._project_into(x_t, self.v_proj, v_dest)" in source
+
+
+def test_direct_write_kv_cache_attention_matches_fused_qkv_reference_on_cpu() -> None:
+    device = torch.device("cpu")
+    torch.manual_seed(1234)
+    fused = KVCacheAttention(
+        hidden_dim=16,
+        num_heads=4,
+        linear_cls=_DummyLinear,
+        layernorm_cls=_DummyLayerNorm,
+        params_dtype=torch.float32,
+        device=device,
+    )
+    direct = DirectWriteKVCacheAttention(
+        hidden_dim=16,
+        num_heads=4,
+        linear_cls=_DummyLinear,
+        layernorm_cls=_DummyLayerNorm,
+        params_dtype=torch.float32,
+        device=device,
+    )
+    with torch.no_grad():
+        direct.ln.layer.load_state_dict(fused.ln.layer.state_dict())
+        qkv = _dummy_linear(fused.qkv)
+        q = _dummy_linear(direct.q_proj)
+        k = _dummy_linear(direct.k_proj)
+        v = _dummy_linear(direct.v_proj)
+        q.weight.copy_(qkv.weight[:16])
+        q.bias.copy_(qkv.bias[:16])
+        k.weight.copy_(qkv.weight[16:32])
+        k.bias.copy_(qkv.bias[16:32])
+        v.weight.copy_(qkv.weight[32:48])
+        v.bias.copy_(qkv.bias[32:48])
+        _dummy_linear(direct.proj).load_state_dict(_dummy_linear(fused.proj).state_dict())
+
+    batch_major_cache = allocate_kv_cache(
+        batch_size=2,
+        total_tokens=8,
+        num_heads=4,
+        head_dim=4,
+        device=device,
+        dtype=torch.float32,
+    )
+    token_major_cache = allocate_token_major_kv_cache(
+        batch_size=2,
+        total_tokens=8,
+        num_heads=4,
+        head_dim=4,
+        device=device,
+        dtype=torch.float32,
+    )
+    batch_major_cache.cache_k.zero_()
+    batch_major_cache.cache_v.zero_()
+    token_major_cache.cache_k.zero_()
+    token_major_cache.cache_v.zero_()
+    tokens = torch.randn(2, 3, 16, device=device, dtype=torch.float32)
+
+    with torch.inference_mode():
+        fused_out = fused(tokens, batch_major_cache, start_offset=2)
+        direct_out = direct(tokens, token_major_cache, start_offset=2)
+
+    torch.testing.assert_close(direct_out, fused_out, rtol=1e-5, atol=1e-5)
+    torch.testing.assert_close(
+        token_major_cache.cache_k[2:5].permute(1, 0, 2, 3),
+        batch_major_cache.cache_k[:, 2:5],
+        rtol=1e-6,
+        atol=1e-6,
+    )
+    torch.testing.assert_close(
+        token_major_cache.cache_v[2:5].permute(1, 0, 2, 3),
+        batch_major_cache.cache_v[:, 2:5],
+        rtol=1e-6,
+        atol=1e-6,
+    )
 
 
 def test_paged_kv_offload_skips_when_fused_fp8_is_required_but_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -327,6 +421,7 @@ def test_trtllm_capture_verification_payload_uses_small_cpu_slice() -> None:
     bench.input_ids = torch.arange(256, dtype=torch.long).view(1, 256)
     bench.prompt_lengths = [0]
     bench._generated_output_ids = torch.arange(256, dtype=torch.long).view(2, 128)
+    bench._verify_output_buffer = torch.empty(1, trtllm_common.VERIFICATION_TOKEN_PREFIX, dtype=torch.long)
 
     bench.capture_verification_payload()
 
