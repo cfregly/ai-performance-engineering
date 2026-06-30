@@ -6649,6 +6649,13 @@ def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
         assert "get_config()" not in benchmark
         assert "get_nvtx_enabled(" not in benchmark
         assert "enable=self._enable_nvtx" in benchmark
+        assert "self._verify_probe_a = torch.empty(1024, dtype=torch.float32, pin_memory=True)" in setup
+        assert "self._verify_probe_b = torch.empty(1024, dtype=torch.float32, pin_memory=True)" in setup
+        assert "self._verify_probe_a.copy_(" in setup
+        assert "self.tensor_a[: self._verify_probe_a.numel()]" in setup
+        assert "self._verify_probe_b.copy_(" in setup
+        assert "self.tensor_b[: self._verify_probe_b.numel()]" in setup
+        assert ".detach().cpu()" not in setup
         assert "self._verify_output_buffer = torch.empty(4096, dtype=torch.float32)" in setup
         assert "output_slice = self.output[: self._verify_output_buffer.numel()].detach()" in capture
         assert "self._verify_output_buffer.copy_(output_slice, non_blocking=False)" in capture

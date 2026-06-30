@@ -50,8 +50,16 @@ class VectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.tensor_a = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self.tensor_b = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self._work = torch.empty(self.N, device=self.device, dtype=torch.float32)
-        self._verify_probe_a = self.tensor_a[:1024].detach().cpu()
-        self._verify_probe_b = self.tensor_b[:1024].detach().cpu()
+        self._verify_probe_a = torch.empty(1024, dtype=torch.float32, pin_memory=True)
+        self._verify_probe_b = torch.empty(1024, dtype=torch.float32, pin_memory=True)
+        self._verify_probe_a.copy_(
+            self.tensor_a[: self._verify_probe_a.numel()],
+            non_blocking=False,
+        )
+        self._verify_probe_b.copy_(
+            self.tensor_b[: self._verify_probe_b.numel()],
+            non_blocking=False,
+        )
         self._verify_output_buffer = torch.empty(4096, dtype=torch.float32)
         torch.cuda.synchronize(self.device)
 
