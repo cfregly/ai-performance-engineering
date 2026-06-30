@@ -102,13 +102,27 @@ class FP8PerChannelLinear(nn.Module):
         # Amax history for delayed scaling
         self.register_buffer(
             'input_amax_history',
-            torch.zeros(self.config.amax_history_len, in_features)
+            torch.zeros(
+                self.config.amax_history_len,
+                in_features,
+                device=device,
+                dtype=torch.float32,
+            )
         )
         self.register_buffer(
             'weight_amax_history',
-            torch.zeros(self.config.amax_history_len)
+            torch.zeros(
+                self.config.amax_history_len,
+                device=device,
+                dtype=torch.float32,
+            )
         )
-        self.register_buffer('amax_counter', torch.tensor(0))
+        self.register_buffer('amax_counter', torch.tensor(0, device=device))
+        self.register_buffer(
+            '_stats_buffer',
+            torch.empty(4, device=device, dtype=torch.float32),
+            persistent=False,
+        )
         
         self._reset_parameters()
     
@@ -275,14 +289,12 @@ class FP8PerChannelLinear(nn.Module):
     
     def get_quantization_stats(self) -> dict:
         """Get statistics about the quantization."""
-        stats_host = torch.stack(
-            (
-                self.input_amax_history.mean(),
-                self.input_amax_history.std(),
-                self.weight_amax_history.mean(),
-                self.amax_counter.to(dtype=torch.float32),
-            )
-        ).detach().cpu()
+        stats_buffer = self._stats_buffer
+        stats_buffer[0].copy_(self.input_amax_history.mean())
+        stats_buffer[1].copy_(self.input_amax_history.std())
+        stats_buffer[2].copy_(self.weight_amax_history.mean())
+        stats_buffer[3].copy_(self.amax_counter.to(dtype=torch.float32))
+        stats_host = stats_buffer.detach().cpu()
         input_amax_mean = float(stats_host[0])
         input_amax_std = float(stats_host[1])
         weight_amax_mean = float(stats_host[2])

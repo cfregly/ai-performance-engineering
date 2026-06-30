@@ -13953,9 +13953,19 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "float(output.detach().sum())" not in perchannel_benchmark
     assert ".detach().float().clone()" not in perchannel_benchmark
     assert "self.output = output" in perchannel_benchmark
-    assert "output=self.output.detach().float().clone()" in perchannel_capture
-    assert "stats_host = torch.stack(" in perchannel_stats
-    assert ").detach().cpu()" in perchannel_stats
+    assert "self._verify_output_buffer.copy_(output_slice)" in perchannel_capture
+    assert "output=self._verify_output_buffer" in perchannel_capture
+    assert "output=self.output.detach().float().clone()" not in perchannel_capture
+    assert "device=device" in perchannel_source
+    assert "self.register_buffer(\n            '_stats_buffer'," in perchannel_source
+    assert "persistent=False" in perchannel_source
+    assert "stats_buffer = self._stats_buffer" in perchannel_stats
+    assert "stats_buffer[0].copy_(self.input_amax_history.mean())" in perchannel_stats
+    assert "stats_buffer[1].copy_(self.input_amax_history.std())" in perchannel_stats
+    assert "stats_buffer[2].copy_(self.weight_amax_history.mean())" in perchannel_stats
+    assert "stats_buffer[3].copy_(self.amax_counter.to(dtype=torch.float32))" in perchannel_stats
+    assert "stats_host = stats_buffer.detach().cpu()" in perchannel_stats
+    assert "stats_host = torch.stack(" not in perchannel_stats
     assert "input_amax_mean = float(stats_host[0])" in perchannel_stats
     assert "amax_counter = float(stats_host[3])" in perchannel_stats
     assert ").tolist()" not in perchannel_stats
@@ -14034,9 +14044,12 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "expert_out * weights_e" not in moe_benchmark
     assert "self.output = output" in moe_benchmark
     assert "self.output = output[:1, : min(8, output.shape[1])]" not in moe_benchmark
-    assert "output_slice = self.output[:1, : min(8, self.output.shape[1])]" in moe_capture
+    assert "verify_output = getattr(self, \"_verify_output_buffer\", None)" in moe_capture
+    assert "output_slice = self.output[: verify_output.shape[0], : verify_output.shape[1]]" in moe_capture
+    assert "verify_output.copy_(output_slice)" in moe_capture
+    assert "output=verify_output" in moe_capture
     assert "self._payload_param_count = int(" in moe_source
-    assert "output=output_slice.detach().float().clone()" in moe_capture
+    assert "output=output_slice.detach().float().clone()" not in moe_capture
 
 
 def test_moe_level6_full_stack_weights_expert_outputs_in_place() -> None:
