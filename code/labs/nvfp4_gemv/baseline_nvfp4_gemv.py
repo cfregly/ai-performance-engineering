@@ -91,7 +91,7 @@ class BaselineNvfp4GemvBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self._input_data is None or self._kernel_fn is None:
             raise RuntimeError("Benchmark not initialized")
-        with self._nvtx_range("baseline_nvfp4_gemv"):
+        with torch.inference_mode(), self._nvtx_range("baseline_nvfp4_gemv"):
             self.output = self._kernel_fn(self._input_data)
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")

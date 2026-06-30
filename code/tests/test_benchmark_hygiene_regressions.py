@@ -4527,15 +4527,18 @@ def test_nvfp4_gemv_dequant_expands_scales_without_repeat_interleave() -> None:
 
 
 def test_nvfp4_wrappers_reuse_shape_signature_tensors() -> None:
-    for relative, length in (
-        ("labs/nvfp4_dual_gemm/baseline_nvfp4_dual_gemm.py", 5),
-        ("labs/nvfp4_dual_gemm/optimized_nvfp4_dual_gemm.py", 5),
-        ("labs/nvfp4_gemv/baseline_nvfp4_gemv.py", 4),
-        ("labs/nvfp4_gemv/optimized_nvfp4_gemv.py", 4),
+    for relative, length, label in (
+        ("labs/nvfp4_dual_gemm/baseline_nvfp4_dual_gemm.py", 5, "baseline_nvfp4_dual_gemm"),
+        ("labs/nvfp4_dual_gemm/optimized_nvfp4_dual_gemm.py", 5, "optimized_nvfp4_dual_gemm"),
+        ("labs/nvfp4_gemv/baseline_nvfp4_gemv.py", 4, "baseline_nvfp4_gemv"),
+        ("labs/nvfp4_gemv/optimized_nvfp4_gemv.py", 4, "optimized_nvfp4_gemv"),
     ):
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
         setup_section = source.split("def setup", maxsplit=1)[1].split(
             "def benchmark_fn", maxsplit=1
+        )[0]
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
         )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
@@ -4550,6 +4553,9 @@ def test_nvfp4_wrappers_reuse_shape_signature_tensors() -> None:
         assert "torch.tensor(" not in capture_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty(" in setup_section
+        assert f"with torch.inference_mode(), self._nvtx_range(\"{label}\"):" in benchmark_section
+        assert f"with self._nvtx_range(\"{label}\"):" not in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
         assert "verify_output = self._verify_output_buffer" in capture_section
         assert "verify_output.copy_(output_slice)" in capture_section
         assert "output=verify_output" in capture_section
