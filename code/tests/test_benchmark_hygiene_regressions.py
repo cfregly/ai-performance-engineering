@@ -3531,8 +3531,30 @@ def test_custom_vs_cublas_dual_benches_batch_relative_error_reads() -> None:
         assert "start.record()" not in bench_section
         assert "end.record()" not in bench_section
 
-    for interleave_section in (dual_fp8_interleave, dual_nvfp4_interleave):
-        assert "statistics.median(y / x for x, y in zip(" in interleave_section
+    dual_cta_interleave = dual_cta.split("if args.interleave > 0:", maxsplit=1)[1].split(
+        "else:",
+        maxsplit=1,
+    )[0]
+    for source, interleave_section in (
+        (dual_cta, dual_cta_interleave),
+        (dual_fp8, dual_fp8_interleave),
+        (dual_nvfp4, dual_nvfp4_interleave),
+    ):
+        assert "import statistics" not in source
+        assert "def _median_in_place(values: list[float]) -> float:" in source
+        assert "values.sort()" in source
+        assert "statistics.median(" not in interleave_section
+
+    for source, interleave_section in (
+        (dual_fp8, dual_fp8_interleave),
+        (dual_nvfp4, dual_nvfp4_interleave),
+    ):
+        assert "def _paired_speedup_stats(" in source
+        assert "for candidate_ms, baseline_ms in zip(" in source
+        assert "ratio_scratch.clear()" in source
+        assert "ratio_scratch: list[float] = []" in interleave_section
+        assert "_paired_speedup_stats(samples[name]," in interleave_section
+        assert "statistics.median(y / x for x, y in zip(" not in interleave_section
         assert "statistics.median([y / x for x, y in zip(" not in interleave_section
 
 
@@ -13044,6 +13066,11 @@ def test_ch17_early_rejection_uses_targeted_ttft_quantiles() -> None:
     assert "def _append_ttft_sample" in source
     assert "def _ttft_p95_p99_from_ordered" in source
     assert "def _count_ttft_violations_from_ordered" in source
+    assert "samples.sort()" in source.split("def _ttft_p95_p99(samples", maxsplit=1)[1].split(
+        "def _count_ttft_violations_from_ordered",
+        maxsplit=1,
+    )[0]
+    assert "return _ttft_p95_p99_from_ordered(sorted(samples))" not in source
     assert "recent_p95_ttft = _exclusive_quantile_from_sorted(" in health_section
     assert "_ordered_ttft_samples(self.metrics), 20, 19" in health_section
     assert "sorted(recent_samples)" not in health_section
@@ -13067,12 +13094,13 @@ def test_ch17_early_rejection_uses_targeted_ttft_quantiles() -> None:
         _ttft_p95_p99_from_ordered,
     )
 
-    samples = [float(value) for value in range(1, 121)]
+    samples = [float(value) for value in range(120, 0, -1)]
     assert _exclusive_quantile_from_sorted(sorted(samples), 20, 19) == statistics.quantiles(samples, n=20)[18]
     assert _ttft_p95_p99(samples) == (
         statistics.quantiles(samples, n=100)[94],
         statistics.quantiles(samples, n=100)[98],
     )
+    assert samples == sorted(samples)
     assert _ttft_p95_p99_from_ordered(sorted(samples)) == _ttft_p95_p99(samples)
     assert _count_ttft_violations_from_ordered(sorted(samples), 100.0) == 20
     metrics = SystemMetrics()

@@ -28,7 +28,6 @@ Correctness (tolerances are EXPLICIT):
 from __future__ import annotations
 
 import argparse
-import statistics
 import sys
 from pathlib import Path
 
@@ -52,6 +51,29 @@ _EXACT_SCALE_POOL_CPU = torch.tensor([0.5, 1.0, 2.0])
 _EXACT_SCALE_POOL_BY_DEVICE: dict[torch.device, torch.Tensor] = {}
 _FP8_GATE_VALUES_CPU = torch.tensor([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0])
 _FP8_GATE_VALUES_BY_DEVICE: dict[torch.device, torch.Tensor] = {}
+
+
+def _median_in_place(values: list[float]) -> float:
+    values.sort()
+    count = len(values)
+    mid = count // 2
+    if count & 1:
+        return values[mid]
+    return (values[mid - 1] + values[mid]) * 0.5
+
+
+def _paired_speedup_stats(
+    candidate_samples: list[float],
+    baseline_samples: list[float],
+    ratio_scratch: list[float],
+) -> tuple[float, int]:
+    ratio_scratch.clear()
+    wins = 0
+    for candidate_ms, baseline_ms in zip(candidate_samples, baseline_samples):
+        if candidate_ms < baseline_ms:
+            wins += 1
+        ratio_scratch.append(baseline_ms / candidate_ms)
+    return _median_in_place(ratio_scratch), wins
 
 
 def _device_tensor(
@@ -368,24 +390,41 @@ def main():
         for _ in range(args.interleave):
             for name, fn, _ in arms:
                 samples[name].append(bench(fn, data, warmup=2, iters=10))
-        print()
-        for name, _fn, r in arms:
-            med = statistics.median(samples[name])
-            lo, hi = min(samples[name]), max(samples[name])
-            report(name, med, r, M, N, K, exact_mode)
-            print(f"  {'':<38} spread [{lo*1e3:.1f}, {hi*1e3:.1f}] us over {args.interleave} reps")
+        ratio_scratch: list[float] = []
         base = samples[arms[0][0]]
-        for name, *_ in arms[1:]:
-            wins = sum(1 for x, y in zip(samples[name], base) if x < y)
-            ratio = statistics.median(y / x for x, y in zip(samples[name], base))
-            print(f"  paired {name} vs cuBLASLt NVFP4: median speedup {ratio:.4f}x, wins {wins}/{len(base)}")
+        paired_vs_base = [
+            (
+                name,
+                *_paired_speedup_stats(samples[name], base, ratio_scratch),
+                len(base),
+            )
+            for name, *_ in arms[1:]
+        ]
+        paired_vs_champ: list[tuple[str, float, int, int]] = []
         if len(arms) > 2:
             champ_name = arms[1][0]
             champ = samples[champ_name]
-            for name, *_ in arms[2:]:
-                wins = sum(1 for x, y in zip(samples[name], champ) if x < y)
-                ratio = statistics.median(y / x for x, y in zip(samples[name], champ))
-                print(f"  paired {name} vs {champ_name}: median speedup {ratio:.4f}x, wins {wins}/{len(champ)}")
+            paired_vs_champ = [
+                (
+                    name,
+                    *_paired_speedup_stats(samples[name], champ, ratio_scratch),
+                    len(champ),
+                )
+                for name, *_ in arms[2:]
+            ]
+        print()
+        for name, _fn, r in arms:
+            arm_samples = samples[name]
+            med = _median_in_place(arm_samples)
+            lo, hi = arm_samples[0], arm_samples[-1]
+            report(name, med, r, M, N, K, exact_mode)
+            print(f"  {'':<38} spread [{lo*1e3:.1f}, {hi*1e3:.1f}] us over {args.interleave} reps")
+        for name, ratio, wins, total in paired_vs_base:
+            print(f"  paired {name} vs cuBLASLt NVFP4: median speedup {ratio:.4f}x, wins {wins}/{total}")
+        if len(arms) > 2:
+            champ_name = arms[1][0]
+            for name, ratio, wins, total in paired_vs_champ:
+                print(f"  paired {name} vs {champ_name}: median speedup {ratio:.4f}x, wins {wins}/{total}")
     else:
         print()
         for name, fn, r in arms:

@@ -216,6 +216,9 @@ def test_compare_outputs_batches_diff_materialization() -> None:
 
 def test_summary_builds_pairwise_sections() -> None:
     source = inspect.getsource(summarize_rows)
+    runner_source = (Path(__file__).resolve().parents[1] / "runner.py").read_text(
+        encoding="utf-8"
+    )
     run_matrix_source = (Path(__file__).resolve().parents[1] / "run_matrix.py").read_text(
         encoding="utf-8"
     )
@@ -264,6 +267,9 @@ def test_summary_builds_pairwise_sections() -> None:
     assert "sum(1 for row in rows" not in source
     assert "min(ok_rows" not in source
     assert "for row in ok_rows" not in source
+    assert "upper_tail_count = sample_count - p95_index" in runner_source
+    assert "step_p95_ms = heapq.nlargest(upper_tail_count, elapsed_per_step_ms)[-1]" in runner_source
+    assert "sorted_latencies = sorted(elapsed_per_step_ms)" not in runner_source
     assert 'return 0 if int(summary["error_row_count"]) == 0 else 2' in run_matrix_source
     assert "error_count = sum(1 for row in rows" not in run_matrix_source
 

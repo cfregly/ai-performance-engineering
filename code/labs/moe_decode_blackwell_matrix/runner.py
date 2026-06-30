@@ -330,9 +330,9 @@ def measure_scenario(
         step_stdev_ms = math.sqrt(max(0.0, latency_variance))
     else:
         step_stdev_ms = 0.0
-    sorted_latencies = sorted(elapsed_per_step_ms)
-    p95_index = max(0, math.ceil(0.95 * len(sorted_latencies)) - 1)
-    step_p95_ms = sorted_latencies[p95_index]
+    p95_index = max(0, math.ceil(0.95 * sample_count) - 1)
+    upper_tail_count = sample_count - p95_index
+    step_p95_ms = heapq.nlargest(upper_tail_count, elapsed_per_step_ms)[-1]
 
     max_abs_diff = _compare_outputs(experts, batches, refs, scenario=scenario)
 

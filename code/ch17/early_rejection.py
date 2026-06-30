@@ -50,7 +50,8 @@ def _ttft_p95_p99_from_ordered(ordered_samples: List[float]) -> Tuple[float, flo
 
 
 def _ttft_p95_p99(samples: List[float]) -> Tuple[float, float]:
-    return _ttft_p95_p99_from_ordered(sorted(samples))
+    samples.sort()
+    return _ttft_p95_p99_from_ordered(samples)
 
 
 def _count_ttft_violations_from_ordered(ordered_samples: List[float], slo_limit: float) -> int:

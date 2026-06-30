@@ -20,7 +20,6 @@ arms equally. Use this mode for any perf claim.
 from __future__ import annotations
 
 import argparse
-import statistics
 import sys
 from pathlib import Path
 
@@ -32,6 +31,15 @@ if str(_CODE_ROOT) not in sys.path:
 import torch  # noqa: E402
 
 GB300_FP16_PEAK_TFLOPS = 3750.0
+
+
+def _median_in_place(values: list[float]) -> float:
+    values.sort()
+    count = len(values)
+    mid = count // 2
+    if count & 1:
+        return values[mid]
+    return (values[mid - 1] + values[mid]) * 0.5
 
 
 def bench(fn, a, b, warmup=10, iters=50):
@@ -162,8 +170,8 @@ def main():
         print(f"Interleaved A/B: {args.interleave} reps x (warmup=5, iters=20) per arm, round-robin\n")
         for name, _, rel in arms:
             ts = times[name]
-            med = statistics.median(ts)
-            suffix = f"  reps[min..max]=[{min(ts)*1e3:.1f}..{max(ts)*1e3:.1f}]us"
+            med = _median_in_place(ts)
+            suffix = f"  reps[min..max]=[{ts[0]*1e3:.1f}..{ts[-1]*1e3:.1f}]us"
             report(name, med, rel, M, N, K, suffix=suffix)
     else:
         for name, fn, rel in arms:
