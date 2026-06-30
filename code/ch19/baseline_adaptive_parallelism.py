@@ -21,6 +21,8 @@ class BaselineAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchma
         self.cfg = cfg or AdaptiveParallelismBenchmarkConfig()
         self.workload: Optional[Dict[str, torch.Tensor]] = None
         self.output: Optional[torch.Tensor] = None
+        self._result_buffer: Optional[torch.Tensor] = None
+        self._strategy_ids_cpu: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.num_requests),
             tokens_per_iteration=float(self.cfg.num_requests),
@@ -32,11 +34,26 @@ class BaselineAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchma
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.workload = build_workload(self.cfg, self.device)
+        self._result_buffer = torch.empty(
+            self.cfg.num_requests,
+            device=self.device,
+            dtype=torch.int64,
+        )
+        self._strategy_ids_cpu = torch.empty(
+            self.cfg.num_requests,
+            dtype=torch.int64,
+            pin_memory=True,
+        )
 
     def benchmark_fn(self) -> None:
-        if self.workload is None:
+        if self.workload is None or self._result_buffer is None or self._strategy_ids_cpu is None:
             raise RuntimeError("adaptive_parallelism workload not initialized")
-        self.output = classify_baseline(self.workload, device=self.device)
+        self.output = classify_baseline(
+            self.workload,
+            device=self.device,
+            strategy_ids_cpu=self._strategy_ids_cpu,
+            result=self._result_buffer,
+        )
 
     def capture_verification_payload(self) -> None:
         if self.workload is None or self.output is None:

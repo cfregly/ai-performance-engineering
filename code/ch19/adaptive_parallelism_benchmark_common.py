@@ -67,7 +67,13 @@ def build_workload(
     }
 
 
-def classify_baseline(workload: Dict[str, torch.Tensor], *, device: torch.device) -> torch.Tensor:
+def classify_baseline(
+    workload: Dict[str, torch.Tensor],
+    *,
+    device: torch.device,
+    strategy_ids_cpu: torch.Tensor | None = None,
+    result: torch.Tensor | None = None,
+) -> torch.Tensor:
     """Reference implementation using the chapter's existing Python helper.
 
     Materialize routing features to CPU once, then run per-request ``choose_worker_pool``
@@ -87,7 +93,8 @@ def classify_baseline(workload: Dict[str, torch.Tensor], *, device: torch.device
         dim=1,
     ).detach().cpu()
 
-    strategy_ids: list[int] = []
+    if strategy_ids_cpu is None:
+        strategy_ids_cpu = torch.empty(feature_rows.size(0), dtype=torch.int64)
     for row_idx in range(feature_rows.size(0)):
         feature_row = feature_rows[row_idx]
         config = choose_worker_pool(
@@ -98,9 +105,13 @@ def classify_baseline(workload: Dict[str, torch.Tensor], *, device: torch.device
             prefill_tokens=int(feature_row[4]),
             decode_tokens=int(feature_row[5]),
         )
-        strategy_ids.append(STRATEGY_TO_ID[config.strategy])
+        strategy_ids_cpu[row_idx] = STRATEGY_TO_ID[config.strategy]
 
-    return torch.tensor(strategy_ids, device=device, dtype=torch.int64)
+    if result is not None:
+        result.copy_(strategy_ids_cpu, non_blocking=result.is_cuda)
+        return result
+
+    return strategy_ids_cpu.to(device=device)
 
 
 def classify_vectorized(workload: Dict[str, torch.Tensor]) -> torch.Tensor:

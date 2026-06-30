@@ -46,6 +46,23 @@ def test_adaptive_parallelism_baseline_and_vectorized_paths_match_on_cpu() -> No
     assert torch.equal(baseline, optimized)
 
 
+def test_adaptive_parallelism_baseline_reuses_result_buffers_on_cpu() -> None:
+    cfg = AdaptiveParallelismBenchmarkConfig(num_requests=64)
+    workload = build_workload(cfg, torch.device("cpu"))
+    result = torch.empty(cfg.num_requests, dtype=torch.int64)
+    strategy_ids_cpu = torch.empty(cfg.num_requests, dtype=torch.int64)
+
+    baseline = classify_baseline(
+        workload,
+        device=torch.device("cpu"),
+        strategy_ids_cpu=strategy_ids_cpu,
+        result=result,
+    )
+
+    assert baseline is result
+    assert torch.equal(baseline, classify_vectorized(workload))
+
+
 def test_adaptive_parallelism_vectorized_out_reuses_buffers_on_cpu() -> None:
     cfg = AdaptiveParallelismBenchmarkConfig(num_requests=64)
     workload = build_workload(cfg, torch.device("cpu"))
@@ -91,12 +108,33 @@ def test_adaptive_parallelism_baseline_materializes_feature_rows_once() -> None:
     assert "feature_rows = torch.stack(" in source
     assert ").detach().cpu()" in source
     assert ").detach().cpu().tolist()" not in source
+    assert "strategy_ids_cpu = torch.empty(feature_rows.size(0), dtype=torch.int64)" in source
     assert "for row_idx in range(feature_rows.size(0)):" in source
     assert "feature_row = feature_rows[row_idx]" in source
     assert "seq_len=int(feature_row[0])" in source
     assert "gpu_mem_util=float(feature_row[1])" in source
+    assert "strategy_ids_cpu[row_idx] = STRATEGY_TO_ID[config.strategy]" in source
+    assert "result.copy_(strategy_ids_cpu, non_blocking=result.is_cuda)" in source
+    assert "return result" in source
+    assert "return strategy_ids_cpu.to(device=device)" in source
+    assert "strategy_ids: list[int]" not in source
+    assert "strategy_ids.append(" not in source
+    assert "torch.tensor(strategy_ids" not in source
     assert "[idx].item()" not in source
     assert 'workload["seq_len"].detach().cpu()' not in source
+
+
+def test_adaptive_parallelism_baseline_benchmark_reuses_result_buffers() -> None:
+    source = inspect.getsource(BaselineAdaptiveParallelismBenchmark)
+
+    assert "self._result_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._strategy_ids_cpu: Optional[torch.Tensor] = None" in source
+    assert "self._result_buffer = torch.empty(" in source
+    assert "self._strategy_ids_cpu = torch.empty(" in source
+    assert "pin_memory=True" in source
+    assert "strategy_ids_cpu=self._strategy_ids_cpu" in source
+    assert "result=self._result_buffer" in source
+    assert "self.output = classify_baseline(self.workload, device=self.device)" not in source
 
 
 def test_adaptive_parallelism_optimized_benchmark_reuses_mask_buffers() -> None:
