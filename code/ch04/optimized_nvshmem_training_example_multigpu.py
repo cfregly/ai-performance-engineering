@@ -51,6 +51,8 @@ class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenc
         super().__init__()
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._benchmark_argv: list[str] = []
+        self._original_argv: Optional[list[str]] = None
+        self._original_env: dict[str, Optional[str]] = {}
         self._verify_input: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
@@ -74,27 +76,31 @@ class OptimizedNVSHMEMTrainingExampleMultiGPU(VerificationPayloadMixin, BaseBenc
             "--steps",
             "240",
         ]
+        self._original_argv = sys.argv
+        self._original_env = {
+            "AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS": os.environ.get("AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"),
+        }
+        os.environ["AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"] = "1"
+        sys.argv = self._benchmark_argv
         self._verify_input = torch.randn(64, 64, device=self.device, dtype=torch.float32)
 
     def benchmark_fn(self) -> None:
         if not self._benchmark_argv:
             raise RuntimeError("setup() must initialize benchmark argv before benchmark_fn()")
-        original_argv = sys.argv
-        original_reuse = os.environ.get("AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS")
-        try:
-            os.environ["AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"] = "1"
-            sys.argv = self._benchmark_argv
-            nvshmem_train_main()
-        finally:
-            sys.argv = original_argv
-            if original_reuse is None:
-                os.environ.pop("AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS", None)
-            else:
-                os.environ["AISP_NVSHMEM_PIPELINE_REUSE_BUFFERS"] = original_reuse
+        nvshmem_train_main()
 
     def teardown(self) -> None:
         if dist.is_initialized():
             dist.destroy_process_group()
+        if self._original_argv is not None:
+            sys.argv = self._original_argv
+            self._original_argv = None
+        for key, value in self._original_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        self._original_env = {}
         self._benchmark_argv = []
         torch.cuda.empty_cache()
 
