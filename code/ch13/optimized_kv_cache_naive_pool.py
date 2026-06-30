@@ -144,6 +144,8 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._input_token_views: list[list[torch.Tensor]] = []
         self._input_token_steps: list[list[tuple[int, torch.Tensor]]] = []
         self._request_token_groups: list[tuple[str, list[tuple[int, torch.Tensor]]]] = []
+        self._request_group_counts: tuple[int, int, int] = (0, 0, 0)
+        self._expected_request_group_counts: tuple[int, int, int] = (0, 0, 0)
         self._layer_groups: list[tuple[int, nn.Module]] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
@@ -213,6 +215,16 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
             for token_views in self._input_token_views
         ]
         self._request_token_groups = list(zip(self._request_ids, self._input_token_steps, strict=True))
+        self._request_group_counts = (
+            len(self._request_ids),
+            len(self._input_token_views),
+            len(self._request_token_groups),
+        )
+        self._expected_request_group_counts = (
+            self._input_count,
+            self._input_count,
+            self._input_count,
+        )
         if self.inputs:
             self._verify_input = self.inputs[0].detach().clone()
         
@@ -221,12 +233,7 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
     def benchmark_fn(self) -> None:
         if self.model is None or self.kv_cache is None or self.inputs is None:
             raise RuntimeError("Benchmark not configured")
-        input_count = self._input_count
-        if len(self._request_ids) != input_count:
-            raise RuntimeError("Request IDs not initialized")
-        if len(self._input_token_views) != input_count:
-            raise RuntimeError("Input token views not initialized")
-        if len(self._request_token_groups) != input_count:
+        if self._request_group_counts != self._expected_request_group_counts:
             raise RuntimeError("Request token groups not initialized")
         if not self._layer_groups:
             raise RuntimeError("Layer groups not initialized")
@@ -274,6 +281,8 @@ class OptimizedKVCacheNaivePoolBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._input_token_views = []
         self._input_token_steps = []
         self._request_token_groups = []
+        self._request_group_counts = (0, 0, 0)
+        self._expected_request_group_counts = (0, 0, 0)
         self._layer_groups = []
         self.output = None
         self._verify_input = None

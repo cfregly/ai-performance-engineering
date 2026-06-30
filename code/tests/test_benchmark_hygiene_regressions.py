@@ -16828,27 +16828,32 @@ def test_ch13_optimized_kv_cache_variants_precompute_request_views() -> None:
         assert "self._input_count = 0" in source
         assert "self._input_token_views: list[list[torch.Tensor]] = []" in source
         assert "self._input_token_steps: list[list[tuple[int, torch.Tensor]]] = []" in source
+        assert "self._request_group_counts: tuple[int, int, int] = (0, 0, 0)" in source
+        assert "self._expected_request_group_counts: tuple[int, int, int] = (0, 0, 0)" in source
         assert "self._layer_groups: list[tuple[int, nn.Module]] = []" in source
         assert "self._request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
         assert "self._input_count = len(self.inputs)" in setup_section
         assert "list(x.split(1, dim=1))" in setup_section
         assert "self._input_token_steps = [" in setup_section
         assert "self._layer_groups = list(enumerate(" in setup_section
-        assert "input_count = self._input_count" in benchmark_section
-        assert "if len(self._request_ids) != input_count:" in benchmark_section
-        assert "if len(self._input_token_views) != input_count:" in benchmark_section
+        assert "self._request_group_counts = (" in setup_section
+        assert "self._expected_request_group_counts = (" in setup_section
+        assert "if self._request_group_counts != self._expected_request_group_counts:" in benchmark_section
+        assert "input_count = self._input_count" not in benchmark_section
+        assert "len(self._request_ids)" not in benchmark_section
+        assert "len(self._input_token_views)" not in benchmark_section
         assert "len(self.inputs)" not in benchmark_section
         if filename == "optimized_kv_cache_naive.py":
             assert "self._request_token_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []" in source
             assert "(request_id, len(token_views), token_steps)" in setup_section
             assert "for request_id, seq_len, token_steps in self._request_token_groups:" in benchmark_section
-            assert "if len(self._request_token_groups) != input_count:" in benchmark_section
+            assert "len(self._request_token_groups)" not in benchmark_section
             assert "seq_len = len(token_views)" not in benchmark_section
         else:
             assert "self._request_token_groups: list[tuple[str, list[tuple[int, torch.Tensor]]]] = []" in source
             assert "self._request_token_groups = list(zip(self._request_ids, self._input_token_steps, strict=True))" in setup_section
             assert "for request_id, token_steps in self._request_token_groups:" in benchmark_section
-            assert "if len(self._request_token_groups) != input_count:" in benchmark_section
+            assert "len(self._request_token_groups)" not in benchmark_section
         assert "for pos, token_view in token_steps:" in benchmark_section
         assert "enumerate(token_views)" not in benchmark_section
         assert "for layer_idx, layer in self._layer_groups:" in benchmark_section
@@ -16862,6 +16867,8 @@ def test_ch13_optimized_kv_cache_variants_precompute_request_views() -> None:
         assert "self._input_count = 0" in teardown_section
         assert "self._input_token_steps = []" in teardown_section
         assert "self._request_token_groups = []" in teardown_section
+        assert "self._request_group_counts = (0, 0, 0)" in teardown_section
+        assert "self._expected_request_group_counts = (0, 0, 0)" in teardown_section
         assert "self._layer_groups = []" in teardown_section
 
     source = (
@@ -16884,6 +16891,8 @@ def test_ch13_optimized_kv_cache_variants_precompute_request_views() -> None:
     assert "self._input_count = 0" in source
     assert "self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []" in source
     assert "self._request_block_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []" in source
+    assert "self._request_group_counts: tuple[int, int, int] = (0, 0, 0)" in source
+    assert "self._expected_request_group_counts: tuple[int, int, int] = (0, 0, 0)" in source
     assert "self._layer_groups: list[tuple[int, nn.Module]] = []" in source
     assert "self._request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
     assert "self._input_count = len(self.inputs)" in setup_section
@@ -16891,10 +16900,13 @@ def test_ch13_optimized_kv_cache_variants_precompute_request_views() -> None:
     assert "enumerate(x.split(self.block_size, dim=1))" in setup_section
     assert "(request_id, seq_len, block_views)" in setup_section
     assert "self._layer_groups = list(enumerate(self.layers))" in setup_section
-    assert "input_count = self._input_count" in benchmark_section
-    assert "if len(self._request_ids) != input_count:" in benchmark_section
-    assert "if len(self._input_block_views) != input_count:" in benchmark_section
-    assert "if len(self._request_block_groups) != input_count:" in benchmark_section
+    assert "self._request_group_counts = (" in setup_section
+    assert "self._expected_request_group_counts = (" in setup_section
+    assert "if self._request_group_counts != self._expected_request_group_counts:" in benchmark_section
+    assert "input_count = self._input_count" not in benchmark_section
+    assert "len(self._request_ids)" not in benchmark_section
+    assert "len(self._input_block_views)" not in benchmark_section
+    assert "len(self._request_block_groups)" not in benchmark_section
     assert "len(self.inputs)" not in benchmark_section
     assert "for request_id, seq_len, block_views in self._request_block_groups:" in benchmark_section
     assert "for layer_idx, layer in self._layer_groups:" in benchmark_section
@@ -16907,6 +16919,8 @@ def test_ch13_optimized_kv_cache_variants_precompute_request_views() -> None:
     assert "self._input_block_views = []" in teardown_section
     assert "self._input_count = 0" in teardown_section
     assert "self._request_block_groups = []" in teardown_section
+    assert "self._request_group_counts = (0, 0, 0)" in teardown_section
+    assert "self._expected_request_group_counts = (0, 0, 0)" in teardown_section
     assert "self._layer_groups = []" in teardown_section
 
 

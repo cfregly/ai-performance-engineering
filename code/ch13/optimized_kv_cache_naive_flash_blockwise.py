@@ -154,6 +154,8 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         self._request_ids: list[str] = []
         self._input_block_views: list[tuple[int, list[tuple[int, torch.Tensor]]]] = []
         self._request_block_groups: list[tuple[str, int, list[tuple[int, torch.Tensor]]]] = []
+        self._request_group_counts: tuple[int, int, int] = (0, 0, 0)
+        self._expected_request_group_counts: tuple[int, int, int] = (0, 0, 0)
         self._layer_groups: list[tuple[int, nn.Module]] = []
         self.workload = WORKLOAD
         self.page_size = self.workload.page_size
@@ -240,6 +242,16 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
                 strict=True,
             )
         ]
+        self._request_group_counts = (
+            len(self._request_ids),
+            len(self._input_block_views),
+            len(self._request_block_groups),
+        )
+        self._expected_request_group_counts = (
+            self._input_count,
+            self._input_count,
+            self._input_count,
+        )
         if self.inputs:
             self._verify_input = self.inputs[0].detach().clone()
         self._synchronize()
@@ -247,12 +259,7 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
     def benchmark_fn(self) -> None:
         if self.layers is None or self.kv_cache is None or self.inputs is None:
             raise RuntimeError("Benchmark not configured")
-        input_count = self._input_count
-        if len(self._request_ids) != input_count:
-            raise RuntimeError("Request IDs not initialized")
-        if len(self._input_block_views) != input_count:
-            raise RuntimeError("Input block views not initialized")
-        if len(self._request_block_groups) != input_count:
+        if self._request_group_counts != self._expected_request_group_counts:
             raise RuntimeError("Request block groups not initialized")
         if not self._layer_groups:
             raise RuntimeError("Layer groups not initialized")
@@ -298,6 +305,8 @@ class OptimizedKVCacheNaiveFlashBlockwiseBenchmark(VerificationPayloadMixin, Bas
         self._request_ids = []
         self._input_block_views = []
         self._request_block_groups = []
+        self._request_group_counts = (0, 0, 0)
+        self._expected_request_group_counts = (0, 0, 0)
         self._layer_groups = []
         self.output = None
         self._verify_input = None
