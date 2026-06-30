@@ -10,6 +10,9 @@ import torch.nn.functional as F
 from core.benchmark.verification_mixin import VerificationPayloadMixin
 from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, WorkloadMetadata
 
+_SDPA_KERNEL = getattr(torch.nn.attention, "sdpa_kernel", None)
+_FLASH_SDP_BACKEND = getattr(torch.nn.attention.SDPBackend, "FLASH_ATTENTION", None)
+
 
 class OptimizedAttentionFlexBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """FlexAttention optimization - optimized kernels."""
@@ -63,11 +66,11 @@ class OptimizedAttentionFlexBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Benchmark not configured")
         with self._nvtx_range("attention_standard"):
             with torch.inference_mode():
-                if not hasattr(torch.nn.attention, "sdpa_kernel"):
+                if _SDPA_KERNEL is None or _FLASH_SDP_BACKEND is None:
                     raise RuntimeError("torch.nn.attention.sdpa_kernel is required for flash attention")
                 if not torch.backends.cuda.flash_sdp_enabled():
                     raise RuntimeError("Flash SDP backend is not available on this build")
-                with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.FLASH_ATTENTION):
+                with _SDPA_KERNEL(_FLASH_SDP_BACKEND):
                     self.output = F.scaled_dot_product_attention(
                         self.q, self.k, self.v,
                         dropout_p=0.0,

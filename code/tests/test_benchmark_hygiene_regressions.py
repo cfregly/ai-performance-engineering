@@ -18068,6 +18068,13 @@ def test_ch13_attention_wrappers_sample_verification_outputs() -> None:
         assert "self.output.detach().float().clone()" not in capture_section
         assert ".detach().float().clone()" not in benchmark_section
         assert "self._verify_output_buffer = None" in teardown_section
+        if filename.startswith("optimized_"):
+            assert '_SDPA_KERNEL = getattr(torch.nn.attention, "sdpa_kernel", None)' in source
+            assert '_FLASH_SDP_BACKEND = getattr(torch.nn.attention.SDPBackend, "FLASH_ATTENTION", None)' in source
+            assert "if _SDPA_KERNEL is None or _FLASH_SDP_BACKEND is None:" in benchmark_section
+            assert "with _SDPA_KERNEL(_FLASH_SDP_BACKEND):" in benchmark_section
+            assert 'hasattr(torch.nn.attention, "sdpa_kernel")' not in benchmark_section
+            assert "torch.nn.attention.sdpa_kernel(" not in benchmark_section
 
 
 def test_ch13_fp4_perchannel_wrappers_sample_verification_outputs() -> None:
