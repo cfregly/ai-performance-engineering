@@ -38,19 +38,21 @@ class SimplePipeline(nn.Module):
         fc2_shape = (rows, self.fc2.out_features)
         if (
             self._fc1_buffer is None
-            or self._fc1_buffer.shape != fc1_shape
+            or self._fc1_buffer.size(0) < rows
+            or self._fc1_buffer.size(1) != self.fc1.out_features
             or self._fc1_buffer.device != x.device
             or self._fc1_buffer.dtype != x.dtype
         ):
             self._fc1_buffer = torch.empty(fc1_shape, device=x.device, dtype=x.dtype)
         if (
             self._fc2_buffer is None
-            or self._fc2_buffer.shape != fc2_shape
+            or self._fc2_buffer.size(0) < rows
+            or self._fc2_buffer.size(1) != self.fc2.out_features
             or self._fc2_buffer.device != x.device
             or self._fc2_buffer.dtype != x.dtype
         ):
             self._fc2_buffer = torch.empty(fc2_shape, device=x.device, dtype=x.dtype)
-        return self._fc1_buffer, self._fc2_buffer
+        return self._fc1_buffer[:rows], self._fc2_buffer[:rows]
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled():
@@ -70,12 +72,11 @@ class SimplePipeline(nn.Module):
         return fc2_out
 
     def forward_cached(self, x: torch.Tensor) -> torch.Tensor:
-        fc1_out = self._fc1_buffer
-        fc2_out = self._fc2_buffer
         fc1_weight_t = self._fc1_weight_t
         fc2_weight_t = self._fc2_weight_t
-        if fc1_out is None or fc2_out is None or fc1_weight_t is None or fc2_weight_t is None:
+        if fc1_weight_t is None or fc2_weight_t is None:
             raise RuntimeError("forward_cached() requires setup-time buffers and weight views")
+        fc1_out, fc2_out = self._ensure_forward_buffers(x)
         torch.mm(x, fc1_weight_t, out=fc1_out)
         if self._fc1_bias is not None:
             fc1_out.add_(self._fc1_bias)
