@@ -64,8 +64,11 @@ def test_ch04_nixl_tier_handoff_optimized_reuses_pack_buffer() -> None:
     assert "torch.index_select(self.src, 0, self.selected_idx, out=self._expected_buffer)" in validate_section
     assert "self.selected_idx.cpu().tolist()" not in source
     assert ".cpu().tolist()" not in benchmark_section
-    assert "selected_cpu = self.selected_cpu" in benchmark_section
+    assert "selected_copy_pairs = self.selected_copy_pairs" in benchmark_section
     assert "self.selected_cpu = [int(idx) for idx in selected_cpu.tolist()] if not self.optimized else None" in source
+    assert "self.selected_copy_pairs = list(enumerate(self.selected_cpu)) if not self.optimized else None" in source
+    assert "for slot, block_idx in selected_copy_pairs:" in benchmark_section
+    assert "for slot, block_idx in enumerate(selected_cpu):" not in benchmark_section
     assert "self.baseline_copy_ready: Optional[torch.cuda.Event] = None" in source
     assert "self.baseline_copy_ready = torch.cuda.Event() if not self.optimized else None" in source
     assert "copy_ready.synchronize()" in benchmark_section

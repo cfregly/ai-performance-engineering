@@ -204,6 +204,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.packed_stage: Optional[torch.Tensor] = None
         self.selected_idx: Optional[torch.Tensor] = None
         self.selected_cpu: Optional[list[int]] = None
+        self.selected_copy_pairs: Optional[list[tuple[int, int]]] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self._expected_buffer: Optional[torch.Tensor] = None
         self.copy_stream: Optional[torch.cuda.Stream] = None
@@ -276,6 +277,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         selected_cpu = _selected_indices_cpu(self.workload)
         self.selected_idx = selected_cpu.to(device=self.device)
         self.selected_cpu = [int(idx) for idx in selected_cpu.tolist()] if not self.optimized else None
+        self.selected_copy_pairs = list(enumerate(self.selected_cpu)) if not self.optimized else None
         self.copy_stream = torch.cuda.Stream(device=self.device) if self.optimized else None
         self.copy_ready = torch.cuda.Event() if self.optimized else None
         self.baseline_copy_ready = torch.cuda.Event() if not self.optimized else None
@@ -295,13 +297,13 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         if not self.optimized:
-            if self.selected_cpu is None or self.baseline_copy_ready is None:
+            if self.selected_cpu is None or self.selected_copy_pairs is None or self.baseline_copy_ready is None:
                 raise RuntimeError("Baseline path requires setup() to cache selected CPU indices")
-            selected_cpu = self.selected_cpu
+            selected_copy_pairs = self.selected_copy_pairs
             copy_ready = self.baseline_copy_ready
             current_stream = torch.cuda.current_stream(self.device)
             for _ in range(self.workload.inner_iterations):
-                for slot, block_idx in enumerate(selected_cpu):
+                for slot, block_idx in selected_copy_pairs:
                     self.host_stage[slot].copy_(self.src[block_idx], non_blocking=True)
                     copy_ready.record(current_stream)
                     copy_ready.synchronize()
@@ -372,6 +374,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.packed_stage = None
         self.selected_idx = None
         self.selected_cpu = None
+        self.selected_copy_pairs = None
         self._output_buffer = None
         self._expected_buffer = None
         self.copy_stream = None

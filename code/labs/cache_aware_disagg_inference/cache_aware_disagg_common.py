@@ -168,6 +168,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._owners: Dict[int, int] = {}
         self._prompt_chunks: List[Sequence[torch.Tensor]] = []
         self._warm_request_count = 0
+        self._request_event_groups: List[tuple[int, RequestPlan]] = []
 
     def _build_request_plans(self) -> List[RequestPlan]:
         warm_requests = int(round(self.cfg.requests_per_iteration * self.cfg.warm_request_ratio))
@@ -193,6 +194,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.request_plans = self._build_request_plans()
+        self._request_event_groups = list(enumerate(self.request_plans))
         self.prompts = torch.randn(
             self.cfg.requests_per_iteration,
             self.cfg.batch_size,
@@ -396,7 +398,9 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         prompt_chunks = self._prompt_chunks
         if len(prompt_chunks) != len(self.request_plans):
             raise RuntimeError("Prompt chunk views not initialized")
-        output_idx = 0
+        request_event_groups = self._request_event_groups
+        if len(request_event_groups) != len(self.request_plans):
+            raise RuntimeError("Request event groups not initialized")
         metrics = self._pending_metrics
         metrics["cache_hits"] = 0.0
         metrics["cache_misses"] = 0.0
@@ -412,7 +416,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         current_stream = torch.cuda.current_stream()
         with torch.inference_mode():
-            for event_idx, plan in enumerate(self.request_plans):
+            for event_idx, plan in request_event_groups:
                 request_start, prefill_end, decode_end = request_events[event_idx]
                 request_start.record(current_stream)
 
@@ -472,8 +476,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     raise RuntimeError("Request finished without a decode seed")
                 output = self.decode_model.decode(seed, accumulated_kv, self.cfg.decode_tokens)
                 decode_end.record(current_stream)
-                outputs[output_idx] = output
-                output_idx += 1
+                outputs[event_idx] = output
 
         self._last_outputs = outputs
         self._outputs_ready = True
@@ -581,6 +584,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._owners = {}
         self._prompt_chunks = []
         self._warm_request_count = 0
+        self._request_event_groups = []
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

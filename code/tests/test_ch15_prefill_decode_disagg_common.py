@@ -101,7 +101,9 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "self._host_staging = {}" in setup_section
     assert "self._handoff_staging = {}" in setup_section
     assert "self._request_groups = []" in setup_section
+    assert "self._request_output_groups = []" in setup_section
     assert "self._request_groups.extend(" in setup_section
+    assert "self._request_output_groups = [" in setup_section
     assert "batch_slice[idx : idx + 1]" in setup_section
     assert "self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]" in setup_section
     assert "probe_width = min(256, self.hidden_size)" in setup_section
@@ -122,8 +124,14 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "decode_buf.copy_(prefill_out, non_blocking=True)" in handoff_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "outputs = self._output_shards" in benchmark_section
-    assert "enumerate(" in benchmark_section
+    assert "enumerate(" not in benchmark_section
     assert "self._request_groups" in benchmark_section
+    assert "self._request_output_groups" in benchmark_section
+    assert "output_idx," in benchmark_section
+    assert "decode_device," in benchmark_section
+    assert "prefill_model," in benchmark_section
+    assert "decode_model," in benchmark_section
+    assert ") in self._request_output_groups:" in benchmark_section
     assert "prefill_out = prefill_model(request)" in benchmark_section
     assert "outputs[output_idx] = token_state.squeeze(0).squeeze(0)" in benchmark_section
     assert "output_idx += 1" not in benchmark_section
@@ -144,5 +152,6 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "torch.stack([tensor.detach().cpu() for tensor in selected], dim=0)" not in capture_section
     assert "output_cpu[:, :256]" not in capture_section
     assert "self._verify_probe = None" in teardown_section
+    assert "self._request_output_groups = []" in teardown_section
     assert "self._verify_output_stack = None" in teardown_section
     assert "self._verify_output_buffer = None" in teardown_section

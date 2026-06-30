@@ -64,6 +64,9 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._host_staging: dict[str, torch.Tensor] = {}
         self._handoff_staging: dict[str, torch.Tensor] = {}
         self._request_groups: list[tuple[torch.device, nn.Module, nn.Module, torch.Tensor]] = []
+        self._request_output_groups: list[
+            tuple[int, torch.device, nn.Module, nn.Module, torch.Tensor]
+        ] = []
         self._verify_probe: Optional[torch.Tensor] = None
         self._output_shards: Optional[list[torch.Tensor]] = None
         self._verify_output_stack: Optional[torch.Tensor] = None
@@ -150,6 +153,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._host_staging = {}
         self._handoff_staging = {}
         self._request_groups = []
+        self._request_output_groups = []
         self._decode_step_range = range(self.decode_length)
         self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]
         probe_width = min(256, self.hidden_size)
@@ -195,6 +199,12 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     torch.bfloat16,
                 )
             offset = slice_end
+        self._request_output_groups = [
+            (output_idx, decode_device, prefill_model, decode_model, request)
+            for output_idx, (decode_device, prefill_model, decode_model, request) in enumerate(
+                self._request_groups
+            )
+        ]
 
         self._verify_probe.copy_(
             self.prefill_inputs[0][:1, :1, :probe_width],
@@ -229,6 +239,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or not self.decode_models
             or not self.prefill_inputs
             or not self._request_groups
+            or not self._request_output_groups
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
@@ -237,9 +248,13 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Decode output shards not initialized")
         with self._nvtx_range(self.label):
             with torch.inference_mode():
-                for output_idx, (decode_device, prefill_model, decode_model, request) in enumerate(
-                    self._request_groups
-                ):
+                for (
+                    output_idx,
+                    decode_device,
+                    prefill_model,
+                    decode_model,
+                    request,
+                ) in self._request_output_groups:
                     prefill_out = prefill_model(request)
                     kv_decode = self._handoff_kv(prefill_out, decode_device)
                     token_state = kv_decode[:, -1:, :]
@@ -288,6 +303,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._host_staging = {}
         self._handoff_staging = {}
         self._request_groups = []
+        self._request_output_groups = []
         self._verify_probe = None
         self._output_shards = None
         self._verify_output_stack = None

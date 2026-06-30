@@ -10682,14 +10682,19 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "_extend_cache_buffer(" in benchmark_section
     assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)" in helper_section
     assert "torch.cat((accumulated_kv, chunk_kv), dim=1)" not in benchmark_section
+    assert "self._request_event_groups: List[tuple[int, RequestPlan]] = []" in setup_section
+    assert "self._request_event_groups = list(enumerate(self.request_plans))" in setup_section
+    assert "request_event_groups = self._request_event_groups" in benchmark_section
+    assert "for event_idx, plan in request_event_groups:" in benchmark_section
+    assert "for event_idx, plan in enumerate(self.request_plans):" not in benchmark_section
     assert "request_start, prefill_end, decode_end = request_events[event_idx]" in benchmark_section
     assert "self._last_outputs = [torch.empty(0) for _ in self.request_plans]" in setup_section
     assert "outputs: List[torch.Tensor] = []" not in benchmark_section
     assert "outputs = self._last_outputs" in benchmark_section
-    assert "output_idx = 0" in benchmark_section
+    assert "output_idx = 0" not in benchmark_section
     assert "outputs.append(" not in benchmark_section
-    assert "outputs[output_idx] = output" in benchmark_section
-    assert "output_idx += 1" in benchmark_section
+    assert "outputs[event_idx] = output" in benchmark_section
+    assert "output_idx += 1" not in benchmark_section
     assert "self._last_outputs = outputs" in benchmark_section
     assert "self._output_stack = torch.empty(" in setup_section
     assert "self._outputs_ready = True" in benchmark_section
@@ -17362,7 +17367,11 @@ def test_labs_nccl_nixl_nvshmem_reuses_metric_state() -> None:
     assert "for key in self._metrics:" in reset_section
     assert "self._metrics[key] = 0.0" in reset_section
     assert "self._reset_metrics()" in setup_section
+    assert "self.selected_copy_pairs = list(enumerate(self.selected_cpu)) if not self.optimized else None" in setup_section
     assert "self._reset_metrics()" in teardown_section
+    assert "selected_copy_pairs = self.selected_copy_pairs" in benchmark_section
+    assert "for slot, block_idx in selected_copy_pairs:" in benchmark_section
+    assert "for slot, block_idx in enumerate(selected_cpu):" not in benchmark_section
     assert "metrics = self._metrics" in benchmark_section
     assert 'metrics["tier_handoff.selected_blocks"] = self._selected_blocks_metric' in benchmark_section
     assert 'metrics["tier_handoff.block_kib"] = self._block_kib_metric' in benchmark_section
@@ -17372,6 +17381,7 @@ def test_labs_nccl_nixl_nvshmem_reuses_metric_state() -> None:
     assert 'metrics["tier_handoff.bytes_per_iteration_mb"] = self._bytes_per_iteration_mb' in benchmark_section
     assert "self._metrics = {" not in benchmark_section
     assert "float(self.workload.bytes_per_iteration) /" not in benchmark_section
+    assert "self.selected_copy_pairs = None" in teardown_section
 
 
 def test_ch04_nvshmem_microbench_defers_output_tensor_outside_hot_loop() -> None:
@@ -20545,8 +20555,12 @@ def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:
     assert "_split_prompt(" not in benchmark_section
     assert "chunks[plan.warm_chunks :]" not in benchmark_section
     assert "request_events[: len(self.request_plans)]" not in benchmark_section
+    assert "request_event_groups = self._request_event_groups" in benchmark_section
+    assert "for event_idx, plan in request_event_groups:" in benchmark_section
+    assert "for event_idx, plan in enumerate(self.request_plans):" not in benchmark_section
     assert "self._request_event_triplets = request_events" in benchmark_section
     assert "sum(1 for plan in self.request_plans if plan.is_warm)" not in benchmark_section
+    assert "self._request_event_groups = []" in teardown_section
     assert "self._prompt_chunks = []" in teardown_section
 
 
