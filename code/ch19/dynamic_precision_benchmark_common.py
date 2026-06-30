@@ -149,6 +149,8 @@ def decode_host_policy_baseline(
     prompt_device = prompt.device
     batch_size, prompt_len = prompt.shape
     generated_shape = (batch_size, prompt_len + max_steps)
+    host_logits_shape_tuple: Tuple[int, ...] | None = None
+    top2_shape_tuple: Tuple[int, ...] | None = None
     if workspace is None:
         generated = torch.empty(
             generated_shape,
@@ -188,12 +190,14 @@ def decode_host_policy_baseline(
             logits = logits.logits
         last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
         # Deliberately conservative baseline: move confidence analysis to host.
+        if host_logits_shape_tuple is None:
+            host_logits_shape_tuple = tuple(last_step_logits.shape)
         if (
             host_logits_buffer is None
-            or tuple(host_logits_buffer.shape) != tuple(last_step_logits.shape)
+            or host_logits_buffer.shape != host_logits_shape_tuple
         ):
             host_logits_buffer = torch.empty(
-                tuple(last_step_logits.shape),
+                host_logits_shape_tuple,
                 device="cpu",
                 dtype=torch.float32,
                 pin_memory=device.type == "cuda" and torch.cuda.is_available(),
@@ -216,9 +220,17 @@ def decode_host_policy_baseline(
         policy_metrics_buffer[1].copy_(probs.max(dim=-1).values.mean())
         probs.mul_(log_probs)
         policy_metrics_buffer[0].copy_(-probs.sum(dim=-1).mean())
-        if policy_top2_values is None or policy_top2_indices is None:
-            policy_top2_values = torch.empty((batch_size, 2), device="cpu", dtype=host_logits.dtype)
-            policy_top2_indices = torch.empty((batch_size, 2), device="cpu", dtype=torch.long)
+        if top2_shape_tuple is None:
+            top2_shape_tuple = (batch_size, 2)
+        if (
+            policy_top2_values is None
+            or policy_top2_indices is None
+            or policy_top2_values.shape != top2_shape_tuple
+            or policy_top2_indices.shape != top2_shape_tuple
+            or policy_top2_values.dtype != host_logits.dtype
+        ):
+            policy_top2_values = torch.empty(top2_shape_tuple, device="cpu", dtype=host_logits.dtype)
+            policy_top2_indices = torch.empty(top2_shape_tuple, device="cpu", dtype=torch.long)
             if workspace is not None:
                 workspace.policy_top2_values = policy_top2_values
                 workspace.policy_top2_indices = policy_top2_indices

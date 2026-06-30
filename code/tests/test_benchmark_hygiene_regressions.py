@@ -5288,6 +5288,9 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "policy_metrics_buffer[1].copy_(probs.max(dim=-1).values.mean())" in host_policy_section
     assert "probs.mul_(log_probs)" in host_policy_section
     assert "policy_metrics_buffer[0].copy_(-probs.sum(dim=-1).mean())" in host_policy_section
+    assert "top2_shape_tuple: Tuple[int, ...] | None = None" in host_policy_section
+    assert "if top2_shape_tuple is None:" in host_policy_section
+    assert "policy_top2_values.shape != top2_shape_tuple" in host_policy_section
     assert "torch.topk(host_logits, k=2, dim=-1, out=(policy_top2_values, policy_top2_indices))" in host_policy_section
     assert "policy_metrics_buffer[2].copy_(policy_top2_values.mean())" in host_policy_section
     assert "policy_metrics_buffer[3].copy_(policy_top2_values[:, 0].mean())" in host_policy_section
@@ -5302,6 +5305,10 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "host_logits_buffer = torch.empty(" in host_policy_section
     assert "host_logits_buffer.copy_(" in host_policy_section
     assert "host_logits = host_logits_buffer" in host_policy_section
+    assert "host_logits_shape_tuple: Tuple[int, ...] | None = None" in host_policy_section
+    assert "host_logits_shape_tuple = tuple(last_step_logits.shape)" in host_policy_section
+    assert "host_logits_buffer.shape != host_logits_shape_tuple" in host_policy_section
+    assert "tuple(host_logits_buffer.shape)" not in host_policy_section
     assert "last_step_logits.to(torch.float32).cpu()" not in host_policy_section
     assert "compute_entropy(host_logits).mean().item()" not in host_policy_section
     assert "torch.topk(host_logits, k=2, dim=-1).values.mean()" not in host_policy_section
@@ -5531,6 +5538,10 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     assert "next_token = torch.argmax(last_step_logits" not in dynamic_decode_section
     assert "torch.multinomial(probs, num_samples=1, out=next_token)" in token_precision_generate
     assert "tokens[:, current_len : current_len + 1].copy_(next_token.view(1, 1))" in token_precision_generate
+    assert "confidence_score = metrics.confidence_score" in token_precision_generate
+    assert "next_precision = self._choose_precision(confidence_score)" in token_precision_generate
+    assert 'stats.append({"confidence": confidence_score, "precision": self.current_precision.value})' in token_precision_generate
+    assert token_precision_generate.count("metrics.confidence_score") == 1
     assert "next_token_host.copy_(next_token)" in token_precision_generate
     assert "next_token = torch.multinomial(probs, num_samples=1)" not in token_precision_generate
     assert "next_token.item()" not in token_precision_generate

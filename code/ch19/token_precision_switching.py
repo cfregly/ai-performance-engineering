@@ -124,8 +124,7 @@ class TokenPrecisionController:
             metrics_host = metrics
         return ConfidenceMetrics(float(metrics_host[0]), float(metrics_host[1]), float(metrics_host[2]))
 
-    def _choose_precision(self, metrics: ConfidenceMetrics) -> PrecisionLevel:
-        score = metrics.confidence_score
+    def _choose_precision(self, score: float) -> PrecisionLevel:
         if score > self.threshold_high and self.current_precision == PrecisionLevel.FP16:
             return PrecisionLevel.INT8
         if score < self.threshold_low and self.current_precision == PrecisionLevel.INT8:
@@ -161,7 +160,8 @@ class TokenPrecisionController:
             logits = self.model(active_tokens).logits[0, -1, :]
             logits = self._cast_logits(logits, self.current_precision)
             metrics = self._confidence(logits, temperature)
-            next_precision = self._choose_precision(metrics)
+            confidence_score = metrics.confidence_score
+            next_precision = self._choose_precision(confidence_score)
             if next_precision != self.current_precision:
                 self.switch_count += 1
             self.current_precision = next_precision
@@ -170,7 +170,7 @@ class TokenPrecisionController:
             torch.multinomial(probs, num_samples=1, out=next_token)
             tokens[:, current_len : current_len + 1].copy_(next_token.view(1, 1))
             current_len += 1
-            stats.append({"confidence": metrics.confidence_score, "precision": self.current_precision.value})
+            stats.append({"confidence": confidence_score, "precision": self.current_precision.value})
             next_token_host.copy_(next_token)
             if int(next_token_host[0]) == 0:
                 break
