@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.distributed as dist
 
+from ch04.symmetric_memory_perf_common import build_square_verification_probe
 from core.benchmark.cuda_event_timing import max_elapsed_ms
 from core.benchmark.metrics import compute_memory_transfer_metrics
 from core.benchmark.verification_mixin import VerificationPayloadMixin
@@ -82,6 +83,8 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self.register_workload_metadata(requests_per_iteration=1.0)
         self._verify_input: Optional[torch.Tensor] = None
         self._verify_output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._verify_numel = 0
         self._local_buffer: Optional[torch.Tensor] = None
         self._peer_buffer: Optional[torch.Tensor] = None
         self._prev_buffer: Optional[torch.Tensor] = None
@@ -115,6 +118,8 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._peer_buffer = self.handle.get_buffer(self.peer_rank)
         self._prev_buffer = self.handle.get_buffer((self.rank - 1) % self.world_size)
         self._recv_buffer = torch.empty_like(self._local_buffer)
+        self._verify_input, self._verify_numel = build_square_verification_probe(self._local_buffer)
+        self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         if self._copy_streams is None:
             self._copy_streams = (
                 torch.cuda.Stream(device=device),
@@ -185,18 +190,25 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
             if self._verify_input is None:
                 torch.manual_seed(42)
                 torch.cuda.manual_seed_all(42)
-                self._verify_input = torch.randn(256, 256, device=self.device, dtype=torch.float32)
+                self._verify_input = torch.randn(128, 128, device=self.device, dtype=torch.float32)
+                self._verify_numel = self._verify_input.numel()
             probe = self._verify_input
-            output = probe.detach().clone()
+            output_source = probe
         else:
-            probe = self._local_buffer[: 256 * 256].view(256, 256)
+            if self._verify_input is None:
+                self._verify_input, self._verify_numel = build_square_verification_probe(self._local_buffer)
+            probe = self._verify_input
             if self._verify_output is not None:
-                output = self._verify_output[: 256 * 256].view(256, 256).detach().clone()
+                output_source = self._verify_output[: self._verify_numel].view_as(self._verify_input).detach()
             else:
-                output = probe.detach().clone()
+                output_source = probe
+        if self._verify_output_buffer is None:
+            self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
+        self._verify_output_buffer.copy_(output_source)
+
         self._set_verification_payload(
             inputs={"tensor": probe},
-            output=output,
+            output=self._verify_output_buffer,
             batch_size=int(probe.shape[0]),
             parameter_count=0,
             precision_flags={
@@ -233,6 +245,7 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
         self._pending_timing_pairs = self._empty_timing_pairs
         self._stream_timing_pairs = []
         self._verify_output = None
+        self._verify_output_buffer = None
         self._local_buffer = None
         self._peer_buffer = None
         self._prev_buffer = None
