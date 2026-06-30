@@ -35,6 +35,7 @@ class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
         self.stream = None
         self.host_input = None
         self.host_output = None
+        self._verify_output_buffer = None
         self.host_in_chunks = None
         self.host_out_chunks = None
         self.device_chunks = None
@@ -52,6 +53,7 @@ class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
             self.N, device="cpu", dtype=torch.float32, pin_memory=True
         )
         self.host_output = torch.empty_like(self.host_input, pin_memory=True)
+        self._verify_output_buffer = torch.empty_like(self.host_output, pin_memory=True)
         self.host_in_chunks = list(torch.chunk(self.host_input, self.num_segments))
         self.host_out_chunks = list(torch.chunk(self.host_output, self.num_segments))
         self.device_chunks = [torch.empty_like(chunk, device=self.device) for chunk in self.host_in_chunks]
@@ -84,9 +86,13 @@ class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must run after setup() initializes buffers")
 
     def capture_verification_payload(self) -> None:
+        assert self.host_input is not None
+        assert self.host_output is not None
+        assert self._verify_output_buffer is not None
+        self._verify_output_buffer.copy_(self.host_output)
         self._set_verification_payload(
             inputs={"host_input": self.host_input},
-            output=self.host_output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.host_input.numel(),
             parameter_count=0,
             precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -97,6 +103,7 @@ class StridedStreamBaseline(VerificationPayloadMixin, BaseBenchmark):
         self.stream = None
         self.host_input = None
         self.host_output = None
+        self._verify_output_buffer = None
         self.host_in_chunks = None
         self.host_out_chunks = None
         self.device_chunks = None
@@ -175,6 +182,7 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
         self.streams: List[torch.cuda.Stream] | None = None
         self.host_input: torch.Tensor | None = None
         self.host_output: torch.Tensor | None = None
+        self._verify_output_buffer: torch.Tensor | None = None
         self.host_in_chunks: List[torch.Tensor] | None = None
         self.host_out_chunks: List[torch.Tensor] | None = None
         self.device_chunks: List[torch.Tensor] | None = None
@@ -196,6 +204,7 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
             self.N, dtype=self.dtype, device="cpu", pin_memory=True
         )
         self.host_output = torch.empty_like(self.host_input, pin_memory=True)
+        self._verify_output_buffer = torch.empty_like(self.host_output, pin_memory=True)
         chunks = torch.chunk(self.host_input, self.num_segments)
         if len(chunks) < self.num_segments:
             chunks = list(chunks)
@@ -247,9 +256,13 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must run after setup() initializes buffers")
 
     def capture_verification_payload(self) -> None:
+        assert self.host_input is not None
+        assert self.host_output is not None
+        assert self._verify_output_buffer is not None
+        self._verify_output_buffer.copy_(self.host_output)
         self._set_verification_payload(
             inputs={"host_input": self.host_input},
-            output=self.host_output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.host_input.numel(),
             parameter_count=0,
             precision_flags={"tf32": torch.backends.cuda.matmul.allow_tf32},
@@ -260,6 +273,7 @@ class ConcurrentStreamOptimized(VerificationPayloadMixin, BaseBenchmark):
         self.streams = None
         self.host_input = None
         self.host_output = None
+        self._verify_output_buffer = None
         self.host_in_chunks = None
         self.host_out_chunks = None
         self.device_chunks = None

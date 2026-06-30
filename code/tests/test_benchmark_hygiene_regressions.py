@@ -18404,6 +18404,22 @@ def test_ch11_tensor_core_streams_precompute_segment_work() -> None:
     assert "device_c[0]" not in optimized_benchmark
 
 
+def test_ch11_stream_wrappers_reuse_host_verification_buffers() -> None:
+    for relative in (
+        "ch11/baseline_tensor_cores_streams.py",
+        "ch11/optimized_tensor_cores_streams.py",
+        "ch11/stream_overlap_base.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+
+        assert "_verify_output_buffer" in source
+        assert "self._verify_output_buffer = torch.empty_like(self.host_output, pin_memory=True)" in source
+        assert "self._verify_output_buffer.copy_(self.host_output)" in source
+        assert "output=self._verify_output_buffer" in source
+        assert "output=self.host_output.detach().clone()" not in source
+        assert "self._verify_output_buffer = None" in source
+
+
 def test_ch12_core_benchmarks_use_cached_nvtx_range() -> None:
     expected_labels = {
         "baseline_kernel_launches.py": "kernel_launches",

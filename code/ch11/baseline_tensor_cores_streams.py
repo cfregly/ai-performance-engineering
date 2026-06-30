@@ -29,6 +29,7 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.host_A: torch.Tensor | None = None
         self.host_B: torch.Tensor | None = None
         self.host_output: torch.Tensor | None = None
+        self._verify_output_buffer: torch.Tensor | None = None
         self.device_A_slot: torch.Tensor | None = None
         self.device_B_slot: torch.Tensor | None = None
         self.device_C_slot: torch.Tensor | None = None
@@ -66,6 +67,7 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
             dtype=self.dtype,
             pin_memory=True,
         )
+        self._verify_output_buffer = torch.empty_like(self.host_output, pin_memory=True)
         self.device_A_slot = torch.empty(
             (self.matrix_dim, self.matrix_dim),
             device=self.device,
@@ -113,9 +115,11 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
         assert self.host_A is not None
         assert self.host_B is not None
         assert self.host_output is not None
+        assert self._verify_output_buffer is not None
+        self._verify_output_buffer.copy_(self.host_output)
         self._set_verification_payload(
             inputs={"host_A": self.host_A, "host_B": self.host_B},
-            output=self.host_output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.host_output.numel(),
             parameter_count=0,
             precision_flags={
@@ -131,6 +135,7 @@ class BaselineTensorCoresStreamsBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.host_A = None
         self.host_B = None
         self.host_output = None
+        self._verify_output_buffer = None
         self.device_A_slot = None
         self.device_B_slot = None
         self.device_C_slot = None
