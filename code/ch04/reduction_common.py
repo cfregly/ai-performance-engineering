@@ -25,25 +25,36 @@ class ReusableReductionMlp(nn.Module):
         self._fc1_weight_t = self.fc1.weight.t()
         self._fc2_weight_t = self.fc2.weight.t()
 
+    def _workspace(
+        self,
+        name: str,
+        shape: tuple[int, ...],
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        normalized_shape = tuple(int(dim) for dim in shape)
+        numel = 1
+        for dim in normalized_shape:
+            numel *= dim
+        buffer = getattr(self, name)
+        if (
+            not isinstance(buffer, torch.Tensor)
+            or buffer.device != device
+            or buffer.dtype != dtype
+            or buffer.numel() < numel
+        ):
+            buffer = torch.empty(numel, device=device, dtype=dtype)
+            setattr(self, name, buffer)
+        return buffer[:numel].view(normalized_shape)
+
     def _ensure_forward_buffers(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         prefix = tuple(x.shape[:-1])
         fc1_shape = (*prefix, self.fc1.out_features)
         fc2_shape = (*prefix, self.fc2.out_features)
-        if (
-            self._fc1_buffer is None
-            or self._fc1_buffer.shape != fc1_shape
-            or self._fc1_buffer.device != x.device
-            or self._fc1_buffer.dtype != x.dtype
-        ):
-            self._fc1_buffer = torch.empty(fc1_shape, device=x.device, dtype=x.dtype)
-        if (
-            self._fc2_buffer is None
-            or self._fc2_buffer.shape != fc2_shape
-            or self._fc2_buffer.device != x.device
-            or self._fc2_buffer.dtype != x.dtype
-        ):
-            self._fc2_buffer = torch.empty(fc2_shape, device=x.device, dtype=x.dtype)
-        return self._fc1_buffer, self._fc2_buffer
+        fc1_out = self._workspace("_fc1_buffer", fc1_shape, device=x.device, dtype=x.dtype)
+        fc2_out = self._workspace("_fc2_buffer", fc2_shape, device=x.device, dtype=x.dtype)
+        return fc1_out, fc2_out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled():

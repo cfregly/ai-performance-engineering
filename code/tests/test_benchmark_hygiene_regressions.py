@@ -632,6 +632,11 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
             assert "def cache_weight_views(self) -> None:" in torchcomms_common
             assert "self._fc1_weight_t = self.fc1.weight.t()" in torchcomms_common
             assert "self._fc2_weight_t = self.fc2.weight.t()" in torchcomms_common
+            assert "def _workspace(" in torchcomms_common
+            assert "or buffer.numel() < numel" in torchcomms_common
+            assert "return buffer[:numel].view(rows, width)" in torchcomms_common
+            assert "self._fc1_buffer.shape != fc1_shape" not in torchcomms_common
+            assert "self._fc2_buffer.shape != fc2_shape" not in torchcomms_common
             assert "if torch.is_grad_enabled():" in torchcomms_forward
             assert "torch.mm(x, self._fc1_weight_t, out=fc1_out)" in torchcomms_forward
             assert "F.gelu(fc1_out, out=fc1_out)" in torchcomms_forward
@@ -683,6 +688,31 @@ def test_ch04_comm_and_optimizer_payloads_cache_parameter_counts() -> None:
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "total_params =" not in capture_section
         assert "sum(p.numel()" not in capture_section
+
+
+def test_ch04_torchcomms_block_reuses_larger_workspace_capacity() -> None:
+    from ch04.torchcomms_common import BufferedTorchcommsBlock
+
+    block = BufferedTorchcommsBlock(hidden=4).eval()
+    with torch.inference_mode():
+        large = block(torch.randn(8, 4))
+        fc1_ptr = block._fc1_buffer.data_ptr()
+        fc2_ptr = block._fc2_buffer.data_ptr()
+
+        small = block(torch.randn(3, 4))
+        assert block._fc1_buffer.data_ptr() == fc1_ptr
+        assert block._fc2_buffer.data_ptr() == fc2_ptr
+        assert block._fc1_buffer.numel() == 8 * 16
+        assert block._fc2_buffer.numel() == 8 * 4
+
+        grown = block(torch.randn(9, 4))
+
+    assert large.shape == (8, 4)
+    assert small.shape == (3, 4)
+    assert small.data_ptr() == fc2_ptr
+    assert grown.shape == (9, 4)
+    assert block._fc1_buffer.numel() == 9 * 16
+    assert block._fc2_buffer.numel() == 9 * 4
 
 
 def test_ch04_ddp_nvlink_verification_reuses_output_buffers() -> None:
@@ -4417,11 +4447,42 @@ def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     assert "self._fc1_weight_t: Optional[torch.Tensor] = None" in common_source
     assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in common_source
     assert "def cache_weight_views(self) -> None:" in common_source
+    assert "def _workspace(" in common_source
+    assert "normalized_shape = tuple(int(dim) for dim in shape)" in common_source
+    assert "or buffer.numel() < numel" in common_source
+    assert "return buffer[:numel].view(normalized_shape)" in common_source
+    assert "self._fc1_buffer.shape != fc1_shape" not in common_source
+    assert "self._fc2_buffer.shape != fc2_shape" not in common_source
     assert "if torch.is_grad_enabled():" in common_forward
     assert "torch.matmul(x, self._fc1_weight_t, out=fc1_out)" in common_forward
     assert "torch.matmul(fc1_out, self._fc2_weight_t, out=fc2_out)" in common_forward
     assert "self.fc1.weight.t()" not in common_forward
     assert "self.fc2.weight.t()" not in common_forward
+
+
+def test_ch04_reduction_mlp_reuses_larger_workspace_capacity() -> None:
+    from ch04.reduction_common import ReusableReductionMlp
+
+    model = ReusableReductionMlp(hidden_dim=4, inner_dim=6).eval()
+    with torch.inference_mode():
+        large = model(torch.randn(2, 8, 4))
+        fc1_ptr = model._fc1_buffer.data_ptr()
+        fc2_ptr = model._fc2_buffer.data_ptr()
+
+        small = model(torch.randn(1, 3, 4))
+        assert model._fc1_buffer.data_ptr() == fc1_ptr
+        assert model._fc2_buffer.data_ptr() == fc2_ptr
+        assert model._fc1_buffer.numel() == 2 * 8 * 6
+        assert model._fc2_buffer.numel() == 2 * 8 * 4
+
+        grown = model(torch.randn(3, 7, 4))
+
+    assert large.shape == (2, 8, 4)
+    assert small.shape == (1, 3, 4)
+    assert small.data_ptr() == fc2_ptr
+    assert grown.shape == (3, 7, 4)
+    assert model._fc1_buffer.numel() == 3 * 7 * 6
+    assert model._fc2_buffer.numel() == 3 * 7 * 4
 
 
 def test_ch01_fp16_and_ch04_nvls_cache_nvtx_enablement() -> None:
