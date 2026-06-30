@@ -129,7 +129,7 @@ class PlanBenchmark(VerificationPayloadMixin, BaseBenchmark):
             [
                 float(report.estimated_step_ms),
                 float(report.throughput_tokens_per_s),
-                float(getattr(report, "memory_per_device_gb", 0.0)),
+                float(report.memory_per_device_gb),
             ]
         )
         if self.output is None or self.metrics is None:
@@ -182,7 +182,7 @@ class PlanBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return {
             "moe.estimated_step_ms": self.report.estimated_step_ms,
             "moe.throughput_tokens_per_s": self.report.throughput_tokens_per_s,
-            "moe.memory_per_device_gb": getattr(self.report, "memory_per_device_gb", 0.0),
+            "moe.memory_per_device_gb": self.report.memory_per_device_gb,
         }
 
     def print_summary(self) -> None:

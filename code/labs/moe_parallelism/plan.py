@@ -259,6 +259,10 @@ class PlanReport:
     affinity: List[str]
     notes: List[str]
 
+    @property
+    def memory_per_device_gb(self) -> float:
+        return self.total_memory_gb
+
     def as_dict(self) -> Dict[str, float]:
         return {
             "world_size": float(self.world_size),

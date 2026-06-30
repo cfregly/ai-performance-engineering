@@ -17548,6 +17548,13 @@ def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:
     source = (REPO_ROOT / "labs" / "moe_parallelism" / "benchmarking.py").read_text(
         encoding="utf-8"
     )
+    plan_source = (REPO_ROOT / "labs" / "moe_parallelism" / "plan.py").read_text(
+        encoding="utf-8"
+    )
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown",
         maxsplit=1,
@@ -17560,9 +17567,17 @@ def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:
         "def run_benchmark",
         maxsplit=1,
     )[0]
+    custom_metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
+        "def print_summary",
+        maxsplit=1,
+    )[0]
 
+    assert "def memory_per_device_gb(self) -> float:" in plan_source
+    assert "return self.total_memory_gb" in plan_source
     assert "self._summary_buffer: Optional[torch.Tensor] = None" in source
     assert "self._summary_buffer = torch.empty((1, 3), dtype=torch.float32)" in setup_section
+    assert "float(report.memory_per_device_gb)" in benchmark_section
+    assert 'getattr(report, "memory_per_device_gb", 0.0)' not in benchmark_section
     assert "torch.tensor([metric_values]" not in finalize_section
     assert "for index, value in enumerate(metric_values):" in finalize_section
     assert "self._summary_buffer[0, index] = float(value)" in finalize_section
@@ -17570,6 +17585,8 @@ def test_moe_parallelism_plan_benchmark_reuses_summary_buffer() -> None:
     assert "self._summary_buffer.detach()" not in finalize_section
     assert "output=self.output" in capture_section
     assert "output=self.output.detach().clone()" not in capture_section
+    assert '"moe.memory_per_device_gb": self.report.memory_per_device_gb' in custom_metrics_section
+    assert 'getattr(self.report, "memory_per_device_gb", 0.0)' not in custom_metrics_section
 
 
 def test_dynamic_router_verification_payloads_reuse_summary_buffers() -> None:
