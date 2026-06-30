@@ -2896,6 +2896,34 @@ def test_ch05_baseline_vectorization_reuses_chunk_views() -> None:
     assert "self._chunk_views = []" in teardown_section
 
 
+def test_ch05_baseline_ai_reuses_device_transfer_buffer() -> None:
+    source = (REPO_ROOT / "ch05" / "baseline_ai.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._device_batch_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._device_batch_buffer = torch.empty(" in setup_section
+    assert "device=self.device" in setup_section
+    assert "dtype=torch.float32" in setup_section
+    assert "host_tensor = torch.from_numpy(host_batches)" in benchmark_section
+    assert "device_batch = self._device_batch_buffer" in benchmark_section
+    assert "device_batch.copy_(host_tensor[step], non_blocking=False)" in benchmark_section
+    assert "torch.from_numpy(host_batches[step])" not in benchmark_section
+    assert "torch.from_numpy(host_batches[step]).to(self.device)" not in benchmark_section
+    assert ".to(self.device" not in benchmark_section
+    assert "self._device_batch_buffer = None" in teardown_section
+
+
 def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
     source = (REPO_ROOT / "ch05" / "optimized_ai.py").read_text(encoding="utf-8")
     helper_source = (REPO_ROOT / "ch05" / "ai_common.py").read_text(encoding="utf-8")

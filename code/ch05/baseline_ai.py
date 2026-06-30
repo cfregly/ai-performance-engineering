@@ -26,6 +26,7 @@ class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs_path: Optional[str] = None
         self.output: Optional[torch.Tensor] = None
         self._last_input: Optional[torch.Tensor] = None
+        self._device_batch_buffer: Optional[torch.Tensor] = None
         self.batch = 64
         self.hidden = 32
         self.num_blocks = 256
@@ -50,17 +51,28 @@ class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs_path = f.name
         f.close()
         np.save(self.inputs_path, host_batches)
+        self._device_batch_buffer = torch.empty(
+            (self.batch, self.hidden),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self._synchronize()
 
     def benchmark_fn(self) -> None:
-        assert self.block is not None and self.inputs_path is not None
+        assert (
+            self.block is not None
+            and self.inputs_path is not None
+            and self._device_batch_buffer is not None
+        )
         host_batches = np.load(self.inputs_path)
+        host_tensor = torch.from_numpy(host_batches)
         out: Optional[torch.Tensor] = None
         last_input: Optional[torch.Tensor] = None
+        device_batch = self._device_batch_buffer
         with self._nvtx_range("baseline_ai_storage_pipeline"):
             with torch.inference_mode():
                 for step in range(self.num_blocks):
-                    device_batch = torch.from_numpy(host_batches[step]).to(self.device)
+                    device_batch.copy_(host_tensor[step], non_blocking=False)
                     out = self.block(device_batch)
                     last_input = device_batch
         if out is None or last_input is None:
@@ -87,6 +99,7 @@ class BaselineAIBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.block = None
         self.output = None
         self._last_input = None
+        self._device_batch_buffer = None
         if self.inputs_path and os.path.exists(self.inputs_path):
             os.unlink(self.inputs_path)
         self.inputs_path = None
