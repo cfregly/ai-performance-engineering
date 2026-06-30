@@ -2170,7 +2170,8 @@ def test_ch14_nccl_quantization_defers_verification_clones_and_syncs() -> None:
     )[0]
 
     assert "self.tensor.detach().clone()" not in baseline_benchmark
-    assert "self.output = self.tensor.detach()" in baseline_benchmark
+    assert "self.output = self.tensor" in baseline_benchmark
+    assert "self.output = self.tensor.detach()" not in baseline_benchmark
     assert "self._verify_input_buffer: Optional[torch.Tensor] = None" in baseline_source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in baseline_source
     assert "self._verify_input_buffer = torch.empty_like(self.tensor)" in baseline_setup

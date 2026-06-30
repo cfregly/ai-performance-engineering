@@ -106,7 +106,7 @@ class BaselineNCCLQuantizationBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 total += float(self._host_sum)
                 self.tensor[idx].copy_(self._host_dequant, non_blocking=False)
             self._last = total
-            self.output = self.tensor.detach()
+            self.output = self.tensor
         if self.output is None or self.tensor is None:
             raise RuntimeError("benchmark_fn() must produce output")
 
