@@ -19449,6 +19449,47 @@ def test_ch11_stream_overlap_base_reuses_chunk_groups() -> None:
     assert "zip(self.host_in_chunks, self.host_out_chunks, self.device_chunks)" not in optimized_benchmark
 
 
+def test_ch11_streams_precompute_pipeline_steps() -> None:
+    baseline_source = (REPO_ROOT / "ch11" / "baseline_streams.py").read_text(encoding="utf-8")
+    optimized_source = (REPO_ROOT / "ch11" / "optimized_streams.py").read_text(encoding="utf-8")
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def _compute",
+        maxsplit=1,
+    )[0]
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def _compute",
+        maxsplit=1,
+    )[0]
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    optimized_teardown = optimized_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))" in baseline_setup
+    assert "for host_chunk, device_chunk, result_chunk in self._chunk_triplets:" in baseline_benchmark
+    assert "self._pipeline_steps: List[" in optimized_source
+    assert "self._pipeline_steps = []" in optimized_setup
+    assert "for chunk_idx, (_host_chunk, device_chunk, result_chunk) in enumerate(self._chunk_triplets):" in optimized_setup
+    assert "next_transfer = (next_host, next_device)" in optimized_setup
+    assert "self._pipeline_steps.append((device_chunk, result_chunk, next_transfer))" in optimized_setup
+    assert "pipeline_steps = self._pipeline_steps" in optimized_benchmark
+    assert "for device_chunk, result_chunk, next_transfer in pipeline_steps:" in optimized_benchmark
+    assert "if next_transfer is not None:" in optimized_benchmark
+    assert "next_host, next_device = next_transfer" in optimized_benchmark
+    assert "enumerate(chunks)" not in optimized_benchmark
+    assert "next_idx = i + 1" not in optimized_benchmark
+    assert "chunks[next_idx]" not in optimized_benchmark
+    assert "self._pipeline_steps = []" in optimized_teardown
+
+
 def test_ch11_tensor_core_streams_precompute_segment_work() -> None:
     baseline_source = (
         REPO_ROOT / "ch11" / "baseline_tensor_cores_streams.py"

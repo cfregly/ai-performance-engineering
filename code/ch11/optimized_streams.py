@@ -47,6 +47,13 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scratch1: Optional[torch.Tensor] = None
         self._scratch_pair: Optional[tuple[torch.Tensor, torch.Tensor]] = None
         self._chunk_triplets: List[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
+        self._pipeline_steps: List[
+            tuple[
+                torch.Tensor,
+                torch.Tensor,
+                Optional[tuple[torch.Tensor, torch.Tensor]],
+            ]
+        ] = []
         self._verify_output: Optional[torch.Tensor] = None
         self._verify_indices: tuple[int, int, int] = ()
         self._verify_slice_len = 0
@@ -90,6 +97,13 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scratch1 = torch.empty(self.N, dtype=torch.float32, device=self.device)
         self._scratch_pair = (self._scratch0, self._scratch1)
         self._chunk_triplets = list(zip(self.host_data, self.device_data, self.results, strict=True))
+        self._pipeline_steps = []
+        for chunk_idx, (_host_chunk, device_chunk, result_chunk) in enumerate(self._chunk_triplets):
+            next_transfer: Optional[tuple[torch.Tensor, torch.Tensor]] = None
+            if chunk_idx + 1 < len(self._chunk_triplets):
+                next_host, next_device, _next_result = self._chunk_triplets[chunk_idx + 1]
+                next_transfer = (next_host, next_device)
+            self._pipeline_steps.append((device_chunk, result_chunk, next_transfer))
         self._verify_slice_len = min(256, self.N)
         self._verify_indices = (0, self.num_chunks // 2, self.num_chunks - 1)
         self._verify_output = torch.empty(
@@ -140,23 +154,23 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
            - Compute on current chunk
         3. Synchronize all streams
         """
-        if not self._chunk_triplets:
+        if not self._chunk_triplets or not self._pipeline_steps:
             raise RuntimeError("setup() must initialize chunk views")
         chunks = self._chunk_triplets
+        pipeline_steps = self._pipeline_steps
         with torch.inference_mode(), self._nvtx_range("streams_pipelined"):
             # Stage 0: Kick off first transfer
             first_host, first_device, _ = chunks[0]
             with torch.cuda.stream(self.stream_h2d):
                 first_device.copy_(first_host, non_blocking=True)
             
-            for i, (_, device_chunk, result_chunk) in enumerate(chunks):
+            for device_chunk, result_chunk, next_transfer in pipeline_steps:
                 # Ensure this chunk's transfer is complete before computing
                 self.stream_compute.wait_stream(self.stream_h2d)
                 
                 # Start next transfer while we compute (double buffering)
-                next_idx = i + 1
-                if next_idx < len(chunks):
-                    next_host, next_device, _ = chunks[next_idx]
+                if next_transfer is not None:
+                    next_host, next_device = next_transfer
                     with torch.cuda.stream(self.stream_h2d):
                         next_device.copy_(next_host, non_blocking=True)
                 
@@ -179,6 +193,7 @@ class OptimizedStreamsBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._scratch1 = None
         self._scratch_pair = None
         self._chunk_triplets = []
+        self._pipeline_steps = []
         self._verify_output = None
         self._verify_indices = ()
         self._verify_slice_len = 0
