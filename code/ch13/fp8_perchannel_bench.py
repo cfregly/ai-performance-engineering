@@ -165,7 +165,7 @@ class OptimizedFP8PerChannelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Benchmark: Per-channel FP8 forward pass."""
         with torch.inference_mode():
-            self.output = self.model(self.x).detach()
+            self.output = self.model(self.x)
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
         dtype = self._verify_input.dtype

@@ -15475,6 +15475,9 @@ def test_ch13_fp8_perchannel_wrappers_sample_verification_outputs() -> None:
         assert "output=self.output.detach().to(torch.float32).clone()" not in capture_section
         assert "output=self.output.detach().float().clone()" not in capture_section
         assert ".detach().clone()" not in benchmark_section
+        if filename == "fp8_perchannel_bench.py":
+            assert "self.output = self.model(self.x)" in benchmark_section
+            assert "self.model(self.x).detach()" not in benchmark_section
         assert "self._verify_output_buffer = None" in teardown_section
 
 
