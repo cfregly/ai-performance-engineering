@@ -39,6 +39,7 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output = None
         self._last_outputs: Optional[list[torch.Tensor]] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._head_inputs: Optional[list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]] = None
         self._attention_scale = 0.0
         self.parameter_count: int = 0
@@ -75,6 +76,7 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
             device=self.device,
             dtype=self.dtype,
         )
+        self._verify_output_buffer = torch.empty_like(self._output_buffer)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -115,13 +117,16 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         if write_offset != output_flat.numel():
             raise RuntimeError("unexpected attention output shape")
         self.output = self._output_buffer
+        if self._verify_output_buffer is None:
+            raise RuntimeError("setup() must initialize verification output payload buffer")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
                 "q": self.q.detach(),
                 "k": self.k.detach(),
                 "v": self.v.detach(),
             },
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=0,
             precision_flags={
@@ -142,6 +147,7 @@ class BaselineAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchmar
         self.output = None
         self._last_outputs = None
         self._output_buffer = None
+        self._verify_output_buffer = None
         self._head_inputs = None
         torch.cuda.empty_cache()
 

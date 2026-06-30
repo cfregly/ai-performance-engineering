@@ -93,6 +93,7 @@ class FlashAttentionSdpaBenchBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self.output = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self._verification_payload = None
 
@@ -110,6 +111,7 @@ class FlashAttentionSdpaBenchBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.batch_size, self.seq_len, self.embed_dim,
             device=self.device, dtype=self.dtype
         )
+        self._verify_output_buffer = torch.empty_like(self.x)
         
         # Proper warmup to avoid cold cache effects
         for _ in range(5):
@@ -125,9 +127,12 @@ class FlashAttentionSdpaBenchBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.x},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.batch_size,
             parameter_count=self.parameter_count,
             precision_flags={
@@ -143,6 +148,8 @@ class FlashAttentionSdpaBenchBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Teardown: Clean up resources."""
         self.model = None
         self.x = None
+        self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

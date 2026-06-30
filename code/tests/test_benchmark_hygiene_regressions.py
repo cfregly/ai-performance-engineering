@@ -11720,6 +11720,9 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     optimized_attention = optimized_source.split("def _attention", maxsplit=1)[1].split(
         "def benchmark_fn", maxsplit=1
     )[0]
+    optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
     optimized_teardown = optimized_source.split("def teardown", maxsplit=1)[1].split(
         "def get_config", maxsplit=1
     )[0]
@@ -11731,7 +11734,9 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "self._attention_scale = 1.0 / math.sqrt(self.head_dim)" in baseline_setup
     assert "self._head_inputs = [" in baseline_setup
     assert "self._output_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in baseline_source
     assert "self._output_buffer = torch.empty(" in baseline_setup
+    assert "self._verify_output_buffer = torch.empty_like(self._output_buffer)" in baseline_setup
     assert "(self.q[:, head, :], self.k[:, head, :].transpose(0, 1), self.v[:, head, :])" in baseline_setup
     assert "for qh, kh_t, vh in self._head_inputs:" in baseline_benchmark
     assert "self.q[:, head, :]" not in baseline_benchmark
@@ -11744,11 +11749,16 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "output_flat = self._output_buffer.view(-1)" in baseline_capture
     assert "output_flat[write_offset:next_offset].copy_(values)" in baseline_capture
     assert "self.output = self._output_buffer" in baseline_capture
+    assert "self._verify_output_buffer.copy_(self.output)" in baseline_capture
+    assert "output=self._verify_output_buffer" in baseline_capture
+    assert "output=self.output.detach().clone()" not in baseline_capture
     assert "float(out.sum())" not in optimized_benchmark
     assert "self._q_bhsd: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._q_bhsd = self.q.transpose(0, 1).unsqueeze(0)" in optimized_setup
     assert "self._k_bhsd = self.k.transpose(0, 1).unsqueeze(0)" in optimized_setup
     assert "self._v_bhsd = self.v.transpose(0, 1).unsqueeze(0)" in optimized_setup
+    assert "self._verify_output_buffer = torch.empty(" in optimized_setup
     assert "def _attention_bhsd(" in optimized_attention
     assert "return self._attention_bhsd(q_bhsd, k_bhsd, v_bhsd)" in optimized_attention
     assert "out = self._attention_bhsd(self._q_bhsd, self._k_bhsd, self._v_bhsd)" in optimized_benchmark
@@ -11756,7 +11766,11 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "out.detach()" not in optimized_benchmark
     assert "self._attention(self.q, self.k, self.v)" not in optimized_benchmark
     assert ".transpose(0, 1).unsqueeze(0)" not in optimized_benchmark
+    assert "self._verify_output_buffer.copy_(self.output)" in optimized_capture
+    assert "output=self._verify_output_buffer" in optimized_capture
+    assert "output=self.output.detach().clone()" not in optimized_capture
     assert "self._q_bhsd = None" in optimized_teardown
+    assert "self._verify_output_buffer = None" in optimized_teardown
 
 
 def test_ch14_wrappers_cache_nvtx_enabled_outside_hot_loop() -> None:
@@ -11884,18 +11898,29 @@ def test_ch14_inspect_compiled_code_streams_debug_file_walks() -> None:
 
 def test_ch14_flash_attention_sdpa_bench_defers_output_clone_and_host_sync() -> None:
     source = (REPO_ROOT / "ch14" / "flash_attention_sdpa_bench.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
 
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(self.x)" in setup_section
     assert "float(output" not in benchmark_section
     assert ".detach().clone()" not in benchmark_section
     assert "self.output = output" in benchmark_section
     assert "self.output = output.detach()" not in benchmark_section
-    assert "output=self.output.detach().clone()" in capture_section
+    assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "output=self.output.detach().clone()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch14_training_large_model_defers_step_loss_sync() -> None:

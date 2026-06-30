@@ -56,6 +56,7 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
             tokens_per_iteration=float(tokens),
         )
         self.output = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count: int = 0
         self._enable_nvtx = False
         self.register_workload_metadata(
@@ -78,6 +79,11 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
         self._q_bhsd = self.q.transpose(0, 1).unsqueeze(0)
         self._k_bhsd = self.k.transpose(0, 1).unsqueeze(0)
         self._v_bhsd = self.v.transpose(0, 1).unsqueeze(0)
+        self._verify_output_buffer = torch.empty(
+            (self.batch, self.seq_len, self.embed_dim * self.repeat_passes),
+            device=self.device,
+            dtype=self.dtype,
+        )
         for _ in range(3):
             with torch.inference_mode():
                 _ = self._attention_bhsd(self._q_bhsd, self._k_bhsd, self._v_bhsd)
@@ -123,13 +129,16 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
                 "q": self.q.detach(),
                 "k": self.k.detach(),
                 "v": self.v.detach(),
             },
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=0,
             precision_flags={
@@ -150,6 +159,8 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
         self._q_bhsd = None
         self._k_bhsd = None
         self._v_bhsd = None
+        self.output = None
+        self._verify_output_buffer = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     
