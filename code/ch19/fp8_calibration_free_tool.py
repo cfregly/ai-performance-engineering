@@ -23,6 +23,7 @@ from core.harness.benchmark_harness import (
 from core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+_HAS_FLOAT8_E4M3FN = hasattr(torch, "float8_e4m3fn")
 
 # Check for Transformer Engine
 try:
@@ -127,7 +128,7 @@ class CalibrationFreeFP8Linear(nn.Module):
         Returns:
             output: [batch_size, seq_len, out_features]
         """
-        if not self.use_fp8 or not hasattr(torch, 'float8_e4m3fn'):
+        if not self.use_fp8 or not _HAS_FLOAT8_E4M3FN:
             # Fallback to BF16
             if x.dtype != torch.bfloat16:
                 x = x.to(torch.bfloat16)

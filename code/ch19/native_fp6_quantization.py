@@ -243,16 +243,7 @@ class FP6Linear(nn.Module):
         # Dequantize weights on-the-fly
         weight = self.weight_fp6.dequantize()
         
-        # On Blackwell, this automatically uses FP6 tensor cores
-        if is_blackwell() and hasattr(torch, '_scaled_mm'):
-            # Use Blackwell's native scaled matrix multiply
-            # torch._scaled_mm can handle FP6 internally
-            output = F.linear(x, weight, self.bias)
-        else:
-            # Fallback to standard linear
-            output = F.linear(x, weight, self.bias)
-        
-        return output
+        return F.linear(x, weight, self.bias)
     
     def memory_usage(self) -> dict:
         """Return memory usage statistics."""

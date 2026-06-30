@@ -303,11 +303,15 @@ def test_mxfp8_moe_benchmark_wrappers_use_inference_mode() -> None:
 
 def test_native_fp6_quantization_avoids_tensor_bool_scale_branch() -> None:
     source = inspect.getsource(FP6Tensor._quantize_fp6)
+    forward_source = inspect.getsource(native_fp6.FP6Linear.forward)
 
     assert "if abs_max > 0" not in source
     assert "torch.where(" not in source
     assert "torch.ones_like(abs_max)" not in source
     assert "scale.masked_fill_(abs_max == 0, 1.0)" in source
+    assert "is_blackwell()" not in forward_source
+    assert "hasattr(torch, '_scaled_mm')" not in forward_source
+    assert "return F.linear(x, weight, self.bias)" in forward_source
 
     data = torch.zeros(8, dtype=torch.float16)
     fp6 = FP6Tensor(data)

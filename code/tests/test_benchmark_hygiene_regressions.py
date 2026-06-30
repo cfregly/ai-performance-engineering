@@ -17622,6 +17622,9 @@ def test_ch19_fp8_calibration_free_defers_output_materialization_outside_hot_loo
     assert "self._weight_fp8_cache = weight_fp8" in source
     assert "with torch.inference_mode():" in scale_section
     assert "with torch.no_grad():" not in scale_section
+    assert '_HAS_FLOAT8_E4M3FN = hasattr(torch, "float8_e4m3fn")' in source
+    assert "if not self.use_fp8 or not _HAS_FLOAT8_E4M3FN:" in forward_section
+    assert "hasattr(torch, 'float8_e4m3fn')" not in forward_section
     assert "if x.dtype != torch.bfloat16:" in forward_section
     assert "x = x.to(torch.bfloat16)" in forward_section
     assert "nn.functional.linear(x, self.weight, self.bias)" in forward_section
