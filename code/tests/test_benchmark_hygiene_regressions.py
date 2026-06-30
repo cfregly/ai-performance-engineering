@@ -724,6 +724,33 @@ def test_ch04_gradient_compression_fp16_reuses_copy_pairs() -> None:
     assert "self._fp16_copy_pairs = []" in teardown_section
 
 
+def test_ch04_gradient_compression_reuses_verification_output_buffer() -> None:
+    source = (REPO_ROOT / "ch04" / "gradient_compression_common.py").read_text(
+        encoding="utf-8"
+    )
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+        1
+    ].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(self.inputs[0])" in setup_section
+    assert "self._verify_output_buffer.copy_(output)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "output=output.detach().clone()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch05_optimized_storage_cpu_opens_mmap_outside_hot_loop() -> None:
     source = (REPO_ROOT / "ch05" / "optimized_storage_cpu.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(

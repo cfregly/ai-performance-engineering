@@ -44,6 +44,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._fp32_output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._fp32_buffers: List[torch.Tensor] = []
         self._fp32_outputs: List[torch.Tensor] = []
         self._fp16_buffers: List[torch.Tensor] = []
@@ -87,6 +88,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_input = self.inputs[0]
         self.output = None
         self._fp32_output = torch.empty_like(self.inputs[0])
+        self._verify_output_buffer = torch.empty_like(self.inputs[0])
         self._bucket_slices = self._build_bucket_slices()
         self._fp32_outputs = [torch.empty_like(t) for t in self.inputs]
         if not self.multi_gpu and self.simulate_single_gpu_transfer:
@@ -347,9 +349,12 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._int8_output_fp32.copy_(output.float())
                 self._int8_output_fp32.mul_(self._int8_scales[0])
                 output = self._int8_output_fp32
+        if self._verify_output_buffer is None:
+            raise RuntimeError("Verification output buffer not initialized")
+        self._verify_output_buffer.copy_(output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=int(self._verify_input.shape[0]),
             parameter_count=0,
             precision_flags=precision_flags,
@@ -366,6 +371,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._fp32_output = None
         self._verify_input = None
+        self._verify_output_buffer = None
         self._fp32_buffers = []
         self._fp32_outputs = []
         self._fp16_buffers = []
