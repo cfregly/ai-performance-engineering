@@ -792,20 +792,31 @@ class TensorParallelAttention(nn.Module):
         kv_shape = (batch_size, self.heads_per_gpu, seq_len, self.head_dim)
         if (
             self._local_key_workspace is None
+            or self._local_value_workspace is None
             or self._local_key_workspace.device != device
             or self._local_key_workspace.dtype != dtype
-            or tuple(self._local_key_workspace.shape) != kv_shape
+            or self._local_value_workspace.device != device
+            or self._local_value_workspace.dtype != dtype
+            or self._local_key_workspace.size(0) < batch_size
+            or self._local_key_workspace.size(2) < seq_len
+            or self._local_value_workspace.size(0) < batch_size
+            or self._local_value_workspace.size(2) < seq_len
         ):
             self._local_key_workspace = torch.empty(kv_shape, dtype=dtype, device=device)
             self._local_value_workspace = torch.empty_like(self._local_key_workspace)
 
-        merge_shape = (batch_size, seq_len, self.heads_per_gpu, self.head_dim)
-        output_shape = (batch_size, seq_len, self.d_model)
+        rows = int(batch_size * seq_len)
+        merge_shape = (rows, self.heads_per_gpu * self.head_dim)
+        output_shape = (rows, self.d_model)
         if (
             self._attn_merge_buffer is None
+            or self._attn_output_buffer is None
             or self._attn_merge_buffer.device != device
             or self._attn_merge_buffer.dtype != dtype
-            or tuple(self._attn_merge_buffer.shape) != merge_shape
+            or self._attn_output_buffer.device != device
+            or self._attn_output_buffer.dtype != dtype
+            or self._attn_merge_buffer.size(0) < rows
+            or self._attn_output_buffer.size(0) < rows
         ):
             self._attn_merge_buffer = torch.empty(merge_shape, dtype=dtype, device=device)
             self._attn_output_buffer = torch.empty(output_shape, dtype=dtype, device=device)
@@ -866,8 +877,8 @@ class TensorParallelAttention(nn.Module):
         self._ensure_local_workspaces(batch_size, seq_len, k.dtype, k.device)
         if self._local_key_workspace is None or self._local_value_workspace is None:
             raise RuntimeError("Local KV workspaces not configured")
-        key_local = self._local_key_workspace
-        value_local = self._local_value_workspace
+        key_local = self._local_key_workspace[:batch_size, :, :seq_len, :]
+        value_local = self._local_value_workspace[:batch_size, :, :seq_len, :]
         key_local.copy_(k.transpose(1, 2))
         value_local.copy_(v.transpose(1, 2))
         
@@ -974,13 +985,18 @@ class TensorParallelAttention(nn.Module):
             project_input = out.transpose(1, 2).reshape(batch_size, seq_len, -1)
             out = self.out_proj(project_input)
         else:
-            merge_buffer.copy_(out.transpose(1, 2))
-            torch.mm(
-                merge_buffer.view(batch_size * seq_len, -1),
-                self._out_proj_weight_view(),
-                out=output_buffer.view(batch_size * seq_len, self.d_model),
+            rows = int(batch_size * seq_len)
+            merge_2d = merge_buffer[:rows]
+            output_2d = output_buffer[:rows]
+            merge_2d.view(batch_size, seq_len, self.heads_per_gpu, self.head_dim).copy_(
+                out.transpose(1, 2)
             )
-            out = output_buffer
+            torch.mm(
+                merge_2d,
+                self._out_proj_weight_view(),
+                out=output_2d,
+            )
+            out = output_2d.view(batch_size, seq_len, self.d_model)
         
         # All-reduce across GPUs (async to enable overlap with downstream work)
         if dist.is_initialized():

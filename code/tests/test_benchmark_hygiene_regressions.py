@@ -14794,21 +14794,58 @@ def test_ch16_tensor_parallel_attention_reuses_layout_projection_buffers() -> No
     assert "def cache_weight_views(self) -> None:" in attention_section
     assert "def _out_proj_weight_view(self) -> torch.Tensor:" in attention_section
     assert "def _ensure_local_workspaces(" in attention_section
+    assert "or self._local_key_workspace.size(0) < batch_size" in attention_section
+    assert "or self._local_key_workspace.size(2) < seq_len" in attention_section
+    assert "rows = int(batch_size * seq_len)" in attention_section
+    assert "or self._attn_merge_buffer.size(0) < rows" in attention_section
     assert "self._local_key_workspace = torch.empty(kv_shape" in attention_section
     assert "self._local_value_workspace = torch.empty_like(self._local_key_workspace)" in attention_section
     assert "self._attn_merge_buffer = torch.empty(merge_shape" in attention_section
     assert "self._attn_output_buffer = torch.empty(output_shape" in attention_section
+    assert "key_local = self._local_key_workspace[:batch_size, :, :seq_len, :]" in forward_section
+    assert "value_local = self._local_value_workspace[:batch_size, :, :seq_len, :]" in forward_section
     assert "key_local.copy_(k.transpose(1, 2))" in forward_section
     assert "value_local.copy_(v.transpose(1, 2))" in forward_section
-    assert "merge_buffer.copy_(out.transpose(1, 2))" in forward_section
+    assert "merge_2d = merge_buffer[:rows]" in forward_section
+    assert "output_2d = output_buffer[:rows]" in forward_section
+    assert "merge_2d.view(batch_size, seq_len, self.heads_per_gpu, self.head_dim).copy_(" in forward_section
     assert "torch.mm(" in forward_section
     assert "self._out_proj_weight_view()" in forward_section
     assert "self.out_proj.weight.t()" not in forward_section
-    assert "out=output_buffer.view(batch_size * seq_len, self.d_model)" in forward_section
+    assert "out=output_2d" in forward_section
+    assert "out = output_2d.view(batch_size, seq_len, self.d_model)" in forward_section
     assert "k.transpose(1, 2).contiguous()" not in forward_section
     assert "v.transpose(1, 2).contiguous()" not in forward_section
     assert "out.transpose(1, 2).contiguous()" not in forward_section
     assert "out = self.out_proj(out)" not in forward_section
+
+    from ch16.inference_serving_multigpu import TensorParallelAttention
+
+    layer = TensorParallelAttention(
+        d_model=32,
+        num_heads=2,
+        num_gpus=1,
+        max_batch_size=4,
+        max_seq_len=8,
+    ).eval()
+    with torch.inference_mode():
+        out, key_local, value_local = layer(torch.randn(2, 3, 32))
+        key_ptr = layer._local_key_workspace.data_ptr()
+        value_ptr = layer._local_value_workspace.data_ptr()
+        merge_ptr = layer._attn_merge_buffer.data_ptr()
+        output_ptr = layer._attn_output_buffer.data_ptr()
+        smaller_out, smaller_key, smaller_value = layer(torch.randn(1, 1, 32))
+
+    assert out.shape == (2, 3, 32)
+    assert key_local.shape == (2, 2, 3, 16)
+    assert value_local.shape == (2, 2, 3, 16)
+    assert smaller_out.shape == (1, 1, 32)
+    assert smaller_key.shape == (1, 2, 1, 16)
+    assert smaller_value.shape == (1, 2, 1, 16)
+    assert layer._local_key_workspace.data_ptr() == key_ptr
+    assert layer._local_value_workspace.data_ptr() == value_ptr
+    assert layer._attn_merge_buffer.data_ptr() == merge_ptr
+    assert layer._attn_output_buffer.data_ptr() == output_ptr
 
 
 def test_ch16_demo_causal_lm_reuses_kv_stack_buffers() -> None:
