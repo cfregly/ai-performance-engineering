@@ -117,6 +117,8 @@ class GraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.elapsed_s: Optional[float] = None
         self.bandwidth_gb_s: Optional[float] = None
         self.size_mb = size_mb
+        self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         # Seed FIRST for deterministic verification
@@ -124,6 +126,7 @@ class GraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         
         self._impl.setup()
+        self._verify_output_buffer = torch.empty_like(self._impl.cpu_data[:1000])
         self.register_workload_metadata(
             requests_per_iteration=self._workload.requests_per_iteration,
             bytes_per_iteration=self._workload.bytes_per_iteration,
@@ -143,7 +146,11 @@ class GraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Use the post-transfer host-visible view so verification compares the
         # same observable result across pageable and staged-copy strategies.
         if self.output is None:
-            self.output = self._impl.cpu_data[:1000].detach().clone()
+            if self._verify_output_buffer is None:
+                raise RuntimeError("setup() must be called before verification")
+            output_slice = self._impl.cpu_data[: self._verify_output_buffer.numel()].detach()
+            self._verify_output_buffer.copy_(output_slice)
+            self.output = self._verify_output_buffer
         self._set_verification_payload(
             inputs={
                 "cpu_data": self._impl.cpu_data,
@@ -163,6 +170,8 @@ class GraceCoherentMemoryBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         self._impl.cleanup()
+        self.output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

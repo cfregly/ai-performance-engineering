@@ -11397,13 +11397,25 @@ def test_ch02_grace_coherent_memory_defers_verification_slice_clone() -> None:
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn", maxsplit=1
+        )[0]
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
         )[0]
 
         assert "cpu_data[:1000].detach().cpu().clone()" not in benchmark_section
         assert "self.output = None" in benchmark_section
-        assert "self.output = self._impl.cpu_data[:1000].detach().clone()" in capture_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(self._impl.cpu_data[:1000])" in setup_section
+        assert "output_slice = self._impl.cpu_data[: self._verify_output_buffer.numel()].detach()" in capture_section
+        assert "self._verify_output_buffer.copy_(output_slice)" in capture_section
+        assert "self.output = self._verify_output_buffer" in capture_section
+        assert "self._impl.cpu_data[:1000].detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch15_guided_decoding_reuses_mask_and_slice_buffers() -> None:
