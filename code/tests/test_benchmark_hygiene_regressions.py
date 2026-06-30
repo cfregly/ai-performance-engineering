@@ -7925,6 +7925,48 @@ def test_moe_cuda_direct_kv_transfer_writes_matmul_into_destination() -> None:
     assert "self._chunk_spec_count = 0" in teardown_section
 
 
+def test_moe_cuda_direct_graphed_kv_transfer_replays_destination_graph() -> None:
+    baseline_source = (
+        REPO_ROOT / "labs" / "moe_cuda" / "baseline_kv_transfer_direct_graphs.py"
+    ).read_text(encoding="utf-8")
+    source = (
+        REPO_ROOT / "labs" / "moe_cuda" / "optimized_kv_transfer_direct_graphs.py"
+    ).read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _maybe_capture_graph",
+        maxsplit=1,
+    )[0]
+    graph_section = source.split("def _maybe_capture_graph", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_benchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "BaselineKVTransferBenchmark" in baseline_source
+    assert "class DirectGraphedKVTransferBenchmark(DirectKVTransferBenchmark):" in source
+    assert "self.graph: Optional[torch.cuda.CUDAGraph] = None" in source
+    assert "super().setup()" in setup_section
+    assert "self._maybe_capture_graph()" in setup_section
+    assert "self.graph = torch.cuda.CUDAGraph()" in graph_section
+    assert "with torch.cuda.graph(self.graph):" in graph_section
+    assert "for input_chunk, dest_chunk in self._direct_chunk_specs:" in graph_section
+    assert "torch.matmul(input_chunk, self.weight, out=dest_chunk)" in graph_section
+    assert ".copy_(" not in graph_section
+    assert "self.graph.replay()" in benchmark_section
+    assert "moe_cuda_kv_direct_destination_graphed" in benchmark_section
+    assert "self.output = self._output_view" in benchmark_section
+    assert ".copy_(" not in benchmark_section
+    assert "self.graph = None" in teardown_section
+    assert "super().teardown()" in teardown_section
+
+
 def test_moe_cuda_grouped_router_reuses_static_dispatch_buffers() -> None:
     source = (
         REPO_ROOT / "labs" / "moe_cuda" / "optimized_router_vectorized.py"

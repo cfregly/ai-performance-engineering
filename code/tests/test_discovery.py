@@ -308,6 +308,7 @@ class TestPythonBenchmarkDiscovery:
                 "awq_gptq_smoothquant_gptq",
                 "awq_gptq_smoothquant_smoothquant",
             },
+            "labs/moe_cuda": {"kv_transfer_direct_graphs"},
         }
 
         for chapter, expected_names in chapter_expectations.items():

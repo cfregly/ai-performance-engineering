@@ -25,15 +25,16 @@ Representative strict result from `artifacts/runs/20260302_full_strict_chapter_l
 | `kv_transfer` | `1.224 ms` | `1.085 ms` | `1.13x` |
 | `kv_transfer_direct` | baseline transfer path | direct KV writes | destination-placement variant |
 | `kv_transfer_graphs` | `1.224 ms` | `0.315 ms` | `3.88x` |
+| `kv_transfer_direct_graphs` | baseline transfer path | direct KV writes + graph replay | destination + launch-removal variant |
 | `moe_backend_selection` | `1.747 ms` | `0.308 ms` | `5.67x` |
 | `router` | `67.265 ms` | `8.674 ms` | `7.75x` |
 
-That spread is the point of the lab. Not every MoE subsystem gets the same win: overlap-only KV transfer is a modest directional step, direct destination placement removes the copy when the serving layout allows it, and the graphed replay path removes most of the remaining launch overhead. The router/backend work is still where the biggest local payoff is showing up.
+That spread is the point of the lab. Not every MoE subsystem gets the same win: overlap-only KV transfer is a modest directional step, direct destination placement removes the copy when the serving layout allows it, and graphed direct placement removes most of the remaining launch overhead. The router/backend work is still where the biggest local payoff is showing up.
 
 ## Profiler Evidence
 ```bash
 python -m cli.aisp bench run --targets labs/moe_cuda:decode_attention --profile deep_dive --single-gpu
-python -m cli.aisp bench run --targets labs/moe_cuda:kv_transfer_graphs --profile deep_dive --single-gpu
+python -m cli.aisp bench run --targets labs/moe_cuda:kv_transfer_direct_graphs --profile deep_dive --single-gpu
 python -m cli.aisp bench run --targets labs/moe_cuda:router_vectorized --profile deep_dive --single-gpu
 ```
 
@@ -57,7 +58,7 @@ python -m cli.aisp bench verify -t labs/moe_cuda:decode_attention
 | --- | --- |
 | `baseline_decode_attention.py`, `optimized_decode_attention.py` | Attention microbenchmarks that validate correctness while optimizing kernel schedules. |
 | `baseline_decode_kernel.py`, `optimized_decode_kernel.py`, `decode_kernels.py`, `kernels/` | CUDA kernels and wrappers for the decode core. |
-| `baseline_kv_transfer.py`, `baseline_kv_transfer_direct.py`, `optimized_kv_transfer.py`, `optimized_kv_transfer_direct.py`, `optimized_kv_transfer_graphs.py` | KV-transfer samples comparing eager copies, overlap, direct destination placement, and CUDA Graph orchestration. |
+| `baseline_kv_transfer.py`, `baseline_kv_transfer_direct.py`, `baseline_kv_transfer_direct_graphs.py`, `optimized_kv_transfer.py`, `optimized_kv_transfer_direct.py`, `optimized_kv_transfer_graphs.py`, `optimized_kv_transfer_direct_graphs.py` | KV-transfer samples comparing eager copies, overlap, direct destination placement, and CUDA Graph orchestration. |
 | `baseline_router.py`, `optimized_router.py`, `optimized_router_vectorized.py` | MoE router logic fit for device execution. |
 | `expectations_{hardware_key}.json`, `__init__.py` | Metadata and module exports needed by the harness. |
 
@@ -79,4 +80,4 @@ python -m cli.aisp bench run --targets labs/moe_cuda --profile minimal
 
 ## Notes
 - `kernels/` houses the raw CUDA sources split by component; edit schedules there before rebuilding via the harness.
-- `optimized_kv_transfer_graphs.py` emits CUDA Graph captures under `artifacts/` for reproducibility.
+- `optimized_kv_transfer_graphs.py` and `optimized_kv_transfer_direct_graphs.py` emit CUDA Graph captures under `artifacts/` for reproducibility.
