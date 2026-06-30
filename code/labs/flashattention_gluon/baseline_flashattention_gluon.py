@@ -72,7 +72,7 @@ class BaselineFlashAttentionGluonBenchmark(VerificationPayloadMixin, BaseBenchma
                 scores.mul_(self._scale)
                 probs = torch.softmax(scores, dim=-1)
                 result = torch.matmul(probs, v)
-                self.output = result.detach()
+                self.output = result
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
         self._payload_k = k

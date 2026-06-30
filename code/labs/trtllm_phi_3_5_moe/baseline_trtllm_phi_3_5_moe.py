@@ -106,7 +106,7 @@ class BaselineTrtLlmPhi35MoeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     use_cache=True,
                     return_dict_in_generate=True,
                 )
-                self._generated_output_ids = outputs.sequences.detach()
+                self._generated_output_ids = outputs.sequences
                 self.output = self._generated_output_ids
         if self._generated_output_ids is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")

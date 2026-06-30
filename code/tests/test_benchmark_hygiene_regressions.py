@@ -4615,9 +4615,14 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
             "def teardown",
             maxsplit=1,
         )[0]
+        trtllm_benchmark = trtllm_source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in trtllm_source
         assert "self._verify_output_buffer = torch.empty(" in trtllm_setup
         assert "verification_token_prefix_length(self.max_new_tokens)" in trtllm_setup
+        assert "outputs.sequences.detach()" not in trtllm_benchmark
         assert "generated_prefix = slice_generated_token_ids(" in trtllm_capture
         assert ")[:, : self._verify_output_buffer.shape[1]]" in trtllm_capture
         assert "self._verify_output_buffer.copy_(generated_prefix, non_blocking=False)" in trtllm_capture
@@ -4827,6 +4832,8 @@ def test_dense_attention_baselines_cache_key_transpose_and_scale() -> None:
     assert "self._scale = self.head_dim ** -0.5" in gluon_setup
     assert "scores = torch.matmul(q, self._k_t)" in gluon_benchmark
     assert "scores.mul_(self._scale)" in gluon_benchmark
+    assert "self.output = result" in gluon_benchmark
+    assert "result.detach()" not in gluon_benchmark
     assert "k.transpose(-1, -2)" not in gluon_benchmark
     assert " * scale" not in gluon_benchmark
 

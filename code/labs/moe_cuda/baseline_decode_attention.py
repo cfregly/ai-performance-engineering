@@ -112,7 +112,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 attn_out = attn.transpose(1, 2).reshape(self.batch, 1, self.num_heads * self.head_dim)
                 end_event.record(current_stream)
                 self._pending_timing_pair = timing_pair
-                self.output = attn_out.detach()
+                self.output = attn_out
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
         return None
