@@ -119,7 +119,7 @@ def test_top_k_verification_tensor_reuses_output_buffer() -> None:
     assert "return torch.cat(pieces, dim=0)" not in source
 
 
-def test_top_k_benchmark_only_detaches_backward_probs() -> None:
+def test_top_k_benchmark_detaches_backward_probs_in_place() -> None:
     source = (REPO_ROOT / "labs" / "top_k_kernel" / "top_k_kernel_common.py").read_text(
         encoding="utf-8"
     )
@@ -130,7 +130,8 @@ def test_top_k_benchmark_only_detaches_backward_probs() -> None:
 
     assert "q_grad = self.inputs.q.grad" in benchmark_section
     assert "k_grad = self.inputs.k.grad" in benchmark_section
-    assert "probs = probs.detach()" in benchmark_section
+    assert "probs = probs.detach_()" in benchmark_section
+    assert "probs.detach()" not in benchmark_section
     assert "probs=probs" in benchmark_section
     assert "indices=indices" in benchmark_section
     assert "self.inputs.q.grad.detach()" not in benchmark_section

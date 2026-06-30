@@ -963,7 +963,7 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 loss.backward()
                 q_grad = self.inputs.q.grad
                 k_grad = self.inputs.k.grad
-                probs = probs.detach()
+                probs = probs.detach_()
 
         self.outputs = TopKKernelOutputs(
             probs=probs,
