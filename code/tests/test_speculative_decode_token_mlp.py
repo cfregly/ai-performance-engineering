@@ -1,6 +1,14 @@
 import torch
+import pytest
 
 from ch15.speculative_decoding_common import TokenMLP as ChapterTokenMLP
+from labs.speculative_decode.baseline_speculative_decode_trusted import (
+    BaselineSpeculativeDecodeTrustedBenchmark,
+)
+from labs.speculative_decode.optimized_speculative_decode_trusted import (
+    OptimizedSpeculativeDecodeTrustedBenchmark,
+)
+from labs.speculative_decode.speculative_decode_common import SpecDecodeWorkload
 from labs.speculative_decode.speculative_decode_common import TokenMLP as LabTokenMLP
 
 
@@ -33,3 +41,39 @@ def test_lab_token_mlp_forward_into_matches_forward() -> None:
 
 def test_ch15_token_mlp_forward_into_matches_forward() -> None:
     _assert_forward_into_matches_forward(ChapterTokenMLP)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for trusted speculative decode")
+def test_lab_trusted_speculative_decode_matches_verified_decode() -> None:
+    workload = SpecDecodeWorkload(
+        vocab_size=512,
+        target_hidden=128,
+        target_layers=1,
+        draft_hidden=32,
+        speculative_k=8,
+        total_tokens=16,
+        tail_scale=1e-8,
+        dtype=torch.float32,
+    )
+    baseline = BaselineSpeculativeDecodeTrustedBenchmark()
+    optimized = OptimizedSpeculativeDecodeTrustedBenchmark()
+    baseline.workload = workload
+    optimized.workload = workload
+    try:
+        baseline.setup()
+        optimized.setup()
+        baseline.benchmark_fn()
+        optimized.benchmark_fn()
+        torch.cuda.synchronize()
+
+        assert torch.equal(baseline.output, optimized.output)
+        baseline_metrics = baseline.get_custom_metrics()
+        optimized_metrics = optimized.get_custom_metrics()
+        assert baseline_metrics["speculative.target_verify_calls"] == 2.0
+        assert baseline_metrics["speculative.trusted_draft"] == 0.0
+        assert optimized_metrics["speculative.target_verify_calls"] == 0.0
+        assert optimized_metrics["speculative.trusted_draft"] == 1.0
+        assert optimized_metrics["speculative.acceptance_rate_pct"] == 100.0
+    finally:
+        baseline.teardown()
+        optimized.teardown()

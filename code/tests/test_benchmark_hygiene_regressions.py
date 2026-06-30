@@ -18309,6 +18309,31 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "with torch.no_grad():" not in common_source
 
 
+def test_labs_trusted_speculative_decode_skips_target_verification_hot_path() -> None:
+    baseline_source = (
+        REPO_ROOT / "labs" / "speculative_decode" / "baseline_speculative_decode_trusted.py"
+    ).read_text(encoding="utf-8")
+    optimized_source = (
+        REPO_ROOT / "labs" / "speculative_decode" / "optimized_speculative_decode_trusted.py"
+    ).read_text(encoding="utf-8")
+    benchmark_section = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def get_benchmark",
+        maxsplit=1,
+    )[0]
+
+    assert "OptimizedSpeculativeDecodeBenchmark" in baseline_source
+    assert '"speculative.target_verify_calls": 0.0' in baseline_source
+    assert '"speculative.trusted_draft": 0.0' in baseline_source
+    assert "self.target_model = None" in optimized_source
+    assert "target_forward_into" not in benchmark_section
+    assert "target_logits_views" not in benchmark_section
+    assert "match_host.copy_" not in benchmark_section
+    assert "torch.eq(" not in benchmark_section
+    assert "output_token_views[next_pos].copy_(draft_next_tokens)" in benchmark_section
+    assert 'self._metrics["speculative.target_verify_calls"] = 0.0' in benchmark_section
+    assert 'self._metrics["speculative.trusted_draft"] = 1.0' in benchmark_section
+
+
 def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     source = (
         REPO_ROOT / "labs" / "speculative_decode" / "baseline_speculative_decode.py"
