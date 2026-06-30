@@ -409,6 +409,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._router_prompt_len: int = 0
         self._router_requests: List[Request] = []
         self._router_request_count: int = 0
+        self._router_batch_range = range(0)
         self._router_devnull = None
         self._mem_logger: Optional[GpuMemoryLogger] = None
         self._mem_log_path: Optional[Path] = None
@@ -535,6 +536,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for idx in range(cfg.batch_size)
         ]
         self._router_request_count = cfg.batch_size
+        self._router_batch_range = range(cfg.batch_size)
         self._router_devnull = open(os.devnull, "w")
         # Force eager path so verification can capture decode tokens deterministically.
         self.graph_mode = GraphMode.EAGER
@@ -828,7 +830,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._router_devnull is None:
             raise RuntimeError("setup() must initialize router stdout sink")
         with contextlib.redirect_stdout(self._router_devnull):
-            for idx in range(cfg.batch_size):
+            for idx in self._router_batch_range:
                 req = router_requests[idx]
                 req.id = f"req-{self._iteration}-{idx}"
                 req.timestamp = time.time()
@@ -1036,6 +1038,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._router_prompt_len = 0
         self._router_requests = []
         self._router_request_count = 0
+        self._router_batch_range = range(0)
         if self._router_devnull is not None:
             self._router_devnull.close()
             self._router_devnull = None

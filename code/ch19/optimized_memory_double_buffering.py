@@ -95,6 +95,9 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         self.copy_events: list[torch.cuda.Event] = []
         self._buffer_event_counts: tuple[int, int] = (0, 0)
         self._expected_buffer_event_counts: tuple[int, int] = (0, 0)
+        self._micro_batch_schedule: list[tuple[int, int, Optional[int], Optional[int]]] = []
+        self._micro_batch_schedule_count = 0
+        self._expected_micro_batch_schedule_count = 0
         self.batch_size = 4
         self.seq_len = 1024
         self.hidden_dim = 1024
@@ -150,6 +153,17 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         self.copy_events = [torch.cuda.Event(blocking=False) for _ in range(2)]
         self._buffer_event_counts = (len(self.buffers), len(self.copy_events))
         self._expected_buffer_event_counts = (2, 2)
+        self._micro_batch_schedule = [
+            (
+                batch_idx,
+                batch_idx & 1,
+                batch_idx + 1 if batch_idx + 1 < self.micro_batches else None,
+                (batch_idx + 1) & 1 if batch_idx + 1 < self.micro_batches else None,
+            )
+            for batch_idx in range(self.micro_batches)
+        ]
+        self._micro_batch_schedule_count = len(self._micro_batch_schedule)
+        self._expected_micro_batch_schedule_count = self.micro_batches
     
     def benchmark_fn(self) -> None:
         """Benchmark: Double buffering with overlapping operations."""
@@ -160,26 +174,28 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
                 copy_events = self.copy_events
                 if self._buffer_event_counts != self._expected_buffer_event_counts:
                     raise RuntimeError("Double buffers or copy events not initialized")
+                if self._micro_batch_schedule_count != self._expected_micro_batch_schedule_count:
+                    raise RuntimeError("Double-buffer microbatch schedule not initialized")
 
                 # Preload first buffer on the copy stream and signal completion.
                 with torch.cuda.stream(self.copy_stream):
                     buffers[0].copy_(self.host_batches[0], non_blocking=True)
                     copy_events[0].record(self.copy_stream)
 
-                for i in range(self.micro_batches):
-                    current_buffer = buffers[i % 2]
-                    current_event = copy_events[i % 2]
+                for batch_idx, slot_idx, next_batch_idx, next_slot_idx in self._micro_batch_schedule:
+                    current_buffer = buffers[slot_idx]
+                    current_event = copy_events[slot_idx]
 
                     with torch.cuda.stream(self.compute_stream):
                         # Ensure the compute stream only waits when the copy has finished.
                         self.compute_stream.wait_event(current_event)
                         self.output = self.model(current_buffer)
 
-                    if i + 1 < self.micro_batches:
-                        next_buffer = buffers[(i + 1) % 2]
-                        next_event = copy_events[(i + 1) % 2]
+                    if next_batch_idx is not None and next_slot_idx is not None:
+                        next_buffer = buffers[next_slot_idx]
+                        next_event = copy_events[next_slot_idx]
                         with torch.cuda.stream(self.copy_stream):
-                            next_buffer.copy_(self.host_batches[i + 1], non_blocking=True)
+                            next_buffer.copy_(self.host_batches[next_batch_idx], non_blocking=True)
                             next_event.record(self.copy_stream)
                 current = torch.cuda.current_stream(device=self.device)
                 current.wait_stream(self.compute_stream)
@@ -212,6 +228,9 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         self.copy_events = []
         self._buffer_event_counts = (0, 0)
         self._expected_buffer_event_counts = (0, 0)
+        self._micro_batch_schedule = []
+        self._micro_batch_schedule_count = 0
+        self._expected_micro_batch_schedule_count = 0
         self.host_batches = []
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

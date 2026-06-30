@@ -31,6 +31,7 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.num_tensors = int(num_tensors)
         self.tensor_kb = int(tensor_kb)
         self.reduction_repeats = max(1, int(reduction_repeats))
+        self._repeat_tail_range = range(1, self.reduction_repeats)
         self.signature_equivalence_group = equivalence_group
         self.signature_equivalence_ignore_fields = ("precision_flags",)
         numel = max(1, (self.tensor_kb * 1024) // FLOAT32_BYTES)
@@ -89,7 +90,7 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must initialize reduction buffers")
         if self.fused:
             torch.sum(self.fused_tensor, dim=None, out=accum)
-            for _ in range(1, self.reduction_repeats):
+            for _ in self._repeat_tail_range:
                 torch.sum(self.fused_tensor, dim=None, out=sum_buffer)
                 accum.add_(sum_buffer)
         else:
@@ -97,7 +98,7 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             for tensor in self._tail_tensors:
                 torch.sum(tensor, dim=None, out=sum_buffer)
                 accum.add_(sum_buffer)
-            for _ in range(1, self.reduction_repeats):
+            for _ in self._repeat_tail_range:
                 for tensor in self.tensors:
                     torch.sum(tensor, dim=None, out=sum_buffer)
                     accum.add_(sum_buffer)

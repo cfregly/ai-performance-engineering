@@ -56,6 +56,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self._expected_stage_buffer_row_counts: tuple[int, ...] = ()
         self._transfer_buffer_row_counts: tuple[int, ...] = ()
         self._expected_transfer_buffer_row_counts: tuple[int, ...] = ()
+        self._pipeline_micro_step_range = range(0)
         self._last_final_output_count: int = 0
         self._single_gpu_mode: bool = False
         self._compiled_model: Optional[nn.Module] = None
@@ -207,6 +208,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
                 len(transfer_row) for transfer_row in self._stage_transfer_buffers
             )
             self._expected_transfer_buffer_row_counts = (self.micro_batches,) * stage_count
+            self._pipeline_micro_step_range = range(self.micro_batches + stage_count - 1)
         
         # Refresh workload metadata
         tokens = self.batch_size * self.hidden_size
@@ -255,7 +257,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
 
         with self._nvtx_range("optimized_pipeline_parallelism"):
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-                for micro_idx in range(self.micro_batches + num_stages - 1):
+                for micro_idx in self._pipeline_micro_step_range:
                     for stage_idx, stage in pipeline_stage_groups:
                         chunk_idx = micro_idx - stage_idx
                         if chunk_idx < 0 or chunk_idx >= self.micro_batches:
@@ -372,6 +374,7 @@ class OptimizedPipelineParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
         self._expected_stage_buffer_row_counts = ()
         self._transfer_buffer_row_counts = ()
         self._expected_transfer_buffer_row_counts = ()
+        self._pipeline_micro_step_range = range(0)
         self._last_final_output_count = 0
         self._compiled_model = None
         self._input_data = None

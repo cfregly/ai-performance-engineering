@@ -1927,6 +1927,9 @@ def test_ch04_gradient_fusion_seeds_accumulator_without_hot_loop_clear() -> None
     assert "self._accum_buffer = torch.zeros(" not in setup_section
     assert "accum.zero_()" not in benchmark_section
     assert "sum_buffer = self._sum_buffer" in benchmark_section
+    assert "self._repeat_tail_range = range(1, self.reduction_repeats)" in source
+    assert "for _ in self._repeat_tail_range:" in benchmark_section
+    assert "range(1, self.reduction_repeats)" not in benchmark_section
     assert "torch.sum(self.fused_tensor, dim=None, out=accum)" in benchmark_section
     assert "torch.sum(self.fused_tensor, dim=None, out=sum_buffer)" in benchmark_section
     assert "torch.sum(self._seed_tensor, dim=None, out=accum)" in benchmark_section
@@ -9415,6 +9418,7 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._router_prefix_count: int = 0" in benchmark_section
     assert "self._router_requests: List[Request] = []" in benchmark_section
     assert "self._router_request_count: int = 0" in benchmark_section
+    assert "self._router_batch_range = range(0)" in benchmark_section
     assert "self._ttft_total_ms: float = 0.0" in benchmark_section
     assert "self._ttft_count: int = 0" in benchmark_section
     assert "self._tpot_total_ms: float = 0.0" in benchmark_section
@@ -9439,6 +9443,7 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._router_prompt_len = cfg.context_window" in setup_section
     assert "self._router_requests = [" in setup_section
     assert "self._router_request_count = cfg.batch_size" in setup_section
+    assert "self._router_batch_range = range(cfg.batch_size)" in setup_section
     assert "Request(" in setup_section
     assert "def _prefill_next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor" in benchmark_section
     assert (
@@ -9459,6 +9464,8 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "setup() must initialize router requests" in hot_section
     assert "self._router_request_count != cfg.batch_size" in hot_section
     assert "len(router_requests)" not in hot_section
+    assert "for idx in self._router_batch_range:" in hot_section
+    assert "for idx in range(cfg.batch_size):" not in hot_section
     assert "self._cuda_available and _RESET_PEAK_MEMORY_STATS is not None" in hot_section
     assert "if self._cuda_available:" in hot_section
     assert "torch.cuda.is_available()" not in hot_section
@@ -9504,6 +9511,7 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._router_prompt_len = 0" in teardown_section
     assert "self._router_requests = []" in teardown_section
     assert "self._router_request_count = 0" in teardown_section
+    assert "self._router_batch_range = range(0)" in teardown_section
 
 
 def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
@@ -10413,6 +10421,7 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._expected_stage_buffer_row_counts: tuple[int, ...] = ()" in source
     assert "self._transfer_buffer_row_counts: tuple[int, ...] = ()" in source
     assert "self._expected_transfer_buffer_row_counts: tuple[int, ...] = ()" in source
+    assert "self._pipeline_micro_step_range = range(0)" in source
     assert "self._last_final_output_count: int = 0" in source
     assert "self._stage_buffers = [" in setup_section
     assert "self._pipeline_stage_groups = list(enumerate(self.pipeline_stages))" in setup_section
@@ -10427,6 +10436,7 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._expected_stage_buffer_row_counts = (self.micro_batches,) * (stage_count + 1)" in setup_section
     assert "self._transfer_buffer_row_counts = tuple(" in setup_section
     assert "self._expected_transfer_buffer_row_counts = (self.micro_batches,) * stage_count" in setup_section
+    assert "self._pipeline_micro_step_range = range(self.micro_batches + stage_count - 1)" in setup_section
     assert "stage_output_features = [" in setup_section
     assert "self._stage_transfer_buffers = []" in setup_section
     assert "transfer_buffer.copy_(out, non_blocking=True)" in benchmark_section
@@ -10444,6 +10454,8 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._stage_buffer_row_counts != self._expected_stage_buffer_row_counts" in benchmark_section
     assert "self._transfer_buffer_row_counts != self._expected_transfer_buffer_row_counts" in benchmark_section
     assert "pipeline_stage_groups = self._pipeline_stage_groups" in benchmark_section
+    assert "for micro_idx in self._pipeline_micro_step_range:" in benchmark_section
+    assert "range(self.micro_batches + num_stages - 1)" not in benchmark_section
     assert "for stage_idx, stage in pipeline_stage_groups:" in benchmark_section
     assert "for stage_idx, stage in enumerate(self.pipeline_stages):" not in benchmark_section
     assert "len(self._last_stage_durations_ms)" not in benchmark_section
@@ -10479,6 +10491,7 @@ def test_ch17_pipeline_parallelism_defers_multigpu_concat_outside_hot_loop() -> 
     assert "self._expected_stage_buffer_row_counts = ()" in teardown_section
     assert "self._transfer_buffer_row_counts = ()" in teardown_section
     assert "self._expected_transfer_buffer_row_counts = ()" in teardown_section
+    assert "self._pipeline_micro_step_range = range(0)" in teardown_section
 
 
 def test_ch17_baseline_memory_reuses_transfer_staging_buffers() -> None:
@@ -12689,6 +12702,8 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in source
     assert "self._ttft_metric_values = [0.0]" in source
     assert "self._tpot_metric_values = [0.0] * self.config.decode_tokens" in source
+    assert "self._decode_token_range = range(self.config.decode_tokens)" in source
+    assert "self._decode_base_position = int(self.config.context_window)" in source
     assert "self._peak_memory_gb = 0.0" in source
     assert "self._cuda_available = torch.cuda.is_available()" in source
     assert "self._metric_totals = {key: 0.0 for key in self._metric_totals}" in setup_section
@@ -12702,6 +12717,10 @@ def test_ch15_moe_inference_reuses_next_token_buffer() -> None:
     assert "torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))" in source
     assert "torch.empty_like(logits_last[:, :1])" not in source
     assert "seed_tokens = self._next_token_from_logits(logits[:, -1, :])" in benchmark_section
+    assert "for step in self._decode_token_range:" in benchmark_section
+    assert "position=self._decode_base_position + step" in benchmark_section
+    assert "range(cfg.decode_tokens)" not in benchmark_section
+    assert "cfg.context_window + step" not in benchmark_section
     assert "seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])" in benchmark_section
     assert "self.output = seed_tokens" in benchmark_section
     assert "seed_tokens.detach()" not in benchmark_section
@@ -18125,8 +18144,15 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "self.buffers = [self.buffer_a, self.buffer_b]" in setup_section
     assert "self._buffer_event_counts: tuple[int, int] = (0, 0)" in source
     assert "self._expected_buffer_event_counts: tuple[int, int] = (0, 0)" in source
+    assert "self._micro_batch_schedule: list[tuple[int, int, Optional[int], Optional[int]]] = []" in source
+    assert "self._micro_batch_schedule_count = 0" in source
+    assert "self._expected_micro_batch_schedule_count = 0" in source
     assert "self._buffer_event_counts = (len(self.buffers), len(self.copy_events))" in setup_section
     assert "self._expected_buffer_event_counts = (2, 2)" in setup_section
+    assert "self._micro_batch_schedule = [" in setup_section
+    assert "for batch_idx in range(self.micro_batches)" in setup_section
+    assert "self._micro_batch_schedule_count = len(self._micro_batch_schedule)" in setup_section
+    assert "self._expected_micro_batch_schedule_count = self.micro_batches" in setup_section
     assert "torch.cuda.Event(" not in benchmark_section
     assert "get_config()" not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
@@ -18138,8 +18164,15 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "copy_events = self.copy_events" in benchmark_section
     assert "Double buffers or copy events not initialized" in benchmark_section
     assert "if self._buffer_event_counts != self._expected_buffer_event_counts:" in benchmark_section
+    assert "if self._micro_batch_schedule_count != self._expected_micro_batch_schedule_count:" in benchmark_section
+    assert "Double-buffer microbatch schedule not initialized" in benchmark_section
     assert "len(buffers)" not in benchmark_section
     assert "len(copy_events)" not in benchmark_section
+    assert "for batch_idx, slot_idx, next_batch_idx, next_slot_idx in self._micro_batch_schedule:" in benchmark_section
+    assert "range(self.micro_batches)" not in benchmark_section
+    assert "i % 2" not in benchmark_section
+    assert "(i + 1) % 2" not in benchmark_section
+    assert "self.host_batches[next_batch_idx]" in benchmark_section
     assert "copy_events[0].record(self.copy_stream)" in benchmark_section
     assert "next_event.record(self.copy_stream)" in benchmark_section
     assert "copy_events[0].record()" not in benchmark_section
@@ -18148,6 +18181,9 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "sum(p.numel()" not in capture_section
     assert "self._buffer_event_counts = (0, 0)" in teardown_section
     assert "self._expected_buffer_event_counts = (0, 0)" in teardown_section
+    assert "self._micro_batch_schedule = []" in teardown_section
+    assert "self._micro_batch_schedule_count = 0" in teardown_section
+    assert "self._expected_micro_batch_schedule_count = 0" in teardown_section
 
 
 def test_ch04_single_gpu_transfer_reuses_inner_iteration_range() -> None:
@@ -18412,19 +18448,30 @@ def test_labs_nccl_nixl_nvshmem_reuses_metric_state() -> None:
     assert '"tier_handoff.copy_calls": 0.0' in init_section
     assert '"tier_handoff.uses_copy_stream": 0.0' in init_section
     assert '"tier_handoff.bytes_per_iteration_mb": 0.0' in init_section
+    assert "self._inner_iteration_range = range(0)" in init_section
+    assert "self._baseline_copy_calls_metric = 0.0" in init_section
+    assert "self._optimized_copy_calls_metric = 0.0" in init_section
     assert "bytes_per_iteration = float(self.workload.bytes_per_iteration)" in refresh_section
+    assert "inner_iterations = int(self.workload.inner_iterations)" in refresh_section
     assert "self._selected_blocks_metric = float(self.workload.selected_blocks)" in refresh_section
     assert "self._block_kib_metric = float(self.workload.block_kib)" in refresh_section
-    assert "self._inner_iterations_metric = float(self.workload.inner_iterations)" in refresh_section
+    assert "self._inner_iterations_metric = float(inner_iterations)" in refresh_section
     assert "self._bytes_per_iteration_mb = bytes_per_iteration / (1024.0 * 1024.0)" in refresh_section
+    assert "self._inner_iteration_range = range(inner_iterations)" in refresh_section
+    assert "self._baseline_copy_calls_metric = float(self.workload.selected_blocks * 2 * inner_iterations)" in refresh_section
+    assert "self._optimized_copy_calls_metric = float(2 * inner_iterations)" in refresh_section
     assert "for key in self._metrics:" in reset_section
     assert "self._metrics[key] = 0.0" in reset_section
     assert "self._reset_metrics()" in setup_section
     assert "self.selected_copy_pairs = list(enumerate(self.selected_cpu)) if not self.optimized else None" in setup_section
     assert "self._reset_metrics()" in teardown_section
     assert "selected_copy_pairs = self.selected_copy_pairs" in benchmark_section
+    assert "for _ in self._inner_iteration_range:" in benchmark_section
     assert "for slot, block_idx in selected_copy_pairs:" in benchmark_section
     assert "for slot, block_idx in enumerate(selected_cpu):" not in benchmark_section
+    assert "for _ in range(self.workload.inner_iterations):" not in benchmark_section
+    assert "copy_calls = self._baseline_copy_calls_metric" in benchmark_section
+    assert "copy_calls = self._optimized_copy_calls_metric" in benchmark_section
     assert "metrics = self._metrics" in benchmark_section
     assert 'metrics["tier_handoff.selected_blocks"] = self._selected_blocks_metric' in benchmark_section
     assert 'metrics["tier_handoff.block_kib"] = self._block_kib_metric' in benchmark_section
@@ -18434,6 +18481,7 @@ def test_labs_nccl_nixl_nvshmem_reuses_metric_state() -> None:
     assert 'metrics["tier_handoff.bytes_per_iteration_mb"] = self._bytes_per_iteration_mb' in benchmark_section
     assert "self._metrics = {" not in benchmark_section
     assert "float(self.workload.bytes_per_iteration) /" not in benchmark_section
+    assert "self.workload.inner_iterations" not in benchmark_section
     assert "self.selected_copy_pairs = None" in teardown_section
 
 
@@ -21537,6 +21585,8 @@ def test_decode_warp_specialized_defers_summary_materialization_out_of_hot_path(
             assert "self.current_tokens.copy_(self._prefilled_tokens)" not in pre_stream_section
             assert "self.state_buffer.copy_(self._prefilled_state)" in stream_section
             assert "self.current_tokens.copy_(self._prefilled_tokens)" in stream_section
+            assert "for _ in self._decode_step_range:" in stream_section
+            assert "for _ in range(self.cfg.decode_tokens):" not in stream_section
         else:
             pre_stream_section = benchmark_section.split(
                 "with torch.cuda.stream(self._graph_stream):",

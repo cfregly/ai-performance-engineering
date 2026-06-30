@@ -215,6 +215,9 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._block_kib_metric = 0.0
         self._inner_iterations_metric = 0.0
         self._bytes_per_iteration_mb = 0.0
+        self._inner_iteration_range = range(0)
+        self._baseline_copy_calls_metric = 0.0
+        self._optimized_copy_calls_metric = 0.0
         self._metrics: dict[str, float] = {
             "tier_handoff.selected_blocks": 0.0,
             "tier_handoff.block_kib": 0.0,
@@ -227,14 +230,18 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _refresh_workload_metadata(self) -> None:
         bytes_per_iteration = float(self.workload.bytes_per_iteration)
+        inner_iterations = int(self.workload.inner_iterations)
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
             bytes_per_iteration=bytes_per_iteration,
         )
         self._selected_blocks_metric = float(self.workload.selected_blocks)
         self._block_kib_metric = float(self.workload.block_kib)
-        self._inner_iterations_metric = float(self.workload.inner_iterations)
+        self._inner_iterations_metric = float(inner_iterations)
         self._bytes_per_iteration_mb = bytes_per_iteration / (1024.0 * 1024.0)
+        self._inner_iteration_range = range(inner_iterations)
+        self._baseline_copy_calls_metric = float(self.workload.selected_blocks * 2 * inner_iterations)
+        self._optimized_copy_calls_metric = float(2 * inner_iterations)
 
     def _reset_metrics(self) -> None:
         for key in self._metrics:
@@ -302,7 +309,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             selected_copy_pairs = self.selected_copy_pairs
             copy_ready = self.baseline_copy_ready
             current_stream = torch.cuda.current_stream(self.device)
-            for _ in range(self.workload.inner_iterations):
+            for _ in self._inner_iteration_range:
                 for slot, block_idx in selected_copy_pairs:
                     self.host_stage[slot].copy_(self.src[block_idx], non_blocking=True)
                     copy_ready.record(current_stream)
@@ -310,7 +317,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     self.dst[block_idx].copy_(self.host_stage[slot], non_blocking=True)
                     copy_ready.record(current_stream)
                     copy_ready.synchronize()
-            copy_calls = float(self.workload.selected_blocks * 2 * self.workload.inner_iterations)
+            copy_calls = self._baseline_copy_calls_metric
             uses_copy_stream = 0.0
         else:
             if self.copy_stream is None or self.copy_ready is None or self.packed_stage is None:
@@ -324,7 +331,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
             copy_stream = self.copy_stream
             copy_ready = self.copy_ready
             current_stream = torch.cuda.current_stream(self.device)
-            for _ in range(self.workload.inner_iterations):
+            for _ in self._inner_iteration_range:
                 torch.index_select(src, 0, selected_idx, out=packed_stage)
                 copy_stream.wait_stream(current_stream)
                 with torch.cuda.stream(copy_stream):
@@ -333,7 +340,7 @@ class TierHandoffBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     copy_ready.record(copy_stream)
                 current_stream.wait_event(copy_ready)
                 dst.index_copy_(0, selected_idx, gpu_stage)
-            copy_calls = float(2 * self.workload.inner_iterations)
+            copy_calls = self._optimized_copy_calls_metric
             uses_copy_stream = 1.0
 
         torch.index_select(self.dst, 0, self.selected_idx, out=self._output_buffer)

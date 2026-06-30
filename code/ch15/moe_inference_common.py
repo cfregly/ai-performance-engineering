@@ -40,6 +40,8 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         self.max_batch_size = int(self.config.batch_size)
         self._total_tokens = int(self.config.tokens_per_iteration)
         self._total_requests = int(self.config.batch_size)
+        self._decode_token_range = range(self.config.decode_tokens)
+        self._decode_base_position = int(self.config.context_window)
         self._ttft_ms = 0.0
         self._tpot_ms = 0.0
 
@@ -194,11 +196,11 @@ class _MoeInferenceBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
                 self._prefill_end_event.record(stream)
 
                 self._decode_start_event.record(stream)
-                for step in range(cfg.decode_tokens):
+                for step in self._decode_token_range:
                     _hidden, decode_logits = self.model.decode(
                         seed_tokens,
                         kv_cache=self.kv_cache,
-                        position=cfg.context_window + step,
+                        position=self._decode_base_position + step,
                     )
                     seed_tokens = self._next_token_from_logits(decode_logits[:, -1, :])
                 self._decode_end_event.record(stream)

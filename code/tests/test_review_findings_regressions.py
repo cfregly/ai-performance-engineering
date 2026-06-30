@@ -333,7 +333,8 @@ def test_ch04_gradient_fusion_batches_reductions_per_timed_call() -> None:
     assert "reduction_repeats: int = 16" in common_text
     assert "requests_per_iteration=float(self.reduction_repeats)" in common_text
     assert "tokens_per_iteration=float(total_bytes * self.reduction_repeats)" in common_text
-    assert "for _ in range(1, self.reduction_repeats):" in common_text
+    assert "self._repeat_tail_range = range(1, self.reduction_repeats)" in common_text
+    assert "for _ in self._repeat_tail_range:" in common_text
     assert "self._sum_buffer = torch.empty_like(self._accum_buffer)" in common_text
     assert "torch.sum(self.fused_tensor, dim=None, out=accum)" in common_text
     assert "self._seed_tensor = self.tensors[0]" in common_text

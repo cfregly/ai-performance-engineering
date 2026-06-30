@@ -44,7 +44,7 @@ class PersistentPrefillBaselineBenchmark(DecodeBenchmark):
             # Reset on the same stream that consumes the state to keep ordering explicit.
             self.state_buffer.copy_(self._prefilled_state)
             self.current_tokens.copy_(self._prefilled_tokens)
-            for _ in range(self.cfg.decode_tokens):
+            for _ in self._decode_step_range:
                 next_state, next_token = self.decode_fn(self.current_tokens, self.state_buffer)
                 self.state_buffer.copy_(next_state)
                 self.current_tokens.copy_(next_token)
