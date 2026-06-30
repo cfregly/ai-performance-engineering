@@ -40,6 +40,7 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.copy_stream: Optional[torch.cuda.Stream] = None
         self.next_start: int = 0
         self._next_chunk_idx: int = 0
+        self._chunk_count: int = 0
         self._chunk_views: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
@@ -64,6 +65,7 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.gpu_cache = torch.zeros(shape, dtype=self.cfg.dtype, device=self.device)
         self.copy_stream = torch.cuda.Stream() if self.cfg.use_copy_stream else None
         self._next_chunk_idx = 0
+        self._chunk_count = 0
         self.next_start = 0
         self._chunk_views = []
         for start in range(0, self.cfg.max_seq_len, self.cfg.chunk_tokens):
@@ -77,6 +79,7 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     self.gpu_cache[..., :slice_len, :],
                 )
             )
+        self._chunk_count = len(self._chunk_views)
         self._output_view = self.gpu_cache[
             ...,
             : min(1, self.cfg.max_seq_len),
@@ -98,7 +101,7 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         assert self.cpu_cache is not None and self.gpu_cache is not None
-        if not self._chunk_views or self._output_view is None:
+        if not self._chunk_views or not self._chunk_count or self._output_view is None:
             raise RuntimeError("Offload chunk views not initialized")
 
         cpu_slice, gpu_slice = self._chunk_views[self._next_chunk_idx]
@@ -124,7 +127,7 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         # Capture a representative slice for verification (GPU slice to avoid host sync patterns)
         self.output = self._output_view
-        self._next_chunk_idx = (self._next_chunk_idx + 1) % len(self._chunk_views)
+        self._next_chunk_idx = (self._next_chunk_idx + 1) % self._chunk_count
         self.next_start = self._next_chunk_idx * self.cfg.chunk_tokens
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
@@ -151,6 +154,7 @@ class NvlinkOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.gpu_cache = None
         self.copy_stream = None
         self._next_chunk_idx = 0
+        self._chunk_count = 0
         self._chunk_views = []
         self._output_view = None
         self._verify_output_buffer = None

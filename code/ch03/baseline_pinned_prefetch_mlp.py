@@ -36,6 +36,7 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.host_batches: List[torch.Tensor] = []
         self.targets: List[torch.Tensor] = []
         self.batch_idx = 0
+        self._batch_count = 0
         self.output: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
         # Training benchmarks don't support jitter check - outputs change due to weight updates
@@ -60,13 +61,14 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         for _ in range(self.num_batches):
             self.host_batches.append(torch.randn(self.batch_size, self.input_dim, dtype=torch.float32))
             self.targets.append(torch.randn(self.batch_size, self.output_dim, dtype=torch.float32))
+        self._batch_count = self.num_batches
         
         torch.cuda.synchronize()
 
     def benchmark_fn(self) -> None:
         assert self.model is not None and self.optimizer is not None
 
-        idx = self.batch_idx % len(self.host_batches)
+        idx = self.batch_idx % self._batch_count
         host_x = self.host_batches[idx]
         host_y = self.targets[idx]
         self.batch_idx += 1
@@ -107,6 +109,7 @@ class BaselinePinnedPrefetchMLPBenchmark(VerificationPayloadMixin, BaseBenchmark
         self.optimizer = None
         self.host_batches = []
         self.targets = []
+        self._batch_count = 0
         self.output = None
         torch.cuda.empty_cache()
 

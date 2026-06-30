@@ -33,6 +33,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         self.cur_slot = 0
         self.next_slot = 1
         self.batch_idx = 0
+        self._batch_count = 0
         self.output: Optional[torch.Tensor] = None
         self._model_parameters: tuple[nn.Parameter, ...] = ()
         self._payload_parameter_count = 0
@@ -52,7 +53,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         wait_stream: Optional[torch.cuda.Stream] = None,
     ) -> None:
         """Async copy to device buffer on copy stream."""
-        batch_idx = (self.batch_idx + 1) % len(self.host_batches)
+        batch_idx = (self.batch_idx + 1) % self._batch_count
         producer_stream = wait_stream or torch.cuda.current_stream()
         with torch.cuda.stream(self.copy_stream):
             self.copy_stream.wait_stream(producer_stream)
@@ -77,6 +78,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         for _ in range(num_batches):
             self.host_batches.append(torch.randn(512, 1024, dtype=torch.float32, pin_memory=True))
             self.target_batches.append(torch.randn(512, 1024, dtype=torch.float32, pin_memory=True))
+        self._batch_count = num_batches
         
         # Device double-buffers for prefetching
         self.device_batches = [
@@ -158,6 +160,7 @@ class OptimizedDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin
         self.device_batches = []
         self.device_targets = []
         self.copy_events = []
+        self._batch_count = 0
         self.output = None
         self._model_parameters = ()
         super().teardown()

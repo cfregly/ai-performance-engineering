@@ -400,8 +400,11 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._memory_count: int = 0
         self._iteration = 0
         self._router_prefix_cache_lengths: List[int] = []
+        self._router_prefix_count: int = 0
         self._router_prompt_stub: List[int] = []
+        self._router_prompt_len: int = 0
         self._router_requests: List[Request] = []
+        self._router_request_count: int = 0
         self._router_devnull = None
         self._mem_logger: Optional[GpuMemoryLogger] = None
         self._mem_log_path: Optional[Path] = None
@@ -511,7 +514,9 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         prefix_period = max(1, cfg.context_window // 4)
         self._router_prefix_cache_lengths = [idx % prefix_period for idx in range(cfg.batch_size)]
+        self._router_prefix_count = len(self._router_prefix_cache_lengths)
         self._router_prompt_stub = [0] * cfg.context_window
+        self._router_prompt_len = cfg.context_window
         self._router_requests = [
             Request(
                 id=f"req-0-{idx}",
@@ -523,6 +528,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             for idx in range(cfg.batch_size)
         ]
+        self._router_request_count = cfg.batch_size
         self._router_devnull = open(os.devnull, "w")
         # Force eager path so verification can capture decode tokens deterministically.
         self.graph_mode = GraphMode.EAGER
@@ -787,13 +793,15 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         prefill_assignments = 0
         decode_assignments = 0
-        if not self._router_prefix_cache_lengths:
+        prefix_cache_lengths = self._router_prefix_cache_lengths
+        prefix_count = self._router_prefix_count
+        if not prefix_cache_lengths or not prefix_count:
             raise RuntimeError("setup() must initialize router prefix-cache lengths")
         prompt_stub = self._router_prompt_stub
-        if len(prompt_stub) != cfg.context_window:
+        if self._router_prompt_len != cfg.context_window:
             raise RuntimeError("setup() must initialize router prompt stub")
         router_requests = self._router_requests
-        if len(router_requests) != cfg.batch_size:
+        if self._router_request_count != cfg.batch_size:
             raise RuntimeError("setup() must initialize router requests")
         if self._router_devnull is None:
             raise RuntimeError("setup() must initialize router stdout sink")
@@ -802,9 +810,7 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 req = router_requests[idx]
                 req.id = f"req-{self._iteration}-{idx}"
                 req.timestamp = time.time()
-                req.prefix_cached_length = self._router_prefix_cache_lengths[
-                    (idx + self._iteration) % len(self._router_prefix_cache_lengths)
-                ]
+                req.prefix_cached_length = prefix_cache_lengths[(idx + self._iteration) % prefix_count]
                 stage, _ = self.router.route_request(req)
                 if stage == "prefill":
                     prefill_assignments += 1
@@ -951,8 +957,11 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.paged_cache = None
         self.spec_decoder = None
         self._router_prefix_cache_lengths = []
+        self._router_prefix_count = 0
         self._router_prompt_stub = []
+        self._router_prompt_len = 0
         self._router_requests = []
+        self._router_request_count = 0
         if self._router_devnull is not None:
             self._router_devnull.close()
             self._router_devnull = None

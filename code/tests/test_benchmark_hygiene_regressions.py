@@ -3367,6 +3367,7 @@ def test_ch03_double_buffered_baseline_reuses_blocking_staging_buffers() -> None
 
     assert "self.device_batch: Optional[torch.Tensor] = None" in source
     assert "self.device_target: Optional[torch.Tensor] = None" in source
+    assert "self._batch_count = 0" in source
     assert "self._model_parameters: tuple[nn.Parameter, ...] = ()" in source
     assert (
         "self.device_batch = torch.empty(512, 1024, device=self.device, dtype=torch.float32)"
@@ -3377,6 +3378,9 @@ def test_ch03_double_buffered_baseline_reuses_blocking_staging_buffers() -> None
         in setup_section
     )
     assert "self._model_parameters = tuple(self.model.parameters())" in setup_section
+    assert "self._batch_count = num_batches" in setup_section
+    assert "idx = self.batch_idx % self._batch_count" in benchmark_section
+    assert "idx = self.batch_idx % len(self.host_batches)" not in benchmark_section
     assert "data = self.device_batch" in benchmark_section
     assert "target = self.device_target" in benchmark_section
     assert "data.copy_(self.host_batches[idx], non_blocking=False)" in benchmark_section
@@ -3386,6 +3390,7 @@ def test_ch03_double_buffered_baseline_reuses_blocking_staging_buffers() -> None
     assert "for p in self.model.parameters():" not in benchmark_section
     assert "self.device_batch = None" in teardown_section
     assert "self.device_target = None" in teardown_section
+    assert "self._batch_count = 0" in teardown_section
     assert "self._model_parameters = ()" in teardown_section
 
 
@@ -3477,6 +3482,9 @@ def test_ch03_prefetchers_wait_on_captured_producer_streams() -> None:
     assert "producer_stream = wait_stream or torch.cuda.current_stream()" in double_helper
     assert "self.copy_stream.wait_stream(producer_stream)" in double_helper
     assert "compute_stream = torch.cuda.current_stream()" not in double_helper
+    assert "batch_idx = (self.batch_idx + 1) % self._batch_count" in double_helper
+    assert "batch_idx = (self.batch_idx + 1) % len(self.host_batches)" not in double_helper
+    assert "self._batch_count = num_batches" in double_setup
     assert "current_stream = torch.cuda.current_stream()" in double_setup
     assert "self._prefetch_slot(self.next_slot, wait_stream=current_stream)" in double_setup
     assert double_benchmark.count("torch.cuda.current_stream()") == 1
@@ -3498,6 +3506,9 @@ def test_ch03_prefetchers_wait_on_captured_producer_streams() -> None:
 
     assert "if wait_stream is not None:" in prefetch_helper
     assert "self.copy_stream.wait_stream(wait_stream)" in prefetch_helper
+    assert "self.batch_count = len(host_batches)" in prefetch_source
+    assert "host_idx = self.batch_idx % self.batch_count" in prefetch_helper
+    assert "host_idx = self.batch_idx % len(self.host_batches)" not in prefetch_helper
     assert "current_stream = torch.cuda.current_stream()" in prefetch_next
     assert "current_stream.wait_stream(self.copy_stream)" in prefetch_next
     assert "self._prefetch(wait_stream=current_stream)" in prefetch_next
@@ -5433,10 +5444,13 @@ def test_ch16_piece_and_regional_graphs_cache_nvtx_outside_hot_loop() -> None:
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)" in optimized_setup
     assert "self._input_views: Dict[int, torch.Tensor] = {}" in optimized_source
+    assert "self._sequence_schedule_len = len(self.sequence_schedule)" in optimized_source
     assert "def _input_view_for(self, seq_len: int) -> torch.Tensor:" in optimized_source
     assert "self._input_views = {self.max_seq_len: self._verify_input}" in optimized_setup
     assert "get_config()" not in optimized_benchmark
     assert "get_nvtx_enabled(" not in optimized_benchmark
+    assert "self.sequence_schedule[self._iteration % self._sequence_schedule_len]" in optimized_benchmark
+    assert "len(self.sequence_schedule)" not in optimized_benchmark
     assert "self._run_with_cuda_graph(seq_len, self._enable_nvtx)" in optimized_benchmark
     assert "capture_stream = torch.cuda.current_stream(self.device)" in optimized_graph_prep
     assert "capture_start.record(capture_stream)" in optimized_graph_prep
@@ -9054,7 +9068,10 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self._prefill_next_values: Optional[torch.Tensor] = None" in benchmark_section
     assert "self._prefill_next_tokens: Optional[torch.Tensor] = None" in benchmark_section
     assert "self._router_prompt_stub: List[int] = []" in benchmark_section
+    assert "self._router_prompt_len: int = 0" in benchmark_section
+    assert "self._router_prefix_count: int = 0" in benchmark_section
     assert "self._router_requests: List[Request] = []" in benchmark_section
+    assert "self._router_request_count: int = 0" in benchmark_section
     assert "self._ttft_total_ms: float = 0.0" in benchmark_section
     assert "self._ttft_count: int = 0" in benchmark_section
     assert "self._tpot_total_ms: float = 0.0" in benchmark_section
@@ -9069,8 +9086,11 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "block.ff = replacement" in benchmark_section
     assert "self._replace_moe_dispatch(self.model, cfg)" in setup_section
     assert "self._replace_moe_dispatch(self.draft_model, draft_cfg)" in setup_section
+    assert "self._router_prefix_count = len(self._router_prefix_cache_lengths)" in setup_section
     assert "self._router_prompt_stub = [0] * cfg.context_window" in setup_section
+    assert "self._router_prompt_len = cfg.context_window" in setup_section
     assert "self._router_requests = [" in setup_section
+    assert "self._router_request_count = cfg.batch_size" in setup_section
     assert "Request(" in setup_section
     assert "def _prefill_next_token_from_logits(self, logits: torch.Tensor) -> torch.Tensor" in benchmark_section
     assert (
@@ -9085,11 +9105,18 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "obj is None for obj in" not in eager_section
     assert "prompt_stub = self._router_prompt_stub" in hot_section
     assert "setup() must initialize router prompt stub" in hot_section
+    assert "self._router_prompt_len != cfg.context_window" in hot_section
+    assert "len(prompt_stub)" not in hot_section
     assert "router_requests = self._router_requests" in hot_section
     assert "setup() must initialize router requests" in hot_section
+    assert "self._router_request_count != cfg.batch_size" in hot_section
+    assert "len(router_requests)" not in hot_section
     assert "req = router_requests[idx]" in hot_section
     assert "req = Request(" not in hot_section
-    assert "req.prefix_cached_length = self._router_prefix_cache_lengths[" in hot_section
+    assert "prefix_cache_lengths = self._router_prefix_cache_lengths" in hot_section
+    assert "prefix_count = self._router_prefix_count" in hot_section
+    assert "req.prefix_cached_length = prefix_cache_lengths[(idx + self._iteration) % prefix_count]" in hot_section
+    assert "len(self._router_prefix_cache_lengths)" not in hot_section
     assert "prompt_stub = [0] * cfg.context_window" not in hot_section
     assert '_RESET_PEAK_MEMORY_STATS = getattr(torch.cuda, "reset_peak_memory_stats", None)' in source
     assert "if torch.cuda.is_available() and _RESET_PEAK_MEMORY_STATS is not None:" in hot_section
@@ -9118,7 +9145,10 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "self.output = tokens" in hot_section
     assert "tokens.detach()" not in hot_section
     assert "torch.no_grad()" not in eager_section
+    assert "self._router_prefix_count = 0" in teardown_section
+    assert "self._router_prompt_len = 0" in teardown_section
     assert "self._router_requests = []" in teardown_section
+    assert "self._router_request_count = 0" in teardown_section
 
 
 def test_ch18_vllm_v1_wrappers_reuse_token_id_buffers() -> None:
@@ -10704,11 +10734,13 @@ def test_nvlink_offload_copies_directly_between_preallocated_buffers() -> None:
     )[0]
 
     assert "self._chunk_views: list[tuple[torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._chunk_count: int = 0" in source
     assert "self._output_view: Optional[torch.Tensor] = None" in source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
     assert "for start in range(0, self.cfg.max_seq_len, self.cfg.chunk_tokens):" in setup_section
     assert "self.cpu_cache[..., start:end, :]" in setup_section
     assert "self.gpu_cache[..., :slice_len, :]" in setup_section
+    assert "self._chunk_count = len(self._chunk_views)" in setup_section
     assert "self._output_view = self.gpu_cache[" in setup_section
     assert "self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)" in setup_section
     assert "cpu_slice, gpu_slice = self._chunk_views[self._next_chunk_idx]" in benchmark_section
@@ -10723,6 +10755,8 @@ def test_nvlink_offload_copies_directly_between_preallocated_buffers() -> None:
     assert "gpu_slice.mul_(1.0001)" in benchmark_section
     assert "cpu_slice.copy_(gpu_slice, non_blocking=self.cfg.non_blocking)" in benchmark_section
     assert "self.output = self._output_view" in benchmark_section
+    assert "self._next_chunk_idx = (self._next_chunk_idx + 1) % self._chunk_count" in benchmark_section
+    assert "len(self._chunk_views)" not in benchmark_section
     assert "self.cpu_cache[..., start:end, :]" not in benchmark_section
     assert "self.gpu_cache[..., :slice_len, :]" not in benchmark_section
     assert "target.copy_(" not in benchmark_section
@@ -10730,6 +10764,7 @@ def test_nvlink_offload_copies_directly_between_preallocated_buffers() -> None:
     assert "output=self._verify_output_buffer" in source
     assert "self.output.float().clone()" not in source
     assert "self._chunk_views = []" in teardown_section
+    assert "self._chunk_count = 0" in teardown_section
     assert "self._output_view = None" in teardown_section
     assert "self._verify_output_buffer = None" in teardown_section
 
@@ -20612,6 +20647,10 @@ def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> N
         assert "get_nvtx_enabled(" not in benchmark_section
         assert "with nvtx_range(" not in benchmark_section
         assert "from core.profiling.nvtx_helper" not in source
+        if label == "baseline_pinned_prefetch_mlp":
+            assert "self._batch_count = self.num_batches" in source
+            assert "idx = self.batch_idx % self._batch_count" in benchmark_section
+            assert "idx = self.batch_idx % len(self.host_batches)" not in benchmark_section
 
 
 def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:

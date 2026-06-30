@@ -31,6 +31,7 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
         self.device_batch: Optional[torch.Tensor] = None
         self.device_target: Optional[torch.Tensor] = None
         self.batch_idx = 0
+        self._batch_count = 0
         self.output: Optional[torch.Tensor] = None
         self._model_parameters: tuple[nn.Parameter, ...] = ()
         self._payload_parameter_count = 0
@@ -60,6 +61,7 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
         for _ in range(num_batches):
             self.host_batches.append(torch.randn(512, 1024, dtype=torch.float32))
             self.target_batches.append(torch.randn(512, 1024, dtype=torch.float32))
+        self._batch_count = num_batches
         self.device_batch = torch.empty(512, 1024, device=self.device, dtype=torch.float32)
         self.device_target = torch.empty(512, 1024, device=self.device, dtype=torch.float32)
         self.batch_idx = 0
@@ -70,7 +72,7 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
         assert self.model is not None and self.device_batch is not None and self.device_target is not None
         
         # Get next batch (round-robin)
-        idx = self.batch_idx % len(self.host_batches)
+        idx = self.batch_idx % self._batch_count
         self.batch_idx += 1
         
         with self._nvtx_range("baseline_double_buffered_batch_provisioning"):
@@ -117,6 +119,7 @@ class BaselineDoubleBufferedBatchProvisioningBenchmark(VerificationPayloadMixin,
         self.device_batch = None
         self.device_target = None
         self.output = None
+        self._batch_count = 0
         self._model_parameters = ()
         super().teardown()
 

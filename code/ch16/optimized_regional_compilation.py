@@ -60,6 +60,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         self.model: Optional[DummyTransformer] = None
         self.choice = select_regional_compilation_choice()
         self.sequence_schedule = [self.choice["seq_len"]]
+        self._sequence_schedule_len = len(self.sequence_schedule)
         self.max_seq_len = self.choice["seq_len"]
         self.d_model = self.choice["d_model"]
         self._iteration = 0
@@ -93,6 +94,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         self.d_model = candidate["d_model"]
         self.max_seq_len = candidate["seq_len"]
         self.sequence_schedule = [self.max_seq_len]
+        self._sequence_schedule_len = len(self.sequence_schedule)
         model = RegionalCompilationTransformer(
             n_layers=candidate["n_layers"],
             d_model=self.d_model,
@@ -175,7 +177,7 @@ class OptimizedRegionalCompilationBenchmark(VerificationPayloadMixin, BaseBenchm
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
 
-        seq_len = self.sequence_schedule[self._iteration % len(self.sequence_schedule)]
+        seq_len = self.sequence_schedule[self._iteration % self._sequence_schedule_len]
         self._iteration += 1
         ran_graph = self._run_with_cuda_graph(seq_len, self._enable_nvtx)
         if not ran_graph:

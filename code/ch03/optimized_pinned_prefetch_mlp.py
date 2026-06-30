@@ -24,6 +24,7 @@ class Prefetcher:
         self.device = device
         self.host_batches = host_batches
         self.targets = targets
+        self.batch_count = len(host_batches)
         self.copy_stream = torch.cuda.Stream()
         self.buffers = [
             torch.empty_like(host_batches[0], device=device, dtype=host_batches[0].dtype),
@@ -40,7 +41,7 @@ class Prefetcher:
         self._prefetch()
 
     def _prefetch(self, wait_stream: Optional[torch.cuda.Stream] = None) -> None:
-        host_idx = self.batch_idx % len(self.host_batches)
+        host_idx = self.batch_idx % self.batch_count
         self.batch_idx += 1
         with torch.cuda.stream(self.copy_stream):
             if wait_stream is not None:
