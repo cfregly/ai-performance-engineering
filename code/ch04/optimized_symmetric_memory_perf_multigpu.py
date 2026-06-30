@@ -186,24 +186,13 @@ class OptimizedSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchm
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
-        if self._local_buffer is None:
-            if self._verify_input is None:
-                torch.manual_seed(42)
-                torch.cuda.manual_seed_all(42)
-                self._verify_input = torch.randn(128, 128, device=self.device, dtype=torch.float32)
-                self._verify_numel = self._verify_input.numel()
-            probe = self._verify_input
-            output_source = probe
+        if self._verify_input is None or self._verify_output_buffer is None:
+            raise RuntimeError("Verification buffers not initialized")
+        probe = self._verify_input
+        if self._verify_output is not None:
+            output_source = self._verify_output[: self._verify_numel].view_as(self._verify_input).detach()
         else:
-            if self._verify_input is None:
-                self._verify_input, self._verify_numel = build_square_verification_probe(self._local_buffer)
-            probe = self._verify_input
-            if self._verify_output is not None:
-                output_source = self._verify_output[: self._verify_numel].view_as(self._verify_input).detach()
-            else:
-                output_source = probe
-        if self._verify_output_buffer is None:
-            self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
+            output_source = probe
         self._verify_output_buffer.copy_(output_source)
 
         self._set_verification_payload(

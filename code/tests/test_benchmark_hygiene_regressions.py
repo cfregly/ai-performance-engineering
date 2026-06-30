@@ -16568,6 +16568,9 @@ def test_ch04_multigpu_symmetric_memory_reuses_verification_buffer() -> None:
         assert "view_as(self._verify_input).detach()" in capture_section
         assert "self._verify_output_buffer.copy_(output_source)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
+        assert "Verification buffers not initialized" in capture_section
+        assert "torch.empty_like(" not in capture_section
+        assert "torch.randn(128, 128" not in capture_section
         assert ".detach().clone()" not in capture_section
         assert "view(256, 256)" not in capture_section
         assert "self._verify_output_buffer = None" in teardown_section
@@ -16595,6 +16598,9 @@ def test_ch04_symmetric_memory_perf_reuses_verification_buffer() -> None:
         assert "self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)" in setup_section
         assert "self._verify_output_buffer.copy_(probe)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section
+        assert "Verification buffers not initialized" in capture_section
+        assert "torch.empty_like(" not in capture_section
+        assert "torch.randn(128, 128" not in capture_section
         assert "output = probe.clone()" not in capture_section
         assert "self._verify_input.detach().clone()" not in capture_section
         assert "self._verify_output_buffer = None" in teardown_section

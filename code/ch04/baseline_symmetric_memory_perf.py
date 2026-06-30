@@ -93,20 +93,12 @@ class BaselineSymmetricMemoryPerfBenchmark(VerificationPayloadMixin, BaseBenchma
 
     def capture_verification_payload(self) -> None:
         self.finalize_iteration_metrics()
+        if self._verify_input is None or self._verify_output_buffer is None:
+            raise RuntimeError("Verification buffers not initialized")
         if self.output is None:
-            if self._verify_input is None:
-                torch.manual_seed(42)
-                torch.cuda.manual_seed_all(42)
-                self._verify_input = torch.randn(128, 128, device=self.device, dtype=torch.float32)
-                self._verify_numel = self._verify_input.numel()
-                self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
             probe = self._verify_input
         else:
-            if self._verify_input is None:
-                raise RuntimeError("Verification input not initialized")
             probe = self.output[: self._verify_numel].view_as(self._verify_input).detach()
-        if self._verify_output_buffer is None:
-            raise RuntimeError("Verification output buffer not initialized")
         self._verify_output_buffer.copy_(probe)
 
         self._set_verification_payload(
