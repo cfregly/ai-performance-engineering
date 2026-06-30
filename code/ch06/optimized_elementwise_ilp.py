@@ -31,6 +31,7 @@ class OptimizedElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.N = 50_000_000
         self._extension = None
         self.repeats = 10  # Same as baseline for fair comparison
+        self._repeat_range = range(self.repeats)
         # ILP benchmark - fixed input size to measure instruction-level parallelism
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repeats),
@@ -64,7 +65,7 @@ class OptimizedElementwiseILPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             buf0: torch.Tensor = self._buf0
             buf1: torch.Tensor = self._buf1
             dst: torch.Tensor = buf0
-            for _ in range(self.repeats):
+            for _ in self._repeat_range:
                 self._extension.unrolled_ilp(dst, src)
                 src, dst = dst, (buf1 if dst is buf0 else buf0)
 

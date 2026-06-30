@@ -3701,6 +3701,27 @@ def test_ch06_ilp_wrappers_reuse_verification_output_buffers() -> None:
         assert "self._verify_output_buffer = None" in teardown_section
 
 
+def test_ch06_repeated_extension_benchmarks_cache_repeat_ranges() -> None:
+    targets = (
+        "baseline_elementwise_ilp.py",
+        "optimized_elementwise_ilp.py",
+        "baseline_attention_ilp.py",
+        "optimized_attention_ilp.py",
+        "baseline_bank_conflicts.py",
+        "optimized_bank_conflicts.py",
+    )
+    for filename in targets:
+        source = (REPO_ROOT / "ch06" / filename).read_text(encoding="utf-8")
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+
+        assert "self._repeat_range = range(self.repeats)" in source
+        assert "for _ in self._repeat_range:" in benchmark_section
+        assert "for _ in range(self.repeats):" not in benchmark_section
+
+
 def test_ch04_optimized_nccl_reduction_buffers_skip_setup_zero_fill() -> None:
     source = (REPO_ROOT / "ch04" / "optimized_nccl.py").read_text(encoding="utf-8")
     common_source = (REPO_ROOT / "ch04" / "reduction_common.py").read_text(encoding="utf-8")
