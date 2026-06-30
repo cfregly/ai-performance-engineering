@@ -94,12 +94,17 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.model = SimplePipeline(hidden_dim=self.hidden_dim).to(self.device, dtype=torch.float32).eval()
         self.model.cache_weight_views()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
-        self.inputs = [
-            torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32).contiguous()
-            for _ in range(self.num_batches)
-        ]
-        self.stacked_inputs = torch.stack(self.inputs, dim=0)
-        self.flat_inputs = self.stacked_inputs.view(self.num_batches * self.batch_size, self.hidden_dim).contiguous()
+        self.stacked_inputs = torch.empty(
+            self.num_batches,
+            self.batch_size,
+            self.hidden_dim,
+            device=self.device,
+            dtype=torch.float32,
+        )
+        self.inputs = list(self.stacked_inputs.unbind(0))
+        for batch_input in self.inputs:
+            batch_input.normal_()
+        self.flat_inputs = self.stacked_inputs.view(self.num_batches * self.batch_size, self.hidden_dim)
         self.output = None
         with torch.inference_mode():
             self._flat_output = self.model(self.flat_inputs)

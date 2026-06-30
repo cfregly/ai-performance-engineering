@@ -6921,7 +6921,14 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
     assert "fc2_out.add_(self.fc2.bias)" in pipeline_section
     assert "self._flat_output: Optional[torch.Tensor] = None" in source
     assert "self._output_view: Optional[torch.Tensor] = None" in source
+    assert "self.stacked_inputs = torch.empty(" in setup_section
+    assert "self.inputs = list(self.stacked_inputs.unbind(0))" in setup_section
+    assert "for batch_input in self.inputs:" in setup_section
+    assert "batch_input.normal_()" in setup_section
+    assert "torch.stack(self.inputs, dim=0)" not in setup_section
     assert "self._flat_output = self.model(self.flat_inputs)" in setup_section
+    assert "self.flat_inputs = self.stacked_inputs.view(self.num_batches * self.batch_size, self.hidden_dim)" in setup_section
+    assert ".contiguous()" not in setup_section
     assert "self._output_view = self._flat_output.view(self.num_batches, self.batch_size, self.hidden_dim)" in setup_section
     assert "self.model(self.flat_inputs)" in benchmark_section
     assert "self.output = self._output_view" in benchmark_section
@@ -7483,7 +7490,10 @@ def test_ch17_ch20_defer_verification_materialization_outside_hot_loop() -> None
 
     assert "torch.stack(" not in ch20_benchmark
     assert "self.outputs = [None for _ in range(self.num_batches)]" in ch20_source
-    assert "self.stacked_inputs = torch.stack(self.inputs, dim=0)" in ch20_source
+    assert "self.stacked_inputs = torch.empty(" in ch20_source
+    assert "self.inputs = list(self.stacked_inputs.unbind(0))" in ch20_source
+    assert "batch_input.normal_()" in ch20_source
+    assert "self.stacked_inputs = torch.stack(self.inputs, dim=0)" not in ch20_source
     assert "self._output_buffer = torch.empty_like(self.stacked_inputs)" in ch20_source
     assert "self.outputs[batch_idx] = out" in ch20_benchmark
     assert "torch.stack(outputs, dim=0, out=self._output_buffer)" in ch20_capture

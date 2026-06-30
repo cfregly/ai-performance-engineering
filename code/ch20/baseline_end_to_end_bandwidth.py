@@ -52,11 +52,16 @@ class BaselineEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark
         torch.cuda.manual_seed_all(42)
         self.model = SimplePipeline(hidden_dim=self.hidden_dim).to(self.device, dtype=torch.float32).eval()
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
-        self.inputs = [
-            torch.randn(self.batch_size, self.hidden_dim, device=self.device, dtype=torch.float32)
-            for _ in range(self.num_batches)
-        ]
-        self.stacked_inputs = torch.stack(self.inputs, dim=0)
+        self.stacked_inputs = torch.empty(
+            self.num_batches,
+            self.batch_size,
+            self.hidden_dim,
+            device=self.device,
+            dtype=torch.float32,
+        )
+        self.inputs = list(self.stacked_inputs.unbind(0))
+        for batch_input in self.inputs:
+            batch_input.normal_()
         self._output_buffer = torch.empty_like(self.stacked_inputs)
         self.outputs = [None for _ in range(self.num_batches)]
         self.output = None
