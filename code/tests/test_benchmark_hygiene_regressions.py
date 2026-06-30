@@ -10331,6 +10331,12 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "timing_count += 1" in benchmark_section
     assert "outputs = self._output_parts" in benchmark_section
     assert "self._output_stack = self._allocate_host_output_stack()" in setup_section
+    assert "def _allocate_host_tensor(" in source
+    assert "pin_memory=True" in source
+    assert "return self._allocate_host_tensor(shape, self.cfg.dtype)" in source
+    assert "self._verify_prompt = self._allocate_host_tensor(" in setup_section
+    assert "self._verify_prompt.copy_(self._prompts[0][0], non_blocking=False)" in setup_section
+    assert "self._prompts[0][0].detach().cpu()" not in setup_section
     assert "output_idx = 0" in benchmark_section
     assert "outputs.append(" not in benchmark_section
     assert "outputs[output_idx] = output.detach()" in benchmark_section
@@ -10345,6 +10351,7 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._prompt_chunks = {}" in teardown_section
     assert "self._sync_devices = []" in teardown_section
     assert "self._output_stack = None" in teardown_section
+    assert "self._verify_prompt = None" in teardown_section
     assert "self._metric_total_tokens = 0" in teardown_section
     assert "reduced_host = reduced.detach().cpu()" in reduced_metrics_section
     assert "cache_hits = float(reduced_host[0])" in reduced_metrics_section

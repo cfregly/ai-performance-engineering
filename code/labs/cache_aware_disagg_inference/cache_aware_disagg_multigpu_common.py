@@ -783,16 +783,19 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             raise RuntimeError(f"Empty KV template missing for {device}")
         return cached
 
+    def _allocate_host_tensor(self, shape: torch.Size | tuple[int, ...], dtype: torch.dtype) -> torch.Tensor:
+        try:
+            return torch.empty(shape, device="cpu", dtype=dtype, pin_memory=True)
+        except RuntimeError:
+            return torch.empty(shape, device="cpu", dtype=dtype)
+
     def _allocate_host_output_stack(self) -> torch.Tensor:
         shape = (
             len(self._request_plans),
             self.cfg.batch_size,
             self.cfg.hidden_size,
         )
-        try:
-            return torch.empty(shape, device="cpu", dtype=self.cfg.dtype, pin_memory=True)
-        except RuntimeError:
-            return torch.empty(shape, device="cpu", dtype=self.cfg.dtype)
+        return self._allocate_host_tensor(shape, self.cfg.dtype)
 
     def _ensure_local_cache(
         self,
@@ -982,7 +985,11 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 self._prefill_seed_store[plan.global_request_idx] = seed
 
         self.parameter_count = total_params
-        self._verify_prompt = self._prompts[0][0].detach().cpu()
+        self._verify_prompt = self._allocate_host_tensor(
+            self._prompts[0][0].shape,
+            self._prompts[0][0].dtype,
+        )
+        self._verify_prompt.copy_(self._prompts[0][0], non_blocking=False)
         self._pending_metrics = {
             "cache_hits": 0.0,
             "cache_misses": 0.0,
@@ -1194,6 +1201,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._active_caches = {}
         self._kv_buffer_pools = {}
         self._sync_devices = []
+        self._verify_prompt = None
         self._metric_request_count = 1.0
         self._metric_total_tokens = 0
         self._metric_total_batch_requests = 0
