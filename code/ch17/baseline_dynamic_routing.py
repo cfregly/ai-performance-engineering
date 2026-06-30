@@ -51,6 +51,9 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         # Pre-generated requests (created once in setup, reused in benchmark)
         self._cached_requests: List[Request] = []
+        self._cached_prompt_lengths: List[int] = []
+        self._request_count = 0
+        self._request_count_float = 0.0
         # Pre-allocated tensors for vectorized path (reused each iteration)
         self._prompt_lengths: Optional[torch.Tensor] = None
         self._cached_lengths: Optional[torch.Tensor] = None
@@ -76,12 +79,15 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Pre-generate requests once (not part of benchmark timing)
         self._cached_requests = self._generate_requests()
+        self._cached_prompt_lengths = [len(r.prompt_tokens) for r in self._cached_requests]
+        self._request_count = len(self._cached_requests)
+        self._request_count_float = float(self._request_count)
         self._cached_request_groups = list(enumerate(self._cached_requests))
         
         # Pre-allocate tensors for vectorized routing (avoids allocation in hot path)
         if self.vectorized:
             self._prompt_lengths = torch.tensor(
-                [len(r.prompt_tokens) for r in self._cached_requests], dtype=torch.int32
+                self._cached_prompt_lengths, dtype=torch.int32
             )
             self._cached_lengths = torch.tensor(
                 [r.prefix_cached_length for r in self._cached_requests], dtype=torch.int32
@@ -145,7 +151,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> Dict[str, float]:
         # Use pre-generated requests (generation time excluded from benchmark)
-        requests = self._cached_requests
+        prompt_lengths = self._cached_prompt_lengths
         rejects = 0
         offloaded = 0
         count_values_ready = False
@@ -207,6 +213,8 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             count_values_ready = True
         else:
             # Python loop-based routing (sequential, one-at-a-time)
+            if not prompt_lengths:
+                raise RuntimeError("Cached prompt lengths not initialized")
             est_ttft = (
                 self.router.get_current_prefill_queue_length()
                 * self.router.avg_prefill_time_per_req
@@ -223,7 +231,8 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 if queue_lengths_host is None:
                     raise RuntimeError("Queue length host inputs not initialized")
                 queue_depth = queue_lengths_host[idx % self.batch_size]
-                if self.router.should_offload_prefill(len(req.prompt_tokens), req.prefix_cached_length, queue_depth):
+                prompt_length = prompt_lengths[idx]
+                if self.router.should_offload_prefill(prompt_length, req.prefix_cached_length, queue_depth):
                     offloaded += 1
 
         elapsed_ms = self._record_stop(start)
@@ -235,7 +244,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             offloaded = int(count_values[1])
         self._latency_total_ms += elapsed_ms
         self._latency_count += 1
-        served = len(requests) - rejects
+        served = self._request_count - rejects
 
         self._output_values[0] = float(served)
         self._output_values[1] = float(rejects)
@@ -244,7 +253,7 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if queue_lengths is None:
             raise RuntimeError("Queue length inputs not initialized")
         self._payload_input_snapshot = queue_lengths
-        self._result_metrics["requests"] = float(len(requests))
+        self._result_metrics["requests"] = self._request_count_float
         self._result_metrics["served"] = float(served)
         self._result_metrics["rejected"] = float(rejects)
         self._result_metrics["offloaded"] = float(offloaded)
@@ -286,6 +295,9 @@ class _DynamicRoutingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         self._cached_requests = []
+        self._cached_prompt_lengths = []
+        self._request_count = 0
+        self._request_count_float = 0.0
         self._cached_request_groups = []
         self._prompt_lengths = None
         self._cached_lengths = None

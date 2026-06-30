@@ -14917,10 +14917,18 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "est_ttft = (" in benchmark_section
     assert "reject_low_priority = est_ttft > self.router.TTFT_SLO_MAX" in benchmark_section
     assert "if not self.router.admit_request(req):" not in benchmark_section
+    assert "self._cached_prompt_lengths: List[int] = []" in source
+    assert "self._cached_prompt_lengths = [len(r.prompt_tokens) for r in self._cached_requests]" in source
+    assert "self._request_count = len(self._cached_requests)" in source
+    assert "self._request_count_float = float(self._request_count)" in source
     assert "self._cached_request_groups: List[tuple[int, Request]] = []" in source
     assert "self._cached_request_groups = list(enumerate(self._cached_requests))" in source
     assert "for idx, req in self._cached_request_groups:" in benchmark_section
     assert "for idx, req in enumerate(requests):" not in benchmark_section
+    assert "prompt_lengths = self._cached_prompt_lengths" in benchmark_section
+    assert "prompt_length = prompt_lengths[idx]" in benchmark_section
+    assert "len(req.prompt_tokens)" not in benchmark_section
+    assert "len(requests)" not in benchmark_section
     assert "torch.tensor(" not in benchmark_section
     assert "self._output_values: list[float] = [0.0, 0.0, 0.0]" in source
     assert "self._output_values_ready = False" in source
@@ -14933,7 +14941,7 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "self._output_values[1] = float(rejects)" in benchmark_section
     assert "self._output_values[2] = float(offloaded)" in benchmark_section
     assert "self._output_values_ready = True" in benchmark_section
-    assert 'self._result_metrics["requests"] = float(len(requests))' in benchmark_section
+    assert 'self._result_metrics["requests"] = self._request_count_float' in benchmark_section
     assert 'self._result_metrics["served"] = float(served)' in benchmark_section
     assert 'self._result_metrics["rejected"] = float(rejects)' in benchmark_section
     assert 'self._result_metrics["offloaded"] = float(offloaded)' in benchmark_section
@@ -14945,6 +14953,7 @@ def test_ch17_dynamic_routing_defers_output_tensor_outside_hot_loop() -> None:
     assert "self.output = self._output_tensor" in capture_section
     assert "torch.tensor(self._output_values" not in capture_section
     assert "self._cached_request_groups = []" in source
+    assert "self._cached_prompt_lengths = []" in source
 
 
 def test_ch17_dynamic_routing_latency_report_uses_heap_selection() -> None:
@@ -15167,6 +15176,7 @@ def test_ch17_dynamic_routing_vectorized_path_reuses_masks() -> None:
     assert "self._queue_lengths = torch.empty(self.batch_size, dtype=torch.int32)" in setup_section
     assert "self._queue_lengths = torch.zeros(self.batch_size, dtype=torch.int32)" not in setup_section
     assert "self._remaining_lengths = torch.empty_like(self._prompt_lengths)" in setup_section
+    assert "self._prompt_lengths = torch.tensor(\n                self._cached_prompt_lengths, dtype=torch.int32\n            )" in setup_section
     assert "self._long_prefill = torch.empty_like(self._priorities, dtype=torch.bool)" in setup_section
     assert "self._served_offload_mask = torch.empty_like(self._long_prefill)" in setup_section
     assert "self._count_values = torch.empty(2, dtype=torch.int64, device=self._priorities.device)" in setup_section
