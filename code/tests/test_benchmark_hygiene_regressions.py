@@ -9288,6 +9288,10 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    baseline_teardown = baseline_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
     source = (REPO_ROOT / "ch18" / "optimized_rope_q_cache.py").read_text(encoding="utf-8")
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
@@ -9305,9 +9309,19 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self._cos_step_views: list[torch.Tensor] = []" in baseline_source
     assert "self._sin_step_views: list[torch.Tensor] = []" in baseline_source
     assert "self._step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []" in baseline_source
+    assert "self._input_step_count = 0" in baseline_source
+    assert "self._cache_step_count = 0" in baseline_source
+    assert "self._cos_step_count = 0" in baseline_source
+    assert "self._sin_step_count = 0" in baseline_source
+    assert "self._step_group_count = 0" in baseline_source
     assert "self._input_step_views = list(self.inputs.unbind(0))" in baseline_setup
     assert "self._cache_step_views = [self.cache[:, :, step, :] for step in range(self.cfg.steps)]" in baseline_setup
     assert "self._step_groups = list(" in baseline_setup
+    assert "self._input_step_count = len(self._input_step_views)" in baseline_setup
+    assert "self._cache_step_count = len(self._cache_step_views)" in baseline_setup
+    assert "self._cos_step_count = len(self._cos_step_views)" in baseline_setup
+    assert "self._sin_step_count = len(self._sin_step_views)" in baseline_setup
+    assert "self._step_group_count = len(self._step_groups)" in baseline_setup
     assert "self._output_view = self._cache_step_views[self.cfg.steps - 1]" in baseline_setup
     assert "emb = torch.cat([freqs, freqs], dim=-1)" not in common_source
     assert "cos[:, :half].copy_(cos_half)" in common_source
@@ -9318,6 +9332,16 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "torch.mul(q2, cos[..., half:], out=out2)" in common_source
     assert "out2.addcmul_(q1, sin[..., half:])" in common_source
     assert "for x, cache_step, cos_t, sin_t in self._step_groups:" in baseline_benchmark
+    assert "self._input_step_count != self.cfg.steps" in baseline_benchmark
+    assert "self._cache_step_count != self.cfg.steps" in baseline_benchmark
+    assert "self._cos_step_count != self.cfg.steps" in baseline_benchmark
+    assert "self._sin_step_count != self.cfg.steps" in baseline_benchmark
+    assert "self._step_group_count != self.cfg.steps" in baseline_benchmark
+    assert "len(self._input_step_views)" not in baseline_benchmark
+    assert "len(self._cache_step_views)" not in baseline_benchmark
+    assert "len(self._cos_step_views)" not in baseline_benchmark
+    assert "len(self._sin_step_views)" not in baseline_benchmark
+    assert "len(self._step_groups)" not in baseline_benchmark
     assert "zip(" not in baseline_benchmark
     assert "cos_t = self.cos[step].view(1, 1, self.cfg.head_dim)" not in baseline_benchmark
     assert "sin_t = self.sin[step].view(1, 1, self.cfg.head_dim)" not in baseline_benchmark
@@ -9326,6 +9350,11 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self.cache[:, :, step, :] = q" not in baseline_benchmark
     assert "self.output = self._output_view" in baseline_benchmark
     assert "self.output = self.cache[:, :, self.cfg.steps - 1, :]" not in baseline_benchmark
+    assert "self._input_step_count = 0" in baseline_teardown
+    assert "self._cache_step_count = 0" in baseline_teardown
+    assert "self._cos_step_count = 0" in baseline_teardown
+    assert "self._sin_step_count = 0" in baseline_teardown
+    assert "self._step_group_count = 0" in baseline_teardown
     assert "for step in range(self.cfg.steps):" not in baseline_benchmark
     assert "for h in range(self.cfg.heads):" not in baseline_benchmark
     assert "q[:, h, :]" not in baseline_benchmark
@@ -9339,13 +9368,33 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self._cos_step_views: list[torch.Tensor] = []" in source
     assert "self._sin_step_views: list[torch.Tensor] = []" in source
     assert "self._step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._input_step_count = 0" in source
+    assert "self._cache_step_count = 0" in source
+    assert "self._cos_step_count = 0" in source
+    assert "self._sin_step_count = 0" in source
+    assert "self._step_group_count = 0" in source
     assert "self.q_buffer = torch.empty(" in setup_section
     assert "self.q_heads = self.q_buffer.view(" in setup_section
     assert "self._input_step_views = list(self.inputs.unbind(0))" in setup_section
     assert "self._cache_step_views = [self.cache[:, :, step, :] for step in range(self.cfg.steps)]" in setup_section
     assert "self._step_groups = list(" in setup_section
+    assert "self._input_step_count = len(self._input_step_views)" in setup_section
+    assert "self._cache_step_count = len(self._cache_step_views)" in setup_section
+    assert "self._cos_step_count = len(self._cos_step_views)" in setup_section
+    assert "self._sin_step_count = len(self._sin_step_views)" in setup_section
+    assert "self._step_group_count = len(self._step_groups)" in setup_section
     assert "self._output_view = self._cache_step_views[self.cfg.steps - 1]" in setup_section
     assert "for x, cache_step, cos_t, sin_t in self._step_groups:" in benchmark_section
+    assert "self._input_step_count != self.cfg.steps" in benchmark_section
+    assert "self._cache_step_count != self.cfg.steps" in benchmark_section
+    assert "self._cos_step_count != self.cfg.steps" in benchmark_section
+    assert "self._sin_step_count != self.cfg.steps" in benchmark_section
+    assert "self._step_group_count != self.cfg.steps" in benchmark_section
+    assert "len(self._input_step_views)" not in benchmark_section
+    assert "len(self._cache_step_views)" not in benchmark_section
+    assert "len(self._cos_step_views)" not in benchmark_section
+    assert "len(self._sin_step_views)" not in benchmark_section
+    assert "len(self._step_groups)" not in benchmark_section
     assert "zip(" not in benchmark_section
     assert "torch.mm(x, self.q_weight, out=self.q_buffer)" in benchmark_section
     assert "apply_rope_inplace(self.q_heads, cos_t, sin_t, self.rope_scratch)" in benchmark_section
@@ -9356,6 +9405,11 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self._input_step_views = []" in teardown_section
     assert "self._cache_step_views = []" in teardown_section
     assert "self._step_groups = []" in teardown_section
+    assert "self._input_step_count = 0" in teardown_section
+    assert "self._cache_step_count = 0" in teardown_section
+    assert "self._cos_step_count = 0" in teardown_section
+    assert "self._sin_step_count = 0" in teardown_section
+    assert "self._step_group_count = 0" in teardown_section
 
     q = torch.randn(2, 3, 8, dtype=torch.float32)
     cos = torch.randn(1, 1, 8, dtype=torch.float32)

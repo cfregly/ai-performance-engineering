@@ -27,6 +27,11 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._cos_step_views: list[torch.Tensor] = []
         self._sin_step_views: list[torch.Tensor] = []
         self._step_groups: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = []
+        self._input_step_count = 0
+        self._cache_step_count = 0
+        self._cos_step_count = 0
+        self._sin_step_count = 0
+        self._step_group_count = 0
         self._output_view: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
@@ -89,6 +94,11 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 strict=True,
             )
         )
+        self._input_step_count = len(self._input_step_views)
+        self._cache_step_count = len(self._cache_step_views)
+        self._cos_step_count = len(self._cos_step_views)
+        self._sin_step_count = len(self._sin_step_views)
+        self._step_group_count = len(self._step_groups)
         self._output_view = self._cache_step_views[self.cfg.steps - 1]
         torch.cuda.synchronize(self.device)
 
@@ -100,11 +110,11 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.sin is None
             or self.cache is None
             or self._output_view is None
-            or len(self._input_step_views) != self.cfg.steps
-            or len(self._cache_step_views) != self.cfg.steps
-            or len(self._cos_step_views) != self.cfg.steps
-            or len(self._sin_step_views) != self.cfg.steps
-            or len(self._step_groups) != self.cfg.steps
+            or self._input_step_count != self.cfg.steps
+            or self._cache_step_count != self.cfg.steps
+            or self._cos_step_count != self.cfg.steps
+            or self._sin_step_count != self.cfg.steps
+            or self._step_group_count != self.cfg.steps
         ):
             raise RuntimeError("Benchmark not initialized")
         with torch.inference_mode():
@@ -136,6 +146,26 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
+
+    def teardown(self) -> None:
+        self.inputs = None
+        self.q_weight = None
+        self.cos = None
+        self.sin = None
+        self.cache = None
+        self._input_step_views = []
+        self._cache_step_views = []
+        self._cos_step_views = []
+        self._sin_step_views = []
+        self._step_groups = []
+        self._input_step_count = 0
+        self._cache_step_count = 0
+        self._cos_step_count = 0
+        self._sin_step_count = 0
+        self._step_group_count = 0
+        self._output_view = None
+        self.output = None
+        torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
         return BenchmarkConfig(iterations=5, warmup=5)
