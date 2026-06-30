@@ -130,6 +130,10 @@ def test_top_k_benchmark_detaches_backward_probs_in_place() -> None:
 
     assert "q_grad = self.inputs.q.grad" in benchmark_section
     assert "k_grad = self.inputs.k.grad" in benchmark_section
+    assert "self._loss_weights_flat: Optional[torch.Tensor] = None" in source
+    assert "self._loss_weights_flat = self.inputs.loss_weights.reshape(-1)" in source
+    assert "loss = torch.dot(probs.reshape(-1), self._loss_weights_flat)" in benchmark_section
+    assert "(probs * self.inputs.loss_weights).sum()" not in benchmark_section
     assert "probs = probs.detach_()" in benchmark_section
     assert "probs.detach()" not in benchmark_section
     assert "probs=probs" in benchmark_section

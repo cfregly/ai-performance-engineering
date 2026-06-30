@@ -843,6 +843,7 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.device = resolve_device()
         self._custom_metrics: dict[str, float] = {}
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._loss_weights_flat: Optional[torch.Tensor] = None
         self._refresh_workload_metadata()
 
     def _refresh_workload_metadata(self) -> None:
@@ -859,6 +860,7 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def setup(self) -> None:
         self.inputs = build_inputs(self.workload, self.device)
+        self._loss_weights_flat = self.inputs.loss_weights.reshape(-1)
         self.outputs = None
         verify_size = 64 if self.workload.mode == "fwd_bwd" else 32
         self._verify_output_buffer = torch.empty(verify_size, device=self.device, dtype=torch.float32)
@@ -891,7 +893,7 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     self.workload,
                     self.backend,
                 )
-                (warm_probs * self.inputs.loss_weights).sum().backward()
+                torch.dot(warm_probs.reshape(-1), self._loss_weights_flat).backward()
 
         self._custom_metrics = {
             "topk.backend.baseline": 1.0 if self.backend == "baseline" else 0.0,
@@ -921,6 +923,8 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self.inputs is None:
             raise RuntimeError("Top-K inputs not initialized")
+        if self.workload.mode == "fwd_bwd" and self._loss_weights_flat is None:
+            raise RuntimeError("Top-K loss weights not initialized")
 
         if self.workload.mode == "fwd_bwd":
             self.inputs.q.grad = None
@@ -959,7 +963,7 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
             q_grad = None
             k_grad = None
             if self.workload.mode == "fwd_bwd":
-                loss = (probs * self.inputs.loss_weights).sum()
+                loss = torch.dot(probs.reshape(-1), self._loss_weights_flat)
                 loss.backward()
                 q_grad = self.inputs.q.grad
                 k_grad = self.inputs.k.grad
@@ -1000,6 +1004,7 @@ class TopKKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.inputs = None
         self.outputs = None
         self._verify_output_buffer = None
+        self._loss_weights_flat = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
