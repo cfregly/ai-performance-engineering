@@ -46,6 +46,7 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.right: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         
         # Register workload metadata in __init__ for compliance checks
         self.register_workload_metadata(
@@ -60,6 +61,7 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.left = torch.randn(self.m, self.k, device=self.device, dtype=torch.float32)
         self.right = torch.randn(self.k, self.n, device=self.device, dtype=torch.float32)
         self._output_buffer = torch.empty(self.m, self.n, device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty_like(self._output_buffer)
         self.output = None
         self._synchronize()
 
@@ -91,9 +93,12 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must be called after setup initializes inputs")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"left": self.left, "right": self.right},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.left.shape[0],
             parameter_count=0,
             precision_flags={
@@ -110,6 +115,7 @@ class BaselineGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.right = None
         self.output = None
         self._output_buffer = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

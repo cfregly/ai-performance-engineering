@@ -30,6 +30,7 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.norm: Optional[nn.Module] = None
         self.nic_snapshot: List[NICInfo] = []
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
         bytes_per_iter = self.seq_len * self.hidden_size * 4  # float32 bytes
         # Register workload metadata in __init__ for compliance checks
@@ -45,6 +46,7 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.host_batch = torch.randn(self.seq_len, self.hidden_size, dtype=torch.float32)
         self.device_batch = torch.empty_like(self.host_batch, device=self.device)
         self.norm = nn.LayerNorm(self.hidden_size, device=self.device)
+        self._verify_output_buffer = torch.empty_like(self.device_batch)
         self._payload_parameter_count = sum(p.numel() for p in self.norm.parameters())
         
         self._synchronize()
@@ -58,9 +60,12 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"host_batch": self.host_batch, "device_batch": self.device_batch},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.host_batch.shape[0],
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -77,6 +82,7 @@ class BaselineRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.device_batch = None
         self.norm = None
         self.output = None
+        self._verify_output_buffer = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:

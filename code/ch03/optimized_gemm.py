@@ -49,6 +49,7 @@ class OptimizedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.left: Optional[torch.Tensor] = None
         self.right: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.fn = None
         
         # Register workload metadata in __init__ for compliance checks
@@ -63,6 +64,7 @@ class OptimizedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Create input matrices - same as baseline version
         self.left = torch.randn(self.m, self.k, device=self.device, dtype=torch.float32)
         self.right = torch.randn(self.k, self.n, device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty(self.m, self.n, device=self.device, dtype=torch.float32)
         self.output = None
 
         def matmul_fn(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -95,9 +97,12 @@ class OptimizedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = result
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"left": self.left, "right": self.right},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.left.shape[0],
             parameter_count=0,
             precision_flags={
@@ -113,6 +118,7 @@ class OptimizedGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.left = None
         self.right = None
         self.output = None
+        self._verify_output_buffer = None
         self.fn = None
         super().teardown()
 

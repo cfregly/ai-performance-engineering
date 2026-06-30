@@ -59,6 +59,7 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.apply_actions: List[str] = []
         self.verify_report: Optional[dict] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._last_slot: int = 0
         self._payload_parameter_count = 0
         bytes_per_iter = self.seq_len * self.hidden_size * 4  # float32 bytes (matches baseline)
@@ -108,6 +109,7 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.empty_like(self.host_buffers[0], device=self.device),
             torch.empty_like(self.host_buffers[0], device=self.device),
         ]
+        self._verify_output_buffer = torch.empty_like(self.device_buffers[0])
         self.norm = nn.LayerNorm(self.hidden_size, device=self.device, dtype=torch.float32)
         self._payload_parameter_count = sum(p.numel() for p in self.norm.parameters())
         self.copy_stream = torch.cuda.Stream(device=self.device)
@@ -150,12 +152,15 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.cur_slot, self.next_slot = self.next_slot, self.cur_slot
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={
                 "host_batch": self.host_buffers[self._last_slot],
                 "device_batch": self.device_buffers[self._last_slot],
             },
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.host_buffers[self._last_slot].shape[0],
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -172,6 +177,7 @@ class OptimizedRackPrepBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.device_buffers = []
         self.norm = None
         self.output = None
+        self._verify_output_buffer = None
         self.copy_stream = None
         self.copy_events = []
         self._last_slot = 0
