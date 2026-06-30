@@ -19782,6 +19782,17 @@ def test_cache_aware_disagg_reuses_custom_metric_buffers() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    multi_decode_device_section = multi_source.split(
+        "def _decode_device_for_rank",
+        maxsplit=1,
+    )[1].split(
+        "def _empty_kv_for_device",
+        maxsplit=1,
+    )[0]
+    multi_teardown_section = multi_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
     metric_update_call = "custom_metrics.update(\n            compute_inference_metrics("
 
@@ -19802,6 +19813,12 @@ def test_cache_aware_disagg_reuses_custom_metric_buffers() -> None:
     assert "self._custom_metrics = {" not in multi_setup_section
     assert "self._custom_metrics = {" not in multi_benchmark_section
     assert "**compute_inference_metrics" not in multi_benchmark_section
+    assert "self._decode_devices: Dict[int, torch.device] = {}" in multi_source
+    assert "self._decode_devices = {}" in multi_setup_section
+    assert "self._decode_devices[rank] = device" in multi_setup_section
+    assert "self._decode_devices = {}" in multi_teardown_section
+    assert "next(" not in multi_decode_device_section
+    assert ".parameters()" not in multi_decode_device_section
 
 
 def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events() -> None:

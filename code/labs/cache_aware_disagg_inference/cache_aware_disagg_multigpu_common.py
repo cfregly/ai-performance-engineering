@@ -741,6 +741,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._warm_cache_store: Dict[int, Dict[int, torch.Tensor]] = {}
         self._prefill_seed_store: Dict[int, torch.Tensor] = {}
         self._empty_kv_by_device: Dict[str, torch.Tensor] = {}
+        self._decode_devices: Dict[int, torch.device] = {}
         self._decode_seed_buffers: Dict[int, torch.Tensor] = {}
         self._active_caches: Dict[int, Dict[int, torch.Tensor]] = {}
         self._kv_buffer_pools: Dict[int, Dict[int, torch.Tensor]] = {}
@@ -775,7 +776,10 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             torch.cuda.synchronize(device)
 
     def _decode_device_for_rank(self, rank: int) -> torch.device:
-        return next(self._decode_models[rank].parameters()).device
+        device = self._decode_devices.get(rank)
+        if device is None:
+            raise RuntimeError(f"Decode device missing for rank {rank}")
+        return device
 
     def _empty_kv_for_device(self, device: torch.device) -> torch.Tensor:
         cached = self._empty_kv_by_device.get(str(device))
@@ -892,6 +896,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._outputs_ready = False
         self._custom_metrics.clear()
         self._empty_kv_by_device = {}
+        self._decode_devices = {}
         self._decode_seed_buffers = {}
         self._active_caches = {}
         self._kv_buffer_pools = {}
@@ -908,6 +913,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             ).eval()
             model.load_state_dict(reference_state)
             self._decode_models[rank] = model
+            self._decode_devices[rank] = device
             self._empty_kv_by_device[str(device)] = torch.empty(
                 self.cfg.batch_size,
                 0,
@@ -1197,6 +1203,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._output_stack = None
         self._outputs_ready = False
         self._empty_kv_by_device = {}
+        self._decode_devices = {}
         self._decode_seed_buffers = {}
         self._active_caches = {}
         self._kv_buffer_pools = {}
