@@ -855,16 +855,18 @@ class Engine:
         return buffer[tuple(slice(0, size) for size in shape)]
 
     def _sample_like_buffer(self, name, tensor):
+        shape = tuple(int(dim) for dim in tensor.shape)
+        numel = int(tensor.numel())
         buffer = getattr(self, name)
         if (
             buffer is None
             or buffer.device != tensor.device
             or buffer.dtype != tensor.dtype
-            or tuple(buffer.shape) != tuple(tensor.shape)
+            or buffer.numel() < numel
         ):
-            buffer = torch.empty_like(tensor)
+            buffer = torch.empty(numel, dtype=tensor.dtype, device=tensor.device)
             setattr(self, name, buffer)
-        return buffer
+        return buffer[:numel].view(shape)
 
     def _sample_active_logits_buffer_for(self, logits, row_count):
         vocab_size = logits.size(-1)

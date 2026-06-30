@@ -651,6 +651,10 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "shape = tuple(int(dim) for dim in shape)" in text
     assert "or any(buffer.size(dim) < size for dim, size in enumerate(shape))" in text
     assert "return buffer[tuple(slice(0, size) for size in shape)]" in text
+    assert "def _sample_like_buffer(self, name, tensor)" in text
+    assert "numel = int(tensor.numel())" in text
+    assert "or buffer.numel() < numel" in text
+    assert "return buffer[:numel].view(shape)" in text
     assert "def _sample_active_logits_buffer_for(self, logits, row_count)" in text
     assert "def _sample_workspace(self, logits, top_k, temperature)" in text
     assert "def _single_prompt_ids(self, tokens, device)" in text
@@ -715,7 +719,25 @@ def test_long_sampling_and_generation_buffers_reuse_capacity_views():
     assert small_sample.shape == (2, 3)
     assert engine_owner._sample_topk_indices_buffer.data_ptr() == sample_ptr
 
-    gpt_owner = SimpleNamespace(_generate_topk_indices=None)
+    engine_owner._sample_topk_probs_buffer = None
+    large_probs = Engine._sample_like_buffer(
+        engine_owner,
+        "_sample_topk_probs_buffer",
+        torch.empty(4, 8),
+    )
+    probs_ptr = engine_owner._sample_topk_probs_buffer.data_ptr()
+    small_probs = Engine._sample_like_buffer(
+        engine_owner,
+        "_sample_topk_probs_buffer",
+        torch.empty(2, 3),
+    )
+
+    assert large_probs.shape == (4, 8)
+    assert small_probs.shape == (2, 3)
+    assert small_probs.is_contiguous()
+    assert engine_owner._sample_topk_probs_buffer.data_ptr() == probs_ptr
+
+    gpt_owner = SimpleNamespace(_generate_topk_indices=None, _generate_topk_probs=None)
     large_generate = GPT._generate_long_buffer(
         gpt_owner,
         "_generate_topk_indices",
@@ -733,6 +755,23 @@ def test_long_sampling_and_generation_buffers_reuse_capacity_views():
     assert large_generate.shape == (1, 8)
     assert small_generate.shape == (1, 3)
     assert gpt_owner._generate_topk_indices.data_ptr() == generate_ptr
+
+    large_generate_probs = GPT._generate_like_buffer(
+        gpt_owner,
+        "_generate_topk_probs",
+        torch.empty(1, 8),
+    )
+    generate_probs_ptr = gpt_owner._generate_topk_probs.data_ptr()
+    small_generate_probs = GPT._generate_like_buffer(
+        gpt_owner,
+        "_generate_topk_probs",
+        torch.empty(1, 3),
+    )
+
+    assert large_generate_probs.shape == (1, 8)
+    assert small_generate_probs.shape == (1, 3)
+    assert small_generate_probs.is_contiguous()
+    assert gpt_owner._generate_topk_probs.data_ptr() == generate_probs_ptr
 
 
 def test_generate_loops_track_completion_counts_without_rescanning_rows():
