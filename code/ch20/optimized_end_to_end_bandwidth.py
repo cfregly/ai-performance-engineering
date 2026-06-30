@@ -77,6 +77,7 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.flat_inputs: Optional[torch.Tensor] = None
         self._flat_output: Optional[torch.Tensor] = None
         self._output_view: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.batch_size = 32
         self.hidden_dim = 1024
@@ -109,6 +110,7 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
         with torch.inference_mode():
             self._flat_output = self.model(self.flat_inputs)
         self._output_view = self._flat_output.view(self.num_batches, self.batch_size, self.hidden_dim)
+        self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
     
     def benchmark_fn(self) -> None:
         assert self.model is not None and self.flat_inputs is not None and self._output_view is not None
@@ -118,11 +120,17 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
                 self.output = self._output_view
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self.stacked_inputs is None:
+        if (
+            self.model is None
+            or self.stacked_inputs is None
+            or self.output is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("capture_verification_payload() requires completed benchmark run")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"inputs": self.stacked_inputs.detach()},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=int(self.stacked_inputs.shape[0]),
             parameter_count=self._payload_parameter_count,
             output_tolerance=(0.1, 1.0),
@@ -135,6 +143,7 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.flat_inputs = None
         self._flat_output = None
         self._output_view = None
+        self._verify_output_buffer = None
         self.output = None
         torch.cuda.empty_cache()
     

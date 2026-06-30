@@ -6921,6 +6921,7 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
     assert "fc2_out.add_(self.fc2.bias)" in pipeline_section
     assert "self._flat_output: Optional[torch.Tensor] = None" in source
     assert "self._output_view: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self.stacked_inputs = torch.empty(" in setup_section
     assert "self.inputs = list(self.stacked_inputs.unbind(0))" in setup_section
     assert "for batch_input in self.inputs:" in setup_section
@@ -6930,11 +6931,16 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
     assert "self.flat_inputs = self.stacked_inputs.view(self.num_batches * self.batch_size, self.hidden_dim)" in setup_section
     assert ".contiguous()" not in setup_section
     assert "self._output_view = self._flat_output.view(self.num_batches, self.batch_size, self.hidden_dim)" in setup_section
+    assert "self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)" in setup_section
     assert "self.model(self.flat_inputs)" in benchmark_section
     assert "self.output = self._output_view" in benchmark_section
     assert "flat_output.view(" not in benchmark_section
+    assert "self._verify_output_buffer.copy_(self.output)" in source
+    assert "output=self._verify_output_buffer" in source
+    assert "self.output.detach().clone()" not in source
     assert "self._flat_output = None" in teardown_section
     assert "self._output_view = None" in teardown_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch20_training_and_moe_use_inplace_relu_modules() -> None:
