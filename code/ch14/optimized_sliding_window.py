@@ -63,21 +63,22 @@ class OptimizedAttentionModule(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         qkv_shape = (batch_size, seq_len, 3 * self.embed_dim)
         output_shape = (batch_size, seq_len, self.embed_dim)
+        rows = int(batch_size * seq_len)
         if (
             self._qkv_buffer is None
-            or self._qkv_buffer.shape != qkv_shape
+            or self._qkv_buffer.size(0) < rows
             or self._qkv_buffer.device != x.device
             or self._qkv_buffer.dtype != x.dtype
         ):
-            self._qkv_buffer = torch.empty(qkv_shape, device=x.device, dtype=x.dtype)
+            self._qkv_buffer = torch.empty(rows, qkv_shape[-1], device=x.device, dtype=x.dtype)
         if (
             self._output_buffer is None
-            or self._output_buffer.shape != output_shape
+            or self._output_buffer.size(0) < rows
             or self._output_buffer.device != x.device
             or self._output_buffer.dtype != x.dtype
         ):
-            self._output_buffer = torch.empty(output_shape, device=x.device, dtype=x.dtype)
-        return self._qkv_buffer, self._output_buffer
+            self._output_buffer = torch.empty(rows, output_shape[-1], device=x.device, dtype=x.dtype)
+        return self._qkv_buffer[:rows].view(qkv_shape), self._output_buffer[:rows].view(output_shape)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Optimized attention forward pass using SDPA/Flash Attention.

@@ -2704,11 +2704,35 @@ def test_ch14_optimized_attention_modules_reuse_projection_buffers() -> None:
         assert "self._qkv_weight_t = self.qkv_proj.weight.t()" in source
         assert "self._out_proj_weight_t = self.out_proj.weight.t()" in source
         assert "def _ensure_projection_buffers(" in source
+        assert "rows = int(batch_size * seq_len)" in source
+        assert "or self._qkv_buffer.size(0) < rows" in source
+        assert "or self._output_buffer.size(0) < rows" in source
+        assert "self._qkv_buffer[:rows].view(qkv_shape)" in source
+        assert "self._output_buffer[:rows].view(output_shape)" in source
         assert "if torch.is_grad_enabled():" in forward_section
         assert "qkv = torch.matmul(x, self._qkv_weight_t, out=qkv_buffer)" in forward_section
         assert "return torch.matmul(output, self._out_proj_weight_t, out=output_buffer)" in forward_section
         assert "self.qkv_proj.weight.t()" not in forward_section
         assert "self.out_proj.weight.t()" not in forward_section
+
+    from ch14.optimized_sliding_window import OptimizedAttentionModule
+
+    module = OptimizedAttentionModule(embed_dim=8, num_heads=2)
+    large = torch.empty(2, 4, 8)
+    qkv_large, out_large = module._ensure_projection_buffers(large, 2, 4)
+    qkv_ptr = module._qkv_buffer.data_ptr()
+    out_ptr = module._output_buffer.data_ptr()
+    small = torch.empty(1, 2, 8)
+    qkv_small, out_small = module._ensure_projection_buffers(small, 1, 2)
+
+    assert qkv_large.shape == (2, 4, 24)
+    assert out_large.shape == (2, 4, 8)
+    assert qkv_small.shape == (1, 2, 24)
+    assert out_small.shape == (1, 2, 8)
+    assert module._qkv_buffer.data_ptr() == qkv_ptr
+    assert module._output_buffer.data_ptr() == out_ptr
+    assert qkv_small.data_ptr() == qkv_ptr
+    assert out_small.data_ptr() == out_ptr
 
 
 def test_ch14_flex_attention_sparse_samples_verification_outputs() -> None:
