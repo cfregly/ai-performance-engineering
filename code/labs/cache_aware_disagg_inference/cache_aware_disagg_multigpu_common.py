@@ -728,6 +728,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._verify_prompt: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._output_parts: List[torch.Tensor] = []
+        self._output_part_count = 0
         self._output_stack: Optional[torch.Tensor] = None
         self._outputs_ready = False
         self.parameter_count: int = 0
@@ -746,7 +747,9 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._decode_devices: Dict[int, torch.device] = {}
         self._decode_seed_buffers: Dict[int, torch.Tensor] = {}
         self._active_caches: Dict[int, Dict[int, torch.Tensor]] = {}
+        self._active_cache_count = 0
         self._kv_buffer_pools: Dict[int, Dict[int, torch.Tensor]] = {}
+        self._kv_buffer_pool_count = 0
         self._sync_devices: List[torch.device] = []
         self._verify_output = torch.zeros(1, dtype=torch.float32)
         self._metric_request_count = 1.0
@@ -895,6 +898,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._prefill_seed_store = {}
         self.output = None
         self._output_parts = [torch.empty(0) for _ in self._request_plans]
+        self._output_part_count = len(self._output_parts)
         self._output_stack = self._allocate_host_output_stack()
         self._outputs_ready = False
         self._custom_metrics.clear()
@@ -902,7 +906,9 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._decode_devices = {}
         self._decode_seed_buffers = {}
         self._active_caches = {}
+        self._active_cache_count = 0
         self._kv_buffer_pools = {}
+        self._kv_buffer_pool_count = 0
         self._sync_devices = []
         total_params = 0
 
@@ -963,7 +969,9 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             torch.device(f"cuda:{rank}") for rank in range(world_size)
         ]
         self._active_caches = {rank: {} for rank in self._decode_models}
+        self._active_cache_count = len(self._active_caches)
         self._kv_buffer_pools = {rank: {} for rank in self._decode_models}
+        self._kv_buffer_pool_count = len(self._kv_buffer_pools)
 
         with torch.inference_mode():
             for plan in self._request_plans:
@@ -1019,7 +1027,10 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         active_caches = self._active_caches
         kv_buffers = self._kv_buffer_pools
         decode_model_count = self._decode_model_count
-        if len(active_caches) != decode_model_count or len(kv_buffers) != decode_model_count:
+        if (
+            self._active_cache_count != decode_model_count
+            or self._kv_buffer_pool_count != decode_model_count
+        ):
             raise RuntimeError("Cache control-plane slots not initialized")
         for rank in self._decode_models:
             if rank not in active_caches or rank not in kv_buffers:
@@ -1028,7 +1039,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
             cache.clear()
         outputs = self._output_parts
         request_plan_count = self._request_plan_count
-        if len(outputs) != request_plan_count:
+        if self._output_part_count != request_plan_count:
             raise RuntimeError("Decode output slots not initialized")
         output_idx = 0
         ttft_total_ms = 0.0
@@ -1208,13 +1219,16 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._request_plan_count = 0
         self.output = None
         self._output_parts = []
+        self._output_part_count = 0
         self._output_stack = None
         self._outputs_ready = False
         self._empty_kv_by_device = {}
         self._decode_devices = {}
         self._decode_seed_buffers = {}
         self._active_caches = {}
+        self._active_cache_count = 0
         self._kv_buffer_pools = {}
+        self._kv_buffer_pool_count = 0
         self._sync_devices = []
         self._verify_prompt = None
         self._metric_request_count = 1.0

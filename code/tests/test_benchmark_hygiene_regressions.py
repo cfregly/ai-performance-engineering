@@ -11161,6 +11161,12 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._request_plan_count = len(self._request_plans)" in setup_section
     assert "self._decode_model_count = 0" in source
     assert "self._decode_model_count = len(self._decode_models)" in setup_section
+    assert "self._active_cache_count = 0" in source
+    assert "self._kv_buffer_pool_count = 0" in source
+    assert "self._output_part_count = 0" in source
+    assert "self._active_cache_count = len(self._active_caches)" in setup_section
+    assert "self._kv_buffer_pool_count = len(self._kv_buffer_pools)" in setup_section
+    assert "self._output_part_count = len(self._output_parts)" in setup_section
     assert "self._prompt_chunks: Dict[tuple[int, int], Sequence[torch.Tensor]] = {}" in source
     assert "self._sync_devices: List[torch.device] = []" in source
     assert "self._output_stack: Optional[torch.Tensor] = None" in source
@@ -11180,6 +11186,12 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "kv_buffers = self._kv_buffer_pools" in benchmark_section
     assert "decode_model_count = self._decode_model_count" in benchmark_section
     assert "request_plan_count = self._request_plan_count" in benchmark_section
+    assert "self._active_cache_count != decode_model_count" in benchmark_section
+    assert "self._kv_buffer_pool_count != decode_model_count" in benchmark_section
+    assert "self._output_part_count != request_plan_count" in benchmark_section
+    assert "len(active_caches)" not in benchmark_section
+    assert "len(kv_buffers)" not in benchmark_section
+    assert "len(outputs)" not in benchmark_section
     assert "len(self._decode_models)" not in benchmark_section
     assert "len(self._request_plans)" not in benchmark_section
     assert "active_caches = {rank: {} for rank in self._decode_models}" not in benchmark_section
@@ -11238,6 +11250,9 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._prompt_chunks = {}" in teardown_section
     assert "self._request_plan_count = 0" in teardown_section
     assert "self._decode_model_count = 0" in teardown_section
+    assert "self._active_cache_count = 0" in teardown_section
+    assert "self._kv_buffer_pool_count = 0" in teardown_section
+    assert "self._output_part_count = 0" in teardown_section
     assert "self._sync_devices = []" in teardown_section
     assert "self._output_stack = None" in teardown_section
     assert "self._verify_prompt = None" in teardown_section
