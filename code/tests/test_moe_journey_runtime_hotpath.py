@@ -51,6 +51,12 @@ def test_level4_grouped_moe_batches_expert_count_metadata_reads() -> None:
     assert "def _workspace(" in grouped_section
     assert "def _sorted_output_like(self, sorted_x: torch.Tensor) -> torch.Tensor" in grouped_section
     assert "def _unsorted_output_like(self, output: torch.Tensor) -> torch.Tensor" in grouped_section
+    assert "or cached.numel() < numel" in grouped_section
+    assert "return cached[:numel].view(shape)" in grouped_section
+    assert "or self._sorted_output_buffer.numel() < numel" in grouped_section
+    assert "return self._sorted_output_buffer[:numel].view(shape)" in grouped_section
+    assert "or self._unsorted_output_buffer.numel() < numel" in grouped_section
+    assert "return self._unsorted_output_buffer[:numel].view(shape)" in grouped_section
     assert "def _sorted_weight_column(self, sorted_weights: torch.Tensor)" in grouped_section
     assert "def _route_token_ids(self, batch_seq: int, top_k: int, device: torch.device)" in grouped_section
     assert "route_token_ids = self._route_token_ids(batch_seq, top_k, x.device)" in grouped_section
@@ -153,6 +159,7 @@ def test_level4_grouped_moe_unsort_scatter_matches_reference() -> None:
         sorted_expert_ids_ptr = layer._sorted_expert_ids_buffer.data_ptr()
         sorted_x_ptr = layer._sorted_x_buffer.data_ptr()
         sorted_weight_ptr = layer._sorted_weight_buffer.data_ptr()
+        sorted_output_ptr = layer._sorted_output_buffer.data_ptr()
         sorted_weight_column = next(iter(layer._sorted_weight_column_cache.values()))
         first_unsorted_ptr = layer._unsorted_output_buffer.data_ptr()
         output_again = layer(x, expert_indices, expert_weights)
@@ -176,8 +183,21 @@ def test_level4_grouped_moe_unsort_scatter_matches_reference() -> None:
     assert layer._sorted_expert_ids_buffer.data_ptr() == sorted_expert_ids_ptr
     assert layer._sorted_x_buffer.data_ptr() == sorted_x_ptr
     assert layer._sorted_weight_buffer.data_ptr() == sorted_weight_ptr
+    assert layer._sorted_output_buffer.data_ptr() == sorted_output_ptr
     assert next(iter(layer._sorted_weight_column_cache.values())) is sorted_weight_column
     torch.testing.assert_close(sorted_weight_column[:, 0], layer._sorted_weight_buffer)
+
+    with torch.inference_mode():
+        smaller_output = layer(x[:3], expert_indices[:3], expert_weights[:3])
+
+    assert smaller_output.shape == (3, 4)
+    assert layer._sorted_token_ids_buffer.data_ptr() == sorted_token_ids_ptr
+    assert layer._sorted_expert_ids_buffer.data_ptr() == sorted_expert_ids_ptr
+    assert layer._sorted_x_buffer.data_ptr() == sorted_x_ptr
+    assert layer._sorted_weight_buffer.data_ptr() == sorted_weight_ptr
+    assert layer._sorted_output_buffer.data_ptr() == sorted_output_ptr
+    assert layer._unsorted_output_buffer.data_ptr() == first_unsorted_ptr
+    assert layer._sorted_x_buffer.numel() >= x.numel() * expert_indices.shape[1]
 
 
 def test_moe_route_weight_normalization_uses_selected_logit_softmax() -> None:

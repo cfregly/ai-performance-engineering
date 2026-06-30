@@ -13752,6 +13752,10 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     output_ptr = layer._output_buffer.data_ptr()
     layer(x)
     assert layer._output_buffer.data_ptr() == output_ptr
+    smaller_output, _ = layer(x[:1])
+    assert smaller_output.shape == (1, 3, 4)
+    assert layer._output_buffer.data_ptr() == output_ptr
+    assert layer._output_buffer.numel() >= x.numel()
     route_counts = layer._route_count_list(torch.tensor([0, 1, 1], dtype=torch.long))
     route_counts_id = id(route_counts)
     assert route_counts == [1, 2, 0]
@@ -13812,7 +13816,9 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert "self._output_buffer: Optional[torch.Tensor] = None" in moe_forward
     assert "def _output_for(self, flat: torch.Tensor) -> torch.Tensor:" in moe_forward
     assert "if torch.is_grad_enabled() and flat.requires_grad:" in moe_forward
-    assert "self._output_buffer = torch.empty_like(flat)" in moe_forward
+    assert "or self._output_buffer.numel() < numel" in moe_forward
+    assert "self._output_buffer = torch.empty(numel, device=flat.device, dtype=flat.dtype)" in moe_forward
+    assert "return self._output_buffer[:numel].view(shape)" in moe_forward
     assert "output_flat = self._output_for(x_flat)" in moe_forward
     assert "output_flat = torch.empty_like(x_flat)" not in moe_forward
     assert "output_flat = torch.zeros_like(x_flat)" not in moe_forward

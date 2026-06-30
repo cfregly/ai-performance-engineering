@@ -158,41 +158,48 @@ class GroupedMoEExperts(nn.Module):
         device: torch.device,
         dtype: torch.dtype,
     ) -> torch.Tensor:
+        shape = tuple(int(dim) for dim in shape)
+        numel = 1
+        for dim in shape:
+            numel *= dim
         cached = getattr(self, name, None)
         if (
-            isinstance(cached, torch.Tensor)
-            and tuple(cached.shape) == tuple(shape)
-            and cached.device == device
-            and cached.dtype == dtype
+            not isinstance(cached, torch.Tensor)
+            or cached.device != device
+            or cached.dtype != dtype
+            or cached.numel() < numel
         ):
-            return cached
-        workspace = torch.empty(shape, device=device, dtype=dtype)
-        setattr(self, name, workspace)
-        return workspace
+            cached = torch.empty(numel, device=device, dtype=dtype)
+            setattr(self, name, cached)
+        return cached[:numel].view(shape)
 
     def _sorted_output_like(self, sorted_x: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled() and sorted_x.requires_grad:
             return torch.empty_like(sorted_x)
+        shape = tuple(int(dim) for dim in sorted_x.shape)
+        numel = int(sorted_x.numel())
         if (
             self._sorted_output_buffer is None
-            or self._sorted_output_buffer.shape != sorted_x.shape
             or self._sorted_output_buffer.device != sorted_x.device
             or self._sorted_output_buffer.dtype != sorted_x.dtype
+            or self._sorted_output_buffer.numel() < numel
         ):
-            self._sorted_output_buffer = torch.empty_like(sorted_x)
-        return self._sorted_output_buffer
+            self._sorted_output_buffer = torch.empty(numel, device=sorted_x.device, dtype=sorted_x.dtype)
+        return self._sorted_output_buffer[:numel].view(shape)
 
     def _unsorted_output_like(self, output: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled() and output.requires_grad:
             return torch.empty_like(output)
+        shape = tuple(int(dim) for dim in output.shape)
+        numel = int(output.numel())
         if (
             self._unsorted_output_buffer is None
-            or self._unsorted_output_buffer.shape != output.shape
             or self._unsorted_output_buffer.device != output.device
             or self._unsorted_output_buffer.dtype != output.dtype
+            or self._unsorted_output_buffer.numel() < numel
         ):
-            self._unsorted_output_buffer = torch.empty_like(output)
-        return self._unsorted_output_buffer
+            self._unsorted_output_buffer = torch.empty(numel, device=output.device, dtype=output.dtype)
+        return self._unsorted_output_buffer[:numel].view(shape)
 
     def _sorted_weight_column(self, sorted_weights: torch.Tensor) -> torch.Tensor:
         key = (int(sorted_weights.data_ptr()), int(sorted_weights.numel()), sorted_weights.device)

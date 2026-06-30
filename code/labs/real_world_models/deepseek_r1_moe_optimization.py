@@ -144,14 +144,16 @@ class MoELayer(nn.Module):
     def _output_for(self, flat: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled() and flat.requires_grad:
             return torch.empty_like(flat)
+        shape = tuple(int(dim) for dim in flat.shape)
+        numel = int(flat.numel())
         if (
             self._output_buffer is None
-            or self._output_buffer.shape != flat.shape
             or self._output_buffer.device != flat.device
             or self._output_buffer.dtype != flat.dtype
+            or self._output_buffer.numel() < numel
         ):
-            self._output_buffer = torch.empty_like(flat)
-        return self._output_buffer
+            self._output_buffer = torch.empty(numel, device=flat.device, dtype=flat.dtype)
+        return self._output_buffer[:numel].view(shape)
 
     def _route_token_ids(
         self,
