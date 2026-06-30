@@ -736,6 +736,8 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._pending_metrics: Dict[str, float] = {}
         self._request_plans: List[DistributedRequestPlan] = []
         self._request_plan_count = 0
+        self._decode_chunk_ranges: Dict[int, range] = {}
+        self._decode_chunk_range_count = 0
         self._prefill_models: Dict[int, TinyPrefillDecode] = {}
         self._decode_models: Dict[int, TinyPrefillDecode] = {}
         self._decode_model_count = 0
@@ -894,6 +896,11 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._prompt_chunks = {}
         self._request_plans = _build_request_plans(self.cfg, prefill_ranks=prefill_ranks)
         self._request_plan_count = len(self._request_plans)
+        self._decode_chunk_ranges = {
+            plan.global_request_idx: range(plan.warm_chunks, plan.total_chunks)
+            for plan in self._request_plans
+        }
+        self._decode_chunk_range_count = len(self._decode_chunk_ranges)
         self._warm_cache_store = {
             rank: {} for rank in range(prefill_ranks, world_size)
         }
@@ -1043,6 +1050,8 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         request_plan_count = self._request_plan_count
         if self._output_part_count != request_plan_count:
             raise RuntimeError("Decode output slots not initialized")
+        if self._decode_chunk_range_count != request_plan_count:
+            raise RuntimeError("Decode chunk ranges not initialized")
         output_idx = 0
         ttft_total_ms = 0.0
         tpot_total_ms = 0.0
@@ -1054,6 +1063,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         metrics["peer_handoffs"] = 0.0
         metrics["kv_transfer_bytes"] = 0.0
         metrics["shared_reload_bytes"] = 0.0
+        decode_chunk_ranges = self._decode_chunk_ranges
 
         with torch.inference_mode():
             for plan in self._request_plans:
@@ -1072,7 +1082,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 self._sync_local_devices()
                 request_start = time.perf_counter()
 
-                for chunk_idx in range(plan.warm_chunks, plan.total_chunks):
+                for chunk_idx in decode_chunk_ranges[plan.global_request_idx]:
                     target_rank = _choose_decode_rank(
                         plan,
                         chunk_idx,
@@ -1219,6 +1229,8 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._prefill_seed_store = {}
         self._request_plans = []
         self._request_plan_count = 0
+        self._decode_chunk_ranges = {}
+        self._decode_chunk_range_count = 0
         self.output = None
         self._output_parts = []
         self._output_part_count = 0

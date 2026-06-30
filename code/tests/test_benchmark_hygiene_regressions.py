@@ -11415,8 +11415,13 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "len(self.hot_k_bufs)" not in benchmark_section
     assert "self._repeat_pages = 1" in source
     assert "self._repeat_pages = max(1, self.cfg.repeat_pages)" in setup_section
+    assert "self._repeat_page_range = range(0)" in source
+    assert "self._repeat_page_range = range(self._repeat_pages)" in setup_section
     assert "self._bytes_per_iteration = float(bytes_per_page * self._repeat_pages)" in setup_section
-    assert "repeats = self._repeat_pages" in benchmark_section
+    assert "repeat_page_range = self._repeat_page_range" in benchmark_section
+    assert "for _ in repeat_page_range:" in benchmark_section
+    assert "for _ in range(repeats):" not in benchmark_section
+    assert "repeats = self._repeat_pages" not in benchmark_section
     assert "max(1, self.cfg.repeat_pages)" not in benchmark_section
     assert "self.output = attn_out[:, :, :1, : self._verify_head_dim]" in benchmark_section
     assert "min(8, attn_out.shape[-1])" not in benchmark_section
@@ -11538,8 +11543,13 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "self._prompt_chunk_count = 0" in setup_section
     assert "self._request_event_group_count = 0" in setup_section
     assert "self._last_output_count = 0" in setup_section
+    assert "self._decode_chunk_ranges: Dict[int, range] = {}" in setup_section
+    assert "self._decode_chunk_range_count = 0" in setup_section
     assert "self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))" in setup_section
     assert "self._request_plan_count = len(self.request_plans)" in setup_section
+    assert "self._decode_chunk_ranges = {" in setup_section
+    assert "plan.request_idx: range(plan.warm_chunks, plan.total_chunks)" in setup_section
+    assert "self._decode_chunk_range_count = len(self._decode_chunk_ranges)" in setup_section
     assert "self._worker_caches = [{} for _ in range(self._logical_decode_worker_count)]" in setup_section
     assert "self._worker_cache_count = len(self._worker_caches)" in setup_section
     assert "self._request_event_group_count = len(self._request_event_groups)" in setup_section
@@ -11552,6 +11562,7 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "self._worker_cache_count != self._logical_decode_worker_count" in benchmark_section
     assert "request_plan_count = self._request_plan_count" in benchmark_section
     assert "self._last_output_count != request_plan_count" in benchmark_section
+    assert "self._decode_chunk_range_count != request_plan_count" in benchmark_section
     assert "self._prompt_chunk_count != request_plan_count" in benchmark_section
     assert "self._request_event_group_count != request_plan_count" in benchmark_section
     assert "self._request_event_count != request_plan_count" in benchmark_section
@@ -11561,6 +11572,9 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "len(request_event_groups)" not in benchmark_section
     assert "len(request_events)" not in benchmark_section
     assert "owners = self._owners" in benchmark_section
+    assert "decode_chunk_ranges = self._decode_chunk_ranges" in benchmark_section
+    assert "for chunk_idx in decode_chunk_ranges[plan.request_idx]:" in benchmark_section
+    assert "for chunk_idx in range(plan.warm_chunks, plan.total_chunks):" not in benchmark_section
     assert '"cache_hits": 0.0' in setup_section
     assert "metrics = self._pending_metrics" in benchmark_section
     assert 'metrics["cache_hits"] = 0.0' in benchmark_section
@@ -11576,6 +11590,8 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "source.clone()" not in load_cache_section
     assert "cache.clone()" not in load_cache_section
     assert "self._reload_buffers = {}" in teardown_section
+    assert "self._decode_chunk_ranges = {}" in teardown_section
+    assert "self._decode_chunk_range_count = 0" in teardown_section
     assert "worker_caches = [{} for _ in range(self.cfg.logical_decode_workers)]" not in benchmark_section
     assert "owners: Dict[int, int] = {}" not in benchmark_section
     assert "for cache in worker_caches:" in benchmark_section
@@ -11713,7 +11729,12 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._active_caches = {rank: {} for rank in self._decode_models}" in setup_section
     assert "self._kv_buffer_pools = {rank: {} for rank in self._decode_models}" in setup_section
     assert "self._request_plan_count = 0" in source
+    assert "self._decode_chunk_ranges: Dict[int, range] = {}" in source
+    assert "self._decode_chunk_range_count = 0" in source
     assert "self._request_plan_count = len(self._request_plans)" in setup_section
+    assert "self._decode_chunk_ranges = {" in setup_section
+    assert "plan.global_request_idx: range(plan.warm_chunks, plan.total_chunks)" in setup_section
+    assert "self._decode_chunk_range_count = len(self._decode_chunk_ranges)" in setup_section
     assert "self._decode_model_count = 0" in source
     assert "self._decode_model_count = len(self._decode_models)" in setup_section
     assert "self._active_cache_count = 0" in source
@@ -11744,6 +11765,7 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self._active_cache_count != decode_model_count" in benchmark_section
     assert "self._kv_buffer_pool_count != decode_model_count" in benchmark_section
     assert "self._output_part_count != request_plan_count" in benchmark_section
+    assert "self._decode_chunk_range_count != request_plan_count" in benchmark_section
     assert "len(active_caches)" not in benchmark_section
     assert "len(kv_buffers)" not in benchmark_section
     assert "len(outputs)" not in benchmark_section
@@ -11762,6 +11784,9 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert 'metrics["cache_hits"] = 0.0' in benchmark_section
     assert 'metrics["shared_reload_bytes"] = 0.0' in benchmark_section
     assert "metrics = {\n            \"cache_hits\": 0.0" not in benchmark_section
+    assert "decode_chunk_ranges = self._decode_chunk_ranges" in benchmark_section
+    assert "for chunk_idx in decode_chunk_ranges[plan.global_request_idx]:" in benchmark_section
+    assert "for chunk_idx in range(plan.warm_chunks, plan.total_chunks):" not in benchmark_section
     assert "total_requests = self._metric_request_count" in benchmark_section
     assert "total_tokens=self._metric_total_tokens" in benchmark_section
     assert "total_requests=self._metric_total_batch_requests" in benchmark_section
@@ -11806,6 +11831,8 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "torch.stack([part.detach().cpu() for part in self._output_parts], dim=0)" not in capture_section
     assert "self._prompt_chunks = {}" in teardown_section
     assert "self._request_plan_count = 0" in teardown_section
+    assert "self._decode_chunk_ranges = {}" in teardown_section
+    assert "self._decode_chunk_range_count = 0" in teardown_section
     assert "self._decode_model_count = 0" in teardown_section
     assert "self._active_cache_count = 0" in teardown_section
     assert "self._kv_buffer_pool_count = 0" in teardown_section
@@ -22124,7 +22151,9 @@ def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:
     assert "self.cfg.batch_size" in output_stack_section
     assert "self.cfg.hidden_size" in output_stack_section
     assert "self.cfg.decode_tokens" not in output_stack_section
-    assert "for chunk_idx in range(plan.warm_chunks, plan.total_chunks):" in benchmark_section
+    assert "decode_chunk_ranges = self._decode_chunk_ranges" in benchmark_section
+    assert "for chunk_idx in decode_chunk_ranges[plan.request_idx]:" in benchmark_section
+    assert "for chunk_idx in range(plan.warm_chunks, plan.total_chunks):" not in benchmark_section
     assert "chunk = chunks[chunk_idx]" in benchmark_section
     assert '"warm_requests": float(self._warm_request_count)' in setup_section
     assert 'metrics["warm_requests"] = float(self._warm_request_count)' in benchmark_section

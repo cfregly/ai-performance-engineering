@@ -177,6 +177,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_event_groups: List[tuple[int, RequestPlan]] = []
         self._request_event_group_count = 0
         self._last_output_count = 0
+        self._decode_chunk_ranges: Dict[int, range] = {}
+        self._decode_chunk_range_count = 0
         self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))
 
     def _build_request_plans(self) -> List[RequestPlan]:
@@ -204,6 +206,11 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         self.request_plans = self._build_request_plans()
         self._request_plan_count = len(self.request_plans)
+        self._decode_chunk_ranges = {
+            plan.request_idx: range(plan.warm_chunks, plan.total_chunks)
+            for plan in self.request_plans
+        }
+        self._decode_chunk_range_count = len(self._decode_chunk_ranges)
         self._request_event_groups = list(enumerate(self.request_plans))
         self._request_event_group_count = len(self._request_event_groups)
         self.prompts = torch.randn(
@@ -469,6 +476,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         request_plan_count = self._request_plan_count
         if self._last_output_count != request_plan_count:
             raise RuntimeError("Decode output slots not initialized")
+        if self._decode_chunk_range_count != request_plan_count:
+            raise RuntimeError("Decode chunk ranges not initialized")
         prompt_chunks = self._prompt_chunks
         if self._prompt_chunk_count != request_plan_count:
             raise RuntimeError("Prompt chunk views not initialized")
@@ -487,6 +496,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         request_events = self._request_event_pool
         if self._request_event_count != request_plan_count:
             raise RuntimeError("Request timing events not initialized")
+        decode_chunk_ranges = self._decode_chunk_ranges
 
         current_stream = torch.cuda.current_stream()
         with torch.inference_mode():
@@ -508,7 +518,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 if plan.is_warm and owners.get(plan.request_idx) == current_worker:
                     metrics["warm_requests_served_local"] += 1.0
 
-                for chunk_idx in range(plan.warm_chunks, plan.total_chunks):
+                for chunk_idx in decode_chunk_ranges[plan.request_idx]:
                     chunk = chunks[chunk_idx]
                     current_worker = self._choose_worker(
                         plan.request_idx,
@@ -666,6 +676,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._request_event_groups = []
         self._request_event_group_count = 0
         self._last_output_count = 0
+        self._decode_chunk_ranges = {}
+        self._decode_chunk_range_count = 0
         self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))
         torch.cuda.empty_cache()
 

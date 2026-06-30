@@ -136,6 +136,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.page_cursor: int = 0
         self._repeat_pages = 1
+        self._repeat_page_range = range(0)
         self._bytes_per_iteration: float = 0.0
         self.output: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
@@ -314,6 +315,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             / 8.0
         )
         self._repeat_pages = max(1, self.cfg.repeat_pages)
+        self._repeat_page_range = range(self._repeat_pages)
         self._bytes_per_iteration = float(bytes_per_page * self._repeat_pages)
         self.register_workload_metadata(bytes_per_iteration=self._bytes_per_iteration)
 
@@ -438,11 +440,11 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return None
 
     def benchmark_fn(self) -> None:
-        repeats = self._repeat_pages
+        repeat_page_range = self._repeat_page_range
         attn_out = None
         use_host_prefetch = bool(self.cfg.use_host_prefetch_thread and self.cfg.prefetch_next_page)
         current_stream = torch.cuda.current_stream() if self.copy_stream is not None else None
-        for _ in range(repeats):
+        for _ in repeat_page_range:
             start = self.page_cursor
             active_idx = self.active_buf_idx
             prefetched = self._consume_host_prefetch(start) if use_host_prefetch else self._maybe_use_prefetch(start)
@@ -583,6 +585,7 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 pass
         self._memmap_path = None
         self.output = None
+        self._repeat_page_range = range(0)
         super().teardown()
 
     # -------------------- Harness config --------------------
