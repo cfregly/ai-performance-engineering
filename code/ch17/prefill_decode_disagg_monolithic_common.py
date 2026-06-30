@@ -13,16 +13,26 @@ class SimpleLLM(nn.Module):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.layers = nn.ModuleList([nn.Linear(hidden_dim, hidden_dim) for _ in range(num_layers)])
+        self.register_buffer("_prefill_input_buffer", torch.empty(0), persistent=False)
+
+    def _prefill_input(self, prompt_tokens: torch.Tensor) -> torch.Tensor:
+        shape = (prompt_tokens.size(0), prompt_tokens.size(1), self.hidden_dim)
+        if (
+            self._prefill_input_buffer.shape != shape
+            or self._prefill_input_buffer.device != prompt_tokens.device
+            or self._prefill_input_buffer.dtype != torch.bfloat16
+        ):
+            self._prefill_input_buffer = torch.empty(
+                shape,
+                device=prompt_tokens.device,
+                dtype=torch.bfloat16,
+            )
+        self._prefill_input_buffer.normal_()
+        return self._prefill_input_buffer
 
     def prefill(self, prompt_tokens: torch.Tensor) -> torch.Tensor:
         """Prefill over the full prompt (compute-bound path)."""
-        x = torch.randn(
-            prompt_tokens.size(0),
-            prompt_tokens.size(1),
-            self.hidden_dim,
-            device=prompt_tokens.device,
-            dtype=torch.bfloat16,
-        )
+        x = self._prefill_input(prompt_tokens)
         for layer in self.layers:
             x = torch.relu_(layer(x))
         return x[:, -1:, :]

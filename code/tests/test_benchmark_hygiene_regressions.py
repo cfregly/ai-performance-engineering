@@ -19963,6 +19963,42 @@ def test_ch17_optimized_disaggregated_uses_prebuilt_timing_events() -> None:
     assert "self._get_tpot_events(" not in benchmark_section
 
 
+def test_ch17_monolithic_prefill_reuses_random_input_buffer() -> None:
+    source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_monolithic_common.py").read_text(
+        encoding="utf-8"
+    )
+    init_section = source.split("def __init__", maxsplit=1)[1].split(
+        "def _prefill_input",
+        maxsplit=1,
+    )[0]
+    helper_section = source.split("def _prefill_input", maxsplit=1)[1].split(
+        "def prefill",
+        maxsplit=1,
+    )[0]
+    prefill_section = source.split("def prefill", maxsplit=1)[1].split(
+        "def decode",
+        maxsplit=1,
+    )[0]
+
+    assert 'self.register_buffer("_prefill_input_buffer", torch.empty(0), persistent=False)' in init_section
+    assert "self._prefill_input_buffer = torch.empty(" in helper_section
+    assert "self._prefill_input_buffer.normal_()" in helper_section
+    assert "x = self._prefill_input(prompt_tokens)" in prefill_section
+    assert "torch.randn(" not in prefill_section
+
+    from ch17.prefill_decode_disagg_monolithic_common import SimpleLLM
+
+    model = SimpleLLM(hidden_dim=4, num_layers=1).to(dtype=torch.bfloat16).eval()
+    prompt = torch.zeros(2, 3, dtype=torch.long)
+    with torch.inference_mode():
+        model.prefill(prompt)
+        first_ptr = model._prefill_input_buffer.data_ptr()
+        model.prefill(prompt)
+        second_ptr = model._prefill_input_buffer.data_ptr()
+
+    assert first_ptr == second_ptr
+
+
 def test_ch17_monolithic_decode_fast_paths_single_token() -> None:
     source = (REPO_ROOT / "ch17" / "prefill_decode_disagg_monolithic_common.py").read_text(
         encoding="utf-8"
