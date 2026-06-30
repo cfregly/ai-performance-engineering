@@ -734,8 +734,10 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._custom_metrics: Dict[str, float] = {}
         self._pending_metrics: Dict[str, float] = {}
         self._request_plans: List[DistributedRequestPlan] = []
+        self._request_plan_count = 0
         self._prefill_models: Dict[int, TinyPrefillDecode] = {}
         self._decode_models: Dict[int, TinyPrefillDecode] = {}
+        self._decode_model_count = 0
         self._prompts: Dict[int, torch.Tensor] = {}
         self._prompt_chunks: Dict[tuple[int, int], Sequence[torch.Tensor]] = {}
         self._warm_cache_store: Dict[int, Dict[int, torch.Tensor]] = {}
@@ -886,6 +888,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._prompts = {}
         self._prompt_chunks = {}
         self._request_plans = _build_request_plans(self.cfg, prefill_ranks=prefill_ranks)
+        self._request_plan_count = len(self._request_plans)
         self._warm_cache_store = {
             rank: {} for rank in range(prefill_ranks, world_size)
         }
@@ -928,6 +931,7 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 dtype=self.cfg.dtype,
             )
             total_params += sum(p.numel() for p in model.parameters())
+        self._decode_model_count = len(self._decode_models)
 
         for rank in range(prefill_ranks):
             device = torch.device(f"cuda:{rank}")
@@ -1014,7 +1018,8 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
 
         active_caches = self._active_caches
         kv_buffers = self._kv_buffer_pools
-        if len(active_caches) != len(self._decode_models) or len(kv_buffers) != len(self._decode_models):
+        decode_model_count = self._decode_model_count
+        if len(active_caches) != decode_model_count or len(kv_buffers) != decode_model_count:
             raise RuntimeError("Cache control-plane slots not initialized")
         for rank in self._decode_models:
             if rank not in active_caches or rank not in kv_buffers:
@@ -1022,7 +1027,8 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
         for cache in active_caches.values():
             cache.clear()
         outputs = self._output_parts
-        if len(outputs) != len(self._request_plans):
+        request_plan_count = self._request_plan_count
+        if len(outputs) != request_plan_count:
             raise RuntimeError("Decode output slots not initialized")
         output_idx = 0
         ttft_total_ms = 0.0
@@ -1193,11 +1199,13 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
     def teardown(self) -> None:
         self._prefill_models = {}
         self._decode_models = {}
+        self._decode_model_count = 0
         self._prompts = {}
         self._prompt_chunks = {}
         self._warm_cache_store = {}
         self._prefill_seed_store = {}
         self._request_plans = []
+        self._request_plan_count = 0
         self.output = None
         self._output_parts = []
         self._output_stack = None

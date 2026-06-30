@@ -133,6 +133,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.label = label
         self.cfg = cfg or CacheAwareDisaggConfig()
         self.script_path = script_path or ""
+        self._logical_decode_worker_count = self.cfg.logical_decode_workers
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.total_requests),
             tokens_per_iteration=float(
@@ -165,8 +166,10 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._pending_metrics: Dict[str, float] = {}
         self._kv_buffers: Dict[int, torch.Tensor] = {}
         self._worker_caches: List[Dict[int, torch.Tensor]] = []
+        self._worker_cache_count = 0
         self._owners: Dict[int, int] = {}
         self._prompt_chunks: List[Sequence[torch.Tensor]] = []
+        self._request_plan_count = 0
         self._warm_request_count = 0
         self._request_event_groups: List[tuple[int, RequestPlan]] = []
 
@@ -194,6 +197,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self.request_plans = self._build_request_plans()
+        self._request_plan_count = len(self.request_plans)
         self._request_event_groups = list(enumerate(self.request_plans))
         self.prompts = torch.randn(
             self.cfg.requests_per_iteration,
@@ -253,7 +257,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             for plan in self.request_plans
         }
-        self._worker_caches = [{} for _ in range(self.cfg.logical_decode_workers)]
+        self._worker_caches = [{} for _ in range(self._logical_decode_worker_count)]
+        self._worker_cache_count = len(self._worker_caches)
         self._owners = {}
         with torch.inference_mode():
             assert self.prompts is not None
@@ -285,7 +290,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._last_outputs = [torch.empty(0) for _ in self.request_plans]
         self._output_stack = torch.empty(
-            len(self.request_plans),
+            self._request_plan_count,
             self.cfg.batch_size,
             self.cfg.hidden_size,
             device=self.device,
@@ -329,8 +334,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.optimized and owner is not None:
             return owner
         if self.optimized:
-            return request_idx % self.cfg.logical_decode_workers
-        return (request_idx + stage_idx) % self.cfg.logical_decode_workers
+            return request_idx % self._logical_decode_worker_count
+        return (request_idx + stage_idx) % self._logical_decode_worker_count
 
     def _load_request_cache(
         self,
@@ -385,7 +390,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         worker_caches = self._worker_caches
-        if len(worker_caches) != self.cfg.logical_decode_workers:
+        if len(worker_caches) != self._worker_cache_count:
             raise RuntimeError("Worker cache slots not initialized")
         for cache in worker_caches:
             cache.clear()
@@ -393,13 +398,14 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         owners.clear()
         kv_buffers = self._kv_buffers
         outputs = self._last_outputs
-        if len(outputs) != len(self.request_plans):
+        request_plan_count = self._request_plan_count
+        if len(outputs) != request_plan_count:
             raise RuntimeError("Decode output slots not initialized")
         prompt_chunks = self._prompt_chunks
-        if len(prompt_chunks) != len(self.request_plans):
+        if len(prompt_chunks) != request_plan_count:
             raise RuntimeError("Prompt chunk views not initialized")
         request_event_groups = self._request_event_groups
-        if len(request_event_groups) != len(self.request_plans):
+        if len(request_event_groups) != request_plan_count:
             raise RuntimeError("Request event groups not initialized")
         metrics = self._pending_metrics
         metrics["cache_hits"] = 0.0
@@ -411,7 +417,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         metrics["warm_requests"] = float(self._warm_request_count)
         metrics["warm_requests_served_local"] = 0.0
         request_events = self._request_event_pool
-        if len(request_events) != len(self.request_plans):
+        if len(request_events) != request_plan_count:
             raise RuntimeError("Request timing events not initialized")
 
         current_stream = torch.cuda.current_stream()
@@ -581,8 +587,10 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._pending_metrics = {}
         self._kv_buffers = {}
         self._worker_caches = []
+        self._worker_cache_count = 0
         self._owners = {}
         self._prompt_chunks = []
+        self._request_plan_count = 0
         self._warm_request_count = 0
         self._request_event_groups = []
         torch.cuda.empty_cache()

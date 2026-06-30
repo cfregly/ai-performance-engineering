@@ -10848,9 +10848,17 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "kv_buffer = torch.empty(" in helper_section
     assert "kv_buffer = torch.empty(" not in benchmark_section
     assert "kv_buffers = self._kv_buffers" in benchmark_section
-    assert "self._worker_caches = [{} for _ in range(self.cfg.logical_decode_workers)]" in setup_section
+    assert "self._logical_decode_worker_count = self.cfg.logical_decode_workers" in setup_section
+    assert "self._worker_cache_count = 0" in setup_section
+    assert "self._request_plan_count = 0" in setup_section
+    assert "self._request_plan_count = len(self.request_plans)" in setup_section
+    assert "self._worker_caches = [{} for _ in range(self._logical_decode_worker_count)]" in setup_section
+    assert "self._worker_cache_count = len(self._worker_caches)" in setup_section
+    assert "% self._logical_decode_worker_count" in source
     assert "self._owners = {}" in setup_section
     assert "worker_caches = self._worker_caches" in benchmark_section
+    assert "len(worker_caches) != self._worker_cache_count" in benchmark_section
+    assert "request_plan_count = self._request_plan_count" in benchmark_section
     assert "owners = self._owners" in benchmark_section
     assert '"cache_hits": 0.0' in setup_section
     assert "metrics = self._pending_metrics" in benchmark_section
@@ -10871,6 +10879,7 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "for event_idx, plan in enumerate(self.request_plans):" not in benchmark_section
     assert "request_start, prefill_end, decode_end = request_events[event_idx]" in benchmark_section
     assert "self._last_outputs = [torch.empty(0) for _ in self.request_plans]" in setup_section
+    assert "len(self.request_plans)" not in benchmark_section
     assert "outputs: List[torch.Tensor] = []" not in benchmark_section
     assert "outputs = self._last_outputs" in benchmark_section
     assert "output_idx = 0" not in benchmark_section
@@ -10989,6 +10998,10 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "seed_buffer," in benchmark_section
     assert "self._active_caches = {rank: {} for rank in self._decode_models}" in setup_section
     assert "self._kv_buffer_pools = {rank: {} for rank in self._decode_models}" in setup_section
+    assert "self._request_plan_count = 0" in source
+    assert "self._request_plan_count = len(self._request_plans)" in setup_section
+    assert "self._decode_model_count = 0" in source
+    assert "self._decode_model_count = len(self._decode_models)" in setup_section
     assert "self._prompt_chunks: Dict[tuple[int, int], Sequence[torch.Tensor]] = {}" in source
     assert "self._sync_devices: List[torch.device] = []" in source
     assert "self._output_stack: Optional[torch.Tensor] = None" in source
@@ -11006,6 +11019,10 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "_split_prompt(" not in benchmark_section
     assert "active_caches = self._active_caches" in benchmark_section
     assert "kv_buffers = self._kv_buffer_pools" in benchmark_section
+    assert "decode_model_count = self._decode_model_count" in benchmark_section
+    assert "request_plan_count = self._request_plan_count" in benchmark_section
+    assert "len(self._decode_models)" not in benchmark_section
+    assert "len(self._request_plans)" not in benchmark_section
     assert "active_caches = {rank: {} for rank in self._decode_models}" not in benchmark_section
     assert "kv_buffers = {rank: {} for rank in self._decode_models}" not in benchmark_section
     assert "set(active_caches)" not in benchmark_section
@@ -11060,6 +11077,8 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "self.output = self._output_stack" in capture_section
     assert "torch.stack([part.detach().cpu() for part in self._output_parts], dim=0)" not in capture_section
     assert "self._prompt_chunks = {}" in teardown_section
+    assert "self._request_plan_count = 0" in teardown_section
+    assert "self._decode_model_count = 0" in teardown_section
     assert "self._sync_devices = []" in teardown_section
     assert "self._output_stack = None" in teardown_section
     assert "self._verify_prompt = None" in teardown_section
@@ -20800,6 +20819,8 @@ def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:
     assert "self._request_event_triplets = request_events" in benchmark_section
     assert "sum(1 for plan in self.request_plans if plan.is_warm)" not in benchmark_section
     assert "self._request_event_groups = []" in teardown_section
+    assert "self._worker_cache_count = 0" in source
+    assert "self._request_plan_count = 0" in source
     assert "self._prompt_chunks = []" in teardown_section
 
 
