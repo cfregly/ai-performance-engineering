@@ -164,22 +164,29 @@ class PTQLinear(nn.Module):
         if x.size(1) % 8 != 0 or self.weight_q_t.size(1) % 8 != 0:
             raise RuntimeError("torch._int_mm requires K and N to be multiples of 8")
         if (
-            self._input_scaled_buffer.shape != x.shape
+            self._input_scaled_buffer.dim() != 2
+            or self._output_float_buffer.dim() != 2
+            or self._input_scaled_buffer.size(0) < x.size(0)
+            or self._input_scaled_buffer.size(1) != x.size(1)
+            or self._output_float_buffer.size(0) < x.size(0)
+            or self._output_float_buffer.size(1) != self.weight_q_t.size(1)
             or self._input_scaled_buffer.device != x.device
         ):
             self.prepare_buffers(x.shape[0], x.device)
 
-        transformed_x = self._input_scaled_buffer
+        transformed_x = self._input_scaled_buffer[: x.size(0)]
+        abs_buffer = self._input_abs_buffer[: x.size(0)]
+        input_int8 = self._input_int8_buffer[: x.size(0)]
+        output = self._output_float_buffer[: x.size(0)]
         transformed_x.copy_(x)
         transformed_x.mul_(self.input_transform)
-        torch.abs(transformed_x, out=self._input_abs_buffer)
-        input_scale = torch.clamp(self._input_abs_buffer.amax() / INT8_MAX, min=1e-8)
+        torch.abs(transformed_x, out=abs_buffer)
+        input_scale = torch.clamp(abs_buffer.amax() / INT8_MAX, min=1e-8)
         torch.div(transformed_x, input_scale, out=transformed_x)
         torch.round(transformed_x, out=transformed_x)
         torch.clamp(transformed_x, -INT8_MAX, INT8_MAX, out=transformed_x)
-        self._input_int8_buffer.copy_(transformed_x)
-        out_int32 = torch._int_mm(self._input_int8_buffer, self.weight_q_t)
-        output = self._output_float_buffer
+        input_int8.copy_(transformed_x)
+        out_int32 = torch._int_mm(input_int8, self.weight_q_t)
         output.copy_(out_int32)
         output.mul_(input_scale)
         output.mul_(self.weight_scale)

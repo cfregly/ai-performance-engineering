@@ -20338,19 +20338,46 @@ def test_ch16_ptq_linear_preallocates_activation_buffers() -> None:
     assert "self.fc1.prepare_buffers(batch_size, device)" in mlp_section
     assert "self.fc2.prepare_buffers(batch_size, device)" in mlp_section
     assert "quantized.prepare_buffers(self.workload.batch_size, self.device)" in setup_section
-    assert "transformed_x = self._input_scaled_buffer" in forward_section
+    assert "or self._input_scaled_buffer.size(0) < x.size(0)" in forward_section
+    assert "or self._output_float_buffer.size(0) < x.size(0)" in forward_section
+    assert "transformed_x = self._input_scaled_buffer[: x.size(0)]" in forward_section
+    assert "abs_buffer = self._input_abs_buffer[: x.size(0)]" in forward_section
+    assert "input_int8 = self._input_int8_buffer[: x.size(0)]" in forward_section
+    assert "output = self._output_float_buffer[: x.size(0)]" in forward_section
     assert "transformed_x.copy_(x)" in forward_section
     assert "transformed_x.mul_(self.input_transform)" in forward_section
-    assert "torch.abs(transformed_x, out=self._input_abs_buffer)" in forward_section
+    assert "torch.abs(transformed_x, out=abs_buffer)" in forward_section
+    assert "input_scale = torch.clamp(abs_buffer.amax() / INT8_MAX, min=1e-8)" in forward_section
     assert "torch.div(transformed_x, input_scale, out=transformed_x)" in forward_section
-    assert "self._input_int8_buffer.copy_(transformed_x)" in forward_section
-    assert "output = self._output_float_buffer" in forward_section
+    assert "input_int8.copy_(transformed_x)" in forward_section
+    assert "out_int32 = torch._int_mm(input_int8, self.weight_q_t)" in forward_section
     assert "output.copy_(out_int32)" in forward_section
     assert "output.mul_(input_scale)" in forward_section
     assert "output.mul_(self.weight_scale)" in forward_section
     assert "x.float() * self.input_transform" not in forward_section
     assert "out_int32.float()" not in forward_section
     assert "input_scale * self.weight_scale" not in forward_section
+
+    from ch16.awq_gptq_smoothquant_benchmarks import PTQLinear
+
+    linear = PTQLinear(
+        torch.randn(24, 32),
+        None,
+        calibration=torch.randn(64, 32),
+        scheme="smoothquant",
+    )
+    linear.prepare_buffers(32, torch.device("cpu"))
+    out = linear(torch.randn(32, 32))
+    scaled_ptr = linear._input_scaled_buffer.data_ptr()
+    int8_ptr = linear._input_int8_buffer.data_ptr()
+    output_ptr = linear._output_float_buffer.data_ptr()
+    smaller = linear(torch.randn(20, 32))
+
+    assert out.shape == (32, 24)
+    assert smaller.shape == (20, 24)
+    assert linear._input_scaled_buffer.data_ptr() == scaled_ptr
+    assert linear._input_int8_buffer.data_ptr() == int8_ptr
+    assert linear._output_float_buffer.data_ptr() == output_ptr
 
 
 def test_ch19_fp8_compiled_matmul_uses_cuda_event_timing() -> None:
