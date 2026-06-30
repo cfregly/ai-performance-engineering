@@ -29,6 +29,8 @@ class DistAdamW(torch.optim.Optimizer):
                 state["exp_avg"] = torch.zeros_like(p_slice)
                 state["exp_avg_sq"] = torch.zeros_like(p_slice)
                 state["denom"] = torch.empty_like(p_slice)
+                state["lr_mul"] = getattr(p, "lr_mul", 1.0)
+                state["wd_mul"] = getattr(p, "wd_mul", 1.0)
 
     @torch.compile
     @torch.no_grad()
@@ -63,8 +65,8 @@ class DistAdamW(torch.optim.Optimizer):
                 p = params[base]
                 rank_size = p.shape[0] // world_size
                 p_slice = p[rank * rank_size:(rank + 1) * rank_size]
-                lr = group['lr'] * getattr(p, "lr_mul", 1.0)
                 state = self.state[p]
+                lr = group['lr'] * state["lr_mul"]
                 g_slice = grad_slices[idx]
                 exp_avg = state['exp_avg']
                 exp_avg_sq = state['exp_avg_sq']
@@ -73,7 +75,7 @@ class DistAdamW(torch.optim.Optimizer):
                 t = state['step']
                 # weight decay
                 if wd != 0:
-                    eff_weight_decay = lr * wd * getattr(p, "wd_mul", 1.0)
+                    eff_weight_decay = lr * wd * state["wd_mul"]
                     p_slice.mul_(1 - eff_weight_decay)
                 # update running averages
                 exp_avg.mul_(beta1).add_(g_slice, alpha=1 - beta1)

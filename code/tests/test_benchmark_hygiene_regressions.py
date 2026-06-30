@@ -10944,6 +10944,8 @@ def test_nanochat_dist_adamw_reuses_update_buffers() -> None:
     assert 'state["exp_avg"] = torch.zeros_like(p_slice)' in init_section
     assert 'state["exp_avg_sq"] = torch.zeros_like(p_slice)' in init_section
     assert 'state["denom"] = torch.empty_like(p_slice)' in init_section
+    assert 'state["lr_mul"] = getattr(p, "lr_mul", 1.0)' in init_section
+    assert 'state["wd_mul"] = getattr(p, "wd_mul", 1.0)' in init_section
     assert "reduce_scatter_futures = self._reduce_scatter_futures" in step_section
     assert "all_gather_futures = self._all_gather_futures" in step_section
     assert "grad_slices = self._grad_slices" in step_section
@@ -10957,6 +10959,9 @@ def test_nanochat_dist_adamw_reuses_update_buffers() -> None:
     assert "torch.tensor(0, dtype=torch.int64, device=p.device)" not in step_section
     assert "torch.zeros_like(p_slice)" not in step_section
     assert "state['denom'] = torch.empty_like(p_slice)" not in step_section
+    assert "getattr(p," not in step_section
+    assert "lr = group['lr'] * state[\"lr_mul\"]" in step_section
+    assert 'eff_weight_decay = lr * wd * state["wd_mul"]' in step_section
     assert "torch.sqrt(exp_avg_sq, out=denom)" in step_section
     assert "torch.div(exp_avg, denom, out=g_slice)" in step_section
     assert "denom = exp_avg_sq.sqrt()" not in step_section
