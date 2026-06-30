@@ -266,7 +266,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             return reduced
         if self._int8_output_fp32 is None:
             raise RuntimeError("INT8 output buffer not initialized")
-        self._int8_output_fp32.copy_(reduced.float())
+        self._int8_output_fp32.copy_(reduced)
         self._int8_output_fp32.mul_(self._int8_scales[0])
         return self._int8_output_fp32
 
@@ -317,7 +317,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 reduced = self._int8_outputs[0]
             else:
                 reduced = self._int8_buffers[0]
-        self._int8_output_fp32.copy_(reduced.float())
+        self._int8_output_fp32.copy_(reduced)
         self._int8_output_fp32.mul_(self._int8_scales[0])
         return self._int8_output_fp32
 
@@ -346,7 +346,7 @@ class GradientCompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     raise RuntimeError("INT8 output buffer not initialized")
                 if not self._int8_scales:
                     raise RuntimeError("INT8 scales not initialized")
-                self._int8_output_fp32.copy_(output.float())
+                self._int8_output_fp32.copy_(output)
                 self._int8_output_fp32.mul_(self._int8_scales[0])
                 output = self._int8_output_fp32
         if self._verify_output_buffer is None:

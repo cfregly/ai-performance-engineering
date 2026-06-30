@@ -743,14 +743,26 @@ def test_ch04_gradient_compression_int8_reuses_cast_buffers() -> None:
     prepare_section = source.split("def _prepare_int8_buffers", maxsplit=1)[1].split(
         "def _build_bucket_slices", maxsplit=1
     )[0]
+    prealloc_section = source.split("def _int8_all_reduce", maxsplit=1)[1].split(
+        "def _int8_all_reduce_naive", maxsplit=1
+    )[0]
     naive_section = source.split("def _int8_all_reduce_naive", maxsplit=1)[1].split(
         "def _store_scale", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
     )[0]
 
     assert "float_buf.to(torch.int8)" not in prepare_section
     assert "float_buf[sl].to(torch.int8)" not in naive_section
     assert "self._int8_buffers[idx].copy_(float_buf)" in prepare_section
     assert "int8_buf[sl].copy_(float_buf[sl])" in naive_section
+    assert "self._int8_output_fp32.copy_(reduced.float())" not in prealloc_section
+    assert "self._int8_output_fp32.copy_(reduced.float())" not in naive_section
+    assert "self._int8_output_fp32.copy_(output.float())" not in capture_section
+    assert "self._int8_output_fp32.copy_(reduced)" in prealloc_section
+    assert "self._int8_output_fp32.copy_(reduced)" in naive_section
+    assert "self._int8_output_fp32.copy_(output)" in capture_section
 
 
 def test_ch04_gradient_compression_fp16_reuses_copy_pairs() -> None:
