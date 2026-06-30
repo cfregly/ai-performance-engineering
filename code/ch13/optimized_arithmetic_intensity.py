@@ -70,7 +70,7 @@ class OptimizedArithmeticIntensityBenchmark(VerificationPayloadMixin, BaseBenchm
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - high arithmetic intensity (compute-bound)."""
-        with self._nvtx_range("optimized_arithmetic_intensity"):
+        with torch.inference_mode(), self._nvtx_range("optimized_arithmetic_intensity"):
             if self.A is None or self.B is None or self.C is None:
                 raise RuntimeError("Benchmark not initialized")
             # High arithmetic intensity: full fused matmul, single launch.

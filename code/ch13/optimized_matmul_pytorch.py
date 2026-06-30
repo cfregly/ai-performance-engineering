@@ -85,7 +85,7 @@ class OptimizedMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Function to benchmark - compiled matmul."""
         assert self.A is not None and self.B is not None and self.bias is not None and self.residual is not None and self.C is not None
-        with self._nvtx_range("matmul_pytorch"):
+        with torch.inference_mode(), self._nvtx_range("matmul_pytorch"):
             self.C = optimized_matmul(self.A, self.B, self.bias, self.residual, self.C, self.scale)
 
     def capture_verification_payload(self) -> None:

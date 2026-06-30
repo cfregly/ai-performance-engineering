@@ -73,7 +73,7 @@ class BaselineArithmeticIntensityBenchmark(VerificationPayloadMixin, BaseBenchma
     
     def benchmark_fn(self) -> None:
         """Function to benchmark - low arithmetic intensity (memory-bound)."""
-        with self._nvtx_range("baseline_arithmetic_intensity"):
+        with torch.inference_mode(), self._nvtx_range("baseline_arithmetic_intensity"):
             if self.A is None or self.B is None or self.C is None:
                 raise RuntimeError("Benchmark not initialized")
             self._chunked_matmul()

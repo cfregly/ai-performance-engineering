@@ -2869,10 +2869,16 @@ def test_ch13_arithmetic_intensity_setup_avoids_redundant_zero_fill() -> None:
         target_capture = target_source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
         )[0]
+        target_benchmark = target_source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload", maxsplit=1
+        )[0]
         target_teardown = target_source.split("def teardown", maxsplit=1)[1].split(
             "def get_config", maxsplit=1
         )[0]
 
+        assert "with torch.inference_mode(), self._nvtx_range(" in target_benchmark
+        assert "with self._nvtx_range(" not in target_benchmark
+        assert "torch.no_grad()" not in target_benchmark
         assert "self._verify_output_buffer: torch.Tensor | None = None" in target_source
         assert "self._verify_output_buffer = torch.empty_like(self.C)" in target_setup
         assert "self._verify_output_buffer.copy_(self.C)" in target_capture
@@ -21070,6 +21076,12 @@ def test_ch13_matmul_pair_reuses_output_buffers_without_collapsing_epilogue_cont
     optimized_setup = optimized_source.split("def setup", maxsplit=1)[1].split(
         "def benchmark_fn", maxsplit=1
     )[0]
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
     baseline_capture = baseline_source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
@@ -21086,10 +21098,13 @@ def test_ch13_matmul_pair_reuses_output_buffers_without_collapsing_epilogue_cont
     assert "torch.matmul(self.A, self.B)" not in baseline_source
     assert "torch.relu(out + self.bias)" not in baseline_source
     assert "torch.addmm(bias, A, B, out=out)" in optimized_helper
-    for setup_section, capture_section in (
-        (baseline_setup, baseline_capture),
-        (optimized_setup, optimized_capture),
+    for setup_section, benchmark_section, capture_section in (
+        (baseline_setup, baseline_benchmark, baseline_capture),
+        (optimized_setup, optimized_benchmark, optimized_capture),
     ):
+        assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
+        assert "with self._nvtx_range(" not in benchmark_section
+        assert "torch.no_grad()" not in benchmark_section
         assert "self._verify_output_buffer = torch.empty_like(self.C)" in setup_section
         assert "self._verify_output_buffer.copy_(self.C)" in capture_section
         assert "output=self._verify_output_buffer" in capture_section

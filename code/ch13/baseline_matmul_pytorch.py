@@ -93,7 +93,7 @@ class BaselineMatmulPyTorchBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         """Function to benchmark - PyTorch matmul."""
         assert self.A is not None and self.B is not None and self.bias is not None and self.residual is not None and self.C is not None
-        with self._nvtx_range("baseline_matmul_pytorch"):
+        with torch.inference_mode(), self._nvtx_range("baseline_matmul_pytorch"):
             # Standard PyTorch matrix multiplication
             self.C = baseline_matmul(
                 self.A,
