@@ -68,7 +68,11 @@ def test_dense_attention_mask_for_windowed_mode_is_causal_and_bounded() -> None:
 
 def test_reference_attention_runs_for_softcap_mode_on_cpu() -> None:
     source = inspect.getsource(reference_attention)
+    assert "scores.addcmul_(" in source
+    assert "scores.div_(inputs.softcap_scale).tanh_().mul_(inputs.softcap_scale)" in source
     assert 'scores.masked_fill_(~inputs.dense_mask, float("-inf"))' in source
+    assert "scores = scores - inputs.alibi_slopes" not in source
+    assert "scores = inputs.softcap_scale * torch.tanh" not in source
     assert "scores = scores.masked_fill(" not in source
 
     cfg = FlashAttention4Config(

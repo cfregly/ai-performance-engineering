@@ -528,10 +528,14 @@ def reference_attention(inputs: FlashAttention4Inputs) -> torch.Tensor:
     if inputs.alibi_slopes is not None:
         seq_len = inputs.q.size(-2)
         distance = _alibi_distance_for(seq_len, inputs.q.device)
-        scores = scores - inputs.alibi_slopes.view(1, -1, 1, 1) * distance.view(1, 1, seq_len, seq_len)
+        scores.addcmul_(
+            inputs.alibi_slopes.view(1, -1, 1, 1),
+            distance.view(1, 1, seq_len, seq_len),
+            value=-1.0,
+        )
 
     if inputs.softcap_scale is not None:
-        scores = inputs.softcap_scale * torch.tanh(scores / inputs.softcap_scale)
+        scores.div_(inputs.softcap_scale).tanh_().mul_(inputs.softcap_scale)
 
     if inputs.dense_mask is not None:
         scores.masked_fill_(~inputs.dense_mask, float("-inf"))
