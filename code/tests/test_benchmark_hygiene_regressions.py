@@ -17669,6 +17669,18 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
     flash_source = (
         REPO_ROOT / "ch13" / "optimized_kv_cache_naive_flash_blockwise.py"
     ).read_text(encoding="utf-8")
+    flash_forward = flash_source.split("def forward(", maxsplit=1)[1].split(
+        "class OptimizedKVCacheNaiveFlashBlockwiseBenchmark",
+        maxsplit=1,
+    )[0]
+    assert "self._qkv_buffer: Optional[torch.Tensor] = None" in flash_source
+    assert "self._qkv_weight_t: Optional[torch.Tensor] = None" in flash_source
+    assert "def prepare_inference(self) -> None:" in flash_source
+    assert "self._qkv_weight_t = self.qkv.weight.t()" in flash_source
+    assert "torch.matmul(x_2d, self._qkv_weight_t, out=qkv_2d)" in flash_source
+    assert "layer.prepare_inference()" in flash_source
+    assert "qkv = self._project_qkv(x)" in flash_forward
+    assert "qkv = self.qkv(x)" not in flash_forward
     assert "batch_size=self.batch_size" in flash_source
     assert "for batch_idx in range(batch_size)" not in flash_source
     assert "k_block = k.permute(2, 0, 1, 3)" in flash_source
@@ -17870,6 +17882,16 @@ def test_flash_blockwise_attention_reuses_workspace_for_cached_kv() -> None:
     assert actual_v.is_contiguous()
     assert actual_k.data_ptr() == layer._workspace_k.data_ptr()
     assert actual_v.data_ptr() == layer._workspace_v.data_ptr()
+
+    with torch.inference_mode():
+        out1 = layer(torch.randn(1, 1, 6), kv_cache, "req", 0, cache_pos=2)
+        qkv_ptr = layer._qkv_buffer.data_ptr()
+        out2 = layer(torch.randn(1, 1, 6), kv_cache, "req", 0, cache_pos=3)
+
+    assert out1.shape == (1, 1, 6)
+    assert out2.shape == (1, 1, 6)
+    assert layer._qkv_buffer.data_ptr() == qkv_ptr
+    assert layer._qkv_weight_t is not None
 
 
 def test_ch13_paged_kv_cache_releases_slabs_without_zero_fill() -> None:
