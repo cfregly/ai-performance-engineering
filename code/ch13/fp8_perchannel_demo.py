@@ -479,6 +479,7 @@ class FP8PerChannelDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_input = None
         self._payload_verify_input = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
+        self._per_channel_linear: Optional[FP8PerChannelLinear] = None
         
         tokens = self.batch_size * self.seq_len
         self._workload = WorkloadMetadata(
@@ -497,6 +498,7 @@ class FP8PerChannelDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.float32,
             device=str(self.device),
         )
+        self._per_channel_linear = self.demo_benchmark.per_channel_linear
         self._verify_input = torch.randn(
             self.batch_size,
             self.seq_len,
@@ -518,12 +520,13 @@ class FP8PerChannelDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def benchmark_fn(self) -> None:
         """Benchmark: Per-channel FP8 forward pass."""
-        if self.demo_benchmark is None or not hasattr(self.demo_benchmark, "per_channel_linear"):
+        per_channel_linear = self._per_channel_linear
+        if per_channel_linear is None:
             raise RuntimeError("Demo benchmark not initialized")
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
         with torch.inference_mode():
-            output = self.demo_benchmark.per_channel_linear(self._verify_input)
+            output = per_channel_linear(self._verify_input)
             self.output = output
 
     def capture_verification_payload(self) -> None:
@@ -551,6 +554,7 @@ class FP8PerChannelDemoBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         """Teardown: Clean up resources."""
+        self._per_channel_linear = None
         self.demo_benchmark = None
         self._verify_input = None
         self._payload_verify_input = None

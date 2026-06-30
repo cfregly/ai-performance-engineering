@@ -15107,6 +15107,13 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
 
     assert "float(output.detach().sum())" not in perchannel_benchmark
     assert ".detach().float().clone()" not in perchannel_benchmark
+    assert "self._per_channel_linear: Optional[FP8PerChannelLinear] = None" in perchannel_source
+    assert "self._per_channel_linear = self.demo_benchmark.per_channel_linear" in perchannel_source
+    assert "per_channel_linear = self._per_channel_linear" in perchannel_benchmark
+    assert "output = per_channel_linear(self._verify_input)" in perchannel_benchmark
+    assert "hasattr(" not in perchannel_benchmark
+    assert "self.demo_benchmark.per_channel_linear(self._verify_input)" not in perchannel_benchmark
+    assert "self._per_channel_linear = None" in perchannel_source
     assert "self.output = output" in perchannel_benchmark
     assert "self._verify_output_buffer.copy_(output_slice)" in perchannel_capture
     assert "output=self._verify_output_buffer" in perchannel_capture
