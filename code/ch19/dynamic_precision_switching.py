@@ -468,8 +468,8 @@ def compute_entropy(logits: torch.Tensor, dim: int = -1) -> torch.Tensor:
     Returns:
         Entropy values
     """
-    probs = torch.softmax(logits, dim=dim)
     log_probs = torch.log_softmax(logits, dim=dim)
+    probs = log_probs.exp()
     entropy = -(probs * log_probs).sum(dim=dim)
     return entropy
 

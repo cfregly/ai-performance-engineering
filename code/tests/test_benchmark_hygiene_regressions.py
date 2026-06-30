@@ -4864,7 +4864,10 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
         source = (REPO_ROOT / filename).read_text(encoding="utf-8")
         assert "torch.inference_mode()" in source
         assert "torch.no_grad()" not in source
-        assert "torch.empty(\n        (batch_size, prompt_len + max_steps)" in source or (
+        assert (
+            "generated_shape = (batch_size, prompt_len + max_steps)" in source
+            and "torch.empty(\n            generated_shape," in source
+        ) or "torch.empty(\n        (batch_size, prompt_len + max_steps)" in source or (
             "torch.empty(\n            (batch_size, prompt_len + max_length)" in source
         )
         assert "torch.cat([generated, next_token]" not in source

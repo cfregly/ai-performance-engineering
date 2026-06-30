@@ -19,6 +19,7 @@ from ch19.dynamic_precision_benchmark_common import (
 )
 from ch19.dynamic_precision_switching import (
     DynamicPrecisionWorkspace,
+    compute_entropy,
     decode_with_dynamic_precision,
     should_use_low_precision,
 )
@@ -109,6 +110,20 @@ def test_low_precision_policy_handles_confident_and_flat_logits() -> None:
         entropy_threshold=0.5,
         max_prob_threshold=0.8,
     )
+
+
+def test_compute_entropy_reuses_log_softmax_probabilities() -> None:
+    source = inspect.getsource(compute_entropy)
+
+    assert "log_probs = torch.log_softmax(logits, dim=dim)" in source
+    assert "probs = log_probs.exp()" in source
+    assert "torch.softmax(logits" not in source
+
+    logits = torch.tensor([[1.0, 2.0, -1.0], [0.25, 0.25, 0.25]])
+    log_probs = torch.log_softmax(logits, dim=-1)
+    expected = -(log_probs.exp() * log_probs).sum(dim=-1)
+
+    torch.testing.assert_close(compute_entropy(logits), expected)
 
 
 def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:
