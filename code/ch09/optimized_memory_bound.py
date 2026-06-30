@@ -26,6 +26,7 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.data = None
         self.N = 16_777_216  # Same size as baseline (~64 MB)
         self.repeats = 64
+        self._repeat_range = range(self.repeats)
         self.output: Optional[torch.Tensor] = None
         self.output_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
@@ -52,7 +53,7 @@ class OptimizedMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         def fused_kernel(inp: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
             out.copy_(inp)
-            for _ in range(self.repeats):
+            for _ in self._repeat_range:
                 out.mul_(1.0001).add_(0.0001)
             return out
 

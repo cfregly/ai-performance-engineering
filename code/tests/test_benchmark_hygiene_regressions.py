@@ -3317,6 +3317,9 @@ def test_ch09_compute_bound_baseline_uses_inference_mode_and_cached_nvtx() -> No
     )[0]
 
     assert 'with torch.inference_mode(), self._nvtx_range("baseline_compute_bound"):' in benchmark_section
+    assert "self._repeat_range = range(self.repeats)" in source
+    assert "for _ in self._repeat_range:" in benchmark_section
+    assert "for _ in range(self.repeats):" not in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
     assert "with nvtx_range(" not in benchmark_section
     assert "from core.profiling.nvtx_helper" not in source
@@ -3343,9 +3346,11 @@ def test_ch09_optimized_compute_bound_reuses_graph_mlp_buffers() -> None:
     assert "self.relu(fc1_out)" in model_section
     assert "torch.mv(self.fc2.weight, fc1_out, out=fc2_out)" in model_section
     assert "fc2_out.add_(self.fc2.bias)" in model_section
+    assert "self._repeat_range = range(self.repeats)" in source
     assert "self.model = BufferedVectorMlp(self.N, self.N * 2)" in setup_section
     assert "nn.Sequential(" not in setup_section
-    assert "for _ in range(self.repeats):" in graph_capture_section
+    assert "for _ in self._repeat_range:" in graph_capture_section
+    assert "for _ in range(self.repeats):" not in graph_capture_section
     assert "out = self.model(out)" in graph_capture_section
 
 
@@ -3384,13 +3389,28 @@ def test_ch09_optimized_memory_bound_reuses_compiled_output_buffer() -> None:
     )[0]
 
     assert "self.output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._repeat_range = range(self.repeats)" in source
     assert "self.output_buffer = torch.empty_like(self.data)" in setup_section
     assert "def fused_kernel(inp: torch.Tensor, out: torch.Tensor) -> torch.Tensor" in setup_section
     assert "out.copy_(inp)" in setup_section
+    assert "for _ in self._repeat_range:" in setup_section
+    assert "for _ in range(self.repeats):" not in setup_section
     assert "out.mul_(1.0001).add_(0.0001)" in setup_section
     assert "self._compiled_run(self.data, self.output_buffer)" in benchmark_section
     assert "self._compiled_run(self.data)" not in benchmark_section
     assert "self.output_buffer = None" in teardown_section
+
+
+def test_ch09_baseline_memory_bound_reuses_repeat_range() -> None:
+    source = (REPO_ROOT / "ch09" / "baseline_memory_bound.py").read_text(encoding="utf-8")
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "self._repeat_range = range(self.repeats)" in source
+    assert "for _ in self._repeat_range:" in benchmark_section
+    assert "for _ in range(self.repeats):" not in benchmark_section
 
 
 def test_ch09_memory_bound_verification_reuses_slice_buffer() -> None:

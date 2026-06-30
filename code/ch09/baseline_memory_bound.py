@@ -24,6 +24,7 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.repeats = 64
         self.N = 16_777_216  # ~64 MB
+        self._repeat_range = range(self.repeats)
         # Memory-bound benchmark - fixed dimensions for roofline analysis
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.repeats),
@@ -40,7 +41,7 @@ class BaselineMemoryBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         with self._nvtx_range("baseline_memory_bound"):
             t = self.tensor
-            for _ in range(self.repeats):
+            for _ in self._repeat_range:
                 t = t * 1.0001 + 0.0001
             self.output = t
         if self.output is None:

@@ -77,6 +77,7 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.repeats = 16
         self.N = 4096
+        self._repeat_range = range(self.repeats)
         self._payload_parameter_count = 0
         tokens = self.N * self.repeats
         self._workload = WorkloadMetadata(
@@ -107,7 +108,7 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         static_output: Optional[torch.Tensor] = None
         with torch.cuda.graph(graph):
             out = self.input
-            for _ in range(self.repeats):
+            for _ in self._repeat_range:
                 out = self.model(out)
             static_output = out
 

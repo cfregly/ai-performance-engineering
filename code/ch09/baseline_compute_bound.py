@@ -26,6 +26,7 @@ class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.repeats = 16
         self.N = 4096
+        self._repeat_range = range(self.repeats)
         self._payload_parameter_count = 0
         # Compute-bound benchmark - fixed dimensions for roofline analysis
         tokens = self.N * self.repeats
@@ -50,7 +51,7 @@ class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         with torch.inference_mode(), self._nvtx_range("baseline_compute_bound"):
             out = self.input
-            for _ in range(self.repeats):
+            for _ in self._repeat_range:
                 out = self.model(out)
             self.output = out
         if self.output is None:
