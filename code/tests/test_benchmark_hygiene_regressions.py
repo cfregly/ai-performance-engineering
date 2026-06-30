@@ -5045,6 +5045,8 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in trtllm_source
         assert "self._verify_output_buffer = torch.empty(" in trtllm_setup
         assert "verification_token_prefix_length(self.max_new_tokens)" in trtllm_setup
+        assert "with torch.inference_mode():" in trtllm_benchmark
+        assert "torch.no_grad()" not in trtllm_benchmark
         assert "outputs.sequences.detach()" not in trtllm_benchmark
         assert "generated_prefix = slice_generated_token_ids(" in trtllm_capture
         assert ")[:, : self._verify_output_buffer.shape[1]]" in trtllm_capture
