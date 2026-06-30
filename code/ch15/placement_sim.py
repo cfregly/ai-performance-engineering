@@ -328,12 +328,13 @@ def percentile(data: List[float], pct: float) -> float:
     """Lightweight percentile helper that tolerates empty lists."""
     if not data:
         return 0.0
-    return _percentile_from_ordered(sorted(data), pct)
+    data.sort()
+    return _percentile_from_ordered(data, pct)
 
 
 def percentiles(data: List[float], pcts: Tuple[float, ...]) -> Tuple[float, ...]:
     """Compute several percentiles after sorting the input once."""
     if not data:
         return tuple(0.0 for _ in pcts)
-    xs = sorted(data)
-    return tuple(_percentile_from_ordered(xs, pct) for pct in pcts)
+    data.sort()
+    return tuple(_percentile_from_ordered(data, pct) for pct in pcts)

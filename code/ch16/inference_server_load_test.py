@@ -24,7 +24,7 @@ from core.common.device_utils import resolve_local_rank
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -256,13 +256,28 @@ def run_load_test(
 def _summarize_samples(values: List[int], total: Optional[float] = None) -> Dict[str, float]:
     if not values:
         return {"p50": 0.0, "p95": 0.0, "avg": 0.0}
-    array = np.asarray(values, dtype=np.float64)
-    p50, p95 = np.percentile(array, (50, 95))
+    values.sort()
+    p50, p95 = _percentiles_from_ordered(values, (50.0, 95.0))
     return {
         "avg": float((sum(values) if total is None else total) / len(values)),
-        "p50": float(p50),
-        "p95": float(p95),
+        "p50": p50,
+        "p95": p95,
     }
+
+
+def _percentile_from_ordered(values: List[float] | List[int], pct: float) -> float:
+    if not values:
+        return 0.0
+    rank = (len(values) - 1) * (pct / 100.0)
+    lower = int(rank)
+    upper = lower if rank == lower else lower + 1
+    if lower == upper:
+        return float(values[lower])
+    return float(values[lower] * (upper - rank) + values[upper] * (rank - lower))
+
+
+def _percentiles_from_ordered(values: List[float] | List[int], pcts: Tuple[float, ...]) -> Tuple[float, ...]:
+    return tuple(_percentile_from_ordered(values, pct) for pct in pcts)
 
 
 def aggregate_results(local_result: Dict) -> Dict:
@@ -291,8 +306,8 @@ def aggregate_results(local_result: Dict) -> Dict:
 
     throughput = tokens_generated / elapsed if elapsed > 0 else 0.0
     if latencies:
-        latency_array = np.asarray(latencies, dtype=np.float64)
-        p50, p90, p99 = (float(value) for value in np.percentile(latency_array, (50, 90, 99)))
+        latencies.sort()
+        p50, p90, p99 = _percentiles_from_ordered(latencies, (50.0, 90.0, 99.0))
     else:
         p50 = p90 = p99 = 0.0
 

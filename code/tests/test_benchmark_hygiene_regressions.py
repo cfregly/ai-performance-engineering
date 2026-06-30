@@ -1549,8 +1549,9 @@ def test_ch15_placement_sim_batches_session_rng_samples() -> None:
     assert "decode_total_ms += total_decode_ms" in simulate_section
     assert ".item()" not in simulate_section
     assert "def _percentile_from_ordered" in source
-    assert "xs = sorted(data)" in percentiles_section
-    assert "return tuple(_percentile_from_ordered(xs, pct) for pct in pcts)" in percentiles_section
+    assert "data.sort()" in percentiles_section
+    assert "return tuple(_percentile_from_ordered(data, pct) for pct in pcts)" in percentiles_section
+    assert "xs = sorted(data)" not in percentiles_section
 
     from ch15.placement_sim import PlacementConfig, PlacementSimulator
 
@@ -10448,6 +10449,22 @@ def test_python_concurrency_summaries_reuse_sorted_latency_samples() -> None:
         "async def main_async",
         maxsplit=1,
     )[0]
+    round1_percentiles = round1_source.split("def percentile", maxsplit=1)[1].split(
+        "async def run_pipeline",
+        maxsplit=1,
+    )[0]
+    round2_percentiles = round2_source.split("def _success_latency_percentiles", maxsplit=1)[1].split(
+        "class RateLimiter",
+        maxsplit=1,
+    )[0]
+    all_in_one_percentiles = all_in_one_source.split("def _latency_percentiles", maxsplit=1)[1].split(
+        "class TransientStageError",
+        maxsplit=1,
+    )[0]
+    hybrid_percentiles = hybrid_source.split("def _total_latency_percentiles", maxsplit=1)[1].split(
+        "@dataclass",
+        maxsplit=1,
+    )[0]
 
     assert "def _latency_percentiles" in round1_source
     assert "def _success_latency_percentiles" in round2_source
@@ -10455,6 +10472,14 @@ def test_python_concurrency_summaries_reuse_sorted_latency_samples() -> None:
     assert "def _total_latency_percentiles" in hybrid_source
     assert "def _count_whitespace_separated_tokens" in all_in_one_source
     assert "def _count_whitespace_separated_tokens" in hybrid_source
+    for percentiles_section in (
+        round1_percentiles,
+        round2_percentiles,
+        all_in_one_percentiles,
+        hybrid_percentiles,
+    ):
+        assert "values.sort()" in percentiles_section
+        assert "ordered = sorted(values)" not in percentiles_section
 
     assert "p50_ms, p95_ms = _latency_percentiles(latencies)" in round1_summary
     assert "p50_success_ms, p95_success_ms = _success_latency_percentiles(success_latencies)" in round2_summary
@@ -11986,7 +12011,10 @@ def test_ch16_load_test_batches_percentile_calculations() -> None:
     assert "current_time = time.time()" in generated_loop
     assert "time.time() - run_start" not in run_loop
     assert "time.time() - tick_start" not in run_loop
-    assert "p50, p95 = np.percentile(array, (50, 95))" in sample_summary
+    assert "values.sort()" in sample_summary
+    assert "p50, p95 = _percentiles_from_ordered(values, (50.0, 95.0))" in sample_summary
+    assert "np.asarray(values" not in sample_summary
+    assert "np.percentile(array" not in sample_summary
     assert '"avg": float((sum(values) if total is None else total) / len(values))' in sample_summary
     assert "array.mean()" not in sample_summary
     assert "np.percentile(array, 50)" not in sample_summary
@@ -12000,8 +12028,10 @@ def test_ch16_load_test_batches_percentile_calculations() -> None:
     assert 'latencies = [rec["latency_ms"]' not in aggregate_section
     assert 'prompt_lengths = [rec["prompt_tokens"]' not in aggregate_section
     assert 'generated_lengths = [rec["generated_tokens"]' not in aggregate_section
-    assert "latency_array = np.asarray(latencies, dtype=np.float64)" in aggregate_section
-    assert "np.percentile(latency_array, (50, 90, 99))" in aggregate_section
+    assert "latencies.sort()" in aggregate_section
+    assert "p50, p90, p99 = _percentiles_from_ordered(latencies, (50.0, 90.0, 99.0))" in aggregate_section
+    assert "latency_array = np.asarray(latencies, dtype=np.float64)" not in aggregate_section
+    assert "np.percentile(latency_array, (50, 90, 99))" not in aggregate_section
     assert "np.percentile(latencies, 50)" not in aggregate_section
     assert "np.percentile(latencies, 90)" not in aggregate_section
     assert "np.percentile(latencies, 99)" not in aggregate_section

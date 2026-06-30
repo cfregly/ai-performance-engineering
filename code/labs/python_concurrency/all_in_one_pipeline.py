@@ -67,13 +67,13 @@ def _latency_percentiles(values: list[float]) -> tuple[float, float]:
     if not values:
         return 0.0, 0.0
 
-    ordered = sorted(values)
-    midpoint = len(ordered) // 2
-    if len(ordered) % 2:
-        p50 = ordered[midpoint]
+    values.sort()
+    midpoint = len(values) // 2
+    if len(values) % 2:
+        p50 = values[midpoint]
     else:
-        p50 = (ordered[midpoint - 1] + ordered[midpoint]) / 2.0
-    p95 = ordered[max(0, int(0.95 * len(ordered)) - 1)]
+        p50 = (values[midpoint - 1] + values[midpoint]) / 2.0
+    p95 = values[max(0, int(0.95 * len(values)) - 1)]
     return round(p50, 2), round(p95, 2)
 
 

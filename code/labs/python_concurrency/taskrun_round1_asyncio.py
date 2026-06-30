@@ -235,8 +235,8 @@ def percentile(values: list[float], p: float) -> float:
 
     if not values:
         return 0.0
-    ordered = sorted(values)
-    return _percentile_from_ordered(ordered, p)
+    values.sort()
+    return _percentile_from_ordered(values, p)
 
 
 def _percentile_from_ordered(ordered: list[float], p: float) -> float:
@@ -248,13 +248,13 @@ def _latency_percentiles(values: list[float]) -> tuple[float, float]:
     if not values:
         return 0.0, 0.0
 
-    ordered = sorted(values)
-    midpoint = len(ordered) // 2
-    if len(ordered) % 2:
-        p50 = ordered[midpoint]
+    values.sort()
+    midpoint = len(values) // 2
+    if len(values) % 2:
+        p50 = values[midpoint]
     else:
-        p50 = (ordered[midpoint - 1] + ordered[midpoint]) / 2.0
-    return round(p50, 2), round(_percentile_from_ordered(ordered, 95.0), 2)
+        p50 = (values[midpoint - 1] + values[midpoint]) / 2.0
+    return round(p50, 2), round(_percentile_from_ordered(values, 95.0), 2)
 
 
 async def run_pipeline(items: list[WorkItem], max_workers: int, timeout_ms: int, retries: int) -> list[ItemResult]:
