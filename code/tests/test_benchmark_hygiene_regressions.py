@@ -13886,22 +13886,31 @@ def test_ch13_context_parallel_ring_attention_caches_position_views() -> None:
     )[0]
 
     assert "self._position_view_cache: dict[tuple[int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}" in ring_section
+    assert "self._causal_mask_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}" in ring_section
     assert "def _position_views_for(self, seq_shard: int, device: torch.device)" in ring_section
+    assert "def _causal_mask_for(" in ring_section
     assert "local_positions = torch.arange(seq_shard, device=device)" in ring_section
-    assert "global_q, k_indices = self._position_views_for(seq_shard, q.device)" in ring_section
+    assert "global_q, k_indices = self._position_views_for(seq_shard, device)" in ring_section
+    assert "mask = self._causal_mask_for(target_rank, seq_shard, q.device)" in ring_section
+    assert "scores.masked_fill_(mask, float(\"-inf\"))" in ring_section
     assert "(self.rank * seq_shard) + torch.arange(seq_shard, device=q.device)" not in ring_section
     assert "torch.arange(seq_shard, device=q.device).view(1, 1, 1, seq_shard)" not in ring_section
+    assert "scores = scores.masked_fill(global_k > global_q, float(\"-inf\"))" not in ring_section
 
     from ch13.context_parallelism import RingAttention
 
     module = RingAttention(8, 2, process_group=None, rank=1, world_size=1)
     first_q, first_k = module._position_views_for(4, torch.device("cpu"))
     second_q, second_k = module._position_views_for(4, torch.device("cpu"))
+    first_mask = module._causal_mask_for(0, 4, torch.device("cpu"))
+    second_mask = module._causal_mask_for(0, 4, torch.device("cpu"))
 
     assert second_q.data_ptr() == first_q.data_ptr()
     assert second_k.data_ptr() == first_k.data_ptr()
+    assert second_mask.data_ptr() == first_mask.data_ptr()
     torch.testing.assert_close(first_q[:, :, :, 0], torch.tensor([[[4, 5, 6, 7]]]))
     torch.testing.assert_close(first_k[0, 0, 0], torch.tensor([0, 1, 2, 3]))
+    torch.testing.assert_close(first_mask, first_k > first_q)
 
 
 def test_ch13_optimized_training_accumulates_position_embeddings_in_place() -> None:
@@ -14124,12 +14133,17 @@ def test_ch13_context_parallel_all_gather_reuses_full_kv_buffers() -> None:
     assert "_CAUSAL_MASK_POSITION_CACHE" in source
     assert "_CAUSAL_MASK_CACHE" in source
     assert "_RING_POSITION_VIEW_CACHE" in source
+    assert "_RING_CAUSAL_MASK_CACHE" in source
     assert "def _causal_mask_for" in source
+    assert "def _ring_causal_mask_for" in source
     assert "mask = _causal_mask_for(rank, seq_shard, world_size, scores.device)" in mask_section
     assert "return scores.masked_fill_(mask, float(\"-inf\"))" in mask_section
     assert "global_q, global_k = _causal_mask_position_views(rank, seq_shard, world_size, device)" in mask_section
     assert "return scores.masked_fill(global_k > global_q, float(\"-inf\"))" not in mask_section
-    assert "global_q, k_indices = _ring_position_views(rank, seq_shard, q.device)" in ring_section
+    assert "global_q, k_indices = _ring_position_views(rank, seq_shard, device)" in mask_section
+    assert "mask = _ring_causal_mask_for(rank, target_rank, seq_shard, q.device)" in ring_section
+    assert "scores.masked_fill_(mask, float(\"-inf\"))" in ring_section
+    assert "scores = scores.masked_fill(global_k > global_q, float(\"-inf\"))" not in ring_section
     assert "(rank * seq_shard) + torch.arange(seq_shard, device=scores.device)" not in mask_section
     assert "torch.arange(seq_total, device=scores.device)" not in mask_section
     assert "(rank * seq_shard) + torch.arange(seq_shard, device=q.device)" not in ring_section
@@ -14140,12 +14154,15 @@ def test_ch13_context_parallel_all_gather_reuses_full_kv_buffers() -> None:
     cp_common._CAUSAL_MASK_POSITION_CACHE.clear()
     cp_common._CAUSAL_MASK_CACHE.clear()
     cp_common._RING_POSITION_VIEW_CACHE.clear()
+    cp_common._RING_CAUSAL_MASK_CACHE.clear()
     mask_q, mask_k = cp_common._causal_mask_position_views(1, 4, 2, torch.device("cpu"))
     mask_q_again, mask_k_again = cp_common._causal_mask_position_views(1, 4, 2, torch.device("cpu"))
     mask = cp_common._causal_mask_for(1, 4, 2, torch.device("cpu"))
     mask_again = cp_common._causal_mask_for(1, 4, 2, torch.device("cpu"))
     ring_q, ring_k = cp_common._ring_position_views(1, 4, torch.device("cpu"))
     ring_q_again, ring_k_again = cp_common._ring_position_views(1, 4, torch.device("cpu"))
+    ring_mask = cp_common._ring_causal_mask_for(1, 0, 4, torch.device("cpu"))
+    ring_mask_again = cp_common._ring_causal_mask_for(1, 0, 4, torch.device("cpu"))
 
     assert mask_q_again.data_ptr() == mask_q.data_ptr()
     assert mask_k_again.data_ptr() == mask_k.data_ptr()
@@ -14153,6 +14170,8 @@ def test_ch13_context_parallel_all_gather_reuses_full_kv_buffers() -> None:
     torch.testing.assert_close(mask, mask_k > mask_q)
     assert ring_q_again.data_ptr() == ring_q.data_ptr()
     assert ring_k_again.data_ptr() == ring_k.data_ptr()
+    assert ring_mask_again.data_ptr() == ring_mask.data_ptr()
+    torch.testing.assert_close(ring_mask, ring_k > ring_q)
 
 
 def test_ch13_multigpu_worker_loops_use_inference_mode() -> None:

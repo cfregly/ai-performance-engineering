@@ -39,6 +39,7 @@ class AttentionWorkspace:
 _CAUSAL_MASK_POSITION_CACHE: dict[tuple[int, int, int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
 _CAUSAL_MASK_CACHE: dict[tuple[int, int, int, torch.device], torch.Tensor] = {}
 _RING_POSITION_VIEW_CACHE: dict[tuple[int, int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
+_RING_CAUSAL_MASK_CACHE: dict[tuple[int, int, int, torch.device], torch.Tensor] = {}
 
 
 def dtype_from_name(name: str) -> torch.dtype:
@@ -174,6 +175,22 @@ def _ring_position_views(
     return cached
 
 
+def _ring_causal_mask_for(
+    rank: int,
+    target_rank: int,
+    seq_shard: int,
+    device: torch.device,
+) -> torch.Tensor:
+    key = (int(rank), int(target_rank), int(seq_shard), torch.device(device))
+    mask = _RING_CAUSAL_MASK_CACHE.get(key)
+    if mask is None:
+        global_q, k_indices = _ring_position_views(rank, seq_shard, device)
+        global_k = int(target_rank) * int(seq_shard) + k_indices
+        mask = global_k > global_q
+        _RING_CAUSAL_MASK_CACHE[key] = mask
+    return mask
+
+
 def all_gather_attention(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -247,15 +264,13 @@ def ring_attention(
     global_max: Optional[torch.Tensor] = None
     global_sum: Optional[torch.Tensor] = None
 
-    global_q, k_indices = _ring_position_views(rank, seq_shard, q.device)
-
     for step in range(world_size):
         target_rank = (rank - step) % world_size
         scores = torch.matmul(q, k_current.transpose(-2, -1)) * scale
 
         if causal:
-            global_k = target_rank * seq_shard + k_indices
-            scores = scores.masked_fill(global_k > global_q, float("-inf"))
+            mask = _ring_causal_mask_for(rank, target_rank, seq_shard, q.device)
+            scores.masked_fill_(mask, float("-inf"))
 
         local_max = scores.amax(dim=-1, keepdim=True)
         exp_scores = torch.exp(scores - local_max)

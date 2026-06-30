@@ -89,6 +89,7 @@ class RingAttention(nn.Module):
         self.o_proj = nn.Linear(hidden_size, hidden_size, bias=False)
         self.scale = 1.0 / math.sqrt(self.head_dim)
         self._position_view_cache: dict[tuple[int, torch.device], tuple[torch.Tensor, torch.Tensor]] = {}
+        self._causal_mask_cache: dict[tuple[int, int, torch.device], torch.Tensor] = {}
 
     def _position_views_for(self, seq_shard: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         key = (int(seq_shard), torch.device(device))
@@ -99,6 +100,21 @@ class RingAttention(nn.Module):
             k_indices = local_positions.view(1, 1, 1, seq_shard)
             cached = (global_q, k_indices)
             self._position_view_cache[key] = cached
+        return cached
+
+    def _causal_mask_for(
+        self,
+        target_rank: int,
+        seq_shard: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        key = (int(target_rank), int(seq_shard), torch.device(device))
+        cached = self._causal_mask_cache.get(key)
+        if cached is None:
+            global_q, k_indices = self._position_views_for(seq_shard, device)
+            global_k = int(target_rank) * int(seq_shard) + k_indices
+            cached = global_k > global_q
+            self._causal_mask_cache[key] = cached
         return cached
 
     def _ring_pass(
@@ -116,15 +132,13 @@ class RingAttention(nn.Module):
         global_max: Optional[torch.Tensor] = None
         global_sum: Optional[torch.Tensor] = None
 
-        global_q, k_indices = self._position_views_for(seq_shard, q.device)
-
         for step in range(self.world_size):
             target_rank = (self.rank - step) % self.world_size
             scores = torch.matmul(q, k_current.transpose(-2, -1)) * self.scale
 
             if causal:
-                global_k = target_rank * seq_shard + k_indices
-                scores = scores.masked_fill(global_k > global_q, float("-inf"))
+                mask = self._causal_mask_for(target_rank, seq_shard, q.device)
+                scores.masked_fill_(mask, float("-inf"))
 
             local_max = scores.amax(dim=-1, keepdim=True)
             exp_scores = torch.exp(scores - local_max)
