@@ -320,11 +320,20 @@ class OptimizedBestAvailableAttentionBenchmarkBase(FlashAttention4BenchmarkBase)
 
         metrics["flashattention4.selection_candidates"] = float(len(self._candidate_median_ms))
         metrics["flashattention4.selection_failures"] = float(len(self._candidate_errors))
-        ordered = sorted(self._candidate_median_ms.items(), key=lambda item: (item[1], item[0]))
-        if len(ordered) > 1:
-            metrics["flashattention4.best_margin_ms"] = ordered[1][1] - ordered[0][1]
-        for provider, median_ms in ordered:
+        best_provider: Optional[str] = None
+        second_provider: Optional[str] = None
+        best_ms = float("inf")
+        second_ms = float("inf")
+        for provider, median_ms in self._candidate_median_ms.items():
             metrics[f"flashattention4.selection_ms.{provider}"] = median_ms
+            candidate_key = (median_ms, provider)
+            if best_provider is None or candidate_key < (best_ms, best_provider):
+                second_provider, second_ms = best_provider, best_ms
+                best_provider, best_ms = provider, median_ms
+            elif second_provider is None or candidate_key < (second_ms, second_provider):
+                second_provider, second_ms = provider, median_ms
+        if second_provider is not None:
+            metrics["flashattention4.best_margin_ms"] = second_ms - best_ms
         for provider in self._candidate_errors:
             metrics[f"flashattention4.failed.{provider}"] = 1.0
         return metrics

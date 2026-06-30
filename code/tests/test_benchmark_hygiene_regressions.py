@@ -6022,6 +6022,18 @@ def test_flexattention_metrics_use_attention_formula_and_hot_paths_skip_clone() 
     assert "self.output = result.detach().float().clone()" not in flash4_source
     assert "self._sparsity_ratio = float(self.inputs.dense_mask.float().mean())" in flash4_source
     assert "self.inputs.dense_mask.float().mean().item()" not in flash4_source
+    flash4_best_available_metrics = flash4_source.split(
+        "class OptimizedBestAvailableAttentionBenchmarkBase",
+        maxsplit=1,
+    )[1].split("def get_custom_metrics", maxsplit=1)[1].split(
+        "\n\nclass",
+        maxsplit=1,
+    )[0]
+    assert "ordered = sorted(self._candidate_median_ms.items()" not in flash4_best_available_metrics
+    assert "best_provider: Optional[str] = None" in flash4_best_available_metrics
+    assert "second_provider: Optional[str] = None" in flash4_best_available_metrics
+    assert "candidate_key = (median_ms, provider)" in flash4_best_available_metrics
+    assert "metrics[\"flashattention4.best_margin_ms\"] = second_ms - best_ms" in flash4_best_available_metrics
     assert cute_source.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "time.perf_counter()" not in cute_source
     assert 'signature_overrides={"sparsity_ratio": self._sparsity_ratio}' in flash4_source
@@ -8277,6 +8289,12 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
     assert "ttft_p50, ttft_p95 = _percentiles(completed_ttfts, (50.0, 95.0))" in simulate_section
     assert "completed_ttft_total += state.ttft_ms" in simulate_section
     assert '"ttft_ms_mean": completed_ttft_total / len(completed_ttfts)' in simulate_section
+    assert "active_ttft_total = 0.0" in simulate_section
+    assert "active_ttft_count = 0" in simulate_section
+    assert "active_ttft_total += state.ttft_ms" in simulate_section
+    assert "active_ttft_count += 1" in simulate_section
+    assert "sum(avg_ttft)" not in simulate_section
+    assert "avg_ttft = [" not in simulate_section
     assert "decode_tpot_total = 0.0" in simulate_section
     assert "prefill_tpot_total = 0.0" in simulate_section
     assert "decode_tpots = [" not in simulate_section

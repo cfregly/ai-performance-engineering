@@ -23,11 +23,23 @@ def _build_islands(*, num_islands: int, experts_per_island: int) -> Dict[int, Li
     return islands
 
 
+def _build_spillover_order(islands: Dict[int, List[int]]) -> Dict[int, List[int]]:
+    return {
+        local_island: [
+            island
+            for island in sorted(islands.keys(), key=lambda i: (abs(i - local_island), i))
+            if island != local_island
+        ]
+        for local_island in islands
+    }
+
+
 def _route_one(
     *,
     token_id: int,
     local_island: int,
     islands: Dict[int, List[int]],
+    spillover_order: Dict[int, List[int]],
     loads: Dict[int, int],
     capacity_per_expert: int,
 ) -> int:
@@ -36,8 +48,7 @@ def _route_one(
             loads[exp] += 1
             return exp
 
-    island_ids = sorted(islands.keys(), key=lambda i: abs(i - local_island))
-    for isl in island_ids:
+    for isl in spillover_order[local_island]:
         for exp in islands[isl]:
             if loads[exp] < capacity_per_expert:
                 loads[exp] += 1
@@ -66,6 +77,7 @@ def main() -> int:
         raise ValueError("--capacity-per-expert must be positive")
 
     islands = _build_islands(num_islands=int(args.num_islands), experts_per_island=int(args.experts_per_island))
+    spillover_order = _build_spillover_order(islands)
     loads = {exp: 0 for experts in islands.values() for exp in experts}
     assignments: list[int] = []
     remote_tokens = 0
@@ -76,6 +88,7 @@ def main() -> int:
             token_id=token,
             local_island=local_island,
             islands=islands,
+            spillover_order=spillover_order,
             loads=loads,
             capacity_per_expert=int(args.capacity_per_expert),
         )

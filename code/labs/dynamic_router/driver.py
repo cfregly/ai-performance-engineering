@@ -411,10 +411,17 @@ def simulate(
 
         # Optional slow logging
         if log_interval and log_interval > 0 and tick % log_interval == 0:
-            avg_ttft = [
-                s.ttft_ms for s in requests.values() if s.ttft_ms is not None
-            ]
-            ttft_str = f"{sum(avg_ttft)/len(avg_ttft):.1f} ms" if avg_ttft else "n/a"
+            active_ttft_total = 0.0
+            active_ttft_count = 0
+            for state in requests.values():
+                if state.ttft_ms is not None:
+                    active_ttft_total += state.ttft_ms
+                    active_ttft_count += 1
+            ttft_str = (
+                f"{active_ttft_total / active_ttft_count:.1f} ms"
+                if active_ttft_count
+                else "n/a"
+            )
             if optimized:
                 scores = {gid: g.queue_depth_avg() for gid, g in gpus.items() if g.is_decode}
                 print(
