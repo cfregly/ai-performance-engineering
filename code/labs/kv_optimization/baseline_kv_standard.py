@@ -61,6 +61,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._generated_v_steps: Optional[torch.Tensor] = None
         self._generated_step_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._generated_step_layer_view_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
+        self._generated_step_layer_position_pairs: list[tuple[int, torch.Tensor, torch.Tensor]] = []
         self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._seq_lengths_host: list[int] = [0] * batch_size
@@ -110,6 +111,10 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._generated_step_layer_view_pairs = [
             (k_step.unsqueeze(1), v_step.unsqueeze(1))
             for k_step, v_step in self._generated_step_pairs
+        ]
+        self._generated_step_layer_position_pairs = [
+            (pos, k_layer, v_layer)
+            for pos, (k_layer, v_layer) in enumerate(self._generated_step_layer_view_pairs)
         ]
         self._output_view = self.kv_cache[:1, :1, :, :, :1, : min(8, self.head_dim)]
         self._verify_output_buffer = torch.empty(
@@ -198,7 +203,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark KV cache operations."""
         if self._generated_k_steps is None or self._generated_v_steps is None:
             raise RuntimeError("setup() must precompute decode-step inputs before benchmarking")
-        if len(self._generated_step_layer_view_pairs) != self.num_decode_steps or self._output_view is None:
+        if len(self._generated_step_layer_position_pairs) != self.num_decode_steps or self._output_view is None:
             raise RuntimeError("setup() must precompute decode-step views before benchmarking")
         # Simulate decoding
         num_decode_steps = self.num_decode_steps
@@ -209,7 +214,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         current_stream = torch.cuda.current_stream(self.device)
         start_event.record(current_stream)
 
-        for pos, (new_k_layer, new_v_layer) in enumerate(self._generated_step_layer_view_pairs):
+        for pos, new_k_layer, new_v_layer in self._generated_step_layer_position_pairs:
             self.append_active_layer_views(new_k_layer, new_v_layer, pos=pos)
 
         end_event.record(current_stream)
@@ -283,6 +288,7 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         self._generated_v_steps = None
         self._generated_step_pairs = []
         self._generated_step_layer_view_pairs = []
+        self._generated_step_layer_position_pairs = []
         self._output_view = None
         self._verify_output_buffer = None
         self.output = None

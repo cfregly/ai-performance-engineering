@@ -63,6 +63,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._generated_k_steps: Optional[torch.Tensor] = None
         self._generated_v_steps: Optional[torch.Tensor] = None
         self._generated_step_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
+        self._generated_step_position_pairs: list[tuple[int, torch.Tensor, torch.Tensor]] = []
         self._k_quantized_step: Optional[torch.Tensor] = None
         self._v_quantized_step: Optional[torch.Tensor] = None
         self._k_quantized_layer_view: Optional[torch.Tensor] = None
@@ -135,6 +136,10 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._generated_step_pairs = list(
             zip(self._generated_k_steps, self._generated_v_steps, strict=True)
         )
+        self._generated_step_position_pairs = [
+            (pos, new_k, new_v)
+            for pos, (new_k, new_v) in enumerate(self._generated_step_pairs)
+        ]
         self._k_quantized_step = torch.empty(
             self.batch_size,
             self.num_heads,
@@ -293,7 +298,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         """Benchmark compressed KV cache."""
         if self._generated_k_steps is None or self._generated_v_steps is None:
             raise RuntimeError("setup() must precompute decode-step inputs before benchmarking")
-        if len(self._generated_step_pairs) != self.num_decode_steps or self._output_view is None:
+        if len(self._generated_step_position_pairs) != self.num_decode_steps or self._output_view is None:
             raise RuntimeError("setup() must precompute decode-step views before benchmarking")
         num_decode_steps = self.num_decode_steps
         self._set_host_seq_lengths(0)
@@ -303,7 +308,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         current_stream = torch.cuda.current_stream(self.device)
         start_event.record(current_stream)
 
-        for pos, (new_k, new_v) in enumerate(self._generated_step_pairs):
+        for pos, new_k, new_v in self._generated_step_position_pairs:
             self.append_active_layers(new_k, new_v, pos=pos)
 
         end_event.record(current_stream)
@@ -389,6 +394,7 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         self._generated_k_steps = None
         self._generated_v_steps = None
         self._generated_step_pairs = []
+        self._generated_step_position_pairs = []
         self._k_quantized_step = None
         self._v_quantized_step = None
         self._k_quantized_layer_view = None
