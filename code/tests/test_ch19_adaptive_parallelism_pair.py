@@ -12,6 +12,7 @@ from ch19.adaptive_parallelism_benchmark_common import (
     classify_baseline,
     classify_vectorized,
     classify_vectorized_out,
+    materialize_baseline_feature_rows,
 )
 from ch19.adaptive_parallelism_strategy import ParallelismStrategy
 from ch19.baseline_adaptive_parallelism import BaselineAdaptiveParallelismBenchmark
@@ -69,6 +70,37 @@ def test_adaptive_parallelism_baseline_reuses_result_buffers_on_cpu() -> None:
     assert torch.equal(baseline, classify_vectorized(workload))
 
 
+def test_adaptive_parallelism_baseline_can_reuse_prefilled_feature_rows_on_cpu() -> None:
+    cfg = AdaptiveParallelismBenchmarkConfig(num_requests=64)
+    workload = build_workload(cfg, torch.device("cpu"))
+    feature_rows = torch.empty(cfg.num_requests, 6, dtype=torch.float64)
+    feature_rows_cpu = torch.empty(cfg.num_requests, 6, dtype=torch.float64)
+    result = torch.empty(cfg.num_requests, dtype=torch.int64)
+    strategy_ids_cpu = torch.empty(cfg.num_requests, dtype=torch.int64)
+
+    materialized = materialize_baseline_feature_rows(
+        workload,
+        feature_rows=feature_rows,
+        feature_rows_cpu=feature_rows_cpu,
+    )
+    expected = classify_vectorized(workload).clone()
+    workload["seq_len"].fill_(0)
+    baseline = classify_baseline(
+        workload,
+        device=torch.device("cpu"),
+        feature_rows=feature_rows,
+        feature_rows_cpu=feature_rows_cpu,
+        refresh_feature_rows=False,
+        strategy_ids_cpu=strategy_ids_cpu,
+        result=result,
+    )
+
+    assert materialized is feature_rows_cpu
+    assert baseline is result
+    assert torch.equal(baseline, expected)
+    assert torch.any(feature_rows_cpu[:, 0] != 0)
+
+
 def test_adaptive_parallelism_vectorized_out_reuses_buffers_on_cpu() -> None:
     cfg = AdaptiveParallelismBenchmarkConfig(num_requests=64)
     workload = build_workload(cfg, torch.device("cpu"))
@@ -110,12 +142,16 @@ def test_adaptive_parallelism_workload_reuses_slot_masks_without_where_fallbacks
 
 def test_adaptive_parallelism_baseline_materializes_feature_rows_once() -> None:
     source = inspect.getsource(classify_baseline)
+    materialize_source = inspect.getsource(materialize_baseline_feature_rows)
 
-    assert "feature_rows[:, 0].copy_(workload[\"seq_len\"])" in source
-    assert "feature_rows[:, 1].copy_(workload[\"gpu_mem_util\"])" in source
-    assert "feature_rows_cpu.copy_(feature_rows)" in source
+    assert "feature_rows[:, 0].copy_(workload[\"seq_len\"])" in materialize_source
+    assert "feature_rows[:, 1].copy_(workload[\"gpu_mem_util\"])" in materialize_source
+    assert "feature_rows_cpu.copy_(feature_rows)" in materialize_source
+    assert "if refresh_feature_rows or feature_rows_cpu is None:" in source
+    assert "feature_rows_cpu = materialize_baseline_feature_rows(" in source
     assert "torch.stack(" not in source
-    assert "feature_rows.detach().cpu()" in source
+    assert "torch.stack(" not in materialize_source
+    assert "feature_rows.detach().cpu()" in materialize_source
     assert ").detach().cpu().tolist()" not in source
     assert "strategy_ids_cpu = torch.empty(feature_rows_cpu.size(0), dtype=torch.int64)" in source
     assert "for row_idx in range(feature_rows_cpu.size(0)):" in source
@@ -145,8 +181,10 @@ def test_adaptive_parallelism_baseline_benchmark_reuses_result_buffers() -> None
     assert "self._feature_rows_cpu = torch.empty(" in source
     assert "self._strategy_ids_cpu = torch.empty(" in source
     assert "pin_memory=True" in source
+    assert "materialize_baseline_feature_rows(" in source
     assert "feature_rows=self._feature_rows" in source
     assert "feature_rows_cpu=self._feature_rows_cpu" in source
+    assert "refresh_feature_rows=False" in source
     assert "strategy_ids_cpu=self._strategy_ids_cpu" in source
     assert "result=self._result_buffer" in source
     assert "self.output = classify_baseline(self.workload, device=self.device)" not in source

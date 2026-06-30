@@ -67,22 +67,12 @@ def build_workload(
     }
 
 
-def classify_baseline(
+def materialize_baseline_feature_rows(
     workload: Dict[str, torch.Tensor],
     *,
-    device: torch.device,
     feature_rows: torch.Tensor | None = None,
     feature_rows_cpu: torch.Tensor | None = None,
-    strategy_ids_cpu: torch.Tensor | None = None,
-    result: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Reference implementation using the chapter's existing Python helper.
-
-    Materialize routing features to CPU once, then run per-request ``choose_worker_pool``
-    in Python. Calling ``.item()`` on CUDA tensors inside the loop would force a device
-    sync per scalar read (~6× per request), which dominates timing and dwarfs the
-    actual routing logic—this path keeps the same semantics without that artifact.
-    """
     num_rows = workload["seq_len"].numel()
     if feature_rows is None:
         feature_rows = torch.empty(
@@ -100,9 +90,35 @@ def classify_baseline(
     feature_rows[:, 5].copy_(workload["decode_tokens"])
 
     if feature_rows_cpu is None:
-        feature_rows_cpu = feature_rows.detach().cpu()
-    else:
-        feature_rows_cpu.copy_(feature_rows)
+        return feature_rows.detach().cpu()
+
+    feature_rows_cpu.copy_(feature_rows)
+    return feature_rows_cpu
+
+
+def classify_baseline(
+    workload: Dict[str, torch.Tensor],
+    *,
+    device: torch.device,
+    feature_rows: torch.Tensor | None = None,
+    feature_rows_cpu: torch.Tensor | None = None,
+    refresh_feature_rows: bool = True,
+    strategy_ids_cpu: torch.Tensor | None = None,
+    result: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Reference implementation using the chapter's existing Python helper.
+
+    Materialize routing features to CPU once, then run per-request ``choose_worker_pool``
+    in Python. Calling ``.item()`` on CUDA tensors inside the loop would force a device
+    sync per scalar read (~6× per request), which dominates timing and dwarfs the
+    actual routing logic—this path keeps the same semantics without that artifact.
+    """
+    if refresh_feature_rows or feature_rows_cpu is None:
+        feature_rows_cpu = materialize_baseline_feature_rows(
+            workload,
+            feature_rows=feature_rows,
+            feature_rows_cpu=feature_rows_cpu,
+        )
 
     if strategy_ids_cpu is None:
         strategy_ids_cpu = torch.empty(feature_rows_cpu.size(0), dtype=torch.int64)

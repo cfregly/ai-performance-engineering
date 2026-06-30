@@ -12,6 +12,7 @@ from ch19.adaptive_parallelism_benchmark_common import (
     AdaptiveParallelismBenchmarkConfig,
     build_workload,
     classify_baseline,
+    materialize_baseline_feature_rows,
 )
 
 
@@ -58,6 +59,11 @@ class BaselineAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchma
             dtype=torch.int64,
             pin_memory=True,
         )
+        materialize_baseline_feature_rows(
+            self.workload,
+            feature_rows=self._feature_rows,
+            feature_rows_cpu=self._feature_rows_cpu,
+        )
 
     def benchmark_fn(self) -> None:
         if (
@@ -73,6 +79,7 @@ class BaselineAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchma
             device=self.device,
             feature_rows=self._feature_rows,
             feature_rows_cpu=self._feature_rows_cpu,
+            refresh_feature_rows=False,
             strategy_ids_cpu=self._strategy_ids_cpu,
             result=self._result_buffer,
         )
