@@ -15179,6 +15179,40 @@ def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:
             assert "output=self.output.detach().clone()" in capture_section
 
 
+def test_ch13_baseline_precisionfp8_te_reuses_output_buffers() -> None:
+    source = (REPO_ROOT / "ch13" / "baseline_precisionfp8_te.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _train_step", maxsplit=1
+    )[0]
+    train_step_section = source.split("def _train_step", maxsplit=1)[1].split(
+        "def benchmark_fn", maxsplit=1
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload", maxsplit=1
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
+
+    assert "self.output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self.output_buffer = torch.empty_like(self.inputs)" in setup_section
+    assert "self._verify_output_buffer = torch.empty_like(self.output_buffer)" in setup_section
+    assert "self.output = outputs.detach().clone()" not in train_step_section
+    assert "with torch.no_grad():" in train_step_section
+    assert "self.output_buffer.copy_(outputs)" in train_step_section
+    assert "self.output = self.output_buffer" in train_step_section
+    assert ".detach().clone()" not in benchmark_section
+    assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "output=self.output.detach().clone()" not in capture_section
+    assert "self.output_buffer = None" in teardown_section
+    assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_ch13_fp8_perchannel_wrappers_sample_verification_outputs() -> None:
     for filename in (
         "baseline_fp8_perchannel.py",

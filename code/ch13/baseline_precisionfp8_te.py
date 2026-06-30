@@ -74,13 +74,16 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
-        self.output = None
+        self.output: Optional[torch.Tensor] = None
+        self.output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.parameter_count = 0
         self.register_workload_metadata(
             requests_per_iteration=1.0,
             tokens_per_iteration=float(tokens),
         )
         self._verify_input: Optional[torch.Tensor] = None
+
     def setup(self) -> None:
         _load_te_linear()
         torch.manual_seed(42)
@@ -98,6 +101,8 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.targets = torch.randn_like(self.inputs)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)
         self.criterion = nn.MSELoss()
+        self.output_buffer = torch.empty_like(self.inputs)
+        self._verify_output_buffer = torch.empty_like(self.output_buffer)
         self._verify_input = self.inputs.detach().clone()
 
         for _ in range(5):
@@ -114,7 +119,11 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.optimizer.zero_grad(set_to_none=True)
         outputs = self.model(self.inputs)
         if capture_output:
-            self.output = outputs.detach().clone()
+            if self.output_buffer is None:
+                raise RuntimeError("Output buffer not initialized")
+            with torch.no_grad():
+                self.output_buffer.copy_(outputs)
+            self.output = self.output_buffer
         loss = self.criterion(outputs, self.targets)
         loss.backward()
         self.optimizer.step()
@@ -126,9 +135,12 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input/output not initialized")
 
     def capture_verification_payload(self) -> None:
+        if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output,
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=self.parameter_count,
             precision_flags={
@@ -146,6 +158,10 @@ class BaselineTEFP8Benchmark(VerificationPayloadMixin, BaseBenchmark):
         self.targets = None
         self.optimizer = None
         self.criterion = None
+        self.output = None
+        self.output_buffer = None
+        self._verify_output_buffer = None
+        self._verify_input = None
         super().teardown()
 
     def get_config(self) -> BenchmarkConfig:
