@@ -12118,7 +12118,8 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
 
     assert end_event_idx < output_idx < aux_metrics_idx
     assert "self._last_aux_metrics.clear()" in benchmark_section
-    assert "self._last_aux_metrics[key] = value.detach()" in benchmark_section
+    assert "self._last_aux_metrics[key] = value" in benchmark_section
+    assert "value.detach()" not in benchmark_section
     assert "self._last_aux_metrics = {" not in benchmark_section
     assert "self._latency_metric_values = [0.0]" in setup_section
     assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in setup_section
@@ -12132,7 +12133,8 @@ def test_deepseek_moe_reuses_timing_events_and_defers_verification_casts() -> No
     assert 'metrics["latency_ms"] = self._last_elapsed_ms' in metrics_section
     assert 'metrics["throughput"] = tokens_per_sec' in metrics_section
     assert "for key, value in self._last_aux_metrics.items():" in metrics_section
-    assert "metrics[key] = float(value.detach())" in metrics_section
+    assert "metrics[key] = float(value)" in metrics_section
+    assert "value.detach()" not in metrics_section
     assert "self._last_metrics = {" not in metrics_section
     assert "**{" not in metrics_section
     assert "self.output = output" in benchmark_section

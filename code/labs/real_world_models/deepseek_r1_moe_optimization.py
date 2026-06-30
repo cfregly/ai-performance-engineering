@@ -346,7 +346,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         self._last_aux_metrics.clear()
         for key, value in metrics.items():
             if torch.is_tensor(value):
-                self._last_aux_metrics[key] = value.detach()
+                self._last_aux_metrics[key] = value
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
@@ -390,7 +390,7 @@ class DeepSeekR1MoEOptimization(VerificationPayloadMixin, BaseBenchmark):
         metrics["latency_ms"] = self._last_elapsed_ms
         metrics["throughput"] = tokens_per_sec
         for key, value in self._last_aux_metrics.items():
-            metrics[key] = float(value.detach())
+            metrics[key] = float(value)
         return metrics
 
     def teardown(self):
