@@ -15782,8 +15782,25 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
         assert ".detach().clone()" not in benchmark_section
         assert output_assignment in benchmark_section
         if name == "baseline_kv_cache_naive.py":
+            assert "self._request_ids: list[str] = []" in source
+            assert "self._input_token_views: list[list[torch.Tensor]] = []" in source
+            assert "self._request_token_groups: list[tuple[str, list[torch.Tensor]]] = []" in source
+            assert "self._layer_groups: list[tuple[int, nn.Module]] = []" in source
+            assert "self._layer_groups = list(enumerate(self.model))" in setup_section
+            assert "self._request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
+            assert "self._request_token_groups = list(" in setup_section
+            assert "zip(self._request_ids, self._input_token_views, strict=True)" in setup_section
             assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
             assert "token.detach()" not in benchmark_section
+            assert "for request_id, token_views in self._request_token_groups:" in benchmark_section
+            assert "for pos, token in enumerate(token_views):" in benchmark_section
+            assert "for layer_idx, layer in self._layer_groups:" in benchmark_section
+            assert "request_id = f\"req_{seq_idx}\"" not in benchmark_section
+            assert "x[:, pos:pos + 1, :]" not in benchmark_section
+            assert "x[:, pos : pos + 1, :]" not in benchmark_section
+            assert "enumerate(self.model)" not in benchmark_section
+            assert "self._request_token_groups = []" in teardown_section
+            assert "self._layer_groups = []" in teardown_section
         if name.startswith("optimized_kv_cache_naive"):
             assert "hidden.detach()" not in benchmark_section
             assert "hidden[:, -1:, :].detach()" not in benchmark_section

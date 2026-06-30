@@ -120,6 +120,10 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.kv_cache = None
         self.inputs: Optional[List[torch.Tensor]] = None
+        self._input_token_views: list[list[torch.Tensor]] = []
+        self._request_ids: list[str] = []
+        self._request_token_groups: list[tuple[str, list[torch.Tensor]]] = []
+        self._layer_groups: list[tuple[int, nn.Module]] = []
         self.workload = WORKLOAD
         self.num_layers = self.workload.num_layers
         self.num_heads = self.workload.num_heads
@@ -153,6 +157,7 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
             ]
         ).to(self.device).eval()
         self.parameter_count = sum(p.numel() for p in self.model.parameters())
+        self._layer_groups = list(enumerate(self.model))
         
         self.kv_cache = NaiveKVCache(
             max_seq_len=self.max_seq_len,
@@ -168,6 +173,14 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         for seq_len in self.sequence_lengths:
             x = torch.randn(self.batch_size, seq_len, self.hidden_dim, device=self.device, dtype=self.workload.dtype)
             self.inputs.append(x)
+        self._request_ids = [f"req_{seq_idx}" for seq_idx in range(len(self.inputs))]
+        self._input_token_views = [
+            [x[:, pos : pos + 1, :] for pos in range(x.size(1))]
+            for x in self.inputs
+        ]
+        self._request_token_groups = list(
+            zip(self._request_ids, self._input_token_views, strict=True)
+        )
         self._verify_output_buffer = torch.empty(
             self.batch_size,
             1,
@@ -182,16 +195,15 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self.model is None or self.kv_cache is None or self.inputs is None:
             raise RuntimeError("Benchmark not configured")
+        if not self._request_token_groups or not self._layer_groups:
+            raise RuntimeError("setup() must precompute request and layer groups")
 
         with torch.inference_mode(), self._nvtx_range("kv_cache_baseline_naive"):
-            for seq_idx, x in enumerate(self.inputs):
-                request_id = f"req_{seq_idx}"
-                seq_len = x.size(1)
+            for request_id, token_views in self._request_token_groups:
                 self.kv_cache.allocate(request_id)
 
-                for pos in range(seq_len):
-                    token = x[:, pos:pos + 1, :]
-                    for layer_idx, layer in enumerate(self.model):
+                for pos, token in enumerate(token_views):
+                    for layer_idx, layer in self._layer_groups:
                         token = layer(token, self.kv_cache, request_id, layer_idx, pos)
 
                 self.kv_cache.free(request_id)
@@ -224,6 +236,10 @@ class BaselineKVCacheNaiveBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model = None
         self.kv_cache = None
         self.inputs = None
+        self._input_token_views = []
+        self._request_ids = []
+        self._request_token_groups = []
+        self._layer_groups = []
         self.output = None
         self._verify_input = None
         self._verify_output_buffer = None
