@@ -65,8 +65,8 @@ class CPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._verify_output_buffer.copy_(self.output[: self._verify_output_buffer.numel()])
         self._set_verification_payload(
             inputs={
-                "counts": counts.detach().clone(),
-                "values": values.detach().clone(),
+                "counts": counts,
+                "values": values,
             },
             output=self._verify_output_buffer,
             batch_size=1,
