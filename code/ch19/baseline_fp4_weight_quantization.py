@@ -320,7 +320,7 @@ class BaselineFP4WeightQuantizationBenchmark(VerificationPayloadMixin, BaseBench
         with self._nvtx_range("baseline_naive_mlp"):
             with torch.inference_mode():
                 output = self.model(self.input)
-                self.output = output.detach()
+                self.output = output
         if self.output is None or self.input is None or self.model is None:
             raise RuntimeError("benchmark_fn() must produce output")
         dtype = self.output.dtype

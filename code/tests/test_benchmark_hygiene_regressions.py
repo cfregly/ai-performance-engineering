@@ -6858,6 +6858,8 @@ def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
     assert "torch.add(self._tensor_a_fp16, self._tensor_b_fp16, out=self._work)" in benchmark_section
     assert "self.output = self._work" in benchmark_section
     assert "self._work.detach()" not in benchmark_section
+    assert "self.output = self._work" in baseline_benchmark
+    assert "self._work.detach()" not in baseline_benchmark
     assert ".to(self._compute_dtype)" not in benchmark_section
     for setup, benchmark, capture in (
         (baseline_setup, baseline_benchmark, baseline_capture),
@@ -7743,6 +7745,8 @@ def test_ch20_baseline_integrated_kv_cache_precomputes_hot_loop_views() -> None:
     assert "enumerate(self.model)" not in benchmark_section
     assert "x[:, pos:pos+1, :]" not in benchmark_section
     assert "x[:, pos : pos + 1, :]" not in benchmark_section
+    assert "self.output = hidden" in benchmark_section
+    assert "hidden.detach()" not in benchmark_section
     assert "self._request_token_groups = []" in teardown_section
     assert "self._layer_groups = []" in teardown_section
 
@@ -17992,7 +17996,7 @@ def test_ch19_nvfp4_training_defers_verification_forward_outside_hot_loop() -> N
 
 def test_ch13_regional_compile_moves_verification_materialization_out_of_hot_loop() -> None:
     targets = {
-        "baseline_regional_compile.py": "self.output = self.compiled_model(x).detach()",
+        "baseline_regional_compile.py": "self.output = self.compiled_model(x)",
         "optimized_regional_compile.py": "self.output = self.model(x)",
     }
 
@@ -18008,8 +18012,10 @@ def test_ch13_regional_compile_moves_verification_materialization_out_of_hot_loo
         assert ".detach().float().clone()" not in benchmark_section
         assert ".detach().clone()" not in benchmark_section
         assert output_assignment in benchmark_section
-        if name == "optimized_regional_compile.py":
-            assert "self.output = self.model(x).detach()" not in benchmark_section
+        if name == "baseline_regional_compile.py":
+            assert "self.compiled_model(x).detach()" not in benchmark_section
+        else:
+            assert "self.model(x).detach()" not in benchmark_section
         assert "self._verify_output = self.output" in benchmark_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty(" in source

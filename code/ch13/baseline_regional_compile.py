@@ -153,7 +153,7 @@ class BaselineFullGraphCompileBenchmark(VerificationPayloadMixin, BaseBenchmark)
         x = self.inputs[seq_len]
 
         with torch.inference_mode(), self._nvtx_range("baseline_full_graph_compile"):
-            self.output = self.compiled_model(x).detach()
+            self.output = self.compiled_model(x)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
         if self._verify_x is None:

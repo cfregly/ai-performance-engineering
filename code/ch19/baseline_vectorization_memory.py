@@ -69,7 +69,7 @@ class VectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with nvtx_range("baseline_vectorization", enable=self._enable_nvtx):
             for _ in range(self.repeats):
                 torch.add(self.tensor_a, self.tensor_b, out=self._work)
-            self.output = self._work.detach()
+            self.output = self._work
 
     def capture_verification_payload(self) -> None:
         if (

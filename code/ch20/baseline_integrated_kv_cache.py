@@ -182,7 +182,7 @@ class BaselineIntegratedKVCacheBenchmark(VerificationPayloadMixin, BaseBenchmark
                         for layer_idx, layer in self._layer_groups:
                             hidden = layer(hidden, self.kv_cache, request_id, layer_idx, pos)
         # Capture last hidden state for verification (no cloning in the hot path).
-        self.output = hidden.detach() if hidden is not None else None
+        self.output = hidden if hidden is not None else None
 
     def capture_verification_payload(self) -> None:
         if self.model is None or self._verify_input is None or self.output is None:
