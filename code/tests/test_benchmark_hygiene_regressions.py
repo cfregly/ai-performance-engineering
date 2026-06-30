@@ -4723,12 +4723,21 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
 
     assert "policy_metrics_buffer: torch.Tensor | None = None" in host_policy_section
     assert "policy_metric_values: list[float] | None = None" in common_source
+    assert "policy_top2_values: torch.Tensor | None = None" in common_source
+    assert "policy_top2_indices: torch.Tensor | None = None" in common_source
     assert "policy_metrics_buffer = torch.empty(4, device=\"cpu\", dtype=torch.float32)" in host_policy_section
-    assert "policy_metrics_buffer[0].copy_(compute_entropy(host_logits).mean())" in host_policy_section
-    assert "policy_metrics_buffer[1].copy_(torch.softmax(host_logits, dim=-1).max(dim=-1).values.mean())" in host_policy_section
-    assert "policy_metrics_buffer[2].copy_(torch.topk(host_logits, k=2, dim=-1).values.mean())" in host_policy_section
-    assert "policy_metrics_buffer[3].copy_(torch.amax(host_logits, dim=-1).mean())" in host_policy_section
+    assert "log_probs = torch.log_softmax(host_logits, dim=-1)" in host_policy_section
+    assert "probs = log_probs.exp()" in host_policy_section
+    assert "policy_metrics_buffer[1].copy_(probs.max(dim=-1).values.mean())" in host_policy_section
+    assert "probs.mul_(log_probs)" in host_policy_section
+    assert "policy_metrics_buffer[0].copy_(-probs.sum(dim=-1).mean())" in host_policy_section
+    assert "torch.topk(host_logits, k=2, dim=-1, out=(policy_top2_values, policy_top2_indices))" in host_policy_section
+    assert "policy_metrics_buffer[2].copy_(policy_top2_values.mean())" in host_policy_section
+    assert "policy_metrics_buffer[3].copy_(policy_top2_values[:, 0].mean())" in host_policy_section
     assert "torch.sort(host_logits" not in host_policy_section
+    assert "torch.softmax(host_logits" not in host_policy_section
+    assert "compute_entropy(host_logits)" not in host_policy_section
+    assert "torch.amax(host_logits" not in host_policy_section
     assert "policy_metric_values[metric_idx] = float(policy_metrics_buffer[metric_idx])" in host_policy_section
     assert "policy_metrics = torch.stack(" not in host_policy_section
     assert "policy_metrics.tolist()" not in host_policy_section
@@ -4738,6 +4747,7 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "host_logits = host_logits_buffer" in host_policy_section
     assert "last_step_logits.to(torch.float32).cpu()" not in host_policy_section
     assert "compute_entropy(host_logits).mean().item()" not in host_policy_section
+    assert "torch.topk(host_logits, k=2, dim=-1).values.mean()" not in host_policy_section
     assert "values.mean().item()" not in host_policy_section
     assert "log_probs = torch.log_softmax(logits, dim=-1)" in decision_section
     assert "probs = log_probs.exp()" in decision_section
@@ -4819,6 +4829,8 @@ def test_ch19_dynamic_precision_benchmarks_reuse_decode_workspaces() -> None:
     assert "self._decode_workspace: Optional[FixedDecodeWorkspace] = None" in baseline_source
     assert "self._decode_workspace = FixedDecodeWorkspace(" in baseline_setup
     assert "host_logits_buffer=torch.empty(" in baseline_setup
+    assert "policy_top2_values=torch.empty((self.cfg.batch_size, 2), device=\"cpu\", dtype=torch.float32)" in baseline_setup
+    assert "policy_top2_indices=torch.empty((self.cfg.batch_size, 2), device=\"cpu\", dtype=torch.long)" in baseline_setup
     assert "workspace=self._decode_workspace" in baseline_benchmark
     assert "torch.empty(" not in baseline_benchmark
 

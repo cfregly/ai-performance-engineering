@@ -177,11 +177,15 @@ def test_dynamic_precision_decoders_accept_reusable_workspaces_on_cpu() -> None:
         host_logits_buffer=torch.empty((cfg.batch_size, cfg.vocab_size), device="cpu", dtype=torch.float32),
         policy_metrics_buffer=torch.empty(4, device="cpu", dtype=torch.float32),
         policy_metric_values=[0.0] * 4,
+        policy_top2_values=torch.empty((cfg.batch_size, 2), device="cpu", dtype=torch.float32),
+        policy_top2_indices=torch.empty((cfg.batch_size, 2), device="cpu", dtype=torch.long),
     )
     host_generated_ptr = host_workspace.generated.data_ptr()
     host_logits_ptr = host_workspace.host_logits_buffer.data_ptr()
     host_policy_ptr = host_workspace.policy_metrics_buffer.data_ptr()
     host_policy_values = host_workspace.policy_metric_values
+    host_top2_values_ptr = host_workspace.policy_top2_values.data_ptr()
+    host_top2_indices_ptr = host_workspace.policy_top2_indices.data_ptr()
 
     host_tokens = decode_host_policy_baseline(
         host_model,
@@ -197,6 +201,10 @@ def test_dynamic_precision_decoders_accept_reusable_workspaces_on_cpu() -> None:
     assert host_workspace.policy_metrics_buffer is not None
     assert host_workspace.policy_metrics_buffer.data_ptr() == host_policy_ptr
     assert host_workspace.policy_metric_values is host_policy_values
+    assert host_workspace.policy_top2_values is not None
+    assert host_workspace.policy_top2_values.data_ptr() == host_top2_values_ptr
+    assert host_workspace.policy_top2_indices is not None
+    assert host_workspace.policy_top2_indices.data_ptr() == host_top2_indices_ptr
     assert any(value != 0.0 for value in host_workspace.policy_metric_values)
 
     dynamic_model = build_model(cfg, device, dtype=torch.float32)

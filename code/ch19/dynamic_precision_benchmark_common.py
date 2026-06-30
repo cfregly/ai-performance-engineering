@@ -11,7 +11,6 @@ import torch.nn.functional as F
 
 from ch19.dynamic_precision_switching import (
     DynamicPrecisionWorkspace,
-    compute_entropy,
     decode_with_dynamic_precision,
 )
 
@@ -35,6 +34,8 @@ class FixedDecodeWorkspace:
     host_logits_buffer: torch.Tensor | None = None
     policy_metrics_buffer: torch.Tensor | None = None
     policy_metric_values: list[float] | None = None
+    policy_top2_values: torch.Tensor | None = None
+    policy_top2_indices: torch.Tensor | None = None
 
 
 class HighConfidenceDecoder(nn.Module):
@@ -159,6 +160,8 @@ def decode_host_policy_baseline(
         host_logits_buffer: torch.Tensor | None = None
         policy_metrics_buffer: torch.Tensor | None = None
         policy_metric_values: list[float] | None = None
+        policy_top2_values: torch.Tensor | None = None
+        policy_top2_indices: torch.Tensor | None = None
     else:
         generated = workspace.generated
         next_token = workspace.next_token
@@ -170,6 +173,8 @@ def decode_host_policy_baseline(
         host_logits_buffer = workspace.host_logits_buffer
         policy_metrics_buffer = workspace.policy_metrics_buffer
         policy_metric_values = workspace.policy_metric_values
+        policy_top2_values = workspace.policy_top2_values
+        policy_top2_indices = workspace.policy_top2_indices
     if policy_metric_values is None:
         policy_metric_values = [0.0] * 4
         if workspace is not None:
@@ -206,10 +211,20 @@ def decode_host_policy_baseline(
             policy_metrics_buffer = torch.empty(4, device="cpu", dtype=torch.float32)
             if workspace is not None:
                 workspace.policy_metrics_buffer = policy_metrics_buffer
-        policy_metrics_buffer[0].copy_(compute_entropy(host_logits).mean())
-        policy_metrics_buffer[1].copy_(torch.softmax(host_logits, dim=-1).max(dim=-1).values.mean())
-        policy_metrics_buffer[2].copy_(torch.topk(host_logits, k=2, dim=-1).values.mean())
-        policy_metrics_buffer[3].copy_(torch.amax(host_logits, dim=-1).mean())
+        log_probs = torch.log_softmax(host_logits, dim=-1)
+        probs = log_probs.exp()
+        policy_metrics_buffer[1].copy_(probs.max(dim=-1).values.mean())
+        probs.mul_(log_probs)
+        policy_metrics_buffer[0].copy_(-probs.sum(dim=-1).mean())
+        if policy_top2_values is None or policy_top2_indices is None:
+            policy_top2_values = torch.empty((batch_size, 2), device="cpu", dtype=host_logits.dtype)
+            policy_top2_indices = torch.empty((batch_size, 2), device="cpu", dtype=torch.long)
+            if workspace is not None:
+                workspace.policy_top2_values = policy_top2_values
+                workspace.policy_top2_indices = policy_top2_indices
+        torch.topk(host_logits, k=2, dim=-1, out=(policy_top2_values, policy_top2_indices))
+        policy_metrics_buffer[2].copy_(policy_top2_values.mean())
+        policy_metrics_buffer[3].copy_(policy_top2_values[:, 0].mean())
         for metric_idx in range(4):
             policy_metric_values[metric_idx] = float(policy_metrics_buffer[metric_idx])
         if next_token_values is None:
