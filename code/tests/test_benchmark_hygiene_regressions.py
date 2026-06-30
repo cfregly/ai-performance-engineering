@@ -244,10 +244,22 @@ def test_ch02_cublas_benchmarks_reuse_output_buffer() -> None:
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
             "def capture_verification_payload", maxsplit=1
         )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split("def teardown", maxsplit=1)[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
 
         assert "self.C = torch.empty(self.m, self.n, device=self.device, dtype=torch.float32)" in setup_section
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(self.C)" in setup_section
         assert "torch.mm(self.A, self.B, out=self.C)" in benchmark_section
         assert "self.C = torch.matmul(self.A, self.B)" not in benchmark_section
+        assert "self._verify_output_buffer.copy_(self.C)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.C.detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch02_memory_transfer_verification_reuses_digest_buffer() -> None:
