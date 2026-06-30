@@ -42,8 +42,13 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._query_steps: Optional[torch.Tensor] = None
         self._key_steps: Optional[torch.Tensor] = None
         self._value_steps: Optional[torch.Tensor] = None
+        self._decode_step_inputs: List[Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self._k_gather_buffer: Optional[torch.Tensor] = None
         self._v_gather_buffer: Optional[torch.Tensor] = None
+        self._k_gather_step_views: List[torch.Tensor] = []
+        self._v_gather_step_views: List[torch.Tensor] = []
+        self._k_gather_prefix_views: List[torch.Tensor] = []
+        self._v_gather_prefix_views: List[torch.Tensor] = []
         self._peer_host_k_stage: Optional[torch.Tensor] = None
         self._peer_host_v_stage: Optional[torch.Tensor] = None
         self._cache_key_slots: List[torch.Tensor] = []
@@ -64,8 +69,23 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._query_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._key_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
+        self._decode_step_inputs = list(
+            zip(range(self.seq_len), self._query_steps, self._key_steps, self._value_steps, strict=True)
+        )
         self._k_gather_buffer = torch.empty(self.batch, self.seq_len, self.hidden, device=self.device)
         self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)
+        self._k_gather_step_views = [
+            self._k_gather_buffer[:, idx : idx + 1, :] for idx in range(self.seq_len)
+        ]
+        self._v_gather_step_views = [
+            self._v_gather_buffer[:, idx : idx + 1, :] for idx in range(self.seq_len)
+        ]
+        self._k_gather_prefix_views = [
+            self._k_gather_buffer[:, : idx + 1, :] for idx in range(self.seq_len)
+        ]
+        self._v_gather_prefix_views = [
+            self._v_gather_buffer[:, : idx + 1, :] for idx in range(self.seq_len)
+        ]
         self._peer_host_k_stage = torch.empty(
             self.batch,
             1,
@@ -111,16 +131,22 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 or len(self._cache_value_slots) != self.seq_len
                 or len(self._tier_slots) != self.seq_len
                 or len(self._peer_target_slots) != self.seq_len
+                or len(self._decode_step_inputs) != self.seq_len
+                or len(self._k_gather_step_views) != self.seq_len
+                or len(self._v_gather_step_views) != self.seq_len
+                or len(self._k_gather_prefix_views) != self.seq_len
+                or len(self._v_gather_prefix_views) != self.seq_len
             ):
                 raise RuntimeError("KV cache slots not initialized")
             cache_k = self._cache_key_slots
             cache_v = self._cache_value_slots
             tiers = self._tier_slots
             peer_targets = self._peer_target_slots
-            for step in range(self.seq_len):
-                q = self._query_steps[step]
-                k = self._key_steps[step]
-                v = self._value_steps[step]
+            k_gather_steps = self._k_gather_step_views
+            v_gather_steps = self._v_gather_step_views
+            k_gather_prefixes = self._k_gather_prefix_views
+            v_gather_prefixes = self._v_gather_prefix_views
+            for step, q, k, v in self._decode_step_inputs:
                 placed_k, placed_v, tier, peer = self._place_kv(k, v, step)
                 cache_k[step] = placed_k
                 cache_v[step] = placed_v
@@ -134,26 +160,22 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
                     t = tiers[cache_idx]
                     peer_dev = peer_targets[cache_idx]
                     if t == "local":
-                        self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tk)
-                        self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tv)
+                        k_gather_steps[gather_idx].copy_(tk)
+                        v_gather_steps[gather_idx].copy_(tv)
                     elif t == "peer" and peer_dev is not None:
                         if self._peer_host_k_stage is None or self._peer_host_v_stage is None:
                             raise RuntimeError("Peer host staging buffers not initialized")
                         self._peer_host_k_stage.copy_(tk, non_blocking=False)
                         self._peer_host_v_stage.copy_(tv, non_blocking=False)
-                        self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(
-                            self._peer_host_k_stage
-                        )
-                        self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(
-                            self._peer_host_v_stage
-                        )
+                        k_gather_steps[gather_idx].copy_(self._peer_host_k_stage)
+                        v_gather_steps[gather_idx].copy_(self._peer_host_v_stage)
                     else:
-                        self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tk)
-                        self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(tv)
+                        k_gather_steps[gather_idx].copy_(tk)
+                        v_gather_steps[gather_idx].copy_(tv)
                     gather_idx += 1
 
-                k_all = self._k_gather_buffer[:, :gather_idx, :]
-                v_all = self._v_gather_buffer[:, :gather_idx, :]
+                k_all = k_gather_prefixes[gather_idx - 1]
+                v_all = v_gather_prefixes[gather_idx - 1]
                 out, _ = self.model(q, k_all, v_all)
                 self.output = out
 
@@ -180,8 +202,13 @@ class BaselineKVCacheLocalOnlyBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self._query_steps = None
         self._key_steps = None
         self._value_steps = None
+        self._decode_step_inputs = []
         self._k_gather_buffer = None
         self._v_gather_buffer = None
+        self._k_gather_step_views = []
+        self._v_gather_step_views = []
+        self._k_gather_prefix_views = []
+        self._v_gather_prefix_views = []
         self._peer_host_k_stage = None
         self._peer_host_v_stage = None
         self._cache_key_slots = []

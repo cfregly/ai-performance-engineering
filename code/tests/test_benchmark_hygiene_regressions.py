@@ -11768,6 +11768,11 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
 
         assert "self._k_gather_buffer = torch.empty(" in setup_section
         assert "self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)" in setup_section
+        assert "self._decode_step_inputs = list(" in setup_section
+        assert "self._k_gather_step_views = [" in setup_section
+        assert "self._v_gather_step_views = [" in setup_section
+        assert "self._k_gather_prefix_views = [" in setup_section
+        assert "self._v_gather_prefix_views = [" in setup_section
         assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in setup_section
         assert "_slots" in setup_section
         assert "gathered_k" not in benchmark_section
@@ -11777,7 +11782,15 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert ".append(" not in benchmark_section
         assert ".pop(0)" not in benchmark_section
         assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
-        assert "self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(" in benchmark_section
+        assert "k_gather_steps = self._k_gather_step_views" in benchmark_section
+        assert "v_gather_steps = self._v_gather_step_views" in benchmark_section
+        assert "k_gather_prefixes = self._k_gather_prefix_views" in benchmark_section
+        assert "v_gather_prefixes = self._v_gather_prefix_views" in benchmark_section
+        assert "for step, q, k, v in self._decode_step_inputs:" in benchmark_section or "for _step, q, k, v in self._decode_step_inputs:" in benchmark_section
+        assert "k_gather_steps[gather_idx].copy_(" in benchmark_section
+        assert "v_gather_steps[gather_idx].copy_(" in benchmark_section
+        assert "self._k_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(" not in benchmark_section
+        assert "self._v_gather_buffer[:, gather_idx : gather_idx + 1, :].copy_(" not in benchmark_section
         if filename.endswith("_multigpu.py"):
             assert "self._peer_host_k_stage: Optional[torch.Tensor] = None" in source
             assert "self._peer_host_v_stage: Optional[torch.Tensor] = None" in source
@@ -11790,8 +11803,8 @@ def test_ch15_baseline_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
             assert "self._peer_host_v_stage" in benchmark_section
             assert "host_k = tk.cpu()" not in benchmark_section
             assert "host_v = tv.cpu()" not in benchmark_section
-        assert "k_all = self._k_gather_buffer[:, :gather_idx, :]" in benchmark_section
-        assert "v_all = self._v_gather_buffer[:, :gather_idx, :]" in benchmark_section
+        assert "k_all = k_gather_prefixes[gather_idx - 1]" in benchmark_section
+        assert "v_all = v_gather_prefixes[gather_idx - 1]" in benchmark_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "sum(p.numel()" not in capture_section
 
@@ -11822,6 +11835,7 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
 
         assert "self._k_gather_buffer = torch.empty(" in setup_section
         assert "self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)" in setup_section
+        assert "self._decode_step_inputs = list(" in setup_section
         assert "self._k_gather_step_views = [" in setup_section
         assert "self._v_gather_step_views = [" in setup_section
         assert "self._k_gather_prefix_views = [" in setup_section
@@ -11846,6 +11860,9 @@ def test_ch15_optimized_kv_cache_nvlink_pool_reuses_gather_buffers() -> None:
         assert ".to(self.device" not in benchmark_section
         assert ".append(" not in benchmark_section
         assert "with torch.inference_mode(), self._nvtx_range(" in benchmark_section
+        assert "for step, q, k, v in self._decode_step_inputs:" in benchmark_section
+        assert "for step in range(self.seq_len):" not in benchmark_section
+        assert "self._query_steps[step]" not in benchmark_section
         assert "self._gather_kv_into_buffers(cache_k, cache_v, tiers, step + 1)" in benchmark_section
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "sum(p.numel()" not in capture_section

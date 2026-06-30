@@ -42,6 +42,7 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._query_steps: Optional[torch.Tensor] = None
         self._key_steps: Optional[torch.Tensor] = None
         self._value_steps: Optional[torch.Tensor] = None
+        self._decode_step_inputs: List[Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self._k_gather_buffer: Optional[torch.Tensor] = None
         self._v_gather_buffer: Optional[torch.Tensor] = None
         self._k_gather_step_views: List[torch.Tensor] = []
@@ -70,6 +71,9 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._query_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._key_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
         self._value_steps = torch.randn(self.seq_len, self.batch, 1, self.hidden, device=self.device)
+        self._decode_step_inputs = list(
+            zip(range(self.seq_len), self._query_steps, self._key_steps, self._value_steps, strict=True)
+        )
         self._k_gather_buffer = torch.empty(self.batch, self.seq_len, self.hidden, device=self.device)
         self._v_gather_buffer = torch.empty_like(self._k_gather_buffer)
         self._k_gather_step_views = [
@@ -172,15 +176,13 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
                 len(self._cache_key_slots) != self.seq_len
                 or len(self._cache_value_slots) != self.seq_len
                 or len(self._tier_slots) != self.seq_len
+                or len(self._decode_step_inputs) != self.seq_len
             ):
                 raise RuntimeError("KV cache slots not initialized")
             cache_k = self._cache_key_slots
             cache_v = self._cache_value_slots
             tiers = self._tier_slots
-            for step in range(self.seq_len):
-                q = self._query_steps[step]
-                k = self._key_steps[step]
-                v = self._value_steps[step]
+            for step, q, k, v in self._decode_step_inputs:
                 placed_k, placed_v, tier, _peer = self._place_kv(k, v, step)
                 cache_k[step] = placed_k
                 cache_v[step] = placed_v
@@ -213,6 +215,7 @@ class OptimizedKVCacheNvlinkPoolBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._query_steps = None
         self._key_steps = None
         self._value_steps = None
+        self._decode_step_inputs = []
         self._k_gather_buffer = None
         self._v_gather_buffer = None
         self._k_gather_step_views = []
