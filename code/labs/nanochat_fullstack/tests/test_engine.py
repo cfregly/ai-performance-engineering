@@ -135,6 +135,11 @@ def test_sample_batch_tokens_batches_uniform_sampling(monkeypatch):
     fake_self = SimpleNamespace(
         _sample_workspace=lambda *args: {},
         _token_tensor_to_list=lambda token_tensor: [int(token) for token in token_tensor.reshape(-1).tolist()],
+        _sample_active_logits_buffer_for=lambda logits, count: torch.empty(
+            (count, logits.size(-1)),
+            dtype=logits.dtype,
+            device=logits.device,
+        ),
     )
     monkeypatch.setitem(
         Engine._sample_batch_tokens.__globals__, "sample_next_token", fake_sample_next_token
@@ -377,6 +382,46 @@ def test_sample_batch_tokens_reuses_sampler_workspace():
     assert engine._sample_max_values_buffer.data_ptr() == max_values_ptr
 
 
+def test_sample_batch_tokens_reuses_sparse_active_logits_buffer():
+    engine = Engine(_TinyForwardModel(), _TinyTokenizer())
+    logits = torch.tensor(
+        [
+            [0.1, 0.2, 0.3, 0.4],
+            [0.9, 0.1, 0.2, 0.3],
+            [0.1, 0.8, 0.3, 0.2],
+        ],
+        dtype=torch.float32,
+    )
+
+    tokens = engine._sample_batch_tokens(
+        logits,
+        rng=None,
+        temperatures=[0.0, 0.0, 0.0],
+        top_ks=[None, None, None],
+        active_mask=torch.tensor([True, False, True]),
+        pad_id=99,
+        active_rows=[0, 2],
+        active_indices=torch.tensor([0, 2], dtype=torch.long),
+    )
+    active_logits_ptr = engine._sample_active_logits_buffer.data_ptr()
+
+    assert tokens == [3, 99, 1]
+
+    tokens = engine._sample_batch_tokens(
+        logits,
+        rng=None,
+        temperatures=[0.0, 0.0, 0.0],
+        top_ks=[None, None, None],
+        active_mask=torch.tensor([False, True, False]),
+        pad_id=99,
+        active_rows=[1],
+        active_indices=torch.tensor([1], dtype=torch.long),
+    )
+
+    assert tokens == [99, 0, 99]
+    assert engine._sample_active_logits_buffer.data_ptr() == active_logits_ptr
+
+
 def test_build_attention_mask_reuses_position_buffer():
     engine = Engine(_TinyForwardModel(), _TinyTokenizer())
     lengths = torch.tensor([2, 4], dtype=torch.long)
@@ -597,10 +642,12 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "self._active_indices_host = None" in text
     assert "self._sample_next_id_buffer = None" in text
     assert "self._sample_probs_buffer = None" in text
+    assert "self._sample_active_logits_buffer = None" in text
     assert "self._prompt_ids_device = None" in text
     assert "self._ids_step_buffer = None" in text
     assert "def _sample_host_token_buffer(self, count, source_device)" in text
     assert "def _sample_token_buffers(self, count, device)" in text
+    assert "def _sample_active_logits_buffer_for(self, logits, row_count)" in text
     assert "def _sample_workspace(self, logits, top_k, temperature)" in text
     assert "def _single_prompt_ids(self, tokens, device)" in text
     assert "def _ids_step_buffer_for(self, batch_size, device)" in text
@@ -622,6 +669,9 @@ def test_generate_sampling_materializes_tokens_through_reusable_buffer():
     assert "active_rows = self._token_tensor_to_list(active_indices)" in sample_section
     assert "self._token_tensor_to_list(next_ids[:, 0])" in sample_section
     assert "if full_active_rows:\n                return next_tokens" in sample_section
+    assert "active_logits = self._sample_active_logits_buffer_for(logits, len(active_rows))" in sample_section
+    assert "torch.index_select(logits, 0, active_indices, out=active_logits)" in sample_section
+    assert "active_logits = logits.index_select(0, active_indices)" not in sample_section
     assert "sampled_tokens = [pad_id] * logits.size(0)" not in sample_section
     assert "sampled_device[sample_idx].copy_(next_id[0, 0])" in sample_section
     assert "sampled_host.copy_(sampled_device, non_blocking=sampled_device.device.type == \"cuda\")" in sample_section
@@ -796,7 +846,13 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     assert "uniform_sampling_hint = True if uniform_sampling else None" in generate_batched
     assert generate_batched.count("uniform_sampling=uniform_sampling_hint") == 2
     assert "torch.as_tensor(active_rows" not in generate_batched
-    assert "attn_mask = self._build_attention_mask(lengths_by_batch, max(lengths_by_row))" in generate_batched
+    assert "current_decode_len = max_prompt_len" in generate_batched
+    assert "if len(active_rows) == batch_size:" in generate_batched
+    assert "current_decode_len += 1" in generate_batched
+    assert "if row_len > current_decode_len:" in generate_batched
+    assert "current_decode_len = row_len" in generate_batched
+    assert "attn_mask = self._build_attention_mask(lengths_by_batch, current_decode_len)" in generate_batched
+    assert "max(lengths_by_row)" not in generate_batched
     assert "next_lengths = lengths_by_batch +" not in generate_batched
     assert "attn_mask = self._build_attention_mask(next_lengths)" not in generate_batched
 

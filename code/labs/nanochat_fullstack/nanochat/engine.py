@@ -383,6 +383,7 @@ class Engine:
         self._sample_choice_buffer = None
         self._sample_max_values_buffer = None
         self._sample_probs_buffer = None
+        self._sample_active_logits_buffer = None
         self._sample_topk_values_buffer = None
         self._sample_topk_indices_buffer = None
         self._sample_topk_probs_buffer = None
@@ -859,6 +860,20 @@ class Engine:
             setattr(self, name, buffer)
         return buffer
 
+    def _sample_active_logits_buffer_for(self, logits, row_count):
+        vocab_size = logits.size(-1)
+        buffer = self._sample_active_logits_buffer
+        if (
+            buffer is None
+            or buffer.device != logits.device
+            or buffer.dtype != logits.dtype
+            or buffer.size(0) < row_count
+            or buffer.size(1) != vocab_size
+        ):
+            buffer = torch.empty((row_count, vocab_size), dtype=logits.dtype, device=logits.device)
+            self._sample_active_logits_buffer = buffer
+        return buffer[:row_count, :vocab_size]
+
     def _sample_workspace(self, logits, top_k, temperature):
         batch_size = logits.size(0)
         workspace = {
@@ -936,7 +951,8 @@ class Engine:
             else:
                 if active_indices is None:
                     active_indices = torch.as_tensor(active_rows, device=logits.device, dtype=torch.long)
-                active_logits = logits.index_select(0, active_indices)
+                active_logits = self._sample_active_logits_buffer_for(logits, len(active_rows))
+                torch.index_select(logits, 0, active_indices, out=active_logits)
             next_ids = sample_next_token(
                 active_logits,
                 rng,
@@ -1173,6 +1189,7 @@ class Engine:
         row_states = [RowState(tokens.copy()) for tokens in prompt_tokens_batch]
         lengths_by_batch = self._lengths_by_batch_buffer(lengths)
         lengths_by_row = prompt_lengths.copy()
+        current_decode_len = max_prompt_len
         ids_buf = self._ids_step_buffer_for(batch_size, device)
 
         # Special tokens for control flow
@@ -1211,9 +1228,17 @@ class Engine:
                 )
                 step_token_mask = active_mask.unsqueeze(1)
                 lengths_by_batch.add_(step_token_mask[:, 0])
-                for row_idx in active_rows:
-                    lengths_by_row[row_idx] += 1
-                attn_mask = self._build_attention_mask(lengths_by_batch, max(lengths_by_row))
+                if len(active_rows) == batch_size:
+                    for row_idx in active_rows:
+                        lengths_by_row[row_idx] += 1
+                    current_decode_len += 1
+                else:
+                    for row_idx in active_rows:
+                        row_len = lengths_by_row[row_idx] + 1
+                        lengths_by_row[row_idx] = row_len
+                        if row_len > current_decode_len:
+                            current_decode_len = row_len
+                attn_mask = self._build_attention_mask(lengths_by_batch, current_decode_len)
                 logits = self._execute_decode(step_ids, kv_cache_decode, attention_mask=attn_mask, token_mask=step_token_mask)
                 logits = logits[:, -1, :]
                 sampled_tokens = self._sample_batch_tokens(
