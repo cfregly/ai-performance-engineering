@@ -389,6 +389,7 @@ class Engine:
         self._prompt_lengths_host = None
         self._prompt_ids_host = None
         self._prompt_ids_device = None
+        self._lengths_by_batch = None
         self._ids_step_buffer = None
         self._pd_runner = PersistentDecodeRunner() if self.use_persistent_decode_kernel else None
         self._persistent_decode_kernel = (
@@ -630,6 +631,21 @@ class Engine:
             indices = torch.arange(batch_size, device=device)
             self._batch_row_indices = indices
         return indices[:batch_size]
+
+    def _lengths_by_batch_buffer(self, lengths):
+        count = lengths.numel()
+        buffer = self._lengths_by_batch
+        if (
+            buffer is None
+            or buffer.device != lengths.device
+            or buffer.dtype != lengths.dtype
+            or buffer.numel() < count
+        ):
+            buffer = torch.empty(count, dtype=lengths.dtype, device=lengths.device)
+            self._lengths_by_batch = buffer
+        view = buffer[:count].view_as(lengths)
+        view.copy_(lengths)
+        return view
 
     def _host_long_buffer(self, count):
         if self._token_column_host is None or self._token_column_host.numel() < count:
@@ -1155,7 +1171,7 @@ class Engine:
         self._reset_decode_graph()
 
         row_states = [RowState(tokens.copy()) for tokens in prompt_tokens_batch]
-        lengths_by_batch = lengths.clone()
+        lengths_by_batch = self._lengths_by_batch_buffer(lengths)
         lengths_by_row = prompt_lengths.copy()
         ids_buf = self._ids_step_buffer_for(batch_size, device)
 

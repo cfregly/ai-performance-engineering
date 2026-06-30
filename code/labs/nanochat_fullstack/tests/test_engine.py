@@ -429,6 +429,22 @@ def test_batch_row_index_buffer_reuses_arange_storage():
     torch.testing.assert_close(grown, torch.tensor([0, 1, 2, 3, 4]))
 
 
+def test_lengths_by_batch_buffer_reuses_device_storage():
+    engine = Engine(_TinyForwardModel(), _TinyTokenizer())
+
+    first = engine._lengths_by_batch_buffer(torch.tensor([2, 4, 5], dtype=torch.long))
+    first_ptr = first.data_ptr()
+    first.add_(1)
+
+    shorter = engine._lengths_by_batch_buffer(torch.tensor([1, 3], dtype=torch.long))
+    grown = engine._lengths_by_batch_buffer(torch.tensor([6, 7, 8, 9], dtype=torch.long))
+
+    assert shorter.data_ptr() == first_ptr
+    torch.testing.assert_close(shorter, torch.tensor([1, 3], dtype=torch.long))
+    assert grown.numel() == 4
+    torch.testing.assert_close(grown, torch.tensor([6, 7, 8, 9], dtype=torch.long))
+
+
 def test_full_active_mask_reuses_device_buffer():
     engine = Engine(_TinyForwardModel(), _TinyTokenizer())
 
@@ -749,7 +765,9 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
 
     assert "self._prompt_lengths_host = None" in text
     assert "self._prompt_ids_host = None" in text
+    assert "self._lengths_by_batch = None" in text
     assert "def _prompt_pack_buffers(self, batch_size, max_prompt_len, pad_id, pin_memory)" in text
+    assert "def _lengths_by_batch_buffer(self, lengths)" in text
     assert "lengths_host, ids_host = self._prompt_pack_buffers(" in prompt_pack_section
     assert "lengths_host = torch.empty(" not in prompt_pack_section
     assert "ids_host = torch.full(" not in prompt_pack_section
@@ -764,6 +782,8 @@ def test_generate_batched_packs_prompt_batch_on_host_before_device_copy():
     assert "torch.arange(batch_size, device=device)" not in generate_batched
     assert "active_mask = self._full_active_mask(batch_size, device)" in generate_batched
     assert "torch.ones(batch_size, dtype=torch.bool, device=device)" not in generate_batched
+    assert "lengths_by_batch = self._lengths_by_batch_buffer(lengths)" in generate_batched
+    assert "lengths_by_batch = lengths.clone()" not in generate_batched
     assert "lengths_by_batch.add_(step_token_mask[:, 0])" in generate_batched
     assert "ids_buf = self._ids_step_buffer_for(batch_size, device)" in generate_batched
     assert "torch.empty((batch_size, 1), dtype=torch.long, device=device)" not in generate_batched
