@@ -101,13 +101,20 @@ def test_zero2_gradient_sharder_reuses_reduce_buffers() -> None:
     assert "self.local_index_set = set(self.local_indices)" in init_section
     assert "self._reduce_inputs: dict[int, torch.Tensor] = {}" in init_section
     assert "self._shard_grads: dict[int, torch.Tensor] = {}" in init_section
+    assert "world_size = get(\"ws\")" in init_section
+    assert "self._reduce_inputs[idx] = torch.empty(" in init_section
+    assert "param.numel() * world_size" in init_section
+    assert "self._shard_grads[idx] = torch.empty(" in init_section
     assert "in_tensor.view(world_size, -1).copy_(flattened.unsqueeze(0))" in step_section
+    assert "in_tensor = self._reduce_inputs[idx]" in step_section
+    assert "shard_grad = self._shard_grads[idx]" in step_section
     assert "if idx in self.local_index_set:" in step_section
     assert "shard_grad.div_(world_size)" in step_section
     assert "param.grad = shard_grad.view_as(grad.data)" in step_section
     assert "(shard_grad / world_size)" not in step_section
     assert "torch.cat([flattened" not in step_section
-    assert "shard_grad = torch.empty_like(flattened)\n            dist.reduce_scatter_tensor" not in step_section
+    assert "torch.empty(" not in step_section
+    assert "torch.empty_like(" not in step_section
 
 
 def test_throughput_tracker_reuses_metric_payloads(monkeypatch) -> None:
