@@ -66,6 +66,7 @@ class BaselinePerformanceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._microbatch_groups = None
         self._target_groups = None
         self._group_sizes = None
+        self._training_groups = None
         self._tf32_state: tuple[bool, bool | None] | None = None
         samples = float(self.batch_size * self.num_microbatches)
         self.register_workload_metadata(samples_per_iteration=samples)
@@ -113,12 +114,16 @@ class BaselinePerformanceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._microbatch_groups = []
         self._target_groups = []
         self._group_sizes = []
+        self._training_groups = []
         for start in range(0, len(self.microbatches), self.fusion):
             data_group = tuple(self.microbatches[start : start + self.fusion])
             target_group = tuple(self.targets[start : start + self.fusion])
+            paired_group = tuple(zip(data_group, target_group, strict=True))
+            group_size = len(data_group)
             self._microbatch_groups.append(data_group)
             self._target_groups.append(target_group)
-            self._group_sizes.append(len(data_group))
+            self._group_sizes.append(group_size)
+            self._training_groups.append((paired_group, group_size))
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
@@ -126,15 +131,12 @@ class BaselinePerformanceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._microbatch_groups is not None
             and self._target_groups is not None
             and self._group_sizes is not None
+            and self._training_groups is not None
         )
         with self._nvtx_range("baseline_performance"):
-            for group_data, group_targets, group_size in zip(
-                self._microbatch_groups,
-                self._target_groups,
-                self._group_sizes,
-            ):
+            for paired_group, group_size in self._training_groups:
                 self.optimizer.zero_grad(set_to_none=True)
-                for data, target in zip(group_data, group_targets):
+                for data, target in paired_group:
                     logits = self.model(data)
                     loss = torch.nn.functional.cross_entropy(logits, target)
                     (loss / group_size).backward()
@@ -168,6 +170,7 @@ class BaselinePerformanceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._microbatch_groups = None
         self._target_groups = None
         self._group_sizes = None
+        self._training_groups = None
         self._verify_input = None
         self._verify_output = None
         restore_tf32_state(self._tf32_state)

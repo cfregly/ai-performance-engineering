@@ -142,6 +142,14 @@ def test_ch01_fused_microbatches_preallocate_output_buffers() -> None:
     assert "torch.cat(self.targets[start : start + self.fusion]" not in optimized_source
     assert "torch.cat(self.microbatches[start : start + self.fusion]" not in fusion_source
     assert "torch.cat(self.targets[start : start + self.fusion]" not in fusion_source
+    for source in (optimized_source, fusion_source):
+        benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+            "def capture_verification_payload",
+            maxsplit=1,
+        )[0]
+        assert "self._fused_pairs = tuple(zip(self._fused_batches, self._fused_targets, strict=True))" in source
+        assert "for data, target in self._fused_pairs:" in benchmark_section
+        assert "zip(self._fused_batches, self._fused_targets)" not in benchmark_section
 
 
 def test_ch01_fp16_benchmark_precomputes_microbatch_groups() -> None:
@@ -158,10 +166,14 @@ def test_ch01_fp16_benchmark_precomputes_microbatch_groups() -> None:
     assert "self._microbatch_groups = []" in setup_section
     assert "self._target_groups = []" in setup_section
     assert "self._group_sizes = []" in setup_section
+    assert "self._training_groups = []" in setup_section
     assert "data_group = tuple(self.microbatches[start : start + self.fusion])" in setup_section
     assert "target_group = tuple(self.targets[start : start + self.fusion])" in setup_section
-    assert "self._group_sizes.append(len(data_group))" in setup_section
-    assert "for group_data, group_targets, group_size in zip(" in benchmark_section
+    assert "paired_group = tuple(zip(data_group, target_group, strict=True))" in setup_section
+    assert "self._training_groups.append((paired_group, group_size))" in setup_section
+    assert "for paired_group, group_size in self._training_groups:" in benchmark_section
+    assert "for data, target in paired_group:" in benchmark_section
+    assert "zip(" not in benchmark_section
     assert "self.microbatches[start : start + self.fusion]" not in benchmark_section
     assert "self.targets[start : start + self.fusion]" not in benchmark_section
     assert "group_size = max(" not in benchmark_section
@@ -232,7 +244,8 @@ def test_ch01_baseline_benchmarks_precompute_microbatch_groups() -> None:
 
     assert "data_group = tuple(self.microbatches[start : start + self.fusion])" in base_setup
     assert "target_group = tuple(self.targets[start : start + self.fusion])" in base_setup
-    assert "self._group_sizes.append(len(data_group))" in base_setup
+    assert "paired_group = tuple(zip(data_group, target_group, strict=True))" in base_setup
+    assert "self._training_groups.append((paired_group, group_size))" in base_setup
 
     for benchmark_cls in (BaselinePerformanceBenchmark, BaselinePerformanceFP16Benchmark):
         source = inspect.getsource(benchmark_cls)
@@ -246,7 +259,9 @@ def test_ch01_baseline_benchmarks_precompute_microbatch_groups() -> None:
             maxsplit=1,
         )[0]
 
-        assert "for group_data, group_targets, group_size in zip(" in benchmark_section
+        assert "for paired_group, group_size in self._training_groups:" in benchmark_section
+        assert "for data, target in paired_group:" in benchmark_section
+        assert "zip(" not in benchmark_section
         assert "self.microbatches[start : start + self.fusion]" not in benchmark_section
         assert "self.targets[start : start + self.fusion]" not in benchmark_section
         assert "group_size = max(" not in benchmark_section

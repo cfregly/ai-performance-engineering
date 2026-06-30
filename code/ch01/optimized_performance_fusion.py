@@ -55,6 +55,7 @@ class OptimizedPerformanceFusionBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.parameter_count = 0
         self._fused_batches = None
         self._fused_targets = None
+        self._fused_pairs = None
         self._tf32_state: tuple[bool, bool | None] | None = None
 
         samples = float(self.batch_size * self.num_microbatches)
@@ -100,11 +101,12 @@ class OptimizedPerformanceFusionBenchmark(VerificationPayloadMixin, BaseBenchmar
             self.targets,
             self.fusion,
         )
+        self._fused_pairs = tuple(zip(self._fused_batches, self._fused_targets, strict=True))
 
     def benchmark_fn(self) -> None:
-        assert self.model is not None and self._fused_batches is not None and self._fused_targets is not None
+        assert self.model is not None and self._fused_pairs is not None
         with self._nvtx_range("optimized_performance_fusion"):
-            for data, target in zip(self._fused_batches, self._fused_targets):
+            for data, target in self._fused_pairs:
                 self.optimizer.zero_grad(set_to_none=True)
                 logits = self.model(data)
                 loss = torch.nn.functional.cross_entropy(logits, target)
@@ -136,6 +138,7 @@ class OptimizedPerformanceFusionBenchmark(VerificationPayloadMixin, BaseBenchmar
         del self.model, self.microbatches, self.targets, self.optimizer
         self._fused_batches = None
         self._fused_targets = None
+        self._fused_pairs = None
         self._verify_input = None
         self._verify_output = None
         restore_tf32_state(self._tf32_state)

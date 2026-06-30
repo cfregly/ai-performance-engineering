@@ -34,15 +34,12 @@ class BaselinePerformanceFP16Benchmark(BaselinePerformanceBenchmark):
             self._microbatch_groups is not None
             and self._target_groups is not None
             and self._group_sizes is not None
+            and self._training_groups is not None
         )
         with nvtx_range("baseline_performance_fp16", enable=self._enable_nvtx):
-            for group_data, group_targets, group_size in zip(
-                self._microbatch_groups,
-                self._target_groups,
-                self._group_sizes,
-            ):
+            for paired_group, group_size in self._training_groups:
                 self.optimizer.zero_grad(set_to_none=True)
-                for data, target in zip(group_data, group_targets):
+                for data, target in paired_group:
                     logits = self.model(data)
                     loss = torch.nn.functional.cross_entropy(logits, target)
                     (loss / group_size).backward()
