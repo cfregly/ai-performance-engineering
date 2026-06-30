@@ -54,6 +54,7 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.hidden_dim = 1536
         self.num_stages = 4
         self.repeats = 6
+        self._repeat_range = range(self.repeats)
         self.num_microbatches = 8
         self.register_workload_metadata(requests_per_iteration=float(self.batch_size))
         self._payload_parameter_count = 0
@@ -98,6 +99,7 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
         ]
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
+        self._repeat_range = range(self.repeats)
     
     def _run_pipeline_once(self, microbatches: list[torch.Tensor]) -> list[torch.Tensor]:
         assert self.stages is not None and self._last_outputs is not None
@@ -117,7 +119,7 @@ class BaselinePipelineSequentialBenchmark(VerificationPayloadMixin, BaseBenchmar
 
         with nvtx_range("baseline_pipeline_sequential", enable=self._enable_nvtx):
             with torch.inference_mode():
-                for _ in range(self.repeats):
+                for _ in self._repeat_range:
                     self._run_pipeline_once(self.microbatches)
 
     def capture_verification_payload(self) -> None:

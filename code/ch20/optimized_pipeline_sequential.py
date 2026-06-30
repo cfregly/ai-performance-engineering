@@ -53,6 +53,7 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
         self.hidden_dim = 1536
         self.num_stages = 4
         self.repeats = 6
+        self._repeat_range = range(self.repeats)
         self.num_microbatches = 8
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.batch_size),
@@ -86,6 +87,7 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
             torch.empty(0, device=self.device, dtype=torch.float16)
             for _ in range(self.num_microbatches)
         ]
+        self._repeat_range = range(self.repeats)
 
     def _run_pipelined_once(self) -> list[torch.Tensor]:
         assert self.stages is not None and self.microbatches is not None
@@ -137,7 +139,7 @@ class OptimizedPipelineOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark)
         assert self.inputs is not None and self.stages is not None and self.microbatches is not None
         with self._nvtx_range("pipeline_sequential_optimized"):
             with torch.inference_mode():
-                for _ in range(self.repeats):
+                for _ in self._repeat_range:
                     self._run_pipelined_once()
 
     def capture_verification_payload(self) -> None:

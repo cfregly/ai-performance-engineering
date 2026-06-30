@@ -8074,6 +8074,9 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
         assert "self._last_outputs[output_count] = x" in baseline_run
         assert "self._last_output_count = output_count" in baseline_run
         assert "self._run_pipeline_once(self.microbatches)" in benchmark_section
+        assert "self._repeat_range = range(self.repeats)" in source
+        assert "for _ in self._repeat_range:" in benchmark_section
+        assert "for _ in range(self.repeats):" not in benchmark_section
         assert "self._last_outputs = outputs" not in benchmark_section
         assert "torch.cat([out.detach() for out in self._last_outputs], dim=0)" not in capture_section
         assert "torch.cat(self._last_outputs, dim=0, out=self._output_buffer)" in capture_section
@@ -8110,6 +8113,9 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
     assert "with torch.no_grad():" not in optimized_benchmark
     assert "torch.cat(" not in optimized_benchmark
     assert "self._run_pipelined_once()" in optimized_benchmark
+    assert "self._repeat_range = range(self.repeats)" in optimized_source
+    assert "for _ in self._repeat_range:" in optimized_benchmark
+    assert "for _ in range(self.repeats):" not in optimized_benchmark
     assert "self._last_outputs = outputs" not in optimized_benchmark
     assert "torch.cat([out.detach() for out in self._last_outputs], dim=0)" not in optimized_capture
     assert "torch.cat(self._last_outputs, dim=0, out=self._output_buffer)" in optimized_capture
