@@ -44,13 +44,13 @@ def _read_jsonl(path: Path) -> List[Dict]:
 def _pct(values: List[float], pct: float) -> float:
     if not values:
         return 0.0
-    ordered = sorted(values)
-    k = (len(ordered) - 1) * (pct / 100.0)
+    values.sort()
+    k = (len(values) - 1) * (pct / 100.0)
     lo = math.floor(k)
     hi = math.ceil(k)
     if lo == hi:
-        return ordered[int(k)]
-    return ordered[int(lo)] * (hi - k) + ordered[int(hi)] * (k - lo)
+        return values[int(k)]
+    return values[int(lo)] * (hi - k) + values[int(hi)] * (k - lo)
 
 
 def _load_run(run_dir: Path) -> Dict:

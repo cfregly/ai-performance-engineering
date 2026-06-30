@@ -140,11 +140,11 @@ def _rank_top_experts(
     )
 
 
-def _percentiles(values: Sequence[float]) -> Dict[str, float]:
-    ordered = sorted(values)
+def _percentiles(values: List[float]) -> Dict[str, float]:
+    values.sort()
     return {
-        "p50": _percentile_from_ordered(ordered, 50),
-        "p95": _percentile_from_ordered(ordered, 95),
+        "p50": _percentile_from_ordered(values, 50),
+        "p95": _percentile_from_ordered(values, 95),
     }
 
 

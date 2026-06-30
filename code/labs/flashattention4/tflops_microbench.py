@@ -93,12 +93,12 @@ def _timing_stats_from_samples(times_ms: list[float]) -> TimingStats:
         min_ms = min(min_ms, value)
         max_ms = max(max_ms, value)
 
-    sorted_times = sorted(times_ms)
+    times_ms.sort()
     midpoint = count // 2
     if count % 2:
-        median_ms = sorted_times[midpoint]
+        median_ms = times_ms[midpoint]
     else:
-        median_ms = (sorted_times[midpoint - 1] + sorted_times[midpoint]) / 2.0
+        median_ms = (times_ms[midpoint - 1] + times_ms[midpoint]) / 2.0
 
     mean_ms = total / count
     if count > 1:

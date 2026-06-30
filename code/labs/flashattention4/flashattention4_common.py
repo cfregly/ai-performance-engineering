@@ -620,12 +620,12 @@ def measure_flashattention4_latency(
         min_ms = min(min_ms, value)
         max_ms = max(max_ms, value)
 
-    sorted_times = sorted(times_ms)
+    times_ms.sort()
     mid = count // 2
     if count % 2 == 1:
-        median_ms = sorted_times[mid]
+        median_ms = times_ms[mid]
     else:
-        median_ms = (sorted_times[mid - 1] + sorted_times[mid]) / 2.0
+        median_ms = (times_ms[mid - 1] + times_ms[mid]) / 2.0
 
     mean_ms = total_ms / count
     if count > 1:

@@ -231,14 +231,15 @@ def _percentile_from_ordered(data_sorted: List[float], pct: float) -> float:
 def _percentile(data: List[float], pct: float) -> float:
     if not data:
         return 0.0
-    return _percentile_from_ordered(sorted(data), pct)
+    data.sort()
+    return _percentile_from_ordered(data, pct)
 
 
 def _percentiles(data: List[float], pcts: Tuple[float, ...]) -> Tuple[float, ...]:
     if not data:
         return tuple(0.0 for _ in pcts)
-    data_sorted = sorted(data)
-    return tuple(_percentile_from_ordered(data_sorted, pct) for pct in pcts)
+    data.sort()
+    return tuple(_percentile_from_ordered(data, pct) for pct in pcts)
 
 
 def _poisson(lam: float) -> int:

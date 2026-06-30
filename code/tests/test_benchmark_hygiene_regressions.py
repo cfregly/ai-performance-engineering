@@ -5164,7 +5164,8 @@ def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:
     assert timing_section.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "for _ in range(iterations):\n        start = torch.cuda.Event" not in timing_section
     assert "end.synchronize()" in timing_section
-    assert "sorted_times = sorted(times_ms)" in timing_section
+    assert "times_ms.sort()" in timing_section
+    assert "sorted_times = sorted(times_ms)" not in timing_section
     assert "mean_ms = total_ms / count" in timing_section
     assert "variance = (total_sq_ms - (total_ms * total_ms / count)) / (count - 1)" in timing_section
     assert "torch.tensor(times_ms" not in timing_section
@@ -5175,7 +5176,8 @@ def test_flashattention4_timing_reuses_events_and_cpu_statistics() -> None:
     assert "import statistics" not in microbench_source
     assert "def _timing_stats_from_samples" in microbench_source
     assert "return _timing_stats_from_samples(times_ms)" in microbench_timing_section
-    assert "sorted_times = sorted(times_ms)" in microbench_source
+    assert "times_ms.sort()" in microbench_source
+    assert "sorted_times = sorted(times_ms)" not in microbench_source
     assert "mean_ms = total / count" in microbench_source
     assert "variance = (total_sq - (total * total / count)) / (count - 1)" in microbench_source
     assert "statistics.mean(times_ms)" not in microbench_timing_section
@@ -8184,6 +8186,10 @@ def test_dynamic_router_vllm_runner_caches_engine_ids() -> None:
 
 
 def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None:
+    from labs.dynamic_router.driver import _percentiles as driver_percentiles_fn
+    from labs.dynamic_router.scorecard import _pct as scorecard_pct
+    from labs.dynamic_router.vllm_runner import _percentiles as runner_percentiles_fn
+
     runner_source = (REPO_ROOT / "labs" / "dynamic_router" / "vllm_runner.py").read_text(
         encoding="utf-8"
     )
@@ -8218,8 +8224,9 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
     )[0]
 
     assert "def _percentile_from_ordered" in runner_source
-    assert "data_sorted = sorted(data)" in runner_percentiles
-    assert "return tuple(_percentile_from_ordered(data_sorted, pct) for pct in pcts)" in runner_percentiles
+    assert "data.sort()" in runner_percentiles
+    assert "return tuple(_percentile_from_ordered(data, pct) for pct in pcts)" in runner_percentiles
+    assert "data_sorted = sorted(data)" not in runner_percentiles
     assert "summary[\"ttft_ms_p50\"], summary[\"ttft_ms_p95\"] = _percentiles(ttft_samples" in routing_section
     assert "ttft_p50, ttft_p95 = _percentiles(ttft_samples, (50.0, 95.0))" in dual_pool_section
     assert "prefill_ttft_p50, prefill_ttft_p95 = _percentiles(pool_ttft[\"prefill\"]" in dual_pool_section
@@ -8240,8 +8247,9 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
 
     assert "def _percentile_from_ordered" in driver_source
     assert "import statistics" not in driver_source
-    assert "data_sorted = sorted(data)" in driver_percentiles
-    assert "return tuple(_percentile_from_ordered(data_sorted, pct) for pct in pcts)" in driver_percentiles
+    assert "data.sort()" in driver_percentiles
+    assert "return tuple(_percentile_from_ordered(data, pct) for pct in pcts)" in driver_percentiles
+    assert "data_sorted = sorted(data)" not in driver_percentiles
     assert "ttft_p50, ttft_p95 = _percentiles(completed_ttfts, (50.0, 95.0))" in simulate_section
     assert "completed_ttft_total += state.ttft_ms" in simulate_section
     assert '"ttft_ms_mean": completed_ttft_total / len(completed_ttfts)' in simulate_section
@@ -8252,6 +8260,16 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
     assert "statistics.mean(" not in simulate_section
     assert "_percentile(completed_ttfts, 50.0)" not in simulate_section
     assert "_percentile(completed_ttfts, 95.0)" not in simulate_section
+
+    runner_samples = [4.0, 1.0, 3.0, 2.0]
+    driver_samples = [4.0, 1.0, 3.0, 2.0]
+    scorecard_samples = [4.0, 1.0, 3.0, 2.0]
+    assert runner_percentiles_fn(runner_samples, (50.0, 95.0)) == (2.5, 3.8499999999999996)
+    assert driver_percentiles_fn(driver_samples, (50.0, 95.0)) == (2.5, 3.8499999999999996)
+    assert scorecard_pct(scorecard_samples, 95.0) == 3.8499999999999996
+    assert runner_samples == [1.0, 2.0, 3.0, 4.0]
+    assert driver_samples == [1.0, 2.0, 3.0, 4.0]
+    assert scorecard_samples == [1.0, 2.0, 3.0, 4.0]
 
     scorecard_read_jsonl = scorecard_source.split("def _read_jsonl", maxsplit=1)[1].split(
         "def _pct",
@@ -8331,6 +8349,7 @@ def test_dynamic_router_percentiles_reuse_sorted_samples(tmp_path: Path) -> None
 
 def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     from labs.dynamic_router.eval_stack import (
+        _percentiles as eval_stack_percentiles,
         _rank_top_experts,
         _summarize_moe,
         _summarize_quality_rows,
@@ -8379,9 +8398,10 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     )[0]
 
     assert "def _percentile_from_ordered" in source
-    assert "ordered = sorted(values)" in percentile_section
-    assert "p50\": _percentile_from_ordered(ordered, 50)" in percentile_section
-    assert "p95\": _percentile_from_ordered(ordered, 95)" in percentile_section
+    assert "values.sort()" in percentile_section
+    assert "p50\": _percentile_from_ordered(values, 50)" in percentile_section
+    assert "p95\": _percentile_from_ordered(values, 95)" in percentile_section
+    assert "ordered = sorted(values)" not in percentile_section
     assert "_percentile(values, 50)" not in percentile_section
     assert "_percentile(values, 95)" not in percentile_section
     assert "correct_by_task: Dict[str, int] = {}" in quality_section
@@ -8441,6 +8461,13 @@ def test_dynamic_router_eval_stack_avoids_redundant_sorting() -> None:
     assert "return rows, _summarize_quality_rows(rows)" in run_quality_section
     assert "per_task_acc" not in run_quality_section
     assert "sum(v) / len(v)" not in run_quality_section
+
+    percentile_samples = [4.0, 1.0, 3.0, 2.0]
+    assert eval_stack_percentiles(percentile_samples) == {
+        "p50": 2.5,
+        "p95": 3.8499999999999996,
+    }
+    assert percentile_samples == [1.0, 2.0, 3.0, 4.0]
     assert "return []" in llm_quality_section
     assert "return rows" in llm_quality_section
     assert "per_task_acc" not in llm_quality_section
