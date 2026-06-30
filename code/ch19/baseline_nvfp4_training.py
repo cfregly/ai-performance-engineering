@@ -102,6 +102,7 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         torch.cuda.synchronize(self.device)
 
     def _train_step(self, idx: int) -> None:
@@ -127,12 +128,8 @@ class BaselineNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Verification input/model missing")
         with torch.inference_mode():
             verify_output = self.model(self._verify_input)
-            if (
-                self._verify_output_buffer is None
-                or self._verify_output_buffer.shape != verify_output.shape
-                or self._verify_output_buffer.device != verify_output.device
-            ):
-                self._verify_output_buffer = torch.empty_like(verify_output, dtype=torch.float32)
+            if self._verify_output_buffer is None:
+                raise RuntimeError("Verification output buffer missing")
             self._verify_output_buffer.copy_(verify_output)
             self.output = self._verify_output_buffer
         self._set_verification_payload(

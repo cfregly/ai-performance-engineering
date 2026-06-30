@@ -155,6 +155,7 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)
         
         # Calibration warmup (important for quantization)
         self._calibration_warmup()
@@ -195,12 +196,8 @@ class OptimizedNVFP4TrainingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with torch.inference_mode():
             with te_autocast(enabled=True, recipe=self.active_recipe):
                 out = self.model(self._verify_input)
-            if (
-                self._verify_output_buffer is None
-                or self._verify_output_buffer.shape != out.shape
-                or self._verify_output_buffer.device != out.device
-            ):
-                self._verify_output_buffer = torch.empty_like(out, dtype=torch.float32)
+            if self._verify_output_buffer is None:
+                raise RuntimeError("Verification output buffer missing")
             self._verify_output_buffer.copy_(out)
             self.output = self._verify_output_buffer
         precision_flags = {

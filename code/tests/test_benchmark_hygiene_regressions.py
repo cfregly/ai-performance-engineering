@@ -18607,6 +18607,36 @@ def test_benchmark_functions_do_not_import_nvtx_helpers_in_hot_path() -> None:
     assert violations == []
 
 
+def test_ch19_nvfp4_training_preallocates_verification_outputs() -> None:
+    for relative in (
+        "ch19/baseline_nvfp4_training.py",
+        "ch19/optimized_nvfp4_training.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        setup_end = (
+            "def _calibration_warmup"
+            if "optimized_nvfp4" in relative
+            else "def _train_step"
+        )
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            setup_end,
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def get_input_signature",
+            maxsplit=1,
+        )[0]
+
+        assert (
+            "self._verify_output_buffer = torch.empty_like(self._verify_input, dtype=torch.float32)"
+            in setup_section
+        )
+        assert "if self._verify_output_buffer is None:" in capture_section
+        assert "raise RuntimeError(\"Verification output buffer missing\")" in capture_section
+        assert "self._verify_output_buffer.copy_(" in capture_section
+        assert "self._verify_output_buffer = torch.empty_like(" not in capture_section
+
+
 def test_ch08_to_ch12_kernel_wrappers_use_inference_mode() -> None:
     paths = (
         "ch08/optimized_tcgen05_custom_vs_cublas.py",
