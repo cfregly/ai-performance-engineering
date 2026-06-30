@@ -8213,6 +8213,10 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     common_source = (REPO_ROOT / "ch18" / "rope_q_cache_common.py").read_text(encoding="utf-8")
     baseline_source = (REPO_ROOT / "ch18" / "baseline_rope_q_cache.py").read_text(encoding="utf-8")
     baseline_setup = baseline_source.split("def benchmark_fn", maxsplit=1)[0]
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
     source = (REPO_ROOT / "ch18" / "optimized_rope_q_cache.py").read_text(encoding="utf-8")
     setup_section = source.split("def benchmark_fn", maxsplit=1)[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
@@ -8228,6 +8232,16 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "emb = torch.cat([freqs, freqs], dim=-1)" not in common_source
     assert "cos[:, :half].copy_(cos_half)" in common_source
     assert "sin[:, half:].copy_(sin_half)" in common_source
+    assert "out = torch.empty_like(q)" in common_source
+    assert "torch.mul(q1, cos[..., :half], out=out1)" in common_source
+    assert "out1.addcmul_(q2, sin[..., :half], value=-1)" in common_source
+    assert "torch.mul(q2, cos[..., half:], out=out2)" in common_source
+    assert "out2.addcmul_(q1, sin[..., half:])" in common_source
+    assert "cos_t = self.cos[step].view(1, 1, self.cfg.head_dim)" in baseline_benchmark
+    assert "sin_t = self.sin[step].view(1, 1, self.cfg.head_dim)" in baseline_benchmark
+    assert "q = apply_rope(q, cos_t, sin_t)" in baseline_benchmark
+    assert "for h in range(self.cfg.heads):" not in baseline_benchmark
+    assert "q[:, h, :]" not in baseline_benchmark
     assert "self.cache = torch.empty(" in setup_section
     assert "self.cache = torch.zeros(" not in setup_section
     assert "self.rope_scratch = torch.empty(" in setup_section
@@ -8254,12 +8268,20 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     q = torch.randn(2, 3, 8, dtype=torch.float32)
     cos = torch.randn(1, 1, 8, dtype=torch.float32)
     sin = torch.randn(1, 1, 8, dtype=torch.float32)
-    expected = apply_rope(q.clone(), cos, sin)
+    half = q.shape[-1] // 2
+    rotated = torch.cat((-q[..., half:], q[..., :half]), dim=-1)
+    expected = (q * cos) + (rotated * sin)
     actual_input = q.clone()
     scratch = torch.empty_like(actual_input[..., :4])
+    vectorized = apply_rope(q.clone(), cos, sin)
+    grad_input = q.clone().requires_grad_(True)
 
     actual = apply_rope_inplace(actual_input, cos, sin, scratch)
+    grad_output = apply_rope(grad_input, cos, sin)
 
+    torch.testing.assert_close(vectorized, expected)
+    assert grad_output.requires_grad
+    torch.testing.assert_close(grad_output.detach(), expected)
     assert actual is actual_input
     torch.testing.assert_close(actual, expected)
 

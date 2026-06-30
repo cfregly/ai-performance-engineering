@@ -55,7 +55,20 @@ def rotate_half(x: torch.Tensor) -> torch.Tensor:
 
 
 def apply_rope(q: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
-    return (q * cos) + (rotate_half(q) * sin)
+    if torch.is_grad_enabled() and (q.requires_grad or cos.requires_grad or sin.requires_grad):
+        return (q * cos) + (rotate_half(q) * sin)
+
+    half = q.shape[-1] // 2
+    q1 = q[..., :half]
+    q2 = q[..., half:]
+    out = torch.empty_like(q)
+    out1 = out[..., :half]
+    out2 = out[..., half:]
+    torch.mul(q1, cos[..., :half], out=out1)
+    out1.addcmul_(q2, sin[..., :half], value=-1)
+    torch.mul(q2, cos[..., half:], out=out2)
+    out2.addcmul_(q1, sin[..., half:])
+    return out
 
 
 def apply_rope_inplace(

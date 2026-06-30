@@ -74,12 +74,9 @@ class BaselineRopeQCacheBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 x = self.inputs[step]
                 q = x @ self.q_weight
                 q = q.view(self.cfg.batch_size, self.cfg.heads, self.cfg.head_dim)
-                cos_t = self.cos[step].unsqueeze(0)
-                sin_t = self.sin[step].unsqueeze(0)
-                for h in range(self.cfg.heads):
-                    qh = q[:, h, :]
-                    qh = apply_rope(qh, cos_t, sin_t)
-                    q[:, h, :] = qh
+                cos_t = self.cos[step].view(1, 1, self.cfg.head_dim)
+                sin_t = self.sin[step].view(1, 1, self.cfg.head_dim)
+                q = apply_rope(q, cos_t, sin_t)
                 self.cache[:, :, step, :] = q
             self.output = self.cache[:, :, self.cfg.steps - 1, :]
         if self.output is None:
