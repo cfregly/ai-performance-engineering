@@ -36,25 +36,36 @@ class BufferedTinyBlock(nn.Module):
         self._linear1_weight_t = self.linear1.weight.t()
         self._linear2_weight_t = self.linear2.weight.t()
 
+    def _workspace(
+        self,
+        name: str,
+        shape: tuple[int, ...],
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        shape = tuple(int(dim) for dim in shape)
+        numel = 1
+        for dim in shape:
+            numel *= dim
+        cached = getattr(self, name)
+        if (
+            not isinstance(cached, torch.Tensor)
+            or cached.device != device
+            or cached.dtype != dtype
+            or cached.numel() < numel
+        ):
+            cached = torch.empty(numel, device=device, dtype=dtype)
+            setattr(self, name, cached)
+        return cached[:numel].view(shape)
+
     def _ensure_buffers(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         prefix = tuple(x.shape[:-1])
         hidden_shape = (*prefix, self.linear1.out_features)
         output_shape = (*prefix, self.linear2.out_features)
-        if (
-            self._hidden_buffer is None
-            or self._hidden_buffer.shape != hidden_shape
-            or self._hidden_buffer.device != x.device
-            or self._hidden_buffer.dtype != x.dtype
-        ):
-            self._hidden_buffer = torch.empty(hidden_shape, device=x.device, dtype=x.dtype)
-        if (
-            self._output_buffer is None
-            or self._output_buffer.shape != output_shape
-            or self._output_buffer.device != x.device
-            or self._output_buffer.dtype != x.dtype
-        ):
-            self._output_buffer = torch.empty(output_shape, device=x.device, dtype=x.dtype)
-        return self._hidden_buffer, self._output_buffer
+        hidden = self._workspace("_hidden_buffer", hidden_shape, device=x.device, dtype=x.dtype)
+        output = self._workspace("_output_buffer", output_shape, device=x.device, dtype=x.dtype)
+        return hidden, output
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled():

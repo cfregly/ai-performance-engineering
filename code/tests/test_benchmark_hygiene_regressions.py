@@ -3483,6 +3483,11 @@ def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
     assert "def cache_weight_views(self) -> None:" in buffered_section
     assert "self._linear1_weight_t = self.linear1.weight.t()" in buffered_section
     assert "self._linear2_weight_t = self.linear2.weight.t()" in buffered_section
+    assert "def _workspace(" in buffered_section
+    assert "or cached.numel() < numel" in buffered_section
+    assert "return cached[:numel].view(shape)" in buffered_section
+    assert "self._hidden_buffer.shape != hidden_shape" not in buffered_section
+    assert "self._output_buffer.shape != output_shape" not in buffered_section
     assert "if torch.is_grad_enabled():" in buffered_forward
     assert "torch.matmul(x, self._linear1_weight_t, out=hidden)" in buffered_forward
     assert "torch.relu_(hidden)" in buffered_forward
@@ -3491,6 +3496,27 @@ def test_ch05_optimized_ai_prefetches_next_copy_before_compute() -> None:
     assert "self.linear2.weight.t()" not in buffered_forward
     assert "self.output = out" in benchmark_section
     assert "out.detach()" not in benchmark_section
+
+
+def test_ch05_buffered_tiny_block_reuses_larger_inference_workspace() -> None:
+    from ch05.ai_common import BufferedTinyBlock
+
+    block = BufferedTinyBlock(4).eval()
+    with torch.inference_mode():
+        large = block(torch.randn(8, 4))
+        hidden_ptr = block._hidden_buffer.data_ptr()
+        output_ptr = block._output_buffer.data_ptr()
+        small = block(torch.randn(3, 4))
+        grown = block(torch.randn(9, 4))
+
+    assert large.shape == (8, 4)
+    assert small.shape == (3, 4)
+    assert small.data_ptr() == output_ptr
+    assert block._hidden_buffer.numel() == 9 * 8
+    assert block._output_buffer.numel() == 9 * 4
+    assert block._hidden_buffer.data_ptr() != hidden_ptr or block._hidden_buffer.numel() > 8 * 8
+    assert block._output_buffer.data_ptr() != output_ptr or block._output_buffer.numel() > 8 * 4
+    assert grown.shape == (9, 4)
 
 
 def test_ch03_mlp_training_benchmarks_store_outputs_without_detach() -> None:
