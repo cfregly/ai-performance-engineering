@@ -7399,6 +7399,9 @@ def test_ch20_bf16_mlp_reuses_materialization_scalar() -> None:
         assert "dim=(0, 1)" in benchmark_section
         assert "out=self._materialization_buffer" in benchmark_section
         assert ".sum()" not in benchmark_section
+        if relative.endswith("baseline_bf16_mlp.py"):
+            assert "self.output = out" in benchmark_section
+            assert "self.output = out.detach()" not in benchmark_section
         assert "self._materialization_buffer = None" in teardown_section
 
 

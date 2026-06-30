@@ -83,7 +83,7 @@ class BaselineBF16MLPBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.inference_mode():
                 out = self.model(self.x)
                 torch.sum(out, dim=(0, 1), out=self._materialization_buffer)
-                self.output = out.detach()
+                self.output = out
 
     def capture_verification_payload(self) -> None:
         assert self.model is not None and self.x is not None and self.output is not None
