@@ -17881,6 +17881,47 @@ def test_ch12_kernel_launches_pair_keeps_hot_path_work_fixed() -> None:
     assert "with torch.inference_mode(), torch.cuda.graph(self.graph):" in optimized_source
 
 
+def test_midchapter_wrappers_reuse_verification_output_buffers() -> None:
+    targets = (
+        ("ch04/gradient_fusion_common.py", "self._verify_output_buffer = torch.empty_like(self._accum_buffer)"),
+        ("ch09/baseline_compute_bound.py", "self._verify_output_buffer = torch.empty_like(self.input)"),
+        ("ch09/optimized_compute_bound.py", "self._verify_output_buffer = torch.empty_like(self.input)"),
+        ("ch09/baseline_triton.py", "self._verify_output_buffer = torch.empty_like(self._output_buffer)"),
+        ("ch09/optimized_triton.py", "self._verify_output_buffer = torch.empty_like(self._output_buffer)"),
+        ("ch12/baseline_kernel_launches.py", "self._verify_output_buffer = torch.empty_like(self.x)"),
+    )
+
+    for relative_path, allocation in targets:
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert allocation in setup_section
+        assert "self._verify_output_buffer.copy_(self.output)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "output=self.output.detach().clone()" not in capture_section
+        assert "self._verify_output_buffer = None" in teardown_section
+
+    ch12_source = (REPO_ROOT / "ch12" / "baseline_kernel_launches.py").read_text(encoding="utf-8")
+    ch12_setup = ch12_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    assert "self._verify_input = self.x.detach()" in ch12_setup
+    assert "self._verify_input = self.x.detach().clone()" not in ch12_setup
+
+
 def test_optimized_benchmarks_hoist_nvtx_helpers() -> None:
     for relative in (
         "ch03/optimized_pinned_prefetch_mlp.py",

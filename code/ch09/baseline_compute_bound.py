@@ -23,6 +23,7 @@ class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.model: Optional[nn.Module] = None
         self.input: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.repeats = 16
         self.N = 4096
         self._payload_parameter_count = 0
@@ -43,6 +44,7 @@ class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
             nn.Linear(self.N * 2, self.N),
         ).to(self.device, dtype=torch.float16).eval()
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float16)
+        self._verify_output_buffer = torch.empty_like(self.input)
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
     def benchmark_fn(self) -> None:
@@ -55,9 +57,12 @@ class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.input.shape[0],
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -72,6 +77,8 @@ class BaselineComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.model = None
         self.input = None
+        self.output = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:

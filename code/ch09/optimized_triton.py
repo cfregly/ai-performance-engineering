@@ -63,6 +63,7 @@ class OptimizedTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input = None
         self.output = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.N = 1_000_000
         # Triton benchmark - fixed N for kernel comparison
         self._workload = WorkloadMetadata(
@@ -78,6 +79,7 @@ class OptimizedTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float32)
         self._output_buffer = torch.empty(self.N, device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty_like(self._output_buffer)
         self._synchronize()
         self.register_workload_metadata(
             requests_per_iteration=self._workload.requests_per_iteration,
@@ -103,9 +105,12 @@ class OptimizedTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.input.shape[0],
             parameter_count=0,
             precision_flags={
@@ -123,6 +128,7 @@ class OptimizedTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input = None
         self.output = None
         self._output_buffer = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:
@@ -152,5 +158,4 @@ class OptimizedTritonBenchmark(VerificationPayloadMixin, BaseBenchmark):
 def get_benchmark() -> BaseBenchmark:
     """Factory function for harness discovery."""
     return OptimizedTritonBenchmark()
-
 

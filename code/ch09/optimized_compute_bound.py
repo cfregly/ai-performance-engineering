@@ -74,6 +74,7 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._graph: Optional[torch.cuda.CUDAGraph] = None
         self._static_output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.repeats = 16
         self.N = 4096
         self._payload_parameter_count = 0
@@ -89,6 +90,7 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         self.model = BufferedVectorMlp(self.N, self.N * 2).to(self.device, dtype=torch.float16).eval()
         self.input = torch.randn(self.N, device=self.device, dtype=torch.float16)
+        self._verify_output_buffer = torch.empty_like(self.input)
         self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())
 
         if not torch.cuda.is_available():
@@ -125,9 +127,12 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("benchmark_fn() must produce output for verification")
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"input": self.input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self.input.shape[0],
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -142,6 +147,10 @@ class OptimizedComputeBoundBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def teardown(self) -> None:
         self.model = None
         self.input = None
+        self.output = None
+        self._graph = None
+        self._static_output = None
+        self._verify_output_buffer = None
         super().teardown()
     
     def get_config(self) -> BenchmarkConfig:

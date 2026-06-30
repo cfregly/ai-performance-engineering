@@ -50,6 +50,7 @@ class BaselineKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
             tokens_per_iteration=float(tokens),
         )
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         # Kernel launch benchmark - fixed dimensions for consistent overhead measurement
     
     def setup(self) -> None:
@@ -57,7 +58,8 @@ class BaselineKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
         # Use bfloat16 for GPU performance
         dtype = torch.bfloat16 if self.device.type == "cuda" and torch.cuda.is_bf16_supported() else torch.float32
         self.x = torch.randn(*self.size, device=self.device, dtype=dtype)
-        self._verify_input = self.x.detach().clone()
+        self._verify_input = self.x.detach()
+        self._verify_output_buffer = torch.empty_like(self.x)
     
     def benchmark_fn(self) -> None:
         """Function to benchmark."""
@@ -70,10 +72,13 @@ class BaselineKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._payload_dtype = dtype
 
     def capture_verification_payload(self) -> None:
+        if self.output is None or self._verify_output_buffer is None:
+            raise RuntimeError("benchmark_fn() must produce output before verification")
+        self._verify_output_buffer.copy_(self.output)
         dtype = self._payload_dtype
         self._set_verification_payload(
             inputs={"input": self._verify_input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=self._verify_input.shape[0],
             parameter_count=0,
             precision_flags={
@@ -90,6 +95,8 @@ class BaselineKernelLaunchesBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Cleanup."""
         self.x = None
         self.output = None
+        self._verify_input = None
+        self._verify_output_buffer = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     

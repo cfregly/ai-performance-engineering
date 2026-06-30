@@ -49,6 +49,7 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._tail_tensors: list[torch.Tensor] = []
         self.output: Optional[torch.Tensor] = None
         self._verify_input: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
 
     def setup(self) -> None:
         if not torch.cuda.is_available():
@@ -74,6 +75,7 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._tail_tensors = self.tensors[1:]
         self._verify_input = self.tensors[0]
         self._accum_buffer = torch.empty((), device=self.device, dtype=torch.float32)
+        self._verify_output_buffer = torch.empty_like(self._accum_buffer)
 
     def benchmark_fn(self) -> None:
         if not self.tensors or self.fused_tensor is None or self._seed_tensor is None:
@@ -93,11 +95,12 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = accum
 
     def capture_verification_payload(self) -> None:
-        if self._verify_input is None or self.output is None:
+        if self._verify_input is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output)
         self._set_verification_payload(
             inputs={"probe": self._verify_input},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=int(self._verify_input.shape[0]),
             parameter_count=0,
             precision_flags={
@@ -121,6 +124,7 @@ class GradientFusionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output = None
         self._verify_input = None
         self._accum_buffer = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
