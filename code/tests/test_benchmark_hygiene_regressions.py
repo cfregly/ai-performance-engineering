@@ -8655,15 +8655,30 @@ def test_ch20_proofwright_report_accumulates_summary_once() -> None:
 
 def test_ch20_proofwright_benchmark_reuses_specification_payload() -> None:
     source = (REPO_ROOT / "ch20" / "proofwright_verify_tool.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
 
     assert "self._specification_payload: Dict[str, int] = {" in source
-    assert "specification = self._specification_payload" in benchmark_section
-    assert 'specification["preconditions"] = len(spec.preconditions)' in benchmark_section
-    assert 'self._verification_report["specification"] = specification' in benchmark_section
+    assert "self._kernel_spec: Optional[KernelSpec] = None" in source
+    assert "self._edge_case_count: int = 0" in source
+    assert "self._semantic_input_shapes: List[Tuple[int, ...]]" in source
+    assert "spec = self.agent._generate_spec_from_kernel(self.kernel_source)" in setup_section
+    assert "self._edge_case_count = len(self.agent.discover_edge_cases(self.kernel_source, spec))" in setup_section
+    assert "specification = self._specification_payload" in setup_section
+    assert 'specification["preconditions"] = len(spec.preconditions)' in setup_section
+    assert "spec = self._kernel_spec" in benchmark_section
+    assert "input_shapes=self._semantic_input_shapes" in benchmark_section
+    assert 'self._verification_report["discovered_edge_cases"] = self._edge_case_count' in benchmark_section
+    assert 'self._verification_report["specification"] = self._specification_payload' in benchmark_section
+    assert "self.agent._generate_spec_from_kernel(self.kernel_source)" not in benchmark_section
+    assert "discover_edge_cases(self.kernel_source, spec)" not in benchmark_section
+    assert "len(spec.preconditions)" not in benchmark_section
     assert 'self._verification_report["specification"] = {' not in benchmark_section
 
 
