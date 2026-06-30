@@ -8754,6 +8754,9 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     assert "self._layer_groups: list[tuple[int, nn.Module]] = []" in source
     assert "CacheEntry = dict[str, object]" in source
     assert "def append_block_entry(" in cache_section
+    assert "def project_kv_block_entry(" in cache_section
+    assert "torch.matmul(x_block, k_weight_t, out=k_out)" in cache_section
+    assert "torch.matmul(x_block, v_weight_t, out=v_out)" in cache_section
     assert "def get_entry(" in cache_section
     assert "return per_layer" in cache_section
     assert "self.request_ids = [f\"req_{seq_idx}\" for seq_idx in range(len(self.inputs))]" in setup_section
@@ -8792,11 +8795,14 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     assert "k = k.view(batch_size, seq_len, self.num_heads, self.head_dim)" in attention_section
     assert "v = v.view(batch_size, seq_len, self.num_heads, self.head_dim)" in attention_section
     assert "q = q.view(" not in attention_section
+    assert "def _project_single_batch_kv(" in attention_section
+    assert "self._project_single_batch_kv(x, kv_cache, cache_entry, cache_pos)" in attention_section
+    assert "kv_cache.project_kv_block_entry(" in attention_section
     assert "k_block = k.permute(0, 2, 1, 3).contiguous()" not in attention_section
     assert "v_block = v.permute(0, 2, 1, 3).contiguous()" not in attention_section
     assert "k[batch_idx].transpose(0, 1)" not in attention_section
     assert "v[batch_idx].transpose(0, 1)" not in attention_section
-    assert "kv_cache.append_block_entry(cache_entry, k[0], v[0], cache_pos)" in attention_section
+    assert "kv_cache.append_block_entry(cache_entry, k[0], v[0], cache_pos)" not in attention_section
     assert "cached_k, cached_v = kv_cache.get_entry(cache_entry, 0, cache_pos)" in attention_section
     assert "kv_cache.append_block(" not in attention_section
     assert "kv_cache.get(request_id" not in attention_section
@@ -8824,6 +8830,36 @@ def test_ch20_optimized_integrated_kv_cache_avoids_hot_block_materialization() -
     actual_k, actual_v = cache.get("req", 0, 0, 4)
     torch.testing.assert_close(actual_k, k[0])
     torch.testing.assert_close(actual_v, v[0])
+
+    from ch20.optimized_integrated_kv_cache import AttentionLayer
+
+    torch.manual_seed(123)
+    layer = AttentionLayer(hidden_dim=6, num_heads=2, head_dim=3, dtype=torch.float32)
+    x = torch.randn(1, 2, 6)
+    cache = PagedKVCache(
+        page_size=4,
+        num_layers=1,
+        num_heads=2,
+        head_dim=3,
+        dtype=torch.float32,
+        device=torch.device("cpu"),
+    )
+    entries = cache.allocate("req2", 4)
+    buffer_k, buffer_v = entries[0]["buffer"]
+    buffer_k.zero_()
+    buffer_v.zero_()
+    with torch.inference_mode():
+        qkv = layer.qkv(x)
+        _, expected_k, expected_v = qkv.chunk(3, dim=-1)
+        expected_k = expected_k.view(1, 2, 2, 3)[0]
+        expected_v = expected_v.view(1, 2, 2, 3)[0]
+        expected_out = layer.proj(x)
+        out = layer(x, cache, entries[0], 1)
+
+    actual_k, actual_v = cache.get_entry(entries[0], 1, 3)
+    torch.testing.assert_close(actual_k, expected_k)
+    torch.testing.assert_close(actual_v, expected_v)
+    torch.testing.assert_close(out, expected_out)
 
 
 def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> None:

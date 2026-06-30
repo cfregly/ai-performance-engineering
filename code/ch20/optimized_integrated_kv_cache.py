@@ -137,6 +137,29 @@ class PagedKVCache:
         buffer_k[start_pos:start_pos + block].copy_(k_block)
         buffer_v[start_pos:start_pos + block].copy_(v_block)
         entry["length"] = max(int(entry["length"]), start_pos + block)
+
+    def project_kv_block_entry(
+        self,
+        entry: CacheEntry,
+        x_block: torch.Tensor,
+        k_weight_t: torch.Tensor,
+        k_bias: Optional[torch.Tensor],
+        v_weight_t: torch.Tensor,
+        v_bias: Optional[torch.Tensor],
+        start_pos: int,
+    ) -> None:
+        block = int(x_block.size(0))
+        self._ensure_capacity(entry, start_pos + block - 1)
+        buffer_k, buffer_v = entry["buffer"]  # type: ignore[assignment]
+        k_out = buffer_k[start_pos:start_pos + block].flatten(1)
+        v_out = buffer_v[start_pos:start_pos + block].flatten(1)
+        torch.matmul(x_block, k_weight_t, out=k_out)
+        torch.matmul(x_block, v_weight_t, out=v_out)
+        if k_bias is not None:
+            k_out.add_(k_bias)
+        if v_bias is not None:
+            v_out.add_(v_bias)
+        entry["length"] = max(int(entry["length"]), start_pos + block)
     
     def get(self, request_id: str, layer_idx: int, start: int, end: int) -> tuple[torch.Tensor, torch.Tensor]:
         entries = self.allocations.get(request_id)
@@ -167,23 +190,42 @@ class AttentionLayer(nn.Module):
     
     def __init__(self, hidden_dim: int, num_heads: int, head_dim: int, dtype: torch.dtype = torch.float16):
         super().__init__()
+        self.hidden_dim = hidden_dim
         self.num_heads = num_heads
         self.head_dim = head_dim
         self.qkv = nn.Linear(hidden_dim, hidden_dim * 3, dtype=dtype)
         self.proj = nn.Linear(hidden_dim, hidden_dim, dtype=dtype)
         self.register_buffer("_cache_touch", torch.empty((), dtype=dtype), persistent=False)
+
+    def _project_single_batch_kv(
+        self,
+        x: torch.Tensor,
+        kv_cache: PagedKVCache,
+        cache_entry: CacheEntry,
+        cache_pos: int,
+    ) -> None:
+        hidden = self.hidden_dim
+        weight = self.qkv.weight
+        bias = self.qkv.bias
+        kv_cache.project_kv_block_entry(
+            cache_entry,
+            x[0],
+            weight[hidden : hidden * 2].t(),
+            None if bias is None else bias[hidden : hidden * 2],
+            weight[hidden * 2 : hidden * 3].t(),
+            None if bias is None else bias[hidden * 2 : hidden * 3],
+            cache_pos,
+        )
     
     def forward(self, x: torch.Tensor, kv_cache: PagedKVCache, cache_entry: CacheEntry, cache_pos: int) -> torch.Tensor:
         batch_size, seq_len, _ = x.shape
-        qkv = self.qkv(x)
-        _, k, v = qkv.chunk(3, dim=-1)
-        
-        k = k.view(batch_size, seq_len, self.num_heads, self.head_dim)
-        v = v.view(batch_size, seq_len, self.num_heads, self.head_dim)
-        
         if batch_size == 1:
-            kv_cache.append_block_entry(cache_entry, k[0], v[0], cache_pos)
+            self._project_single_batch_kv(x, kv_cache, cache_entry, cache_pos)
         else:
+            qkv = self.qkv(x)
+            _, k, v = qkv.chunk(3, dim=-1)
+            k = k.view(batch_size, seq_len, self.num_heads, self.head_dim)
+            v = v.view(batch_size, seq_len, self.num_heads, self.head_dim)
             append_block_entry = kv_cache.append_block_entry
             for batch_idx in range(batch_size):
                 append_block_entry(
