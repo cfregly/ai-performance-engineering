@@ -18,6 +18,8 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     yaml = None
 
+_RESET_PEAK_MEMORY_STATS = getattr(torch.cuda, "reset_peak_memory_stats", None)
+
 from core.harness.benchmark_harness import (  # noqa: E402
     BaseBenchmark,
     BenchmarkConfig,
@@ -526,8 +528,8 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph_mode = GraphMode.EAGER
         self._refresh_router_metrics()
         torch.cuda.synchronize(self.device)
-        if torch.cuda.is_available() and hasattr(torch.cuda, "reset_peak_memory_stats"):
-            torch.cuda.reset_peak_memory_stats(self.device)
+        if torch.cuda.is_available() and _RESET_PEAK_MEMORY_STATS is not None:
+            _RESET_PEAK_MEMORY_STATS(self.device)
             log_path = resolve_gpu_log_path(None)
             logger = GpuMemoryLogger(
                 device=self.device,
@@ -778,8 +780,8 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         paged_cache = self.paged_cache  # type: ignore[assignment]
         spec = self.spec_decoder  # type: ignore[assignment]
 
-        if torch.cuda.is_available() and hasattr(torch.cuda, "reset_peak_memory_stats"):
-            torch.cuda.reset_peak_memory_stats(self.device)
+        if torch.cuda.is_available() and _RESET_PEAK_MEMORY_STATS is not None:
+            _RESET_PEAK_MEMORY_STATS(self.device)
         logical_index = self.device.index if self.device.index is not None else None
         telemetry_before = query_gpu_telemetry(logical_index)
 

@@ -8797,6 +8797,10 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "req = Request(" not in hot_section
     assert "req.prefix_cached_length = self._router_prefix_cache_lengths[" in hot_section
     assert "prompt_stub = [0] * cfg.context_window" not in hot_section
+    assert '_RESET_PEAK_MEMORY_STATS = getattr(torch.cuda, "reset_peak_memory_stats", None)' in source
+    assert "if torch.cuda.is_available() and _RESET_PEAK_MEMORY_STATS is not None:" in hot_section
+    assert "_RESET_PEAK_MEMORY_STATS(self.device)" in hot_section
+    assert 'hasattr(torch.cuda, "reset_peak_memory_stats")' not in hot_section
     assert 'router_assignments = {"prefill": 0, "decode": 0}' not in hot_section
     assert "prefill_assignments = 0" in hot_section
     assert "decode_assignments = 0" in hot_section
