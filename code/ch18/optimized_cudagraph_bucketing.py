@@ -75,6 +75,7 @@ class CUDAGraphBucketing:
         self.device = device
         self.max_batch = max_batch
         self.max_seq = max_seq
+        self.model_dtype = next(self.model.parameters()).dtype
         
         # Storage for captured graphs and static buffers
         self.graphs: Dict[Tuple[int, int], torch.cuda.CUDAGraph] = {}
@@ -105,10 +106,9 @@ class CUDAGraphBucketing:
         key = (batch_size, seq_len)
         
         # Allocate static input buffer - match model dtype
-        model_dtype = next(self.model.parameters()).dtype
         self.static_inputs[key] = torch.empty(
             batch_size, seq_len, self.hidden_dim,
-            device=self.device, dtype=model_dtype
+            device=self.device, dtype=self.model_dtype
         )
         
         # Warmup runs (required before capture)

@@ -8335,11 +8335,19 @@ def test_ch18_cudagraph_bucketing_static_inputs_avoid_zero_fill() -> None:
         "ch18/cudagraph_bucketing_simulator.py",
     ):
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        init_section = source.split("def __init__", maxsplit=1)[1].split(
+            "# Storage for captured graphs and static buffers",
+            maxsplit=1,
+        )[0]
         capture_section = source.split("def _capture_graph", maxsplit=1)[1].split(
             "def _find_bucket",
             maxsplit=1,
         )[0]
 
+        assert "self.model_dtype = next(self.model.parameters()).dtype" in init_section
+        assert "dtype=self.model_dtype" in capture_section
+        assert "next(" not in capture_section
+        assert ".parameters()" not in capture_section
         assert "self.static_inputs[key] = torch.empty(" in capture_section
         assert "self.static_inputs[key] = torch.zeros(" not in capture_section
         assert "current_stream = torch.cuda.current_stream()" in capture_section
