@@ -195,6 +195,31 @@ def test_ch01_optimized_verification_reuses_cached_model_dtype() -> None:
         assert "model_params" not in capture_section
 
 
+def test_ch01_fp32_verification_reuses_output_buffers() -> None:
+    for filename in ("baseline_performance.py", "optimized_performance_fusion.py"):
+        source = (REPO_ROOT / "ch01" / filename).read_text(encoding="utf-8")
+        setup_section = source.split("def setup", maxsplit=1)[1].split(
+            "def benchmark_fn",
+            maxsplit=1,
+        )[0]
+        capture_section = source.split("def capture_verification_payload", maxsplit=1)[
+            1
+        ].split(
+            "def teardown",
+            maxsplit=1,
+        )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config",
+            maxsplit=1,
+        )[0]
+
+        assert "self._verify_output = torch.empty(" in setup_section
+        assert "verify_output = self.model(self._verify_input)" in capture_section
+        assert "self._verify_output.copy_(verify_output)" in capture_section
+        assert "self.model(self._verify_input).detach().clone()" not in capture_section
+        assert "self._verify_output = None" in teardown_section
+
+
 def test_ch01_baseline_benchmarks_precompute_microbatch_groups() -> None:
     base_source = inspect.getsource(BaselinePerformanceBenchmark)
     base_setup = base_source.split("def setup", maxsplit=1)[1].split(

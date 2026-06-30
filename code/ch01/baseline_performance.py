@@ -91,7 +91,12 @@ class BaselinePerformanceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         
         # Create FIXED verification input - output will be captured at END of benchmark_fn()
         self._verify_input = self.microbatches[0].clone()
-        self._verify_output = None  # Will be set at end of benchmark_fn()
+        self._verify_output = torch.empty(
+            self._verify_input.shape[0],
+            10,
+            device=self.device,
+            dtype=torch.float32,
+        )
         
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-3)
         # Warm up: run a few iterations so kernel autotuning/caches are populated
@@ -136,11 +141,12 @@ class BaselinePerformanceBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.optimizer.step()
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self._verify_input is None:
+        if self.model is None or self._verify_input is None or self._verify_output is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         model_dtype = next(self.model.parameters()).dtype
         with torch.no_grad():
-            self._verify_output = self.model(self._verify_input).detach().clone()
+            verify_output = self.model(self._verify_input)
+            self._verify_output.copy_(verify_output)
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
             output=self._verify_output,
@@ -162,6 +168,8 @@ class BaselinePerformanceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._microbatch_groups = None
         self._target_groups = None
         self._group_sizes = None
+        self._verify_input = None
+        self._verify_output = None
         restore_tf32_state(self._tf32_state)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

@@ -78,7 +78,12 @@ class OptimizedPerformanceFusionBenchmark(VerificationPayloadMixin, BaseBenchmar
         ]
 
         self._verify_input = self.microbatches[0].clone()
-        self._verify_output = None
+        self._verify_output = torch.empty(
+            self._verify_input.shape[0],
+            10,
+            device=self.device,
+            dtype=torch.float32,
+        )
 
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-3)
         for _ in range(3):
@@ -107,11 +112,12 @@ class OptimizedPerformanceFusionBenchmark(VerificationPayloadMixin, BaseBenchmar
                 self.optimizer.step()
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self._verify_input is None:
+        if self.model is None or self._verify_input is None or self._verify_output is None:
             raise RuntimeError("setup() and benchmark_fn() must run before capture_verification_payload()")
         model_dtype = next(self.model.parameters()).dtype
         with torch.no_grad():
-            self._verify_output = self.model(self._verify_input).detach().clone()
+            verify_output = self.model(self._verify_input)
+            self._verify_output.copy_(verify_output)
         self._set_verification_payload(
             inputs={"verify_input": self._verify_input},
             output=self._verify_output,
@@ -130,6 +136,8 @@ class OptimizedPerformanceFusionBenchmark(VerificationPayloadMixin, BaseBenchmar
         del self.model, self.microbatches, self.targets, self.optimizer
         self._fused_batches = None
         self._fused_targets = None
+        self._verify_input = None
+        self._verify_output = None
         restore_tf32_state(self._tf32_state)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
