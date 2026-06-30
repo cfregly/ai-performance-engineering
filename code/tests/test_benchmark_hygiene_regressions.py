@@ -18846,9 +18846,27 @@ def test_ch15_moe_overlap_reuses_comm_chunk_views() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    baseline_teardown = baseline_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
     assert "self._expert_ids_flat: Optional[torch.Tensor] = None" in baseline_source
     assert "expert_ids_flat = self._expert_ids_flat" in baseline_benchmark
     assert "self.expert_ids.reshape(-1)" not in baseline_benchmark
+    assert "self._combined_out_flat: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._output_view: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._combined_out_flat = torch.empty_like(self._routed_out_flat)" in baseline_setup
+    assert "self._output_view = self._combined_out_flat.view(self.batch, self.seq, self.hidden_size)" in baseline_setup
+    assert "torch.add(self._routed_out_flat, shared_out, out=self._combined_out_flat)" in baseline_benchmark
+    assert "self.output = self._output_view" in baseline_benchmark
+    assert "combined = self._routed_out_flat + shared_out" not in baseline_benchmark
+    assert "combined.view(" not in baseline_benchmark
+    assert "self._combined_out_flat = None" in baseline_teardown
+    assert "self._output_view = None" in baseline_teardown
 
 
 def test_ch15_moe_comm_exchange_reuses_static_pack_buffers() -> None:

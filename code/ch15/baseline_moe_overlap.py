@@ -71,6 +71,8 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._remote_cpu_flat: Optional[torch.Tensor] = None
         self._comm_flat: Optional[torch.Tensor] = None
         self._routed_out_flat: Optional[torch.Tensor] = None
+        self._combined_out_flat: Optional[torch.Tensor] = None
+        self._output_view: Optional[torch.Tensor] = None
         self._comm_copy_pairs: list[tuple[torch.Tensor, torch.Tensor]] = []
         self._comm_round_range = range(self.comm_round_trips)
         self._comm_round_count = 0
@@ -112,6 +114,8 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._remote_cpu_flat = self._flat_inputs.detach().cpu().pin_memory()
         self._comm_flat = torch.empty(self.batch * self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
         self._routed_out_flat = torch.empty(self.batch * self.seq, self.hidden_size, device=self.device, dtype=self.dtype)
+        self._combined_out_flat = torch.empty_like(self._routed_out_flat)
+        self._output_view = self._combined_out_flat.view(self.batch, self.seq, self.hidden_size)
         total_tokens = self._flat_inputs.shape[0]
         chunk_tokens = max(1, (total_tokens + self.comm_chunks - 1) // self.comm_chunks)
         self._comm_copy_pairs = [
@@ -148,6 +152,8 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._remote_cpu_flat is None
             or self._comm_flat is None
             or self._routed_out_flat is None
+            or self._combined_out_flat is None
+            or self._output_view is None
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
         if not self._comm_copy_pairs or self._comm_round_count != self.comm_round_trips:
@@ -169,8 +175,8 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     out=self._routed_out_flat,
                     sort_idx=self._dispatch_order,
                 )
-                combined = self._routed_out_flat + shared_out
-                self.output = combined.view(self.batch, self.seq, self.hidden_size)
+                torch.add(self._routed_out_flat, shared_out, out=self._combined_out_flat)
+                self.output = self._output_view
 
     def capture_verification_payload(self) -> None:
         if (
@@ -211,6 +217,8 @@ class BaselineMoeOverlapBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._remote_cpu_flat = None
         self._comm_flat = None
         self._routed_out_flat = None
+        self._combined_out_flat = None
+        self._output_view = None
         self._comm_copy_pairs = []
         self._comm_round_range = range(self.comm_round_trips)
         self._comm_round_count = 0
