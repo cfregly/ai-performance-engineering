@@ -27,6 +27,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._cpu_total: Optional[float] = None
         self._host_total: Optional[torch.Tensor] = None
         self._output_tensor: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self.num_elements = 200_000_000
         self._workload = WorkloadMetadata(
             requests_per_iteration=1.0,
@@ -50,6 +51,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ]
         self._host_total = torch.empty(1, dtype=torch.float32, pin_memory=True)
         self._output_tensor = torch.empty(1, device=f"cuda:{self.device_ids[0]}", dtype=torch.float32)
+        self._verify_output_buffer = torch.empty_like(self._output_tensor)
         total_tokens = self.num_elements * len(self.device_ids)
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(len(self.device_ids)),
@@ -81,10 +83,13 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must initialize verification output tensor")
         self._output_tensor[0] = self._cpu_total
         self.output = self._output_tensor
+        if self._verify_output_buffer is None:
+            raise RuntimeError("setup() must initialize verification output buffer")
+        self._verify_output_buffer.copy_(self.output)
         probe = self.data[0][:256].detach().cpu()
         self._set_verification_payload(
             inputs={"data_probe": probe},
-            output=self.output.detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=0,
             precision_flags={
@@ -104,6 +109,7 @@ class BaselineDistributedBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._cpu_total = None
         self._host_total = None
         self._output_tensor = None
+        self._verify_output_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
