@@ -38,6 +38,7 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self.out_proj: Optional[nn.Linear] = None
         self._proj_weight_t: Optional[torch.Tensor] = None
         self._attn_layout_buffer: Optional[torch.Tensor] = None
+        self._proj_input_view: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
@@ -78,6 +79,7 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self.out_proj = nn.Linear(self.hidden_size, self.hidden_size, bias=False).to(self.device, dtype=torch.float16)
         self._proj_weight_t = self.out_proj.weight.t()
         self._attn_layout_buffer = torch.empty_like(self.q)
+        self._proj_input_view = self._attn_layout_buffer.view(self.seq_len, self.hidden_size)
         self._output_buffer = torch.empty(
             self.seq_len,
             self.hidden_size,
@@ -104,6 +106,7 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
             or self.attn_mask is None
             or self._proj_weight_t is None
             or self._attn_layout_buffer is None
+            or self._proj_input_view is None
             or self._output_buffer is None
         ):
             raise RuntimeError("Benchmark not initialized")
@@ -117,7 +120,7 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
                     is_causal=False,
                 )
                 self._attn_layout_buffer.copy_(out.squeeze(0).transpose(0, 1))
-                proj_in = self._attn_layout_buffer.view(self.seq_len, self.hidden_size)
+                proj_in = self._proj_input_view
                 self.output = torch.matmul(proj_in, self._proj_weight_t, out=self._output_buffer)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
@@ -161,6 +164,7 @@ class BaselineFlashInferAttentionLab(VerificationPayloadMixin, BaseBenchmark):
         self.out_proj = None
         self._proj_weight_t = None
         self._attn_layout_buffer = None
+        self._proj_input_view = None
         self._output_buffer = None
         self._verify_output_buffer = None
         self.output = None

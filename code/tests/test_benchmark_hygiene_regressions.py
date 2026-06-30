@@ -4901,9 +4901,11 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
             assert "self._v_sdp = self.v.transpose(0, 1).unsqueeze(0)" in setup_section
             assert "self._proj_weight_t = self.out_proj.weight.t()" in setup_section
             assert "self._attn_layout_buffer = torch.empty_like(self.q)" in setup_section
+            assert "self._proj_input_view = self._attn_layout_buffer.view(self.seq_len, self.hidden_size)" in setup_section
             assert "self._output_buffer = torch.empty(" in setup_section
             assert "self._attn_layout_buffer.copy_(out.squeeze(0).transpose(0, 1))" in benchmark_section
-            assert "proj_in = self._attn_layout_buffer.view(self.seq_len, self.hidden_size)" in benchmark_section
+            assert "proj_in = self._proj_input_view" in benchmark_section
+            assert "self._attn_layout_buffer.view(" not in benchmark_section
             assert "self.output = torch.matmul(proj_in, self._proj_weight_t, out=self._output_buffer)" in benchmark_section
             assert "self.output = self.out_proj(proj_in)" not in benchmark_section
             assert "self.q.transpose(0, 1).unsqueeze(0)" not in benchmark_section
