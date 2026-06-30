@@ -98,6 +98,27 @@ class TiledAttentionModule(nn.Module):
         self._v_proj_weight_t = self.v_proj.weight.t()
         self._out_proj_weight_t = self.out_proj.weight.t()
 
+    def _workspace(
+        self,
+        name: str,
+        shape: tuple[int, int, int],
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        batch_size, seq_len, width = (int(shape[0]), int(shape[1]), int(shape[2]))
+        numel = batch_size * seq_len * width
+        buffer = getattr(self, name)
+        if (
+            not isinstance(buffer, torch.Tensor)
+            or buffer.device != device
+            or buffer.dtype != dtype
+            or buffer.numel() < numel
+        ):
+            buffer = torch.empty(numel, device=device, dtype=dtype)
+            setattr(self, name, buffer)
+        return buffer[:numel].view(batch_size, seq_len, width)
+
     def _ensure_projection_buffers(
         self,
         x: torch.Tensor,
@@ -105,19 +126,11 @@ class TiledAttentionModule(nn.Module):
         seq_len: int,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         shape = (batch_size, seq_len, self.hidden_dim)
-        buffers = (self._q_buffer, self._k_buffer, self._v_buffer, self._output_buffer)
-        if any(
-            buffer is None
-            or buffer.shape != shape
-            or buffer.device != x.device
-            or buffer.dtype != x.dtype
-            for buffer in buffers
-        ):
-            self._q_buffer = torch.empty(shape, device=x.device, dtype=x.dtype)
-            self._k_buffer = torch.empty(shape, device=x.device, dtype=x.dtype)
-            self._v_buffer = torch.empty(shape, device=x.device, dtype=x.dtype)
-            self._output_buffer = torch.empty(shape, device=x.device, dtype=x.dtype)
-        return self._q_buffer, self._k_buffer, self._v_buffer, self._output_buffer
+        q = self._workspace("_q_buffer", shape, device=x.device, dtype=x.dtype)
+        k = self._workspace("_k_buffer", shape, device=x.device, dtype=x.dtype)
+        v = self._workspace("_v_buffer", shape, device=x.device, dtype=x.dtype)
+        output = self._workspace("_output_buffer", shape, device=x.device, dtype=x.dtype)
+        return q, k, v, output
 
     def _project_qkv(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Project input into [batch, seq, heads, head_dim] tensors."""

@@ -5235,12 +5235,21 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         "def get_benchmark",
         maxsplit=1,
     )[0]
+    tiled_module_section = optimized_ch10_flash.split("class TiledAttentionModule", maxsplit=1)[1].split(
+        "class OptimizedFlashAttentionBenchmark",
+        maxsplit=1,
+    )[0]
     assert "with torch.inference_mode(), sdpa_backend_context(candidate):" in sdpa_probe
     assert "with torch.no_grad()" not in sdpa_probe
     assert "with torch.inference_mode():" in external_probe
     assert "with torch.inference_mode():" in validate_section
     assert "with torch.no_grad():" not in external_probe
     assert "with torch.no_grad():" not in validate_section
+    assert "def _workspace(" in tiled_module_section
+    assert "or buffer.numel() < numel" in tiled_module_section
+    assert "return buffer[:numel].view(batch_size, seq_len, width)" in tiled_module_section
+    assert "buffer.shape != shape" not in tiled_module_section
+    assert "self._q_buffer = torch.empty(shape" not in tiled_module_section
 
     for relative_path in (
         "ch10/baseline_flashattention3_pipeline.py",
@@ -5401,6 +5410,44 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "causal_mask = pos.unsqueeze(0) > pos.unsqueeze(1)" in ch14_demo_source
     assert "scores.masked_fill_(~mask, float('-inf'))" in ch14_demo_source
     assert "scores = scores.masked_fill(~mask, float('-inf'))" not in ch14_demo_source
+
+
+def test_ch10_tiled_attention_reuses_larger_projection_workspace_capacity() -> None:
+    from ch10.optimized_flash_attention import TiledAttentionModule
+
+    module = TiledAttentionModule(hidden_dim=8, num_heads=2).eval()
+    large = torch.empty(2, 4, 8)
+    q_large, k_large, v_large, out_large = module._ensure_projection_buffers(large, 2, 4)
+    q_ptr = module._q_buffer.data_ptr()
+    k_ptr = module._k_buffer.data_ptr()
+    v_ptr = module._v_buffer.data_ptr()
+    out_ptr = module._output_buffer.data_ptr()
+
+    small = torch.empty(1, 2, 8)
+    q_small, k_small, v_small, out_small = module._ensure_projection_buffers(small, 1, 2)
+    grown = torch.empty(3, 3, 8)
+    q_grown, k_grown, v_grown, out_grown = module._ensure_projection_buffers(grown, 3, 3)
+
+    assert q_large.shape == (2, 4, 8)
+    assert k_large.shape == (2, 4, 8)
+    assert v_large.shape == (2, 4, 8)
+    assert out_large.shape == (2, 4, 8)
+    assert q_small.shape == (1, 2, 8)
+    assert k_small.shape == (1, 2, 8)
+    assert v_small.shape == (1, 2, 8)
+    assert out_small.shape == (1, 2, 8)
+    assert q_small.data_ptr() == q_ptr
+    assert k_small.data_ptr() == k_ptr
+    assert v_small.data_ptr() == v_ptr
+    assert out_small.data_ptr() == out_ptr
+    assert q_grown.shape == (3, 3, 8)
+    assert k_grown.shape == (3, 3, 8)
+    assert v_grown.shape == (3, 3, 8)
+    assert out_grown.shape == (3, 3, 8)
+    assert module._q_buffer.numel() == 3 * 3 * 8
+    assert module._k_buffer.numel() == 3 * 3 * 8
+    assert module._v_buffer.numel() == 3 * 3 * 8
+    assert module._output_buffer.numel() == 3 * 3 * 8
 
 
 def test_ch14_cuda_python_masks_gelu_activation_in_place() -> None:
