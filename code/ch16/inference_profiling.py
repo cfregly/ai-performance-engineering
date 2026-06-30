@@ -27,6 +27,19 @@ from collections import defaultdict, deque
 import hashlib
 
 
+def _count_whitespace_separated_tokens(text: str) -> int:
+    """Count split-like tokens without allocating substring lists."""
+    count = 0
+    in_token = False
+    for char in text:
+        if char.isspace():
+            in_token = False
+        elif not in_token:
+            count += 1
+            in_token = True
+    return count
+
+
 def _recent_metric_summary(values: List[Tuple[float, float]], limit: int = 100) -> Dict[str, float]:
     count = min(len(values), limit)
     if count <= 0:
@@ -414,15 +427,20 @@ class ModelCascader:
         
     def classify_request(self, prompt: str) -> str:
         """Classify request complexity to determine model tier."""
+        prompt_length = _count_whitespace_separated_tokens(prompt)
+        return self._classify_request_with_length(prompt, prompt_length)
+
+    def _classify_request_with_length(self, prompt: str, prompt_length: int) -> str:
+        """Classify request complexity using precomputed prompt length."""
         # Simple heuristics for request classification
-        words = prompt.split()
+        prompt_lower = prompt.lower()
         
         # Short factual questions -> small model
-        if len(words) < 20 and any(word in prompt.lower() for word in ['what', 'who', 'when', 'where']):
+        if prompt_length < 20 and any(word in prompt_lower for word in ['what', 'who', 'when', 'where']):
             return 'small'
             
         # Long creative requests -> large model
-        if len(words) > 100 or any(word in prompt.lower() for word in ['explain', 'analyze', 'elaborate', 'creative']):
+        if prompt_length > 100 or any(word in prompt_lower for word in ['explain', 'analyze', 'elaborate', 'creative']):
             return 'large'
             
         # Medium complexity -> medium model
@@ -430,7 +448,8 @@ class ModelCascader:
         
     def route_request(self, prompt: str, user_tier: str = 'standard') -> str:
         """Route request to appropriate model tier."""
-        complexity = self.classify_request(prompt)
+        prompt_length = _count_whitespace_separated_tokens(prompt)
+        complexity = self._classify_request_with_length(prompt, prompt_length)
         
         # Premium users get upgraded model
         if user_tier == 'premium' and complexity == 'small':
@@ -441,7 +460,7 @@ class ModelCascader:
         # Record routing decision
         self.routing_history.append({
             'timestamp': time.time(),
-            'prompt_length': len(prompt.split()),
+            'prompt_length': prompt_length,
             'complexity': complexity,
             'user_tier': user_tier
         })

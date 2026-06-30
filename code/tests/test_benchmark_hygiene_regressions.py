@@ -4428,6 +4428,15 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert "for cache_key, length in reversed(prefix_keys):" in prefix_lookup_section
     assert "for length in range(len(words), 0, -1)" not in prefix_lookup_section
     assert "self.get_cache_key(prefix)" not in prefix_lookup_section
+    assert "def _count_whitespace_separated_tokens" in profiling_source
+    assert "def _classify_request_with_length" in cascader_section
+    assert "prompt_lower = prompt.lower()" in cascader_section
+    assert "prompt_length = _count_whitespace_separated_tokens(prompt)" in cascader_section
+    assert "complexity = self._classify_request_with_length(prompt, prompt_length)" in cascader_section
+    assert "'prompt_length': prompt_length" in cascader_section
+    assert "prompt.split()" not in cascader_section
+    assert "len(words)" not in cascader_section
+    assert "prompt.lower() for word" not in cascader_section
     assert "route_count = min(len(self.routing_history), 100)" in cascader_section
     assert "prompt_length_total += route['prompt_length']" in cascader_section
     assert "self.routing_history[-100:]" not in cascader_section
