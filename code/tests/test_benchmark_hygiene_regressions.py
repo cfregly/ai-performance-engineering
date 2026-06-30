@@ -725,7 +725,7 @@ def test_ch04_optimized_torchcomms_overlaps_aux_compute_before_comm_wait() -> No
         ("optimized_torchcomms.py", "aux_out = aux_block(inputs)", "reduced.add_(aux_out)"),
         (
             "optimized_torchcomms_multigpu.py",
-            "for _ in range(_AUX_PASSES):",
+            "for _ in aux_pass_range:",
             "comm_out.add_(aux_out)",
         ),
     ):
@@ -756,6 +756,31 @@ def test_ch04_optimized_torchcomms_overlaps_aux_compute_before_comm_wait() -> No
     assert "self._aux_pass_range = range(_AUX_PASSES)" in multigpu_source
     assert "for _ in self._aux_pass_range:" in multigpu_benchmark
     assert "for _ in range(_AUX_PASSES):" not in multigpu_benchmark
+    assert "aux_pass_range = range(_AUX_PASSES)" in multigpu_source
+    assert "for _ in aux_pass_range:" in step_section
+
+    baseline_multigpu_source = (
+        REPO_ROOT / "ch04" / "baseline_torchcomms_multigpu.py"
+    ).read_text(encoding="utf-8")
+    baseline_multigpu_worker = baseline_multigpu_source.split("def _run_worker", maxsplit=1)[
+        1
+    ].split(
+        "def main",
+        maxsplit=1,
+    )[0]
+    baseline_multigpu_benchmark = baseline_multigpu_source.split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+    assert "aux_pass_range = range(_AUX_PASSES)" in baseline_multigpu_worker
+    assert "for _ in aux_pass_range:" in baseline_multigpu_worker
+    assert "for _ in range(_AUX_PASSES):" not in baseline_multigpu_worker
+    assert "self._aux_pass_range = range(_AUX_PASSES)" in baseline_multigpu_source
+    assert "for _ in self._aux_pass_range:" in baseline_multigpu_benchmark
+    assert "for _ in range(_AUX_PASSES):" not in baseline_multigpu_benchmark
 
 
 def test_ch04_optimizer_central_nvlink_uses_direct_copy_staging() -> None:
@@ -1803,6 +1828,9 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
         assert "parameter_count=self._payload_parameter_count" in capture_section
         assert "param_count =" not in capture_section
         assert "sum(" not in capture_section
+        assert "layer_range = range(num_layers)" in worker_section
+        assert "for layer_idx in layer_range:" in worker_section
+        assert "for layer_idx in range(num_layers):" not in worker_section
         assert "def _replicate_tensor_parallel_shard(" in source
         assert "_replicate_tensor_parallel_shard(local_out, self._world_size, self._full_out)" in benchmark_section
         if filename in {"optimized_tensor_parallel_async.py", "optimized_tensor_parallel_multigpu.py"}:
@@ -1815,6 +1843,9 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
         assert "torch.cat([local_out] * self._world_size, dim=-1, out=self._full_out)" not in benchmark_section
         assert "full_out = torch.cat([local_out] * self._world_size" not in benchmark_section
         assert "self._full_out = None" in source
+        assert "self._layer_range = range(_DEFAULT_LAYERS)" in source
+        assert "for layer_idx in self._layer_range:" in benchmark_section
+        assert "for layer_idx in range(_DEFAULT_LAYERS):" not in benchmark_section
         assert "full_out = torch.cat(gather_list, dim=-1)" not in worker_section
         if "torch.cat(gather_list" in worker_section:
             assert "torch.cat(gather_list, dim=-1, out=full_out)" in worker_section
@@ -1827,13 +1858,15 @@ def test_ch04_tensor_parallel_reuses_full_concat_buffers() -> None:
             assert "proj_out.add_(aux_out)" in benchmark_section
             assert "x = proj_out + aux_out" not in worker_section
             assert "x = proj_out + aux_out" not in benchmark_section
-            assert "self._layer_range = range(_DEFAULT_LAYERS)" in source
-            assert "for layer_idx in self._layer_range:" in benchmark_section
-            assert "for layer_idx in range(_DEFAULT_LAYERS):" not in benchmark_section
         if filename in {
+            "baseline_tensor_parallel_allgather_multigpu.py",
             "optimized_tensor_parallel_allgather_multigpu.py",
+            "baseline_tensor_parallel_multigpu.py",
             "optimized_tensor_parallel_multigpu.py",
         }:
+            assert "aux_pass_range = range(_AUX_PASSES)" in worker_section
+            assert "for _ in aux_pass_range:" in worker_section
+            assert "for _ in range(_AUX_PASSES):" not in worker_section
             assert "self._aux_pass_range = range(_AUX_PASSES)" in source
             assert "for _ in self._aux_pass_range:" in benchmark_section
             assert "for _ in range(_AUX_PASSES):" not in benchmark_section

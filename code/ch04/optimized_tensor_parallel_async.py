@@ -143,11 +143,12 @@ def _run_worker(
     aux_out_buffer = torch.empty(batch, seq_length, hidden, device=device, dtype=torch.bfloat16)
     proj_out_buffer = torch.empty_like(aux_out_buffer)
     comm_stream = torch.cuda.Stream()
+    layer_range = range(num_layers)
 
     def _step() -> None:
         x = inputs
         current_stream = torch.cuda.current_stream()
-        for layer_idx in range(num_layers):
+        for layer_idx in layer_range:
             local_out = _linear_no_bias_into(shard_layers[layer_idx], x, local_out_buffer)
             comm_stream.wait_stream(current_stream)
             with torch.cuda.stream(comm_stream):

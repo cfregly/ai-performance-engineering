@@ -121,10 +121,11 @@ def _run_worker(
     gather_list = [torch.empty(batch, seq_length, hidden_per_rank, device=device, dtype=torch.bfloat16)
                    for _ in range(world_size)]
     full_out = torch.empty(batch, seq_length, hidden, device=device, dtype=torch.bfloat16)
+    layer_range = range(num_layers)
 
     def _step() -> None:
         x = inputs
-        for layer_idx in range(num_layers):
+        for layer_idx in layer_range:
             local_out = shard_layers[layer_idx](x)
             dist.all_gather(gather_list, local_out)
             torch.cat(gather_list, dim=-1, out=full_out)
@@ -194,6 +195,7 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._world_size = 1
         self._hidden = _DEFAULT_HIDDEN
         self._hidden_per_rank = _DEFAULT_HIDDEN
+        self._layer_range = range(0)
         self._payload_parameter_count = 0
 
     def setup(self) -> None:
@@ -201,6 +203,7 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._world_size = torch.cuda.device_count()
         self._hidden = _resolve_hidden(None, self._world_size)
         self._hidden_per_rank = self._hidden // self._world_size
+        self._layer_range = range(_DEFAULT_LAYERS)
         torch.manual_seed(42)
         torch.cuda.manual_seed_all(42)
         self._shard_layers, self._proj_layers, self._aux_layers = _build_layers(
@@ -235,7 +238,7 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         ):
             raise RuntimeError("setup() must run before benchmark_fn()")
         x = self._input
-        for layer_idx in range(_DEFAULT_LAYERS):
+        for layer_idx in self._layer_range:
             local_out = self._shard_layers[layer_idx](x)
             _replicate_tensor_parallel_shard(local_out, self._world_size, self._full_out)
             aux_out = self._aux_layers[layer_idx](x)
@@ -279,6 +282,7 @@ class BaselineTensorParallelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._input = None
         self._output = None
         self._full_out = None
+        self._layer_range = range(0)
         torch.cuda.empty_cache()
 
     def validate_result(self) -> Optional[str]:

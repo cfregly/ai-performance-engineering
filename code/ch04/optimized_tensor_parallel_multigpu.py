@@ -149,14 +149,16 @@ def _run_worker(
     full_out = torch.empty(batch, seq_length, hidden, device=device, dtype=torch.bfloat16)
     local_out_buffer = torch.empty(batch, seq_length, hidden_per_rank, device=device, dtype=torch.bfloat16)
     proj_out_buffer = torch.empty(batch, seq_length, hidden, device=device, dtype=torch.bfloat16)
+    layer_range = range(num_layers)
+    aux_pass_range = range(_AUX_PASSES)
     def _step() -> None:
         x = inputs
-        for layer_idx in range(num_layers):
+        for layer_idx in layer_range:
             local_out = _linear_no_bias_into(shard_layers[layer_idx], x, local_out_buffer)
             work = dist.all_gather(gather_list, local_out, async_op=True)
             work.wait()
             aux_out = x
-            for _ in range(_AUX_PASSES):
+            for _ in aux_pass_range:
                 aux_out = aux_layers[layer_idx](aux_out)
             torch.cat(gather_list, dim=-1, out=full_out)
             proj_out = _linear_no_bias_into(proj_layers[layer_idx], full_out, proj_out_buffer)
