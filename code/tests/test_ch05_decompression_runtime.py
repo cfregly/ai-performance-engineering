@@ -24,7 +24,13 @@ def _assert_decompression_clone_deferred(bench) -> None:
         bench.capture_verification_payload()
         payload = bench._verification_payload
         assert payload.output.numel() == 4096
+        assert bench._verify_output_buffer is not None
+        assert payload.output.data_ptr() == bench._verify_output_buffer.data_ptr()
         assert payload.output.data_ptr() != output_ptr
+
+        payload_ptr = payload.output.data_ptr()
+        bench.capture_verification_payload()
+        assert bench._verification_payload.output.data_ptr() == payload_ptr
     finally:
         bench.teardown()
 
@@ -37,9 +43,17 @@ def test_cpu_decompression_defers_full_output_clone_to_capture() -> None:
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
 
     assert "counts_i64" not in source
     assert "torch.repeat_interleave(self.values, self.counts)" in source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty(4096, dtype=torch.float32)" in setup_section
+    assert "self._verify_output_buffer.copy_(self.output[: self._verify_output_buffer.numel()])" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "self.output[:4096].detach().clone()" not in capture_section
     assert 'with self._nvtx_range("cpu_decompress"):' in benchmark_section
     assert "get_nvtx_enabled(" not in benchmark_section
     assert "with nvtx_range(" not in benchmark_section
@@ -65,10 +79,17 @@ def test_gpu_decompression_reuses_preallocated_broadcast_output() -> None:
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown", maxsplit=1
+    )[0]
 
     assert "self._output_matrix = torch.empty((num_runs, run_len)" in setup_section
     assert "self._output_flat = self._output_matrix.reshape(-1)" in setup_section
     assert "self._values_column = self.values.unsqueeze(1)" in setup_section
+    assert "self._verify_output_buffer = torch.empty(4096, device=self.device, dtype=self.values.dtype)" in setup_section
+    assert "self._verify_output_buffer.copy_(self.output[: self._verify_output_buffer.numel()])" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "self.output[:4096].detach().clone()" not in capture_section
     assert "counts_i64" not in source
     assert "torch.repeat_interleave" not in benchmark_section
     assert "self._output_matrix.copy_(self._values_column)" in benchmark_section

@@ -26,6 +26,7 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_matrix: Optional[torch.Tensor] = None
         self._output_flat: Optional[torch.Tensor] = None
         self._values_column: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(bytes_per_iteration=float(1024 * 1024 * 4))
 
     def setup(self) -> None:
@@ -46,6 +47,7 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_matrix = torch.empty((num_runs, run_len), device=self.device, dtype=self.values.dtype)
         self._output_flat = self._output_matrix.reshape(-1)
         self._values_column = self.values.unsqueeze(1)
+        self._verify_output_buffer = torch.empty(4096, device=self.device, dtype=self.values.dtype)
 
     def benchmark_fn(self) -> Optional[dict]:
         if (
@@ -70,15 +72,16 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         return self._result_metrics
 
     def capture_verification_payload(self) -> None:
-        if self.output is None:
+        if self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must produce output for verification")
         counts = self._payload_counts
         values = self._payload_values
         if counts is None or values is None:
             raise RuntimeError("benchmark_fn() must stash inputs for verification")
+        self._verify_output_buffer.copy_(self.output[: self._verify_output_buffer.numel()])
         self._set_verification_payload(
             inputs={"counts": counts.detach().clone(), "values": values.detach().clone()},
-            output=self.output[:4096].detach().clone(),
+            output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=0,
             precision_flags={
@@ -89,6 +92,16 @@ class GPUDecompressionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             },
             output_tolerance=(0.0, 0.0),
         )
+
+    def teardown(self) -> None:
+        self.counts = None
+        self.values = None
+        self.output = None
+        self._output_matrix = None
+        self._output_flat = None
+        self._values_column = None
+        self._verify_output_buffer = None
+        super().teardown()
 
     def get_workload_metadata(self) -> Optional[WorkloadMetadata]:
         return self._workload
