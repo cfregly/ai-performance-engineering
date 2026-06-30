@@ -10041,13 +10041,25 @@ def test_nanochat_prefix_causal_mask_avoids_zero_fill_and_tril_allocations() -> 
         maxsplit=1,
     )[0]
 
+    assert "def _mask_positions_for(self, length, device, cache_attr, spec_attr)" in source
+    assert "self._mask_q_pos_cache = None" in source
+    assert "self._mask_k_pos_cache = None" in source
+    assert "cached = torch.arange(length, device=device)" in source
     assert "torch.ones((t_q, t_k)" not in causal_section
     assert "torch.tril(" not in causal_section
+    assert "torch.arange(t_q, device=device)" not in causal_section
+    assert "torch.arange(t_k, device=device)" not in causal_section
+    assert "_mask_positions_for(" in causal_section
+    assert '"_mask_q_pos_cache", "_mask_q_pos_spec"' in causal_section
+    assert '"_mask_k_pos_cache", "_mask_k_pos_spec"' in causal_section
     assert "self._causal_mask_cache = k_pos <= q_pos" in causal_section
     assert "mask = torch.zeros((t_q, t_k)" not in prefix_section
     assert "torch.tril(" not in prefix_section
-    assert "q_pos = torch.arange(t_q, device=device).unsqueeze(1)" in prefix_section
-    assert "k_pos = torch.arange(t_k, device=device).unsqueeze(0)" in prefix_section
+    assert "torch.arange(t_q, device=device)" not in prefix_section
+    assert "torch.arange(t_k, device=device)" not in prefix_section
+    assert "_mask_positions_for(" in prefix_section
+    assert '"_mask_q_pos_cache", "_mask_q_pos_spec"' in prefix_section
+    assert '"_mask_k_pos_cache", "_mask_k_pos_spec"' in prefix_section
     assert "mask = k_pos <= (prefix_len + q_pos)" in prefix_section
 
 

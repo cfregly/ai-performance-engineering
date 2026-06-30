@@ -168,6 +168,10 @@ class CausalSelfAttention(nn.Module):
         self._flash3_accepts_clusters = False
         self._cu_q_cache = None
         self._cu_k_cache = None
+        self._mask_q_pos_cache = None
+        self._mask_q_pos_spec = None
+        self._mask_k_pos_cache = None
+        self._mask_k_pos_spec = None
         self._causal_mask_cache = None
         self._prefix_causal_mask_cache = None
         self._padded_attn_mask_cache = None
@@ -224,11 +228,24 @@ class CausalSelfAttention(nn.Module):
             setattr(self, spec_name, spec)
         return cached
 
+    def _mask_positions_for(self, length, device, cache_attr, spec_attr):
+        spec = (length, device)
+        cached = getattr(self, cache_attr)
+        if cached is None or getattr(self, spec_attr, None) != spec:
+            cached = torch.arange(length, device=device)
+            setattr(self, cache_attr, cached)
+            setattr(self, spec_attr, spec)
+        return cached
+
     def _causal_mask_for(self, t_q, t_k, device):
         spec = (t_q, t_k, device)
         if self._causal_mask_cache is None or getattr(self, "_causal_mask_spec", None) != spec:
-            q_pos = torch.arange(t_q, device=device).unsqueeze(1)
-            k_pos = torch.arange(t_k, device=device).unsqueeze(0)
+            q_pos = self._mask_positions_for(
+                t_q, device, "_mask_q_pos_cache", "_mask_q_pos_spec"
+            ).unsqueeze(1)
+            k_pos = self._mask_positions_for(
+                t_k, device, "_mask_k_pos_cache", "_mask_k_pos_spec"
+            ).unsqueeze(0)
             self._causal_mask_cache = k_pos <= q_pos
             self._causal_mask_spec = spec
         return self._causal_mask_cache
@@ -237,8 +254,12 @@ class CausalSelfAttention(nn.Module):
         spec = (t_q, t_k, device)
         if self._prefix_causal_mask_cache is None or getattr(self, "_prefix_causal_mask_spec", None) != spec:
             prefix_len = t_k - t_q
-            q_pos = torch.arange(t_q, device=device).unsqueeze(1)
-            k_pos = torch.arange(t_k, device=device).unsqueeze(0)
+            q_pos = self._mask_positions_for(
+                t_q, device, "_mask_q_pos_cache", "_mask_q_pos_spec"
+            ).unsqueeze(1)
+            k_pos = self._mask_positions_for(
+                t_k, device, "_mask_k_pos_cache", "_mask_k_pos_spec"
+            ).unsqueeze(0)
             mask = k_pos <= (prefix_len + q_pos)
             self._prefix_causal_mask_cache = mask
             self._prefix_causal_mask_spec = spec

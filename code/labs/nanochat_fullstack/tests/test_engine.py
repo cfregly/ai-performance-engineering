@@ -838,9 +838,13 @@ def test_attention_reuses_causal_mask_buffers():
 
     causal = attn._causal_mask_for(3, 3, torch.device("cpu"))
     causal_ptr = causal.data_ptr()
+    q_pos_ptr = attn._mask_q_pos_cache.data_ptr()
+    k_pos_ptr = attn._mask_k_pos_cache.data_ptr()
     causal_again = attn._causal_mask_for(3, 3, torch.device("cpu"))
 
     assert causal_again.data_ptr() == causal_ptr
+    assert attn._mask_q_pos_cache.data_ptr() == q_pos_ptr
+    assert attn._mask_k_pos_cache.data_ptr() == k_pos_ptr
     torch.testing.assert_close(
         causal_again,
         torch.tensor(
@@ -852,6 +856,11 @@ def test_attention_reuses_causal_mask_buffers():
             dtype=torch.bool,
         ),
     )
+
+    prefix_same_shape = attn._prefix_causal_mask_for(3, 3, torch.device("cpu"))
+    assert attn._mask_q_pos_cache.data_ptr() == q_pos_ptr
+    assert attn._mask_k_pos_cache.data_ptr() == k_pos_ptr
+    torch.testing.assert_close(prefix_same_shape, causal)
 
     prefix = attn._prefix_causal_mask_for(2, 5, torch.device("cpu"))
     prefix_ptr = prefix.data_ptr()
