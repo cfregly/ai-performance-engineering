@@ -2104,10 +2104,15 @@ def test_ch14_triton_persistent_demo_batches_correctness_error_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "error_stats = torch.stack(" in verify_section
-    assert "std_err = float(error_stats[0])" in verify_section
-    assert "pers_err = float(error_stats[1])" in verify_section
-    assert "atom_err = float(error_stats[2])" in verify_section
+    assert "error_stats = torch.empty(3, device=ref.device, dtype=torch.float32)" in verify_section
+    assert "error_stats[0].copy_((c_std - ref).abs().max())" in verify_section
+    assert "error_stats[1].copy_((c_pers - ref).abs().max())" in verify_section
+    assert "error_stats[2].copy_((c_atom - ref).abs().max())" in verify_section
+    assert "error_stats_host = error_stats.detach().cpu()" in verify_section
+    assert "std_err = float(error_stats_host[0])" in verify_section
+    assert "pers_err = float(error_stats_host[1])" in verify_section
+    assert "atom_err = float(error_stats_host[2])" in verify_section
+    assert "error_stats = torch.stack(" not in verify_section
     assert ").tolist()" not in verify_section
     assert ".abs().max().item()" not in verify_section
 
@@ -2208,9 +2213,13 @@ def test_ch14_triton_tma_batches_correctness_error_reads() -> None:
     )[0]
     summary_section = benchmark_section.split('print("SUMMARY")', maxsplit=1)[1]
 
-    assert "error_stats = torch.stack(" in benchmark_section
-    assert "max_bias_diff = float(error_stats[0])" in benchmark_section
-    assert "max_diff = float(error_stats[1])" in benchmark_section
+    assert "error_stats = torch.empty(2, device=C_tma.device, dtype=torch.float32)" in benchmark_section
+    assert "error_stats[0].copy_(torch.abs(C_bias - C_ref).max())" in benchmark_section
+    assert "error_stats[1].copy_(torch.abs(C_tma - C_torch).max())" in benchmark_section
+    assert "error_stats_host = error_stats.detach().cpu()" in benchmark_section
+    assert "max_bias_diff = float(error_stats_host[0])" in benchmark_section
+    assert "max_diff = float(error_stats_host[1])" in benchmark_section
+    assert "error_stats = torch.stack(" not in benchmark_section
     assert ").tolist()" not in benchmark_section
     assert "torch.abs(C_bias - C_ref).max()" in benchmark_section
     assert "torch.abs(C_tma - C_torch).max()" in benchmark_section
@@ -4764,9 +4773,13 @@ def test_ch19_native_fp4_batches_accuracy_metric_reads() -> None:
         maxsplit=1,
     )[0]
 
-    assert "error_stats = torch.stack(" in accuracy_section
-    assert "mean_err = float(error_stats[0])" in accuracy_section
-    assert "fp16_abs_mean = float(error_stats[1])" in accuracy_section
+    assert "error_stats = torch.empty(2, device=error.device, dtype=torch.float32)" in accuracy_section
+    assert "error_stats[0].copy_(error.mean())" in accuracy_section
+    assert "error_stats[1].copy_(out_fp16.abs().mean())" in accuracy_section
+    assert "error_stats_host = error_stats.detach().cpu()" in accuracy_section
+    assert "mean_err = float(error_stats_host[0])" in accuracy_section
+    assert "fp16_abs_mean = float(error_stats_host[1])" in accuracy_section
+    assert "error_stats = torch.stack(" not in accuracy_section
     assert ".tolist()" not in accuracy_section
     assert "with torch.inference_mode():" in accuracy_section
     assert "with torch.no_grad():" not in accuracy_section

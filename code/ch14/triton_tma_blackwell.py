@@ -418,14 +418,12 @@ def benchmark_tma_vs_standard(
         print(f"  PyTorch GEMM:  {torch_gemm_time*1e3:.2f} ms ({torch_tflops:.2f} TFLOPS)")
         print(f"  Speedup:       {speedup_gemm:.2f}x")
         print(f"  TMA GEMM + SiLU/bias: {tma_bias_time*1e3:.2f} ms ({tma_bias_tflops:.2f} TFLOPS)")
-        error_stats = torch.stack(
-            (
-                torch.abs(C_bias - C_ref).max(),
-                torch.abs(C_tma - C_torch).max(),
-            )
-        ).detach().cpu()
-        max_bias_diff = float(error_stats[0])
-        max_diff = float(error_stats[1])
+        error_stats = torch.empty(2, device=C_tma.device, dtype=torch.float32)
+        error_stats[0].copy_(torch.abs(C_bias - C_ref).max())
+        error_stats[1].copy_(torch.abs(C_tma - C_torch).max())
+        error_stats_host = error_stats.detach().cpu()
+        max_bias_diff = float(error_stats_host[0])
+        max_diff = float(error_stats_host[1])
         print(f"  Max Difference (bias+SiLU): {max_bias_diff:.2e}")
         print(f"  Max Difference: {max_diff:.2e}")
 
