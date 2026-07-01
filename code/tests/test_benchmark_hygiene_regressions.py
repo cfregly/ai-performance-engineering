@@ -9282,12 +9282,18 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
         assert ".chunk(" not in benchmark_section
         assert "torch.cat(" not in benchmark_section
         assert "self._last_outputs = [" in baseline_setup
+        assert "self._microbatch_groups: list[tuple[int, torch.Tensor]] = []" in source
+        assert "self._microbatch_groups = list(enumerate(self.microbatches))" in baseline_setup
         assert "self._output_buffer: Optional[torch.Tensor] = None" in source
         assert "outputs: list[torch.Tensor] = []" not in baseline_run
         assert "outputs.append" not in baseline_run
-        assert "self._last_outputs[output_count] = x" in baseline_run
-        assert "self._last_output_count = output_count" in baseline_run
-        assert "self._run_pipeline_once(self.microbatches)" in benchmark_section
+        assert "for microbatch_idx, microbatch in self._microbatch_groups:" in baseline_run
+        assert "self._last_outputs[microbatch_idx] = x" in baseline_run
+        assert "        output_count =" not in baseline_run
+        assert "            output_count +=" not in baseline_run
+        assert "self._last_output_count = len(self._microbatch_groups)" in baseline_run
+        assert "self._run_pipeline_once()" in benchmark_section
+        assert "self._run_pipeline_once(self.microbatches)" not in benchmark_section
         assert "self._repeat_range = range(self.repeats)" in source
         assert "for _ in self._repeat_range:" in benchmark_section
         assert "for _ in range(self.repeats):" not in benchmark_section
@@ -9300,6 +9306,7 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
         assert "self.output.float()" not in capture_section
         assert "self.output = torch.cat(self._last_outputs, dim=0).detach()" not in capture_section
         assert "self._output_buffer = None" in source
+        assert "self._microbatch_groups = []" in teardown_section
         assert "self._verify_output_buffer = None" in teardown_section
 
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
@@ -9325,13 +9332,35 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
     assert "self.stage_events = [" in optimized_setup
     assert "torch.cuda.Event(enable_timing=False)" in optimized_setup
     assert "self._stage_outputs = [" in optimized_setup
+    assert "self._microbatch_groups: list[tuple[int, torch.Tensor]] = []" in optimized_source
+    assert "self._microbatch_groups = list(enumerate(self.microbatches))" in optimized_setup
+    assert "self._stage_schedule: list[" in optimized_source
+    assert "self._stage_schedule = [" in optimized_setup
+    assert "zip(" in optimized_setup
+    assert "strict=True" in optimized_setup
     assert "self._last_outputs = [" in optimized_setup
     assert "self._output_buffer = torch.empty_like(self.inputs)" in optimized_setup
     assert "self._output_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._verify_output_buffer = torch.empty_like(self._output_buffer, dtype=torch.float32)" in optimized_setup
     assert "stage_outputs: list[list[Optional[torch.Tensor]]] = [" not in optimized_run
+    assert "for stage_row in stage_outputs:" not in optimized_run
+    assert "stage_row[microbatch_idx] = None" not in optimized_run
+    assert "for microbatch_idx in range(self.num_microbatches):" not in optimized_run
+    assert "for microbatch_idx, microbatch in self._microbatch_groups:" in optimized_run
+    assert "for stage_idx, stage, stream, event_row, output_row in self._stage_schedule:" in optimized_run
+    assert "previous_event: Optional[torch.cuda.Event] = None" in optimized_run
+    assert "stream.wait_event(previous_event)" in optimized_run
+    assert "stage_outputs[stage_idx - 1][microbatch_idx]" not in optimized_run
+    assert "output_row[microbatch_idx] = stage_output" in optimized_run
+    assert "event = event_row[microbatch_idx]" in optimized_run
+    assert "event.record(stream)" in optimized_run
+    assert "self._last_outputs[microbatch_idx] = stage_output" in optimized_run
     assert "return [output for output in final_outputs if output is not None]" not in optimized_run
+    assert "final_outputs = stage_outputs[-1]" not in optimized_run
+    assert "        output_count =" not in optimized_run
+    assert "            output_count +=" not in optimized_run
+    assert "self._last_output_count = len(self._microbatch_groups)" in optimized_run
     assert "with torch.inference_mode():" in optimized_benchmark
     assert "with torch.no_grad():" not in optimized_benchmark
     assert "torch.cat(" not in optimized_benchmark
@@ -9348,6 +9377,8 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
     assert "self.output.float()" not in optimized_capture
     assert "self.output = torch.cat(self._last_outputs, dim=0).detach()" not in optimized_capture
     assert "self._output_buffer = None" in optimized_source
+    assert "self._microbatch_groups = []" in optimized_teardown
+    assert "self._stage_schedule = []" in optimized_teardown
     assert "self._verify_output_buffer = None" in optimized_teardown
     assert "torch.cuda.Event(" not in optimized_benchmark
 
