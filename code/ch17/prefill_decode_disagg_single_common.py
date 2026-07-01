@@ -40,6 +40,8 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self.kv_caches: List[torch.Tensor] = []
         self._kv_host_staging: Optional[torch.Tensor] = None
         self._flat_prompts: Optional[torch.Tensor] = None
+        self._optimized_kv_buffer: Optional[torch.Tensor] = None
+        self._optimized_seed_buffer: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
         self._output_stack: Optional[torch.Tensor] = None
         self._pending_outputs: List[torch.Tensor] = []
@@ -78,6 +80,20 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
             self.cfg.requests_per_rank * self.cfg.batch_size,
             self.cfg.context_window,
             self.cfg.hidden_size,
+        )
+        flat_batch = self.cfg.requests_per_rank * self.cfg.batch_size
+        self._optimized_kv_buffer = torch.empty(
+            flat_batch,
+            self.cfg.context_window,
+            self.cfg.hidden_size,
+            device=self.device,
+            dtype=self.cfg.dtype,
+        )
+        self._optimized_seed_buffer = torch.empty(
+            flat_batch,
+            self.cfg.hidden_size,
+            device=self.device,
+            dtype=self.cfg.dtype,
         )
         self._param_count = sum(p.numel() for p in self.prefill_model.parameters()) + sum(
             p.numel() for p in self.decode_model.parameters()
@@ -159,6 +175,8 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self.kv_caches = []
         self._kv_host_staging = None
         self._flat_prompts = None
+        self._optimized_kv_buffer = None
+        self._optimized_seed_buffer = None
         self._output = None
         self._output_stack = None
         self._pending_outputs = []
@@ -218,11 +236,21 @@ class OptimizedPrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
     """Single-GPU disaggregated prefill/decode optimized with batched device-local decode."""
 
     def benchmark_fn(self) -> None:
-        if self.prefill_model is None or self.decode_model is None or self._flat_prompts is None:
+        if (
+            self.prefill_model is None
+            or self.decode_model is None
+            or self._flat_prompts is None
+            or self._optimized_kv_buffer is None
+            or self._optimized_seed_buffer is None
+        ):
             raise RuntimeError("setup() must run before benchmark_fn()")
 
         with torch.inference_mode():
-            kv_cache, seed = self.prefill_model.prefill(self._flat_prompts)
+            kv_cache, seed = self.prefill_model.prefill_into(
+                self._flat_prompts,
+                self._optimized_kv_buffer,
+                self._optimized_seed_buffer,
+            )
             decoded = self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)
 
         self._output = decoded.view(

@@ -19881,10 +19881,15 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "self._metadata_inputs: Dict[str, torch.Tensor] = {}" in base_section
     assert "self._verify_prompt_buffer: Optional[torch.Tensor] = None" in base_section
     assert "self._flat_prompts: Optional[torch.Tensor] = None" in base_section
+    assert "self._optimized_kv_buffer: Optional[torch.Tensor] = None" in base_section
+    assert "self._optimized_seed_buffer: Optional[torch.Tensor] = None" in base_section
     assert "self._verify_prompt_buffer = self._allocate_host_staging(" in base_section
     assert "self.prompts[0].shape" in base_section
     assert "self._verify_prompt_buffer.copy_(self.prompts[0], non_blocking=False)" in base_section
     assert "self._flat_prompts = self.prompts.view(" in base_section
+    assert "flat_batch = self.cfg.requests_per_rank * self.cfg.batch_size" in base_section
+    assert "self._optimized_kv_buffer = torch.empty(" in base_section
+    assert "self._optimized_seed_buffer = torch.empty(" in base_section
     assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in base_section
     assert "self._request_prompt_outputs = list(" in base_section
     assert "zip(range(self.cfg.requests_per_rank), self.prompts, self._pending_outputs, strict=True)" in base_section
@@ -19897,6 +19902,8 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert '"prompt": self._verify_prompt_buffer' in base_section
     assert '"decode_tokens": self._metadata_inputs["decode_tokens"]' in base_section
     assert "self._request_prompt_outputs = []" in base_section
+    assert "self._optimized_kv_buffer = None" in base_section
+    assert "self._optimized_seed_buffer = None" in base_section
     assert "self.prompts[0].detach().cpu()" not in base_section
     assert "torch.zeros(" not in base_section.split("def capture_verification_payload", maxsplit=1)[1].split("def teardown", maxsplit=1)[0]
     assert "kv_cache = kv_cpu.to(self.device)" not in baseline_benchmark
@@ -19922,7 +19929,12 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "self._request_output_counts = (0, 0)" in base_section
     assert "self._expected_request_output_counts = (0, 0)" in base_section
     assert "or self._flat_prompts is None" in optimized_benchmark
-    assert "kv_cache, seed = self.prefill_model.prefill(self._flat_prompts)" in optimized_benchmark
+    assert "or self._optimized_kv_buffer is None" in optimized_benchmark
+    assert "or self._optimized_seed_buffer is None" in optimized_benchmark
+    assert "kv_cache, seed = self.prefill_model.prefill_into(" in optimized_benchmark
+    assert "self._optimized_kv_buffer," in optimized_benchmark
+    assert "self._optimized_seed_buffer," in optimized_benchmark
+    assert "self.prefill_model.prefill(self._flat_prompts)" not in optimized_benchmark
     assert "self.prompts.reshape(" not in optimized_benchmark
     assert "self._output = decoded.view(" in optimized_benchmark
     assert "self._pending_outputs.clear()" in optimized_benchmark
