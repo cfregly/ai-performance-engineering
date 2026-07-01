@@ -36,6 +36,7 @@ from core.harness.arch_config import prefer_flash_sdpa
 import json
 import sys
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 
 import torch
@@ -415,6 +416,12 @@ def estimate_memory_usage(config: SyntheticMoEConfig, batch_size: int, seq_len: 
     }
 
 
+def _benchmark_autocast_context(use_autocast, autocast_dtype):
+    if use_autocast:
+        return torch.autocast("cuda", dtype=autocast_dtype)
+    return nullcontext()
+
+
 def benchmark_inference(model, input_ids, name, num_warmup=20, num_iters=100, *, autocast_dtype=None):
     """Benchmark inference performance"""
     print(f"\nBenchmarking: {name}")
@@ -423,13 +430,9 @@ def benchmark_inference(model, input_ids, name, num_warmup=20, num_iters=100, *,
     # Warmup
     print(f"  Warming up ({num_warmup} iterations)...", end='', flush=True)
     use_autocast = autocast_dtype is not None and input_ids.device.type == "cuda"
-    with torch.inference_mode():
+    with torch.inference_mode(), _benchmark_autocast_context(use_autocast, autocast_dtype):
         for _ in range(num_warmup):
-            if use_autocast:
-                with torch.autocast("cuda", dtype=autocast_dtype):
-                    _ = model(input_ids)
-            else:
-                _ = model(input_ids)
+            _ = model(input_ids)
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     print(" done")
@@ -441,14 +444,10 @@ def benchmark_inference(model, input_ids, name, num_warmup=20, num_iters=100, *,
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         current_stream = torch.cuda.current_stream(input_ids.device)
-        with torch.inference_mode():
+        with torch.inference_mode(), _benchmark_autocast_context(use_autocast, autocast_dtype):
             start_event.record(current_stream)
             for _ in range(count):
-                if use_autocast:
-                    with torch.autocast("cuda", dtype=autocast_dtype):
-                        _ = model(input_ids)
-                else:
-                    _ = model(input_ids)
+                _ = model(input_ids)
             end_event.record(current_stream)
         end_event.synchronize()
         elapsed = start_event.elapsed_time(end_event) / 1000.0

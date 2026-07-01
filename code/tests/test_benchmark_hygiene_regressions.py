@@ -15900,7 +15900,9 @@ def test_ch16_blackwell_tensor_parallel_reuses_gather_buffers() -> None:
     assert final_smaller.shape == (1, 1, 8)
 
 
-def test_ch16_blackwell_decoder_reuses_attention_projection_buffers() -> None:
+def test_ch16_blackwell_decoder_reuses_attention_projection_buffers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     source = (REPO_ROOT / "ch16" / "inference_optimizations_blackwell.py").read_text(
         encoding="utf-8"
     )
@@ -15913,24 +15915,31 @@ def test_ch16_blackwell_decoder_reuses_attention_projection_buffers() -> None:
     assert "self._attn_merge_buffer: Optional[torch.Tensor] = None" in decoder_section
     assert "self._attn_project_buffer: Optional[torch.Tensor] = None" in decoder_section
     assert "self._o_proj_weight_t: Optional[torch.Tensor] = None" in decoder_section
+    assert "self._block_mask_cache = {}" in decoder_section
     assert "def cache_weight_views(self) -> None:" in decoder_section
     assert "def _o_proj_weight_view(self) -> torch.Tensor:" in decoder_section
     assert "def _attention_project_workspace(" in decoder_section
+    assert "def _cached_block_mask(" in decoder_section
     assert "rows = int(batch_size * seq_len)" in decoder_section
     assert "or self._attn_merge_buffer.size(0) < rows" in decoder_section
     assert "self._attn_merge_view = self._attn_merge_buffer[:rows].view(merge_shape)" in decoder_section
     assert "self._attn_project_buffer[:rows].view(output_shape)" in decoder_section
     assert "self._attn_merge_buffer = torch.empty(shape" in decoder_section
     assert "self._attn_project_buffer = torch.empty(shape" in decoder_section
+    assert "cache_key = (int(batch_size), int(self.num_heads), int(seq_len), int(total_len), device)" in decoder_section
+    assert "block_mask = self._block_mask_cache.get(cache_key)" in decoder_section
+    assert "self._block_mask_cache[cache_key] = block_mask" in decoder_section
+    assert "block_mask = self._cached_block_mask(" in forward_section
+    assert "block_mask = create_block_mask(" not in forward_section
     assert "merge_view.copy_(attn_output.transpose(1, 2))" in forward_section
     assert "torch.mm(merge_2d, self._o_proj_weight_view(), out=output_2d)" in forward_section
     assert "self.o_proj.weight.t()" not in forward_section
     assert "output_2d.add_(self.o_proj.bias)" in forward_section
     assert "attn_output.transpose(1, 2).contiguous()" in forward_section
 
-    from ch16.inference_optimizations_blackwell import OptimizedDecoderLayer
+    from ch16 import inference_optimizations_blackwell as blackwell
 
-    layer = OptimizedDecoderLayer(
+    layer = blackwell.OptimizedDecoderLayer(
         d_model=8,
         num_heads=2,
         device="cpu",
@@ -15951,6 +15960,23 @@ def test_ch16_blackwell_decoder_reuses_attention_projection_buffers() -> None:
     assert layer._attn_merge_buffer.data_ptr() == merge_ptr
     assert layer._attn_project_buffer.data_ptr() == output_ptr
     assert layer._o_proj_weight_t.data_ptr() == weight_view_ptr
+
+    mask_calls = []
+
+    def fake_create_block_mask(mask_fn, *, B, H, Q_LEN, KV_LEN, device):
+        mask_calls.append((mask_fn, B, H, Q_LEN, KV_LEN, device))
+        return object()
+
+    monkeypatch.setattr(blackwell, "create_block_mask", fake_create_block_mask)
+    mask_a = layer._cached_block_mask(2, 3, 5, torch.device("cpu"))
+    mask_b = layer._cached_block_mask(2, 3, 5, torch.device("cpu"))
+    mask_c = layer._cached_block_mask(2, 3, 6, torch.device("cpu"))
+
+    assert mask_a is mask_b
+    assert mask_c is not mask_a
+    assert len(mask_calls) == 2
+    assert mask_calls[0][1:] == (2, 2, 3, 5, torch.device("cpu"))
+    assert mask_calls[1][1:] == (2, 2, 3, 6, torch.device("cpu"))
 
 
 def test_ch16_blackwell_generate_reuses_output_token_buffer() -> None:
@@ -16282,10 +16308,20 @@ def test_ch16_synthetic_moe_benchmark_hoists_inference_mode() -> None:
     assert "x = self.embedding(input_ids).to(self.compute_dtype)" not in model_forward
     assert "x = self.ln_f(x.to(self.compute_dtype))" not in model_forward
     assert "x = self.ln_f(x)" in model_forward
-    assert benchmark_function.count("with torch.inference_mode():") == 3
+    assert "from contextlib import nullcontext" in source
+    assert "def _benchmark_autocast_context(use_autocast, autocast_dtype):" in source
+    assert "return torch.autocast(\"cuda\", dtype=autocast_dtype)" in source
+    assert "return nullcontext()" in source
+    assert benchmark_function.count(
+        "with torch.inference_mode(), _benchmark_autocast_context(use_autocast, autocast_dtype):"
+    ) == 2
+    assert benchmark_function.count("with torch.inference_mode():") == 1
     assert "with torch.no_grad():" not in benchmark_function
-    assert "for _ in range(num_warmup):\n            if use_autocast:" in benchmark_function
-    assert "for _ in range(count):\n                if use_autocast:" in benchmark_function
+    assert "for _ in range(num_warmup):\n            _ = model(input_ids)" in benchmark_function
+    assert "for _ in range(count):\n                _ = model(input_ids)" in benchmark_function
+    assert "for _ in range(num_warmup):\n            if use_autocast:" not in benchmark_function
+    assert "for _ in range(count):\n                if use_autocast:" not in benchmark_function
+    assert "with torch.autocast(\"cuda\", dtype=autocast_dtype):" not in benchmark_function
     assert benchmark_function.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "current_stream = torch.cuda.current_stream(input_ids.device)" in benchmark_function
     assert "start_event.record(current_stream)" in benchmark_function

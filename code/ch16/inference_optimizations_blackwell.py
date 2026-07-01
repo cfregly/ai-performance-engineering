@@ -461,6 +461,7 @@ class OptimizedDecoderLayer(nn.Module):
         self._attn_project_buffer: Optional[torch.Tensor] = None
         self._attn_project_2d: Optional[torch.Tensor] = None
         self._o_proj_weight_t: Optional[torch.Tensor] = None
+        self._block_mask_cache = {}
         
         # FlexAttention block mask (sliding window)
         def sliding_window(b, h, q_idx, kv_idx):
@@ -516,6 +517,27 @@ class OptimizedDecoderLayer(nn.Module):
             self._attn_project_buffer[:rows].view(output_shape),
             self._attn_project_2d,
         )
+
+    def _cached_block_mask(
+        self,
+        batch_size: int,
+        seq_len: int,
+        total_len: int,
+        device: torch.device,
+    ):
+        cache_key = (int(batch_size), int(self.num_heads), int(seq_len), int(total_len), device)
+        block_mask = self._block_mask_cache.get(cache_key)
+        if block_mask is None:
+            block_mask = create_block_mask(
+                self.block_mask_fn,
+                B=batch_size,
+                H=self.num_heads,
+                Q_LEN=seq_len,
+                KV_LEN=total_len,
+                device=device,
+            )
+            self._block_mask_cache[cache_key] = block_mask
+        return block_mask
         
     def forward(
         self,
@@ -557,12 +579,11 @@ class OptimizedDecoderLayer(nn.Module):
         
         total_len = key.shape[2]
         if self.flex_attention_fn is not None:
-            block_mask = create_block_mask(
-                self.block_mask_fn,
-                B=batch_size,
-                H=self.num_heads,
-                Q_LEN=seq_len,
-                KV_LEN=total_len,
+            block_mask = self._cached_block_mask(
+                batch_size,
+                seq_len,
+                total_len,
+                query.device,
             )
             attn_output = self.flex_attention_fn(query, key, value, block_mask)
         else:
