@@ -12,6 +12,7 @@ from core.harness.benchmark_harness import BaseBenchmark, BenchmarkConfig, Workl
 
 from ch15.speculative_decoding_common import (
     TokenMLP,
+    accept_prefix_length,
     build_draft_from_target,
     default_workload,
     resolve_speculative_decode_dtype,
@@ -436,16 +437,9 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     torch.max(logits_t, dim=-1, out=(target_values, target_next))
                     matches = match_views[view_idx]
                     torch.eq(target_next, draft_window, out=matches)
-                    torch.all(matches, dim=-1, out=accept_all_device)
-                    accept_all_host.copy_(accept_all_device, non_blocking=False)
-                    if bool(accept_all_host_scalar):
-                        accept_k = k
-                    else:
-                        accept_prefix = accept_prefix_views[view_idx]
-                        torch.cumprod(matches, dim=-1, dtype=torch.int64, out=accept_prefix)
-                        torch.sum(accept_prefix_row_views[view_idx], dim=0, out=accept_count_device_scalar)
-                        accept_count_host_scalar.copy_(accept_count_device_scalar, non_blocking=False)
-                        accept_k = int(accept_count_host_scalar)
+                    accept_prefix_length(matches, accept_count_device_scalar)
+                    accept_count_host_scalar.copy_(accept_count_device_scalar, non_blocking=False)
+                    accept_k = int(accept_count_host_scalar)
 
                     if accept_k == k:
                         accepted_draft += int(k)

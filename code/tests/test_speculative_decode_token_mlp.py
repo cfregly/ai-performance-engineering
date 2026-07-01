@@ -4,7 +4,9 @@ import torch
 import pytest
 
 from ch15.speculative_decoding_benchmarks import SpeculativeDecodingBenchmark
+from ch15.speculative_decoding_common import TRITON_AVAILABLE as CHAPTER_TRITON_AVAILABLE
 from ch15.speculative_decoding_common import TokenMLP as ChapterTokenMLP
+from ch15.speculative_decoding_common import accept_prefix_length as chapter_accept_prefix_length
 from labs.speculative_decode.baseline_speculative_decode import (
     BaselineSpeculativeDecodeBenchmark,
 )
@@ -24,7 +26,39 @@ from labs.speculative_decode.optimized_speculative_decode_transition_table impor
     OptimizedSpeculativeDecodeTransitionTableBenchmark,
 )
 from labs.speculative_decode.speculative_decode_common import SpecDecodeWorkload
+from labs.speculative_decode.speculative_decode_common import TRITON_AVAILABLE as LAB_TRITON_AVAILABLE
 from labs.speculative_decode.speculative_decode_common import TokenMLP as LabTokenMLP
+from labs.speculative_decode.speculative_decode_common import accept_prefix_length as lab_accept_prefix_length
+
+
+def _assert_accept_prefix_lengths(helper, device: torch.device) -> None:
+    cases = [
+        ([], 0),
+        ([True, True, True, True], 4),
+        ([True, True, False, True], 2),
+        ([False, True, True, True], 0),
+    ]
+    for values, expected in cases:
+        matches = torch.tensor([values], device=device, dtype=torch.bool)
+        out = torch.empty((), device=device, dtype=torch.int64)
+        helper(matches, out)
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+        assert int(out.detach().cpu()) == expected
+
+
+def test_accept_prefix_length_helpers_match_expected_on_cpu() -> None:
+    _assert_accept_prefix_lengths(chapter_accept_prefix_length, torch.device("cpu"))
+    _assert_accept_prefix_lengths(lab_accept_prefix_length, torch.device("cpu"))
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not (CHAPTER_TRITON_AVAILABLE and LAB_TRITON_AVAILABLE),
+    reason="requires CUDA and Triton",
+)
+def test_accept_prefix_length_helpers_match_expected_on_cuda() -> None:
+    _assert_accept_prefix_lengths(chapter_accept_prefix_length, torch.device("cuda"))
+    _assert_accept_prefix_lengths(lab_accept_prefix_length, torch.device("cuda"))
 
 
 def _assert_forward_into_matches_forward(model_cls) -> None:

@@ -19714,16 +19714,14 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "matches = match_views[view_idx]" in benchmark_section
     assert "torch.eq(target_next, draft_window, out=matches)" in benchmark_section
     assert ".argmax(" not in benchmark_section
-    assert "torch.all(matches, dim=-1, out=accept_all_device)" in benchmark_section
-    assert "accept_all_host.copy_(accept_all_device, non_blocking=False)" in benchmark_section
-    assert "if bool(accept_all_host_scalar):" in benchmark_section
-    assert "accept_k = k" in benchmark_section
-    assert "else:" in benchmark_section
-    assert "accept_prefix = accept_prefix_views[view_idx]" in benchmark_section
-    assert "torch.cumprod(matches, dim=-1, dtype=torch.int64, out=accept_prefix)" in benchmark_section
-    assert "torch.sum(accept_prefix_row_views[view_idx], dim=0, out=accept_count_device_scalar)" in benchmark_section
+    assert "accept_prefix_length(matches, accept_count_device_scalar)" in benchmark_section
     assert "accept_count_host_scalar.copy_(accept_count_device_scalar, non_blocking=False)" in benchmark_section
     assert "accept_k = int(accept_count_host_scalar)" in benchmark_section
+    assert "torch.all(matches, dim=-1, out=accept_all_device)" not in benchmark_section
+    assert "accept_all_host.copy_(accept_all_device, non_blocking=False)" not in benchmark_section
+    assert "if bool(accept_all_host_scalar):" not in benchmark_section
+    assert "torch.cumprod(matches, dim=-1, dtype=torch.int64, out=accept_prefix)" not in benchmark_section
+    assert "torch.sum(accept_prefix_row_views[view_idx], dim=0, out=accept_count_device_scalar)" not in benchmark_section
     assert "accept_prefix[0]" not in benchmark_section
     assert "accept_count_device[0]" not in benchmark_section
     assert "accept_count_host[0]" not in benchmark_section
@@ -19943,16 +19941,14 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
     assert "torch.eq(target_next, draft_window, out=matches)" in benchmark_section
     assert ".argmax(" not in benchmark_section
-    assert "torch.all(matches, dim=-1, out=accept_all_device)" in benchmark_section
-    assert "accept_all_host.copy_(accept_all_device, non_blocking=False)" in benchmark_section
-    assert "if bool(accept_all_host_scalar):" in benchmark_section
-    assert "accept_k = k" in benchmark_section
-    assert "else:" in benchmark_section
-    assert "accept_prefix = accept_prefix_views[view_idx]" in benchmark_section
-    assert "torch.cumprod(matches, dim=-1, dtype=torch.int64, out=accept_prefix)" in benchmark_section
-    assert "torch.sum(accept_prefix_row_views[view_idx], dim=0, out=accept_count_device_scalar)" in benchmark_section
+    assert "accept_prefix_length(matches, accept_count_device_scalar)" in benchmark_section
     assert "accept_count_host_scalar.copy_(accept_count_device_scalar, non_blocking=False)" in benchmark_section
     assert "accept_k = int(accept_count_host_scalar)" in benchmark_section
+    assert "torch.all(matches, dim=-1, out=accept_all_device)" not in benchmark_section
+    assert "accept_all_host.copy_(accept_all_device, non_blocking=False)" not in benchmark_section
+    assert "if bool(accept_all_host_scalar):" not in benchmark_section
+    assert "torch.cumprod(matches, dim=-1, dtype=torch.int64, out=accept_prefix)" not in benchmark_section
+    assert "torch.sum(accept_prefix_row_views[view_idx], dim=0, out=accept_count_device_scalar)" not in benchmark_section
     assert "accept_prefix[0]" not in benchmark_section
     assert "accept_count_device[0]" not in benchmark_section
     assert "accept_count_host[0]" not in benchmark_section

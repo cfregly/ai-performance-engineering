@@ -22,6 +22,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from core.benchmark.triton_compat import ensure_triton_compat
+
+try:
+    import triton
+    import triton.language as tl
+
+    TRITON_AVAILABLE = True
+except Exception:  # pragma: no cover - Triton is optional at import time
+    triton = None
+    tl = None
+    TRITON_AVAILABLE = False
+
 
 @dataclass(frozen=True)
 class SpecDecodeWorkload:
@@ -46,6 +58,44 @@ def default_workload(*, dtype: torch.dtype = torch.bfloat16) -> SpecDecodeWorklo
         tail_scale=0.01,
         dtype=dtype,
     )
+
+
+if TRITON_AVAILABLE:
+
+    @triton.jit
+    def _accept_prefix_length_kernel(
+        matches_ptr,
+        out_ptr,
+        stride_t,
+        K: tl.constexpr,  # noqa: N803
+    ):
+        accepted = tl.full((), 0, tl.int64)
+        prefix_alive = True
+        for idx in range(0, K):
+            match = tl.load(matches_ptr + idx * stride_t)
+            prefix_alive = prefix_alive & match
+            accepted += prefix_alive.to(tl.int64)
+        tl.store(out_ptr, accepted)
+
+
+def accept_prefix_length(matches: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+    """Write the contiguous accepted-token prefix length for a [1, K] match row."""
+
+    if matches.numel() == 0:
+        out.zero_()
+        return out
+    if TRITON_AVAILABLE and matches.is_cuda:
+        ensure_triton_compat()
+        _accept_prefix_length_kernel[(1,)](
+            matches,
+            out,
+            matches.stride(-1),
+            K=matches.shape[-1],
+        )
+        return out
+    prefix = torch.cumprod(matches, dim=-1, dtype=torch.int64)
+    torch.sum(prefix.reshape(-1), dim=0, out=out)
+    return out
 
 
 class TokenMLP(nn.Module):
