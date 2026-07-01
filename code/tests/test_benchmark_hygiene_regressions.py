@@ -12476,7 +12476,8 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "torch.stack(" not in benchmark_section
     assert "prefix_parts" not in setup_section
     assert "prefix_buffer = torch.empty(" in setup_section
-    assert "prefix_buffer[:, offset:next_offset].copy_(chunk_kv)" in setup_section
+    assert "self.prefill_model.prefill_into(" in setup_section
+    assert "prefix_buffer[:, offset:next_offset]," in setup_section
     assert "torch.cat(prefix_parts" not in setup_section
     assert "self._kv_buffers = {" in setup_section
     assert "kv_buffer = torch.empty(" in helper_section
@@ -12500,7 +12501,7 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "self._worker_cache_count = len(self._worker_caches)" in setup_section
     assert "self._request_event_group_count = len(self._request_event_groups)" in setup_section
     assert "self._prompt_chunk_count = len(self._prompt_chunks)" in setup_section
-    assert "self._last_output_count = len(self._last_outputs)" in setup_section
+    assert "self._last_output_count = self._output_stack.size(0)" in setup_section
     assert "self._request_event_count = len(self._request_event_pool)" in setup_section
     assert "% self._logical_decode_worker_count" in source
     assert "self._owners = {}" in setup_section
@@ -12542,8 +12543,8 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "owners: Dict[int, int] = {}" not in benchmark_section
     assert "for cache in worker_caches:" in benchmark_section
     assert "cache.clear()" in benchmark_section
-    assert "_extend_cache_buffer(" in benchmark_section
-    assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)" in helper_section
+    assert "_reserve_cache_append_buffer(" in benchmark_section
+    assert "append_view.copy_(chunk_kv)" in helper_section
     assert "torch.cat((accumulated_kv, chunk_kv), dim=1)" not in benchmark_section
     assert "self._request_event_groups: List[tuple[int, RequestPlan]] = []" in setup_section
     assert "self._request_event_groups = list(enumerate(self.request_plans))" in setup_section
@@ -12551,19 +12552,22 @@ def test_cache_aware_disagg_reuses_request_events_and_defers_output_stack() -> N
     assert "for event_idx, plan in request_event_groups:" in benchmark_section
     assert "for event_idx, plan in enumerate(self.request_plans):" not in benchmark_section
     assert "request_start, prefill_end, decode_end = request_events[event_idx]" in benchmark_section
-    assert "self._last_outputs = [torch.empty(0) for _ in self.request_plans]" in setup_section
+    assert "self._last_outputs = list(self._output_stack.unbind(0))" in setup_section
+    assert "self._last_output_count = self._output_stack.size(0)" in setup_section
     assert "len(self.request_plans)" not in benchmark_section
     assert "outputs: List[torch.Tensor] = []" not in benchmark_section
     assert "outputs = self._last_outputs" in benchmark_section
     assert "output_idx = 0" not in benchmark_section
     assert "outputs.append(" not in benchmark_section
-    assert "outputs[event_idx] = output" in benchmark_section
+    assert "outputs[event_idx].copy_(" in benchmark_section
+    assert "outputs[event_idx] = output" not in benchmark_section
     assert "output_idx += 1" not in benchmark_section
     assert "self._last_outputs = outputs" in benchmark_section
     assert "self._output_stack = torch.empty(" in setup_section
     assert "self._outputs_ready = True" in benchmark_section
+    assert "self.output = self._output_stack" in benchmark_section
     assert "if self.prompts is None or not self._outputs_ready:" in capture_section
-    assert "torch.stack(self._last_outputs, dim=0, out=self._output_stack)" in capture_section
+    assert "torch.stack(self._last_outputs, dim=0, out=self._output_stack)" not in capture_section
     assert "self.output = self._output_stack" in capture_section
     assert "request_ttft = [elapsed_ms(" not in capture_section
     assert "ttft_total_ms = 0.0" in capture_section
@@ -12634,7 +12638,8 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv, non_blocking=True)" in helper_section
     assert "prefix_parts" not in setup_section
     assert "prefix_buffer = torch.empty(" in setup_section
-    assert "prefix_buffer[:, offset:next_offset].copy_(chunk_kv)" in setup_section
+    assert "prefill_model.prefill_into(" in setup_section
+    assert "prefix_buffer[:, offset:next_offset]," in setup_section
     assert "self._metric_request_count = max(" in setup_section
     assert "self._metric_total_tokens = int(" in setup_section
     assert "self._metric_total_batch_requests = int(" in setup_section
@@ -12647,7 +12652,8 @@ def test_cache_aware_disagg_multigpu_reuses_kv_buffers_in_hot_path() -> None:
     assert "_split_prompt(prompts[request_idx], cfg.chunk_size)" in worker_prompt_section
     assert "chunks = prompt_chunks[plan.local_request_idx]" in worker_setup_section
     assert "prefix_cache = torch.empty(" in worker_setup_section
-    assert "prefix_cache[:, offset:next_offset].copy_(chunk_kv)" in worker_setup_section
+    assert "model.prefill_into(" in worker_setup_section
+    assert "prefix_cache[:, offset:next_offset]," in worker_setup_section
     assert "torch.cat(prefix_parts" not in worker_setup_section
     assert "recv_chunk_buffers: Dict[int, torch.Tensor] = {}" in worker_setup_section
     assert "recv_seed_buffer = torch.empty(" in worker_setup_section

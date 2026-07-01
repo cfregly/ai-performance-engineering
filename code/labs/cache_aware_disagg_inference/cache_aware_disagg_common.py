@@ -353,8 +353,6 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     self.shared_seed_store[plan.request_idx] = seed
 
         self.output = None
-        self._last_outputs = [torch.empty(0) for _ in self.request_plans]
-        self._last_output_count = len(self._last_outputs)
         self._output_stack = torch.empty(
             self._request_plan_count,
             self.cfg.batch_size,
@@ -362,6 +360,8 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=self.cfg.dtype,
         )
+        self._last_outputs = list(self._output_stack.unbind(0))
+        self._last_output_count = self._output_stack.size(0)
         self._outputs_ready = False
         self._timing_history = {"ttft": [], "tpot": []}
         self._custom_metrics.clear()
@@ -598,13 +598,14 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 prefill_end.record(current_stream)
                 if seed is None:
                     raise RuntimeError("Request finished without a decode seed")
-                output = self.decode_model.decode(seed, accumulated_kv, self.cfg.decode_tokens)
+                outputs[event_idx].copy_(
+                    self.decode_model.decode(seed, accumulated_kv, self.cfg.decode_tokens)
+                )
                 decode_end.record(current_stream)
-                outputs[event_idx] = output
 
         self._last_outputs = outputs
         self._outputs_ready = True
-        self.output = None
+        self.output = self._output_stack
         self._request_event_triplets = request_events
         self._pending_metrics = metrics
 
@@ -614,7 +615,6 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self.output is None:
             if self._output_stack is None:
                 raise RuntimeError("Output stack buffer not initialized")
-            torch.stack(self._last_outputs, dim=0, out=self._output_stack)
             self.output = self._output_stack
         request_ttft: List[float] = []
         request_tpot: List[float] = []
