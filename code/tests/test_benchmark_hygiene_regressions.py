@@ -18697,7 +18697,9 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
         maxsplit=1,
     )[0]
 
-    assert "self._match_host = torch.empty(" in setup_section
+    assert "self._accept_prefix = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)" in setup_section
+    assert "self._accept_count_device = torch.empty((1,), device=self.device, dtype=torch.int64)" in setup_section
+    assert "self._accept_count_host = torch.empty(" in setup_section
     assert "pin_memory=torch.cuda.is_available()" in setup_section
     assert "self._draft_head_offsets = torch.arange(wl.speculative_k, device=self.device, dtype=torch.int64).view(1, -1)" in setup_section
     assert "self._draft_seed_buffer = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)" in setup_section
@@ -18724,11 +18726,12 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._target_token_views = [" in setup_section
     assert "self._target_token_column_views = [" in setup_section
     assert "self._match_views = [" in setup_section
+    assert "self._accept_prefix_views = [" in setup_section
     assert "self._draft_id_views = [" in setup_section
     assert "self._draft_id_column_views = [" in setup_section
-    assert "self._match_host_views = [" in setup_section
-    assert "self._accept_prefix" not in source
-    assert "self._accept_count" not in source
+    assert "self._accept_prefix[:, :k] for k in range(1, wl.speculative_k + 1)" in setup_section
+    assert "self._match_host" not in source
+    assert "self._match_host_views" not in source
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "time.perf_counter" not in benchmark_section
@@ -18757,13 +18760,16 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._draft_id_column_views[j].copy_(next_d)" in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
     assert "torch.eq(target_next, draft_window, out=matches)" in benchmark_section
-    assert "match_host = self._match_host_views[view_idx]" in benchmark_section
-    assert "match_host.copy_(matches[0], non_blocking=False)" in benchmark_section
-    assert "for match_idx in range(k):" in benchmark_section
-    assert "if not bool(match_host[match_idx]):" in benchmark_section
-    assert "accept_k += 1" in benchmark_section
-    assert "torch.cumprod(" not in benchmark_section
-    assert "torch.sum(accept_prefix" not in benchmark_section
+    assert "accept_prefix = self._accept_prefix_views[view_idx]" in benchmark_section
+    assert "torch.cumprod(matches, dim=-1, dtype=torch.int64, out=accept_prefix)" in benchmark_section
+    assert "torch.sum(accept_prefix[0], dim=0, out=self._accept_count_device[0])" in benchmark_section
+    assert "self._accept_count_host.copy_(self._accept_count_device, non_blocking=False)" in benchmark_section
+    assert "accept_k = int(self._accept_count_host[0])" in benchmark_section
+    assert "for match_idx in" not in benchmark_section
+    assert "if not bool(match_host[match_idx]):" not in benchmark_section
+    assert "accept_k += 1" not in benchmark_section
+    assert "match_host.copy_" not in benchmark_section
+    assert "matches[0], non_blocking=False" not in benchmark_section
     assert "self._accept_count.item()" not in benchmark_section
     assert "self._output_write_views[view_idx][pos].copy_(draft_window)" in benchmark_section
     assert "self._output_token_views[pos + accept_k + 1].copy_(" in benchmark_section
