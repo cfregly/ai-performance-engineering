@@ -16926,19 +16926,26 @@ def test_ch18_eos_early_exit_skips_tail_decode_after_forced_eos() -> None:
     assert "force_eos_after_tokens: int = 16" in source
     assert "if cfg.force_eos_after_tokens < 1:" in source
     assert "if cfg.force_eos_after_tokens > cfg.decode_tokens:" in source
+    assert "self._full_decode_range = range(cfg.decode_tokens)" in source
+    assert "self._early_exit_range = range(cfg.force_eos_after_tokens)" in source
+    assert "self._decode_token_divisor = float(max(cfg.decode_tokens, 1))" in source
     assert "self.logits_buffer = torch.empty(" in setup_section
     assert "torch.mm(self.state_buffer, self.lm_head_weight.t(), out=self.logits_buffer)" in source
     assert benchmark_section.index("next_token.fill_(self.cfg.eos_token_id)") < benchmark_section.index(
         "self.generated_tokens[:, step].copy_(next_token)"
     )
     assert "if self.cfg.stop_on_all_done:" in benchmark_section
-    assert "stop_step = self.cfg.force_eos_after_tokens if self.cfg.stop_on_all_done else self.cfg.decode_tokens" in benchmark_section
-    assert "for step in range(stop_step):" in benchmark_section
+    assert "decode_step_range = self._early_exit_range if self.cfg.stop_on_all_done else self._full_decode_range" in benchmark_section
+    assert "for step in decode_step_range:" in benchmark_section
+    assert "for step in range(stop_step):" not in benchmark_section
+    assert "range(self.cfg.decode_tokens)" not in benchmark_section
+    assert "max(self.cfg.decode_tokens, 1)" not in benchmark_section
     assert "if bool(self.done_mask_buffer.all().item()):" not in benchmark_section
     assert ".all().item()" not in benchmark_section
     assert "self.generated_tokens[:, filled:].fill_(self.cfg.eos_token_id)" in benchmark_section
     assert 'metrics["eos_early_exit.decoded_steps"] = float(filled)' in benchmark_section
     assert 'metrics["eos_early_exit.skipped_decode_steps"] = float(self.cfg.decode_tokens - filled)' in benchmark_section
+    assert '100.0 * float(filled) / self._decode_token_divisor' in benchmark_section
     assert "return BenchmarkConfig(" in source
     assert 'stop_on_all_done=False' in baseline_source
     assert 'stop_on_all_done=True' in optimized_source

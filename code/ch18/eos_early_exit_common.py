@@ -56,6 +56,9 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.output: Optional[torch.Tensor] = None
         self._completion_checks = 0
         self._decoded_steps = 0
+        self._full_decode_range = range(cfg.decode_tokens)
+        self._early_exit_range = range(cfg.force_eos_after_tokens)
+        self._decode_token_divisor = float(max(cfg.decode_tokens, 1))
         self._custom_metrics: Dict[str, float] = {}
         self.parameter_count = 0
         self.register_workload_metadata(
@@ -198,9 +201,9 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._prefill()
         self.done_mask_buffer.zero_()
         filled = 0
-        stop_step = self.cfg.force_eos_after_tokens if self.cfg.stop_on_all_done else self.cfg.decode_tokens
+        decode_step_range = self._early_exit_range if self.cfg.stop_on_all_done else self._full_decode_range
         with torch.inference_mode(), self._nvtx_range(self.cfg.label):
-            for step in range(stop_step):
+            for step in decode_step_range:
                 next_token = self._decode_step()
                 if (step + 1) >= self.cfg.force_eos_after_tokens:
                     next_token.fill_(self.cfg.eos_token_id)
@@ -220,7 +223,7 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
         metrics["eos_early_exit.skipped_decode_steps"] = float(self.cfg.decode_tokens - filled)
         metrics["eos_early_exit.completion_checks"] = float(self._completion_checks)
         metrics["eos_early_exit.effective_decode_fraction_pct"] = (
-            100.0 * float(filled) / float(max(self.cfg.decode_tokens, 1))
+            100.0 * float(filled) / self._decode_token_divisor
         )
 
     def capture_verification_payload(self) -> None:
