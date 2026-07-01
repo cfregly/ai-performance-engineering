@@ -14,6 +14,7 @@ MoE serving paths usually fail for one of four reasons: decode kernels are too l
 ## Optimized Path
 - staged decode kernels
 - overlapped and graph-assisted KV transfer
+- batched direct KV destination writes for serving layouts that colocate compute and KV placement
 - backend and router kernels tuned for Blackwell-friendly execution
 
 ## Measured Delta
@@ -23,13 +24,13 @@ Representative strict result from `artifacts/runs/20260302_full_strict_chapter_l
 | --- | ---: | ---: | ---: |
 | `decode_attention` | `0.259 ms` | `0.207 ms` | `1.25x` |
 | `kv_transfer` | `1.224 ms` | `1.085 ms` | `1.13x` |
-| `kv_transfer_direct` | baseline transfer path | direct KV writes | destination-placement variant |
+| `kv_transfer_direct` | baseline transfer path | batched direct KV writes | destination-placement + launch-removal variant |
 | `kv_transfer_graphs` | `1.224 ms` | `0.315 ms` | `3.88x` |
 | `kv_transfer_direct_graphs` | baseline transfer path | direct KV writes + graph replay | destination + launch-removal variant |
 | `moe_backend_selection` | `1.747 ms` | `0.308 ms` | `5.67x` |
 | `router` | `67.265 ms` | `8.674 ms` | `7.75x` |
 
-That spread is the point of the lab. Not every MoE subsystem gets the same win: overlap-only KV transfer is a modest directional step, direct destination placement removes the copy when the serving layout allows it, and graphed direct placement removes most of the remaining launch overhead. The router/backend work is still where the biggest local payoff is showing up.
+That spread is the point of the lab. Not every MoE subsystem gets the same win: overlap-only KV transfer is a modest directional step, direct destination placement removes the copy when the serving layout allows it, batched direct placement removes per-chunk launches, and graphed direct placement removes most of the remaining scheduling overhead. The router/backend work is still where the biggest local payoff is showing up.
 
 ## Profiler Evidence
 ```bash

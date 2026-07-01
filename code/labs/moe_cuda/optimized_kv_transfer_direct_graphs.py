@@ -29,16 +29,13 @@ class DirectGraphedKVTransferBenchmark(DirectKVTransferBenchmark):
         self._maybe_capture_graph()
 
     def _maybe_capture_graph(self) -> None:
-        if self.weight is None or self.kv_dest is None:
+        if self.input_chunks is None or self.weight is None or self.kv_dest is None:
             raise RuntimeError("Buffers not initialized")
-        if self._chunk_spec_count != self._expected_chunk_spec_count:
-            raise RuntimeError("Chunk views not initialized")
 
         self.graph = torch.cuda.CUDAGraph()
         torch.cuda.synchronize(self.device)
         with torch.cuda.graph(self.graph):
-            for input_chunk, dest_chunk in self._direct_chunk_specs:
-                torch.matmul(input_chunk, self.weight, out=dest_chunk)
+            torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
@@ -58,4 +55,3 @@ class DirectGraphedKVTransferBenchmark(DirectKVTransferBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return DirectGraphedKVTransferBenchmark()
-

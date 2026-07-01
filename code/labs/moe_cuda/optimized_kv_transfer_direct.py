@@ -7,7 +7,7 @@ copy used by the transfer baseline instead of trying to overlap that copy.
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Optional
 
 import torch
 
@@ -24,14 +24,10 @@ class DirectKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.hidden_size = 1024
         self.chunk_size = 256
         self.num_chunks = 32
-        self._chunk_range = range(self.num_chunks)
         self.dtype = torch.float16
         self.input_chunks: Optional[torch.Tensor] = None
         self.weight: Optional[torch.Tensor] = None
         self.kv_dest: Optional[torch.Tensor] = None
-        self._direct_chunk_specs: List[tuple[torch.Tensor, torch.Tensor]] = []
-        self._chunk_spec_count: int = 0
-        self._expected_chunk_spec_count: int = 0
         self.output: Optional[torch.Tensor] = None
         self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
@@ -51,7 +47,6 @@ class DirectKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
-        self._chunk_range = range(self.num_chunks)
         self.input_chunks = torch.randn(
             self.num_chunks,
             self.chunk_size,
@@ -66,26 +61,19 @@ class DirectKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
         )
         self.kv_dest = torch.empty_like(self.input_chunks)
-        self._direct_chunk_specs = list(zip(self.input_chunks.unbind(0), self.kv_dest.unbind(0), strict=True))
-        self._chunk_spec_count = len(self._direct_chunk_specs)
-        self._expected_chunk_spec_count = self.num_chunks
         self._output_view = self.kv_dest[0, :1, : min(8, self.hidden_size)]
         self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
         self._payload_meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
 
-        first_input, first_dest = self._direct_chunk_specs[0]
-        torch.matmul(first_input, self.weight, out=first_dest)
+        torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)
         self._synchronize()
 
     def benchmark_fn(self) -> None:
         if self.input_chunks is None or self.weight is None or self.kv_dest is None:
             raise RuntimeError("Buffers not initialized")
-        if self._chunk_spec_count != self._expected_chunk_spec_count:
-            raise RuntimeError("Chunk views not initialized")
 
         with nvtx_range("moe_cuda_kv_direct_destination", enable=self._enable_nvtx):
-            for input_chunk, dest_chunk in self._direct_chunk_specs:
-                torch.matmul(input_chunk, self.weight, out=dest_chunk)
+            torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)
         self.output = self._output_view
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
@@ -108,9 +96,6 @@ class DirectKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.input_chunks = None
         self.weight = None
         self.kv_dest = None
-        self._direct_chunk_specs = []
-        self._chunk_spec_count = 0
-        self._expected_chunk_spec_count = 0
         self.output = None
         self._output_view = None
         self._verify_output_buffer = None
@@ -131,4 +116,3 @@ class DirectKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
 def get_benchmark() -> BaseBenchmark:
     return DirectKVTransferBenchmark()
-

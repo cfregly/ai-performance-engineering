@@ -8045,18 +8045,16 @@ def test_moe_cuda_direct_kv_transfer_writes_matmul_into_destination() -> None:
     assert "BaselineKVTransferBenchmark" in baseline_source
     assert "self.kv_dest = torch.empty_like(self.input_chunks)" in setup_section
     assert "self.workspace" not in source
-    assert "self._direct_chunk_specs: List[tuple[torch.Tensor, torch.Tensor]] = []" in source
-    assert "self._direct_chunk_specs = list(zip(" in setup_section
-    assert "self._chunk_spec_count = len(self._direct_chunk_specs)" in setup_section
-    assert "if self._chunk_spec_count != self._expected_chunk_spec_count:" in benchmark_section
-    assert "for input_chunk, dest_chunk in self._direct_chunk_specs:" in benchmark_section
-    assert "torch.matmul(input_chunk, self.weight, out=dest_chunk)" in benchmark_section
+    assert "self._direct_chunk_specs" not in source
+    assert "torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)" in setup_section
+    assert "torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)" in benchmark_section
+    assert "for input_chunk" not in benchmark_section
+    assert "for i in" not in benchmark_section
     assert ".copy_(" not in benchmark_section
     assert "self.output = self._output_view" in benchmark_section
     assert "self._verify_output_buffer.copy_(self.output)" in capture_section
     assert "output=self._verify_output_buffer" in capture_section
-    assert "self._direct_chunk_specs = []" in teardown_section
-    assert "self._chunk_spec_count = 0" in teardown_section
+    assert "_chunk_spec" not in source
 
 
 def test_moe_cuda_direct_graphed_kv_transfer_replays_destination_graph() -> None:
@@ -8090,8 +8088,8 @@ def test_moe_cuda_direct_graphed_kv_transfer_replays_destination_graph() -> None
     assert "self._maybe_capture_graph()" in setup_section
     assert "self.graph = torch.cuda.CUDAGraph()" in graph_section
     assert "with torch.cuda.graph(self.graph):" in graph_section
-    assert "for input_chunk, dest_chunk in self._direct_chunk_specs:" in graph_section
-    assert "torch.matmul(input_chunk, self.weight, out=dest_chunk)" in graph_section
+    assert "torch.matmul(self.input_chunks, self.weight, out=self.kv_dest)" in graph_section
+    assert "for input_chunk" not in graph_section
     assert ".copy_(" not in graph_section
     assert "self.graph.replay()" in benchmark_section
     assert "moe_cuda_kv_direct_destination_graphed" in benchmark_section
