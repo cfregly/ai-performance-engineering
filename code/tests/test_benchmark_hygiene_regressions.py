@@ -19439,6 +19439,10 @@ def test_labs_trusted_speculative_decode_skips_target_verification_hot_path() ->
     optimized_source = (
         REPO_ROOT / "labs" / "speculative_decode" / "optimized_speculative_decode_trusted.py"
     ).read_text(encoding="utf-8")
+    setup_section = optimized_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     benchmark_section = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def get_benchmark",
         maxsplit=1,
@@ -19447,15 +19451,24 @@ def test_labs_trusted_speculative_decode_skips_target_verification_hot_path() ->
     assert "OptimizedSpeculativeDecodeBenchmark" in baseline_source
     assert '"speculative.target_verify_calls": 0.0' in baseline_source
     assert '"speculative.trusted_draft": 0.0' in baseline_source
-    assert "self.target_model = None" in optimized_source
+    assert "self.target_model = None" in setup_section
+    assert "self._target_forward_buffers = []" in setup_section
+    assert "self._forward_buffer_counts = (1, 0)" in setup_section
+    assert "self._expected_forward_buffer_counts = (1, 0)" in setup_section
     assert "target_forward_into" not in benchmark_section
     assert "target_logits_views" not in benchmark_section
+    assert "or self._draft_forward_buffers is None" in benchmark_section
+    assert "or self._forward_buffer_counts != self._expected_forward_buffer_counts" in benchmark_section
+    assert "draft_forward_into_prepared = self.draft_model.forward_into_prepared" in benchmark_section
+    assert "draft_forward_buffers = self._draft_forward_buffers" in benchmark_section
+    assert "draft_forward_into = self.draft_model.forward_into" not in benchmark_section
     assert "match_host.copy_" not in benchmark_section
     assert "torch.eq(" not in benchmark_section
     assert "output_write_views = self._output_write_views" in benchmark_section
     assert "draft_id_views = self._draft_id_views" in benchmark_section
     assert "draft_id_column_views = self._draft_id_column_views" in benchmark_section
     assert "draft_next_token_view = self._draft_next_token_view" in benchmark_section
+    assert "draft_forward_into_prepared(prev, draft_logits, draft_forward_buffers)" in benchmark_section
     assert "draft_id_column_views[j].copy_(draft_next_tokens)" in benchmark_section
     assert "prev = draft_next_token_view" in benchmark_section
     assert "output_write_views[view_idx][pos].copy_(draft_window)" in benchmark_section
