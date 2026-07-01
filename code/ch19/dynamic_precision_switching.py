@@ -288,8 +288,22 @@ def decode_with_dynamic_precision(
     append_embedding = getattr(model, "append_incremental_embedding", None)
     incremental_logits = getattr(model, "forward_incremental_logits", None)
     direct_next_token = getattr(model, "next_token_from_last", None)
-    use_incremental = callable(initial_sum) and callable(append_embedding) and callable(incremental_logits)
+    direct_confidence_margin = getattr(model, "confidence_margin_from_last", None)
+    direct_sequence = getattr(model, "fill_next_tokens_from_last", None)
     use_direct_next_token = callable(direct_next_token)
+    use_direct_confidence_margin = callable(direct_confidence_margin)
+    use_direct_sequence = (
+        callable(direct_sequence)
+        and use_direct_next_token
+        and use_direct_confidence_margin
+        and eos_id is None
+    )
+    use_incremental = (
+        callable(initial_sum)
+        and callable(append_embedding)
+        and callable(incremental_logits)
+        and not (use_direct_next_token and use_direct_confidence_margin)
+    )
     embedding_sum = initial_sum(prompt) if use_incremental else None
     last_token = prompt[:, -1] if (use_incremental or use_direct_next_token) else None
     current_len = prompt_len
@@ -304,6 +318,51 @@ def decode_with_dynamic_precision(
     
     # Statistics
     stats = PrecisionStats() if collect_stats else None
+
+    if use_direct_sequence and max_steps > 0:
+        direct_sequence(prompt[:, -1], generated[:, prompt_len : prompt_len + max_steps])
+        if stats:
+            direct_conf_value = 16.0
+            stats_precision_mode = default_mode
+            confidence_samples = 0
+            for step in range(max_steps):
+                stats.record_tokens(stats_precision_mode, batch_size)
+                if (step + 1) % reeval_interval != 0:
+                    continue
+                confidence_samples += 1
+                mem_util = _memory_utilization_percent(device)
+                desired_mode = stats_precision_mode
+                if stats_precision_mode == PrecisionMode.FP4:
+                    if direct_conf_value < exit_fp4_threshold or mem_util < fp4_memory_exit:
+                        desired_mode = (
+                            PrecisionMode.FP8
+                            if enable_fp8 and direct_conf_value >= enter_fp8_threshold
+                            else default_mode
+                        )
+                else:
+                    if enable_fp4 and direct_conf_value >= enter_fp4_threshold and mem_util >= fp4_memory_enter:
+                        desired_mode = PrecisionMode.FP4
+                    elif stats_precision_mode == PrecisionMode.FP8:
+                        if direct_conf_value < exit_fp8_threshold:
+                            desired_mode = default_mode
+                    elif enable_fp8 and direct_conf_value >= enter_fp8_threshold:
+                        desired_mode = PrecisionMode.FP8
+
+                if desired_mode == PrecisionMode.FP8:
+                    if not enable_fp8 or device.type != "cuda" or not _TE_AVAILABLE:
+                        desired_mode = default_mode
+                stats.avg_confidence = (
+                    (stats.avg_confidence * (confidence_samples - 1)) + direct_conf_value
+                ) / max(confidence_samples, 1)
+                if desired_mode != stats_precision_mode:
+                    stats_precision_mode = desired_mode
+                    stats.precision_switches += 1
+        if workspace is not None:
+            workspace.next_token_flat = next_token_flat
+            workspace.generated_token_views = generated_token_views
+            workspace.margin_mean = margin_mean
+            workspace.ema_conf = ema_conf
+        return generated[:, : prompt_len + max_steps].contiguous(), stats
     
     # A tiny helper to update on-device EMA without host sync
     def _update_confidence_ema(logits: torch.Tensor) -> torch.Tensor:
@@ -340,11 +399,27 @@ def decode_with_dynamic_precision(
         else:
             ema_conf.mul_(1 - alpha).add_(margin_mean, alpha=alpha)
         return ema_conf  # device scalar
+
+    def _update_direct_confidence_ema(source_token: torch.Tensor) -> torch.Tensor:
+        nonlocal ema_conf, margin_mean
+        if margin_mean is None or margin_mean.device != source_token.device or margin_mean.dtype != torch.float32:
+            margin_mean = torch.empty((), device=source_token.device, dtype=torch.float32)
+        direct_confidence_margin(source_token, out=margin_mean)
+        if ema_conf is None:
+            ema_conf = workspace_ema_conf if workspace_ema_conf is not None else torch.empty_like(margin_mean)
+            ema_conf.copy_(margin_mean)
+        else:
+            ema_conf.mul_(1 - alpha).add_(margin_mean, alpha=alpha)
+        return ema_conf  # device scalar
     
     # Decode
     for step in range(max_steps):
         should_reevaluate = (step + 1) % reeval_interval == 0
-        needs_logits = not use_direct_next_token or step == 0 or should_reevaluate
+        needs_confidence = step == 0 or should_reevaluate
+        needs_logits = not use_direct_next_token or (
+            needs_confidence and not use_direct_confidence_margin
+        )
+        source_token = last_token if last_token is not None else generated_token_views[current_len - 1]
 
         # 1) Precision context (exactly one).
         # No nested contexts, no leakage across iterations.
@@ -367,7 +442,6 @@ def decode_with_dynamic_precision(
         
         # 2) Pick next token from the *last* position
         if use_direct_next_token:
-            source_token = last_token
             direct_next_token(source_token, out=next_token_flat)
         else:
             last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
@@ -390,7 +464,13 @@ def decode_with_dynamic_precision(
         current_len += 1
         
         # 3) Update on-device EMA only when the policy can consume it.
-        conf_dev = _update_confidence_ema(logits) if (needs_logits and (step == 0 or should_reevaluate)) else ema_conf
+        if needs_confidence:
+            if use_direct_confidence_margin:
+                conf_dev = _update_direct_confidence_ema(source_token)
+            else:
+                conf_dev = _update_confidence_ema(logits)
+        else:
+            conf_dev = ema_conf
         
         # 4) Update statistics
         if stats:

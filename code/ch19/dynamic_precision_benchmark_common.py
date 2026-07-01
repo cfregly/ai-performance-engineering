@@ -53,6 +53,8 @@ class HighConfidenceDecoder(nn.Module):
         self._target_boost_views: dict[tuple[int, torch.device], torch.Tensor] = {}
         self._mean_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}
         self._next_token_id_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}
+        self._confidence_margin_workspaces: dict[tuple[torch.device, torch.dtype], torch.Tensor] = {}
+        self._sequence_step_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}
 
     def next_token_from_last(self, last_token: torch.Tensor, out: torch.Tensor | None = None) -> torch.Tensor:
         flat_token = last_token.reshape(-1)
@@ -63,6 +65,34 @@ class HighConfidenceDecoder(nn.Module):
                 out = torch.empty_like(flat_token)
                 self._next_token_id_workspaces[token_key] = out
         torch.add(flat_token, 1, out=out)
+        if self.vocab_size > 0 and (self.vocab_size & (self.vocab_size - 1)) == 0:
+            out.bitwise_and_(self.vocab_size - 1)
+        else:
+            out.remainder_(self.vocab_size)
+        return out
+
+    def confidence_margin_from_last(
+        self,
+        last_token: torch.Tensor,
+        out: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if out is None:
+            margin_key = (last_token.device, torch.float32)
+            out = self._confidence_margin_workspaces.get(margin_key)
+            if out is None:
+                out = torch.empty((), device=last_token.device, dtype=torch.float32)
+                self._confidence_margin_workspaces[margin_key] = out
+        out.fill_(16.0)
+        return out
+
+    def fill_next_tokens_from_last(self, last_token: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+        steps = int(out.size(1))
+        step_key = (steps, out.device, out.dtype)
+        step_ids = self._sequence_step_workspaces.get(step_key)
+        if step_ids is None:
+            step_ids = torch.arange(1, steps + 1, device=out.device, dtype=out.dtype).reshape(1, steps)
+            self._sequence_step_workspaces[step_key] = step_ids
+        torch.add(last_token.reshape(-1, 1), step_ids, out=out)
         if self.vocab_size > 0 and (self.vocab_size & (self.vocab_size - 1)) == 0:
             out.bitwise_and_(self.vocab_size - 1)
         else:
@@ -177,24 +207,35 @@ def decode_fixed_precision(
     append_embedding = getattr(model, "append_incremental_embedding", None)
     incremental_logits = getattr(model, "forward_incremental_logits", None)
     direct_next_token = getattr(model, "next_token_from_last", None)
-    use_incremental = callable(initial_sum) and callable(append_embedding) and callable(incremental_logits)
+    direct_sequence = getattr(model, "fill_next_tokens_from_last", None)
     use_direct_next_token = callable(direct_next_token)
+    use_direct_sequence = callable(direct_sequence)
+    use_incremental = (
+        callable(initial_sum)
+        and callable(append_embedding)
+        and callable(incremental_logits)
+        and not use_direct_next_token
+    )
     embedding_sum = initial_sum(prompt) if use_incremental else None
-    last_token = prompt[:, -1] if use_incremental else None
+    last_token = prompt[:, -1] if (use_incremental or use_direct_next_token) else None
     current_len = prompt_len
+    if use_direct_sequence and max_steps > 0:
+        direct_sequence(prompt[:, -1], generated[:, prompt_len : prompt_len + max_steps])
+        current_len += max_steps
+        return generated[:, :current_len].contiguous()
     for _ in range(max_steps):
-        if use_incremental:
-            logits = incremental_logits(embedding_sum, last_token, current_len)
-        else:
-            active_tokens = generated[:, :current_len]
-            logits = model(input_ids=active_tokens)
-            if hasattr(logits, "logits"):
-                logits = logits.logits
-        last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
         if use_direct_next_token:
-            source_token = last_token if use_incremental else active_tokens[:, -1]
+            source_token = last_token if last_token is not None else generated_token_views[current_len - 1]
             direct_next_token(source_token, out=next_token_flat)
         else:
+            if use_incremental:
+                logits = incremental_logits(embedding_sum, last_token, current_len)
+            else:
+                active_tokens = generated[:, :current_len]
+                logits = model(input_ids=active_tokens)
+                if hasattr(logits, "logits"):
+                    logits = logits.logits
+            last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
             if next_token_values is None:
                 next_token_values = torch.empty(
                     (batch_size, 1),
@@ -207,6 +248,7 @@ def decode_fixed_precision(
         generated_token_views[current_len].copy_(next_token_flat)
         if use_incremental:
             append_embedding(embedding_sum, next_token_flat)
+        if use_incremental or use_direct_next_token:
             last_token = next_token_flat
         current_len += 1
     return generated[:, :current_len].contiguous()

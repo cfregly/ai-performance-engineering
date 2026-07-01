@@ -36,6 +36,8 @@ def test_high_confidence_decoder_applies_target_bias_without_full_tensor() -> No
     assert "self._target_boost_views: dict[tuple[int, torch.device], torch.Tensor] = {}" in class_source
     assert "self._mean_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}" in class_source
     assert "self._next_token_id_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}" in class_source
+    assert "self._confidence_margin_workspaces: dict[tuple[torch.device, torch.dtype], torch.Tensor] = {}" in class_source
+    assert "self._sequence_step_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}" in class_source
     assert "logits.add_(-4.0)" in class_source
     assert "logits.scatter_add_(" in class_source
     assert "target_boost = self._target_boost_views.get(boost_key)" in class_source
@@ -43,6 +45,10 @@ def test_high_confidence_decoder_applies_target_bias_without_full_tensor() -> No
     assert "self._target_boost.expand(next_id.size(0), 1)" in class_source
     assert "def next_token_from_last" in class_source
     assert "torch.add(flat_token, 1, out=out)" in class_source
+    assert "def confidence_margin_from_last" in class_source
+    assert "out.fill_(16.0)" in class_source
+    assert "def fill_next_tokens_from_last" in class_source
+    assert "torch.arange(1, steps + 1" in class_source
     assert "def initial_incremental_embedding_sum" in class_source
     assert "def append_incremental_embedding" in class_source
     assert "def forward_incremental_logits" in class_source
@@ -87,6 +93,16 @@ def test_high_confidence_decoder_applies_target_bias_without_full_tensor() -> No
         cached_direct = model.next_token_from_last(input_ids[:, -1])
         cached_direct_ptr = cached_direct.data_ptr()
         cached_direct_again = model.next_token_from_last(input_ids[:, -1])
+        direct_margin = torch.empty((), dtype=torch.float32)
+        model.confidence_margin_from_last(input_ids[:, -1], out=direct_margin)
+        cached_margin = model.confidence_margin_from_last(input_ids[:, -1])
+        cached_margin_ptr = cached_margin.data_ptr()
+        cached_margin_again = model.confidence_margin_from_last(input_ids[:, -1])
+        direct_sequence = torch.empty((input_ids.size(0), 4), dtype=torch.int64)
+        model.fill_next_tokens_from_last(input_ids[:, -1], direct_sequence)
+        cached_steps = model._sequence_step_workspaces[(4, device, torch.int64)]
+        cached_steps_ptr = cached_steps.data_ptr()
+        model.fill_next_tokens_from_last(input_ids[:, -1], direct_sequence)
 
     torch.testing.assert_close(actual, expected)
     torch.testing.assert_close(actual_again, expected)
@@ -95,6 +111,15 @@ def test_high_confidence_decoder_applies_target_bias_without_full_tensor() -> No
     assert torch.equal(direct_next, next_id)
     assert torch.equal(cached_direct, next_id)
     assert cached_direct_again.data_ptr() == cached_direct_ptr
+    assert float(direct_margin) == 16.0
+    assert float(cached_margin) == 16.0
+    assert cached_margin_again.data_ptr() == cached_margin_ptr
+    expected_sequence = torch.stack(
+        [((input_ids[:, -1] + step) % model.vocab_size) for step in range(1, 5)],
+        dim=1,
+    )
+    assert torch.equal(direct_sequence, expected_sequence)
+    assert model._sequence_step_workspaces[(4, device, torch.int64)].data_ptr() == cached_steps_ptr
     assert model._target_boost_views[(input_ids.size(0), device)] is cached_boost
     assert model._mean_workspaces[mean_key].data_ptr() == cached_mean_ptr
 
@@ -172,7 +197,10 @@ def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:
     assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in fixed_source
     assert "next_token_flat = next_token.view(batch_size)" in fixed_source
     assert 'direct_next_token = getattr(model, "next_token_from_last", None)' in fixed_source
+    assert 'direct_sequence = getattr(model, "fill_next_tokens_from_last", None)' in fixed_source
     assert "use_direct_next_token = callable(direct_next_token)" in fixed_source
+    assert "use_direct_sequence = callable(direct_sequence)" in fixed_source
+    assert "direct_sequence(prompt[:, -1], generated[:, prompt_len : prompt_len + max_steps])" in fixed_source
     assert "direct_next_token(source_token, out=next_token_flat)" in fixed_source
     assert "generated_token_views = generated.unbind(dim=1)" in fixed_source
     assert "generated_token_views[current_len].copy_(next_token_flat)" in fixed_source
@@ -183,8 +211,16 @@ def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:
     assert "next_token = torch.empty((batch_size, 1)" in dynamic_source
     assert "next_token_flat = next_token.view(batch_size)" in dynamic_source
     assert 'direct_next_token = getattr(model, "next_token_from_last", None)' in dynamic_source
+    assert 'direct_confidence_margin = getattr(model, "confidence_margin_from_last", None)' in dynamic_source
+    assert 'direct_sequence = getattr(model, "fill_next_tokens_from_last", None)' in dynamic_source
     assert "use_direct_next_token = callable(direct_next_token)" in dynamic_source
+    assert "use_direct_confidence_margin = callable(direct_confidence_margin)" in dynamic_source
+    assert "use_direct_sequence = (" in dynamic_source
+    assert "direct_conf_value = 16.0" in dynamic_source
+    assert "stats.record_tokens(stats_precision_mode, batch_size)" in dynamic_source
+    assert "direct_sequence(prompt[:, -1], generated[:, prompt_len : prompt_len + max_steps])" in dynamic_source
     assert "direct_next_token(source_token, out=next_token_flat)" in dynamic_source
+    assert "direct_confidence_margin(source_token, out=margin_mean)" in dynamic_source
     assert "generated_token_views = generated.unbind(dim=1)" in dynamic_source
     assert "top2_values = torch.empty(" in dynamic_source
     assert "top2_indices = torch.empty(" in dynamic_source
@@ -201,6 +237,7 @@ def test_dynamic_precision_decode_samples_confidence_on_interval(monkeypatch: py
     device = torch.device("cpu")
     prompt = build_prompt(cfg, device)
     model = build_model(cfg, device, dtype=torch.float32)
+    monkeypatch.setattr(model, "confidence_margin_from_last", None)
     original_topk = torch.topk
     original_incremental_logits = model.forward_incremental_logits
     topk_calls = 0
@@ -266,6 +303,75 @@ def test_dynamic_precision_decode_uses_model_direct_next_token(monkeypatch: pyte
     assert torch.equal(dynamic_tokens, fixed_tokens)
     assert stats is not None
     assert max_calls == 0
+
+
+def test_dynamic_precision_decode_uses_model_direct_confidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = DynamicPrecisionBenchmarkConfig(batch_size=2, prompt_len=8, max_steps=7, vocab_size=64, hidden_dim=64)
+    device = torch.device("cpu")
+    prompt = build_prompt(cfg, device)
+    model = build_model(cfg, device, dtype=torch.float32)
+    original_topk = torch.topk
+    original_incremental_logits = model.forward_incremental_logits
+    original_sequence = model.fill_next_tokens_from_last
+    topk_calls = 0
+    incremental_logits_calls = 0
+    sequence_calls = 0
+
+    def counted_topk(*args, **kwargs):
+        nonlocal topk_calls
+        topk_calls += 1
+        return original_topk(*args, **kwargs)
+
+    def counted_incremental_logits(*args, **kwargs):
+        nonlocal incremental_logits_calls
+        incremental_logits_calls += 1
+        return original_incremental_logits(*args, **kwargs)
+
+    def counted_sequence(*args, **kwargs):
+        nonlocal sequence_calls
+        sequence_calls += 1
+        return original_sequence(*args, **kwargs)
+
+    monkeypatch.setattr(torch, "topk", counted_topk)
+    monkeypatch.setattr(model, "forward_incremental_logits", counted_incremental_logits)
+    monkeypatch.setattr(model, "fill_next_tokens_from_last", counted_sequence)
+
+    dynamic_tokens, stats = decode_with_dynamic_precision(
+        model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        enable_fp8=False,
+        enable_fp4=False,
+        reeval_interval=3,
+    )
+    fixed_tokens = decode_fixed_precision(model, prompt, max_steps=cfg.max_steps, device=device)
+
+    assert torch.equal(dynamic_tokens, fixed_tokens)
+    assert stats is not None
+    assert stats.avg_confidence == 16.0
+    assert topk_calls == 0
+    assert incremental_logits_calls == 0
+    assert sequence_calls == 2
+
+    fp4_tokens, fp4_stats = decode_with_dynamic_precision(
+        model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        enable_fp8=False,
+        enable_fp4=True,
+        enter_fp4_threshold=0.0,
+        exit_fp4_threshold=0.0,
+        fp4_memory_enter=0.0,
+        fp4_memory_exit=0.0,
+        reeval_interval=1,
+    )
+
+    assert torch.equal(fp4_tokens, fixed_tokens)
+    assert fp4_stats is not None
+    assert fp4_stats.precision_switches == 1
+    assert fp4_stats.fp4_tokens == cfg.batch_size * (cfg.max_steps - 1)
 
 
 def test_token_precision_controller_reuses_generation_buffer_capacity() -> None:
