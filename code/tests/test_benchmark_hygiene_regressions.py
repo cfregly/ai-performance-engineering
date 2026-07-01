@@ -8724,6 +8724,8 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
     assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in pipeline_section
     assert "self._fc1_bias: Optional[torch.Tensor] = None" in pipeline_section
     assert "self._fc2_bias: Optional[torch.Tensor] = None" in pipeline_section
+    assert "self._fc1_forward_view: Optional[torch.Tensor] = None" in pipeline_section
+    assert "self._fc2_forward_view: Optional[torch.Tensor] = None" in pipeline_section
     assert "def cache_weight_views(self) -> None:" in pipeline_section
     assert "self._fc1_weight_t = self.fc1.weight.t()" in pipeline_section
     assert "self._fc2_weight_t = self.fc2.weight.t()" in pipeline_section
@@ -8731,6 +8733,12 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
     assert "self._fc2_bias = self.fc2.bias" in pipeline_section
     assert "def _ensure_forward_buffers(" in pipeline_section
     assert "def forward_cached(self, x: torch.Tensor) -> torch.Tensor:" in pipeline_section
+    assert "def prepare_forward_buffers(self, x: torch.Tensor) -> None:" in pipeline_section
+    assert "self._fc1_forward_view, self._fc2_forward_view = self._ensure_forward_buffers(x)" in pipeline_section
+    assert "def forward_prepared(self, x: torch.Tensor) -> torch.Tensor:" in pipeline_section
+    assert "fc1_out = self._fc1_forward_view" in pipeline_section
+    assert "fc2_out = self._fc2_forward_view" in pipeline_section
+    assert 'raise RuntimeError("forward_prepared() requires prepare_forward_buffers()")' in pipeline_section
     assert "if torch.is_grad_enabled():" in pipeline_section
     assert "or self._fc1_buffer.size(0) < rows" in pipeline_section
     assert "or self._fc2_buffer.size(0) < rows" in pipeline_section
@@ -8750,7 +8758,9 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
     assert "for batch_input in self.inputs:" in setup_section
     assert "batch_input.normal_()" in setup_section
     assert "torch.stack(self.inputs, dim=0)" not in setup_section
-    assert "self._flat_output = self.model(self.flat_inputs)" in setup_section
+    assert "self.model.prepare_forward_buffers(self.flat_inputs)" in setup_section
+    assert "self._flat_output = self.model.forward_prepared(self.flat_inputs)" in setup_section
+    assert "self._flat_output = self.model(self.flat_inputs)" not in setup_section
     assert "self.flat_inputs = self.stacked_inputs.view(self.num_batches * self.batch_size, self.hidden_dim)" in setup_section
     assert ".contiguous()" not in setup_section
     assert "self._output_view = self._flat_output.view(self.num_batches, self.batch_size, self.hidden_dim)" in setup_section
@@ -8761,7 +8771,9 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
     model = SimplePipeline(hidden_dim=8).eval()
     model.cache_weight_views()
     with torch.inference_mode():
-        out = model(torch.randn(4, 8))
+        prepared_input = torch.randn(4, 8)
+        model.prepare_forward_buffers(prepared_input)
+        out = model.forward_prepared(prepared_input)
         fc1_ptr = model._fc1_buffer.data_ptr()
         fc2_ptr = model._fc2_buffer.data_ptr()
         cached = model.forward_cached(torch.randn(2, 8))
@@ -8770,7 +8782,10 @@ def test_ch20_optimized_end_to_end_bandwidth_reuses_mlp_buffers() -> None:
     assert cached.shape == (2, 8)
     assert model._fc1_buffer.data_ptr() == fc1_ptr
     assert model._fc2_buffer.data_ptr() == fc2_ptr
-    assert "self.model.forward_cached(self.flat_inputs)" in benchmark_section
+    assert model._fc2_forward_view is not None
+    assert out.data_ptr() == model._fc2_forward_view.data_ptr()
+    assert "self.model.forward_prepared(self.flat_inputs)" in benchmark_section
+    assert "self.model.forward_cached(self.flat_inputs)" not in benchmark_section
     assert "self.model(self.flat_inputs)" not in benchmark_section
     assert "self.output = self._output_view" in benchmark_section
     assert "flat_output.view(" not in benchmark_section

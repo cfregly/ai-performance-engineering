@@ -25,6 +25,8 @@ class SimplePipeline(nn.Module):
         self._fc2_weight_t: Optional[torch.Tensor] = None
         self._fc1_bias: Optional[torch.Tensor] = None
         self._fc2_bias: Optional[torch.Tensor] = None
+        self._fc1_forward_view: Optional[torch.Tensor] = None
+        self._fc2_forward_view: Optional[torch.Tensor] = None
 
     def cache_weight_views(self) -> None:
         self._fc1_weight_t = self.fc1.weight.t()
@@ -86,6 +88,26 @@ class SimplePipeline(nn.Module):
             fc2_out.add_(self._fc2_bias)
         return fc2_out
 
+    def prepare_forward_buffers(self, x: torch.Tensor) -> None:
+        self.cache_weight_views()
+        self._fc1_forward_view, self._fc2_forward_view = self._ensure_forward_buffers(x)
+
+    def forward_prepared(self, x: torch.Tensor) -> torch.Tensor:
+        fc1_weight_t = self._fc1_weight_t
+        fc2_weight_t = self._fc2_weight_t
+        fc1_out = self._fc1_forward_view
+        fc2_out = self._fc2_forward_view
+        if fc1_weight_t is None or fc2_weight_t is None or fc1_out is None or fc2_out is None:
+            raise RuntimeError("forward_prepared() requires prepare_forward_buffers()")
+        torch.mm(x, fc1_weight_t, out=fc1_out)
+        if self._fc1_bias is not None:
+            fc1_out.add_(self._fc1_bias)
+        self.relu(fc1_out)
+        torch.mm(fc1_out, fc2_weight_t, out=fc2_out)
+        if self._fc2_bias is not None:
+            fc2_out.add_(self._fc2_bias)
+        return fc2_out
+
 
 class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized end-to-end bandwidth by flattening the batch stream."""
@@ -128,8 +150,9 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
             batch_input.normal_()
         self.flat_inputs = self.stacked_inputs.view(self.num_batches * self.batch_size, self.hidden_dim)
         self.output = None
+        self.model.prepare_forward_buffers(self.flat_inputs)
         with torch.inference_mode():
-            self._flat_output = self.model(self.flat_inputs)
+            self._flat_output = self.model.forward_prepared(self.flat_inputs)
         self._output_view = self._flat_output.view(self.num_batches, self.batch_size, self.hidden_dim)
         self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
     
@@ -137,7 +160,7 @@ class OptimizedEndToEndBandwidthBenchmark(VerificationPayloadMixin, BaseBenchmar
         assert self.model is not None and self.flat_inputs is not None and self._output_view is not None
         with self._nvtx_range("optimized_end_to_end_bandwidth"):
             with torch.inference_mode():
-                self.model.forward_cached(self.flat_inputs)
+                self.model.forward_prepared(self.flat_inputs)
                 self.output = self._output_view
 
     def capture_verification_payload(self) -> None:
