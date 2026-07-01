@@ -39,7 +39,7 @@ class OptimizedSpeculativeDecodeTransitionTableBenchmark(OptimizedSpeculativeDec
         token_ids = torch.arange(wl.vocab_size, device=self.device, dtype=torch.long).view(1, wl.vocab_size)
         logits = torch.empty((1, chunk, wl.vocab_size), device=self.device, dtype=wl.dtype)
         values = torch.empty((1, chunk), device=self.device, dtype=wl.dtype)
-        draft_forward_into_prepared = draft_model.forward_into_prepared
+        draft_forward_into_prepared = draft_model.forward_into_prepared_unchecked
         transition_forward_buffers = draft_model.prepare_forward_buffers(
             chunk,
             device=self.device,

@@ -72,6 +72,13 @@ def test_lab_token_mlp_forward_into_prepared_matches_forward() -> None:
     assert actual.data_ptr() == logits_out.data_ptr()
     torch.testing.assert_close(actual, expected)
 
+    unchecked_out = torch.empty_like(logits_out)
+    with torch.inference_mode():
+        unchecked = model.forward_into_prepared_unchecked(token_ids, unchecked_out, buffers)
+
+    assert unchecked.data_ptr() == unchecked_out.data_ptr()
+    torch.testing.assert_close(unchecked, expected)
+
 
 def test_ch15_token_mlp_forward_into_matches_forward() -> None:
     _assert_forward_into_matches_forward(ChapterTokenMLP)

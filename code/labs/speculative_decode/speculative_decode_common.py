@@ -197,6 +197,20 @@ class TokenMLP(nn.Module):
         torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)
         return self._forward_logits_into(logits_out, hidden, scratch, batch, seq)
 
+    def forward_into_prepared_unchecked(
+        self,
+        token_ids: torch.Tensor,
+        logits_out: torch.Tensor,
+        buffers: tuple[torch.Tensor, torch.Tensor],
+    ) -> torch.Tensor:
+        """Fast inference path for callers that already validated static buffers."""
+        batch, seq = token_ids.shape
+        num_tokens = batch * seq
+        hidden, scratch = buffers
+        flat_ids = token_ids.reshape(num_tokens)
+        torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)
+        return self._forward_logits_into(logits_out, hidden, scratch, batch, seq)
+
     def _forward_logits_into(
         self,
         logits_out: torch.Tensor,

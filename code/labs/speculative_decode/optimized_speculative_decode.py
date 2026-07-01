@@ -262,8 +262,8 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         wl = self.workload
         out = self._output_ids
         input_token_view = self._input_token_view
-        draft_forward_into_prepared = self.draft_model.forward_into_prepared
-        target_forward_into_prepared = self.target_model.forward_into_prepared
+        draft_forward_into_prepared = self.draft_model.forward_into_prepared_unchecked
+        target_forward_into_prepared = self.target_model.forward_into_prepared_unchecked
         draft_forward_buffers = self._draft_forward_buffers
         target_forward_buffers = self._target_forward_buffers
         output_step_views = self._output_step_views

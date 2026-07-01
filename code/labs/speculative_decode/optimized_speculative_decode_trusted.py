@@ -49,7 +49,7 @@ class OptimizedSpeculativeDecodeTrustedBenchmark(OptimizedSpeculativeDecodeBench
         wl = self.workload
         out = self._output_ids
         input_ids = self.input_ids
-        draft_forward_into_prepared = self.draft_model.forward_into_prepared
+        draft_forward_into_prepared = self.draft_model.forward_into_prepared_unchecked
         draft_forward_buffers = self._draft_forward_buffers
         output_step_views = self._output_step_views
         output_token_views = self._output_token_views

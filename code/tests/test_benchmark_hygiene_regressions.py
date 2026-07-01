@@ -19696,8 +19696,8 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "len(self._draft_id_views)" not in benchmark_section
     assert "len(self._draft_id_column_views)" not in benchmark_section
     assert "len(self._speculation_step_ranges)" not in benchmark_section
-    assert "draft_forward_into_prepared = self.draft_model.forward_into_prepared" in benchmark_section
-    assert "target_forward_into_prepared = self.target_model.forward_into_prepared" in benchmark_section
+    assert "draft_forward_into_prepared = self.draft_model.forward_into_prepared_unchecked" in benchmark_section
+    assert "target_forward_into_prepared = self.target_model.forward_into_prepared_unchecked" in benchmark_section
     assert "draft_forward_buffers = self._draft_forward_buffers" in benchmark_section
     assert "target_forward_buffers = self._target_forward_buffers" in benchmark_section
     assert "draft_forward_into = self.draft_model.forward_into" not in benchmark_section
@@ -19798,6 +19798,8 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "def forward_into(self, token_ids: torch.Tensor, logits_out: torch.Tensor)" in common_source
     assert "def prepare_forward_buffers(" in common_source
     assert "def forward_into_prepared(" in common_source
+    assert "def forward_into_prepared_unchecked(" in common_source
+    assert "Fast inference path for callers that already validated static buffers." in common_source
     assert "def _forward_logits_into(" in common_source
     assert "prepared buffers must have shape" in common_source
     assert "tuple[int, torch.device, torch.dtype]" in common_source
@@ -19851,7 +19853,7 @@ def test_labs_trusted_speculative_decode_skips_target_verification_hot_path() ->
     assert "target_logits_views" not in benchmark_section
     assert "or self._draft_forward_buffers is None" in benchmark_section
     assert "or self._forward_buffer_counts != self._expected_forward_buffer_counts" in benchmark_section
-    assert "draft_forward_into_prepared = self.draft_model.forward_into_prepared" in benchmark_section
+    assert "draft_forward_into_prepared = self.draft_model.forward_into_prepared_unchecked" in benchmark_section
     assert "draft_forward_buffers = self._draft_forward_buffers" in benchmark_section
     assert "draft_forward_into = self.draft_model.forward_into" not in benchmark_section
     assert "match_host.copy_" not in benchmark_section
@@ -19890,7 +19892,7 @@ def test_labs_transition_table_speculative_decode_uses_lookup_hot_path() -> None
     assert '"speculative.transition_table": 0.0' in baseline_source
     assert '"speculative.draft_model_calls": 0.0' in baseline_source
     assert "self._transition_table = torch.empty(" in setup_section
-    assert "draft_forward_into_prepared = draft_model.forward_into_prepared" in setup_section
+    assert "draft_forward_into_prepared = draft_model.forward_into_prepared_unchecked" in setup_section
     assert "transition_forward_buffers = draft_model.prepare_forward_buffers(" in setup_section
     assert "draft_forward_into_prepared(token_ids[:, start:end], logits_view, forward_buffers)" in setup_section
     assert "draft_forward_into(token_ids[:, start:end], logits_view)" not in setup_section
