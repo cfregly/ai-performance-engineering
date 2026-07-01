@@ -54,7 +54,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._greedy_logits: Optional[torch.Tensor] = None
         self._greedy_logits_next: Optional[torch.Tensor] = None
         self._draft_next_values: Optional[torch.Tensor] = None
-        self._draft_next_tokens: Optional[torch.Tensor] = None
         self._target_next_values: Optional[torch.Tensor] = None
         self._target_next_tokens: Optional[torch.Tensor] = None
         self._matches: Optional[torch.Tensor] = None
@@ -146,7 +145,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._accept_all_host = None
             self._accept_all_host_scalar = None
             self._draft_next_values = None
-            self._draft_next_tokens = None
             self._target_next_values = None
             self._target_next_tokens = None
             self._matches = None
@@ -210,8 +208,13 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             pin_memory=torch.cuda.is_available(),
         )
         self._accept_all_host_scalar = self._accept_all_host[0]
-        self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
-        self._draft_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
+        # torch.max requires value and index outputs with matching strides.
+        self._draft_next_values = torch.empty_strided(
+            (1,),
+            self._output_token_views[0].stride(),
+            device=self.device,
+            dtype=wl.dtype,
+        )
         self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)
         self._target_next_tokens = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.long)
         self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)
@@ -356,7 +359,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._accept_all_host is None
             or self._accept_all_host_scalar is None
             or self._draft_next_values is None
-            or self._draft_next_tokens is None
             or self._target_next_values is None
             or self._target_next_tokens is None
             or self._matches is None
@@ -394,7 +396,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         accept_all_host_scalar = self._accept_all_host_scalar
         speculation_step_ranges = self._speculation_step_ranges
         draft_next_values = self._draft_next_values
-        draft_next_tokens = self._draft_next_tokens
         draft_logits = self._draft_logits
         draft_logits_next = self._draft_logits_next
         output_token_views[0].copy_(input_token_view)
@@ -416,8 +417,8 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     prev = output_step_views[pos]
                     for j in speculation_step_range:
                         draft_forward_into_prepared(prev, draft_logits, draft_forward_buffers)
-                        torch.max(draft_logits_next, dim=-1, out=(draft_next_values, draft_next_tokens))
-                        output_token_views[pos + j + 1].copy_(draft_next_tokens)
+                        output_token = output_token_views[pos + j + 1]
+                        torch.max(draft_logits_next, dim=-1, out=(draft_next_values, output_token))
                         prev = output_step_views[pos + j + 1]
 
                     draft_tokens += int(k)
@@ -499,7 +500,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._greedy_logits = None
         self._greedy_logits_next = None
         self._draft_next_values = None
-        self._draft_next_tokens = None
         self._target_next_values = None
         self._target_next_tokens = None
         self._matches = None

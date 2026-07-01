@@ -19523,7 +19523,8 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._accept_prefix_row_views: list[torch.Tensor] = []" in source
     assert "self._view_counts: tuple[int, ...] = ()" in source
     assert "self._expected_view_counts: tuple[int, ...] = ()" in source
-    assert "self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._draft_next_values = torch.empty_strided(" in setup_section
+    assert "self._output_token_views[0].stride()" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
     assert "self._greedy_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
@@ -19632,8 +19633,9 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "view_idx = k - 1" in benchmark_section
     assert "speculation_step_range = speculation_step_ranges[view_idx]" in benchmark_section
     assert "draft_forward_into_prepared(prev, draft_logits, draft_forward_buffers)" in benchmark_section
-    assert "torch.max(draft_logits_next, dim=-1, out=(draft_next_values, draft_next_tokens))" in benchmark_section
-    assert "output_token_views[pos + j + 1].copy_(draft_next_tokens)" in benchmark_section
+    assert "output_token = output_token_views[pos + j + 1]" in benchmark_section
+    assert "torch.max(draft_logits_next, dim=-1, out=(draft_next_values, output_token))" in benchmark_section
+    assert "draft_next_tokens" not in benchmark_section
     assert "for j in speculation_step_range:" in benchmark_section
     assert "for j in range(k):" not in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
@@ -19752,7 +19754,8 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "pin_memory=torch.cuda.is_available()" in setup_section
     assert "self._input_token_view: Optional[torch.Tensor] = None" in source
     assert "self._input_token_view = self.input_ids[:, 0]" in setup_section
-    assert "self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._draft_next_values = torch.empty_strided(" in setup_section
+    assert "self._output_token_views[0].stride()" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
     assert "self._draft_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
@@ -19877,9 +19880,10 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "target_values = target_value_views[view_idx]" in benchmark_section
     assert "target_next = target_token_views[view_idx]" in benchmark_section
     assert "matches = match_views[view_idx]" in benchmark_section
-    assert "torch.max(draft_logits_next, dim=-1, out=(draft_next_values, draft_next_tokens))" in benchmark_section
+    assert "output_token = output_token_views[pos + j + 1]" in benchmark_section
+    assert "torch.max(draft_logits_next, dim=-1, out=(draft_next_values, output_token))" in benchmark_section
+    assert "draft_next_tokens" not in benchmark_section
     assert "logits_d[:, 0, :]" not in benchmark_section
-    assert "output_token_views[pos + j + 1].copy_(draft_next_tokens)" in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
     assert "torch.eq(target_next, draft_window, out=matches)" in benchmark_section
     assert ".argmax(" not in benchmark_section
@@ -20018,7 +20022,9 @@ def test_labs_trusted_speculative_decode_skips_target_verification_hot_path() ->
     assert "draft_id_column_views = self._draft_id_column_views" not in benchmark_section
     assert "draft_next_token_view = self._draft_next_token_view" not in benchmark_section
     assert "draft_forward_into_prepared(prev, draft_logits, draft_forward_buffers)" in benchmark_section
-    assert "output_token_views[pos + j + 1].copy_(draft_next_tokens)" in benchmark_section
+    assert "output_token = output_token_views[pos + j + 1]" in benchmark_section
+    assert "torch.max(draft_logits_next, dim=-1, out=(draft_next_values, output_token))" in benchmark_section
+    assert "draft_next_tokens" not in benchmark_section
     assert "prev = output_step_views[pos + j + 1]" in benchmark_section
     assert "output_write_views[view_idx][pos].copy_" not in benchmark_section
     assert 'self._metrics["speculative.target_verify_calls"] = 0.0' in benchmark_section
