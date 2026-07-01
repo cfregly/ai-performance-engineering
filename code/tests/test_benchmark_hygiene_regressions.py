@@ -19128,6 +19128,8 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._accept_count_device = torch.empty((1,), device=self.device, dtype=torch.int64)" in setup_section
     assert "self._accept_count_host = torch.empty(" in setup_section
     assert "pin_memory=torch.cuda.is_available()" in setup_section
+    assert "self._view_counts: tuple[int, ...] = ()" in source
+    assert "self._expected_view_counts: tuple[int, ...] = ()" in source
     assert "self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
@@ -19148,6 +19150,9 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._accept_prefix_views = [" in setup_section
     assert "self._accept_prefix[:, :k] for k in range(1, wl.speculative_k + 1)" in setup_section
     assert "self._speculation_step_ranges = [range(k) for k in range(1, wl.speculative_k + 1)]" in setup_section
+    assert "verify_tail_count = wl.speculative_k - 1 if wl.speculative_k > 1 else 0" in setup_section
+    assert "self._view_counts = (" in setup_section
+    assert "self._expected_view_counts = (" in setup_section
     assert "self._match_host" not in source
     assert "self._match_host_views" not in source
     assert "import torch._dynamo as _dynamo" in setup_section
@@ -19157,12 +19162,21 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "logits = self.target_model(self._output_step_views[t])" in greedy_section
     assert "for t in self._decode_token_range:" in greedy_section
     assert "for t in range(wl.total_tokens):" not in greedy_section
+    assert "or self._view_counts != self._expected_view_counts" in greedy_section
+    assert "len(self._output_step_views)" not in greedy_section
+    assert "len(self._output_token_views)" not in greedy_section
     assert "self._output_token_views[t + 1].copy_(self._greedy_next_tokens)" in greedy_section
     assert "out[:, t : t + 1]" not in greedy_section
     assert "out[:, t + 1]" not in greedy_section
     assert "with torch.inference_mode():" in benchmark_section
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
+    assert "or self._view_counts != self._expected_view_counts" in benchmark_section
+    assert "len(self._output_step_views)" not in benchmark_section
+    assert "len(self._output_token_views)" not in benchmark_section
+    assert "len(self._output_write_views)" not in benchmark_section
+    assert "len(self._verify_prev_views)" not in benchmark_section
+    assert "len(self._speculation_step_ranges)" not in benchmark_section
     assert "view_idx = k - 1" in benchmark_section
     assert "speculation_step_range = self._speculation_step_ranges[view_idx]" in benchmark_section
     assert "torch.max(logits_d[:, 0, :], dim=-1, out=(self._draft_next_values, self._draft_next_tokens))" in benchmark_section
@@ -19220,6 +19234,8 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._accept_count_device = None" in teardown_section
     assert "self._accept_count_host = None" in teardown_section
     assert "self._accept_prefix_views = []" in teardown_section
+    assert "self._view_counts = ()" in teardown_section
+    assert "self._expected_view_counts = ()" in teardown_section
     assert "self._verify_output_buffer = None" in teardown_section
 
 

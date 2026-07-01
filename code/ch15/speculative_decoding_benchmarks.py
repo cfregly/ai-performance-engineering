@@ -62,6 +62,8 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._draft_id_views: list[torch.Tensor] = []
         self._draft_id_column_views: list[torch.Tensor] = []
         self._speculation_step_ranges: list[range] = []
+        self._view_counts: tuple[int, ...] = ()
+        self._expected_view_counts: tuple[int, ...] = ()
         self.output: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._metrics: Dict[str, float] = {}
@@ -138,6 +140,14 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._draft_id_views = []
             self._draft_id_column_views = []
             self._speculation_step_ranges = []
+            self._view_counts = (
+                len(self._output_step_views),
+                len(self._output_token_views),
+            )
+            self._expected_view_counts = (
+                wl.total_tokens + 1,
+                wl.total_tokens + 1,
+            )
             return
 
         self._output_write_views = [
@@ -180,6 +190,37 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._draft_ids[:, token_idx] for token_idx in range(wl.speculative_k)
         ]
         self._speculation_step_ranges = [range(k) for k in range(1, wl.speculative_k + 1)]
+        verify_tail_count = wl.speculative_k - 1 if wl.speculative_k > 1 else 0
+        self._view_counts = (
+            len(self._output_step_views),
+            len(self._output_token_views),
+            len(self._output_write_views),
+            len(self._verify_prev_views),
+            len(self._verify_prev_tail_views),
+            len(self._target_value_views),
+            len(self._target_token_views),
+            len(self._target_token_column_views),
+            len(self._match_views),
+            len(self._accept_prefix_views),
+            len(self._draft_id_views),
+            len(self._draft_id_column_views),
+            len(self._speculation_step_ranges),
+        )
+        self._expected_view_counts = (
+            wl.total_tokens + 1,
+            wl.total_tokens + 1,
+            wl.speculative_k,
+            wl.speculative_k,
+            verify_tail_count,
+            wl.speculative_k,
+            wl.speculative_k,
+            wl.speculative_k,
+            wl.speculative_k,
+            wl.speculative_k,
+            wl.speculative_k,
+            wl.speculative_k,
+            wl.speculative_k,
+        )
         if self.target_model is None:
             raise RuntimeError("Target model not initialized")
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
@@ -213,8 +254,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._output_ids is None
             or self._greedy_next_values is None
             or self._greedy_next_tokens is None
-            or len(self._output_step_views) != self.workload.total_tokens + 1
-            or len(self._output_token_views) != self.workload.total_tokens + 1
+            or self._view_counts != self._expected_view_counts
         ):
             raise RuntimeError("Benchmark not initialized")
 
@@ -248,19 +288,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._target_next_values is None
             or self._target_next_tokens is None
             or self._matches is None
-            or len(self._output_step_views) != self.workload.total_tokens + 1
-            or len(self._output_token_views) != self.workload.total_tokens + 1
-            or len(self._output_write_views) != self.workload.speculative_k
-            or len(self._verify_prev_views) != self.workload.speculative_k
-            or len(self._verify_prev_tail_views) != max(0, self.workload.speculative_k - 1)
-            or len(self._target_value_views) != self.workload.speculative_k
-            or len(self._target_token_views) != self.workload.speculative_k
-            or len(self._target_token_column_views) != self.workload.speculative_k
-            or len(self._match_views) != self.workload.speculative_k
-            or len(self._accept_prefix_views) != self.workload.speculative_k
-            or len(self._draft_id_views) != self.workload.speculative_k
-            or len(self._draft_id_column_views) != self.workload.speculative_k
-            or len(self._speculation_step_ranges) != self.workload.speculative_k
+            or self._view_counts != self._expected_view_counts
         ):
             raise RuntimeError("Benchmark not initialized")
 
@@ -374,6 +402,8 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._draft_id_views = []
         self._draft_id_column_views = []
         self._speculation_step_ranges = []
+        self._view_counts = ()
+        self._expected_view_counts = ()
         self.output = None
         self._verify_output_buffer = None
         if torch.cuda.is_available():
