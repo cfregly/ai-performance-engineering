@@ -276,6 +276,7 @@ class SpeculativeDecoder:
         if len(self._per_token_times) < total_tokens:
             self._per_token_times = [0.0] * total_tokens
         per_token_times = self._per_token_times
+        match_elements = int(seed_tokens.numel())
 
         with torch.inference_mode():
             while emitted < total_tokens:
@@ -307,14 +308,14 @@ class SpeculativeDecoder:
                     torch.eq(candidate, target_next, out=matches)
                     match_summary = self._match_count_workspace(matches.device)
                     torch.sum(matches, dim=None, out=match_summary)
-                    self.total_tokens += matches.numel()
+                    self.total_tokens += match_elements
                     tokens = self._selection_workspace(candidate)
                     torch.where(matches, candidate, target_next, out=tokens)
 
                     # This host read is required for control flow; keep it after token selection
                     # so it also accounts for the queued decode work used by the timing sample.
                     match_count = int(match_summary.item())
-                    all_matches = match_count == matches.numel()
+                    all_matches = match_count == match_elements
                     self.accepted_tokens += int(match_count)
                     elapsed_ms = (time.perf_counter() - start) * 1000.0
                     per_token_times[emitted] = elapsed_ms
@@ -838,12 +839,14 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("setup() must initialize router requests")
         if self._router_devnull is None:
             raise RuntimeError("setup() must initialize router stdout sink")
+        iteration = self._iteration
+        route_timestamp = time.time()
         with contextlib.redirect_stdout(self._router_devnull):
             for idx in self._router_batch_range:
                 req = router_requests[idx]
-                req.id = f"req-{self._iteration}-{idx}"
-                req.timestamp = time.time()
-                req.prefix_cached_length = prefix_cache_lengths[(idx + self._iteration) % prefix_count]
+                req.id = f"req-{iteration}-{idx}"
+                req.timestamp = route_timestamp
+                req.prefix_cached_length = prefix_cache_lengths[(idx + iteration) % prefix_count]
                 stage, _ = self.router.route_request(req)
                 if stage == "prefill":
                     prefill_assignments += 1

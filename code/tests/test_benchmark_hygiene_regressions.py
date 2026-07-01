@@ -10189,6 +10189,7 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "if len(self._per_token_times) < total_tokens:" in decode_section
     assert "self._per_token_times = [0.0] * total_tokens" in decode_section
     assert "per_token_times = self._per_token_times" in decode_section
+    assert "match_elements = int(seed_tokens.numel())" in decode_section
     assert "decode_total_ms = 0.0" in decode_section
     assert "elapsed_ms = (time.perf_counter() - start) * 1000.0" in decode_section
     assert "per_token_times[emitted] = elapsed_ms" in decode_section
@@ -10198,7 +10199,8 @@ def test_ch18_speculative_decoder_batches_match_control_reads() -> None:
     assert "match_count = int(match_summary.item())" in decode_section
     assert "match_summary.detach().cpu()" not in decode_section
     assert "match_summary.tolist()" not in decode_section
-    assert "all_matches = match_count == matches.numel()" in decode_section
+    assert "all_matches = match_count == match_elements" in decode_section
+    assert "matches.numel()" not in decode_section
     assert "self.accepted_tokens += int(match_count)" in decode_section
     assert "if not all_matches:" in decode_section
     assert "torch.stack(" not in decode_section
@@ -10342,9 +10344,15 @@ def test_ch18_vllm_decoder_reuses_prefill_next_token_buffer() -> None:
     assert "torch.cuda.is_available()" not in hot_section
     assert "req = router_requests[idx]" in hot_section
     assert "req = Request(" not in hot_section
+    assert "iteration = self._iteration" in hot_section
+    assert "route_timestamp = time.time()" in hot_section
+    assert 'req.id = f"req-{iteration}-{idx}"' in hot_section
+    assert "req.timestamp = route_timestamp" in hot_section
+    assert "req.timestamp = time.time()" not in hot_section
     assert "prefix_cache_lengths = self._router_prefix_cache_lengths" in hot_section
     assert "prefix_count = self._router_prefix_count" in hot_section
-    assert "req.prefix_cached_length = prefix_cache_lengths[(idx + self._iteration) % prefix_count]" in hot_section
+    assert "req.prefix_cached_length = prefix_cache_lengths[(idx + iteration) % prefix_count]" in hot_section
+    assert "idx + self._iteration" not in hot_section
     assert "len(self._router_prefix_cache_lengths)" not in hot_section
     assert "prompt_stub = [0] * cfg.context_window" not in hot_section
     assert '_RESET_PEAK_MEMORY_STATS = getattr(torch.cuda, "reset_peak_memory_stats", None)' in source
