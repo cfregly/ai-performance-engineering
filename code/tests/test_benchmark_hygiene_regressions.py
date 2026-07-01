@@ -7683,6 +7683,15 @@ def test_ch18_paged_attention_uses_real_block_table_sparse_kernel() -> None:
 
 
 def test_ch18_tiny_gemm_fused_accumulates_split_views_in_place() -> None:
+    baseline_source = (REPO_ROOT / "ch18" / "baseline_tiny_gemm_fused.py").read_text(encoding="utf-8")
+    baseline_setup = baseline_source.split("def setup", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    baseline_benchmark = baseline_source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
     source = (REPO_ROOT / "ch18" / "optimized_tiny_gemm_fused.py").read_text(encoding="utf-8")
     setup_section = source.split("def setup", maxsplit=1)[1].split(
         "def benchmark_fn",
@@ -7692,6 +7701,28 @@ def test_ch18_tiny_gemm_fused_accumulates_split_views_in_place() -> None:
         "def capture_verification_payload",
         maxsplit=1,
     )[0]
+
+    assert "self._q_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._k_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._v_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._router_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._sum_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._q_buffer = torch.empty(output_shape, device=self.device, dtype=self.cfg.dtype)" in baseline_setup
+    assert "self._k_buffer = torch.empty_like(self._q_buffer)" in baseline_setup
+    assert "self._v_buffer = torch.empty_like(self._q_buffer)" in baseline_setup
+    assert "self._router_buffer = torch.empty_like(self._q_buffer)" in baseline_setup
+    assert "self._sum_buffer = torch.empty_like(self._q_buffer)" in baseline_setup
+    assert "torch.mm(self.x, self.w_q, out=self._q_buffer)" in baseline_benchmark
+    assert "torch.mm(self.x, self.w_k, out=self._k_buffer)" in baseline_benchmark
+    assert "torch.mm(self.x, self.w_v, out=self._v_buffer)" in baseline_benchmark
+    assert "torch.mm(self.x, self.w_router, out=self._router_buffer)" in baseline_benchmark
+    assert "self._sum_buffer.copy_(self._q_buffer)" in baseline_benchmark
+    assert "self._sum_buffer.add_(self._k_buffer)" in baseline_benchmark
+    assert "self._sum_buffer.add_(self._v_buffer)" in baseline_benchmark
+    assert "self._sum_buffer.add_(self._router_buffer)" in baseline_benchmark
+    assert "self.output = self._sum_buffer" in baseline_benchmark
+    assert "q = self.x @ self.w_q" not in baseline_benchmark
+    assert "self.output = q + k + v + router" not in baseline_benchmark
 
     assert "self._proj_buffer: Optional[torch.Tensor] = None" in source
     assert "self._q_view: Optional[torch.Tensor] = None" in source

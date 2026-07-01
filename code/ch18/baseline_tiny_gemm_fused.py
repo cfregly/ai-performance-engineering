@@ -23,6 +23,11 @@ class BaselineTinyGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.w_v: Optional[torch.Tensor] = None
         self.w_router: Optional[torch.Tensor] = None
         self.w_fused: Optional[torch.Tensor] = None
+        self._q_buffer: Optional[torch.Tensor] = None
+        self._k_buffer: Optional[torch.Tensor] = None
+        self._v_buffer: Optional[torch.Tensor] = None
+        self._router_buffer: Optional[torch.Tensor] = None
+        self._sum_buffer: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._workload = WorkloadMetadata(
             requests_per_iteration=float(self.cfg.batch_size),
@@ -46,17 +51,38 @@ class BaselineTinyGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.w_router,
             self.w_fused,
         ) = build_tiny_gemm_inputs(self.device, self.cfg)
+        output_shape = (self.cfg.tokens, self.cfg.hidden_size)
+        self._q_buffer = torch.empty(output_shape, device=self.device, dtype=self.cfg.dtype)
+        self._k_buffer = torch.empty_like(self._q_buffer)
+        self._v_buffer = torch.empty_like(self._q_buffer)
+        self._router_buffer = torch.empty_like(self._q_buffer)
+        self._sum_buffer = torch.empty_like(self._q_buffer)
         torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> None:
-        if self.x is None or self.w_q is None or self.w_k is None or self.w_v is None or self.w_router is None:
+        if (
+            self.x is None
+            or self.w_q is None
+            or self.w_k is None
+            or self.w_v is None
+            or self.w_router is None
+            or self._q_buffer is None
+            or self._k_buffer is None
+            or self._v_buffer is None
+            or self._router_buffer is None
+            or self._sum_buffer is None
+        ):
             raise RuntimeError("Benchmark not initialized")
         with torch.inference_mode():
-            q = self.x @ self.w_q
-            k = self.x @ self.w_k
-            v = self.x @ self.w_v
-            router = self.x @ self.w_router
-            self.output = q + k + v + router
+            torch.mm(self.x, self.w_q, out=self._q_buffer)
+            torch.mm(self.x, self.w_k, out=self._k_buffer)
+            torch.mm(self.x, self.w_v, out=self._v_buffer)
+            torch.mm(self.x, self.w_router, out=self._router_buffer)
+            self._sum_buffer.copy_(self._q_buffer)
+            self._sum_buffer.add_(self._k_buffer)
+            self._sum_buffer.add_(self._v_buffer)
+            self._sum_buffer.add_(self._router_buffer)
+            self.output = self._sum_buffer
         if self.output is None:
             raise RuntimeError("benchmark_fn() did not produce output")
 
