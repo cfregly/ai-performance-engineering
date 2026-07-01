@@ -19283,31 +19283,43 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "pin_memory=torch.cuda.is_available()" in setup_section
     assert "self._accept_count_device_scalar: Optional[torch.Tensor] = None" in source
     assert "self._accept_count_host_scalar: Optional[torch.Tensor] = None" in source
+    assert "self._accept_all_device: Optional[torch.Tensor] = None" in source
+    assert "self._accept_all_host: Optional[torch.Tensor] = None" in source
+    assert "self._accept_all_host_scalar: Optional[torch.Tensor] = None" in source
     assert "self._accept_prefix_row_views: list[torch.Tensor] = []" in source
     assert "self._accept_count_device_scalar = self._accept_count_device[0]" in setup_section
     assert "self._accept_count_host_scalar = self._accept_count_host[0]" in setup_section
+    assert "self._accept_all_device = torch.empty((1,), device=self.device, dtype=torch.bool)" in setup_section
+    assert "self._accept_all_host = torch.empty(" in setup_section
+    assert "self._accept_all_host_scalar = self._accept_all_host[0]" in setup_section
     assert "self._view_counts: tuple[int, ...] = ()" in source
     assert "self._expected_view_counts: tuple[int, ...] = ()" in source
+    assert "self._forward_buffer_counts: tuple[int, ...] = ()" in source
+    assert "self._expected_forward_buffer_counts: tuple[int, ...] = ()" in source
     assert "self._draft_head_offsets = torch.arange(wl.speculative_k, device=self.device, dtype=torch.int64).view(1, -1)" in setup_section
     assert "self._draft_seed_buffer = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)" in setup_section
-    assert "self._draft_block_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._draft_block_value_views: list[list[torch.Tensor]] = []" in source
+    assert "self._draft_block_values = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._draft_block_values[:, start + 1 : start + length + 1]" in setup_section
+    assert "self._draft_block_tokens" not in source
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
     assert "self._greedy_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._draft_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._draft_forward_buffers = [" in setup_section
+    assert "self.draft_model.prepare_forward_buffers(k, device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._target_forward_buffers = [" in setup_section
+    assert "self.target_model.prepare_forward_buffers(k, device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._output_step_views = [" in setup_section
     assert "self._output_token_views = [" in setup_section
     assert "self._output_write_views = [" in setup_section
+    assert "self._output_verify_views = [" in setup_section
+    assert "self._output_ids[:, start : start + length]" in setup_section
     assert "self._draft_head_offset_views = [" in setup_section
     assert "self._draft_seed_views = [" in setup_section
     assert "self._draft_logits_views = [" in setup_section
     assert "self._draft_block_value_views = [" in setup_section
-    assert "self._draft_block_token_views = [" in setup_section
-    assert "self._draft_block_token_column_views = [" in setup_section
-    assert "self._verify_prev_first = self._verify_prev[:, 0]" in setup_section
-    assert "self._verify_prev_views = [" in setup_section
-    assert "self._verify_prev_tail_views = [" in setup_section
     assert "self._target_logits_views = [" in setup_section
     assert "self._target_value_views = [" in setup_section
     assert "self._target_token_views = [" in setup_section
@@ -19315,27 +19327,33 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._match_views = [" in setup_section
     assert "self._accept_prefix_views = [" in setup_section
     assert "self._accept_prefix_row_views = [" in setup_section
-    assert "self._draft_id_views = [" in setup_section
-    assert "self._draft_id_column_views = [" in setup_section
     assert "self._speculation_step_ranges = [range(k) for k in range(1, wl.speculative_k + 1)]" in setup_section
     assert "self._accept_prefix[:, :k] for k in range(1, wl.speculative_k + 1)" in setup_section
     assert "self._accept_prefix[0, :k] for k in range(1, wl.speculative_k + 1)" in setup_section
-    assert "verify_tail_count = wl.speculative_k - 1 if wl.speculative_k > 1 else 0" in setup_section
     assert "self._view_counts = (" in setup_section
     assert "self._expected_view_counts = (" in setup_section
+    assert "self._forward_buffer_counts = (" in setup_section
+    assert "self._expected_forward_buffer_counts = (" in setup_section
+    assert "self._draft_ids" not in source
+    assert "self._verify_prev" not in source
+    assert "self._draft_id_views" not in source
+    assert "self._draft_id_column_views" not in source
     assert "self._match_host" not in source
     assert "self._match_host_views" not in source
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "or self._view_counts != self._expected_view_counts" in benchmark_section
+    assert "or self._forward_buffer_counts != self._expected_forward_buffer_counts" in benchmark_section
     assert "or self._accept_count_device_scalar is None" in benchmark_section
     assert "or self._accept_count_host_scalar is None" in benchmark_section
+    assert "or self._accept_all_device is None" in benchmark_section
+    assert "or self._accept_all_host is None" in benchmark_section
+    assert "or self._accept_all_host_scalar is None" in benchmark_section
     assert "len(self._output_step_views)" not in benchmark_section
     assert "len(self._output_token_views)" not in benchmark_section
     assert "len(self._output_write_views)" not in benchmark_section
+    assert "len(self._output_verify_views)" not in benchmark_section
     assert "len(self._draft_head_offset_views)" not in benchmark_section
-    assert "len(self._verify_prev_tail_views)" not in benchmark_section
-    assert "len(self._draft_id_column_views)" not in benchmark_section
     assert "len(self._accept_prefix_row_views)" not in benchmark_section
     assert "len(self._speculation_step_ranges)" not in benchmark_section
     assert "time.perf_counter" not in benchmark_section
@@ -19348,43 +19366,58 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "seed_tokens = self._draft_seed_views[view_idx]" in seed_section
     assert "torch.add(prev.expand(-1, k), head_offsets, out=seed_tokens)" in seed_section
     assert "seed_tokens.remainder_(self.workload.vocab_size)" in seed_section
-    assert "self.draft_model.forward_into(draft_seed, self._draft_logits_views[view_idx])" in benchmark_section
-    assert "speculation_step_range = self._speculation_step_ranges[view_idx]" in benchmark_section
-    assert "self._verify_prev_first.copy_(self._output_token_views[pos])" in benchmark_section
-    assert "self._verify_prev_tail_views[k - 2].copy_(self._draft_id_views[k - 2])" in benchmark_section
-    assert "self._verify_prev_views[view_idx]" in benchmark_section
-    assert "self._target_logits_views[view_idx]" in benchmark_section
-    assert "draft_values = self._draft_block_value_views[view_idx]" in benchmark_section
-    assert "draft_block = self._draft_block_token_views[view_idx]" in benchmark_section
-    assert "target_values = self._target_value_views[view_idx]" in benchmark_section
-    assert "target_next = self._target_token_views[view_idx]" in benchmark_section
-    assert "draft_window = self._draft_id_views[view_idx]" in benchmark_section
-    assert "torch.max(logits_d, dim=-1, out=(draft_values, draft_block))" in benchmark_section
+    assert "draft_forward_into_prepared = self.draft_model.forward_into_prepared_unchecked" in benchmark_section
+    assert "target_forward_into_prepared = self.target_model.forward_into_prepared_unchecked" in benchmark_section
+    assert "draft_forward_buffers = self._draft_forward_buffers" in benchmark_section
+    assert "target_forward_buffers = self._target_forward_buffers" in benchmark_section
+    assert "draft_forward_into_prepared(" in benchmark_section
+    assert "draft_forward_buffers[view_idx]" in benchmark_section
+    assert "target_forward_into_prepared(" in benchmark_section
+    assert "target_forward_buffers[view_idx]" in benchmark_section
+    assert "speculation_step_range = speculation_step_ranges[view_idx]" in benchmark_section
+    assert "output_verify_views = self._output_verify_views" in benchmark_section
+    assert "output_verify_views[view_idx][pos]" in benchmark_section
+    assert "target_logits_views[view_idx]" in benchmark_section
+    assert "draft_values = draft_block_value_views[view_idx][pos]" in benchmark_section
+    assert "target_values = target_value_views[view_idx]" in benchmark_section
+    assert "target_next = target_token_views[view_idx]" in benchmark_section
+    assert "draft_window = output_write_views[view_idx][pos]" in benchmark_section
+    assert "torch.max(logits_d, dim=-1, out=(draft_values, draft_window))" in benchmark_section
     assert "for j in speculation_step_range:" in benchmark_section
     assert "for j in range(k):" not in benchmark_section
-    assert "next_d = self._draft_block_token_column_views[j]" in benchmark_section
-    assert "next_d = self._draft_id_column_views[j]" in benchmark_section
-    assert "self._draft_id_column_views[j].copy_(next_d)" in benchmark_section
+    assert "output_token = output_token_views[pos + j + 1]" in benchmark_section
+    assert "output_token.add_(self.profile.perturb_stride * (j + 1))" in benchmark_section
+    assert "output_token.remainder_(wl.vocab_size)" in benchmark_section
+    assert "output_token.copy_(next_d)" not in benchmark_section
     assert "torch.max(logits_t, dim=-1, out=(target_values, target_next))" in benchmark_section
     assert "torch.eq(target_next, draft_window, out=matches)" in benchmark_section
-    assert "accept_prefix = self._accept_prefix_views[view_idx]" in benchmark_section
+    assert "torch.all(matches, dim=-1, out=accept_all_device)" in benchmark_section
+    assert "accept_all_host.copy_(accept_all_device, non_blocking=False)" in benchmark_section
+    assert "if bool(accept_all_host_scalar):" in benchmark_section
+    assert "accept_k = k" in benchmark_section
+    assert "accept_prefix = accept_prefix_views[view_idx]" in benchmark_section
     assert "torch.cumprod(matches, dim=-1, dtype=torch.int64, out=accept_prefix)" in benchmark_section
-    assert "self._accept_prefix_row_views[view_idx]" in benchmark_section
-    assert "out=self._accept_count_device_scalar" in benchmark_section
-    assert "self._accept_count_host_scalar.copy_(" in benchmark_section
-    assert "self._accept_count_device_scalar," in benchmark_section
-    assert "accept_k = int(self._accept_count_host_scalar)" in benchmark_section
+    assert "accept_prefix_row_views[view_idx]" in benchmark_section
+    assert "out=accept_count_device_scalar" in benchmark_section
+    assert "accept_count_host_scalar.copy_(" in benchmark_section
+    assert "accept_count_device_scalar," in benchmark_section
+    assert "accept_k = int(accept_count_host_scalar)" in benchmark_section
     assert "accept_prefix[0]" not in benchmark_section
     assert "self._accept_count_device[0]" not in benchmark_section
     assert "self._accept_count_host[0]" not in benchmark_section
+    assert "self._accept_all_device[0]" not in benchmark_section
+    assert "self._accept_all_host[0]" not in benchmark_section
     assert "for match_idx in" not in benchmark_section
     assert "if not bool(match_host[match_idx]):" not in benchmark_section
     assert "accept_k += 1" not in benchmark_section
     assert "match_host.copy_" not in benchmark_section
     assert "matches[0], non_blocking=False" not in benchmark_section
     assert "self._accept_count.item()" not in benchmark_section
-    assert "self._output_write_views[view_idx][pos].copy_(draft_window)" in benchmark_section
-    assert "self._output_token_views[pos + accept_k + 1].copy_(" in benchmark_section
+    assert "self._output_write_views[view_idx][pos].copy_(draft_window)" not in benchmark_section
+    assert "output_write_views[view_idx][pos].copy_(draft_window)" not in benchmark_section
+    assert "self._output_write_views[accept_k - 1][pos].copy_(" not in benchmark_section
+    assert "output_write_views[accept_k - 1][pos].copy_(" not in benchmark_section
+    assert "output_token_views[pos + accept_k + 1].copy_(" in benchmark_section
     assert "self._draft_logits[:, :k]" not in benchmark_section
     assert "self._target_logits[:, :k]" not in benchmark_section
     assert "self._verify_prev[:, :k]" not in benchmark_section
