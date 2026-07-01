@@ -16303,6 +16303,12 @@ def test_ch16_synthetic_moe_benchmark_hoists_inference_mode() -> None:
     assert "self.bias.to(self.compute_dtype)" not in fp8_forward
     assert "if x.dtype != self.compute_dtype:" not in moe_forward
     assert "if x.dtype != self.compute_dtype:" not in block_forward
+    assert "q, k, v = qkv.unbind(dim=2)" in block_forward
+    assert "q = q.transpose(1, 2)" in block_forward
+    assert "k = k.transpose(1, 2)" in block_forward
+    assert "v = v.transpose(1, 2)" in block_forward
+    assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in block_forward
+    assert "q, k, v = qkv[0], qkv[1], qkv[2]" not in block_forward
     assert "x = self.embedding(input_ids)" in model_forward
     assert "if x.dtype != self.compute_dtype:" not in model_forward
     assert "x = self.embedding(input_ids).to(self.compute_dtype)" not in model_forward
