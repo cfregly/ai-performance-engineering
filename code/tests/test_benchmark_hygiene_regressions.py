@@ -19415,6 +19415,9 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._output_write_views = [" in setup_section
     assert "self._view_counts: tuple[int, ...] = ()" in source
     assert "self._expected_view_counts: tuple[int, ...] = ()" in source
+    assert "self._accept_count_device_scalar: Optional[torch.Tensor] = None" in source
+    assert "self._accept_count_host_scalar: Optional[torch.Tensor] = None" in source
+    assert "self._accept_prefix_row_views: list[torch.Tensor] = []" in source
     assert "self._draft_forward_buffers: Optional[tuple[torch.Tensor, torch.Tensor]] = None" in source
     assert "self._target_forward_buffers: list[tuple[torch.Tensor, torch.Tensor]] = []" in source
     assert "self._forward_buffer_counts: tuple[int, int] = ()" in source
@@ -19429,11 +19432,14 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._expected_forward_buffer_counts = (1, wl.speculative_k)" in setup_section
     assert "len(self._output_step_views)" in setup_section
     assert "len(self._accept_prefix_views)" in setup_section
+    assert "len(self._accept_prefix_row_views)" in setup_section
     assert "self._verify_prev_first = self._verify_prev[:, 0]" in setup_section
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
     assert "or self._view_counts != self._expected_view_counts" in benchmark_section
+    assert "or self._accept_count_device_scalar is None" in benchmark_section
+    assert "or self._accept_count_host_scalar is None" in benchmark_section
     assert "or self._draft_forward_buffers is None" in benchmark_section
     assert "or self._forward_buffer_counts != self._expected_forward_buffer_counts" in benchmark_section
     assert "len(self._output_step_views)" not in benchmark_section
@@ -19447,6 +19453,7 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "len(self._target_token_column_views)" not in benchmark_section
     assert "len(self._match_views)" not in benchmark_section
     assert "len(self._accept_prefix_views)" not in benchmark_section
+    assert "len(self._accept_prefix_row_views)" not in benchmark_section
     assert "len(self._draft_id_views)" not in benchmark_section
     assert "len(self._draft_id_column_views)" not in benchmark_section
     assert "len(self._speculation_step_ranges)" not in benchmark_section
@@ -19460,8 +19467,11 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "output_token_views = self._output_token_views" in benchmark_section
     assert "output_write_views = self._output_write_views" in benchmark_section
     assert "accept_prefix_views = self._accept_prefix_views" in benchmark_section
-    assert "accept_count_device = self._accept_count_device" in benchmark_section
-    assert "accept_count_host = self._accept_count_host" in benchmark_section
+    assert "accept_prefix_row_views = self._accept_prefix_row_views" in benchmark_section
+    assert "accept_count_device_scalar = self._accept_count_device_scalar" in benchmark_section
+    assert "accept_count_host_scalar = self._accept_count_host_scalar" in benchmark_section
+    assert "accept_count_device = self._accept_count_device" not in benchmark_section
+    assert "accept_count_host = self._accept_count_host" not in benchmark_section
     assert "speculation_step_ranges = self._speculation_step_ranges" in benchmark_section
     assert "draft_forward_into_prepared(prev, draft_logits, draft_forward_buffers)" in benchmark_section
     assert "prev = output_step_views[pos]" in benchmark_section
@@ -19486,9 +19496,12 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert ".argmax(" not in benchmark_section
     assert "accept_prefix = accept_prefix_views[view_idx]" in benchmark_section
     assert "torch.cumprod(matches, dim=-1, dtype=torch.int64, out=accept_prefix)" in benchmark_section
-    assert "torch.sum(accept_prefix[0], dim=0, out=accept_count_device[0])" in benchmark_section
-    assert "accept_count_host.copy_(accept_count_device, non_blocking=False)" in benchmark_section
-    assert "accept_k = int(accept_count_host[0])" in benchmark_section
+    assert "torch.sum(accept_prefix_row_views[view_idx], dim=0, out=accept_count_device_scalar)" in benchmark_section
+    assert "accept_count_host_scalar.copy_(accept_count_device_scalar, non_blocking=False)" in benchmark_section
+    assert "accept_k = int(accept_count_host_scalar)" in benchmark_section
+    assert "accept_prefix[0]" not in benchmark_section
+    assert "accept_count_device[0]" not in benchmark_section
+    assert "accept_count_host[0]" not in benchmark_section
     assert "for j in speculation_step_range:" in benchmark_section
     assert "for j in range(k):" not in benchmark_section
     assert "for match_idx in" not in benchmark_section
@@ -19521,7 +19534,10 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._accept_prefix = None" in teardown_section
     assert "self._accept_count_device = None" in teardown_section
     assert "self._accept_count_host = None" in teardown_section
+    assert "self._accept_count_device_scalar = None" in teardown_section
+    assert "self._accept_count_host_scalar = None" in teardown_section
     assert "self._accept_prefix_views = []" in teardown_section
+    assert "self._accept_prefix_row_views = []" in teardown_section
     assert "self._speculation_step_ranges = []" in teardown_section
     assert "self._draft_forward_buffers = None" in teardown_section
     assert "self._target_forward_buffers = []" in teardown_section
