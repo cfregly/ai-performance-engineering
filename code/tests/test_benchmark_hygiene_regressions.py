@@ -20665,14 +20665,15 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "flat_batch = self.cfg.requests_per_rank * self.cfg.batch_size" in base_section
     assert "self._optimized_kv_buffer = torch.empty(" in base_section
     assert "self._optimized_seed_buffer = torch.empty(" in base_section
-    assert "self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]" in base_section
+    assert "self._pending_outputs = []" in base_section
+    assert "self._output_stack.unbind(0)" in base_section
     assert "self._request_prompt_outputs = list(" in base_section
-    assert "zip(range(self.cfg.requests_per_rank), self.prompts, self._pending_outputs, strict=True)" in base_section
+    assert "zip(range(self.cfg.requests_per_rank), self.prompts, self._output_stack.unbind(0), strict=True)" in base_section
     assert "self._request_output_counts = (" in base_section
     assert "self._expected_request_output_counts = (" in base_section
     assert "self._output_stack = torch.empty(" in base_section
     assert '"decode_tokens": torch.zeros((self.cfg.decode_tokens,), dtype=meta_dtype)' in base_section
-    assert "torch.stack(self._pending_outputs, dim=0, out=self._output_stack)" in base_section
+    assert "torch.stack(self._pending_outputs, dim=0, out=self._output_stack)" not in base_section
     assert "self._output = self._output_stack" in base_section
     assert '"prompt": self._verify_prompt_buffer' in base_section
     assert '"decode_tokens": self._metadata_inputs["decode_tokens"]' in base_section
@@ -20685,15 +20686,16 @@ def test_ch17_single_prefill_decode_host_handoff_copies_into_existing_kv_cache()
     assert "kv_cache.cpu()" not in baseline_benchmark
     assert "self._kv_host_staging.copy_(kv_cache, non_blocking=False)" in baseline_benchmark
     assert "kv_cache.copy_(self._kv_host_staging, non_blocking=False)" in baseline_benchmark
-    assert "outputs = self._pending_outputs" in baseline_benchmark
+    assert "outputs = self._pending_outputs" not in baseline_benchmark
     assert "request_prompt_outputs = self._request_prompt_outputs" in baseline_benchmark
     assert "if self._request_output_counts != self._expected_request_output_counts:" in baseline_benchmark
     assert "len(outputs)" not in baseline_benchmark
     assert "len(request_prompt_outputs)" not in baseline_benchmark
     assert "with torch.inference_mode():" in baseline_benchmark
-    assert "for output_idx, prompt, _output_slot in request_prompt_outputs:" in baseline_benchmark
+    assert "for _output_idx, prompt, output_slot in request_prompt_outputs:" in baseline_benchmark
     assert "kv_cache, seed = self.prefill_model.prefill(prompt)" in baseline_benchmark
-    assert "outputs[output_idx] = self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)" in baseline_benchmark
+    assert "output_slot.copy_(self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens))" in baseline_benchmark
+    assert "self._set_output()" in baseline_benchmark
     assert "output_idx = 0" not in baseline_benchmark
     assert "output_idx += 1" not in baseline_benchmark
     assert "for idx in range(self.cfg.requests_per_rank):" not in baseline_benchmark

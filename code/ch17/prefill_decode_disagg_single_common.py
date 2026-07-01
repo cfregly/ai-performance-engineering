@@ -98,22 +98,22 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         self._param_count = sum(p.numel() for p in self.prefill_model.parameters()) + sum(
             p.numel() for p in self.decode_model.parameters()
         )
-        self._pending_outputs = [torch.empty(0) for _ in range(self.cfg.requests_per_rank)]
+        self._pending_outputs = []
+        self._output_stack = torch.empty(
+            (self.cfg.requests_per_rank, self.cfg.batch_size, self.cfg.hidden_size),
+            device=self.device,
+            dtype=self.cfg.dtype,
+        )
         self._request_prompt_outputs = list(
-            zip(range(self.cfg.requests_per_rank), self.prompts, self._pending_outputs, strict=True)
+            zip(range(self.cfg.requests_per_rank), self.prompts, self._output_stack.unbind(0), strict=True)
         )
         self._request_output_counts = (
-            len(self._pending_outputs),
+            self._output_stack.size(0),
             len(self._request_prompt_outputs),
         )
         self._expected_request_output_counts = (
             self.cfg.requests_per_rank,
             self.cfg.requests_per_rank,
-        )
-        self._output_stack = torch.empty(
-            (self.cfg.requests_per_rank, self.cfg.batch_size, self.cfg.hidden_size),
-            device=self.device,
-            dtype=self.cfg.dtype,
         )
         meta_dtype = torch.float32
         self._metadata_inputs = {
@@ -130,16 +130,12 @@ class _PrefillDecodeSingleGPUBase(VerificationPayloadMixin, BaseBenchmark):
         except RuntimeError:
             return torch.empty(shape, device="cpu", dtype=dtype)
 
-    def _set_output(self, outputs: List[torch.Tensor]) -> None:
-        self._pending_outputs = outputs
-        self._output = None
+    def _set_output(self) -> None:
+        if self._output_stack is None:
+            raise RuntimeError("setup() must initialize output stack")
+        self._output = self._output_stack
 
     def capture_verification_payload(self) -> None:
-        if self._output is None and self._pending_outputs:
-            if self._output_stack is None:
-                raise RuntimeError("setup() must initialize verification output stack")
-            torch.stack(self._pending_outputs, dim=0, out=self._output_stack)
-            self._output = self._output_stack
         if self._output is None or self.prompts is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
@@ -218,18 +214,17 @@ class BaselinePrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
         if self._kv_host_staging is None:
             raise RuntimeError("Baseline KV host staging buffer not initialized")
 
-        outputs = self._pending_outputs
         request_prompt_outputs = self._request_prompt_outputs
         if self._request_output_counts != self._expected_request_output_counts:
             raise RuntimeError("Request prompt/output groups not initialized")
         with torch.inference_mode():
-            for output_idx, prompt, _output_slot in request_prompt_outputs:
+            for _output_idx, prompt, output_slot in request_prompt_outputs:
                 kv_cache, seed = self.prefill_model.prefill(prompt)
                 self._kv_host_staging.copy_(kv_cache, non_blocking=False)
                 kv_cache.copy_(self._kv_host_staging, non_blocking=False)
-                outputs[output_idx] = self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens)
+                output_slot.copy_(self.decode_model.decode(seed, kv_cache, self.cfg.decode_tokens))
 
-        self._set_output(outputs)
+        self._set_output()
 
 
 class OptimizedPrefillDecodeSingleGPUBenchmark(_PrefillDecodeSingleGPUBase):
