@@ -144,7 +144,8 @@ class OptimizedDecodeDriver:
         self.captured_shapes: set[Tuple[int, int]] = set()
         self._vllm_kernel = self._resolve_vllm_kernel()
         self._seq_lens_profiles: Dict[Tuple[int, int], torch.Tensor] = {}
-        self._prepare_seq_lens_profiles()
+        self._trace_schedule: list[Tuple[int, BucketWorkspace, Optional[torch.Tensor]]] = []
+        self._prepare_trace_schedule()
 
     def _resolve_vllm_kernel(self):
         if getattr(self.decode_kernel, "backend", None) != "vllm":
@@ -175,28 +176,35 @@ class OptimizedDecodeDriver:
             self._seq_lens_profiles[key] = profile
         return profile
 
-    def _prepare_seq_lens_profiles(self) -> None:
-        if self._vllm_kernel is None:
-            return
-        for batch_size in sorted(set(self.trace)):
-            self.seq_lens_profile(batch_size, pick_bucket(batch_size))
+    def _prepare_trace_schedule(self) -> None:
+        self._trace_schedule = []
+        for batch_size in self.trace:
+            bucket = pick_bucket(batch_size)
+            workspace = self.workspace_for(bucket)
+            seq_lens_profile = (
+                self.seq_lens_profile(batch_size, bucket)
+                if self._vllm_kernel is not None
+                else None
+            )
+            self._trace_schedule.append((batch_size, workspace, seq_lens_profile))
 
     def run(self) -> DecodeMetrics:
         metrics = DecodeMetrics()
-        for batch_size in self.trace:
-            bucket = pick_bucket(batch_size)
-            ws = self.workspace_for(bucket)
+        for batch_size, ws, seq_lens_profile in self._trace_schedule:
             was_initialized = ws.initialized
             ws.ensure()
 
             if ws.tokens is None or ws.kv is None or ws.tokens_kv is None:
                 raise RuntimeError("workspace not initialized")
             if self._vllm_kernel is not None:
+                if seq_lens_profile is None:
+                    raise RuntimeError("vLLM seq_lens profile missing from trace schedule")
                 # Mark padded rows as "inactive" by setting seq_lens=0 for them.
                 # This keeps bucketed shapes stable (good for CUDA graphs / workspace reuse)
                 # without paying full attention cost on dummy rows.
                 seq_lens = self._vllm_kernel.seq_lens
-                seq_lens[:bucket].copy_(self.seq_lens_profile(batch_size, bucket))
+                bucket = ws.batch
+                seq_lens[:bucket].copy_(seq_lens_profile)
             # Keep the compute path aligned with the baseline (no masking); the
             # benchmark's outputs are metrics, not decoded logits.
             logits = self.decode_kernel(ws.tokens, ws.kv, None)

@@ -10074,15 +10074,25 @@ def test_ch18_optimized_vllm_decode_workspace_drops_unused_mask_buffer() -> None
     assert "torch.ones(self.batch, dtype=torch.bool" not in workspace_section
     assert "self.mask.numel()" not in workspace_section
     assert "self._seq_lens_profiles: Dict[Tuple[int, int], torch.Tensor] = {}" in source
-    assert "self._prepare_seq_lens_profiles()" in source
+    assert (
+        "self._trace_schedule: list[Tuple[int, BucketWorkspace, Optional[torch.Tensor]]] = []"
+        in source
+    )
+    assert "self._prepare_trace_schedule()" in source
     assert "def seq_lens_profile(self, batch_size: int, bucket: int) -> torch.Tensor:" in source
-    assert "def _prepare_seq_lens_profiles(self) -> None:" in source
-    assert "for batch_size in sorted(set(self.trace)):" in source
-    assert "self.seq_lens_profile(batch_size, pick_bucket(batch_size))" in source
-    assert "seq_lens[:bucket].copy_(self.seq_lens_profile(batch_size, bucket))" in source
+    assert "def _prepare_trace_schedule(self) -> None:" in source
+    assert "for batch_size in self.trace:" in source
+    assert "workspace = self.workspace_for(bucket)" in source
+    assert "self.seq_lens_profile(batch_size, bucket)" in source
+    assert "self._trace_schedule.append((batch_size, workspace, seq_lens_profile))" in source
+    assert "for batch_size, ws, seq_lens_profile in self._trace_schedule:" in source
+    assert "seq_lens[:bucket].copy_(self.seq_lens_profile(batch_size, bucket))" not in source
+    assert "seq_lens[:bucket].copy_(seq_lens_profile)" in source
     run_section = source.split("def run(self) -> DecodeMetrics:", maxsplit=1)[1].split(
         "def parse_args", maxsplit=1
     )[0]
+    assert "pick_bucket(batch_size)" not in run_section
+    assert "self.seq_lens_profile(batch_size, bucket)" not in run_section
     assert "seq_lens[:batch_size].fill_" not in run_section
     assert "seq_lens[batch_size:bucket].zero_()" not in run_section
 
