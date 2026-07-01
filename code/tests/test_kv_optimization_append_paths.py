@@ -71,6 +71,7 @@ def test_kv_standard_uses_host_seq_lengths_and_single_device_fill() -> None:
         assert ".item()" not in get_kv_source
         assert "self.seq_lengths += 1" not in benchmark_source
         assert "self.seq_lengths.zero_()" not in benchmark_source
+        assert "with torch.inference_mode():" in benchmark_source
         if benchmark_cls is BaselineKVStandard:
             assert "for pos, new_k_layer, new_v_layer in self._generated_step_layer_position_pairs:" in benchmark_source
             assert "self._generated_step_layer_position_pairs" in benchmark_source

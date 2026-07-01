@@ -313,8 +313,9 @@ class OptimizedKVFP8Compressed(VerificationPayloadMixin, BaseBenchmark):
         current_stream = torch.cuda.current_stream(self.device)
         start_event.record(current_stream)
 
-        for pos, new_k, new_v in self._generated_step_position_pairs:
-            self.append_active_layers(new_k, new_v, pos=pos)
+        with torch.inference_mode():
+            for pos, new_k, new_v in self._generated_step_position_pairs:
+                self.append_active_layers(new_k, new_v, pos=pos)
 
         end_event.record(current_stream)
         self.seq_lengths.fill_(num_decode_steps)

@@ -216,8 +216,9 @@ class BaselineKVStandard(VerificationPayloadMixin, BaseBenchmark):
         current_stream = torch.cuda.current_stream(self.device)
         start_event.record(current_stream)
 
-        for pos, new_k_layer, new_v_layer in self._generated_step_layer_position_pairs:
-            self.append_active_layer_views(new_k_layer, new_v_layer, pos=pos)
+        with torch.inference_mode():
+            for pos, new_k_layer, new_v_layer in self._generated_step_layer_position_pairs:
+                self.append_active_layer_views(new_k_layer, new_v_layer, pos=pos)
 
         end_event.record(current_stream)
         self.seq_lengths.fill_(num_decode_steps)
