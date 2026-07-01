@@ -21420,6 +21420,11 @@ def test_ch13_quantized_linears_scale_outputs_in_place() -> None:
 
 def test_ch13_optimized_int8_linear_preallocates_activation_buffers() -> None:
     source = (REPO_ROOT / "ch13" / "optimized_quantization.py").read_text(encoding="utf-8")
+    linear_section = source.split("class Int8Linear", maxsplit=1)[1].split(
+        "class Int8MLP",
+        maxsplit=1,
+    )[0]
+    forward_section = linear_section.split("def forward", maxsplit=1)[1]
     setup_section = source.split("def setup", maxsplit=1)[1].split(
         "self.compiled_model = torch.compile",
         maxsplit=1,
@@ -21432,6 +21437,43 @@ def test_ch13_optimized_int8_linear_preallocates_activation_buffers() -> None:
     assert "self.fc1.prepare_buffers(batch_size, device)" in source
     assert "self.fc2.prepare_buffers(batch_size, device)" in source
     assert "self.int8_model.prepare_buffers(self.batch_size, self.device)" in setup_section
+    assert "or self._input_scaled_buffer.size(0) < rows" in forward_section
+    assert "input_scaled = self._input_scaled_buffer[:rows]" in forward_section
+    assert "input_int8 = self._input_int8_buffer[:rows]" in forward_section
+    assert "output = self._output_float_buffer[:rows]" in forward_section
+    assert "torch.abs(x, out=input_scaled)" in forward_section
+    assert "input_int8.copy_(input_scaled)" in forward_section
+    assert "out_int32 = torch._int_mm(input_int8, self.weight_int8_t)" in forward_section
+    assert "self._input_scaled_buffer.shape != x.shape" not in forward_section
+
+    if not hasattr(torch, "_int_mm"):
+        pytest.skip("torch._int_mm is required by Int8Linear")
+
+    from ch13.optimized_quantization import Int8Linear
+
+    linear = Int8Linear(torch.randn(24, 16), None)
+    linear.prepare_buffers(32, torch.device("cpu"))
+    try:
+        large = linear(torch.randn(32, 16))
+    except RuntimeError as exc:
+        pytest.skip(f"torch._int_mm CPU path unavailable: {exc}")
+    scaled_ptr = linear._input_scaled_buffer.data_ptr()
+    int8_ptr = linear._input_int8_buffer.data_ptr()
+    output_ptr = linear._output_float_buffer.data_ptr()
+    small = linear(torch.randn(20, 16))
+    assert linear._input_scaled_buffer.data_ptr() == scaled_ptr
+    assert linear._input_int8_buffer.data_ptr() == int8_ptr
+    assert linear._output_float_buffer.data_ptr() == output_ptr
+
+    grown = linear(torch.randn(40, 16))
+
+    assert large.shape == (32, 24)
+    assert small.shape == (20, 24)
+    assert small.data_ptr() == output_ptr
+    assert grown.shape == (40, 24)
+    assert linear._input_scaled_buffer.size(0) == 40
+    assert linear._input_int8_buffer.size(0) == 40
+    assert linear._output_float_buffer.size(0) == 40
 
 
 def test_ch13_optimized_fp8_perchannel_input_scale_cache_invalidates() -> None:

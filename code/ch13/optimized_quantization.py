@@ -67,19 +67,24 @@ class Int8Linear(nn.Module):
             raise RuntimeError("torch._int_mm requires M > 16")
         if x.size(1) % 8 != 0 or self.weight_int8_t.size(0) % 8 != 0:
             raise RuntimeError("torch._int_mm requires K and N to be multiples of 8")
+        rows = int(x.size(0))
         if (
-            self._input_scaled_buffer.shape != x.shape
+            self._input_scaled_buffer.dim() != 2
+            or self._input_scaled_buffer.size(0) < rows
+            or self._input_scaled_buffer.size(1) != x.size(1)
             or self._input_scaled_buffer.device != x.device
         ):
-            self.prepare_buffers(x.shape[0], x.device)
-        torch.abs(x, out=self._input_scaled_buffer)
-        input_scale = torch.clamp(self._input_scaled_buffer.amax() / INT8_MAX, min=1e-8)
-        torch.div(x, input_scale, out=self._input_scaled_buffer)
-        torch.round(self._input_scaled_buffer, out=self._input_scaled_buffer)
-        torch.clamp(self._input_scaled_buffer, -INT8_MAX, INT8_MAX, out=self._input_scaled_buffer)
-        self._input_int8_buffer.copy_(self._input_scaled_buffer)
-        out_int32 = torch._int_mm(self._input_int8_buffer, self.weight_int8_t)
-        output = self._output_float_buffer
+            self.prepare_buffers(rows, x.device)
+        input_scaled = self._input_scaled_buffer[:rows]
+        input_int8 = self._input_int8_buffer[:rows]
+        output = self._output_float_buffer[:rows]
+        torch.abs(x, out=input_scaled)
+        input_scale = torch.clamp(input_scaled.amax() / INT8_MAX, min=1e-8)
+        torch.div(x, input_scale, out=input_scaled)
+        torch.round(input_scaled, out=input_scaled)
+        torch.clamp(input_scaled, -INT8_MAX, INT8_MAX, out=input_scaled)
+        input_int8.copy_(input_scaled)
+        out_int32 = torch._int_mm(input_int8, self.weight_int8_t)
         output.copy_(out_int32)
         output.mul_(input_scale * self.weight_scale)
         if self.bias is not None:
