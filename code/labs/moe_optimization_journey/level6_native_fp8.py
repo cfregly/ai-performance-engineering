@@ -200,8 +200,7 @@ class NativeFP8MoE(VerificationPayloadMixin, BaseBenchmark):
                 out_dtype=torch.bfloat16
             )
             
-            expert_out.mul_(weights_e)
-            self._expert_output_views[e].copy_(expert_out)
+            torch.mul(expert_out, weights_e, out=self._expert_output_views[e])
         
         self.output = output
         if self.output is None:

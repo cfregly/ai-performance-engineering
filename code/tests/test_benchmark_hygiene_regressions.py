@@ -18267,8 +18267,9 @@ def test_fp8_demo_and_moe_lab_defer_verification_clones_outside_hot_loop() -> No
     assert "gate.mul_(up)" in moe_benchmark
     assert "hidden_fp8_slice = self._expert_hidden_fp8_views[e]" in moe_benchmark
     assert "hidden_fp8_slice.copy_(gate)" in moe_benchmark
-    assert "expert_out.mul_(weights_e)" in moe_benchmark
-    assert "self._expert_output_views[e].copy_(expert_out)" in moe_benchmark
+    assert "expert_out.mul_(weights_e)" not in moe_benchmark
+    assert "self._expert_output_views[e].copy_(expert_out)" not in moe_benchmark
+    assert "torch.mul(expert_out, weights_e, out=self._expert_output_views[e])" in moe_benchmark
     assert "tokens_fp8[:count]" not in moe_benchmark
     assert "hidden_fp8[:count]" not in moe_benchmark
     assert "token_slice = slice(" not in moe_benchmark
