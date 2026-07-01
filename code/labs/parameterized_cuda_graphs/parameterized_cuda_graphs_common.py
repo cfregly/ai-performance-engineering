@@ -61,12 +61,18 @@ class _ResidualScaleBlock(nn.Module):
         expanded = hidden_size * expansion_factor
         self.norm = nn.LayerNorm(hidden_size)
         self.fc1 = nn.Linear(hidden_size, expanded)
-        self.act = nn.SiLU()
+        self.act = nn.SiLU(inplace=True)
         self.fc2 = nn.Linear(expanded, hidden_size)
 
     def forward(self, x: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
         hidden = self.fc2(self.act(self.fc1(self.norm(x))))
         return x + hidden * scale
+
+    def forward_into(self, x: torch.Tensor, scale: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+        hidden = self.fc2(self.act(self.fc1(self.norm(x))))
+        torch.mul(hidden, scale, out=out)
+        out.add_(x)
+        return out
 
 
 class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
@@ -187,7 +193,7 @@ class ParameterizedGraphBenchmarkBase(VerificationPayloadMixin, BaseBenchmark):
         with torch.inference_mode():
             device_input.copy_(slot_input, non_blocking=True)
             device_scale.copy_(slot_scale, non_blocking=True)
-            device_output.copy_(model(device_input, device_scale))
+            model.forward_into(device_input, device_scale, device_output)
             slot_output.copy_(device_output, non_blocking=True)
 
     def _refresh_slot_memcpy_bindings(self) -> None:

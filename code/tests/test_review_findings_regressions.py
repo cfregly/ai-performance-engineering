@@ -1136,6 +1136,37 @@ def test_parameterized_graph_verification_capture_uses_fixed_request_slot() -> N
     assert "self._verify_output_buffer = None" in teardown_section
 
 
+def test_parameterized_graph_residual_block_writes_directly_to_output_buffer() -> None:
+    source = _read("labs/parameterized_cuda_graphs/parameterized_cuda_graphs_common.py")
+    program_section = source.split("def _schedule_request_program", maxsplit=1)[1].split(
+        "def _refresh_slot_memcpy_bindings",
+        maxsplit=1,
+    )[0]
+
+    assert "def forward_into(self, x: torch.Tensor, scale: torch.Tensor, out: torch.Tensor)" in source
+    assert "torch.mul(hidden, scale, out=out)" in source
+    assert "out.add_(x)" in source
+    assert "model.forward_into(device_input, device_scale, device_output)" in program_section
+    assert "device_output.copy_(model(" not in program_section
+
+
+def test_parameterized_graph_residual_block_forward_into_matches_forward() -> None:
+    from labs.parameterized_cuda_graphs.parameterized_cuda_graphs_common import _ResidualScaleBlock
+
+    torch.manual_seed(1234)
+    model = _ResidualScaleBlock(hidden_size=8, expansion_factor=2).eval()
+    x = torch.randn(3, 8)
+    scale = torch.tensor([0.75])
+    out = torch.empty_like(x)
+
+    with torch.inference_mode():
+        expected = model(x, scale)
+        actual = model.forward_into(x, scale, out)
+
+    assert actual.data_ptr() == out.data_ptr()
+    torch.testing.assert_close(actual, expected)
+
+
 def test_parameterized_graph_replay_uses_cached_memcpy_bindings() -> None:
     source = _read("labs/parameterized_cuda_graphs/parameterized_cuda_graphs_common.py")
     cache_section = source.split("def _refresh_slot_memcpy_bindings", maxsplit=1)[1].split(
