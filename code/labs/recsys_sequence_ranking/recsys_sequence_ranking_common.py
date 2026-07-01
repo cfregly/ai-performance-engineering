@@ -427,9 +427,12 @@ def prepare_context_workspace_for_inputs(
     """Cache flattened context lookup ids derived from immutable benchmark inputs."""
 
     context_vocab_size = int(state.context_embeddings.shape[1])
-    workspace.context_flat_ids.copy_(workspace.context_table_index)
-    workspace.context_flat_ids.mul_(context_vocab_size)
-    workspace.context_flat_ids.add_(inputs.context_ids)
+    torch.add(
+        inputs.context_ids,
+        workspace.context_table_index,
+        alpha=context_vocab_size,
+        out=workspace.context_flat_ids,
+    )
     workspace.context_metadata_key = _context_metadata_key(inputs, state)
 
 
@@ -448,8 +451,7 @@ def sequence_mean_baseline(
         out.zero_()
         return out
     token_vec = state.item_embeddings[inputs.sequence_ids[:, 0]]
-    out.copy_(token_vec)
-    out.mul_(mask[:, 0:1])
+    torch.mul(token_vec, mask[:, 0:1], out=out)
     for t in range(1, inputs.sequence_ids.shape[1]):
         token_vec = state.item_embeddings[inputs.sequence_ids[:, t]]
         token_vec.mul_(mask[:, t : t + 1])

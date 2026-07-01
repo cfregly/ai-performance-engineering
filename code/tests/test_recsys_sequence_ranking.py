@@ -22,6 +22,7 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     context_sum_baseline,
     context_sum_vectorized,
     optimized_forward,
+    prepare_context_workspace_for_inputs,
     ranking_metrics,
     resolve_score_backend,
     sequence_mean_baseline,
@@ -136,8 +137,8 @@ def test_baseline_poolers_seed_reusable_outputs_before_accumulating() -> None:
 
     assert "prepare_workspace_for_inputs(inputs, workspace)" in sequence_source
     assert "mask = workspace.sequence_mask_float.squeeze(-1)" in sequence_source
-    assert "out.copy_(token_vec)" in sequence_source
-    assert "out.mul_(mask[:, 0:1])" in sequence_source
+    assert "out.copy_(token_vec)" not in sequence_source
+    assert "torch.mul(token_vec, mask[:, 0:1], out=out)" in sequence_source
     assert "token_vec.mul_(mask[:, t : t + 1])" in sequence_source
     assert "out.mul_(workspace.sequence_length_recip)" in sequence_source
     assert ".to(dtype=state.item_embeddings.dtype)" not in sequence_source
@@ -169,6 +170,7 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     build_workspace_source = inspect.getsource(build_workspace)
     sequence_source = inspect.getsource(sequence_mean_vectorized)
     context_source = inspect.getsource(context_sum_vectorized)
+    context_prepare_source = inspect.getsource(prepare_context_workspace_for_inputs)
     candidate_source = inspect.getsource(candidate_scores_torch)
 
     fallback_sequence = sequence_mean_vectorized(inputs, state)
@@ -211,6 +213,11 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     assert "workspace.context_flat_ids_1d[:context_rows]" in context_source
     assert "workspace.context_flat_ids.reshape(-1)" not in context_source
     assert "workspace.context_flat_ids.copy_(" not in context_source
+    assert "workspace.context_flat_ids.copy_(" not in context_prepare_source
+    assert "workspace.context_flat_ids.mul_(" not in context_prepare_source
+    assert "torch.add(" in context_prepare_source
+    assert "alpha=context_vocab_size" in context_prepare_source
+    assert "out=workspace.context_flat_ids" in context_prepare_source
     assert workspace_sequence.data_ptr() == workspace.sequence_accum.data_ptr()
     assert workspace_context.data_ptr() == workspace.context_accum.data_ptr()
     torch.testing.assert_close(workspace_sequence, fallback_sequence, rtol=1e-6, atol=1e-6)
