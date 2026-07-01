@@ -25110,10 +25110,13 @@ def test_ch15_greedy_sampler_skips_softmax_on_optimized_path() -> None:
 
     assert "materialize_probabilities: bool = True" in common_source
     assert "self.temperature_column = self.temperature.view" in common_source
+    assert "next_token_buffer" not in common_source
     assert "torch.div(logits, temperature, out=scaled)" in benchmark_section
     assert "probabilities = torch.softmax(scaled, dim=-1)" in benchmark_section
-    assert "torch.max(probabilities, dim=-1, out=(max_values, next_token))" in benchmark_section
-    assert "torch.max(logits, dim=-1, out=(max_values, next_token))" in optimized_branch
+    assert "output_slot = output[step]" in benchmark_section
+    assert "torch.max(probabilities, dim=-1, out=(max_values, output_slot))" in benchmark_section
+    assert "torch.max(logits, dim=-1, out=(max_values, output_slot))" in optimized_branch
+    assert "output[step].copy_(next_token)" not in benchmark_section
     assert "softmax" not in optimized_branch
     assert "greedy_sampler.probability_elements_materialized" in common_source
     assert "output_tolerance=(0.0, 0.0)" in common_source

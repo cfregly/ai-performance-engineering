@@ -40,7 +40,6 @@ class GreedySamplerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.temperature_column: Optional[torch.Tensor] = None
         self.scaled_logits_buffer: Optional[torch.Tensor] = None
         self.max_values_buffer: Optional[torch.Tensor] = None
-        self.next_token_buffer: Optional[torch.Tensor] = None
         self.output_tokens: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self._step_range = range(cfg.steps)
@@ -77,11 +76,6 @@ class GreedySamplerBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float32,
         )
-        self.next_token_buffer = torch.empty(
-            cfg.batch_size,
-            device=self.device,
-            dtype=torch.long,
-        )
         self.output_tokens = torch.empty(
             cfg.steps,
             cfg.batch_size,
@@ -116,14 +110,12 @@ class GreedySamplerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if (
             self.logits is None
             or self.max_values_buffer is None
-            or self.next_token_buffer is None
             or self.output_tokens is None
         ):
             raise RuntimeError("Greedy sampler buffers are not initialized")
 
         logits = self.logits
         max_values = self.max_values_buffer
-        next_token = self.next_token_buffer
         output = self.output_tokens
 
         with torch.inference_mode(), self._nvtx_range(self.cfg.label):
@@ -135,12 +127,12 @@ class GreedySamplerBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 for step in self._step_range:
                     torch.div(logits, temperature, out=scaled)
                     probabilities = torch.softmax(scaled, dim=-1)
-                    torch.max(probabilities, dim=-1, out=(max_values, next_token))
-                    output[step].copy_(next_token)
+                    output_slot = output[step]
+                    torch.max(probabilities, dim=-1, out=(max_values, output_slot))
             else:
                 for step in self._step_range:
-                    torch.max(logits, dim=-1, out=(max_values, next_token))
-                    output[step].copy_(next_token)
+                    output_slot = output[step]
+                    torch.max(logits, dim=-1, out=(max_values, output_slot))
         self.output = output
 
     def capture_verification_payload(self) -> None:
@@ -196,7 +188,6 @@ class GreedySamplerBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.temperature_column = None
         self.scaled_logits_buffer = None
         self.max_values_buffer = None
-        self.next_token_buffer = None
         self.output_tokens = None
         self.output = None
         if torch.cuda.is_available():
