@@ -62,6 +62,8 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.decode_models: list[nn.Module] = []
         self.prefill_inputs: list[torch.Tensor] = []
         self._prefill_weight_t: dict[int, torch.Tensor] = {}
+        self._decode_weight_t: dict[int, torch.Tensor] = {}
+        self._decode_token_staging: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
         self._host_staging: dict[str, torch.Tensor] = {}
         self._handoff_staging: dict[str, torch.Tensor] = {}
         self._request_groups: list[tuple[torch.device, nn.Module, nn.Module, torch.Tensor]] = []
@@ -212,13 +214,15 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.decode_models = []
         self.prefill_inputs = []
         self._prefill_weight_t = {}
+        self._decode_weight_t = {}
+        self._decode_token_staging = {}
         self._host_staging = {}
         self._handoff_staging = {}
         self._request_groups = []
         self._request_output_groups = []
         self._decode_step_range = range(self.decode_length)
-        self._output_shards = [torch.empty(0) for _ in range(self.batch_size)]
-        self._output_shard_count = len(self._output_shards)
+        self._output_shards = []
+        self._output_shard_count = 0
         probe_width = min(256, self.hidden_size)
         probe_shape = torch.Size((1, 1, probe_width))
         self._verify_probe = self._empty_cpu_staging(probe_shape, torch.bfloat16)
@@ -240,6 +244,7 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.prefill_models.append(prefill_model)
             self.decode_models.append(decode_model)
             self._prefill_weight_t[id(prefill_model)] = prefill_model.weight.detach().t()
+            self._decode_weight_t[id(decode_model)] = decode_model.weight.detach().t()
             self._parameter_count += sum(p.numel() for p in prefill_model.parameters())
             self._parameter_count += sum(p.numel() for p in decode_model.parameters())
 
@@ -258,6 +263,17 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 device=decode_device,
                 dtype=torch.bfloat16,
             )
+            first_decode_token = torch.empty(
+                1,
+                1,
+                self.hidden_size,
+                device=decode_device,
+                dtype=torch.bfloat16,
+            )
+            self._decode_token_staging[staging_key] = (
+                first_decode_token,
+                torch.empty_like(first_decode_token),
+            )
             if self.use_host_staging:
                 self._host_staging[staging_key] = self._empty_cpu_staging(
                     torch.Size((staging_numel,)),
@@ -270,6 +286,11 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._request_groups
             )
         ]
+        self._output_shards = [
+            torch.empty(self.hidden_size, device=decode_device, dtype=torch.bfloat16)
+            for _, decode_device, _, _, _ in self._request_output_groups
+        ]
+        self._output_shard_count = len(self._output_shards)
 
         self._verify_probe.copy_(
             self.prefill_inputs[0][:1, :1, :probe_width],
@@ -279,13 +300,33 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.cuda.synchronize(prefill_device)
             torch.cuda.synchronize(decode_device)
 
+    def _decode_token_buffer_pair(
+        self,
+        staging_key: str,
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        buffers = self._decode_token_staging.get(staging_key)
+        shape = torch.Size((1, 1, self.hidden_size))
+        if (
+            buffers is None
+            or not self._device_matches(buffers[0].device, device)
+            or buffers[0].dtype != dtype
+            or buffers[0].shape != shape
+        ):
+            first = torch.empty(shape, device=device, dtype=dtype)
+            buffers = (first, torch.empty_like(first))
+            self._decode_token_staging[staging_key] = buffers
+        return buffers
+
     def _prefill_into_decode_kv(
         self,
         prefill_model: nn.Module,
         request: torch.Tensor,
         decode_device: torch.device,
     ) -> Optional[torch.Tensor]:
-        if self.use_host_staging or self.decode_length <= 0 or not self._device_matches(
+        if self.use_host_staging or not self._device_matches(
             request.device,
             decode_device,
         ):
@@ -306,6 +347,35 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if isinstance(bias, torch.Tensor):
             decode_buf.add_(bias.detach())
         return decode_buf
+
+    def _decode_into_output_shard(
+        self,
+        decode_model: nn.Module,
+        kv_decode: torch.Tensor,
+        decode_device: torch.device,
+        output_shard: torch.Tensor,
+    ) -> None:
+        token_state = kv_decode[:, -1:, :]
+        decode_weight_t = self._decode_weight_t.get(id(decode_model))
+        if decode_weight_t is None:
+            for _ in self._decode_step_range:
+                token_state = decode_model(token_state)
+            output_shard.copy_(token_state.reshape(-1), non_blocking=True)
+            return
+
+        token_buffers = self._decode_token_buffer_pair(
+            str(decode_device),
+            device=decode_device,
+            dtype=decode_weight_t.dtype,
+        )
+        bias = getattr(decode_model, "bias", None)
+        for step_idx in self._decode_step_range:
+            next_state = token_buffers[step_idx & 1]
+            torch.matmul(token_state, decode_weight_t, out=next_state)
+            if isinstance(bias, torch.Tensor):
+                next_state.add_(bias.detach())
+            token_state = next_state
+        output_shard.copy_(token_state.reshape(-1), non_blocking=True)
 
     def _handoff_kv(self, prefill_out: torch.Tensor, decode_device: torch.device) -> torch.Tensor:
         staging_key = str(decode_device)
@@ -363,10 +433,12 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     if kv_decode is None:
                         prefill_out = prefill_model(request)
                         kv_decode = self._handoff_kv(prefill_out, decode_device)
-                    token_state = kv_decode[:, -1:, :]
-                    for _ in self._decode_step_range:
-                        token_state = decode_model(token_state)
-                    outputs[output_idx] = token_state.squeeze(0).squeeze(0)
+                    self._decode_into_output_shard(
+                        decode_model,
+                        kv_decode,
+                        decode_device,
+                        outputs[output_idx],
+                    )
 
         self._output_shards = outputs
 
@@ -407,6 +479,8 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prefill_inputs = []
         self.pairs = []
         self._prefill_weight_t = {}
+        self._decode_weight_t = {}
+        self._decode_token_staging = {}
         self._host_staging = {}
         self._handoff_staging = {}
         self._request_groups = []

@@ -23380,15 +23380,21 @@ def test_decode_handoff_benchmarks_do_not_allocate_placeholder_outputs_in_hot_pa
         assert "not initialized" in benchmark_section
         if path == "ch15/prefill_decode_disagg_common.py":
             assert "self._decode_step_range = range(self.decode_length)" in source
-            assert "for _ in self._decode_step_range:" in benchmark_section
+            assert "for step_idx in self._decode_step_range:" in source
             assert "for _ in range(self.decode_length):" not in benchmark_section
             assert "or buffer.numel() < numel" in source
             assert "decode_buf.shape != prefill_out.shape" not in source
             assert "def _prefill_into_decode_kv(" in source
             assert "self._prefill_weight_t[id(prefill_model)] = prefill_model.weight.detach().t()" in source
+            assert "self._decode_weight_t[id(decode_model)] = decode_model.weight.detach().t()" in source
+            assert "self._decode_token_staging[staging_key] = (" in source
+            assert "torch.empty(0)" not in source
             assert "torch.matmul(request, weight_t, out=decode_buf)" in source
+            assert "torch.matmul(token_state, decode_weight_t, out=next_state)" in source
+            assert "output_shard.copy_(token_state.reshape(-1), non_blocking=True)" in source
             assert "kv_decode = self._prefill_into_decode_kv(" in benchmark_section
             assert "if kv_decode is None:" in benchmark_section
+            assert "self._decode_into_output_shard(" in benchmark_section
 
 
 def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:
