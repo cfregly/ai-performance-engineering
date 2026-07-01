@@ -7933,6 +7933,7 @@ def test_moe_cuda_decode_kernel_wrappers_cache_nvtx_outside_hot_loop() -> None:
         assert "get_config()" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert "enable=self._enable_nvtx" in benchmark_section
+        assert "with torch.inference_mode(), nvtx_range(" in benchmark_section
         assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._verify_output_buffer = torch.empty_like(self._output_buffer)" in setup_section
         assert "self._verify_output_buffer.copy_(self.output)" in capture_section

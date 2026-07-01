@@ -114,7 +114,7 @@ class OptimizedDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._module is None:
             raise RuntimeError("Optimized decode kernel module not initialized")
 
-        with nvtx_range("moe_cuda_decode_kernel_optimized", enable=self._enable_nvtx):
+        with torch.inference_mode(), nvtx_range("moe_cuda_decode_kernel_optimized", enable=self._enable_nvtx):
             self._module.run_optimized(self.input, self._output_buffer)
         self.output = self._output_buffer
 

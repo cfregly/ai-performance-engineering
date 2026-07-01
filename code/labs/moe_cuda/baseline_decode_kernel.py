@@ -91,7 +91,7 @@ class BaselineDecodeKernelBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if self._module is None:
             raise RuntimeError("Baseline decode kernel module not initialized")
 
-        with nvtx_range("moe_cuda_decode_kernel_baseline", enable=self._enable_nvtx):
+        with torch.inference_mode(), nvtx_range("moe_cuda_decode_kernel_baseline", enable=self._enable_nvtx):
             self._module.run_baseline(self.input, self._output_buffer)
         self.output = self._output_buffer
         if self.output is None:
