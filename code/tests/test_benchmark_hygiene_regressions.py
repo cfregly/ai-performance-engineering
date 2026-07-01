@@ -19180,6 +19180,10 @@ def test_labs_transition_table_speculative_decode_uses_lookup_hot_path() -> None
     assert '"speculative.draft_model_calls": 0.0' in baseline_source
     assert "self._transition_table = torch.empty(" in setup_section
     assert "draft_forward_into(token_ids[:, start:end], logits_view)" in setup_section
+    assert "transition_token_view = self._transition_table[start:end].view(1, width)" in setup_section
+    assert "torch.max(logits_view, dim=-1, out=(values_view, transition_token_view))" in setup_section
+    assert "tokens = torch.empty" not in setup_section
+    assert "self._transition_table[start:end].copy_" not in setup_section
     assert "self.draft_model = None" in setup_section
     assert "torch.index_select(transition_table, 0, output_token_views[t], out=next_token)" in benchmark_section
     assert "draft_forward_into" not in benchmark_section

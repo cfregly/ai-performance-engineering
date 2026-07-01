@@ -36,7 +36,6 @@ class OptimizedSpeculativeDecodeTransitionTableBenchmark(OptimizedSpeculativeDec
         token_ids = torch.arange(wl.vocab_size, device=self.device, dtype=torch.long).view(1, wl.vocab_size)
         logits = torch.empty((1, chunk, wl.vocab_size), device=self.device, dtype=wl.dtype)
         values = torch.empty((1, chunk), device=self.device, dtype=wl.dtype)
-        tokens = torch.empty((1, chunk), device=self.device, dtype=torch.long)
         draft_forward_into = self.draft_model.forward_into
 
         with torch.inference_mode():
@@ -45,10 +44,9 @@ class OptimizedSpeculativeDecodeTransitionTableBenchmark(OptimizedSpeculativeDec
                 width = end - start
                 logits_view = logits[:, :width]
                 values_view = values[:, :width]
-                tokens_view = tokens[:, :width]
+                transition_token_view = self._transition_table[start:end].view(1, width)
                 draft_forward_into(token_ids[:, start:end], logits_view)
-                torch.max(logits_view, dim=-1, out=(values_view, tokens_view))
-                self._transition_table[start:end].copy_(tokens_view[0])
+                torch.max(logits_view, dim=-1, out=(values_view, transition_token_view))
 
         self.draft_model = None
         self._token_range = range(wl.total_tokens)
