@@ -6401,7 +6401,9 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "if reeval_interval <= 0:" in decode_section
     assert 'raise ValueError("reeval_interval must be positive")' in decode_section
     assert "should_reevaluate = (step + 1) % reeval_interval == 0" in decode_section
-    assert "conf_dev = _update_confidence_ema(logits) if (step == 0 or should_reevaluate) else ema_conf" in decode_section
+    assert "needs_logits = not use_direct_next_token or step == 0 or should_reevaluate" in decode_section
+    assert "if needs_logits:" in decode_section
+    assert "conf_dev = _update_confidence_ema(logits) if (needs_logits and (step == 0 or should_reevaluate)) else ema_conf" in decode_section
     assert "if should_reevaluate:" in decode_section
     assert "if conf_dev is None:" in decode_section
     assert "margin = (top2_values[:, 0] - top2_values[:, 1]).mean()" not in decode_section
@@ -6578,7 +6580,10 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     switching_source = (REPO_ROOT / "ch19" / "dynamic_precision_switching.py").read_text(
         encoding="utf-8"
     )
-    assert common_source.count("next_token_values = torch.empty(\n                (batch_size, 1),") == 2
+    assert (
+        common_source.count("next_token_values = torch.empty(\n                    (batch_size, 1),")
+        + common_source.count("next_token_values = torch.empty(\n                (batch_size, 1),")
+    ) == 2
     assert "next_token_values.device != last_step_logits.device" not in common_source
     assert common_source.count("generated_token_views[current_len].copy_(next_token_flat)") == 2
     assert "generated[:, current_len : current_len + 1].copy_(next_token)" not in common_source
@@ -6586,9 +6591,23 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     assert "def append_incremental_embedding" in common_source
     assert "def forward_incremental_logits" in common_source
     assert "torch.mul(embedding_sum, 1.0 / float(current_len), out=mean_workspace)" in common_source
+    assert "def next_token_from_last" in common_source
+    assert "torch.add(flat_token, 1, out=out)" in common_source
+    assert "out.bitwise_and_(self.vocab_size - 1)" in common_source
+    assert "out.remainder_(self.vocab_size)" in common_source
+    assert common_source.count('direct_next_token = getattr(model, "next_token_from_last", None)') == 1
+    assert common_source.count("use_direct_next_token = callable(direct_next_token)") == 1
+    assert common_source.count("direct_next_token(source_token, out=next_token_flat)") == 1
     assert switching_source.count("generated_token_views[current_len].copy_(next_token_flat)") == 1
     assert "generated[:, current_len : current_len + 1].copy_(next_token)" not in switching_source
     assert "logits = incremental_logits(embedding_sum, last_token, current_len)" in switching_source
+    assert 'direct_next_token = getattr(model, "next_token_from_last", None)' in switching_source
+    assert "use_direct_next_token = callable(direct_next_token)" in switching_source
+    assert "direct_next_token(source_token, out=next_token_flat)" in switching_source
+    assert "needs_logits = not use_direct_next_token or step == 0 or should_reevaluate" in switching_source
+    assert "if needs_logits:" in switching_source
+    assert "conf_dev = _update_confidence_ema(logits) if (needs_logits and (step == 0 or should_reevaluate)) else ema_conf" in switching_source
+    assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in switching_source
 
     token_precision_source = (REPO_ROOT / "ch19" / "token_precision_switching.py").read_text(
         encoding="utf-8"

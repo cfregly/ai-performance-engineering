@@ -287,9 +287,11 @@ def decode_with_dynamic_precision(
     initial_sum = getattr(model, "initial_incremental_embedding_sum", None)
     append_embedding = getattr(model, "append_incremental_embedding", None)
     incremental_logits = getattr(model, "forward_incremental_logits", None)
+    direct_next_token = getattr(model, "next_token_from_last", None)
     use_incremental = callable(initial_sum) and callable(append_embedding) and callable(incremental_logits)
+    use_direct_next_token = callable(direct_next_token)
     embedding_sum = initial_sum(prompt) if use_incremental else None
-    last_token = prompt[:, -1] if use_incremental else None
+    last_token = prompt[:, -1] if (use_incremental or use_direct_next_token) else None
     current_len = prompt_len
     
     # Internal state
@@ -341,46 +343,54 @@ def decode_with_dynamic_precision(
     
     # Decode
     for step in range(max_steps):
+        should_reevaluate = (step + 1) % reeval_interval == 0
+        needs_logits = not use_direct_next_token or step == 0 or should_reevaluate
+
         # 1) Precision context (exactly one).
         # No nested contexts, no leakage across iterations.
-        with _precision_context(device, precision_mode, prefer_bfloat16, enable_fp8):
-            # Forward pass (HF-style or plain)
-            if use_incremental:
-                logits = incremental_logits(embedding_sum, last_token, current_len)
-            else:
-                active_tokens = generated[:, :current_len]
-                try:
-                    logits = model(input_ids=active_tokens)
-                    if hasattr(logits, "logits"):
-                        logits = logits.logits
-                except TypeError:
-                    logits = model(active_tokens)
+        if needs_logits:
+            with _precision_context(device, precision_mode, prefer_bfloat16, enable_fp8):
+                # Forward pass (HF-style or plain)
+                if use_incremental:
+                    logits = incremental_logits(embedding_sum, last_token, current_len)
+                else:
+                    active_tokens = generated[:, :current_len]
+                    try:
+                        logits = model(input_ids=active_tokens)
+                        if hasattr(logits, "logits"):
+                            logits = logits.logits
+                    except TypeError:
+                        logits = model(active_tokens)
 
-        if precision_mode == PrecisionMode.FP4:
-            logits = _simulate_fp4_quantize(logits)
+            if precision_mode == PrecisionMode.FP4:
+                logits = _simulate_fp4_quantize(logits)
         
         # 2) Pick next token from the *last* position
-        last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
-        if (
-            next_token_values is None
-            or next_token_values.device != last_step_logits.device
-            or next_token_values.dtype != last_step_logits.dtype
-        ):
-            next_token_values = torch.empty(
-                (batch_size, 1),
-                device=last_step_logits.device,
-                dtype=last_step_logits.dtype,
-            )
-        torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))
+        if use_direct_next_token:
+            source_token = last_token
+            direct_next_token(source_token, out=next_token_flat)
+        else:
+            last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
+            if (
+                next_token_values is None
+                or next_token_values.device != last_step_logits.device
+                or next_token_values.dtype != last_step_logits.dtype
+            ):
+                next_token_values = torch.empty(
+                    (batch_size, 1),
+                    device=last_step_logits.device,
+                    dtype=last_step_logits.dtype,
+                )
+            torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))
         generated_token_views[current_len].copy_(next_token_flat)
         if use_incremental:
             append_embedding(embedding_sum, next_token_flat)
+        if use_incremental or use_direct_next_token:
             last_token = next_token_flat
         current_len += 1
         
         # 3) Update on-device EMA only when the policy can consume it.
-        should_reevaluate = (step + 1) % reeval_interval == 0
-        conf_dev = _update_confidence_ema(logits) if (step == 0 or should_reevaluate) else ema_conf
+        conf_dev = _update_confidence_ema(logits) if (needs_logits and (step == 0 or should_reevaluate)) else ema_conf
         
         # 4) Update statistics
         if stats:

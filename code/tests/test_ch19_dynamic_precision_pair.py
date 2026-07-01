@@ -35,11 +35,14 @@ def test_high_confidence_decoder_applies_target_bias_without_full_tensor() -> No
     assert "bias.scatter_" not in source
     assert "self._target_boost_views: dict[tuple[int, torch.device], torch.Tensor] = {}" in class_source
     assert "self._mean_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}" in class_source
+    assert "self._next_token_id_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}" in class_source
     assert "logits.add_(-4.0)" in class_source
     assert "logits.scatter_add_(" in class_source
     assert "target_boost = self._target_boost_views.get(boost_key)" in class_source
     assert "self._target_boost_views[boost_key] = target_boost" in class_source
     assert "self._target_boost.expand(next_id.size(0), 1)" in class_source
+    assert "def next_token_from_last" in class_source
+    assert "torch.add(flat_token, 1, out=out)" in class_source
     assert "def initial_incremental_embedding_sum" in class_source
     assert "def append_incremental_embedding" in class_source
     assert "def forward_incremental_logits" in class_source
@@ -79,11 +82,19 @@ def test_high_confidence_decoder_applies_target_bias_without_full_tensor() -> No
             next_token,
             extended_input_ids.size(1),
         )
+        direct_next = torch.empty(input_ids.size(0), dtype=torch.int64)
+        model.next_token_from_last(input_ids[:, -1], out=direct_next)
+        cached_direct = model.next_token_from_last(input_ids[:, -1])
+        cached_direct_ptr = cached_direct.data_ptr()
+        cached_direct_again = model.next_token_from_last(input_ids[:, -1])
 
     torch.testing.assert_close(actual, expected)
     torch.testing.assert_close(actual_again, expected)
     torch.testing.assert_close(incremental, expected)
     torch.testing.assert_close(incremental_extended, expected_extended)
+    assert torch.equal(direct_next, next_id)
+    assert torch.equal(cached_direct, next_id)
+    assert cached_direct_again.data_ptr() == cached_direct_ptr
     assert model._target_boost_views[(input_ids.size(0), device)] is cached_boost
     assert model._mean_workspaces[mean_key].data_ptr() == cached_mean_ptr
 
@@ -160,6 +171,9 @@ def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:
     assert "next_token = torch.empty((batch_size, 1)" in fixed_source
     assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in fixed_source
     assert "next_token_flat = next_token.view(batch_size)" in fixed_source
+    assert 'direct_next_token = getattr(model, "next_token_from_last", None)' in fixed_source
+    assert "use_direct_next_token = callable(direct_next_token)" in fixed_source
+    assert "direct_next_token(source_token, out=next_token_flat)" in fixed_source
     assert "generated_token_views = generated.unbind(dim=1)" in fixed_source
     assert "generated_token_views[current_len].copy_(next_token_flat)" in fixed_source
     assert "generated[:, current_len : current_len + 1].copy_(next_token)" not in fixed_source
@@ -168,6 +182,9 @@ def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:
     assert "torch.argmax(last_step_logits" not in fixed_source
     assert "next_token = torch.empty((batch_size, 1)" in dynamic_source
     assert "next_token_flat = next_token.view(batch_size)" in dynamic_source
+    assert 'direct_next_token = getattr(model, "next_token_from_last", None)' in dynamic_source
+    assert "use_direct_next_token = callable(direct_next_token)" in dynamic_source
+    assert "direct_next_token(source_token, out=next_token_flat)" in dynamic_source
     assert "generated_token_views = generated.unbind(dim=1)" in dynamic_source
     assert "top2_values = torch.empty(" in dynamic_source
     assert "top2_indices = torch.empty(" in dynamic_source
@@ -185,14 +202,22 @@ def test_dynamic_precision_decode_samples_confidence_on_interval(monkeypatch: py
     prompt = build_prompt(cfg, device)
     model = build_model(cfg, device, dtype=torch.float32)
     original_topk = torch.topk
+    original_incremental_logits = model.forward_incremental_logits
     topk_calls = 0
+    incremental_logits_calls = 0
 
     def counted_topk(*args, **kwargs):
         nonlocal topk_calls
         topk_calls += 1
         return original_topk(*args, **kwargs)
 
+    def counted_incremental_logits(*args, **kwargs):
+        nonlocal incremental_logits_calls
+        incremental_logits_calls += 1
+        return original_incremental_logits(*args, **kwargs)
+
     monkeypatch.setattr(torch, "topk", counted_topk)
+    monkeypatch.setattr(model, "forward_incremental_logits", counted_incremental_logits)
 
     tokens, stats = decode_with_dynamic_precision(
         model,
@@ -209,6 +234,38 @@ def test_dynamic_precision_decode_samples_confidence_on_interval(monkeypatch: py
     assert stats.total_tokens == cfg.batch_size * cfg.max_steps
     assert stats.avg_confidence > 0.0
     assert topk_calls == 3
+    assert incremental_logits_calls == 3
+
+
+def test_dynamic_precision_decode_uses_model_direct_next_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = DynamicPrecisionBenchmarkConfig(batch_size=2, prompt_len=8, max_steps=4, vocab_size=64, hidden_dim=64)
+    device = torch.device("cpu")
+    prompt = build_prompt(cfg, device)
+    model = build_model(cfg, device, dtype=torch.float32)
+    original_max = torch.max
+    max_calls = 0
+
+    def counted_max(*args, **kwargs):
+        nonlocal max_calls
+        max_calls += 1
+        return original_max(*args, **kwargs)
+
+    monkeypatch.setattr(torch, "max", counted_max)
+
+    dynamic_tokens, stats = decode_with_dynamic_precision(
+        model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        enable_fp8=False,
+        enable_fp4=False,
+        reeval_interval=1,
+    )
+    fixed_tokens = decode_fixed_precision(model, prompt, max_steps=cfg.max_steps, device=device)
+
+    assert torch.equal(dynamic_tokens, fixed_tokens)
+    assert stats is not None
+    assert max_calls == 0
 
 
 def test_token_precision_controller_reuses_generation_buffer_capacity() -> None:

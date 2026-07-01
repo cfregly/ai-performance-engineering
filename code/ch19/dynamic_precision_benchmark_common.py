@@ -52,9 +52,25 @@ class HighConfidenceDecoder(nn.Module):
         self.register_buffer("_target_boost", torch.tensor(16.0, device=device), persistent=False)
         self._target_boost_views: dict[tuple[int, torch.device], torch.Tensor] = {}
         self._mean_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}
+        self._next_token_id_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}
+
+    def next_token_from_last(self, last_token: torch.Tensor, out: torch.Tensor | None = None) -> torch.Tensor:
+        flat_token = last_token.reshape(-1)
+        if out is None:
+            token_key = (int(flat_token.size(0)), flat_token.device, flat_token.dtype)
+            out = self._next_token_id_workspaces.get(token_key)
+            if out is None or out.shape != flat_token.shape:
+                out = torch.empty_like(flat_token)
+                self._next_token_id_workspaces[token_key] = out
+        torch.add(flat_token, 1, out=out)
+        if self.vocab_size > 0 and (self.vocab_size & (self.vocab_size - 1)) == 0:
+            out.bitwise_and_(self.vocab_size - 1)
+        else:
+            out.remainder_(self.vocab_size)
+        return out
 
     def _boost_next_token(self, logits: torch.Tensor, last_token: torch.Tensor) -> torch.Tensor:
-        next_id = (last_token.reshape(-1) + 1) % self.vocab_size
+        next_id = self.next_token_from_last(last_token)
         logits.add_(-4.0)
         boost_key = (int(next_id.size(0)), logits.device)
         target_boost = self._target_boost_views.get(boost_key)
@@ -160,7 +176,9 @@ def decode_fixed_precision(
     initial_sum = getattr(model, "initial_incremental_embedding_sum", None)
     append_embedding = getattr(model, "append_incremental_embedding", None)
     incremental_logits = getattr(model, "forward_incremental_logits", None)
+    direct_next_token = getattr(model, "next_token_from_last", None)
     use_incremental = callable(initial_sum) and callable(append_embedding) and callable(incremental_logits)
+    use_direct_next_token = callable(direct_next_token)
     embedding_sum = initial_sum(prompt) if use_incremental else None
     last_token = prompt[:, -1] if use_incremental else None
     current_len = prompt_len
@@ -173,15 +191,19 @@ def decode_fixed_precision(
             if hasattr(logits, "logits"):
                 logits = logits.logits
         last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
-        if next_token_values is None:
-            next_token_values = torch.empty(
-                (batch_size, 1),
-                device=last_step_logits.device,
-                dtype=last_step_logits.dtype,
-            )
-            if workspace is not None:
-                workspace.next_token_values = next_token_values
-        torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))
+        if use_direct_next_token:
+            source_token = last_token if use_incremental else active_tokens[:, -1]
+            direct_next_token(source_token, out=next_token_flat)
+        else:
+            if next_token_values is None:
+                next_token_values = torch.empty(
+                    (batch_size, 1),
+                    device=last_step_logits.device,
+                    dtype=last_step_logits.dtype,
+                )
+                if workspace is not None:
+                    workspace.next_token_values = next_token_values
+            torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))
         generated_token_views[current_len].copy_(next_token_flat)
         if use_incremental:
             append_embedding(embedding_sum, next_token_flat)
