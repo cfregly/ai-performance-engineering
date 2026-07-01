@@ -132,6 +132,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.graph_stream: Optional[torch.cuda.Stream] = None
         self.decode_graph: Optional[torch.cuda.CUDAGraph] = None
         self.graph_includes_prefill: bool = False
+        self._decode_token_hidden: Optional[torch.Tensor] = None
         self._decode_combined: Optional[torch.Tensor] = None
         self._logits_buffer: Optional[torch.Tensor] = None
         self._lm_head_weight_t: Optional[torch.Tensor] = None
@@ -545,6 +546,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.state_buffer = torch.empty(
             (bsz, self.cfg.hidden_size), device=self.device, dtype=self.dtype
         )
+        self._decode_token_hidden = torch.empty_like(self.state_buffer)
         self._decode_combined = torch.empty_like(self.state_buffer)
         self.current_tokens = torch.empty((bsz,), device=self.device, dtype=torch.long)
         self._decode_next_token_values = torch.empty((bsz,), device=self.device, dtype=self.dtype)
@@ -686,6 +688,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         """Public decode wrapper for direct calls outside the benchmark loop."""
         if (
             self._decode_combined is None
+            or self._decode_token_hidden is None
             or self._decode_next_token_values is None
             or self._decode_next_token is None
         ):
@@ -697,7 +700,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self, tokens: torch.Tensor, state: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Single decode step - contexts and fp8_autocast managed externally."""
-        token_hidden = self.embedding(tokens)
+        token_hidden = torch.index_select(
+            self.embedding.weight,
+            0,
+            tokens,
+            out=self._decode_token_hidden,
+        )
         torch.add(token_hidden, state, out=self._decode_combined)
         hidden = self.decode_mlp(self._decode_combined)
         if self._candidate_token_ids is not None:
@@ -1125,6 +1133,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "host_payloads",
             "gpu_payloads",
             "state_buffer",
+            "_decode_token_hidden",
             "_decode_combined",
             "_logits_buffer",
             "_lm_head_weight_t",

@@ -177,9 +177,11 @@ def test_decode_step_reuses_next_token_buffer() -> None:
 
     assert "self._decode_next_token_values: Optional[torch.Tensor] = None" in source
     assert "self._decode_next_token: Optional[torch.Tensor] = None" in source
+    assert "self._decode_token_hidden: Optional[torch.Tensor] = None" in source
     assert "self._decode_combined: Optional[torch.Tensor] = None" in source
     assert "self._logits_buffer: Optional[torch.Tensor] = None" in source
     assert "self._lm_head_weight_t: Optional[torch.Tensor] = None" in source
+    assert "self._decode_token_hidden = torch.empty_like(self.state_buffer)" in init_section
     assert "self._decode_combined = torch.empty_like(self.state_buffer)" in init_section
     assert "needs_full_vocab_logits = (" in init_section
     assert "self._lm_head_weight_t = self.lm_head.weight.t()" in init_section
@@ -187,6 +189,11 @@ def test_decode_step_reuses_next_token_buffer() -> None:
     assert "self._decode_next_token_values = torch.empty((bsz,), device=self.device, dtype=self.dtype)" in init_section
     assert "self._decode_next_token = torch.empty((bsz,), device=self.device, dtype=torch.long)" in init_section
     assert 'raise RuntimeError("Decode buffers must be initialized before _decode_step()")' in decode_step_section
+    assert "or self._decode_token_hidden is None" in decode_step_section
+    assert "token_hidden = torch.index_select(" in decode_step_section
+    assert "self.embedding.weight," in decode_step_section
+    assert "out=self._decode_token_hidden" in decode_step_section
+    assert "token_hidden = self.embedding(tokens)" not in decode_step_section
     assert "torch.add(token_hidden, state, out=self._decode_combined)" in decode_step_section
     assert "hidden = self.decode_mlp(self._decode_combined)" in decode_step_section
     assert "torch.mm(hidden, self._lm_head_weight_t, out=self._logits_buffer)" in decode_step_section
@@ -222,21 +229,29 @@ def test_decode_step_reuses_full_vocab_logits_buffer_on_cpu() -> None:
 
     assert bench._logits_buffer is not None
     assert bench._lm_head_weight_t is not None
+    assert bench._decode_token_hidden is not None
     logits_ptr = bench._logits_buffer.data_ptr()
+    token_hidden_ptr = bench._decode_token_hidden.data_ptr()
 
     with torch.inference_mode():
         tokens = torch.tensor([1, 2], dtype=torch.long)
         state = torch.randn(cfg.batch_size, cfg.hidden_size, dtype=bench.dtype)
         next_state, next_token = bench._run_decode_step_math(tokens, state)
+        expected_hidden = bench.embedding(tokens)
         expected_token = torch.argmax(bench.lm_head(next_state), dim=-1)
 
         assert bench._logits_buffer.data_ptr() == logits_ptr
+        assert bench._decode_token_hidden.data_ptr() == token_hidden_ptr
+        torch.testing.assert_close(bench._decode_token_hidden, expected_hidden)
         torch.testing.assert_close(next_token, expected_token)
 
         next_state, next_token = bench._run_decode_step_math(tokens, next_state)
+        expected_hidden = bench.embedding(tokens)
         expected_token = torch.argmax(bench.lm_head(next_state), dim=-1)
 
     assert bench._logits_buffer.data_ptr() == logits_ptr
+    assert bench._decode_token_hidden.data_ptr() == token_hidden_ptr
+    torch.testing.assert_close(bench._decode_token_hidden, expected_hidden)
     torch.testing.assert_close(next_token, expected_token)
 
 
