@@ -16929,8 +16929,18 @@ def test_ch18_eos_early_exit_skips_tail_decode_after_forced_eos() -> None:
     assert "self._full_decode_range = range(cfg.decode_tokens)" in source
     assert "self._early_exit_range = range(cfg.force_eos_after_tokens)" in source
     assert "self._decode_token_divisor = float(max(cfg.decode_tokens, 1))" in source
+    assert "self._lm_head_weight_t: Optional[torch.Tensor] = None" in source
+    assert "self._lm_head_weight_t = self.lm_head_weight.t()" in setup_section
     assert "self.logits_buffer = torch.empty(" in setup_section
-    assert "torch.mm(self.state_buffer, self.lm_head_weight.t(), out=self.logits_buffer)" in source
+    decode_step_section = source.split("def _decode_step", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    assert "any(" not in decode_step_section
+    assert "for x in (" not in decode_step_section
+    assert "or self._lm_head_weight_t is None" in decode_step_section
+    assert "torch.mm(self.state_buffer, self._lm_head_weight_t, out=self.logits_buffer)" in decode_step_section
+    assert "self.lm_head_weight.t()" not in decode_step_section
     assert benchmark_section.index("next_token.fill_(self.cfg.eos_token_id)") < benchmark_section.index(
         "self.generated_tokens[:, step].copy_(next_token)"
     )

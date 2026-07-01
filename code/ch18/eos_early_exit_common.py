@@ -41,6 +41,7 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.embedding_weight: Optional[torch.Tensor] = None
         self.transition_weight: Optional[torch.Tensor] = None
         self.lm_head_weight: Optional[torch.Tensor] = None
+        self._lm_head_weight_t: Optional[torch.Tensor] = None
         self.prompt_ids: Optional[torch.Tensor] = None
         self.state_buffer: Optional[torch.Tensor] = None
         self.next_state_buffer: Optional[torch.Tensor] = None
@@ -92,6 +93,7 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=self.dtype,
             device="cpu",
         ).to(self.device)
+        self._lm_head_weight_t = self.lm_head_weight.t()
         self.prompt_ids = torch.randint(
             low=3,
             high=cfg.vocab_size,
@@ -160,20 +162,17 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.next_token_buffer.copy_(self.prompt_ids[:, -1])
 
     def _decode_step(self) -> torch.Tensor:
-        if any(
-            x is None
-            for x in (
-                self.embedding_weight,
-                self.transition_weight,
-                self.lm_head_weight,
-                self.token_hidden_buffer,
-                self.combined_buffer,
-                self.next_state_buffer,
-                self.state_buffer,
-                self.logits_buffer,
-                self.max_values_buffer,
-                self.next_token_buffer,
-            )
+        if (
+            self.embedding_weight is None
+            or self.transition_weight is None
+            or self._lm_head_weight_t is None
+            or self.token_hidden_buffer is None
+            or self.combined_buffer is None
+            or self.next_state_buffer is None
+            or self.state_buffer is None
+            or self.logits_buffer is None
+            or self.max_values_buffer is None
+            or self.next_token_buffer is None
         ):
             raise RuntimeError("EOS early-exit decode buffers are not initialized")
         torch.index_select(
@@ -185,7 +184,7 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.add(self.state_buffer, self.token_hidden_buffer, out=self.combined_buffer)
         torch.mm(self.combined_buffer, self.transition_weight, out=self.next_state_buffer)
         self.state_buffer.copy_(self.next_state_buffer)
-        torch.mm(self.state_buffer, self.lm_head_weight.t(), out=self.logits_buffer)
+        torch.mm(self.state_buffer, self._lm_head_weight_t, out=self.logits_buffer)
         torch.max(
             self.logits_buffer,
             dim=-1,
@@ -263,6 +262,7 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "embedding_weight",
             "transition_weight",
             "lm_head_weight",
+            "_lm_head_weight_t",
             "prompt_ids",
             "state_buffer",
             "next_state_buffer",
