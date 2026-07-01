@@ -170,10 +170,10 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
             self.cfg.requests_per_rank * output_shape[0],
             *output_shape[1:],
         )
-        self._pending_outputs = [
-            torch.empty(output_shape, dtype=torch.long, device=self.device)
-            for _ in range(self.cfg.requests_per_rank)
-        ]
+        self._output_buffer = torch.empty(output_buffer_shape, dtype=torch.long, device=self.device)
+        self._pending_outputs = list(
+            self._output_buffer.view(self.cfg.requests_per_rank, *output_shape).unbind(0)
+        )
         self._request_prompt_outputs = list(
             zip(range(self.cfg.requests_per_rank), self.prompts, self._pending_outputs, strict=True)
         )
@@ -189,7 +189,6 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
             self.cfg.context_window,
             self.cfg.context_window + self.cfg.decode_tokens,
         )
-        self._output_buffer = torch.empty(output_buffer_shape, dtype=torch.long, device=self.device)
         self._next_token_buffer = torch.empty((self.cfg.batch_size, 1), dtype=torch.long, device=self.device)
         self._next_token_values = torch.empty((self.cfg.batch_size, 1), dtype=self.cfg.dtype, device=self.device)
         meta_dtype = torch.float32
@@ -257,9 +256,10 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
         torch.max(logits_last, dim=-1, keepdim=True, out=(self._next_token_values, self._next_token_buffer))
         return self._next_token_buffer
 
-    def _set_output_from_tokens(self, outputs: List[torch.Tensor]) -> None:
-        self._pending_outputs = outputs
-        self._output = None
+    def _set_output_from_tokens(self) -> None:
+        if self._output_buffer is None:
+            raise RuntimeError("setup() must initialize verification output buffer")
+        self._output = self._output_buffer
 
     def capture_verification_payload(self) -> None:
         if self.prompts is None:
@@ -269,13 +269,6 @@ class _DisaggregatedInferenceSingleGPUBase(VerificationPayloadMixin, BaseBenchma
                 raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
             if self._output_buffer is None:
                 raise RuntimeError("setup() must initialize verification output buffer")
-            output_offset = 0
-            for output in self._pending_outputs:
-                output_rows = output.shape[0]
-                self._output_buffer[output_offset : output_offset + output_rows].copy_(output)
-                output_offset += output_rows
-            if output_offset != self._output_buffer.shape[0]:
-                raise RuntimeError("unexpected decode output shape")
             self._output = self._output_buffer
         tf32_enabled = torch.cuda.is_available() and bool(torch.backends.cuda.matmul.allow_tf32)
         if not self._metadata_inputs:
@@ -373,12 +366,11 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
         if self._baseline_kv_cache is None or self._kv_host_staging is None:
             raise RuntimeError("Baseline KV staging buffers not initialized")
 
-        outputs = self._pending_outputs
         request_prompt_outputs = self._request_prompt_outputs
         if self._request_output_counts != self._expected_request_output_counts:
             raise RuntimeError("Request prompt/output groups not initialized")
         with torch.inference_mode():
-            for output_idx, prompt, output_slot in request_prompt_outputs:
+            for _output_idx, prompt, output_slot in request_prompt_outputs:
                 hidden, logits = self.prefill_model.prefill(prompt)
                 seed_tokens = self._next_token_from_logits(logits[:, -1, :])
                 self._kv_host_staging.copy_(hidden, non_blocking=False)
@@ -386,13 +378,13 @@ class BaselineDisaggregatedInferenceSingleGPUBenchmark(_DisaggregatedInferenceSi
                     self._kv_host_staging,
                     non_blocking=False,
                 )
-                outputs[output_idx] = self._run_decode_loop(
+                self._run_decode_loop(
                     self._baseline_kv_cache,
                     seed_tokens,
                     output_slot,
                 )
 
-        self._set_output_from_tokens(outputs)
+        self._set_output_from_tokens()
 
     def _variant_metrics(self) -> dict[str, float]:
         return {
