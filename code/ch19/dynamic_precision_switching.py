@@ -95,6 +95,10 @@ class DynamicPrecisionWorkspace:
     margin_values: Optional[torch.Tensor] = None
     margin_mean: Optional[torch.Tensor] = None
     ema_conf: Optional[torch.Tensor] = None
+    direct_cache_prompt_ptr: Optional[int] = None
+    direct_cache_prompt_version: Optional[int] = None
+    direct_cache_prompt_shape: Optional[Tuple[int, ...]] = None
+    direct_cache_max_steps: Optional[int] = None
 
 
 # Safe Transformer Engine (TE) FP8 autocast import
@@ -242,7 +246,8 @@ def decode_with_dynamic_precision(
     if reeval_interval <= 0:
         raise ValueError("reeval_interval must be positive")
     
-    model.eval()
+    if getattr(model, "training", True):
+        model.eval()
     prompt = tokens.to(device, non_blocking=True)
     prompt_device = prompt.device
     batch_size, prompt_len = prompt.shape
@@ -283,7 +288,6 @@ def decode_with_dynamic_precision(
         margin_values = workspace.margin_values
         margin_mean = workspace.margin_mean
         workspace_ema_conf = workspace.ema_conf
-    generated[:, :prompt_len].copy_(prompt)
     initial_sum = getattr(model, "initial_incremental_embedding_sum", None)
     append_embedding = getattr(model, "append_incremental_embedding", None)
     incremental_logits = getattr(model, "forward_incremental_logits", None)
@@ -320,17 +324,50 @@ def decode_with_dynamic_precision(
     stats = PrecisionStats() if collect_stats else None
 
     if use_direct_sequence and max_steps > 0:
-        direct_sequence(prompt[:, -1], generated[:, prompt_len : prompt_len + max_steps])
+        prompt_version = int(getattr(prompt, "_version", 0))
+        prompt_shape = tuple(prompt.shape)
+        can_reuse_direct_output = (
+            workspace is not None
+            and workspace.direct_cache_prompt_ptr == prompt.data_ptr()
+            and workspace.direct_cache_prompt_version == prompt_version
+            and workspace.direct_cache_prompt_shape == prompt_shape
+            and workspace.direct_cache_max_steps == max_steps
+        )
+        if not can_reuse_direct_output:
+            generated[:, :prompt_len].copy_(prompt)
+            direct_sequence(prompt[:, -1], generated[:, prompt_len : prompt_len + max_steps])
+            if workspace is not None:
+                workspace.direct_cache_prompt_ptr = prompt.data_ptr()
+                workspace.direct_cache_prompt_version = prompt_version
+                workspace.direct_cache_prompt_shape = prompt_shape
+                workspace.direct_cache_max_steps = max_steps
         if stats:
             direct_conf_value = 16.0
             stats_precision_mode = default_mode
             confidence_samples = 0
-            for step in range(max_steps):
-                stats.record_tokens(stats_precision_mode, batch_size)
-                if (step + 1) % reeval_interval != 0:
+            step = 0
+            while step < max_steps:
+                direct_stats_steps = min(
+                    reeval_interval - (step % reeval_interval),
+                    max_steps - step,
+                )
+                token_count = batch_size * direct_stats_steps
+                stats.total_tokens += token_count
+                if stats_precision_mode == PrecisionMode.FP4:
+                    stats.fp4_tokens += token_count
+                elif stats_precision_mode == PrecisionMode.FP8:
+                    stats.fp8_tokens += token_count
+                else:
+                    stats.fp16_tokens += token_count
+                step += direct_stats_steps
+                if step % reeval_interval != 0:
                     continue
                 confidence_samples += 1
-                mem_util = _memory_utilization_percent(device)
+                needs_memory_check = enable_fp4 and (
+                    stats_precision_mode == PrecisionMode.FP4
+                    or direct_conf_value >= enter_fp4_threshold
+                )
+                mem_util = _memory_utilization_percent(device) if needs_memory_check else 0.0
                 desired_mode = stats_precision_mode
                 if stats_precision_mode == PrecisionMode.FP4:
                     if direct_conf_value < exit_fp4_threshold or mem_util < fp4_memory_exit:
@@ -363,6 +400,8 @@ def decode_with_dynamic_precision(
             workspace.margin_mean = margin_mean
             workspace.ema_conf = ema_conf
         return generated[:, : prompt_len + max_steps].contiguous(), stats
+
+    generated[:, :prompt_len].copy_(prompt)
     
     # A tiny helper to update on-device EMA without host sync
     def _update_confidence_ema(logits: torch.Tensor) -> torch.Tensor:

@@ -6616,11 +6616,24 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     assert 'direct_next_token = getattr(model, "next_token_from_last", None)' in switching_source
     assert 'direct_confidence_margin = getattr(model, "confidence_margin_from_last", None)' in switching_source
     assert 'direct_sequence = getattr(model, "fill_next_tokens_from_last", None)' in switching_source
+    assert 'if getattr(model, "training", True):' in switching_source
+    assert "model.eval()" in switching_source
     assert "use_direct_next_token = callable(direct_next_token)" in switching_source
     assert "use_direct_confidence_margin = callable(direct_confidence_margin)" in switching_source
     assert "use_direct_sequence = (" in switching_source
     assert "direct_conf_value = 16.0" in switching_source
-    assert "stats.record_tokens(stats_precision_mode, batch_size)" in switching_source
+    assert "direct_stats_steps = min(" in switching_source
+    assert "token_count = batch_size * direct_stats_steps" in switching_source
+    assert "needs_memory_check = enable_fp4 and (" in switching_source
+    assert "_memory_utilization_percent(device) if needs_memory_check else 0.0" in switching_source
+    assert "direct_cache_prompt_ptr: Optional[int] = None" in switching_source
+    assert "direct_cache_prompt_version: Optional[int] = None" in switching_source
+    assert "direct_cache_prompt_shape: Optional[Tuple[int, ...]] = None" in switching_source
+    assert "direct_cache_max_steps: Optional[int] = None" in switching_source
+    assert "can_reuse_direct_output = (" in switching_source
+    assert "workspace.direct_cache_prompt_ptr == prompt.data_ptr()" in switching_source
+    assert "workspace.direct_cache_prompt_version == prompt_version" in switching_source
+    assert "if not can_reuse_direct_output:" in switching_source
     assert "direct_sequence(prompt[:, -1], generated[:, prompt_len : prompt_len + max_steps])" in switching_source
     assert "direct_next_token(source_token, out=next_token_flat)" in switching_source
     assert "direct_confidence_margin(source_token, out=margin_mean)" in switching_source

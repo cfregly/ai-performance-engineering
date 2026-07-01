@@ -217,7 +217,9 @@ def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:
     assert "use_direct_confidence_margin = callable(direct_confidence_margin)" in dynamic_source
     assert "use_direct_sequence = (" in dynamic_source
     assert "direct_conf_value = 16.0" in dynamic_source
-    assert "stats.record_tokens(stats_precision_mode, batch_size)" in dynamic_source
+    assert "direct_stats_steps = min(" in dynamic_source
+    assert "token_count = batch_size * direct_stats_steps" in dynamic_source
+    assert "needs_memory_check = enable_fp4 and (" in dynamic_source
     assert "direct_sequence(prompt[:, -1], generated[:, prompt_len : prompt_len + max_steps])" in dynamic_source
     assert "direct_next_token(source_token, out=next_token_flat)" in dynamic_source
     assert "direct_confidence_margin(source_token, out=margin_mean)" in dynamic_source
@@ -316,6 +318,7 @@ def test_dynamic_precision_decode_uses_model_direct_confidence(monkeypatch: pyte
     topk_calls = 0
     incremental_logits_calls = 0
     sequence_calls = 0
+    memory_queries = 0
 
     def counted_topk(*args, **kwargs):
         nonlocal topk_calls
@@ -332,9 +335,18 @@ def test_dynamic_precision_decode_uses_model_direct_confidence(monkeypatch: pyte
         sequence_calls += 1
         return original_sequence(*args, **kwargs)
 
+    def counted_memory_utilization(*args, **kwargs):
+        nonlocal memory_queries
+        memory_queries += 1
+        return 100.0
+
     monkeypatch.setattr(torch, "topk", counted_topk)
     monkeypatch.setattr(model, "forward_incremental_logits", counted_incremental_logits)
     monkeypatch.setattr(model, "fill_next_tokens_from_last", counted_sequence)
+    monkeypatch.setattr(
+        "ch19.dynamic_precision_switching._memory_utilization_percent",
+        counted_memory_utilization,
+    )
 
     dynamic_tokens, stats = decode_with_dynamic_precision(
         model,
@@ -353,6 +365,40 @@ def test_dynamic_precision_decode_uses_model_direct_confidence(monkeypatch: pyte
     assert topk_calls == 0
     assert incremental_logits_calls == 0
     assert sequence_calls == 2
+    assert memory_queries == 0
+
+    workspace = DynamicPrecisionWorkspace(
+        generated=torch.empty((cfg.batch_size, cfg.prompt_len + cfg.max_steps), device=device, dtype=prompt.dtype),
+        next_token=torch.empty((cfg.batch_size, 1), device=device, dtype=prompt.dtype),
+    )
+    cached_tokens, _ = decode_with_dynamic_precision(
+        model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        enable_fp8=False,
+        enable_fp4=False,
+        reeval_interval=3,
+        workspace=workspace,
+    )
+    cached_tokens_again, _ = decode_with_dynamic_precision(
+        model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        enable_fp8=False,
+        enable_fp4=False,
+        reeval_interval=3,
+        workspace=workspace,
+    )
+
+    assert torch.equal(cached_tokens, fixed_tokens)
+    assert torch.equal(cached_tokens_again, fixed_tokens)
+    assert sequence_calls == 3
+    assert memory_queries == 0
+    assert workspace.direct_cache_prompt_ptr == prompt.data_ptr()
+    assert workspace.direct_cache_prompt_shape == tuple(prompt.shape)
+    assert workspace.direct_cache_max_steps == cfg.max_steps
 
     fp4_tokens, fp4_stats = decode_with_dynamic_precision(
         model,
@@ -372,6 +418,7 @@ def test_dynamic_precision_decode_uses_model_direct_confidence(monkeypatch: pyte
     assert fp4_stats is not None
     assert fp4_stats.precision_switches == 1
     assert fp4_stats.fp4_tokens == cfg.batch_size * (cfg.max_steps - 1)
+    assert memory_queries == cfg.max_steps
 
 
 def test_token_precision_controller_reuses_generation_buffer_capacity() -> None:
