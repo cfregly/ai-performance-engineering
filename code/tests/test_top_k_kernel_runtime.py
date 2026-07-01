@@ -165,6 +165,92 @@ def test_compare_top_k_matrix_uses_cuda_event_timing() -> None:
     assert "time.time()" not in measure_section
 
 
+def test_cuda_top_k_forward_skips_backward_only_work_when_no_grad(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = (REPO_ROOT / "labs" / "top_k_kernel" / "top_k_kernel_common.py").read_text(
+        encoding="utf-8"
+    )
+    cutlass_section = source.split("def _run_cutlass_group_block_scores", maxsplit=1)[1].split(
+        "def _run_cuda_reduced_group_block_scores",
+        maxsplit=1,
+    )[0]
+    forward_section = source.split("class CudaTopKSelectionFunction", maxsplit=1)[1].split(
+        "def backward",
+        maxsplit=1,
+    )[0]
+
+    assert "block_k_tile = block_groups[group_idx].contiguous()" in cutlass_section
+    assert "block_k_tile.contiguous()" not in cutlass_section
+    assert "needs_backward = bool(ctx.needs_input_grad[0] or ctx.needs_input_grad[1])" in forward_section
+    assert "q_group = _group_q(q, workload)" in forward_section
+    assert "q_sum = q_group.sum(dim=3).contiguous() if needs_backward else None" in forward_section
+    assert "ctx.save_for_backward()" in forward_section
+
+    workload = TopKKernelWorkload(
+        batch_size=1,
+        heads=2,
+        kv_heads=1,
+        q_len=4,
+        compressed_k_len=8,
+        head_dim=8,
+        top_k=2,
+        selection_block_size=4,
+        mode="forward",
+        dtype=torch.float16,
+    )
+    seen_dtypes: list[tuple[torch.dtype, torch.dtype]] = []
+
+    def fake_cutlass_group_block_scores(
+        q_group: torch.Tensor,
+        block_k: torch.Tensor,
+        active_workload: TopKKernelWorkload,
+    ) -> torch.Tensor:
+        assert active_workload is workload
+        seen_dtypes.append((q_group.dtype, block_k.dtype))
+        values = torch.arange(
+            workload.batch_size * workload.kv_heads * workload.q_len * workload.num_blocks,
+            dtype=torch.float32,
+        )
+        return values.view(
+            workload.batch_size,
+            workload.kv_heads,
+            workload.q_len,
+            workload.num_blocks,
+        )
+
+    monkeypatch.setattr(topk_common, "_run_cutlass_group_block_scores", fake_cutlass_group_block_scores)
+
+    q = torch.randn(
+        workload.batch_size,
+        workload.heads,
+        workload.q_len,
+        workload.head_dim,
+        dtype=torch.float16,
+    )
+    k = torch.randn(
+        workload.batch_size,
+        workload.kv_heads,
+        workload.compressed_k_len,
+        workload.head_dim,
+        dtype=torch.float16,
+    )
+
+    probs, _indices = topk_common.CudaTopKSelectionFunction.apply(q, k, workload)
+    assert seen_dtypes == [(torch.float16, torch.float32)]
+    assert not probs.requires_grad
+
+    seen_dtypes.clear()
+    q_with_grad = q.detach().clone().requires_grad_(True)
+    probs_with_grad, _indices_with_grad = topk_common.CudaTopKSelectionFunction.apply(
+        q_with_grad,
+        k,
+        workload,
+    )
+    assert seen_dtypes == [(torch.float32, torch.float32)]
+    assert probs_with_grad.requires_grad
+
+
 @CUDA_REQUIRED
 def test_forward_benchmark_uses_inference_mode_without_output_clones(
     monkeypatch: pytest.MonkeyPatch,

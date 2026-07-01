@@ -572,7 +572,7 @@ def _run_cutlass_group_block_scores(
 
     for group_idx in range(q_groups.shape[0]):
         q_group_tile = q_groups[group_idx]
-        block_k_tile = block_groups[group_idx]
+        block_k_tile = block_groups[group_idx].contiguous()
         group_scores = score_groups[group_idx]
         for q_start in range(0, workload.q_len, workload.cuda_q_tile):
             q_end = min(q_start + workload.cuda_q_tile, workload.q_len)
@@ -582,7 +582,7 @@ def _run_cutlass_group_block_scores(
             )
             dense_chunk = extension.matmul_cutlass_topk(
                 q_chunk.contiguous(),
-                block_k_tile.contiguous(),
+                block_k_tile,
             )
             group_scores[q_start:q_end].copy_(
                 dense_chunk.view(q_end - q_start, workload.gqa_size, workload.num_blocks)
@@ -740,6 +740,7 @@ class TritonTopKSelectionFunction(torch.autograd.Function):
 class CudaTopKSelectionFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, q: torch.Tensor, k: torch.Tensor, workload: TopKKernelWorkload):
+        needs_backward = bool(ctx.needs_input_grad[0] or ctx.needs_input_grad[1])
         if workload.mode == "fwd_bwd":
             block_scores, q_sum, block_k = _run_cuda_reduced_group_block_scores(
                 q,
@@ -747,14 +748,18 @@ class CudaTopKSelectionFunction(torch.autograd.Function):
                 workload,
             )
         else:
-            q_float = q.float().contiguous()
-            k_float = k.float().contiguous()
-            q_group = _group_q(q_float, workload)
-            block_k = _build_block_k(k_float, workload)
+            if needs_backward:
+                q_group = _group_q(q.float().contiguous(), workload)
+            else:
+                q_group = _group_q(q, workload)
+            block_k = _build_block_k(k, workload)
             block_scores = _run_cutlass_group_block_scores(q_group, block_k, workload)
-            q_sum = q_group.sum(dim=3).contiguous()
+            q_sum = q_group.sum(dim=3).contiguous() if needs_backward else None
         probs, topk_indices = _finalize_topk_from_block_scores(block_scores, workload)
-        ctx.save_for_backward(q_sum, block_k, probs, topk_indices)
+        if needs_backward:
+            ctx.save_for_backward(q_sum, block_k, probs, topk_indices)
+        else:
+            ctx.save_for_backward()
         ctx.workload = workload
         ctx.q_dtype = q.dtype
         ctx.k_dtype = k.dtype
