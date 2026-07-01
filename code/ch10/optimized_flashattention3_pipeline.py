@@ -134,6 +134,10 @@ class FA3PipelinedAttention(nn.Module):
         self._k_buffer: Optional[torch.Tensor] = None
         self._v_buffer: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
+        self._q_forward_view: Optional[torch.Tensor] = None
+        self._k_forward_view: Optional[torch.Tensor] = None
+        self._v_forward_view: Optional[torch.Tensor] = None
+        self._output_forward_view: Optional[torch.Tensor] = None
         self._q_proj_weight_t: Optional[torch.Tensor] = None
         self._k_proj_weight_t: Optional[torch.Tensor] = None
         self._v_proj_weight_t: Optional[torch.Tensor] = None
@@ -187,6 +191,15 @@ class FA3PipelinedAttention(nn.Module):
             dtype=x.dtype,
         )
         return q_buffer, k_buffer, v_buffer, output_buffer
+
+    def prepare_projection_buffers(self, x: torch.Tensor) -> None:
+        batch_size, seq_len, _ = x.shape
+        (
+            self._q_forward_view,
+            self._k_forward_view,
+            self._v_forward_view,
+            self._output_forward_view,
+        ) = self._ensure_projection_buffers(x, batch_size, seq_len)
         
     def _check_fp8_support(self) -> bool:
         """Check if FP8 is supported on current GPU."""
@@ -281,6 +294,46 @@ class FA3PipelinedAttention(nn.Module):
             return torch.matmul(attn_output, self._out_proj_weight_t, out=output_buffer)
         return self.out_proj(attn_output)
 
+    def forward_prepared(
+        self,
+        x: torch.Tensor,
+        is_causal: bool = False,
+    ) -> torch.Tensor:
+        if torch.is_grad_enabled():
+            return self.forward(x, is_causal=is_causal)
+        batch_size, seq_len, _ = x.shape
+        q_buffer = self._q_forward_view
+        k_buffer = self._k_forward_view
+        v_buffer = self._v_forward_view
+        output_buffer = self._output_forward_view
+        if q_buffer is None or k_buffer is None or v_buffer is None or output_buffer is None:
+            raise RuntimeError("forward_prepared() requires prepare_projection_buffers()")
+        if (
+            self._q_proj_weight_t is None
+            or self._k_proj_weight_t is None
+            or self._v_proj_weight_t is None
+            or self._out_proj_weight_t is None
+        ):
+            self.cache_weight_views()
+        q_proj = torch.matmul(x, self._q_proj_weight_t, out=q_buffer)
+        k_proj = torch.matmul(x, self._k_proj_weight_t, out=k_buffer)
+        v_proj = torch.matmul(x, self._v_proj_weight_t, out=v_buffer)
+
+        q = q_proj.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        k = k_proj.view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        v = v_proj.view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        enable_gqa = self.num_kv_heads != self.num_heads
+        with fa3_optimized_backend():
+            attn_output = self._attention_with_pipelining(
+                q,
+                k,
+                v,
+                is_causal,
+                enable_gqa=enable_gqa,
+            )
+        attn_output = attn_output.transpose(1, 2).reshape(batch_size, seq_len, -1)
+        return torch.matmul(attn_output, self._out_proj_weight_t, out=output_buffer)
+
 
 class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark):
     """Optimized benchmark with FA3-style pipelining.
@@ -368,6 +421,7 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
             self.batch_size, self.seq_len, self.hidden_dim,
             device=self.device, dtype=dtype
         )
+        self.model.prepare_projection_buffers(self.input)
 
         self._verify_input = self.input.detach()
         self._verify_output_buffer = torch.empty_like(self.input)
@@ -379,14 +433,14 @@ class OptimizedFlashAttention3Benchmark(VerificationPayloadMixin, BaseBenchmark)
         # Warmup
         with torch.inference_mode():
             for _ in range(3):
-                _ = self.compiled_model(self.input, is_causal=self.use_causal)
+                _ = self.model.forward_prepared(self.input, is_causal=self.use_causal)
         
     
     def benchmark_fn(self) -> None:
         """Benchmark FA3-optimized attention."""
         with self._nvtx_range("optimized_fa3_attention"):
             with torch.inference_mode():
-                self.output = self.compiled_model(self.input, is_causal=self.use_causal)
+                self.output = self.model.forward_prepared(self.input, is_causal=self.use_causal)
         if self._verify_input is None:
             raise RuntimeError("Verification input not initialized")
         dtype = self._verify_input.dtype

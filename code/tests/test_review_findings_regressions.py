@@ -1266,6 +1266,10 @@ def test_ch10_flashattention3_pair_keeps_shared_warmup_and_unfused_qkv_structure
     assert "self._k_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._v_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._output_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._q_forward_view: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._k_forward_view: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._v_forward_view: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._output_forward_view: Optional[torch.Tensor] = None" in optimized_source
     assert "self._q_proj_weight_t: Optional[torch.Tensor] = None" in optimized_source
     assert "self._k_proj_weight_t: Optional[torch.Tensor] = None" in optimized_source
     assert "self._v_proj_weight_t: Optional[torch.Tensor] = None" in optimized_source
@@ -1273,6 +1277,11 @@ def test_ch10_flashattention3_pair_keeps_shared_warmup_and_unfused_qkv_structure
     assert "def cache_weight_views(self) -> None:" in optimized_source
     assert "self.model.cache_weight_views()" in optimized_source
     assert "def _projection_workspace(" in optimized_source
+    assert "def prepare_projection_buffers(self, x: torch.Tensor) -> None:" in optimized_source
+    assert "def forward_prepared(" in optimized_source
+    assert 'raise RuntimeError("forward_prepared() requires prepare_projection_buffers()")' in optimized_source
+    assert "self.model.prepare_projection_buffers(self.input)" in optimized_source
+    assert "self.model.forward_prepared(self.input, is_causal=self.use_causal)" in optimized_source
     assert "or buffer.numel() < numel" in optimized_source
     assert "return buffer[:numel].view(shape)" in optimized_source
     assert "self._q_buffer.shape != q_shape" not in optimized_source
@@ -1322,6 +1331,7 @@ def test_ch10_flashattention3_projection_buffers_reuse_capacity() -> None:
         2,
         3,
     )
+    module.prepare_projection_buffers(large_input)
     grown_q, grown_k, grown_v, grown_out = module._ensure_projection_buffers(
         grown_input,
         5,
@@ -1340,6 +1350,14 @@ def test_ch10_flashattention3_projection_buffers_reuse_capacity() -> None:
     assert small_k.data_ptr() == ptrs[1]
     assert small_v.data_ptr() == ptrs[2]
     assert small_out.data_ptr() == ptrs[3]
+    assert module._q_forward_view is not None
+    assert module._k_forward_view is not None
+    assert module._v_forward_view is not None
+    assert module._output_forward_view is not None
+    assert module._q_forward_view.data_ptr() == ptrs[0]
+    assert module._k_forward_view.data_ptr() == ptrs[1]
+    assert module._v_forward_view.data_ptr() == ptrs[2]
+    assert module._output_forward_view.data_ptr() == ptrs[3]
     assert grown_q.shape == (5, 5, 8)
     assert grown_k.shape == (5, 5, 4)
     assert grown_v.shape == (5, 5, 4)
