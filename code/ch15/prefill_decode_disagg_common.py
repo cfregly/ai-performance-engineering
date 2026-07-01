@@ -363,19 +363,28 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             output_shard.copy_(token_state.reshape(-1), non_blocking=True)
             return
 
+        if self.decode_length <= 0:
+            output_shard.copy_(token_state.reshape(-1), non_blocking=True)
+            return
+
         token_buffers = self._decode_token_buffer_pair(
             str(decode_device),
             device=decode_device,
             dtype=decode_weight_t.dtype,
         )
         bias = getattr(decode_model, "bias", None)
+        last_step_idx = self.decode_length - 1
+        output_state = output_shard.view(1, 1, self.hidden_size)
         for step_idx in self._decode_step_range:
-            next_state = token_buffers[step_idx & 1]
+            next_state = (
+                output_state
+                if step_idx == last_step_idx
+                else token_buffers[step_idx & 1]
+            )
             torch.matmul(token_state, decode_weight_t, out=next_state)
             if isinstance(bias, torch.Tensor):
                 next_state.add_(bias.detach())
             token_state = next_state
-        output_shard.copy_(token_state.reshape(-1), non_blocking=True)
 
     def _handoff_kv(self, prefill_out: torch.Tensor, decode_device: torch.device) -> torch.Tensor:
         staging_key = str(decode_device)

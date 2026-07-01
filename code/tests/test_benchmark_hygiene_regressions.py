@@ -24234,6 +24234,8 @@ def test_decode_handoff_benchmarks_do_not_allocate_placeholder_outputs_in_hot_pa
             assert "torch.empty(0)" not in source
             assert "torch.matmul(request, weight_t, out=decode_buf)" in source
             assert "torch.matmul(token_state, decode_weight_t, out=next_state)" in source
+            assert "output_state = output_shard.view(1, 1, self.hidden_size)" in source
+            assert "if step_idx == last_step_idx" in source
             assert "output_shard.copy_(token_state.reshape(-1), non_blocking=True)" in source
             assert "kv_decode = self._prefill_into_decode_kv(" in benchmark_section
             assert "if kv_decode is None:" in benchmark_section

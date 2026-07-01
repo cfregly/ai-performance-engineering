@@ -157,8 +157,12 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "prefill_model.weight.t()" not in direct_prefill_section
     assert "decode_weight_t = self._decode_weight_t.get(id(decode_model))" in decode_section
     assert "token_buffers = self._decode_token_buffer_pair(" in decode_section
+    assert "if self.decode_length <= 0:" in decode_section
+    assert "last_step_idx = self.decode_length - 1" in decode_section
+    assert "output_state = output_shard.view(1, 1, self.hidden_size)" in decode_section
     assert "for step_idx in self._decode_step_range:" in decode_section
-    assert "next_state = token_buffers[step_idx & 1]" in decode_section
+    assert "if step_idx == last_step_idx" in decode_section
+    assert "else token_buffers[step_idx & 1]" in decode_section
     assert "torch.matmul(token_state, decode_weight_t, out=next_state)" in decode_section
     assert "next_state.add_(bias.detach())" in decode_section
     assert "output_shard.copy_(token_state.reshape(-1), non_blocking=True)" in decode_section
@@ -310,3 +314,27 @@ def test_prefill_decode_disagg_decode_reuses_token_buffers_and_output_shard() ->
 
     second_ptrs = tuple(buf.data_ptr() for buf in bench._decode_token_staging["cpu"])
     assert second_ptrs == first_ptrs
+
+
+def test_prefill_decode_disagg_zero_decode_length_copies_last_prefill_token() -> None:
+    module = importlib.import_module("ch15.prefill_decode_disagg_common")
+    cfg = module.PrefillDecodeDisaggConfig(
+        batch_size=1,
+        prefill_length=3,
+        decode_length=0,
+        hidden_size=5,
+    )
+    bench = module.PrefillDecodeDisaggBenchmark(
+        use_host_staging=False,
+        multi_gpu=False,
+        label="test",
+        cfg=cfg,
+    )
+    model = torch.nn.Linear(5, 5, bias=False).eval()
+    bench._decode_weight_t[id(model)] = model.weight.detach().t()
+    kv_decode = torch.randn((1, 3, 5), dtype=torch.float32)
+    output = torch.empty(5, dtype=torch.float32)
+
+    bench._decode_into_output_shard(model, kv_decode, torch.device("cpu"), output)
+
+    torch.testing.assert_close(output, kv_decode[:, -1:, :].reshape(-1))
