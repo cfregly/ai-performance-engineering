@@ -11990,6 +11990,10 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "self.hot_kv_bufs: list[torch.Tensor] = []" in source
     assert "target_kv[..., :slice_len, :].copy_(" in copy_section
     assert "staged[..., :slice_len, :]" in copy_section
+    assert "src_k.to(self.device" not in copy_section
+    assert "src_v.to(self.device" not in copy_section
+    assert "target_k[..., :slice_len, :].copy_(src_k, non_blocking=self.cfg.use_pinned_stage)" in copy_section
+    assert "target_v[..., :slice_len, :].copy_(src_v, non_blocking=self.cfg.use_pinned_stage)" in copy_section
     assert "use_page_major_host_cache: bool = False" in source
     assert "def _host_page_view(" in source
     assert "torch.cuda.Event(" not in benchmark_section

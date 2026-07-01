@@ -285,12 +285,8 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
             else:
                 src_k = staged[0, ..., :slice_len, :]
                 src_v = staged[1, ..., :slice_len, :]
-                target_k[..., :slice_len, :].copy_(
-                    src_k.to(self.device, dtype=self.runtime_dtype, non_blocking=self.cfg.use_pinned_stage)
-                )
-                target_v[..., :slice_len, :].copy_(
-                    src_v.to(self.device, dtype=self.runtime_dtype, non_blocking=self.cfg.use_pinned_stage)
-                )
+                target_k[..., :slice_len, :].copy_(src_k, non_blocking=self.cfg.use_pinned_stage)
+                target_v[..., :slice_len, :].copy_(src_v, non_blocking=self.cfg.use_pinned_stage)
 
         label = "transfer_async:h2d" if (self.copy_stream is not None or self.cfg.use_pinned_stage) else "transfer_sync:h2d"
         if self.copy_stream is not None:
