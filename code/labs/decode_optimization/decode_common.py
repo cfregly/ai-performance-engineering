@@ -139,6 +139,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._decode_next_token: Optional[torch.Tensor] = None
         self._candidate_token_ids: Optional[torch.Tensor] = None
         self._candidate_lm_weight: Optional[torch.Tensor] = None
+        self._candidate_lm_weight_t: Optional[torch.Tensor] = None
         self._candidate_scores: Optional[torch.Tensor] = None
         self._candidate_positions: Optional[torch.Tensor] = None
         self._forced_candidate_tokens: Optional[torch.Tensor] = None
@@ -580,6 +581,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._candidate_lm_weight = (
                     self.lm_head.weight.index_select(0, self._candidate_token_ids).contiguous()
                 )
+                self._candidate_lm_weight_t = self._candidate_lm_weight.t()
         needs_full_vocab_logits = (
             self._candidate_token_ids is None or not self.cfg.candidate_logits_only
         )
@@ -704,9 +706,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             if self._forced_candidate_tokens is not None:
                 return hidden, self._forced_candidate_tokens
             if self.cfg.candidate_logits_only:
-                if self._candidate_lm_weight is None:
+                if self._candidate_lm_weight_t is None:
                     raise RuntimeError("Candidate lm_head weight cache must be initialized")
-                torch.mm(hidden, self._candidate_lm_weight.t(), out=self._candidate_scores)
+                torch.mm(hidden, self._candidate_lm_weight_t, out=self._candidate_scores)
             else:
                 if self._logits_buffer is not None and self._lm_head_weight_t is not None:
                     torch.mm(hidden, self._lm_head_weight_t, out=self._logits_buffer)
@@ -1131,6 +1133,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "_decode_next_token",
             "_candidate_token_ids",
             "_candidate_lm_weight",
+            "_candidate_lm_weight_t",
             "_candidate_scores",
             "_candidate_positions",
             "_forced_candidate_tokens",

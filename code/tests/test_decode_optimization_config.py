@@ -260,6 +260,54 @@ def test_candidate_logits_only_skips_full_vocab_logits_buffer_on_cpu() -> None:
     assert bench._lm_head_weight_t is None
 
 
+def test_candidate_logits_only_reuses_cached_candidate_weight_transpose_on_cpu() -> None:
+    cfg = DecodeConfig(
+        batch_size=2,
+        prompt_tokens=4,
+        decode_tokens=1,
+        hidden_size=8,
+        vocab_size=16,
+        candidate_vocab_size=4,
+        candidate_logits_only=True,
+    )
+    bench = DecodeBenchmark(cfg)
+    bench.device = torch.device("cpu")
+    torch.manual_seed(1234)
+    bench._init_model()
+    bench._init_buffers()
+
+    assert bench._candidate_lm_weight is not None
+    assert bench._candidate_lm_weight_t is not None
+    assert bench._candidate_token_ids is not None
+    candidate_weight_t_ptr = bench._candidate_lm_weight_t.data_ptr()
+    assert bench._logits_buffer is None
+
+    with torch.inference_mode():
+        tokens = torch.tensor([1, 2], dtype=torch.long)
+        state = torch.randn(cfg.batch_size, cfg.hidden_size, dtype=bench.dtype)
+        next_state, next_token = bench._run_decode_step_math(tokens, state)
+        candidate_scores = bench.lm_head(next_state).index_select(
+            1,
+            bench._candidate_token_ids,
+        )
+        candidate_positions = torch.argmax(candidate_scores, dim=-1)
+        expected_token = bench._candidate_token_ids.index_select(0, candidate_positions)
+
+        assert bench._candidate_lm_weight_t.data_ptr() == candidate_weight_t_ptr
+        torch.testing.assert_close(next_token, expected_token)
+
+        next_state, next_token = bench._run_decode_step_math(tokens, next_state)
+        candidate_scores = bench.lm_head(next_state).index_select(
+            1,
+            bench._candidate_token_ids,
+        )
+        candidate_positions = torch.argmax(candidate_scores, dim=-1)
+        expected_token = bench._candidate_token_ids.index_select(0, candidate_positions)
+
+    assert bench._candidate_lm_weight_t.data_ptr() == candidate_weight_t_ptr
+    torch.testing.assert_close(next_token, expected_token)
+
+
 def test_decode_hot_loops_do_not_bind_unused_logits() -> None:
     common_source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
         encoding="utf-8"
@@ -563,12 +611,14 @@ def test_decode_candidate_logits_path_avoids_full_vocab_projection_when_enabled(
     assert "candidate_logits_only: bool = False" in config_section
     assert "self._candidate_token_ids: Optional[torch.Tensor] = None" in source
     assert "self._candidate_lm_weight: Optional[torch.Tensor] = None" in source
+    assert "self._candidate_lm_weight_t: Optional[torch.Tensor] = None" in source
     assert "self._candidate_scores: Optional[torch.Tensor] = None" in source
     assert "self._forced_candidate_tokens: Optional[torch.Tensor] = None" in source
     assert "torch.arange(" in init_section
     assert "if self.cfg.candidate_logits_only and candidate_count == 1:" in init_section
     assert "self._forced_candidate_tokens = torch.zeros(" in init_section
     assert "self.lm_head.weight.index_select(0, self._candidate_token_ids).contiguous()" in init_section
+    assert "self._candidate_lm_weight_t = self._candidate_lm_weight.t()" in init_section
     assert "needs_full_vocab_logits = (" in init_section
     assert "self._candidate_token_ids is None or not self.cfg.candidate_logits_only" in init_section
     assert 'metrics["candidate_vocab_size"] = float(self.cfg.candidate_vocab_size)' in source
@@ -577,7 +627,8 @@ def test_decode_candidate_logits_path_avoids_full_vocab_projection_when_enabled(
     assert "if self._candidate_token_ids is not None:" in decode_math_section
     assert "if self._forced_candidate_tokens is not None:" in decode_math_section
     assert "return hidden, self._forced_candidate_tokens" in decode_math_section
-    assert "torch.mm(hidden, self._candidate_lm_weight.t(), out=self._candidate_scores)" in decode_math_section
+    assert "torch.mm(hidden, self._candidate_lm_weight_t, out=self._candidate_scores)" in decode_math_section
+    assert "self._candidate_lm_weight.t()" not in decode_math_section
     assert "logits = self.lm_head(hidden)" in decode_math_section
     assert "torch.index_select(\n                    logits," in decode_math_section
     assert "torch.index_select(\n                self._candidate_token_ids," in decode_math_section
