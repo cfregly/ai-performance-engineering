@@ -19146,7 +19146,15 @@ def test_labs_trusted_speculative_decode_skips_target_verification_hot_path() ->
     assert "target_logits_views" not in benchmark_section
     assert "match_host.copy_" not in benchmark_section
     assert "torch.eq(" not in benchmark_section
-    assert "output_token_views[next_pos].copy_(draft_next_tokens)" in benchmark_section
+    assert "output_write_views = self._output_write_views" in benchmark_section
+    assert "draft_id_views = self._draft_id_views" in benchmark_section
+    assert "draft_id_column_views = self._draft_id_column_views" in benchmark_section
+    assert "draft_next_token_view = self._draft_next_token_view" in benchmark_section
+    assert "draft_id_column_views[j].copy_(draft_next_tokens)" in benchmark_section
+    assert "prev = draft_next_token_view" in benchmark_section
+    assert "output_write_views[view_idx][pos].copy_(draft_window)" in benchmark_section
+    assert "output_token_views[next_pos].copy_(draft_next_tokens)" not in benchmark_section
+    assert "prev = output_step_views[next_pos]" not in benchmark_section
     assert 'self._metrics["speculative.target_verify_calls"] = 0.0' in benchmark_section
     assert 'self._metrics["speculative.trusted_draft"] = 1.0' in benchmark_section
 
