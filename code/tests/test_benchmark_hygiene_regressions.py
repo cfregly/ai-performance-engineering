@@ -10222,26 +10222,56 @@ def test_ch18_vllm_decoder_graph_replay_records_timing_on_current_stream() -> No
         "def _run_eager_path",
         maxsplit=1,
     )[0]
+    capture_section = source.split("def _capture_full_graph", maxsplit=1)[1].split(
+        "def _can_use_full_graph",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
+    assert "self._full_replay_start: Optional[torch.cuda.Event] = None" in source
+    assert "self._full_replay_end: Optional[torch.cuda.Event] = None" in source
+    assert "self._piecewise_replay_prefill_start: Optional[torch.cuda.Event] = None" in source
+    assert "self._piecewise_replay_decode_start: Optional[torch.cuda.Event] = None" in source
+    assert "self._piecewise_replay_end: Optional[torch.cuda.Event] = None" in source
+    assert "self._full_replay_start = torch.cuda.Event(enable_timing=True)" in capture_section
+    assert "self._full_replay_end = torch.cuda.Event(enable_timing=True)" in capture_section
+    assert "self._piecewise_replay_prefill_start = torch.cuda.Event(enable_timing=True)" in capture_section
+    assert "self._piecewise_replay_decode_start = torch.cuda.Event(enable_timing=True)" in capture_section
+    assert "self._piecewise_replay_end = torch.cuda.Event(enable_timing=True)" in capture_section
     assert "current_stream = torch.cuda.current_stream(self.device)" in full_replay
+    assert "start = self._full_replay_start" in full_replay
+    assert "end = self._full_replay_end" in full_replay
     assert "start.record(current_stream)" in full_replay
     assert "end.record(current_stream)" in full_replay
     assert "decode_count = self.config.decode_tokens" in full_replay
     assert "for idx in range(decode_count):" in full_replay
     assert "[per_token_ms] * self.config.decode_tokens" not in full_replay
+    assert "torch.cuda.Event(enable_timing=True)" not in full_replay
     assert "start.record()" not in full_replay
     assert "end.record()" not in full_replay
 
     assert "current_stream = torch.cuda.current_stream(self.device)" in piecewise_replay
+    assert "start_prefill = self._piecewise_replay_prefill_start" in piecewise_replay
+    assert "start_decode = self._piecewise_replay_decode_start" in piecewise_replay
+    assert "end = self._piecewise_replay_end" in piecewise_replay
     assert "start_prefill.record(current_stream)" in piecewise_replay
     assert "start_decode.record(current_stream)" in piecewise_replay
     assert "end.record(current_stream)" in piecewise_replay
     assert "decode_count = self.config.decode_tokens" in piecewise_replay
     assert "for idx in range(decode_count):" in piecewise_replay
     assert "[per_token_ms] * self.config.decode_tokens" not in piecewise_replay
+    assert "torch.cuda.Event(enable_timing=True)" not in piecewise_replay
     assert "start_prefill.record()" not in piecewise_replay
     assert "start_decode.record()" not in piecewise_replay
     assert "end.record()" not in piecewise_replay
+    assert "self._full_replay_start = None" in teardown_section
+    assert "self._full_replay_end = None" in teardown_section
+    assert "self._piecewise_replay_prefill_start = None" in teardown_section
+    assert "self._piecewise_replay_decode_start = None" in teardown_section
+    assert "self._piecewise_replay_end = None" in teardown_section
     benchmark_section = source.split("# --------------------------------------------------------------- benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload",
         maxsplit=1,

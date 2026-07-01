@@ -370,10 +370,15 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._full_graph: Optional[torch.cuda.CUDAGraph] = None
         self._full_prefill_done: Optional[torch.cuda.Event] = None
         self._full_decode_done: Optional[torch.cuda.Event] = None
+        self._full_replay_start: Optional[torch.cuda.Event] = None
+        self._full_replay_end: Optional[torch.cuda.Event] = None
         self._piecewise_prefill_graph: Optional[torch.cuda.CUDAGraph] = None
         self._piecewise_decode_graph: Optional[torch.cuda.CUDAGraph] = None
         self._piecewise_prefill_done: Optional[torch.cuda.Event] = None
         self._piecewise_decode_done: Optional[torch.cuda.Event] = None
+        self._piecewise_replay_prefill_start: Optional[torch.cuda.Event] = None
+        self._piecewise_replay_decode_start: Optional[torch.cuda.Event] = None
+        self._piecewise_replay_end: Optional[torch.cuda.Event] = None
         self._prefill_next_values: Optional[torch.Tensor] = None
         self._prefill_next_tokens: Optional[torch.Tensor] = None
         self._captured_full_spec_accept: Optional[float] = None
@@ -647,6 +652,8 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._full_graph = torch.cuda.CUDAGraph()
         self._full_prefill_done = torch.cuda.Event(enable_timing=True)
         self._full_decode_done = torch.cuda.Event(enable_timing=True)
+        self._full_replay_start = torch.cuda.Event(enable_timing=True)
+        self._full_replay_end = torch.cuda.Event(enable_timing=True)
         # Reset state so the captured path mirrors a clean request.
         if self.paged_cache is not None:
             self.paged_cache.reset()
@@ -683,6 +690,9 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._piecewise_decode_graph = torch.cuda.CUDAGraph()
         self._piecewise_prefill_done = torch.cuda.Event(enable_timing=True)
         self._piecewise_decode_done = torch.cuda.Event(enable_timing=True)
+        self._piecewise_replay_prefill_start = torch.cuda.Event(enable_timing=True)
+        self._piecewise_replay_decode_start = torch.cuda.Event(enable_timing=True)
+        self._piecewise_replay_end = torch.cuda.Event(enable_timing=True)
 
         # Prefill graph: compute tokens for decode and populate KV cache.
         if self.paged_cache is not None:
@@ -723,10 +733,11 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not self._can_use_full_graph():
             raise RuntimeError("Full graph replay requested but not captured")
         assert self._full_prefill_done is not None and self._full_decode_done is not None
+        assert self._full_replay_start is not None and self._full_replay_end is not None
         ttft_times = self._iteration_ttft_times
         tpot_times = self._iteration_tpot_times
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
+        start = self._full_replay_start
+        end = self._full_replay_end
         current_stream = torch.cuda.current_stream(self.device)
         start.record(current_stream)
         self._full_graph.replay()  # type: ignore[union-attr]
@@ -745,13 +756,16 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if not self._can_use_piecewise_graph():
             raise RuntimeError("Piecewise graph replay requested but not captured")
         assert self._piecewise_prefill_done is not None and self._piecewise_decode_done is not None
+        assert self._piecewise_replay_prefill_start is not None
+        assert self._piecewise_replay_decode_start is not None
+        assert self._piecewise_replay_end is not None
         if self.paged_cache is not None:
             self.paged_cache.reset()
         ttft_times = self._iteration_ttft_times
         tpot_times = self._iteration_tpot_times
-        start_prefill = torch.cuda.Event(enable_timing=True)
-        start_decode = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
+        start_prefill = self._piecewise_replay_prefill_start
+        start_decode = self._piecewise_replay_decode_start
+        end = self._piecewise_replay_end
         current_stream = torch.cuda.current_stream(self.device)
         start_prefill.record(current_stream)
         self._piecewise_prefill_graph.replay()  # type: ignore[union-attr]
@@ -1054,6 +1068,11 @@ class VLLMMoEInferenceBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.prompts = None
         self.paged_cache = None
         self.spec_decoder = None
+        self._full_replay_start = None
+        self._full_replay_end = None
+        self._piecewise_replay_prefill_start = None
+        self._piecewise_replay_decode_start = None
+        self._piecewise_replay_end = None
         self._router_prefix_cache_lengths = []
         self._router_prefix_count = 0
         self._router_prompt_stub = []
