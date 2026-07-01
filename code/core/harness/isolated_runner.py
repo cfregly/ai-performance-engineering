@@ -78,11 +78,33 @@ def _apply_owner_markers_from_argv(argv: List[str]) -> None:
         i += 1
 
 
-def reset_cuda_state() -> None:
+def _device_may_use_cuda(device: Optional[str]) -> bool:
+    if device is None:
+        return True
+    return str(device).split(":", maxsplit=1)[0].lower() == "cuda"
+
+
+def _cuda_runtime_initialized(torch_module: Any) -> bool:
+    is_initialized = getattr(getattr(torch_module, "cuda", None), "is_initialized", None)
+    if not callable(is_initialized):
+        # Older/fake torch modules used by tests lack this probe; keep legacy cleanup.
+        return True
+    try:
+        return bool(is_initialized())
+    except Exception as exc:
+        _emit_runner_warning("Failed to query CUDA initialization state", error=str(exc))
+        return True
+
+
+def reset_cuda_state(device: Optional[str] = None) -> None:
     """Reset CUDA state before benchmark to ensure clean environment."""
+    if not _device_may_use_cuda(device):
+        gc.collect()
+        return
+
     try:
         import torch
-        if torch.cuda.is_available():
+        if _cuda_runtime_initialized(torch) and torch.cuda.is_available():
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
             
@@ -237,7 +259,7 @@ def run_benchmark(input_data: Dict[str, Any]) -> Dict[str, Any]:
 
         try:
             # Reset CUDA state BEFORE loading the module
-            reset_cuda_state()
+            reset_cuda_state(device_str)
 
             # Load module
             spec = importlib.util.spec_from_file_location("benchmark_module", str(module_path))

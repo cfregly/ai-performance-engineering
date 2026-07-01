@@ -66,6 +66,49 @@ def test_reset_cuda_state_emits_warnings_for_cleanup_failures(monkeypatch) -> No
     assert "Failed to reset torch._inductor cudagraph trees" in output
 
 
+def test_reset_cuda_state_skips_cuda_probe_for_fresh_cuda_worker(monkeypatch) -> None:
+    triton_resets: list[bool] = []
+
+    fake_torch = SimpleNamespace(
+        cuda=SimpleNamespace(
+            is_initialized=lambda: False,
+            is_available=lambda: (_ for _ in ()).throw(
+                AssertionError("fresh worker should not probe CUDA availability")
+            ),
+        )
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setattr(
+        isolated_runner,
+        "reset_triton_runtime_cache",
+        lambda _emit_warning: triton_resets.append(True),
+    )
+
+    isolated_runner.reset_cuda_state("cuda:0")
+
+    assert triton_resets == [True]
+
+
+def test_reset_cuda_state_skips_gpu_cleanup_for_explicit_cpu_worker(monkeypatch) -> None:
+    fake_torch = SimpleNamespace(
+        cuda=SimpleNamespace(
+            is_initialized=lambda: (_ for _ in ()).throw(
+                AssertionError("explicit CPU worker should not inspect CUDA")
+            ),
+        )
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setattr(
+        isolated_runner,
+        "reset_triton_runtime_cache",
+        lambda _emit_warning: (_ for _ in ()).throw(
+            AssertionError("explicit CPU worker should not reset Triton CUDA cache")
+        ),
+    )
+
+    isolated_runner.reset_cuda_state("cpu")
+
+
 def test_reset_cuda_state_rotates_private_triton_cache_when_clear_api_missing(monkeypatch) -> None:
     class _FakeCacheKnobs:
         def __init__(self) -> None:
