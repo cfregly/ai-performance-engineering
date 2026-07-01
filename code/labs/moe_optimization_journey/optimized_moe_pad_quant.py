@@ -66,6 +66,28 @@ def _dispatch_slot_buffer(
     return padded
 
 
+def _dispatch_matrix_buffer(
+    self: MoEExperts,
+    attr_name: str,
+    *,
+    rows: int,
+    hidden: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    cached = getattr(self, attr_name, None)
+    if (
+        isinstance(cached, torch.Tensor)
+        and cached.device == device
+        and cached.dtype == dtype
+        and cached.shape == (rows, hidden)
+    ):
+        return cached
+    buffer = torch.empty(rows, hidden, device=device, dtype=dtype)
+    setattr(self, attr_name, buffer)
+    return buffer
+
+
 def _dispatch_capacity_for_indices(expert_indices: torch.Tensor, num_experts: int) -> int:
     flat_ids = expert_indices.reshape(-1)
     counts = torch.bincount(flat_ids, minlength=num_experts)
@@ -135,9 +157,26 @@ def _vectorized_forward_grouped(
     out = torch.bmm(gate, self.w2_stacked)
 
     flat_out = out.reshape(self.num_experts * cap, self.hidden_size)
-    gathered = flat_out.index_select(0, slots)
-    gathered.mul_(flat_w.unsqueeze(1))
-    return gathered.view(batch_seq, top_k, self.hidden_size).sum(dim=1)
+    gathered = _dispatch_matrix_buffer(
+        self,
+        "_dispatch_gathered",
+        rows=batch_seq * top_k,
+        hidden=self.hidden_size,
+        device=x.device,
+        dtype=x.dtype,
+    )
+    torch.index_select(flat_out, 0, slots, out=gathered)
+    torch.mul(gathered, flat_w.unsqueeze(1), out=gathered)
+    reduced = _dispatch_matrix_buffer(
+        self,
+        "_dispatch_reduced",
+        rows=batch_seq,
+        hidden=self.hidden_size,
+        device=x.device,
+        dtype=x.dtype,
+    )
+    torch.sum(gathered.view(batch_seq, top_k, self.hidden_size), dim=1, out=reduced)
+    return reduced
 
 
 class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -220,6 +259,8 @@ class OptimizedMoEPadQuantBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 module._dispatch_capacity = capacity
                 module._dispatch_token_ids = None
                 module._dispatch_padded = None
+                module._dispatch_gathered = None
+                module._dispatch_reduced = None
                 module.forward_grouped = types.MethodType(
                     _vectorized_forward_grouped, module
                 )

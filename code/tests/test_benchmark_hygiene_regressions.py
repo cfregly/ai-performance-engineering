@@ -18371,10 +18371,21 @@ def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
     assert "F.silu(gate, inplace=True)" in vectorized_router
     assert "gate.mul_(up)" in vectorized_router
     assert "torch.bmm(gate * up, self.w2_stacked)" not in vectorized_router
-    assert "gathered.mul_(flat_w.unsqueeze(1))" in vectorized_router
+    assert "def _dispatch_matrix_buffer" in source
+    assert 'gathered = _dispatch_matrix_buffer(\n        self,\n        "_dispatch_gathered",' in vectorized_router
+    assert "torch.index_select(flat_out, 0, slots, out=gathered)" in vectorized_router
+    assert "torch.mul(gathered, flat_w.unsqueeze(1), out=gathered)" in vectorized_router
+    assert 'reduced = _dispatch_matrix_buffer(\n        self,\n        "_dispatch_reduced",' in vectorized_router
+    assert "torch.sum(gathered.view(batch_seq, top_k, self.hidden_size), dim=1, out=reduced)" in vectorized_router
+    assert "return reduced" in vectorized_router
+    assert "gathered = flat_out.index_select(0, slots)" not in vectorized_router
+    assert "gathered.mul_(flat_w.unsqueeze(1))" not in vectorized_router
+    assert "return gathered.view(batch_seq, top_k, self.hidden_size).sum(dim=1)" not in vectorized_router
     assert "flat_out.index_select(0, slots) * flat_w.unsqueeze(1)" not in vectorized_router
     assert "module._dispatch_token_ids = None" in install_section
     assert "module._dispatch_padded = None" in install_section
+    assert "module._dispatch_gathered = None" in install_section
+    assert "module._dispatch_reduced = None" in install_section
     assert "module._dispatch_capacity = capacity" in install_section
     assert "def _calibrate_vectorized_router_capacity" in source
     assert "capacities = self._calibrate_vectorized_router_capacity()" in source
@@ -18382,6 +18393,7 @@ def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
 
     from labs.moe_optimization_journey.optimized_moe_pad_quant import (
         _dispatch_capacity_for_indices,
+        _dispatch_matrix_buffer,
         _dispatch_slot_buffer,
         _flat_topk_token_ids,
     )
@@ -18419,6 +18431,23 @@ def test_moe_pad_quant_vectorized_router_reuses_topk_token_ids() -> None:
     )
     assert first.data_ptr() == second.data_ptr()
     assert resized.data_ptr() != first.data_ptr()
+    matrix_first = _dispatch_matrix_buffer(
+        holder,
+        "_dispatch_test_matrix",
+        rows=4,
+        hidden=3,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    matrix_second = _dispatch_matrix_buffer(
+        holder,
+        "_dispatch_test_matrix",
+        rows=4,
+        hidden=3,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+    assert matrix_first.data_ptr() == matrix_second.data_ptr()
 
 
 def test_ch13_fp8_benchmarks_defer_unused_syncs_and_output_clones() -> None:
