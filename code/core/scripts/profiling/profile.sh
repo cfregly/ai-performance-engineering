@@ -32,7 +32,7 @@ print_usage() {
 Usage:
   profile.sh --list
   profile.sh [HARNESS_FLAGS...]
-  profile.sh <script.py> [--arch sm_100] [--tool nsys|ncu|pytorch|hta|perf|all]
+  profile.sh <script.py> [--arch sm_100] [--tool nsys|ncu|pytorch|hta|perf|zymtrace|all]
                          [--pytorch-mode full] [--output-root DIR] [--python PYTHON]
                          [-- script-args ...]
 
@@ -49,6 +49,7 @@ Direct mode:
 Examples:
   profile.sh --profile nsys --examples ch14_triton_examples
   profile.sh code/ch07/memory_access_pytorch.py --tool ncu
+  profile.sh code/ch15/speculative_decoding_benchmarks.py --tool zymtrace
   profile.sh code/ch09/fusion_pytorch.py --tool pytorch --pytorch-mode memory -- --batch-size 4
 USAGE
 }
@@ -195,6 +196,46 @@ run_perf() {
     "${cmd[@]}"
     echo "  ↳ Perf data captured: ${data_file}"
     echo "     View with: perf report -i ${data_file}"
+}
+
+zymtrace_cuda_injection_candidate() {
+    echo "${CUDA_INJECTION64_PATH:-${ZYMTRACE_CUDA_INJECTION64_PATH:-/var/lib/zymtrace/profiler/libzymtracecudaprofiler.so}}"
+}
+
+resolve_zymtrace_cuda_injection() {
+    local lib
+    lib="$(zymtrace_cuda_injection_candidate)"
+    if [[ ! -r "$lib" ]]; then
+        echo "✗ Zymtrace CUDA injection library is not readable: ${lib}" >&2
+        echo "  Set CUDA_INJECTION64_PATH or ZYMTRACE_CUDA_INJECTION64_PATH to the profiler implant path." >&2
+        return 1
+    fi
+    echo "$lib"
+}
+
+run_zymtrace() {
+    local injection_lib
+    injection_lib="$(resolve_zymtrace_cuda_injection)"
+    local cmd=(
+        env
+        "CUDA_INJECTION64_PATH=${injection_lib}"
+        "$PYTHON_BIN"
+        "$SCRIPT_PATH"
+    )
+    if ((${#SCRIPT_ARGS[@]})); then
+        cmd+=("${SCRIPT_ARGS[@]}")
+    fi
+
+    local manifest="${SESSION_DIR}/zymtrace_cuda_env.txt"
+    {
+        printf 'CUDA_INJECTION64_PATH=%s\n' "$injection_lib"
+        printf 'command=%s\n' "$(printf '%q ' "${cmd[@]}")"
+    } > "$manifest"
+
+    print_command "${cmd[@]}"
+    "${cmd[@]}"
+    echo "  ↳ Zymtrace CUDA capture enabled via ${injection_lib}"
+    echo "  ↳ Launch manifest: ${manifest}"
 }
 
 run_pytorch() {
@@ -346,9 +387,12 @@ for tool in "${RAW_TOOLS[@]}"; do
     case "$tool" in
         all)
             TOOLS=(nsys ncu pytorch hta perf)
+            if [[ -r "$(zymtrace_cuda_injection_candidate)" ]]; then
+                TOOLS+=(zymtrace)
+            fi
             break
             ;;
-        nsys|ncu|hta|perf|pytorch|torch)
+        nsys|ncu|hta|perf|pytorch|torch|zymtrace)
             norm="$tool"
             [[ "$norm" == "torch" ]] && norm="pytorch"
             TOOLS+=("${norm}")
@@ -394,6 +438,7 @@ declare -A TOOL_RUNNERS=(
     [hta]=run_hta
     [perf]=run_perf
     [pytorch]=run_pytorch
+    [zymtrace]=run_zymtrace
 )
 
 for tool in "${TOOLS[@]}"; do

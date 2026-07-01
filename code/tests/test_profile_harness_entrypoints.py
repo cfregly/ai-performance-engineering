@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -51,6 +52,42 @@ def test_run_pytorch_profiler_uses_shared_profiling_runner(tmp_path: Path) -> No
 
     assert len(results) == 1
     assert "core/scripts/profiling/pytorch_profiler_runner.py" in results[0].command[1]
+
+
+def test_profile_sh_zymtrace_tool_sets_cuda_injection_env(tmp_path: Path) -> None:
+    target = tmp_path / "show_zymtrace_env.py"
+    target.write_text(
+        "import os\n"
+        "print(os.environ.get('CUDA_INJECTION64_PATH', ''))\n",
+        encoding="utf-8",
+    )
+    injection_lib = tmp_path / "libzymtracecudaprofiler.so"
+    injection_lib.write_text("", encoding="utf-8")
+    output_root = tmp_path / "profiles"
+    env = os.environ.copy()
+    env["OUTPUT_ROOT"] = str(output_root)
+    env["PYTHON"] = sys.executable
+    env["ZYMTRACE_CUDA_INJECTION64_PATH"] = str(injection_lib)
+
+    proc = subprocess.run(
+        [
+            str(REPO_ROOT / "core" / "scripts" / "profiling" / "profile.sh"),
+            str(target),
+            "--tool",
+            "zymtrace",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert str(injection_lib) in proc.stdout
+    manifests = list(output_root.glob("*_show_zymtrace_env/zymtrace_cuda_env.txt"))
+    assert manifests
+    assert f"CUDA_INJECTION64_PATH={injection_lib}" in manifests[-1].read_text(encoding="utf-8")
 
 
 def test_ch20_example_registry_uses_module_launch_for_ai_kernel_generator() -> None:

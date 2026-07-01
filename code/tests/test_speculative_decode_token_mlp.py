@@ -84,6 +84,34 @@ def test_ch15_token_mlp_forward_into_matches_forward() -> None:
     _assert_forward_into_matches_forward(ChapterTokenMLP)
 
 
+def test_ch15_token_mlp_forward_into_prepared_unchecked_matches_forward() -> None:
+    torch.manual_seed(1234)
+    model = ChapterTokenMLP(
+        vocab_size=17,
+        hidden_size=8,
+        num_layers=2,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    ).eval()
+    token_ids = torch.tensor([[1, 2, 3], [4, 5, 6]], dtype=torch.long)
+    logits_out = torch.empty(
+        (token_ids.size(0), token_ids.size(1), model.vocab_size),
+        dtype=torch.float32,
+    )
+    buffers = model.prepare_forward_buffers(
+        token_ids.numel(),
+        device=token_ids.device,
+        dtype=torch.float32,
+    )
+
+    with torch.inference_mode():
+        expected = model(token_ids)
+        actual = model.forward_into_prepared_unchecked(token_ids, logits_out, buffers)
+
+    assert actual.data_ptr() == logits_out.data_ptr()
+    torch.testing.assert_close(actual, expected)
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for trusted speculative decode")
 def test_lab_trusted_speculative_decode_matches_verified_decode() -> None:
     workload = SpecDecodeWorkload(

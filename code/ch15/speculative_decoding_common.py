@@ -108,6 +108,15 @@ class TokenMLP(nn.Module):
             self._forward_buffers[cache_key] = buffers
         return buffers
 
+    def prepare_forward_buffers(
+        self,
+        num_tokens: int,
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        return self._ensure_forward_buffers(num_tokens, device=device, dtype=dtype)
+
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
         if token_ids.dim() != 2:
             raise ValueError("token_ids must have shape [batch, seq]")
@@ -144,6 +153,31 @@ class TokenMLP(nn.Module):
         flat_ids = token_ids.reshape(num_tokens)
         torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)
 
+        return self._forward_logits_into(logits_out, hidden, scratch, batch, seq)
+
+    def forward_into_prepared_unchecked(
+        self,
+        token_ids: torch.Tensor,
+        logits_out: torch.Tensor,
+        buffers: tuple[torch.Tensor, torch.Tensor],
+    ) -> torch.Tensor:
+        """Fast inference path for callers that already validated static buffers."""
+        batch, seq = token_ids.shape
+        num_tokens = batch * seq
+        hidden, scratch = buffers
+        flat_ids = token_ids.reshape(num_tokens)
+        torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)
+        return self._forward_logits_into(logits_out, hidden, scratch, batch, seq)
+
+    def _forward_logits_into(
+        self,
+        logits_out: torch.Tensor,
+        hidden: torch.Tensor,
+        scratch: torch.Tensor,
+        batch: int,
+        seq: int,
+    ) -> torch.Tensor:
+        num_tokens = batch * seq
         current = hidden
         alternate = scratch
         if len(self._linear_weight_t_views) != len(self._linear_layers) or self._out_weight_t is None:
