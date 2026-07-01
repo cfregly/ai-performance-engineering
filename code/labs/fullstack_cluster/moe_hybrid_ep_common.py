@@ -579,8 +579,7 @@ class DeepSeekHybridEPModule(nn.Module):
             if next_offset > offset:
                 expert_out = expert(sorted_tokens[offset:next_offset])
                 out_slice = sorted_outputs[offset:next_offset]
-                out_slice.copy_(expert_out)
-                out_slice.mul_(sorted_weights[offset:next_offset])
+                torch.mul(expert_out, sorted_weights[offset:next_offset], out=out_slice)
             offset = next_offset
         outputs.index_copy_(0, sort_idx, sorted_outputs)
         return outputs
