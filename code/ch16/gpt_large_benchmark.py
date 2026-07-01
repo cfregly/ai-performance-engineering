@@ -216,6 +216,7 @@ class MultiheadAttentionBackend(nn.Module):
         self.attention_window = config.attention_window
         self.qkv = nn.Linear(config.d_model, 3 * config.d_model)
         self.out_proj = nn.Linear(config.d_model, config.d_model)
+        self._block_mask_cache = {}
 
     def _effective_backend(self, x: torch.Tensor) -> str:
         backend = self.backend
@@ -230,29 +231,39 @@ class MultiheadAttentionBackend(nn.Module):
                 backend = "sdpa"
         return backend
 
+    def _window_mask_fn(self, _b, _h, q_idx, kv_idx):
+        window = self.attention_window
+        causal = kv_idx <= q_idx
+        if window is not None:
+            in_window = (q_idx - kv_idx) < window
+            return causal & in_window
+        return causal
+
     def _window_mask(self, batch: int, q_len: int, kv_len: int, device: torch.device):
         if create_block_mask is None:
             return None
 
-        window = self.attention_window
-
-        def mask_fn(_b, _h, q_idx, kv_idx):
-            # Use tensor operations to avoid data-dependent control flow
-            # Causal mask: kv_idx <= q_idx
-            causal = kv_idx <= q_idx
-            if window is not None:
-                # Sliding window: (q_idx - kv_idx) < window
-                in_window = (q_idx - kv_idx) < window
-                return causal & in_window
-            return causal
-
-        return create_block_mask(mask_fn, B=batch, H=self.n_heads, Q_LEN=q_len, KV_LEN=kv_len, device=device)
+        cache_key = (int(batch), int(self.n_heads), int(q_len), int(kv_len), device, self.attention_window)
+        block_mask = self._block_mask_cache.get(cache_key)
+        if block_mask is None:
+            block_mask = create_block_mask(
+                self._window_mask_fn,
+                B=batch,
+                H=self.n_heads,
+                Q_LEN=q_len,
+                KV_LEN=kv_len,
+                device=device,
+            )
+            self._block_mask_cache[cache_key] = block_mask
+        return block_mask
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch, seq_len, _ = x.shape
         qkv = self.qkv(x).reshape(batch, seq_len, 3, self.n_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        query, key, value = qkv[0], qkv[1], qkv[2]
+        query, key, value = qkv.unbind(dim=2)
+        query = query.transpose(1, 2)
+        key = key.transpose(1, 2)
+        value = value.transpose(1, 2)
         backend = self._effective_backend(x)
 
         if backend == "flex":
@@ -439,16 +450,16 @@ def benchmark_model(
         if dev.type == "cuda":
             torch.cuda.reset_peak_memory_stats(dev)
     ctx_factory = precision_ctx_factory or contextlib.nullcontext
-    for _ in range(warmup):
-        with ctx_factory():
+    with ctx_factory():
+        for _ in range(warmup):
             model(inputs)
     for dev in devices:
         if dev.type == "cuda":
             torch.cuda.synchronize(dev)
 
     start = time.perf_counter()
-    for _ in range(iters):
-        with ctx_factory():
+    with ctx_factory():
+        for _ in range(iters):
             model(inputs)
     for dev in devices:
         if dev.type == "cuda":

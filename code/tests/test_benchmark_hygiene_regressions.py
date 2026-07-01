@@ -16342,6 +16342,11 @@ def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
         "def convert_linear_layers_to_fp8",
         maxsplit=1,
     )[0]
+    attention_section = source.split("class MultiheadAttentionBackend", maxsplit=1)[1].split(
+        "class GPTBlock",
+        maxsplit=1,
+    )[0]
+    attention_forward = attention_section.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1]
     model_section = source.split("class GPTModel", maxsplit=1)[1].split(
         "# ---------------------------------------------------------------------------",
         maxsplit=1,
@@ -16358,6 +16363,18 @@ def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
 
     assert "@torch.inference_mode()" in source
     assert "@torch.no_grad()" not in source
+    assert "self._block_mask_cache = {}" in attention_section
+    assert "def _window_mask_fn(self, _b, _h, q_idx, kv_idx):" in attention_section
+    assert "cache_key = (int(batch), int(self.n_heads), int(q_len), int(kv_len), device, self.attention_window)" in attention_section
+    assert "block_mask = self._block_mask_cache.get(cache_key)" in attention_section
+    assert "self._block_mask_cache[cache_key] = block_mask" in attention_section
+    assert "create_block_mask(\n                self._window_mask_fn," in attention_section
+    assert "query, key, value = qkv.unbind(dim=2)" in attention_forward
+    assert "query = query.transpose(1, 2)" in attention_forward
+    assert "key = key.transpose(1, 2)" in attention_forward
+    assert "value = value.transpose(1, 2)" in attention_forward
+    assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in attention_forward
+    assert "query, key, value = qkv[0], qkv[1], qkv[2]" not in attention_forward
     assert "self.block_device_groups = self._build_block_device_groups()" in model_section
     assert "def _build_block_device_groups(" in model_section
     assert "for device, start, end in self.block_device_groups:" in model_forward
@@ -16384,6 +16401,9 @@ def test_ch16_gpt_large_benchmark_uses_inference_mode() -> None:
     assert "with torch.inference_mode():" in validation_function
     assert "torch.no_grad()" not in benchmark_function
     assert "torch.no_grad()" not in validation_function
+    assert benchmark_function.count("with ctx_factory():") == 2
+    assert "for _ in range(warmup):\n        with ctx_factory():" not in benchmark_function
+    assert "for _ in range(iters):\n        with ctx_factory():" not in benchmark_function
     assert "from core.benchmark.utils import scalar_tensor_to_float" in source
     assert "scalar_tensor_to_float(torch.max(torch.abs(ref.to(devices[0]) - out.to(devices[0]))))" in source
     assert "torch.max(torch.abs(ref.to(devices[0]) - out.to(devices[0]))).item()" not in source
