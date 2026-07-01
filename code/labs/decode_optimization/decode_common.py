@@ -924,12 +924,13 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         nvtx = self._nvtx
 
         prefill_start.record(prefill_stream)
-        copy_wait_stream = (
-            decode_stream
-            if self.decode_graph is not None and self.graph_includes_prefill
-            else prefill_stream
-        )
-        self._copy_prompts_to_device(wait_stream=copy_wait_stream)
+        if not self.cfg.reuse_device_prompt:
+            copy_wait_stream = (
+                decode_stream
+                if self.decode_graph is not None and self.graph_includes_prefill
+                else prefill_stream
+            )
+            self._copy_prompts_to_device(wait_stream=copy_wait_stream)
         if nvtx:
             nvtx.range_push(self._nvtx_labels["prefill"])
 

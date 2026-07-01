@@ -555,6 +555,7 @@ def test_decode_prompt_copy_waits_on_consumer_stream() -> None:
     assert "current_stream.wait_stream(self.compute_stream)" in benchmark_section
     assert "torch.cuda.current_stream().wait_stream(self.graph_stream)" not in benchmark_section
     assert "torch.cuda.current_stream().wait_stream(self.compute_stream)" not in benchmark_section
+    assert "if not self.cfg.reuse_device_prompt:" in benchmark_section
     assert "copy_wait_stream = (" in benchmark_section
     assert "self._copy_prompts_to_device(wait_stream=copy_wait_stream)" in benchmark_section
     assert "with torch.cuda.stream(decode_stream):" in benchmark_section
@@ -620,6 +621,10 @@ def test_decode_device_resident_path_skips_hot_loop_staging() -> None:
         "def _timing_event",
         maxsplit=1,
     )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
 
     assert "reuse_device_prompt: bool = False" in config_section
     assert "if self.cfg.reuse_device_prompt:" in init_section
@@ -633,6 +638,12 @@ def test_decode_device_resident_path_skips_hot_loop_staging() -> None:
     assert "return" in copy_section.split("if self.cfg.reuse_device_prompt:", maxsplit=1)[1]
     assert "if self.cfg.reuse_device_prompt:" in copy_idx_section
     assert "event.record(active_stream)" in copy_idx_section
+    assert "if not self.cfg.reuse_device_prompt:" in benchmark_section
+    guarded_copy_section = benchmark_section.split(
+        "if not self.cfg.reuse_device_prompt:",
+        maxsplit=1,
+    )[1].split("if nvtx:", maxsplit=1)[0]
+    assert "self._copy_prompts_to_device(wait_stream=copy_wait_stream)" in guarded_copy_section
 
 
 def test_decode_device_resident_pair_changes_only_residency_policy() -> None:
