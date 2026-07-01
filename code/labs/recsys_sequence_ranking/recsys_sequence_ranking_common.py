@@ -741,6 +741,79 @@ if TRITON_AVAILABLE:
         )
 
     @triton.jit
+    def _sequence_context_user_input_kernel(
+        sequence_ids_ptr,
+        item_embedding_ptr,
+        sequence_mask_ptr,
+        length_recip_ptr,
+        context_ids_ptr,
+        context_embedding_ptr,
+        out_ptr,
+        embedding_dim,
+        stride_seq_ids_b,
+        stride_seq_ids_t,
+        stride_item_vocab,
+        stride_item_d,
+        stride_mask_b,
+        stride_mask_t,
+        stride_recip_b,
+        stride_context_ids_b,
+        stride_context_ids_t,
+        stride_context_table,
+        stride_context_vocab,
+        stride_context_d,
+        stride_out_b,
+        stride_out_d,
+        SEQ_LEN: tl.constexpr,  # noqa: N803
+        NUM_TABLES: tl.constexpr,  # noqa: N803
+        BLOCK_D: tl.constexpr,  # noqa: N803
+    ):
+        batch_idx = tl.program_id(0)
+        dim_block_idx = tl.program_id(1)
+
+        offs_d = dim_block_idx * BLOCK_D + tl.arange(0, BLOCK_D)
+        dim_mask = offs_d < embedding_dim
+        seq_acc = tl.zeros((BLOCK_D,), dtype=tl.float32)
+        context_acc = tl.zeros((BLOCK_D,), dtype=tl.float32)
+
+        for t in range(0, SEQ_LEN):
+            token_id = tl.load(
+                sequence_ids_ptr + batch_idx * stride_seq_ids_b + t * stride_seq_ids_t
+            )
+            token_mask = tl.load(
+                sequence_mask_ptr + batch_idx * stride_mask_b + t * stride_mask_t
+            )
+            token_vec = tl.load(
+                item_embedding_ptr + token_id * stride_item_vocab + offs_d * stride_item_d,
+                mask=dim_mask,
+                other=0.0,
+            )
+            seq_acc += token_vec.to(tl.float32) * token_mask.to(tl.float32)
+
+        for table_idx in range(0, NUM_TABLES):
+            context_id = tl.load(
+                context_ids_ptr
+                + batch_idx * stride_context_ids_b
+                + table_idx * stride_context_ids_t
+            )
+            context_vec = tl.load(
+                context_embedding_ptr
+                + table_idx * stride_context_table
+                + context_id * stride_context_vocab
+                + offs_d * stride_context_d,
+                mask=dim_mask,
+                other=0.0,
+            )
+            context_acc += context_vec.to(tl.float32)
+
+        length_recip = tl.load(length_recip_ptr + batch_idx * stride_recip_b).to(tl.float32)
+        tl.store(
+            out_ptr + batch_idx * stride_out_b + offs_d * stride_out_d,
+            seq_acc * length_recip + context_acc,
+            mask=dim_mask,
+        )
+
+    @triton.jit
     def _candidate_dot_kernel(
         user_ptr,
         item_embedding_ptr,
@@ -873,6 +946,54 @@ def context_sum_triton(
     return out
 
 
+def sequence_context_user_input_triton(
+    inputs: RankingInputs,
+    state: RankingModelState,
+    out: torch.Tensor,
+    workspace: RankingWorkspace,
+) -> torch.Tensor:
+    """Fuse sequence pooling and context pooling into the tower input buffer."""
+
+    if not TRITON_AVAILABLE:
+        raise RuntimeError("Triton is not available")
+    if not inputs.sequence_ids.is_cuda or not inputs.context_ids.is_cuda:
+        raise RuntimeError("Triton user-input pooling requires CUDA tensors")
+
+    ensure_triton_compat()
+    grid = (
+        inputs.sequence_ids.shape[0],
+        triton.cdiv(state.item_embeddings.shape[1], 64),
+    )
+    _sequence_context_user_input_kernel[grid](
+        inputs.sequence_ids,
+        state.item_embeddings,
+        workspace.sequence_mask_float,
+        workspace.sequence_length_recip,
+        inputs.context_ids,
+        state.context_embeddings,
+        out,
+        state.item_embeddings.shape[1],
+        inputs.sequence_ids.stride(0),
+        inputs.sequence_ids.stride(1),
+        state.item_embeddings.stride(0),
+        state.item_embeddings.stride(1),
+        workspace.sequence_mask_float.stride(0),
+        workspace.sequence_mask_float.stride(1),
+        workspace.sequence_length_recip.stride(0),
+        inputs.context_ids.stride(0),
+        inputs.context_ids.stride(1),
+        state.context_embeddings.stride(0),
+        state.context_embeddings.stride(1),
+        state.context_embeddings.stride(2),
+        out.stride(0),
+        out.stride(1),
+        SEQ_LEN=inputs.sequence_ids.shape[1],
+        NUM_TABLES=inputs.context_ids.shape[1],
+        BLOCK_D=64,
+    )
+    return out
+
+
 def candidate_scores_triton(
     user_vec: torch.Tensor,
     inputs: RankingInputs,
@@ -911,6 +1032,44 @@ def candidate_scores_triton(
     return out
 
 
+def user_input_vectorized(
+    inputs: RankingInputs,
+    state: RankingModelState,
+    workspace: RankingWorkspace | None = None,
+) -> torch.Tensor:
+    if workspace is not None and workspace.sequence_metadata_key != _sequence_metadata_key(inputs):
+        prepare_workspace_for_inputs(inputs, workspace)
+    if (
+        workspace is not None
+        and workspace.context_metadata_key != _context_metadata_key(inputs, state)
+    ):
+        prepare_context_workspace_for_inputs(inputs, state, workspace)
+    if (
+        workspace is not None
+        and TRITON_AVAILABLE
+        and inputs.sequence_ids.is_cuda
+        and inputs.context_ids.is_cuda
+        and state.item_embeddings.is_cuda
+        and state.context_embeddings.is_cuda
+        and inputs.sequence_ids.shape[1] > 0
+        and inputs.context_ids.shape[1] > 0
+        and not (
+            torch.is_grad_enabled()
+            and (state.item_embeddings.requires_grad or state.context_embeddings.requires_grad)
+        )
+    ):
+        return sequence_context_user_input_triton(
+            inputs,
+            state,
+            workspace.sequence_accum,
+            workspace,
+        )
+
+    seq_vec = sequence_mean_vectorized(inputs, state, workspace)
+    context_vec = context_sum_vectorized(inputs, state, workspace)
+    return seq_vec.add_(context_vec)
+
+
 def resolve_score_backend(requested: str) -> str:
     """Pick a score backend while keeping the selection explicit."""
 
@@ -942,10 +1101,9 @@ def optimized_forward(
 ) -> torch.Tensor:
     """Execute the vectorized sparse-ranking path."""
 
-    seq_vec = sequence_mean_vectorized(inputs, state, workspace)
-    context_vec = context_sum_vectorized(inputs, state, workspace)
+    user_input = user_input_vectorized(inputs, state, workspace)
     tower = compiled_tower if compiled_tower is not None else state.tower
-    user_vec = tower(seq_vec.add_(context_vec))
+    user_vec = tower(user_input)
     if score_backend == "triton":
         if workspace is None:
             raise RuntimeError("Triton scoring requires a RankingWorkspace")
@@ -992,9 +1150,7 @@ def warm_optimized_path(
     """Pay one-time compile/autotune costs before the measured loop."""
 
     with torch.inference_mode():
-        seq_vec = sequence_mean_vectorized(inputs, state, workspace)
-        context_vec = context_sum_vectorized(inputs, state, workspace)
-        user_input = seq_vec.add_(context_vec)
+        user_input = user_input_vectorized(inputs, state, workspace)
         tower = compiled_tower if compiled_tower is not None else state.tower
         user_vec = tower(user_input)
         if score_backend == "triton":
@@ -1043,8 +1199,10 @@ __all__ = [
     "requests_per_iteration",
     "resolve_score_backend",
     "sequence_mean_baseline",
+    "sequence_context_user_input_triton",
     "sequence_mean_triton",
     "sequence_mean_vectorized",
     "tokens_per_iteration",
+    "user_input_vectorized",
     "warm_optimized_path",
 ]
