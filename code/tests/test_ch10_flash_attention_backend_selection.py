@@ -92,6 +92,10 @@ def test_optimized_flash_attention_reuses_projection_buffers_in_inference() -> N
     assert "self._k_buffer: Optional[torch.Tensor] = None" in tiled_module
     assert "self._v_buffer: Optional[torch.Tensor] = None" in tiled_module
     assert "self._output_buffer: Optional[torch.Tensor] = None" in tiled_module
+    assert "self._q_forward_view: Optional[torch.Tensor] = None" in tiled_module
+    assert "self._k_forward_view: Optional[torch.Tensor] = None" in tiled_module
+    assert "self._v_forward_view: Optional[torch.Tensor] = None" in tiled_module
+    assert "self._output_forward_view: Optional[torch.Tensor] = None" in tiled_module
     assert "self._q_proj_weight_t: Optional[torch.Tensor] = None" in tiled_module
     assert "self._k_proj_weight_t: Optional[torch.Tensor] = None" in tiled_module
     assert "self._v_proj_weight_t: Optional[torch.Tensor] = None" in tiled_module
@@ -100,6 +104,12 @@ def test_optimized_flash_attention_reuses_projection_buffers_in_inference() -> N
     assert "self._q_proj_weight_t = self.q_proj.weight.t()" in tiled_module
     assert "self._out_proj_weight_t = self.out_proj.weight.t()" in tiled_module
     assert "def _ensure_projection_buffers(" in tiled_module
+    assert "def prepare_projection_buffers(self, x: torch.Tensor) -> None:" in tiled_module
+    assert "self._q_forward_view," in tiled_module
+    assert "self._output_forward_view," in tiled_module
+    assert "def forward_prepared(self, x: torch.Tensor, is_causal: bool = False)" in tiled_module
+    assert "q, k, v = self._project_qkv_prepared(x)" in tiled_module
+    assert "return self._project_output_prepared(attn_output.transpose(1, 2).contiguous())" in tiled_module
     assert "if torch.is_grad_enabled():" in tiled_module
     assert "q = torch.matmul(x, self._q_proj_weight_t, out=q_buffer)" in tiled_module
     assert "k = torch.matmul(x, self._k_proj_weight_t, out=k_buffer)" in tiled_module

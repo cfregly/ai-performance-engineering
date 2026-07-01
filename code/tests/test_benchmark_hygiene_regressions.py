@@ -5358,6 +5358,17 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
     assert "return buffer[:numel].view(batch_size, seq_len, width)" in tiled_module_section
     assert "buffer.shape != shape" not in tiled_module_section
     assert "self._q_buffer = torch.empty(shape" not in tiled_module_section
+    assert "self._q_forward_view: Optional[torch.Tensor] = None" in tiled_module_section
+    assert "self._k_forward_view: Optional[torch.Tensor] = None" in tiled_module_section
+    assert "self._v_forward_view: Optional[torch.Tensor] = None" in tiled_module_section
+    assert "self._output_forward_view: Optional[torch.Tensor] = None" in tiled_module_section
+    assert "def prepare_projection_buffers(self, x: torch.Tensor) -> None:" in tiled_module_section
+    assert "def forward_prepared(self, x: torch.Tensor, is_causal: bool = False)" in tiled_module_section
+    assert "q, k, v = self._project_qkv_prepared(x)" in tiled_module_section
+    assert "return self._project_output_prepared(attn_output.transpose(1, 2).contiguous())" in tiled_module_section
+    assert "forward_external_flash_prepared" in tiled_module_section
+    assert "self.model.prepare_projection_buffers(self.input)" in optimized_ch10_flash
+    assert "self.model.forward_prepared(x, is_causal=self.use_causal)" in optimized_ch10_flash
 
     for relative_path in (
         "ch10/baseline_flashattention3_pipeline.py",
@@ -5533,6 +5544,7 @@ def test_ch10_tiled_attention_reuses_larger_projection_workspace_capacity() -> N
 
     small = torch.empty(1, 2, 8)
     q_small, k_small, v_small, out_small = module._ensure_projection_buffers(small, 1, 2)
+    module.prepare_projection_buffers(large)
     grown = torch.empty(3, 3, 8)
     q_grown, k_grown, v_grown, out_grown = module._ensure_projection_buffers(grown, 3, 3)
 
@@ -5548,6 +5560,14 @@ def test_ch10_tiled_attention_reuses_larger_projection_workspace_capacity() -> N
     assert k_small.data_ptr() == k_ptr
     assert v_small.data_ptr() == v_ptr
     assert out_small.data_ptr() == out_ptr
+    assert module._q_forward_view is not None
+    assert module._k_forward_view is not None
+    assert module._v_forward_view is not None
+    assert module._output_forward_view is not None
+    assert module._q_forward_view.data_ptr() == q_ptr
+    assert module._k_forward_view.data_ptr() == k_ptr
+    assert module._v_forward_view.data_ptr() == v_ptr
+    assert module._output_forward_view.data_ptr() == out_ptr
     assert q_grown.shape == (3, 3, 8)
     assert k_grown.shape == (3, 3, 8)
     assert v_grown.shape == (3, 3, 8)
