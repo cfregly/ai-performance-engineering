@@ -107,7 +107,6 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_all_host: Optional[torch.Tensor] = None
         self._accept_all_host_scalar: Optional[torch.Tensor] = None
         self._greedy_next_values: Optional[torch.Tensor] = None
-        self._greedy_next_tokens: Optional[torch.Tensor] = None
         self._draft_head_offsets: Optional[torch.Tensor] = None
         self._draft_seed_buffer: Optional[torch.Tensor] = None
         self._draft_block_values: Optional[torch.Tensor] = None
@@ -187,8 +186,13 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_token_views = [
             self._output_ids[:, token_idx] for token_idx in range(wl.total_tokens + 1)
         ]
-        self._greedy_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
-        self._greedy_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
+        # torch.max requires value and index outputs with matching strides.
+        self._greedy_next_values = torch.empty_strided(
+            (1,),
+            self._output_token_views[0].stride(),
+            device=self.device,
+            dtype=wl.dtype,
+        )
         self._greedy_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)
         self._verify_summary_device = torch.empty(3, device=self.device, dtype=torch.float32)
         self._verify_summary_host = self._allocate_verify_summary_host()
@@ -389,7 +393,6 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.input_ids is None
             or self._output_ids is None
             or self._greedy_next_values is None
-            or self._greedy_next_tokens is None
             or self._greedy_logits is None
             or self._greedy_forward_buffers is None
             or self._view_counts != self._expected_view_counts
@@ -404,7 +407,6 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         output_token_views = self._output_token_views
         greedy_logits = self._greedy_logits
         greedy_next_values = self._greedy_next_values
-        greedy_next_tokens = self._greedy_next_tokens
         greedy_forward_buffers = self._greedy_forward_buffers
         output_token_views[0].copy_(self.input_ids[:, 0])
 
@@ -416,8 +418,8 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         greedy_logits,
                         greedy_forward_buffers,
                     )
-                    torch.max(logits[:, 0, :], dim=-1, out=(greedy_next_values, greedy_next_tokens))
-                    output_token_views[t + 1].copy_(greedy_next_tokens)
+                    output_token = output_token_views[t + 1]
+                    torch.max(logits[:, 0, :], dim=-1, out=(greedy_next_values, output_token))
 
         self.output = out
         self._metrics = {
@@ -625,7 +627,6 @@ class MedusaEagleSpeculativeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_all_host = None
         self._accept_all_host_scalar = None
         self._greedy_next_values = None
-        self._greedy_next_tokens = None
         self._draft_head_offsets = None
         self._draft_seed_buffer = None
         self._draft_block_values = None

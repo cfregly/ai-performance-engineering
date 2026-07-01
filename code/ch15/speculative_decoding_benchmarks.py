@@ -50,7 +50,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_all_host: Optional[torch.Tensor] = None
         self._accept_all_host_scalar: Optional[torch.Tensor] = None
         self._greedy_next_values: Optional[torch.Tensor] = None
-        self._greedy_next_tokens: Optional[torch.Tensor] = None
         self._greedy_logits: Optional[torch.Tensor] = None
         self._greedy_logits_next: Optional[torch.Tensor] = None
         self._draft_next_values: Optional[torch.Tensor] = None
@@ -122,8 +121,13 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._output_ids[:, token_idx] for token_idx in range(wl.total_tokens + 1)
         ]
         self._decode_token_range = range(wl.total_tokens)
-        self._greedy_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
-        self._greedy_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
+        # torch.max requires value and index outputs with matching strides.
+        self._greedy_next_values = torch.empty_strided(
+            (1,),
+            self._output_token_views[0].stride(),
+            device=self.device,
+            dtype=wl.dtype,
+        )
         self._greedy_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)
         self._greedy_logits_next = self._greedy_logits[:, 0, :]
         self._greedy_forward_buffers = self.target_model.prepare_forward_buffers(
@@ -313,7 +317,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._input_token_view is None
             or self._output_ids is None
             or self._greedy_next_values is None
-            or self._greedy_next_tokens is None
             or self._greedy_logits is None
             or self._greedy_logits_next is None
             or self._greedy_forward_buffers is None
@@ -328,7 +331,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         target_logits = self._greedy_logits
         target_logits_next = self._greedy_logits_next
         greedy_next_values = self._greedy_next_values
-        greedy_next_tokens = self._greedy_next_tokens
         greedy_forward_buffers = self._greedy_forward_buffers
         output_step_views = self._output_step_views
         output_token_views = self._output_token_views
@@ -338,8 +340,8 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             with torch.inference_mode():
                 for t in self._decode_token_range:
                     target_forward_into_prepared(output_step_views[t], target_logits, greedy_forward_buffers)
-                    torch.max(target_logits_next, dim=-1, out=(greedy_next_values, greedy_next_tokens))
-                    output_token_views[t + 1].copy_(greedy_next_tokens)
+                    output_token = output_token_views[t + 1]
+                    torch.max(target_logits_next, dim=-1, out=(greedy_next_values, output_token))
 
         self.output = out
 
@@ -496,7 +498,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_all_host = None
         self._accept_all_host_scalar = None
         self._greedy_next_values = None
-        self._greedy_next_tokens = None
         self._greedy_logits = None
         self._greedy_logits_next = None
         self._draft_next_values = None

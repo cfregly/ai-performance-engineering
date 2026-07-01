@@ -31,7 +31,6 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._expected_view_counts: tuple[int, int] = (0, 0)
         self._token_range = range(0)
         self._next_token_values: Optional[torch.Tensor] = None
-        self._next_token_ids: Optional[torch.Tensor] = None
         self._target_logits: Optional[torch.Tensor] = None
         self._target_logits_next: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
@@ -73,8 +72,13 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._view_counts = (len(self._output_step_views), len(self._output_token_views))
         self._expected_view_counts = (wl.total_tokens + 1, wl.total_tokens + 1)
         self._token_range = range(wl.total_tokens)
-        self._next_token_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
-        self._next_token_ids = torch.empty((1,), device=self.device, dtype=torch.long)
+        # torch.max requires value and index outputs with matching strides.
+        self._next_token_values = torch.empty_strided(
+            (1,),
+            self._output_token_views[0].stride(),
+            device=self.device,
+            dtype=wl.dtype,
+        )
         self._target_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)
         self._target_logits_next = self._target_logits[:, 0, :]
         self.output = None
@@ -87,7 +91,6 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
             or self._input_token_view is None
             or self._output_ids is None
             or self._next_token_values is None
-            or self._next_token_ids is None
             or self._target_logits is None
             or self._target_logits_next is None
             or self._view_counts != self._expected_view_counts
@@ -102,14 +105,13 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         target_logits = self._target_logits
         target_logits_next = self._target_logits_next
         next_token_values = self._next_token_values
-        next_token_ids = self._next_token_ids
         output_token_views[0].copy_(self._input_token_view)
 
         with torch.inference_mode():
             for t in token_range:
                 target_forward_into(output_step_views[t], target_logits)
-                torch.max(target_logits_next, dim=-1, out=(next_token_values, next_token_ids))
-                output_token_views[t + 1].copy_(next_token_ids)
+                output_token = output_token_views[t + 1]
+                torch.max(target_logits_next, dim=-1, out=(next_token_values, output_token))
 
         self.output = out
 
@@ -137,7 +139,6 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._expected_view_counts = (0, 0)
         self._token_range = range(0)
         self._next_token_values = None
-        self._next_token_ids = None
         self._target_logits = None
         self._target_logits_next = None
         self.output = None

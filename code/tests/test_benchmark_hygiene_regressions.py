@@ -19265,6 +19265,10 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
         "def benchmark_fn",
         maxsplit=1,
     )[0]
+    greedy_section = source.split("def _run_greedy_decode", maxsplit=1)[1].split(
+        "def _should_perturb",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def _run_family_speculative_decode", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
@@ -19304,6 +19308,9 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._draft_block_tokens" not in source
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
+    assert "self._greedy_next_values = torch.empty_strided(" in setup_section
+    assert "self._output_token_views[0].stride()" in setup_section
+    assert "greedy_next_tokens" not in source
     assert "self._greedy_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._draft_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
@@ -19341,6 +19348,9 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._match_host" not in source
     assert "self._match_host_views" not in source
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
+    assert "output_token = output_token_views[t + 1]" in greedy_section
+    assert "torch.max(logits[:, 0, :], dim=-1, out=(greedy_next_values, output_token))" in greedy_section
+    assert "output_token_views[t + 1].copy_(greedy_next_tokens)" not in greedy_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "or self._view_counts != self._expected_view_counts" in benchmark_section
     assert "or self._forward_buffer_counts != self._expected_forward_buffer_counts" in benchmark_section
@@ -19529,6 +19539,7 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)" in setup_section
     assert "self._greedy_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._greedy_logits_next = self._greedy_logits[:, 0, :]" in setup_section
+    assert "self._greedy_next_values = torch.empty_strided(" in setup_section
     assert "self._greedy_forward_buffers = self.target_model.prepare_forward_buffers(" in setup_section
     assert "self._draft_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._draft_logits_next = self._draft_logits[:, 0, :]" in setup_section
@@ -19583,7 +19594,9 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "input_token_view = self._input_token_view" in greedy_section
     assert "output_token_views[0].copy_(input_token_view)" in greedy_section
     assert "target_forward_into_prepared(output_step_views[t], target_logits, greedy_forward_buffers)" in greedy_section
-    assert "torch.max(target_logits_next, dim=-1, out=(greedy_next_values, greedy_next_tokens))" in greedy_section
+    assert "output_token = output_token_views[t + 1]" in greedy_section
+    assert "torch.max(target_logits_next, dim=-1, out=(greedy_next_values, output_token))" in greedy_section
+    assert "greedy_next_tokens" not in source
     assert "self.target_model(" not in greedy_section
     assert "logits = self.target_model" not in greedy_section
     assert "for t in self._decode_token_range:" in greedy_section
@@ -19593,7 +19606,7 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "or self._forward_buffer_counts != self._expected_forward_buffer_counts" in greedy_section
     assert "len(self._output_step_views)" not in greedy_section
     assert "len(self._output_token_views)" not in greedy_section
-    assert "output_token_views[t + 1].copy_(greedy_next_tokens)" in greedy_section
+    assert "output_token_views[t + 1].copy_(greedy_next_tokens)" not in greedy_section
     assert "out[:, t : t + 1]" not in greedy_section
     assert "out[:, t + 1]" not in greedy_section
     assert "with torch.inference_mode():" in benchmark_section
@@ -20098,8 +20111,9 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
         maxsplit=1,
     )[0]
 
-    assert "self._next_token_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
-    assert "self._next_token_ids = torch.empty((1,), device=self.device, dtype=torch.long)" in setup_section
+    assert "self._next_token_values = torch.empty_strided(" in setup_section
+    assert "self._output_token_views[0].stride()" in setup_section
+    assert "next_token_ids" not in source
     assert "self._target_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_logits_next = self._target_logits[:, 0, :]" in setup_section
     assert "self._input_token_view: Optional[torch.Tensor] = None" in source
@@ -20128,10 +20142,12 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     assert "target_forward_into(output_step_views[t], target_logits)" in benchmark_section
     assert "logits = self.target_model.forward_into" not in benchmark_section
     assert "logits = self.target_model(self._output_step_views[t])" not in benchmark_section
-    assert "output_token_views[t + 1].copy_(next_token_ids)" in benchmark_section
+    assert "output_token = output_token_views[t + 1]" in benchmark_section
+    assert "torch.max(target_logits_next, dim=-1, out=(next_token_values, output_token))" in benchmark_section
+    assert "output_token_views[t + 1].copy_(next_token_ids)" not in benchmark_section
     assert "out[:, t : t + 1]" not in benchmark_section
     assert "out[:, t + 1]" not in benchmark_section
-    assert "torch.max(target_logits_next, dim=-1, out=(next_token_values, next_token_ids))" in benchmark_section
+    assert "torch.max(target_logits_next, dim=-1, out=(next_token_values, next_token_ids))" not in benchmark_section
     assert "logits[:, 0, :]" not in benchmark_section
     assert ".argmax(" not in benchmark_section
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
