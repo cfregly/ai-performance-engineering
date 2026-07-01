@@ -9161,9 +9161,14 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
         capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
             "def teardown", maxsplit=1
         )[0]
+        teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+            "def get_config", maxsplit=1
+        )[0]
 
         assert "self.microbatches = [chunk.contiguous() for chunk in self.inputs.chunk" in source
         assert "self._output_buffer = torch.empty_like(self.inputs)" in source
+        assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._verify_output_buffer = torch.empty_like(self._output_buffer, dtype=torch.float32)" in source
         assert ".chunk(" not in benchmark_section
         assert "torch.cat(" not in benchmark_section
         assert "self._last_outputs = [" in baseline_setup
@@ -9180,14 +9185,21 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
         assert "torch.cat([out.detach() for out in self._last_outputs], dim=0)" not in capture_section
         assert "torch.cat(self._last_outputs, dim=0, out=self._output_buffer)" in capture_section
         assert "self.output = self._output_buffer.detach()" in capture_section
+        assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in capture_section
+        assert "output=self._verify_output_buffer" in capture_section
+        assert "self.output.float()" not in capture_section
         assert "self.output = torch.cat(self._last_outputs, dim=0).detach()" not in capture_section
         assert "self._output_buffer = None" in source
+        assert "self._verify_output_buffer = None" in teardown_section
 
     optimized_benchmark = optimized_source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def capture_verification_payload", maxsplit=1
     )[0]
     optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
+    )[0]
+    optimized_teardown = optimized_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
     )[0]
     optimized_stage_forward = optimized_source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1].split(
         "class OptimizedPipelineOverlapBenchmark",
@@ -9206,6 +9218,8 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
     assert "self._last_outputs = [" in optimized_setup
     assert "self._output_buffer = torch.empty_like(self.inputs)" in optimized_setup
     assert "self._output_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._verify_output_buffer = torch.empty_like(self._output_buffer, dtype=torch.float32)" in optimized_setup
     assert "stage_outputs: list[list[Optional[torch.Tensor]]] = [" not in optimized_run
     assert "return [output for output in final_outputs if output is not None]" not in optimized_run
     assert "with torch.inference_mode():" in optimized_benchmark
@@ -9219,8 +9233,12 @@ def test_ch20_pipeline_sequential_reuses_setup_artifacts_outside_hot_loop() -> N
     assert "torch.cat([out.detach() for out in self._last_outputs], dim=0)" not in optimized_capture
     assert "torch.cat(self._last_outputs, dim=0, out=self._output_buffer)" in optimized_capture
     assert "self.output = self._output_buffer.detach()" in optimized_capture
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in optimized_capture
+    assert "output=self._verify_output_buffer" in optimized_capture
+    assert "self.output.float()" not in optimized_capture
     assert "self.output = torch.cat(self._last_outputs, dim=0).detach()" not in optimized_capture
     assert "self._output_buffer = None" in optimized_source
+    assert "self._verify_output_buffer = None" in optimized_teardown
     assert "torch.cuda.Event(" not in optimized_benchmark
 
 
