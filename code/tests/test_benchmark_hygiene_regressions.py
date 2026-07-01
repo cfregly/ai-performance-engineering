@@ -6568,8 +6568,20 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     common_source = (REPO_ROOT / "ch19" / "dynamic_precision_benchmark_common.py").read_text(
         encoding="utf-8"
     )
+    switching_source = (REPO_ROOT / "ch19" / "dynamic_precision_switching.py").read_text(
+        encoding="utf-8"
+    )
     assert common_source.count("next_token_values = torch.empty(\n                (batch_size, 1),") == 2
     assert "next_token_values.device != last_step_logits.device" not in common_source
+    assert common_source.count("generated_token_views[current_len].copy_(next_token_flat)") == 2
+    assert "generated[:, current_len : current_len + 1].copy_(next_token)" not in common_source
+    assert "def initial_incremental_embedding_sum" in common_source
+    assert "def append_incremental_embedding" in common_source
+    assert "def forward_incremental_logits" in common_source
+    assert "torch.mul(embedding_sum, 1.0 / float(current_len), out=mean_workspace)" in common_source
+    assert switching_source.count("generated_token_views[current_len].copy_(next_token_flat)") == 1
+    assert "generated[:, current_len : current_len + 1].copy_(next_token)" not in switching_source
+    assert "logits = incremental_logits(embedding_sum, last_token, current_len)" in switching_source
 
     token_precision_source = (REPO_ROOT / "ch19" / "token_precision_switching.py").read_text(
         encoding="utf-8"

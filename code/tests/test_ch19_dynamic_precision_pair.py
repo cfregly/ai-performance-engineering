@@ -34,11 +34,16 @@ def test_high_confidence_decoder_applies_target_bias_without_full_tensor() -> No
     assert "torch.full_like" not in source
     assert "bias.scatter_" not in source
     assert "self._target_boost_views: dict[tuple[int, torch.device], torch.Tensor] = {}" in class_source
-    assert "logits.add_(-4.0)" in source
-    assert "logits.scatter_add_(" in source
-    assert "target_boost = self._target_boost_views.get(boost_key)" in source
-    assert "self._target_boost_views[boost_key] = target_boost" in source
-    assert "self._target_boost.expand(next_id.size(0), 1)" in source
+    assert "self._mean_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}" in class_source
+    assert "logits.add_(-4.0)" in class_source
+    assert "logits.scatter_add_(" in class_source
+    assert "target_boost = self._target_boost_views.get(boost_key)" in class_source
+    assert "self._target_boost_views[boost_key] = target_boost" in class_source
+    assert "self._target_boost.expand(next_id.size(0), 1)" in class_source
+    assert "def initial_incremental_embedding_sum" in class_source
+    assert "def append_incremental_embedding" in class_source
+    assert "def forward_incremental_logits" in class_source
+    assert "torch.mul(embedding_sum, 1.0 / float(current_len), out=mean_workspace)" in class_source
 
     device = torch.device("cpu")
     model = HighConfidenceDecoder(16, 8, dtype=torch.float32, device=device).eval()
@@ -57,10 +62,30 @@ def test_high_confidence_decoder_applies_target_bias_without_full_tensor() -> No
         actual = model(input_ids=input_ids)
         cached_boost = model._target_boost_views[(input_ids.size(0), device)]
         actual_again = model(input_ids=input_ids)
+        embedding_sum = model.initial_incremental_embedding_sum(input_ids)
+        incremental = model.forward_incremental_logits(
+            embedding_sum,
+            input_ids[:, -1],
+            input_ids.size(1),
+        )
+        mean_key = (input_ids.size(0), device, torch.float32)
+        cached_mean_ptr = model._mean_workspaces[mean_key].data_ptr()
+        next_token = torch.tensor([4, 0], dtype=torch.int64)
+        model.append_incremental_embedding(embedding_sum, next_token)
+        extended_input_ids = torch.cat((input_ids, next_token.unsqueeze(1)), dim=1)
+        expected_extended = model(input_ids=extended_input_ids)
+        incremental_extended = model.forward_incremental_logits(
+            embedding_sum,
+            next_token,
+            extended_input_ids.size(1),
+        )
 
     torch.testing.assert_close(actual, expected)
     torch.testing.assert_close(actual_again, expected)
+    torch.testing.assert_close(incremental, expected)
+    torch.testing.assert_close(incremental_extended, expected_extended)
     assert model._target_boost_views[(input_ids.size(0), device)] is cached_boost
+    assert model._mean_workspaces[mean_key].data_ptr() == cached_mean_ptr
 
 
 def test_dynamic_precision_decode_matches_fixed_precision_on_cpu() -> None:
@@ -129,16 +154,28 @@ def test_compute_entropy_reuses_log_softmax_probabilities() -> None:
 
 def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:
     fixed_source = inspect.getsource(decode_fixed_precision)
+    host_source = inspect.getsource(decode_host_policy_baseline)
     dynamic_source = inspect.getsource(decode_with_dynamic_precision)
 
     assert "next_token = torch.empty((batch_size, 1)" in fixed_source
     assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in fixed_source
+    assert "next_token_flat = next_token.view(batch_size)" in fixed_source
+    assert "generated_token_views = generated.unbind(dim=1)" in fixed_source
+    assert "generated_token_views[current_len].copy_(next_token_flat)" in fixed_source
+    assert "generated[:, current_len : current_len + 1].copy_(next_token)" not in fixed_source
+    assert "generated_token_views[current_len].copy_(next_token_flat)" in host_source
+    assert "generated[:, current_len : current_len + 1].copy_(next_token)" not in host_source
     assert "torch.argmax(last_step_logits" not in fixed_source
     assert "next_token = torch.empty((batch_size, 1)" in dynamic_source
+    assert "next_token_flat = next_token.view(batch_size)" in dynamic_source
+    assert "generated_token_views = generated.unbind(dim=1)" in dynamic_source
     assert "top2_values = torch.empty(" in dynamic_source
     assert "top2_indices = torch.empty(" in dynamic_source
     assert "torch.topk(last, k=2, dim=topk_dim, out=(top2_values, top2_indices))" in dynamic_source
     assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in dynamic_source
+    assert "generated_token_views[current_len].copy_(next_token_flat)" in dynamic_source
+    assert "generated[:, current_len : current_len + 1].copy_(next_token)" not in dynamic_source
+    assert "logits = incremental_logits(embedding_sum, last_token, current_len)" in dynamic_source
     assert "next_token = torch.argmax(last_step_logits" not in dynamic_source
 
 
@@ -179,10 +216,23 @@ def test_dynamic_precision_decoders_accept_reusable_workspaces_on_cpu() -> None:
         device=device,
         workspace=fixed_workspace,
     )
+    fixed_token_views = fixed_workspace.generated_token_views
 
     assert fixed_tokens.data_ptr() == fixed_generated_ptr
     assert fixed_workspace.next_token_values is not None
     assert fixed_workspace.next_token_values.data_ptr() == fixed_values_ptr
+    assert fixed_workspace.next_token_flat is not None
+    assert fixed_workspace.next_token_flat.data_ptr() == fixed_workspace.next_token.data_ptr()
+    assert fixed_token_views is not None
+    assert len(fixed_token_views) == output_shape[1]
+    decode_fixed_precision(
+        fixed_model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        workspace=fixed_workspace,
+    )
+    assert fixed_workspace.generated_token_views is fixed_token_views
 
     host_model = build_model(cfg, device, dtype=torch.float32)
     host_workspace = FixedDecodeWorkspace(
@@ -209,8 +259,13 @@ def test_dynamic_precision_decoders_accept_reusable_workspaces_on_cpu() -> None:
         device=device,
         workspace=host_workspace,
     )
+    host_token_views = host_workspace.generated_token_views
 
     assert host_tokens.data_ptr() == host_generated_ptr
+    assert host_workspace.next_token_flat is not None
+    assert host_workspace.next_token_flat.data_ptr() == host_workspace.next_token.data_ptr()
+    assert host_token_views is not None
+    assert len(host_token_views) == output_shape[1]
     assert host_workspace.host_logits_buffer is not None
     assert host_workspace.host_logits_buffer.data_ptr() == host_logits_ptr
     assert host_workspace.policy_metrics_buffer is not None
@@ -221,6 +276,14 @@ def test_dynamic_precision_decoders_accept_reusable_workspaces_on_cpu() -> None:
     assert host_workspace.policy_top2_indices is not None
     assert host_workspace.policy_top2_indices.data_ptr() == host_top2_indices_ptr
     assert any(value != 0.0 for value in host_workspace.policy_metric_values)
+    decode_host_policy_baseline(
+        host_model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        workspace=host_workspace,
+    )
+    assert host_workspace.generated_token_views is host_token_views
 
     dynamic_model = build_model(cfg, device, dtype=torch.float32)
     dynamic_workspace = DynamicPrecisionWorkspace(
@@ -246,11 +309,27 @@ def test_dynamic_precision_decoders_accept_reusable_workspaces_on_cpu() -> None:
         reeval_interval=1,
         workspace=dynamic_workspace,
     )
+    dynamic_token_views = dynamic_workspace.generated_token_views
 
     assert dynamic_tokens.data_ptr() == dynamic_generated_ptr
+    assert dynamic_workspace.next_token_flat is not None
+    assert dynamic_workspace.next_token_flat.data_ptr() == dynamic_workspace.next_token.data_ptr()
+    assert dynamic_token_views is not None
+    assert len(dynamic_token_views) == output_shape[1]
     assert dynamic_workspace.top2_values is not None
     assert dynamic_workspace.top2_values.data_ptr() == dynamic_top2_ptr
     assert stats is not None
+    decode_with_dynamic_precision(
+        dynamic_model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        enable_fp8=False,
+        enable_fp4=False,
+        reeval_interval=1,
+        workspace=dynamic_workspace,
+    )
+    assert dynamic_workspace.generated_token_views is dynamic_token_views
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for chapter 19 dynamic-precision benchmark pair")

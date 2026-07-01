@@ -9,6 +9,7 @@ This directory contains example scripts demonstrating the usage of the AI Perfor
 | `optimize_examples.py` | Auto-optimizer usage examples |
 | `profiling_examples.py` | GPU profiling suite examples |
 | `zymtrace_gpu_smoke.py` | Timed CUDA workload for validating Zymtrace GPU capture |
+| `ch19_dynamic_precision_zymtrace_probe.py` | Timed Chapter 19 decode workload for Zymtrace GPU capture |
 | `mcp_client_example.py` | MCP client lifecycle and tool-call examples |
 | `optimize_config.yaml` | Sample configuration file |
 
@@ -43,6 +44,7 @@ python examples/profiling_examples.py --all
 
 ```bash
 core/scripts/profiling/profile.sh examples/zymtrace_gpu_smoke.py --tool zymtrace -- --seconds 30
+core/scripts/profiling/profile.sh examples/ch19_dynamic_precision_zymtrace_probe.py --tool zymtrace -- --seconds 30 --mode dynamic
 ```
 
 ### MCP Client Example

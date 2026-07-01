@@ -88,6 +88,8 @@ class DynamicPrecisionWorkspace:
     generated: torch.Tensor
     next_token: torch.Tensor
     next_token_values: Optional[torch.Tensor] = None
+    next_token_flat: Optional[torch.Tensor] = None
+    generated_token_views: Optional[Tuple[torch.Tensor, ...]] = None
     top2_values: Optional[torch.Tensor] = None
     top2_indices: Optional[torch.Tensor] = None
     margin_values: Optional[torch.Tensor] = None
@@ -250,6 +252,8 @@ def decode_with_dynamic_precision(
             dtype=prompt.dtype,
         )
         next_token = torch.empty((batch_size, 1), device=device, dtype=prompt.dtype)
+        next_token_flat = next_token.view(batch_size)
+        generated_token_views = generated.unbind(dim=1)
         next_token_values: Optional[torch.Tensor] = None
         top2_values: Optional[torch.Tensor] = None
         top2_indices: Optional[torch.Tensor] = None
@@ -263,6 +267,14 @@ def decode_with_dynamic_precision(
             raise ValueError("workspace.generated does not match decode shape/device/dtype")
         if next_token.shape != (batch_size, 1) or next_token.device != prompt_device or next_token.dtype != prompt.dtype:
             raise ValueError("workspace.next_token does not match decode shape/device/dtype")
+        next_token_flat = workspace.next_token_flat
+        if next_token_flat is None or next_token_flat.shape != (batch_size,):
+            next_token_flat = next_token.view(batch_size)
+            workspace.next_token_flat = next_token_flat
+        generated_token_views = workspace.generated_token_views
+        if generated_token_views is None or len(generated_token_views) != generated.shape[1]:
+            generated_token_views = generated.unbind(dim=1)
+            workspace.generated_token_views = generated_token_views
         next_token_values = workspace.next_token_values
         top2_values = workspace.top2_values
         top2_indices = workspace.top2_indices
@@ -270,6 +282,12 @@ def decode_with_dynamic_precision(
         margin_mean = workspace.margin_mean
         workspace_ema_conf = workspace.ema_conf
     generated[:, :prompt_len].copy_(prompt)
+    initial_sum = getattr(model, "initial_incremental_embedding_sum", None)
+    append_embedding = getattr(model, "append_incremental_embedding", None)
+    incremental_logits = getattr(model, "forward_incremental_logits", None)
+    use_incremental = callable(initial_sum) and callable(append_embedding) and callable(incremental_logits)
+    embedding_sum = initial_sum(prompt) if use_incremental else None
+    last_token = prompt[:, -1] if use_incremental else None
     current_len = prompt_len
     
     # Internal state
@@ -321,18 +339,20 @@ def decode_with_dynamic_precision(
     
     # Decode
     for step in range(max_steps):
-        active_tokens = generated[:, :current_len]
-
         # 1) Precision context (exactly one).
         # No nested contexts, no leakage across iterations.
         with _precision_context(device, precision_mode, prefer_bfloat16, enable_fp8):
             # Forward pass (HF-style or plain)
-            try:
-                logits = model(input_ids=active_tokens)
-                if hasattr(logits, "logits"):
-                    logits = logits.logits
-            except TypeError:
-                logits = model(active_tokens)
+            if use_incremental:
+                logits = incremental_logits(embedding_sum, last_token, current_len)
+            else:
+                active_tokens = generated[:, :current_len]
+                try:
+                    logits = model(input_ids=active_tokens)
+                    if hasattr(logits, "logits"):
+                        logits = logits.logits
+                except TypeError:
+                    logits = model(active_tokens)
 
         if precision_mode == PrecisionMode.FP4:
             logits = _simulate_fp4_quantize(logits)
@@ -350,7 +370,10 @@ def decode_with_dynamic_precision(
                 dtype=last_step_logits.dtype,
             )
         torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))
-        generated[:, current_len : current_len + 1].copy_(next_token)
+        generated_token_views[current_len].copy_(next_token_flat)
+        if use_incremental:
+            append_embedding(embedding_sum, next_token_flat)
+            last_token = next_token_flat
         current_len += 1
         
         # 3) Update on-device EMA signal every step (no host sync yet)
@@ -409,11 +432,13 @@ def decode_with_dynamic_precision(
             
         # 6) EOS handling
         if eos_id is not None:
-            if (generated[:, current_len - 1] == eos_id).all():
+            if (next_token_flat == eos_id).all():
                 break
     
     if workspace is not None:
         workspace.next_token_values = next_token_values
+        workspace.next_token_flat = next_token_flat
+        workspace.generated_token_views = generated_token_views
         workspace.top2_values = top2_values
         workspace.top2_indices = top2_indices
         workspace.margin_values = margin_values

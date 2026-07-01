@@ -31,6 +31,8 @@ class FixedDecodeWorkspace:
     generated: torch.Tensor
     next_token: torch.Tensor
     next_token_values: torch.Tensor | None = None
+    next_token_flat: torch.Tensor | None = None
+    generated_token_views: Tuple[torch.Tensor, ...] | None = None
     host_logits_buffer: torch.Tensor | None = None
     policy_metrics_buffer: torch.Tensor | None = None
     policy_metric_values: list[float] | None = None
@@ -49,13 +51,10 @@ class HighConfidenceDecoder(nn.Module):
         self.proj_out = nn.Linear(hidden_dim * 2, vocab_size, device=device, dtype=dtype)
         self.register_buffer("_target_boost", torch.tensor(16.0, device=device), persistent=False)
         self._target_boost_views: dict[tuple[int, torch.device], torch.Tensor] = {}
+        self._mean_workspaces: dict[tuple[int, torch.device, torch.dtype], torch.Tensor] = {}
 
-    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
-        x = self.embed(input_ids)
-        x = x.mean(dim=1)
-        x = F.gelu(self.proj_in(x))
-        logits = self.proj_out(x).to(torch.float32)
-        next_id = (input_ids[:, -1] + 1) % self.vocab_size
+    def _boost_next_token(self, logits: torch.Tensor, last_token: torch.Tensor) -> torch.Tensor:
+        next_id = (last_token.reshape(-1) + 1) % self.vocab_size
         logits.add_(-4.0)
         boost_key = (int(next_id.size(0)), logits.device)
         target_boost = self._target_boost_views.get(boost_key)
@@ -64,6 +63,40 @@ class HighConfidenceDecoder(nn.Module):
             self._target_boost_views[boost_key] = target_boost
         logits.scatter_add_(1, next_id.unsqueeze(-1), target_boost)
         return logits
+
+    def _project_embedding_mean(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.gelu(self.proj_in(x))
+        logits = self.proj_out(x).to(torch.float32)
+        return logits
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        x = self.embed(input_ids)
+        x = x.mean(dim=1)
+        return self._boost_next_token(self._project_embedding_mean(x), input_ids[:, -1])
+
+    def initial_incremental_embedding_sum(self, input_ids: torch.Tensor) -> torch.Tensor:
+        return self.embed(input_ids).sum(dim=1)
+
+    def append_incremental_embedding(self, embedding_sum: torch.Tensor, token: torch.Tensor) -> None:
+        embedding_sum.add_(self.embed(token.reshape(-1)))
+
+    def forward_incremental_logits(
+        self,
+        embedding_sum: torch.Tensor,
+        last_token: torch.Tensor,
+        current_len: int,
+    ) -> torch.Tensor:
+        workspace_key = (
+            int(embedding_sum.size(0)),
+            embedding_sum.device,
+            embedding_sum.dtype,
+        )
+        mean_workspace = self._mean_workspaces.get(workspace_key)
+        if mean_workspace is None or mean_workspace.shape != embedding_sum.shape:
+            mean_workspace = torch.empty_like(embedding_sum)
+            self._mean_workspaces[workspace_key] = mean_workspace
+        torch.mul(embedding_sum, 1.0 / float(current_len), out=mean_workspace)
+        return self._boost_next_token(self._project_embedding_mean(mean_workspace), last_token)
 
 
 def build_prompt(cfg: DynamicPrecisionBenchmarkConfig, device: torch.device) -> torch.Tensor:
@@ -105,6 +138,8 @@ def decode_fixed_precision(
         )
         next_token = torch.empty((batch_size, 1), device=device, dtype=prompt.dtype)
         next_token_values: torch.Tensor | None = None
+        next_token_flat = next_token.view(batch_size)
+        generated_token_views = generated.unbind(dim=1)
     else:
         generated = workspace.generated
         next_token = workspace.next_token
@@ -113,13 +148,30 @@ def decode_fixed_precision(
         if next_token.shape != (batch_size, 1) or next_token.device != prompt_device or next_token.dtype != prompt.dtype:
             raise ValueError("workspace.next_token does not match decode shape/device/dtype")
         next_token_values = workspace.next_token_values
+        next_token_flat = workspace.next_token_flat
+        if next_token_flat is None or next_token_flat.shape != (batch_size,):
+            next_token_flat = next_token.view(batch_size)
+            workspace.next_token_flat = next_token_flat
+        generated_token_views = workspace.generated_token_views
+        if generated_token_views is None or len(generated_token_views) != generated.shape[1]:
+            generated_token_views = generated.unbind(dim=1)
+            workspace.generated_token_views = generated_token_views
     generated[:, :prompt_len].copy_(prompt)
+    initial_sum = getattr(model, "initial_incremental_embedding_sum", None)
+    append_embedding = getattr(model, "append_incremental_embedding", None)
+    incremental_logits = getattr(model, "forward_incremental_logits", None)
+    use_incremental = callable(initial_sum) and callable(append_embedding) and callable(incremental_logits)
+    embedding_sum = initial_sum(prompt) if use_incremental else None
+    last_token = prompt[:, -1] if use_incremental else None
     current_len = prompt_len
     for _ in range(max_steps):
-        active_tokens = generated[:, :current_len]
-        logits = model(input_ids=active_tokens)
-        if hasattr(logits, "logits"):
-            logits = logits.logits
+        if use_incremental:
+            logits = incremental_logits(embedding_sum, last_token, current_len)
+        else:
+            active_tokens = generated[:, :current_len]
+            logits = model(input_ids=active_tokens)
+            if hasattr(logits, "logits"):
+                logits = logits.logits
         last_step_logits = logits if logits.dim() == 2 else logits[:, -1, :]
         if next_token_values is None:
             next_token_values = torch.empty(
@@ -130,7 +182,10 @@ def decode_fixed_precision(
             if workspace is not None:
                 workspace.next_token_values = next_token_values
         torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))
-        generated[:, current_len : current_len + 1].copy_(next_token)
+        generated_token_views[current_len].copy_(next_token_flat)
+        if use_incremental:
+            append_embedding(embedding_sum, next_token_flat)
+            last_token = next_token_flat
         current_len += 1
     return generated[:, :current_len].contiguous()
 
@@ -159,6 +214,8 @@ def decode_host_policy_baseline(
         )
         next_token = torch.empty((batch_size, 1), device=device, dtype=prompt.dtype)
         next_token_values: torch.Tensor | None = None
+        next_token_flat = next_token.view(batch_size)
+        generated_token_views = generated.unbind(dim=1)
         host_logits_buffer: torch.Tensor | None = None
         policy_metrics_buffer: torch.Tensor | None = None
         policy_metric_values: list[float] | None = None
@@ -172,6 +229,14 @@ def decode_host_policy_baseline(
         if next_token.shape != (batch_size, 1) or next_token.device != prompt_device or next_token.dtype != prompt.dtype:
             raise ValueError("workspace.next_token does not match decode shape/device/dtype")
         next_token_values = workspace.next_token_values
+        next_token_flat = workspace.next_token_flat
+        if next_token_flat is None or next_token_flat.shape != (batch_size,):
+            next_token_flat = next_token.view(batch_size)
+            workspace.next_token_flat = next_token_flat
+        generated_token_views = workspace.generated_token_views
+        if generated_token_views is None or len(generated_token_views) != generated.shape[1]:
+            generated_token_views = generated.unbind(dim=1)
+            workspace.generated_token_views = generated_token_views
         host_logits_buffer = workspace.host_logits_buffer
         policy_metrics_buffer = workspace.policy_metrics_buffer
         policy_metric_values = workspace.policy_metric_values
@@ -248,7 +313,7 @@ def decode_host_policy_baseline(
             if workspace is not None:
                 workspace.next_token_values = next_token_values
         torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))
-        generated[:, current_len : current_len + 1].copy_(next_token)
+        generated_token_views[current_len].copy_(next_token_flat)
         current_len += 1
     return generated[:, :current_len].contiguous()
 
