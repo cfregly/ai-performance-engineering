@@ -34,6 +34,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.target_model: Optional[TokenMLP] = None
         self.draft_model: Optional[TokenMLP] = None
         self.input_ids: Optional[torch.Tensor] = None
+        self._input_token_view: Optional[torch.Tensor] = None
         self._output_ids: Optional[torch.Tensor] = None
         self._output_step_views: list[torch.Tensor] = []
         self._output_token_views: list[torch.Tensor] = []
@@ -45,6 +46,11 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_prefix: Optional[torch.Tensor] = None
         self._accept_count_device: Optional[torch.Tensor] = None
         self._accept_count_host: Optional[torch.Tensor] = None
+        self._accept_count_device_scalar: Optional[torch.Tensor] = None
+        self._accept_count_host_scalar: Optional[torch.Tensor] = None
+        self._accept_all_device: Optional[torch.Tensor] = None
+        self._accept_all_host: Optional[torch.Tensor] = None
+        self._accept_all_host_scalar: Optional[torch.Tensor] = None
         self._greedy_next_values: Optional[torch.Tensor] = None
         self._greedy_next_tokens: Optional[torch.Tensor] = None
         self._greedy_logits: Optional[torch.Tensor] = None
@@ -66,6 +72,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._target_token_column_views: list[torch.Tensor] = []
         self._match_views: list[torch.Tensor] = []
         self._accept_prefix_views: list[torch.Tensor] = []
+        self._accept_prefix_row_views: list[torch.Tensor] = []
         self._draft_id_views: list[torch.Tensor] = []
         self._draft_id_column_views: list[torch.Tensor] = []
         self._speculation_step_ranges: list[range] = []
@@ -113,6 +120,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.int64,
         )
+        self._input_token_view = self.input_ids[:, 0]
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
         self._verify_output_buffer = torch.empty_like(self._output_ids, dtype=torch.float32)
         self._output_step_views = [
@@ -142,6 +150,11 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._accept_prefix = None
             self._accept_count_device = None
             self._accept_count_host = None
+            self._accept_count_device_scalar = None
+            self._accept_count_host_scalar = None
+            self._accept_all_device = None
+            self._accept_all_host = None
+            self._accept_all_host_scalar = None
             self._draft_next_values = None
             self._draft_next_tokens = None
             self._draft_next_token_view = None
@@ -160,6 +173,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._target_token_column_views = []
             self._match_views = []
             self._accept_prefix_views = []
+            self._accept_prefix_row_views = []
             self._draft_id_views = []
             self._draft_id_column_views = []
             self._speculation_step_ranges = []
@@ -196,6 +210,16 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device="cpu",
             pin_memory=torch.cuda.is_available(),
         )
+        self._accept_count_device_scalar = self._accept_count_device[0]
+        self._accept_count_host_scalar = self._accept_count_host[0]
+        self._accept_all_device = torch.empty((1,), device=self.device, dtype=torch.bool)
+        self._accept_all_host = torch.empty(
+            (1,),
+            dtype=torch.bool,
+            device="cpu",
+            pin_memory=torch.cuda.is_available(),
+        )
+        self._accept_all_host_scalar = self._accept_all_host[0]
         self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
         self._draft_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
         self._draft_next_token_view = self._draft_next_tokens.view(1, 1)
@@ -217,6 +241,9 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_prefix_views = [
             self._accept_prefix[:, :k] for k in range(1, wl.speculative_k + 1)
         ]
+        self._accept_prefix_row_views = [
+            self._accept_prefix[0, :k] for k in range(1, wl.speculative_k + 1)
+        ]
         self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]
         self._draft_id_column_views = [
             self._draft_ids[:, token_idx] for token_idx in range(wl.speculative_k)
@@ -235,6 +262,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             len(self._target_token_column_views),
             len(self._match_views),
             len(self._accept_prefix_views),
+            len(self._accept_prefix_row_views),
             len(self._draft_id_views),
             len(self._draft_id_column_views),
             len(self._speculation_step_ranges),
@@ -245,6 +273,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             wl.speculative_k,
             wl.speculative_k,
             verify_tail_count,
+            wl.speculative_k,
             wl.speculative_k,
             wl.speculative_k,
             wl.speculative_k,
@@ -302,6 +331,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         if (
             self.target_model is None
             or self.input_ids is None
+            or self._input_token_view is None
             or self._output_ids is None
             or self._greedy_next_values is None
             or self._greedy_next_tokens is None
@@ -314,6 +344,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise RuntimeError("Benchmark not initialized")
 
         out = self._output_ids
+        input_token_view = self._input_token_view
         target_forward_into_prepared = self.target_model.forward_into_prepared_unchecked
         target_logits = self._greedy_logits
         target_logits_next = self._greedy_logits_next
@@ -322,7 +353,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         greedy_forward_buffers = self._greedy_forward_buffers
         output_step_views = self._output_step_views
         output_token_views = self._output_token_views
-        self._output_token_views[0].copy_(self.input_ids[:, 0])
+        output_token_views[0].copy_(input_token_view)
 
         with self._nvtx_range(self.label):
             with torch.inference_mode():
@@ -338,6 +369,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.target_model is None
             or self.draft_model is None
             or self.input_ids is None
+            or self._input_token_view is None
             or self._output_ids is None
             or self._draft_ids is None
             or self._verify_prev is None
@@ -345,6 +377,11 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._accept_prefix is None
             or self._accept_count_device is None
             or self._accept_count_host is None
+            or self._accept_count_device_scalar is None
+            or self._accept_count_host_scalar is None
+            or self._accept_all_device is None
+            or self._accept_all_host is None
+            or self._accept_all_host_scalar is None
             or self._draft_next_values is None
             or self._draft_next_tokens is None
             or self._draft_next_token_view is None
@@ -362,6 +399,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         wl = self.workload
         out = self._output_ids
+        input_token_view = self._input_token_view
         draft_forward_into_prepared = self.draft_model.forward_into_prepared_unchecked
         target_forward_into_prepared = self.target_model.forward_into_prepared_unchecked
         draft_forward_buffers = self._draft_forward_buffers
@@ -378,6 +416,12 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         target_token_column_views = self._target_token_column_views
         match_views = self._match_views
         accept_prefix_views = self._accept_prefix_views
+        accept_prefix_row_views = self._accept_prefix_row_views
+        accept_count_device_scalar = self._accept_count_device_scalar
+        accept_count_host_scalar = self._accept_count_host_scalar
+        accept_all_device = self._accept_all_device
+        accept_all_host = self._accept_all_host
+        accept_all_host_scalar = self._accept_all_host_scalar
         draft_id_views = self._draft_id_views
         draft_id_column_views = self._draft_id_column_views
         speculation_step_ranges = self._speculation_step_ranges
@@ -386,9 +430,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         draft_next_token_view = self._draft_next_token_view
         draft_logits = self._draft_logits
         draft_logits_next = self._draft_logits_next
-        accept_count_device = self._accept_count_device
-        accept_count_host = self._accept_count_host
-        output_token_views[0].copy_(self.input_ids[:, 0])
+        output_token_views[0].copy_(input_token_view)
 
         draft_tokens = 0
         accepted_draft = 0
@@ -428,11 +470,16 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     torch.max(logits_t, dim=-1, out=(target_values, target_next))
                     matches = match_views[view_idx]
                     torch.eq(target_next, draft_window, out=matches)
-                    accept_prefix = accept_prefix_views[view_idx]
-                    torch.cumprod(matches, dim=-1, dtype=torch.int64, out=accept_prefix)
-                    torch.sum(accept_prefix[0], dim=0, out=accept_count_device[0])
-                    accept_count_host.copy_(accept_count_device, non_blocking=False)
-                    accept_k = int(accept_count_host[0])
+                    torch.all(matches, dim=-1, out=accept_all_device)
+                    accept_all_host.copy_(accept_all_device, non_blocking=False)
+                    if bool(accept_all_host_scalar):
+                        accept_k = k
+                    else:
+                        accept_prefix = accept_prefix_views[view_idx]
+                        torch.cumprod(matches, dim=-1, dtype=torch.int64, out=accept_prefix)
+                        torch.sum(accept_prefix_row_views[view_idx], dim=0, out=accept_count_device_scalar)
+                        accept_count_host_scalar.copy_(accept_count_device_scalar, non_blocking=False)
+                        accept_k = int(accept_count_host_scalar)
 
                     if accept_k == k:
                         output_write_views[view_idx][pos].copy_(draft_window)
@@ -471,6 +518,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.target_model = None
         self.draft_model = None
         self.input_ids = None
+        self._input_token_view = None
         self._output_ids = None
         self._output_step_views = []
         self._output_token_views = []
@@ -482,6 +530,11 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_prefix = None
         self._accept_count_device = None
         self._accept_count_host = None
+        self._accept_count_device_scalar = None
+        self._accept_count_host_scalar = None
+        self._accept_all_device = None
+        self._accept_all_host = None
+        self._accept_all_host_scalar = None
         self._greedy_next_values = None
         self._greedy_next_tokens = None
         self._greedy_logits = None
@@ -503,6 +556,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._target_token_column_views = []
         self._match_views = []
         self._accept_prefix_views = []
+        self._accept_prefix_row_views = []
         self._draft_id_views = []
         self._draft_id_column_views = []
         self._speculation_step_ranges = []

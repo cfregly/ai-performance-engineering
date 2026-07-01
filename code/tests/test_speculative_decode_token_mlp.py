@@ -1,6 +1,9 @@
+from dataclasses import replace
+
 import torch
 import pytest
 
+from ch15.speculative_decoding_benchmarks import SpeculativeDecodingBenchmark
 from ch15.speculative_decoding_common import TokenMLP as ChapterTokenMLP
 from labs.speculative_decode.baseline_speculative_decode_trusted import (
     BaselineSpeculativeDecodeTrustedBenchmark,
@@ -110,6 +113,36 @@ def test_ch15_token_mlp_forward_into_prepared_unchecked_matches_forward() -> Non
 
     assert actual.data_ptr() == logits_out.data_ptr()
     torch.testing.assert_close(actual, expected)
+
+
+def test_ch15_speculative_decode_fallback_matches_greedy_when_draft_rejects() -> None:
+    workload_overrides = {
+        "vocab_size": 64,
+        "target_hidden": 32,
+        "target_layers": 1,
+        "draft_hidden": 8,
+        "speculative_k": 4,
+        "total_tokens": 12,
+        "tail_scale": 1.0,
+        "dtype": torch.float32,
+    }
+    outputs = []
+    metrics = []
+    for use_speculative in (False, True):
+        bench = SpeculativeDecodingBenchmark(use_speculative=use_speculative, label="fallback_check")
+        bench.workload = replace(bench.workload, **workload_overrides)
+        try:
+            bench.setup()
+            bench.benchmark_fn()
+            assert bench.output is not None
+            outputs.append(bench.output.detach().cpu().clone())
+            metrics.append(bench.get_custom_metrics())
+        finally:
+            bench.teardown()
+
+    assert torch.equal(outputs[0], outputs[1])
+    assert metrics[1] is not None
+    assert metrics[1]["speculative.acceptance_rate_pct"] < 100.0
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for trusted speculative decode")
