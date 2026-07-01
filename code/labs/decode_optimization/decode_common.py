@@ -113,6 +113,7 @@ class DecodeConfig:
     graph_full_iteration: bool = False
     use_torch_compile: bool = False
     reuse_device_prompt: bool = False
+    reuse_prefill_state: bool = False
     candidate_vocab_size: int = 0
     candidate_logits_only: bool = False
     iterations: int = 8
@@ -179,6 +180,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.gpu_payload: Optional[torch.Tensor] = None
         self.gpu_prompt_last_token: Optional[torch.Tensor] = None
         self.state_buffer: Optional[torch.Tensor] = None
+        self._resident_prefill_states: list[torch.Tensor] = []
+        self._resident_prefill_state: Optional[torch.Tensor] = None
         self._summary_buffer: Optional[torch.Tensor] = None
         self._config_tensor: Optional[torch.Tensor] = None
         self._copy_done_events: list[torch.cuda.Event] = []
@@ -201,6 +204,10 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             raise ValueError("candidate_vocab_size cannot exceed vocab_size")
         if self.cfg.candidate_logits_only and self.cfg.candidate_vocab_size <= 0:
             raise ValueError("candidate_logits_only requires candidate_vocab_size > 0")
+        if self.cfg.reuse_prefill_state and not self.cfg.reuse_device_prompt:
+            raise ValueError("reuse_prefill_state requires reuse_device_prompt")
+        if self.cfg.reuse_prefill_state and self.cfg.graph_full_iteration:
+            raise ValueError("reuse_prefill_state is incompatible with graph_full_iteration")
         if self.cfg.use_te_mlp and not TE_AVAILABLE:
             raise RuntimeError(
                 "SKIPPED: use_te_mlp requested but Transformer Engine is unavailable"
@@ -335,6 +342,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._maybe_compile()
         if self.cfg.use_cuda_graphs:
             self._capture_decode_graph()
+        self._populate_resident_prefill_states()
         self._refresh_static_custom_metrics()
         total_tokens = (
             self.cfg.prefetch_batches
@@ -367,6 +375,10 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self.cfg.use_torch_compile and not self._compile_error
         )
         metrics["reuse_device_prompt"] = float(self.cfg.reuse_device_prompt)
+        metrics["reuse_prefill_state"] = float(self.cfg.reuse_prefill_state)
+        metrics["prefill_computes_per_iteration"] = (
+            0.0 if self.cfg.reuse_prefill_state else float(self.cfg.prefetch_batches)
+        )
         prompt_copy_count = (
             0.0 if self.cfg.reuse_device_prompt else float(self.cfg.prefetch_batches)
         )
@@ -618,7 +630,26 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             gpu_prompt.copy_(self.host_prompts[idx], non_blocking=False)
         for idx, gpu_payload in enumerate(self.gpu_payloads):
             gpu_payload.copy_(self.host_payloads[idx], non_blocking=False)
-        torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+
+    def _populate_resident_prefill_states(self) -> None:
+        """Cache deterministic prefill outputs once for static-prefix serving."""
+        self._resident_prefill_states = []
+        self._resident_prefill_state = None
+        if not self.cfg.reuse_prefill_state:
+            return
+        if self.state_buffer is None or not self.gpu_prompts:
+            raise RuntimeError("Device buffers must be initialized before prefill caching")
+
+        with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():
+            for gpu_prompt in self.gpu_prompts:
+                cached_state = torch.empty_like(self.state_buffer)
+                cached_state.copy_(self.prefill_fn(gpu_prompt))
+                self._resident_prefill_states.append(cached_state)
+        self._resident_prefill_state = self._resident_prefill_states[0]
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
 
     # Compiled / graphed helpers
     def _maybe_compile(self) -> None:
@@ -827,9 +858,12 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         prompt: torch.Tensor,
         prompt_last_token: torch.Tensor,
         stream: torch.cuda.Stream,
+        cached_prefill_state: Optional[torch.Tensor] = None,
     ) -> None:
         with torch.cuda.stream(stream):
-            prefill_state = self.prefill_fn(prompt)
+            prefill_state = cached_prefill_state
+            if prefill_state is None:
+                prefill_state = self.prefill_fn(prompt)
             self.state_buffer.copy_(prefill_state)
             self.current_tokens.copy_(prompt_last_token)
             self._run_decode_loop()
@@ -873,6 +907,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.gpu_prompts[0],
                 self.gpu_prompt_last_tokens[0],
                 prefill_stream,
+                self._resident_prefill_states[0] if self.cfg.reuse_prefill_state else None,
             )
             if nvtx:
                 nvtx.range_pop()
@@ -889,6 +924,7 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.gpu_prompts[1],
                 self.gpu_prompt_last_tokens[1],
                 prefill_stream,
+                self._resident_prefill_states[1] if self.cfg.reuse_prefill_state else None,
             )
             if nvtx:
                 nvtx.range_pop()
@@ -938,7 +974,9 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         with self._get_fp8_context(), torch.inference_mode(), self.sdpa_ctx_factory():
             # Prefill unless the captured graph already contains the full iteration.
             if self.decode_graph is None or not self.graph_includes_prefill:
-                prefill_state = self.prefill_fn(self.gpu_prompt)
+                prefill_state = self._resident_prefill_state
+                if prefill_state is None:
+                    prefill_state = self.prefill_fn(self.gpu_prompt)
                 self.state_buffer.copy_(prefill_state)
                 self.current_tokens.copy_(self.gpu_prompt_last_token)
             prefill_end.record(prefill_stream)
@@ -1125,6 +1163,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "gpu_prompts",
             "gpu_prompt_last_token",
             "gpu_prompt_last_tokens",
+            "_resident_prefill_state",
+            "_resident_prefill_states",
             "host_payload",
             "gpu_payload",
             "host_payloads",

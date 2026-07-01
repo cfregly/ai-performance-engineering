@@ -14,12 +14,18 @@ from labs.decode_optimization.baseline_decode_pinned import (
 from labs.decode_optimization.baseline_decode_device_resident import (
     get_benchmark as get_baseline_decode_device_resident,
 )
+from labs.decode_optimization.baseline_decode_prefix_state_cache import (
+    get_benchmark as get_baseline_decode_prefix_state_cache,
+)
 from labs.decode_optimization.decode_common import DecodeBenchmark, DecodeConfig
 from labs.decode_optimization.optimized_decode_candidate_logits import (
     get_benchmark as get_optimized_decode_candidate_logits,
 )
 from labs.decode_optimization.optimized_decode_device_resident import (
     get_benchmark as get_optimized_decode_device_resident,
+)
+from labs.decode_optimization.optimized_decode_prefix_state_cache import (
+    get_benchmark as get_optimized_decode_prefix_state_cache,
 )
 from labs.decode_optimization.optimized_decode_graph import (
     get_benchmark as get_optimized_decode_graph,
@@ -49,8 +55,10 @@ def test_decode_variants_inherit_subprocess_execution() -> None:
         get_baseline_decode_candidate_logits,
         get_baseline_decode_pinned,
         get_baseline_decode_device_resident,
+        get_baseline_decode_prefix_state_cache,
         get_optimized_decode_candidate_logits,
         get_optimized_decode_device_resident,
+        get_optimized_decode_prefix_state_cache,
         get_optimized_decode_pinned,
         get_optimized_decode_graph,
         get_optimized_decode_ultimate,
@@ -661,6 +669,65 @@ def test_decode_device_resident_pair_changes_only_residency_policy() -> None:
     assert baseline.cfg.use_compute_stream is optimized.cfg.use_compute_stream is False
     assert baseline.cfg.reuse_device_prompt is False
     assert optimized.cfg.reuse_device_prompt is True
+
+
+def test_decode_prefix_state_cache_skips_static_prefill_compute() -> None:
+    source = (REPO_ROOT / "labs" / "decode_optimization" / "decode_common.py").read_text(
+        encoding="utf-8"
+    )
+    config_section = source.split("@dataclass", maxsplit=1)[1].split(
+        "class DecodeBenchmark",
+        maxsplit=1,
+    )[0]
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _refresh_static_custom_metrics",
+        maxsplit=1,
+    )[0]
+    cache_section = source.split("def _populate_resident_prefill_states", maxsplit=1)[1].split(
+        "# Compiled / graphed helpers",
+        maxsplit=1,
+    )[0]
+    prefetch_section = source.split("def _benchmark_prefetch_batches", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def finalize_iteration_metrics",
+        maxsplit=1,
+    )[0]
+
+    assert "reuse_prefill_state: bool = False" in config_section
+    assert "if self.cfg.reuse_prefill_state and not self.cfg.reuse_device_prompt:" in source
+    assert "self._resident_prefill_states: list[torch.Tensor] = []" in source
+    assert "self._resident_prefill_state: Optional[torch.Tensor] = None" in source
+    assert "self._populate_resident_prefill_states()" in setup_section
+    assert "cached_state = torch.empty_like(self.state_buffer)" in cache_section
+    assert "cached_state.copy_(self.prefill_fn(gpu_prompt))" in cache_section
+    assert "self._resident_prefill_state = self._resident_prefill_states[0]" in cache_section
+    assert 'metrics["reuse_prefill_state"] = float(self.cfg.reuse_prefill_state)' in source
+    assert 'metrics["prefill_computes_per_iteration"] = (' in source
+    assert "prefill_state = self._resident_prefill_state" in benchmark_section
+    assert "if prefill_state is None:\n                    prefill_state = self.prefill_fn(self.gpu_prompt)" in benchmark_section
+    assert "self._resident_prefill_states[0] if self.cfg.reuse_prefill_state else None" in prefetch_section
+    assert "self._resident_prefill_states[1] if self.cfg.reuse_prefill_state else None" in prefetch_section
+
+
+def test_decode_prefix_state_cache_pair_changes_only_prefill_reuse_policy() -> None:
+    baseline = get_baseline_decode_prefix_state_cache()
+    optimized = get_optimized_decode_prefix_state_cache()
+
+    assert baseline.cfg.batch_size == optimized.cfg.batch_size == 64
+    assert baseline.cfg.prompt_tokens == optimized.cfg.prompt_tokens == 2048
+    assert baseline.cfg.decode_tokens == optimized.cfg.decode_tokens == 1
+    assert baseline.cfg.prefetch_batches == optimized.cfg.prefetch_batches == 1
+    assert baseline.cfg.host_payload_mb == optimized.cfg.host_payload_mb == 0
+    assert baseline.cfg.hidden_size == optimized.cfg.hidden_size == 256
+    assert baseline.cfg.use_pinned_host is optimized.cfg.use_pinned_host is True
+    assert baseline.cfg.use_copy_stream is optimized.cfg.use_copy_stream is False
+    assert baseline.cfg.use_compute_stream is optimized.cfg.use_compute_stream is False
+    assert baseline.cfg.reuse_device_prompt is optimized.cfg.reuse_device_prompt is True
+    assert baseline.cfg.reuse_prefill_state is False
+    assert optimized.cfg.reuse_prefill_state is True
 
 
 def test_decode_candidate_logits_path_avoids_full_vocab_projection_when_enabled() -> None:
