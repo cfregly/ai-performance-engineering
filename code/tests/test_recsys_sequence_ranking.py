@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
 import torch
 
 from core.harness.benchmark_harness import BenchmarkConfig, ReadOnlyBenchmarkConfigView
@@ -12,6 +13,7 @@ from labs.recsys_sequence_ranking.optimized_sequence_ranking import (
 )
 from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     SequenceRankingWorkload,
+    TRITON_AVAILABLE,
     apply_cli_overrides,
     baseline_forward,
     build_inputs,
@@ -20,12 +22,15 @@ from labs.recsys_sequence_ranking.recsys_sequence_ranking_common import (
     candidate_scores_torch,
     candidate_scores_triton,
     context_sum_baseline,
+    context_sum_triton,
     context_sum_vectorized,
     optimized_forward,
     prepare_context_workspace_for_inputs,
+    prepare_workspace_for_inputs,
     ranking_metrics,
     resolve_score_backend,
     sequence_mean_baseline,
+    sequence_mean_triton,
     sequence_mean_vectorized,
     warm_optimized_path,
 )
@@ -204,6 +209,8 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     assert ".expand(workload.batch_size, -1).clone()" not in build_workspace_source
     assert "out=sequence_embedding_flat" in sequence_source
     assert "out=context_embedding_flat" in context_source
+    assert "return sequence_mean_triton(inputs, state, workspace.sequence_accum, workspace)" in sequence_source
+    assert "return context_sum_triton(inputs, state, workspace.context_accum)" in context_source
     assert "flat_sequence_ids = inputs.sequence_ids_1d" in sequence_source
     assert "flat_candidate_ids = inputs.candidate_ids_1d" in candidate_source
     assert "inputs.sequence_ids.reshape(-1)" not in sequence_source
@@ -222,6 +229,31 @@ def test_workspace_backed_vectorized_helpers_match_fallback_on_cpu() -> None:
     assert workspace_context.data_ptr() == workspace.context_accum.data_ptr()
     torch.testing.assert_close(workspace_sequence, fallback_sequence, rtol=1e-6, atol=1e-6)
     torch.testing.assert_close(workspace_context, fallback_context, rtol=1e-6, atol=1e-6)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not TRITON_AVAILABLE,
+    reason="requires CUDA and Triton",
+)
+@torch.no_grad()
+def test_triton_sparse_poolers_match_vectorized_fallback_on_cuda() -> None:
+    workload = _small_workload()
+    inputs = build_inputs(workload, torch.device("cuda"))
+    state = build_model_state(workload, torch.device("cuda"))
+    workspace = build_workspace(workload, torch.device("cuda"))
+    prepare_workspace_for_inputs(inputs, workspace)
+    prepare_context_workspace_for_inputs(inputs, state, workspace)
+
+    expected_sequence = sequence_mean_vectorized(inputs, state)
+    expected_context = context_sum_vectorized(inputs, state)
+    triton_sequence = sequence_mean_triton(inputs, state, workspace.sequence_accum, workspace)
+    triton_context = context_sum_triton(inputs, state, workspace.context_accum)
+    torch.cuda.synchronize()
+
+    assert triton_sequence.data_ptr() == workspace.sequence_accum.data_ptr()
+    assert triton_context.data_ptr() == workspace.context_accum.data_ptr()
+    torch.testing.assert_close(triton_sequence, expected_sequence, rtol=1e-6, atol=1e-6)
+    torch.testing.assert_close(triton_context, expected_context, rtol=1e-6, atol=1e-6)
 
 
 def test_torch_candidate_scoring_reuses_workspace_output_on_cpu() -> None:
