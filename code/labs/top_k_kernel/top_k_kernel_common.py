@@ -533,8 +533,8 @@ def _run_triton_group_block_scores(
     ) * workload.scale
 
 
-def _run_cutlass_group_block_scores(
-    q_group: torch.Tensor,
+def _run_cutlass_reduced_group_block_scores(
+    q_sum: torch.Tensor,
     block_k: torch.Tensor,
     workload: TopKKernelWorkload,
 ) -> torch.Tensor:
@@ -542,21 +542,20 @@ def _run_cutlass_group_block_scores(
 
     extension = load_top_k_kernel_extension()
 
-    q_group_half = q_group.to(dtype=torch.float16)
+    q_sum_half = q_sum.to(dtype=torch.float16)
     block_k_half = block_k.to(dtype=torch.float16)
     scores = torch.empty(
         workload.batch_size,
         workload.kv_heads,
         workload.q_len,
         workload.num_blocks,
-        device=q_group.device,
+        device=q_sum.device,
         dtype=torch.float32,
     )
 
-    q_groups = q_group_half.reshape(
+    q_groups = q_sum_half.reshape(
         workload.batch_size * workload.kv_heads,
         workload.q_len,
-        workload.gqa_size,
         workload.head_dim,
     )
     block_groups = block_k_half.reshape(
@@ -576,19 +575,11 @@ def _run_cutlass_group_block_scores(
         group_scores = score_groups[group_idx]
         for q_start in range(0, workload.q_len, workload.cuda_q_tile):
             q_end = min(q_start + workload.cuda_q_tile, workload.q_len)
-            q_chunk = q_group_tile[q_start:q_end].reshape(
-                (q_end - q_start) * workload.gqa_size,
-                workload.head_dim,
-            )
             dense_chunk = extension.matmul_cutlass_topk(
-                q_chunk.contiguous(),
+                q_group_tile[q_start:q_end].contiguous(),
                 block_k_tile,
             )
-            group_scores[q_start:q_end].copy_(
-                dense_chunk.view(q_end - q_start, workload.gqa_size, workload.num_blocks)
-                .sum(dim=1)
-                .mul_(workload.scale)
-            )
+            torch.mul(dense_chunk, workload.scale, out=group_scores[q_start:q_end])
     return scores
 
 
@@ -596,13 +587,18 @@ def _run_cuda_reduced_group_block_scores(
     q: torch.Tensor,
     k: torch.Tensor,
     workload: TopKKernelWorkload,
+    *,
+    use_cutlass: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # The grouped Top-K score reduces query heads before selection, so the
     # backward benchmark can score the reduced Q tile directly instead of
     # materializing all GQA rows and summing them after GEMM.
     q_sum = _group_q(q, workload).sum(dim=3, dtype=torch.float32).contiguous()
     block_k = _build_block_k_reduced(k, workload)
-    block_scores = torch.matmul(q_sum, block_k.transpose(-1, -2)) * workload.scale
+    if use_cutlass:
+        block_scores = _run_cutlass_reduced_group_block_scores(q_sum, block_k, workload)
+    else:
+        block_scores = torch.matmul(q_sum, block_k.transpose(-1, -2)) * workload.scale
     return block_scores, q_sum, block_k
 
 
@@ -741,20 +737,12 @@ class CudaTopKSelectionFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, q: torch.Tensor, k: torch.Tensor, workload: TopKKernelWorkload):
         needs_backward = bool(ctx.needs_input_grad[0] or ctx.needs_input_grad[1])
-        if workload.mode == "fwd_bwd":
-            block_scores, q_sum, block_k = _run_cuda_reduced_group_block_scores(
-                q,
-                k,
-                workload,
-            )
-        else:
-            if needs_backward:
-                q_group = _group_q(q.float().contiguous(), workload)
-            else:
-                q_group = _group_q(q, workload)
-            block_k = _build_block_k(k, workload)
-            block_scores = _run_cutlass_group_block_scores(q_group, block_k, workload)
-            q_sum = q_group.sum(dim=3).contiguous() if needs_backward else None
+        block_scores, q_sum, block_k = _run_cuda_reduced_group_block_scores(
+            q,
+            k,
+            workload,
+            use_cutlass=workload.mode == "forward",
+        )
         probs, topk_indices = _finalize_topk_from_block_scores(block_scores, workload)
         if needs_backward:
             ctx.save_for_backward(q_sum, block_k, probs, topk_indices)

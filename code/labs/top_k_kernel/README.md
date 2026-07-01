@@ -41,7 +41,8 @@ This refactor makes that grouping explicit:
 ### CUDA / CUTLASS
 - explicit grouped-query workload
 - pre-aggregate each selection block into one block-key vector
-- CUTLASS-backed GEMM helper scores grouped query tiles against block keys
+- reduce each GQA query-head group before scoring
+- CUTLASS-backed GEMM helper scores reduced query tiles against block keys
 - grouped backward reuses the saved per-group `q_sum` and block-key reductions, then computes `dQ` / `dK` from the reduced block-score graph
 
 ## Targets
