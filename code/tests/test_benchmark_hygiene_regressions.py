@@ -21027,8 +21027,6 @@ def test_ch15_baseline_kv_cache_management_reuses_step_views() -> None:
     assert "self._k_buffer: Optional[torch.Tensor] = None" in source
     assert "self._v_buffer: Optional[torch.Tensor] = None" in source
     assert "self._q_attn_view: Optional[torch.Tensor] = None" in source
-    assert "self._attn_step_bhld: Optional[torch.Tensor] = None" in source
-    assert "self._attn_step_buffer: Optional[torch.Tensor] = None" in source
     assert "self._out_proj_weight_t: Optional[torch.Tensor] = None" in source
     assert "self._q_proj_weight_t: Optional[torch.Tensor] = None" in source
     assert "self._k_proj_weight_t: Optional[torch.Tensor] = None" in source
@@ -21047,9 +21045,9 @@ def test_ch15_baseline_kv_cache_management_reuses_step_views() -> None:
     assert "self._k_buffer = torch.empty_like(self._output_buffer)" in setup_section
     assert "self._v_buffer = torch.empty_like(self._output_buffer)" in setup_section
     assert "self._q_attn_view = self._q_buffer.view(" in setup_section
-    assert "self._attn_step_buffer = torch.empty(" in setup_section
-    assert "self._attn_step_bhld = self._attn_step_buffer.transpose(1, 2)" in setup_section
-    assert "self._attn_step_2d = self._attn_step_buffer.view(" in setup_section
+    assert "_attn_step_bhld" not in source
+    assert "_attn_step_buffer" not in source
+    assert "_attn_step_2d" not in source
     assert "self._query_step_views = [self.tokens[:, t : t + 1, :] for t in range(self.steps)]" in setup_section
     assert "self._prefix_views = [self.tokens[:, : t + 1, :] for t in range(self.steps)]" in setup_section
     assert "self._k_prefix_views = [self._k_buffer[:, : t + 1, :] for t in range(self.steps)]" in setup_section
@@ -21081,10 +21079,10 @@ def test_ch15_baseline_kv_cache_management_reuses_step_views() -> None:
     assert "k = self.k_proj(prefix)" not in benchmark_section
     assert "v = self.v_proj(prefix)" not in benchmark_section
     assert ".reshape(self.batch_size, -1, self.num_heads, self.head_dim)" not in benchmark_section
-    assert ".transpose(1, 2)" not in benchmark_section
-    assert "self._attn_step_bhld.copy_(attn)" in benchmark_section
-    assert "attn.transpose(1, 2)" not in benchmark_section
-    assert "torch.mm(self._attn_step_2d, self._out_proj_weight_t, out=output_step_2d)" in benchmark_section
+    assert "prefix.view(self.batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)" not in benchmark_section
+    assert "self._attn_step_bhld.copy_(attn)" not in benchmark_section
+    assert "attn_2d = attn.transpose(1, 2).reshape(self.batch_size, self.hidden_dim)" in benchmark_section
+    assert "torch.mm(attn_2d, self._out_proj_weight_t, out=output_step_2d)" in benchmark_section
     assert "attn.transpose(1, 2).contiguous()" not in benchmark_section
     assert "out = self.out_proj(attn)" not in benchmark_section
     assert "output_step.copy_(out)" not in benchmark_section

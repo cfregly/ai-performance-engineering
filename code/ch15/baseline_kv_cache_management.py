@@ -44,9 +44,6 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._k_buffer: Optional[torch.Tensor] = None
         self._v_buffer: Optional[torch.Tensor] = None
         self._q_attn_view: Optional[torch.Tensor] = None
-        self._attn_step_bhld: Optional[torch.Tensor] = None
-        self._attn_step_buffer: Optional[torch.Tensor] = None
-        self._attn_step_2d: Optional[torch.Tensor] = None
         self._q_proj_weight_t: Optional[torch.Tensor] = None
         self._k_proj_weight_t: Optional[torch.Tensor] = None
         self._v_proj_weight_t: Optional[torch.Tensor] = None
@@ -128,16 +125,6 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
             self.num_heads,
             self.head_dim,
         ).transpose(1, 2)
-        self._attn_step_buffer = torch.empty(
-            self.batch_size,
-            1,
-            self.num_heads,
-            self.head_dim,
-            device=self.device,
-            dtype=torch.bfloat16,
-        )
-        self._attn_step_bhld = self._attn_step_buffer.transpose(1, 2)
-        self._attn_step_2d = self._attn_step_buffer.view(self.batch_size, self.hidden_dim)
         self._query_step_views = [self.tokens[:, t : t + 1, :] for t in range(self.steps)]
         self._prefix_views = [self.tokens[:, : t + 1, :] for t in range(self.steps)]
         self._k_prefix_views = [self._k_buffer[:, : t + 1, :] for t in range(self.steps)]
@@ -196,8 +183,6 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         assert self._output_buffer is not None
         assert self._q_buffer is not None and self._q_attn_view is not None
         assert self._k_buffer is not None and self._v_buffer is not None
-        assert self._attn_step_buffer is not None and self._attn_step_bhld is not None
-        assert self._attn_step_2d is not None
         assert self._q_proj_weight_t is not None
         assert self._k_proj_weight_t is not None
         assert self._v_proj_weight_t is not None
@@ -216,8 +201,8 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
                     # so a causal mask is unnecessary here; is_causal=True would
                     # incorrectly mask all but the first key.
                     attn = F.scaled_dot_product_attention(q, k, v, is_causal=False)
-                    self._attn_step_bhld.copy_(attn)
-                    torch.mm(self._attn_step_2d, self._out_proj_weight_t, out=output_step_2d)
+                    attn_2d = attn.transpose(1, 2).reshape(self.batch_size, self.hidden_dim)
+                    torch.mm(attn_2d, self._out_proj_weight_t, out=output_step_2d)
 
                 self.output = outputs
         if self.output is None:
@@ -253,9 +238,6 @@ class BaselineKVCacheManagementBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._k_buffer = None
         self._v_buffer = None
         self._q_attn_view = None
-        self._attn_step_bhld = None
-        self._attn_step_buffer = None
-        self._attn_step_2d = None
         self._q_proj_weight_t = None
         self._k_proj_weight_t = None
         self._v_proj_weight_t = None
