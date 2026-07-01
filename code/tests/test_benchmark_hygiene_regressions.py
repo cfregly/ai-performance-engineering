@@ -19498,12 +19498,18 @@ def test_labs_transition_table_speculative_decode_uses_lookup_hot_path() -> None
     assert '"speculative.transition_table": 0.0' in baseline_source
     assert '"speculative.draft_model_calls": 0.0' in baseline_source
     assert "self._transition_table = torch.empty(" in setup_section
-    assert "draft_forward_into(token_ids[:, start:end], logits_view)" in setup_section
+    assert "draft_forward_into_prepared = draft_model.forward_into_prepared" in setup_section
+    assert "transition_forward_buffers = draft_model.prepare_forward_buffers(" in setup_section
+    assert "draft_forward_into_prepared(token_ids[:, start:end], logits_view, forward_buffers)" in setup_section
+    assert "draft_forward_into(token_ids[:, start:end], logits_view)" not in setup_section
     assert "transition_token_view = self._transition_table[start:end].view(1, width)" in setup_section
     assert "torch.max(logits_view, dim=-1, out=(values_view, transition_token_view))" in setup_section
     assert "tokens = torch.empty" not in setup_section
     assert "self._transition_table[start:end].copy_" not in setup_section
     assert "self.draft_model = None" in setup_section
+    assert "self._draft_forward_buffers = None" in setup_section
+    assert "self._forward_buffer_counts = (0, 0)" in setup_section
+    assert "self._expected_forward_buffer_counts = (0, 0)" in setup_section
     assert "self._transition_current_token = torch.empty((1,), device=self.device, dtype=torch.long)" in setup_section
     assert "current_token = self._transition_current_token" in benchmark_section
     assert "current_token.copy_(self.input_ids[:, 0])" in benchmark_section

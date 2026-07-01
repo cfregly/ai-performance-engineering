@@ -32,13 +32,19 @@ class OptimizedSpeculativeDecodeTransitionTableBenchmark(OptimizedSpeculativeDec
 
         wl = self.workload
         chunk = int(self.transition_chunk_tokens)
+        draft_model = self.draft_model
         self._transition_table = torch.empty(wl.vocab_size, device=self.device, dtype=torch.long)
         self._transition_current_token = torch.empty((1,), device=self.device, dtype=torch.long)
         self._transition_next_token = torch.empty((1,), device=self.device, dtype=torch.long)
         token_ids = torch.arange(wl.vocab_size, device=self.device, dtype=torch.long).view(1, wl.vocab_size)
         logits = torch.empty((1, chunk, wl.vocab_size), device=self.device, dtype=wl.dtype)
         values = torch.empty((1, chunk), device=self.device, dtype=wl.dtype)
-        draft_forward_into = self.draft_model.forward_into
+        draft_forward_into_prepared = draft_model.forward_into_prepared
+        transition_forward_buffers = draft_model.prepare_forward_buffers(
+            chunk,
+            device=self.device,
+            dtype=wl.dtype,
+        )
 
         with torch.inference_mode():
             for start in range(0, wl.vocab_size, chunk):
@@ -47,10 +53,22 @@ class OptimizedSpeculativeDecodeTransitionTableBenchmark(OptimizedSpeculativeDec
                 logits_view = logits[:, :width]
                 values_view = values[:, :width]
                 transition_token_view = self._transition_table[start:end].view(1, width)
-                draft_forward_into(token_ids[:, start:end], logits_view)
+                forward_buffers = (
+                    transition_forward_buffers
+                    if width == chunk
+                    else draft_model.prepare_forward_buffers(
+                        width,
+                        device=self.device,
+                        dtype=wl.dtype,
+                    )
+                )
+                draft_forward_into_prepared(token_ids[:, start:end], logits_view, forward_buffers)
                 torch.max(logits_view, dim=-1, out=(values_view, transition_token_view))
 
         self.draft_model = None
+        self._draft_forward_buffers = None
+        self._forward_buffer_counts = (0, 0)
+        self._expected_forward_buffer_counts = (0, 0)
         self._token_range = range(wl.total_tokens)
         torch.cuda.empty_cache()
 
