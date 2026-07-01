@@ -18300,7 +18300,11 @@ def test_moe_level6_full_stack_weights_expert_outputs_in_place() -> None:
     assert "gate.mul_(up)" in experts_forward
     assert "torch.einsum('bki,bkih->bkh', gate, w2_sel)" in experts_forward
     assert "out.mul_(expert_weights.unsqueeze(-1))" in experts_forward
-    assert "return out.sum(dim=1)" in experts_forward
+    assert "reduced = out[:, 0, :]" in experts_forward
+    assert "for route_idx in range(1, top_k):" in experts_forward
+    assert "reduced.add_(out[:, route_idx, :])" in experts_forward
+    assert "return reduced" in experts_forward
+    assert "return out.sum(dim=1)" not in experts_forward
     assert "gate = F.silu(gate)" not in experts_forward
     assert "hidden = gate * up" not in experts_forward
     assert "(out * expert_weights.unsqueeze(-1)).sum(dim=1)" not in experts_forward

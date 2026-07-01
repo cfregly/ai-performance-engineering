@@ -68,7 +68,10 @@ class CUDAGraphMoEExperts(nn.Module):
         
         # Weight and sum
         out.mul_(expert_weights.unsqueeze(-1))
-        return out.sum(dim=1)
+        reduced = out[:, 0, :]
+        for route_idx in range(1, top_k):
+            reduced.add_(out[:, route_idx, :])
+        return reduced
 
 
 class CUDAGraphMoELayer(nn.Module):
