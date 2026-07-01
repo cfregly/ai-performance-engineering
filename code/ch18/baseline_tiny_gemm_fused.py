@@ -78,8 +78,7 @@ class BaselineTinyGemmBenchmark(VerificationPayloadMixin, BaseBenchmark):
             torch.mm(self.x, self.w_k, out=self._k_buffer)
             torch.mm(self.x, self.w_v, out=self._v_buffer)
             torch.mm(self.x, self.w_router, out=self._router_buffer)
-            self._sum_buffer.copy_(self._q_buffer)
-            self._sum_buffer.add_(self._k_buffer)
+            torch.add(self._q_buffer, self._k_buffer, out=self._sum_buffer)
             self._sum_buffer.add_(self._v_buffer)
             self._sum_buffer.add_(self._router_buffer)
             self.output = self._sum_buffer

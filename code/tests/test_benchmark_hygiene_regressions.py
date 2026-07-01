@@ -7912,8 +7912,8 @@ def test_ch18_tiny_gemm_fused_accumulates_split_views_in_place() -> None:
     assert "torch.mm(self.x, self.w_k, out=self._k_buffer)" in baseline_benchmark
     assert "torch.mm(self.x, self.w_v, out=self._v_buffer)" in baseline_benchmark
     assert "torch.mm(self.x, self.w_router, out=self._router_buffer)" in baseline_benchmark
-    assert "self._sum_buffer.copy_(self._q_buffer)" in baseline_benchmark
-    assert "self._sum_buffer.add_(self._k_buffer)" in baseline_benchmark
+    assert "self._sum_buffer.copy_(self._q_buffer)" not in baseline_benchmark
+    assert "torch.add(self._q_buffer, self._k_buffer, out=self._sum_buffer)" in baseline_benchmark
     assert "self._sum_buffer.add_(self._v_buffer)" in baseline_benchmark
     assert "self._sum_buffer.add_(self._router_buffer)" in baseline_benchmark
     assert "self.output = self._sum_buffer" in baseline_benchmark
