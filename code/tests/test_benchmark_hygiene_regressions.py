@@ -5750,6 +5750,8 @@ def test_ch10_optimized_batch_reuses_mlp_buffers() -> None:
 
     assert "self._fc1_buffer: torch.Tensor | None = None" in model_section
     assert "self._fc2_buffer: torch.Tensor | None = None" in model_section
+    assert "self._fc1_forward_view: torch.Tensor | None = None" in model_section
+    assert "self._fc2_forward_view: torch.Tensor | None = None" in model_section
     assert "self._fc1_weight_t: torch.Tensor | None = None" in model_section
     assert "self._fc2_weight_t: torch.Tensor | None = None" in model_section
     assert "def cache_weight_views(self) -> None:" in model_section
@@ -5757,6 +5759,10 @@ def test_ch10_optimized_batch_reuses_mlp_buffers() -> None:
     assert "self._fc2_weight_t = self.fc2.weight.t()" in model_section
     assert "def _workspace(" in model_section
     assert "def _ensure_forward_buffers(" in model_section
+    assert "def prepare_forward_buffers(self, x: torch.Tensor) -> None:" in model_section
+    assert "self._fc1_forward_view, self._fc2_forward_view = self._ensure_forward_buffers(x)" in model_section
+    assert "def forward_prepared(self, x: torch.Tensor) -> torch.Tensor:" in model_section
+    assert 'raise RuntimeError("forward_prepared() requires prepare_forward_buffers()")' in model_section
     assert "or buffer.numel() < numel" in model_section
     assert "return buffer[:numel].view(rows, width)" in model_section
     assert "self._fc1_buffer.shape != fc1_shape" not in model_section
@@ -5771,8 +5777,10 @@ def test_ch10_optimized_batch_reuses_mlp_buffers() -> None:
     assert "self.fc2.weight.t()" not in forward_section
     assert "self.model = BufferedBatchMlp(self.hidden_dim, self.ffn_dim)" in setup_section
     assert "self.model.cache_weight_views()" in setup_section
+    assert "self.model.prepare_forward_buffers(self.input)" in setup_section
     assert "nn.Sequential(" not in setup_section
-    assert "self.output = self.model(self.input)" in benchmark_section
+    assert "self.output = self.model.forward_prepared(self.input)" in benchmark_section
+    assert "self.output = self.model(self.input)" not in benchmark_section
     assert "self._verify_output_buffer: torch.Tensor | None = None" in source
     assert "self._verify_output_buffer = torch.empty_like(self.input)" in setup_section
     assert "self._verify_output_buffer.copy_(self.output)" in capture_section
@@ -5790,11 +5798,15 @@ def test_ch10_buffered_batch_mlp_reuses_larger_workspace_capacity() -> None:
         fc1_ptr = model._fc1_buffer.data_ptr()
         fc2_ptr = model._fc2_buffer.data_ptr()
         small = model(torch.randn(3, 4))
+        model.prepare_forward_buffers(torch.randn(8, 4))
+        prepared = model.forward_prepared(torch.randn(8, 4))
         grown = model(torch.randn(9, 4))
 
     assert large.shape == (8, 4)
     assert small.shape == (3, 4)
     assert small.data_ptr() == fc2_ptr
+    assert prepared.shape == (8, 4)
+    assert prepared.data_ptr() == fc2_ptr
     assert model._fc1_buffer.numel() == 9 * 6
     assert model._fc2_buffer.numel() == 9 * 4
     assert model._fc1_buffer.data_ptr() != fc1_ptr or model._fc1_buffer.numel() > 8 * 6
