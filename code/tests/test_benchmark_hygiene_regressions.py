@@ -3233,9 +3233,9 @@ def test_fixed_dimension_benchmark_hot_loops_reuse_cached_ranges() -> None:
         ),
         (
             "labs/moe_cuda/baseline_kv_transfer.py",
-            "self._chunk_range = range(self.num_chunks)",
+            "self._chunk_triplets = list(",
+            "for chunk, workspace_chunk, dest_chunk in self._chunk_triplets:",
             "for i in self._chunk_range:",
-            "for i in range(self.num_chunks):",
         ),
     )
 
@@ -7988,8 +7988,23 @@ def test_moe_cuda_kv_transfer_defers_verification_tensors_outside_hot_loop() -> 
         assert "get_config()" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert "enable=self._enable_nvtx" in benchmark_section
+        assert "torch.inference_mode()" in benchmark_section
 
-        if name == "optimized_kv_transfer.py":
+        if name == "baseline_kv_transfer.py":
+            assert "self._chunk_triplets: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []" in source
+            assert "self._chunk_triplets = list(" in setup_section
+            assert "self.input_chunks.unbind(0)" in setup_section
+            assert "self.workspace.unbind(0)" in setup_section
+            assert "self.kv_dest.unbind(0)" in setup_section
+            assert "if not self._chunk_triplets:" in benchmark_section
+            assert "for chunk, workspace_chunk, dest_chunk in self._chunk_triplets:" in benchmark_section
+            assert "torch.matmul(chunk, self.weight, out=workspace_chunk)" in benchmark_section
+            assert "dest_chunk.copy_(workspace_chunk)" in benchmark_section
+            assert "out = torch.matmul" not in benchmark_section
+            assert "self.workspace[i].copy_" not in benchmark_section
+            assert "self.kv_dest[i].copy_" not in benchmark_section
+            assert "self._chunk_triplets = []" in teardown_section
+        elif name == "optimized_kv_transfer.py":
             launch_compute_section = source.split("def _launch_compute", maxsplit=1)[1].split(
                 "def _launch_copy",
                 maxsplit=1,

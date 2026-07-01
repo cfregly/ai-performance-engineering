@@ -25,12 +25,12 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.chunk_size = 256
         # Baseline for both overlap and graphs variants.
         self.num_chunks = 32
-        self._chunk_range = range(self.num_chunks)
         self.dtype = torch.float16
         self.input_chunks: Optional[torch.Tensor] = None
         self.weight: Optional[torch.Tensor] = None
         self.workspace: Optional[torch.Tensor] = None
         self.kv_dest: Optional[torch.Tensor] = None
+        self._chunk_triplets: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
         self.output: Optional[torch.Tensor] = None
         self._output_view: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
@@ -50,7 +50,6 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         torch.cuda.manual_seed_all(42)
         config = getattr(self, "_config", None) or self.get_config()
         self._enable_nvtx = get_nvtx_enabled(config) if config else False
-        self._chunk_range = range(self.num_chunks)
         self.input_chunks = torch.randn(
             self.num_chunks,
             self.chunk_size,
@@ -66,6 +65,14 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         )
         self.workspace = torch.empty_like(self.input_chunks)
         self.kv_dest = torch.empty_like(self.input_chunks)
+        self._chunk_triplets = list(
+            zip(
+                self.input_chunks.unbind(0),
+                self.workspace.unbind(0),
+                self.kv_dest.unbind(0),
+                strict=True,
+            )
+        )
         self._output_view = self.kv_dest[0, :1, : min(8, self.hidden_size)]
         self._verify_output_buffer = torch.empty_like(self._output_view, dtype=torch.float32)
         self._payload_meta = torch.tensor([self.hidden_size], dtype=torch.int64, device="cpu")
@@ -79,13 +86,14 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.kv_dest is None
         ):
             raise RuntimeError("Buffers not initialized")
+        if not self._chunk_triplets:
+            raise RuntimeError("Chunk views not initialized")
 
         with nvtx_range("moe_cuda_kv_baseline", enable=self._enable_nvtx):
-            for i in self._chunk_range:
-                chunk = self.input_chunks[i]
-                out = torch.matmul(chunk, self.weight)
-                self.workspace[i].copy_(out)
-                self.kv_dest[i].copy_(self.workspace[i])
+            with torch.inference_mode():
+                for chunk, workspace_chunk, dest_chunk in self._chunk_triplets:
+                    torch.matmul(chunk, self.weight, out=workspace_chunk)
+                    dest_chunk.copy_(workspace_chunk)
         # Verification: capture first chunk output (common across optimized variants)
         self.output = self._output_view
         if self.output is None:
@@ -110,6 +118,7 @@ class BaselineKVTransferBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.weight = None
         self.workspace = None
         self.kv_dest = None
+        self._chunk_triplets = []
         self.output = None
         self._output_view = None
         self._verify_output_buffer = None
