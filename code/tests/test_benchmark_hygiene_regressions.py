@@ -23384,6 +23384,11 @@ def test_decode_handoff_benchmarks_do_not_allocate_placeholder_outputs_in_hot_pa
             assert "for _ in range(self.decode_length):" not in benchmark_section
             assert "or buffer.numel() < numel" in source
             assert "decode_buf.shape != prefill_out.shape" not in source
+            assert "def _prefill_into_decode_kv(" in source
+            assert "self._prefill_weight_t[id(prefill_model)] = prefill_model.weight.detach().t()" in source
+            assert "torch.matmul(request, weight_t, out=decode_buf)" in source
+            assert "kv_decode = self._prefill_into_decode_kv(" in benchmark_section
+            assert "if kv_decode is None:" in benchmark_section
 
 
 def test_cache_aware_disagg_reuses_prompt_chunks_in_hot_loop() -> None:

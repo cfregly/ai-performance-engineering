@@ -85,6 +85,11 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
         encoding="utf-8"
     )
     setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _prefill_into_decode_kv", maxsplit=1
+    )[0]
+    direct_prefill_section = source.split("def _prefill_into_decode_kv", maxsplit=1)[
+        1
+    ].split(
         "def _handoff_kv", maxsplit=1
     )[0]
     handoff_section = source.split("def _handoff_kv", maxsplit=1)[1].split(
@@ -102,6 +107,8 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
 
     assert "self._host_staging = {}" in setup_section
     assert "self._handoff_staging = {}" in setup_section
+    assert "self._prefill_weight_t: dict[int, torch.Tensor] = {}" in source
+    assert "self._prefill_weight_t = {}" in setup_section
     assert "self._request_groups = []" in setup_section
     assert "self._request_output_groups = []" in setup_section
     assert "self._request_groups.extend(" in setup_section
@@ -121,9 +128,17 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "self._verify_output_stack = self._empty_cpu_staging(verify_shape, torch.bfloat16)" in setup_section
     assert "self._verify_output_buffer = self._empty_cpu_staging(verify_shape, torch.float32)" in setup_section
     assert "self._handoff_staging[staging_key] = torch.empty(" in setup_section
+    assert "self._prefill_weight_t[id(prefill_model)] = prefill_model.weight.detach().t()" in setup_section
     assert "def _staging_numel(" in source
     assert "or buffer.numel() < numel" in source
     assert "return buffer[:numel].view(shape)" in source
+    assert "if self.use_host_staging or self.decode_length <= 0 or not self._device_matches(" in direct_prefill_section
+    assert "weight_t = self._prefill_weight_t.get(id(prefill_model))" in direct_prefill_section
+    assert "output_shape = request.shape[:-1] + torch.Size((int(weight_t.shape[1]),))" in direct_prefill_section
+    assert "decode_buf = self._decode_staging_view(" in direct_prefill_section
+    assert "torch.matmul(request, weight_t, out=decode_buf)" in direct_prefill_section
+    assert "decode_buf.add_(bias.detach())" in direct_prefill_section
+    assert "prefill_model.weight.t()" not in direct_prefill_section
     assert "decode_buf.shape != prefill_out.shape" not in handoff_section
     assert "host_buf.shape != prefill_out.shape" not in handoff_section
     assert (
@@ -147,6 +162,8 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "prefill_model," in benchmark_section
     assert "decode_model," in benchmark_section
     assert ") in self._request_output_groups:" in benchmark_section
+    assert "kv_decode = self._prefill_into_decode_kv(" in benchmark_section
+    assert "if kv_decode is None:" in benchmark_section
     assert "prefill_out = prefill_model(request)" in benchmark_section
     assert "outputs[output_idx] = token_state.squeeze(0).squeeze(0)" in benchmark_section
     assert "output_idx += 1" not in benchmark_section
@@ -168,6 +185,7 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "torch.stack([tensor.detach().cpu() for tensor in selected], dim=0)" not in capture_section
     assert "output_cpu[:, :256]" not in capture_section
     assert "self._verify_probe = None" in teardown_section
+    assert "self._prefill_weight_t = {}" in teardown_section
     assert "self._request_output_groups = []" in teardown_section
     assert "self._verify_output_stack = None" in teardown_section
     assert "self._verify_output_buffer = None" in teardown_section
@@ -204,3 +222,31 @@ def test_prefill_decode_disagg_handoff_reuses_larger_capacity() -> None:
     torch.testing.assert_close(out_grown, grown)
     assert bench._handoff_staging["cpu"].numel() == grown.numel()
     assert bench._host_staging["cpu"].numel() == grown.numel()
+
+
+def test_prefill_decode_disagg_direct_prefill_writes_into_reusable_decode_buffer() -> None:
+    module = importlib.import_module("ch15.prefill_decode_disagg_common")
+    bench = module.PrefillDecodeDisaggBenchmark(
+        use_host_staging=False,
+        multi_gpu=False,
+        label="test",
+    )
+    model = torch.nn.Linear(4, 5, bias=False).eval()
+    request = torch.randn((1, 3, 4), dtype=torch.float32)
+    bench._prefill_weight_t[id(model)] = model.weight.detach().t()
+
+    out_large = bench._prefill_into_decode_kv(model, request, torch.device("cpu"))
+
+    assert out_large is not None
+    torch.testing.assert_close(out_large, model(request))
+    decode_ptr = bench._handoff_staging["cpu"].data_ptr()
+
+    out_small = bench._prefill_into_decode_kv(
+        model,
+        request[:, :2],
+        torch.device("cpu"),
+    )
+
+    assert out_small is not None
+    torch.testing.assert_close(out_small, model(request[:, :2]))
+    assert bench._handoff_staging["cpu"].data_ptr() == decode_ptr
