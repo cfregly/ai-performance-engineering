@@ -179,6 +179,38 @@ def test_dynamic_precision_decoders_reuse_selection_buffers() -> None:
     assert "next_token = torch.argmax(last_step_logits" not in dynamic_source
 
 
+def test_dynamic_precision_decode_samples_confidence_on_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = DynamicPrecisionBenchmarkConfig(batch_size=2, prompt_len=8, max_steps=7, vocab_size=64, hidden_dim=64)
+    device = torch.device("cpu")
+    prompt = build_prompt(cfg, device)
+    model = build_model(cfg, device, dtype=torch.float32)
+    original_topk = torch.topk
+    topk_calls = 0
+
+    def counted_topk(*args, **kwargs):
+        nonlocal topk_calls
+        topk_calls += 1
+        return original_topk(*args, **kwargs)
+
+    monkeypatch.setattr(torch, "topk", counted_topk)
+
+    tokens, stats = decode_with_dynamic_precision(
+        model,
+        prompt,
+        max_steps=cfg.max_steps,
+        device=device,
+        enable_fp8=False,
+        enable_fp4=False,
+        reeval_interval=3,
+    )
+
+    assert tokens.shape == (cfg.batch_size, cfg.prompt_len + cfg.max_steps)
+    assert stats is not None
+    assert stats.total_tokens == cfg.batch_size * cfg.max_steps
+    assert stats.avg_confidence > 0.0
+    assert topk_calls == 3
+
+
 def test_token_precision_controller_reuses_generation_buffer_capacity() -> None:
     controller = TokenPrecisionController(torch.nn.Identity())
     large_prompt = torch.ones((4, 3), dtype=torch.long)

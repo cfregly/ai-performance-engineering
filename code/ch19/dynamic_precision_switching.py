@@ -239,6 +239,8 @@ def decode_with_dynamic_precision(
     if enable_fp4:
         assert exit_fp4_threshold <= enter_fp4_threshold, \
             "FP4 hysteresis requires exit <= enter threshold"
+    if reeval_interval <= 0:
+        raise ValueError("reeval_interval must be positive")
     
     model.eval()
     prompt = tokens.to(device, non_blocking=True)
@@ -376,15 +378,18 @@ def decode_with_dynamic_precision(
             last_token = next_token_flat
         current_len += 1
         
-        # 3) Update on-device EMA signal every step (no host sync yet)
-        conf_dev = _update_confidence_ema(logits)
+        # 3) Update on-device EMA only when the policy can consume it.
+        should_reevaluate = (step + 1) % reeval_interval == 0
+        conf_dev = _update_confidence_ema(logits) if (step == 0 or should_reevaluate) else ema_conf
         
         # 4) Update statistics
         if stats:
             stats.record_tokens(precision_mode, batch_size)
         
         # 5) Periodically re-evaluate precision choice on host to avoid per-step sync
-        if (step + 1) % reeval_interval == 0:
+        if should_reevaluate:
+            if conf_dev is None:
+                conf_dev = _update_confidence_ema(logits)
             conf_value = float(conf_dev)  # exactly one tiny sync every N steps
             confidence_samples += 1
             mem_util = _memory_utilization_percent(device)

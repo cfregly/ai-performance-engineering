@@ -247,6 +247,8 @@ def decode_with_dynamic_precision(
     - Hysteresis: separate enter/exit thresholds to avoid precision flapping.
     """
     assert exit_fp8_threshold <= enter_fp8_threshold, "Hysteresis requires exit <= enter threshold"
+    if reeval_interval <= 0:
+        raise ValueError("reeval_interval must be positive")
 
     model.eval()
     prompt = tokens.to(device, non_blocking=True)
@@ -333,11 +335,14 @@ def decode_with_dynamic_precision(
             tokens[:, current_len : current_len + 1].copy_(next_token)
             current_len += 1
 
-        # 3) Update on-device EMA signal every step (no host sync yet)
-        conf_dev = _update_confidence_ema(logits)
+        # 3) Update on-device EMA only when the policy can consume it.
+        should_reevaluate = (step + 1) % reeval_interval == 0
+        conf_dev = _update_confidence_ema(logits) if (step == 0 or should_reevaluate) else ema_conf
 
         # 4) Periodically re-evaluate precision choice on host to avoid per-step sync
-        if (step + 1) % reeval_interval == 0:
+        if should_reevaluate:
+            if conf_dev is None:
+                conf_dev = _update_confidence_ema(logits)
             conf_value = float(conf_dev)  # exactly one tiny sync every N steps
             if not use_fp8 and enable_fp8 and _TE_AVAILABLE and (conf_value > enter_fp8_threshold):
                 use_fp8 = True

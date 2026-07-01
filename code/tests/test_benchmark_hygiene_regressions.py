@@ -6398,8 +6398,15 @@ def test_ch19_dynamic_precision_batches_confidence_metric_reads() -> None:
     assert "torch.sub(top2_values[:, 0], top2_values[:, 1], out=margin_values)" in decode_section
     assert "torch.mean(margin_values, out=margin_mean)" in decode_section
     assert "ema_conf.mul_(1 - alpha).add_(margin_mean, alpha=alpha)" in decode_section
+    assert "if reeval_interval <= 0:" in decode_section
+    assert 'raise ValueError("reeval_interval must be positive")' in decode_section
+    assert "should_reevaluate = (step + 1) % reeval_interval == 0" in decode_section
+    assert "conf_dev = _update_confidence_ema(logits) if (step == 0 or should_reevaluate) else ema_conf" in decode_section
+    assert "if should_reevaluate:" in decode_section
+    assert "if conf_dev is None:" in decode_section
     assert "margin = (top2_values[:, 0] - top2_values[:, 1]).mean()" not in decode_section
     assert "ema_conf = (1 - alpha) *" not in decode_section
+    assert "conf_dev = _update_confidence_ema(logits)\n        \n        # 4) Update statistics" not in decode_section
     assert "entropy_stats = torch.empty(2, device=device, dtype=torch.float32)" in demo_entropy_section
     assert "entropy_stats[0].copy_(compute_entropy(high_conf_logits).mean())" in demo_entropy_section
     assert "entropy_stats[1].copy_(compute_entropy(low_conf_logits).mean())" in demo_entropy_section
@@ -6612,6 +6619,12 @@ def test_ch19_decode_loops_preallocate_token_buffers() -> None:
     assert "torch.sub(top2_values[:, 0], top2_values[:, 1], out=margin_values)" in dynamic_decode_section
     assert "torch.mean(margin_values, out=margin_mean)" in dynamic_decode_section
     assert "ema_conf.mul_(1 - alpha).add_(margin_mean, alpha=alpha)" in dynamic_decode_section
+    assert "if reeval_interval <= 0:" in dynamic_decode_section
+    assert 'raise ValueError("reeval_interval must be positive")' in dynamic_decode_section
+    assert "should_reevaluate = (step + 1) % reeval_interval == 0" in dynamic_decode_section
+    assert "conf_dev = _update_confidence_ema(logits) if (step == 0 or should_reevaluate) else ema_conf" in dynamic_decode_section
+    assert "if should_reevaluate:" in dynamic_decode_section
+    assert "if conf_dev is None:" in dynamic_decode_section
     assert "(top2_values[:, 0] - top2_values[:, 1]).mean()" not in dynamic_decode_section
     assert "ema_conf = (1 - alpha) *" not in dynamic_decode_section
     assert "torch.max(last_step_logits, dim=-1, keepdim=True, out=(next_token_values, next_token))" in dynamic_decode_section
