@@ -438,9 +438,11 @@ def _run_torchrun_worker(
             seed: Optional[torch.Tensor] = None
             offset = 0
             for chunk in chunks[: plan.warm_chunks]:
-                chunk_kv, seed = model.prefill(chunk)
-                next_offset = offset + int(chunk_kv.size(1))
-                prefix_cache[:, offset:next_offset].copy_(chunk_kv)
+                next_offset = offset + int(chunk.size(1))
+                _, seed = model.prefill_into(
+                    chunk,
+                    prefix_cache[:, offset:next_offset],
+                )
                 offset = next_offset
             if seed is None:
                 raise RuntimeError(f"Warm request {plan.global_request_idx} did not produce a seed")
@@ -1000,9 +1002,11 @@ class CacheAwareDisaggMultiGPUBenchmark(VerificationPayloadMixin, BaseBenchmark)
                 prefill_model = self._prefill_models[plan.prefill_rank]
                 offset = 0
                 for chunk in warm_chunks:
-                    chunk_kv, seed = prefill_model.prefill(chunk)
-                    next_offset = offset + int(chunk_kv.size(1))
-                    prefix_buffer[:, offset:next_offset].copy_(chunk_kv)
+                    next_offset = offset + int(chunk.size(1))
+                    _, seed = prefill_model.prefill_into(
+                        chunk,
+                        prefix_buffer[:, offset:next_offset],
+                    )
                     offset = next_offset
                 if seed is None:
                     raise RuntimeError(f"Warm request {plan.global_request_idx} did not produce a seed")

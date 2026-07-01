@@ -146,6 +146,25 @@ def test_cache_aware_disagg_single_gpu_prefill_appends_directly_to_kv_cache() ->
     assert "_extend_cache_buffer(" not in benchmark_section
 
 
+def test_cache_aware_disagg_multigpu_warm_prefix_writes_directly_to_kv_cache() -> None:
+    source = (LAB_DIR / "cache_aware_disagg_multigpu_common.py").read_text(encoding="utf-8")
+    distributed_warm_section = source.split("warm_cache_store: Dict[int, torch.Tensor]", maxsplit=1)[1].split(
+        "recv_chunk_buffers: Dict[int, torch.Tensor]",
+        maxsplit=1,
+    )[0]
+    setup_warm_section = source.split("with torch.inference_mode():", maxsplit=1)[1].split(
+        "self.parameter_count = total_params",
+        maxsplit=1,
+    )[0]
+
+    assert "model.prefill_into(" in distributed_warm_section
+    assert "prefill_model.prefill_into(" in setup_warm_section
+    assert "next_offset = offset + int(chunk.size(1))" in distributed_warm_section
+    assert "next_offset = offset + int(chunk.size(1))" in setup_warm_section
+    assert "prefix_cache[:, offset:next_offset].copy_(chunk_kv)" not in source
+    assert "prefix_buffer[:, offset:next_offset].copy_(chunk_kv)" not in source
+
+
 def test_cache_aware_disagg_single_gpu_reload_materialization_reuses_storage() -> None:
     cfg = CacheAwareDisaggConfig(
         hidden_size=4,
