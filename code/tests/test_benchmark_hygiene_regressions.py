@@ -22897,6 +22897,36 @@ def test_decode_common_reuses_cached_decode_step_range() -> None:
         assert "for _ in range(self.cfg.decode_tokens):" not in section
 
 
+def test_flashattention4_reuses_verification_slice_buffer() -> None:
+    source = (
+        REPO_ROOT / "labs" / "flashattention4" / "flashattention4_benchmarks.py"
+    ).read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split(
+        "def _prepare_benchmark",
+        maxsplit=1,
+    )[0]
+    capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
+        "def teardown",
+        maxsplit=1,
+    )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
+
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty(" in setup_section
+    assert "(1, 1, min(128, self.config.seq_len), min(16, self.config.head_dim))" in setup_section
+    assert "verify_output = self._verify_output_buffer" in capture_section
+    assert "output_slice = self.output[" in capture_section
+    assert "verify_output.copy_(output_slice, non_blocking=False)" in capture_section
+    assert "output=verify_output" in capture_section
+    assert ".cpu()" not in capture_section
+    assert ".clone()" not in capture_section
+    assert "torch.empty(" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
+
+
 def test_iteration_seed_and_clone_fixes_for_reviewed_pairs_remain_applied() -> None:
     baseline_pipeline = (REPO_ROOT / "ch10" / "baseline_pipeline_3stage.py").read_text(encoding="utf-8")
     optimized_pipeline = (REPO_ROOT / "ch10" / "optimized_pipeline_3stage.py").read_text(encoding="utf-8")
