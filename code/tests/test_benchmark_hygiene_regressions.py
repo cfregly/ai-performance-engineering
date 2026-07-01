@@ -12097,6 +12097,10 @@ def test_ch18_optimized_flexdecoding_reuses_sdpa_backend_list() -> None:
         "def teardown",
         maxsplit=1,
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def benchmark_fn",
+        maxsplit=1,
+    )[0]
     benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
         "def get_custom_metrics", maxsplit=1
     )[0]
@@ -12105,20 +12109,36 @@ def test_ch18_optimized_flexdecoding_reuses_sdpa_backend_list() -> None:
     assert "self._flash_attention_backends = [SDPBackend.FLASH_ATTENTION]" in init_section
     assert "self._decode_k_window_views: List[torch.Tensor] = []" in init_section
     assert "self._decode_v_window_views: List[torch.Tensor] = []" in init_section
+    assert "self._decode_k_window_sdp_views: List[torch.Tensor] = []" in init_section
+    assert "self._decode_v_window_sdp_views: List[torch.Tensor] = []" in init_section
     assert "self._decode_base_position = self.prefill_tokens.size(1)" in setup_section
-    assert "self._decode_k_window_views.append(self.model.k_cache[:, start:end])" in setup_section
-    assert "self._decode_v_window_views.append(self.model.v_cache[:, start:end])" in setup_section
+    assert "k_window = self.model.k_cache[:, start:end]" in setup_section
+    assert "v_window = self.model.v_cache[:, start:end]" in setup_section
+    assert "self._decode_k_window_views.append(k_window)" in setup_section
+    assert "self._decode_v_window_views.append(v_window)" in setup_section
+    assert "self._decode_k_window_sdp_views.append(k_window.transpose(1, 2))" in setup_section
+    assert "self._decode_v_window_sdp_views.append(v_window.transpose(1, 2))" in setup_section
     assert "view_idx = position - self._decode_base_position" in window_view_section
     assert (
-        "return self._decode_k_window_views[view_idx], self._decode_v_window_views[view_idx]"
+        "return self._decode_k_window_sdp_views[view_idx], self._decode_v_window_sdp_views[view_idx]"
         in window_view_section
     )
+    assert "return k_slice.transpose(1, 2), v_slice.transpose(1, 2)" in window_view_section
     assert "with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):" not in benchmark_section
     assert "with sdpa_kernel(self._flash_attention_backends):" in benchmark_section
     assert "self.model._update_cache(k, v, position)" in projected_step_section
-    assert "k_slice, v_slice = self._cache_window_views_for_position(position)" in projected_step_section
+    assert "k_sdp, v_sdp = self._cache_window_views_for_position(position)" in projected_step_section
+    assert "q_sdp," in projected_step_section
+    assert "k_sdp," in projected_step_section
+    assert "v_sdp," in projected_step_section
+    assert "k_slice.transpose(1, 2)" not in projected_step_section
+    assert "v_slice.transpose(1, 2)" not in projected_step_section
+    assert "self._decode_k_window_sdp_views = []" in teardown_section
+    assert "self._decode_v_window_sdp_views = []" in teardown_section
     assert "decode_q, decode_k, decode_v = self.model._project_token(self.decode_token)" in benchmark_section
+    assert "decode_q_sdp = decode_q.transpose(1, 2)" in benchmark_section
     assert "decode_out = self._decode_projected_step(" in decode_range
+    assert "decode_q_sdp," in decode_range
     assert "self.model._project_token(self.decode_token)" not in decode_range
 
 

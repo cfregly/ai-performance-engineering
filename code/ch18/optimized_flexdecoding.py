@@ -42,6 +42,8 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
         self._decode_base_position = 0
         self._decode_k_window_views: List[torch.Tensor] = []
         self._decode_v_window_views: List[torch.Tensor] = []
+        self._decode_k_window_sdp_views: List[torch.Tensor] = []
+        self._decode_v_window_sdp_views: List[torch.Tensor] = []
 
     def setup(self) -> None:
         super().setup()
@@ -53,20 +55,26 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
         self._decode_base_position = self.prefill_tokens.size(1)
         self._decode_k_window_views = []
         self._decode_v_window_views = []
+        self._decode_k_window_sdp_views = []
+        self._decode_v_window_sdp_views = []
         for position in self._decode_positions:
             start = position - window
             if start < 0:
                 raise RuntimeError("Windowed decode expects position >= window size")
             end = position + 1
-            self._decode_k_window_views.append(self.model.k_cache[:, start:end])
-            self._decode_v_window_views.append(self.model.v_cache[:, start:end])
+            k_window = self.model.k_cache[:, start:end]
+            v_window = self.model.v_cache[:, start:end]
+            self._decode_k_window_views.append(k_window)
+            self._decode_v_window_views.append(v_window)
+            self._decode_k_window_sdp_views.append(k_window.transpose(1, 2))
+            self._decode_v_window_sdp_views.append(v_window.transpose(1, 2))
 
     def _cache_window_views_for_position(self, position: int) -> tuple[torch.Tensor, torch.Tensor]:
         if self.model is None:
             raise RuntimeError("Windowed decode not initialized")
         view_idx = position - self._decode_base_position
         if 0 <= view_idx < len(self._decode_k_window_views):
-            return self._decode_k_window_views[view_idx], self._decode_v_window_views[view_idx]
+            return self._decode_k_window_sdp_views[view_idx], self._decode_v_window_sdp_views[view_idx]
         window = self.config.window
         start = position - window
         if start < 0:
@@ -74,17 +82,18 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
         end = position + 1
         k_slice = self.model.k_cache[:, start:end]
         v_slice = self.model.v_cache[:, start:end]
-        return k_slice, v_slice
+        return k_slice.transpose(1, 2), v_slice.transpose(1, 2)
 
     def _decode_step(self, token: torch.Tensor, position: int) -> torch.Tensor:
         if self.model is None:
             raise RuntimeError("Windowed decode not initialized")
         q, k, v = self.model._project_token(token)
-        return self._decode_projected_step(q, k, v, position)
+        return self._decode_projected_step(q, q.transpose(1, 2), k, v, position)
 
     def _decode_projected_step(
         self,
         q: torch.Tensor,
+        q_sdp: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
         position: int,
@@ -93,11 +102,11 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
             raise RuntimeError("Windowed decode not initialized")
         self.model._update_cache(k, v, position)
         self.model._set_offset(position)
-        k_slice, v_slice = self._cache_window_views_for_position(position)
+        k_sdp, v_sdp = self._cache_window_views_for_position(position)
         out = F.scaled_dot_product_attention(
-            q.transpose(1, 2),
-            k_slice.transpose(1, 2),
-            v_slice.transpose(1, 2),
+            q_sdp,
+            k_sdp,
+            v_sdp,
             attn_mask=None,
             dropout_p=0.0,
             is_causal=False,
@@ -108,6 +117,8 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
         self._decode_base_position = 0
         self._decode_k_window_views = []
         self._decode_v_window_views = []
+        self._decode_k_window_sdp_views = []
+        self._decode_v_window_sdp_views = []
         super().teardown()
 
     def benchmark_fn(self) -> Optional[Dict[str, List[float]]]:
@@ -132,6 +143,7 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
                 prefill_end.record(current_stream)
 
             decode_q, decode_k, decode_v = self.model._project_token(self.decode_token)
+            decode_q_sdp = decode_q.transpose(1, 2)
 
             with self._nvtx_range("flex_decode"):
                 with sdpa_kernel(self._flash_attention_backends):
@@ -139,6 +151,7 @@ class OptimizedFlexDecodingBenchmark(FlexDecodingHarness):
                         start_evt.record(current_stream)
                         decode_out = self._decode_projected_step(
                             decode_q,
+                            decode_q_sdp,
                             decode_k,
                             decode_v,
                             position,
