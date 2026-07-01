@@ -58,10 +58,19 @@ def apply_rope(q: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.T
     if torch.is_grad_enabled() and (q.requires_grad or cos.requires_grad or sin.requires_grad):
         return (q * cos) + (rotate_half(q) * sin)
 
+    out = torch.empty_like(q)
+    return apply_rope_out(q, cos, sin, out)
+
+
+def apply_rope_out(
+    q: torch.Tensor,
+    cos: torch.Tensor,
+    sin: torch.Tensor,
+    out: torch.Tensor,
+) -> torch.Tensor:
     half = q.shape[-1] // 2
     q1 = q[..., :half]
     q2 = q[..., half:]
-    out = torch.empty_like(q)
     out1 = out[..., :half]
     out2 = out[..., half:]
     torch.mul(q1, cos[..., :half], out=out1)

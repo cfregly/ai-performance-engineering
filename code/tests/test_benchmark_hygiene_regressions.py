@@ -10333,7 +10333,7 @@ def test_ch18_paged_vllm_cache_reset_is_metadata_only() -> None:
 
 
 def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
-    from ch18.rope_q_cache_common import apply_rope, apply_rope_inplace, build_rope_tables
+    from ch18.rope_q_cache_common import apply_rope, apply_rope_inplace, apply_rope_out, build_rope_tables
 
     common_source = (REPO_ROOT / "ch18" / "rope_q_cache_common.py").read_text(encoding="utf-8")
     baseline_source = (REPO_ROOT / "ch18" / "baseline_rope_q_cache.py").read_text(encoding="utf-8")
@@ -10370,8 +10370,10 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self._step_group_count = 0" in baseline_source
     assert "self.q_buffer: Optional[torch.Tensor] = None" in baseline_source
     assert "self.q_heads: Optional[torch.Tensor] = None" in baseline_source
+    assert "self.rope_out: Optional[torch.Tensor] = None" in baseline_source
     assert "self.q_buffer = torch.empty(" in baseline_setup
     assert "self.q_heads = self.q_buffer.view(self.cfg.batch_size, self.cfg.heads, self.cfg.head_dim)" in baseline_setup
+    assert "self.rope_out = torch.empty_like(self.q_heads)" in baseline_setup
     assert "self._input_step_views = list(self.inputs.unbind(0))" in baseline_setup
     assert "self._cache_step_views = [self.cache[:, :, step, :] for step in range(self.cfg.steps)]" in baseline_setup
     assert "self._step_groups = list(" in baseline_setup
@@ -10385,6 +10387,7 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "cos[:, :half].copy_(cos_half)" in common_source
     assert "sin[:, half:].copy_(sin_half)" in common_source
     assert "out = torch.empty_like(q)" in common_source
+    assert "def apply_rope_out(" in common_source
     assert "torch.mul(q1, cos[..., :half], out=out1)" in common_source
     assert "out1.addcmul_(q2, sin[..., :half], value=-1)" in common_source
     assert "torch.mul(q2, cos[..., half:], out=out2)" in common_source
@@ -10407,7 +10410,8 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "q = self.q_heads" in baseline_benchmark
     assert "q = x @ self.q_weight" not in baseline_benchmark
     assert "q = q.view(" not in baseline_benchmark
-    assert "q = apply_rope(q, cos_t, sin_t)" in baseline_benchmark
+    assert "q = apply_rope_out(q, cos_t, sin_t, self.rope_out)" in baseline_benchmark
+    assert "q = apply_rope(q, cos_t, sin_t)" not in baseline_benchmark
     assert "cache_step.copy_(q)" in baseline_benchmark
     assert "self.cache[:, :, step, :] = q" not in baseline_benchmark
     assert "self.output = self._output_view" in baseline_benchmark
@@ -10419,6 +10423,7 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     assert "self._step_group_count = 0" in baseline_teardown
     assert "self.q_buffer = None" in baseline_teardown
     assert "self.q_heads = None" in baseline_teardown
+    assert "self.rope_out = None" in baseline_teardown
     assert "for step in range(self.cfg.steps):" not in baseline_benchmark
     assert "for h in range(self.cfg.heads):" not in baseline_benchmark
     assert "q[:, h, :]" not in baseline_benchmark
@@ -10484,12 +10489,16 @@ def test_ch18_optimized_rope_q_cache_uses_inplace_rope_scratch() -> None:
     actual_input = q.clone()
     scratch = torch.empty_like(actual_input[..., :4])
     vectorized = apply_rope(q.clone(), cos, sin)
+    out_buffer = torch.empty_like(q)
+    out_result = apply_rope_out(q.clone(), cos, sin, out_buffer)
     grad_input = q.clone().requires_grad_(True)
 
     actual = apply_rope_inplace(actual_input, cos, sin, scratch)
     grad_output = apply_rope(grad_input, cos, sin)
 
     torch.testing.assert_close(vectorized, expected)
+    assert out_result is out_buffer
+    torch.testing.assert_close(out_result, expected)
     assert grad_output.requires_grad
     torch.testing.assert_close(grad_output.detach(), expected)
     assert actual is actual_input
