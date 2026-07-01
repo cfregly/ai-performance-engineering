@@ -39,10 +39,8 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_step_views: list[torch.Tensor] = []
         self._output_token_views: list[torch.Tensor] = []
         self._output_write_views: list[list[torch.Tensor]] = []
+        self._output_verify_views: list[list[torch.Tensor]] = []
         self._decode_token_range = range(0)
-        self._draft_ids: Optional[torch.Tensor] = None
-        self._verify_prev: Optional[torch.Tensor] = None
-        self._verify_prev_first: Optional[torch.Tensor] = None
         self._accept_prefix: Optional[torch.Tensor] = None
         self._accept_count_device: Optional[torch.Tensor] = None
         self._accept_count_host: Optional[torch.Tensor] = None
@@ -57,15 +55,12 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._greedy_logits_next: Optional[torch.Tensor] = None
         self._draft_next_values: Optional[torch.Tensor] = None
         self._draft_next_tokens: Optional[torch.Tensor] = None
-        self._draft_next_token_view: Optional[torch.Tensor] = None
         self._target_next_values: Optional[torch.Tensor] = None
         self._target_next_tokens: Optional[torch.Tensor] = None
         self._matches: Optional[torch.Tensor] = None
         self._draft_logits: Optional[torch.Tensor] = None
         self._draft_logits_next: Optional[torch.Tensor] = None
         self._target_logits: Optional[torch.Tensor] = None
-        self._verify_prev_views: list[torch.Tensor] = []
-        self._verify_prev_tail_views: list[torch.Tensor] = []
         self._target_logits_views: list[torch.Tensor] = []
         self._target_value_views: list[torch.Tensor] = []
         self._target_token_views: list[torch.Tensor] = []
@@ -73,8 +68,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._match_views: list[torch.Tensor] = []
         self._accept_prefix_views: list[torch.Tensor] = []
         self._accept_prefix_row_views: list[torch.Tensor] = []
-        self._draft_id_views: list[torch.Tensor] = []
-        self._draft_id_column_views: list[torch.Tensor] = []
         self._speculation_step_ranges: list[range] = []
         self._view_counts: tuple[int, ...] = ()
         self._expected_view_counts: tuple[int, ...] = ()
@@ -144,9 +137,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
         if not self.use_speculative:
             self.draft_model = None
-            self._draft_ids = None
-            self._verify_prev = None
-            self._verify_prev_first = None
             self._accept_prefix = None
             self._accept_count_device = None
             self._accept_count_host = None
@@ -157,7 +147,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._accept_all_host_scalar = None
             self._draft_next_values = None
             self._draft_next_tokens = None
-            self._draft_next_token_view = None
             self._target_next_values = None
             self._target_next_tokens = None
             self._matches = None
@@ -165,8 +154,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._draft_logits_next = None
             self._target_logits = None
             self._output_write_views = []
-            self._verify_prev_views = []
-            self._verify_prev_tail_views = []
+            self._output_verify_views = []
             self._target_logits_views = []
             self._target_value_views = []
             self._target_token_views = []
@@ -174,8 +162,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             self._match_views = []
             self._accept_prefix_views = []
             self._accept_prefix_row_views = []
-            self._draft_id_views = []
-            self._draft_id_column_views = []
             self._speculation_step_ranges = []
             self._view_counts = (
                 len(self._output_step_views),
@@ -199,9 +185,13 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             ]
             for length in range(1, wl.speculative_k + 1)
         ]
-        self._draft_ids = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
-        self._verify_prev = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
-        self._verify_prev_first = self._verify_prev[:, 0]
+        self._output_verify_views = [
+            [
+                self._output_ids[:, start : start + length]
+                for start in range(wl.total_tokens - length + 1)
+            ]
+            for length in range(1, wl.speculative_k + 1)
+        ]
         self._accept_prefix = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)
         self._accept_count_device = torch.empty((1,), device=self.device, dtype=torch.int64)
         self._accept_count_host = torch.empty(
@@ -222,15 +212,12 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_all_host_scalar = self._accept_all_host[0]
         self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)
         self._draft_next_tokens = torch.empty((1,), device=self.device, dtype=torch.long)
-        self._draft_next_token_view = self._draft_next_tokens.view(1, 1)
         self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)
         self._target_next_tokens = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.long)
         self._matches = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.bool)
         self._draft_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)
         self._draft_logits_next = self._draft_logits[:, 0, :]
         self._target_logits = torch.empty((1, wl.speculative_k, wl.vocab_size), device=self.device, dtype=wl.dtype)
-        self._verify_prev_views = [self._verify_prev[:, :k] for k in range(1, wl.speculative_k + 1)]
-        self._verify_prev_tail_views = [self._verify_prev[:, 1:k] for k in range(2, wl.speculative_k + 1)]
         self._target_logits_views = [self._target_logits[:, :k] for k in range(1, wl.speculative_k + 1)]
         self._target_value_views = [self._target_next_values[:, :k] for k in range(1, wl.speculative_k + 1)]
         self._target_token_views = [self._target_next_tokens[:, :k] for k in range(1, wl.speculative_k + 1)]
@@ -244,18 +231,12 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._accept_prefix_row_views = [
             self._accept_prefix[0, :k] for k in range(1, wl.speculative_k + 1)
         ]
-        self._draft_id_views = [self._draft_ids[:, :k] for k in range(1, wl.speculative_k + 1)]
-        self._draft_id_column_views = [
-            self._draft_ids[:, token_idx] for token_idx in range(wl.speculative_k)
-        ]
         self._speculation_step_ranges = [range(k) for k in range(1, wl.speculative_k + 1)]
-        verify_tail_count = wl.speculative_k - 1 if wl.speculative_k > 1 else 0
         self._view_counts = (
             len(self._output_step_views),
             len(self._output_token_views),
             len(self._output_write_views),
-            len(self._verify_prev_views),
-            len(self._verify_prev_tail_views),
+            len(self._output_verify_views),
             len(self._target_logits_views),
             len(self._target_value_views),
             len(self._target_token_views),
@@ -263,16 +244,11 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             len(self._match_views),
             len(self._accept_prefix_views),
             len(self._accept_prefix_row_views),
-            len(self._draft_id_views),
-            len(self._draft_id_column_views),
             len(self._speculation_step_ranges),
         )
         self._expected_view_counts = (
             wl.total_tokens + 1,
             wl.total_tokens + 1,
-            wl.speculative_k,
-            wl.speculative_k,
-            verify_tail_count,
             wl.speculative_k,
             wl.speculative_k,
             wl.speculative_k,
@@ -371,9 +347,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self.input_ids is None
             or self._input_token_view is None
             or self._output_ids is None
-            or self._draft_ids is None
-            or self._verify_prev is None
-            or self._verify_prev_first is None
             or self._accept_prefix is None
             or self._accept_count_device is None
             or self._accept_count_host is None
@@ -384,7 +357,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             or self._accept_all_host_scalar is None
             or self._draft_next_values is None
             or self._draft_next_tokens is None
-            or self._draft_next_token_view is None
             or self._target_next_values is None
             or self._target_next_tokens is None
             or self._matches is None
@@ -407,9 +379,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         output_step_views = self._output_step_views
         output_token_views = self._output_token_views
         output_write_views = self._output_write_views
-        verify_prev_first = self._verify_prev_first
-        verify_prev_views = self._verify_prev_views
-        verify_prev_tail_views = self._verify_prev_tail_views
+        output_verify_views = self._output_verify_views
         target_logits_views = self._target_logits_views
         target_value_views = self._target_value_views
         target_token_views = self._target_token_views
@@ -422,12 +392,9 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         accept_all_device = self._accept_all_device
         accept_all_host = self._accept_all_host
         accept_all_host_scalar = self._accept_all_host_scalar
-        draft_id_views = self._draft_id_views
-        draft_id_column_views = self._draft_id_column_views
         speculation_step_ranges = self._speculation_step_ranges
         draft_next_values = self._draft_next_values
         draft_next_tokens = self._draft_next_tokens
-        draft_next_token_view = self._draft_next_token_view
         draft_logits = self._draft_logits
         draft_logits_next = self._draft_logits_next
         output_token_views[0].copy_(input_token_view)
@@ -450,18 +417,14 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     for j in speculation_step_range:
                         draft_forward_into_prepared(prev, draft_logits, draft_forward_buffers)
                         torch.max(draft_logits_next, dim=-1, out=(draft_next_values, draft_next_tokens))
-                        draft_id_column_views[j].copy_(draft_next_tokens)
-                        prev = draft_next_token_view
+                        output_token_views[pos + j + 1].copy_(draft_next_tokens)
+                        prev = output_step_views[pos + j + 1]
 
                     draft_tokens += int(k)
 
-                    verify_prev_first.copy_(output_token_views[pos])
-                    if k > 1:
-                        verify_prev_tail_views[k - 2].copy_(draft_id_views[k - 2])
-
-                    draft_window = draft_id_views[view_idx]
+                    draft_window = output_write_views[view_idx][pos]
                     logits_t = target_forward_into_prepared(
-                        verify_prev_views[view_idx],
+                        output_verify_views[view_idx][pos],
                         target_logits_views[view_idx],
                         target_forward_buffers[view_idx],
                     )
@@ -482,12 +445,10 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         accept_k = int(accept_count_host_scalar)
 
                     if accept_k == k:
-                        output_write_views[view_idx][pos].copy_(draft_window)
                         accepted_draft += int(k)
                         pos += k
                     else:
                         if accept_k > 0:
-                            output_write_views[accept_k - 1][pos].copy_(draft_id_views[accept_k - 1])
                             accepted_draft += int(accept_k)
                         output_token_views[pos + accept_k + 1].copy_(
                             target_token_column_views[accept_k]
@@ -523,10 +484,8 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._output_step_views = []
         self._output_token_views = []
         self._output_write_views = []
+        self._output_verify_views = []
         self._decode_token_range = range(0)
-        self._draft_ids = None
-        self._verify_prev = None
-        self._verify_prev_first = None
         self._accept_prefix = None
         self._accept_count_device = None
         self._accept_count_host = None
@@ -541,15 +500,12 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._greedy_logits_next = None
         self._draft_next_values = None
         self._draft_next_tokens = None
-        self._draft_next_token_view = None
         self._target_next_values = None
         self._target_next_tokens = None
         self._matches = None
         self._draft_logits = None
         self._draft_logits_next = None
         self._target_logits = None
-        self._verify_prev_views = []
-        self._verify_prev_tail_views = []
         self._target_logits_views = []
         self._target_value_views = []
         self._target_token_views = []
@@ -557,8 +513,6 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._match_views = []
         self._accept_prefix_views = []
         self._accept_prefix_row_views = []
-        self._draft_id_views = []
-        self._draft_id_column_views = []
         self._speculation_step_ranges = []
         self._view_counts = ()
         self._expected_view_counts = ()
