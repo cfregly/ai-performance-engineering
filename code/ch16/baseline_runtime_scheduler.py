@@ -85,13 +85,14 @@ class BaselineRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark)
             raise RuntimeError("Workload not initialized")
         total_tokens = scenario.concurrency * scenario.decode_steps * scenario.tokens_per_step
         start = time.perf_counter()
-        for _ in range(scenario.decode_steps):
-            _ = self.workload.cpu_prepare()
-            self.output = self.workload.gpu_compute(scenario)
-            torch.cuda.synchronize(self.device)
-            # Per-token streaming: send every token individually.
-            for _ in range(scenario.concurrency * scenario.tokens_per_step):
-                self.workload.stream_send(1)
+        with torch.inference_mode():
+            for _ in range(scenario.decode_steps):
+                _ = self.workload.cpu_prepare()
+                self.output = self.workload.gpu_compute(scenario)
+                torch.cuda.synchronize(self.device)
+                # Per-token streaming: send every token individually.
+                for _ in range(scenario.concurrency * scenario.tokens_per_step):
+                    self.workload.stream_send(1)
         end = time.perf_counter()
         elapsed = max(end - start, 1e-9)
         self._custom_metrics[f"{scenario.name}.tps_per_gpu"] = total_tokens / elapsed

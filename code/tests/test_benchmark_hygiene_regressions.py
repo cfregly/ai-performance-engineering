@@ -5950,8 +5950,26 @@ def test_ch16_runtime_schedulers_cache_nvtx_and_verification_dummy() -> None:
     common_source = (REPO_ROOT / "ch16" / "runtime_scheduler_common.py").read_text(
         encoding="utf-8"
     )
+    cpu_prepare_section = common_source.split("def cpu_prepare", maxsplit=1)[1].split(
+        "def gpu_compute",
+        maxsplit=1,
+    )[0]
+    gpu_compute_section = common_source.split("def gpu_compute", maxsplit=1)[1].split(
+        "def stream_send",
+        maxsplit=1,
+    )[0]
     stream_send_section = common_source.split("def stream_send", maxsplit=1)[1]
 
+    assert "self._cpu_product = torch.empty_like(self.cpu_a)" in common_source
+    assert "torch.matmul(self.cpu_a, self.cpu_b, out=self._cpu_product)" in cpu_prepare_section
+    assert "return self._cpu_product" in cpu_prepare_section
+    assert "return self.cpu_a @ self.cpu_b" not in cpu_prepare_section
+    assert "self.gpu_outputs: Dict[str, torch.Tensor] = {}" in common_source
+    assert "self.gpu_outputs[scenario.name] = torch.empty(" in common_source
+    assert "out = self.gpu_outputs[scenario.name]" in gpu_compute_section
+    assert "torch.matmul(a, b, out=out)" in gpu_compute_section
+    assert "return out" in gpu_compute_section
+    assert "return torch.matmul(a, b)" not in gpu_compute_section
     assert "self._send_product = torch.empty_like(self.send_buffer)" in common_source
     assert "self._send_scalar = torch.empty((), dtype=self.send_buffer.dtype)" in common_source
     assert "torch.mul(self.send_buffer, self.send_scale, out=self._send_product)" in stream_send_section
@@ -5967,6 +5985,10 @@ def test_ch16_runtime_schedulers_cache_nvtx_and_verification_dummy() -> None:
         source = (REPO_ROOT / "ch16" / filename).read_text(encoding="utf-8")
         setup_section = source.split("def setup", maxsplit=1)[1].split(
             "def _run_scenario",
+            maxsplit=1,
+        )[0]
+        run_section = source.split("def _run_scenario", maxsplit=1)[1].split(
+            "def benchmark_fn",
             maxsplit=1,
         )[0]
         benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
@@ -5987,6 +6009,7 @@ def test_ch16_runtime_schedulers_cache_nvtx_and_verification_dummy() -> None:
         assert "max_dim = max(scenario.matmul_dim for scenario in self.scenarios)" in setup_section
         assert "self._verification_output_buffer = torch.empty(" in setup_section
         assert f'with nvtx_range("{label}", enable=self._enable_nvtx):' in benchmark_section
+        assert "with torch.inference_mode():" in run_section
         assert "get_config()" not in benchmark_section
         assert "get_nvtx_enabled(" not in benchmark_section
         assert 'inputs={"dummy": self._verification_dummy}' in capture_section

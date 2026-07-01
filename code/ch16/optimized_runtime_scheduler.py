@@ -86,16 +86,17 @@ class OptimizedRuntimeSchedulerBenchmark(VerificationPayloadMixin, BaseBenchmark
         # The CPU prep result is not consumed by GPU compute, so a thread-pool only adds
         # executor overhead. Launch compute first, then use the host thread for next-step prep
         # while the kernel is in flight.
-        self.workload.cpu_prepare()
-        for step in range(scenario.decode_steps):
-            self.output = self.workload.gpu_compute(scenario)
-            if step + 1 < scenario.decode_steps:
-                self.workload.cpu_prepare()
-            send_tokens = scenario.concurrency * scenario.tokens_per_step
-            interval = max(1, scenario.stream_interval)
-            for offset in range(0, send_tokens, interval):
-                self.workload.stream_send(min(interval, send_tokens - offset))
-            torch.cuda.synchronize(self.device)
+        with torch.inference_mode():
+            self.workload.cpu_prepare()
+            for step in range(scenario.decode_steps):
+                self.output = self.workload.gpu_compute(scenario)
+                if step + 1 < scenario.decode_steps:
+                    self.workload.cpu_prepare()
+                send_tokens = scenario.concurrency * scenario.tokens_per_step
+                interval = max(1, scenario.stream_interval)
+                for offset in range(0, send_tokens, interval):
+                    self.workload.stream_send(min(interval, send_tokens - offset))
+                torch.cuda.synchronize(self.device)
         end = time.perf_counter()
         elapsed = max(end - start, 1e-9)
         self._custom_metrics[f"{scenario.name}.tps_per_gpu"] = total_tokens / elapsed

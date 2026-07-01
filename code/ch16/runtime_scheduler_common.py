@@ -33,6 +33,7 @@ class RuntimeSchedulerWorkload:
         # CPU prep buffers (simulate prepare_batch).
         self.cpu_a = torch.randn(512, 512)
         self.cpu_b = torch.randn(512, 512)
+        self._cpu_product = torch.empty_like(self.cpu_a)
 
         # CPU send buffers (simulate network serialization).
         self.send_buffer = torch.randn(4096)
@@ -42,21 +43,31 @@ class RuntimeSchedulerWorkload:
 
         # GPU matmul buffers per scenario.
         self.gpu_buffers: Dict[str, Tuple[torch.Tensor, torch.Tensor]] = {}
+        self.gpu_outputs: Dict[str, torch.Tensor] = {}
         for scenario in scenarios:
             dim = scenario.matmul_dim
             a = torch.randn(dim, dim, device=self.device, dtype=torch.bfloat16)
             b = torch.randn(dim, dim, device=self.device, dtype=torch.bfloat16)
             self.gpu_buffers[scenario.name] = (a, b)
+            self.gpu_outputs[scenario.name] = torch.empty(
+                dim,
+                dim,
+                device=self.device,
+                dtype=torch.bfloat16,
+            )
 
     def cpu_prepare(self) -> torch.Tensor:
         """Simulate host-side batch preparation cost."""
         # Matrix multiply uses real CPU work (no sleeps).
-        return self.cpu_a @ self.cpu_b
+        torch.matmul(self.cpu_a, self.cpu_b, out=self._cpu_product)
+        return self._cpu_product
 
     def gpu_compute(self, scenario: SchedulerScenario) -> torch.Tensor:
         """Simulate GPU compute for a decode step."""
         a, b = self.gpu_buffers[scenario.name]
-        return torch.matmul(a, b)
+        out = self.gpu_outputs[scenario.name]
+        torch.matmul(a, b, out=out)
+        return out
 
     def stream_send(self, tokens: int) -> float:
         """Simulate response serialization cost with fixed overhead + per-token work."""
