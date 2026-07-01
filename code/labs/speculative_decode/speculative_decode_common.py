@@ -113,6 +113,15 @@ class TokenMLP(nn.Module):
             self._forward_buffers[cache_key] = buffers
         return buffers
 
+    def prepare_forward_buffers(
+        self,
+        num_tokens: int,
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        return self._ensure_forward_buffers(num_tokens, device=device, dtype=dtype)
+
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
         if token_ids.dim() != 2:
             raise ValueError("token_ids must have shape [batch, seq]")
@@ -149,6 +158,54 @@ class TokenMLP(nn.Module):
         flat_ids = token_ids.reshape(num_tokens)
         torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)
 
+        return self._forward_logits_into(logits_out, hidden, scratch, batch, seq)
+
+    def forward_into_prepared(
+        self,
+        token_ids: torch.Tensor,
+        logits_out: torch.Tensor,
+        buffers: tuple[torch.Tensor, torch.Tensor],
+    ) -> torch.Tensor:
+        """Run inference using caller-prepared hidden/scratch buffers."""
+        if token_ids.dim() != 2:
+            raise ValueError("token_ids must have shape [batch, seq]")
+        if token_ids.dtype not in (torch.int32, torch.int64):
+            raise ValueError("token_ids must be int32 or int64")
+        batch, seq = token_ids.shape
+        expected_shape = (batch, seq, self.vocab_size)
+        if tuple(logits_out.shape) != expected_shape:
+            raise ValueError(f"logits_out must have shape {expected_shape}")
+
+        if torch.is_grad_enabled():
+            logits_out.copy_(self(token_ids))
+            return logits_out
+
+        dtype = self.embed.weight.dtype
+        if logits_out.dtype != dtype:
+            raise ValueError("logits_out dtype must match model parameters")
+        hidden, scratch = buffers
+        num_tokens = batch * seq
+        expected_hidden_shape = (num_tokens, self.hidden_size)
+        if tuple(hidden.shape) != expected_hidden_shape or tuple(scratch.shape) != expected_hidden_shape:
+            raise ValueError(f"prepared buffers must have shape {expected_hidden_shape}")
+        if hidden.device != token_ids.device or scratch.device != token_ids.device:
+            raise ValueError("prepared buffers must match token_ids device")
+        if hidden.dtype != dtype or scratch.dtype != dtype:
+            raise ValueError("prepared buffers must match model parameter dtype")
+
+        flat_ids = token_ids.reshape(num_tokens)
+        torch.index_select(self.embed.weight, 0, flat_ids, out=hidden)
+        return self._forward_logits_into(logits_out, hidden, scratch, batch, seq)
+
+    def _forward_logits_into(
+        self,
+        logits_out: torch.Tensor,
+        hidden: torch.Tensor,
+        scratch: torch.Tensor,
+        batch: int,
+        seq: int,
+    ) -> torch.Tensor:
+        num_tokens = batch * seq
         current = hidden
         alternate = scratch
         if len(self._linear_weight_t_views) != len(self._linear_layers) or self._out_weight_t is None:

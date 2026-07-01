@@ -73,6 +73,10 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._draft_id_views: list[torch.Tensor] = []
         self._draft_id_column_views: list[torch.Tensor] = []
         self._speculation_step_ranges: list[range] = []
+        self._draft_forward_buffers: Optional[tuple[torch.Tensor, torch.Tensor]] = None
+        self._target_forward_buffers: list[tuple[torch.Tensor, torch.Tensor]] = []
+        self._forward_buffer_counts: tuple[int, int] = ()
+        self._expected_forward_buffer_counts: tuple[int, int] = ()
         self.output: Optional[torch.Tensor] = None
         self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
@@ -197,6 +201,17 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         )
 
         self.draft_model = build_draft_from_target(self.target_model, wl.draft_hidden)
+        self._draft_forward_buffers = self.draft_model.prepare_forward_buffers(
+            1,
+            device=self.device,
+            dtype=wl.dtype,
+        )
+        self._target_forward_buffers = [
+            self.target_model.prepare_forward_buffers(k, device=self.device, dtype=wl.dtype)
+            for k in range(1, wl.speculative_k + 1)
+        ]
+        self._forward_buffer_counts = (1, len(self._target_forward_buffers))
+        self._expected_forward_buffer_counts = (1, wl.speculative_k)
         self.output = None
         for key in self._metrics:
             self._metrics[key] = 0.0
@@ -224,14 +239,18 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             or self._draft_logits_next is None
             or self._target_logits is None
             or self._view_counts != self._expected_view_counts
+            or self._draft_forward_buffers is None
+            or self._forward_buffer_counts != self._expected_forward_buffer_counts
         ):
             raise RuntimeError("Benchmark not initialized")
 
         wl = self.workload
         out = self._output_ids
         input_ids = self.input_ids
-        draft_forward_into = self.draft_model.forward_into
-        target_forward_into = self.target_model.forward_into
+        draft_forward_into_prepared = self.draft_model.forward_into_prepared
+        target_forward_into_prepared = self.target_model.forward_into_prepared
+        draft_forward_buffers = self._draft_forward_buffers
+        target_forward_buffers = self._target_forward_buffers
         output_step_views = self._output_step_views
         output_token_views = self._output_token_views
         output_write_views = self._output_write_views
@@ -272,7 +291,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                 # Draft: propose k tokens sequentially.
                 prev = output_step_views[pos]
                 for j in speculation_step_range:
-                    draft_forward_into(prev, draft_logits)
+                    draft_forward_into_prepared(prev, draft_logits, draft_forward_buffers)
                     torch.max(draft_logits_next, dim=-1, out=(draft_next_values, draft_next_tokens))
                     draft_id_column_views[j].copy_(draft_next_tokens)
                     prev = draft_next_token_view
@@ -285,9 +304,10 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
                     verify_prev_tail_views[k - 2].copy_(draft_id_views[k - 2])
 
                 draft_window = draft_id_views[view_idx]
-                logits_t = target_forward_into(
+                logits_t = target_forward_into_prepared(
                     verify_prev_views[view_idx],
                     target_logits_views[view_idx],
+                    target_forward_buffers[view_idx],
                 )
                 target_values = target_value_views[view_idx]
                 target_next = target_token_views[view_idx]
@@ -372,6 +392,10 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self._draft_id_views = []
         self._draft_id_column_views = []
         self._speculation_step_ranges = []
+        self._draft_forward_buffers = None
+        self._target_forward_buffers = []
+        self._forward_buffer_counts = ()
+        self._expected_forward_buffer_counts = ()
         self.output = None
         self._verify_output_buffer = None
         for key in self._metrics:

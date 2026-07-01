@@ -19283,9 +19283,18 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._output_write_views = [" in setup_section
     assert "self._view_counts: tuple[int, ...] = ()" in source
     assert "self._expected_view_counts: tuple[int, ...] = ()" in source
+    assert "self._draft_forward_buffers: Optional[tuple[torch.Tensor, torch.Tensor]] = None" in source
+    assert "self._target_forward_buffers: list[tuple[torch.Tensor, torch.Tensor]] = []" in source
+    assert "self._forward_buffer_counts: tuple[int, int] = ()" in source
+    assert "self._expected_forward_buffer_counts: tuple[int, int] = ()" in source
     assert "verify_tail_count = wl.speculative_k - 1 if wl.speculative_k > 1 else 0" in setup_section
     assert "self._view_counts = (" in setup_section
     assert "self._expected_view_counts = (" in setup_section
+    assert "self._draft_forward_buffers = self.draft_model.prepare_forward_buffers(" in setup_section
+    assert "self._target_forward_buffers = [" in setup_section
+    assert "self.target_model.prepare_forward_buffers(k, device=self.device, dtype=wl.dtype)" in setup_section
+    assert "self._forward_buffer_counts = (1, len(self._target_forward_buffers))" in setup_section
+    assert "self._expected_forward_buffer_counts = (1, wl.speculative_k)" in setup_section
     assert "len(self._output_step_views)" in setup_section
     assert "len(self._accept_prefix_views)" in setup_section
     assert "self._verify_prev_first = self._verify_prev[:, 0]" in setup_section
@@ -19293,6 +19302,8 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
     assert "or self._view_counts != self._expected_view_counts" in benchmark_section
+    assert "or self._draft_forward_buffers is None" in benchmark_section
+    assert "or self._forward_buffer_counts != self._expected_forward_buffer_counts" in benchmark_section
     assert "len(self._output_step_views)" not in benchmark_section
     assert "len(self._output_token_views)" not in benchmark_section
     assert "len(self._output_write_views)" not in benchmark_section
@@ -19307,8 +19318,12 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "len(self._draft_id_views)" not in benchmark_section
     assert "len(self._draft_id_column_views)" not in benchmark_section
     assert "len(self._speculation_step_ranges)" not in benchmark_section
-    assert "draft_forward_into = self.draft_model.forward_into" in benchmark_section
-    assert "target_forward_into = self.target_model.forward_into" in benchmark_section
+    assert "draft_forward_into_prepared = self.draft_model.forward_into_prepared" in benchmark_section
+    assert "target_forward_into_prepared = self.target_model.forward_into_prepared" in benchmark_section
+    assert "draft_forward_buffers = self._draft_forward_buffers" in benchmark_section
+    assert "target_forward_buffers = self._target_forward_buffers" in benchmark_section
+    assert "draft_forward_into = self.draft_model.forward_into" not in benchmark_section
+    assert "target_forward_into = self.target_model.forward_into" not in benchmark_section
     assert "output_step_views = self._output_step_views" in benchmark_section
     assert "output_token_views = self._output_token_views" in benchmark_section
     assert "output_write_views = self._output_write_views" in benchmark_section
@@ -19316,7 +19331,7 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "accept_count_device = self._accept_count_device" in benchmark_section
     assert "accept_count_host = self._accept_count_host" in benchmark_section
     assert "speculation_step_ranges = self._speculation_step_ranges" in benchmark_section
-    assert "draft_forward_into(prev, draft_logits)" in benchmark_section
+    assert "draft_forward_into_prepared(prev, draft_logits, draft_forward_buffers)" in benchmark_section
     assert "prev = output_step_views[pos]" in benchmark_section
     assert "prev = draft_next_token_view" in benchmark_section
     assert "next_d.view(1, 1)" not in benchmark_section
@@ -19327,6 +19342,7 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "draft_window = draft_id_views[view_idx]" in benchmark_section
     assert "verify_prev_views[view_idx]" in benchmark_section
     assert "target_logits_views[view_idx]" in benchmark_section
+    assert "target_forward_buffers[view_idx]" in benchmark_section
     assert "target_values = target_value_views[view_idx]" in benchmark_section
     assert "target_next = target_token_views[view_idx]" in benchmark_section
     assert "matches = match_views[view_idx]" in benchmark_section
@@ -19375,6 +19391,10 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._accept_count_host = None" in teardown_section
     assert "self._accept_prefix_views = []" in teardown_section
     assert "self._speculation_step_ranges = []" in teardown_section
+    assert "self._draft_forward_buffers = None" in teardown_section
+    assert "self._target_forward_buffers = []" in teardown_section
+    assert "self._forward_buffer_counts = ()" in teardown_section
+    assert "self._expected_forward_buffer_counts = ()" in teardown_section
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._verify_output_buffer = torch.empty_like(self._output_ids, dtype=torch.float32)" in setup_section
     assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in capture_section
@@ -19384,6 +19404,10 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
     assert "def forward_into(self, token_ids: torch.Tensor, logits_out: torch.Tensor)" in common_source
+    assert "def prepare_forward_buffers(" in common_source
+    assert "def forward_into_prepared(" in common_source
+    assert "def _forward_logits_into(" in common_source
+    assert "prepared buffers must have shape" in common_source
     assert "tuple[int, torch.device, torch.dtype]" in common_source
     assert "self._linear_layers: tuple[nn.Linear, ...] = tuple(" in common_source
     assert "cache_key = (int(num_tokens), device, dtype)" in common_source
