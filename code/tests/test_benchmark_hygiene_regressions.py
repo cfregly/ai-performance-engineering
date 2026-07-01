@@ -8124,7 +8124,9 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     assert "scores = self._scores_buffer" in baseline_benchmark
     assert "layout_bhld = self._attn_layout_bhld" in baseline_benchmark
     assert "attn_out = self._attn_out_view" in baseline_benchmark
-    assert "layout_bhld.copy_(attn)" in baseline_benchmark
+    assert "torch.matmul(probs, v, out=layout_bhld)" in baseline_benchmark
+    assert "layout_bhld.copy_(attn)" not in baseline_benchmark
+    assert "attn = torch.matmul(probs, v)" not in baseline_benchmark
     assert "attn.transpose(1, 2).reshape" not in baseline_benchmark
     assert "self._scores_buffer = None" in baseline_teardown
     assert "self._attn_layout_buffer = None" in baseline_teardown

@@ -129,8 +129,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 torch.matmul(q, self._k_t, out=scores)
                 scores.mul_(self._scale)
                 probs = torch.softmax(scores, dim=-1)
-                attn = torch.matmul(probs, v)
-                layout_bhld.copy_(attn)
+                torch.matmul(probs, v, out=layout_bhld)
                 end_event.record(current_stream)
                 self._pending_timing_pair = timing_pair
                 self.output = attn_out
