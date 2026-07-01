@@ -117,6 +117,10 @@ def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
         "# Sum over top-k experts",
         maxsplit=1,
     )[0]
+    reduce_section = grouped_section.split("# Sum over top-k experts", maxsplit=1)[1].split(
+        "return reduced",
+        maxsplit=1,
+    )[0]
 
     assert "output = self._sorted_output_like(sorted_x)" in expert_loop_section
     assert "output = torch.empty_like(sorted_x)" not in expert_loop_section
@@ -133,6 +137,13 @@ def test_level4_grouped_moe_overwrites_sorted_expert_output() -> None:
     assert "unsorted_output = self._unsorted_output_like(output)" in unsort_section
     assert "unsorted_output.index_copy_(0, sorted_indices, output)" in unsort_section
     assert "torch.argsort(sorted_indices)" not in grouped_section
+    assert "output = output.view(batch_seq, top_k, -1)" in reduce_section
+    assert "if torch.is_grad_enabled() and output.requires_grad:" in reduce_section
+    assert "return output.sum(dim=1)" in reduce_section
+    assert "reduced = output[:, 0, :]" in reduce_section
+    assert "for route_idx in range(1, top_k):" in reduce_section
+    assert "reduced.add_(output[:, route_idx, :])" in reduce_section
+    assert "output.view(batch_seq, top_k, -1).sum(dim=1)" not in grouped_section
 
 
 def test_level4_grouped_moe_unsort_scatter_matches_reference() -> None:

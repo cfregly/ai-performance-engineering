@@ -319,10 +319,15 @@ class GroupedMoEExperts(nn.Module):
         unsorted_output.index_copy_(0, sorted_indices, output)
         output = unsorted_output
         
-        # Sum over top-k experts
-        output = output.view(batch_seq, top_k, -1).sum(dim=1)
-        
-        return output
+        # Sum over top-k experts. In inference mode, reuse route slot 0 as the
+        # destination and avoid a separate generic reduction output.
+        output = output.view(batch_seq, top_k, -1)
+        if torch.is_grad_enabled() and output.requires_grad:
+            return output.sum(dim=1)
+        reduced = output[:, 0, :]
+        for route_idx in range(1, top_k):
+            reduced.add_(output[:, route_idx, :])
+        return reduced
 
 
 class TritonMoELayer(nn.Module):
