@@ -46,6 +46,7 @@ class FlashBlockwiseAttentionLayer(nn.Module):
         self._qkv_weight_t: Optional[torch.Tensor] = None
         self._workspace_k: torch.Tensor | None = None
         self._workspace_v: torch.Tensor | None = None
+        self._attn_merge_buffer: Optional[torch.Tensor] = None
         self._workspace_batch_size = 0
         self._workspace_seq_capacity = 0
 
@@ -124,6 +125,22 @@ class FlashBlockwiseAttentionLayer(nn.Module):
             self._workspace_v.as_strided(shape, stride),
         )
 
+    def _attention_merge_buffer_for(
+        self,
+        x: torch.Tensor,
+        batch_size: int,
+        seq_len: int,
+    ) -> torch.Tensor:
+        rows = int(batch_size * seq_len)
+        if (
+            self._attn_merge_buffer is None
+            or self._attn_merge_buffer.device != x.device
+            or self._attn_merge_buffer.dtype != x.dtype
+            or self._attn_merge_buffer.size(0) < rows
+        ):
+            self._attn_merge_buffer = torch.empty(rows, self.hidden_dim, device=x.device, dtype=x.dtype)
+        return self._attn_merge_buffer[:rows].view(batch_size, seq_len, self.num_heads, self.head_dim)
+
     def _cached_attention_inputs(
         self,
         k: torch.Tensor,
@@ -168,7 +185,12 @@ class FlashBlockwiseAttentionLayer(nn.Module):
 
         with _flash_sdp_context():
             attn_out = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, is_causal=False)
-        attn_out = attn_out.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_dim)
+        if torch.is_grad_enabled():
+            attn_out = attn_out.transpose(1, 2).contiguous().view(batch_size, seq_len, hidden_dim)
+        else:
+            attn_merge_buffer = self._attention_merge_buffer_for(x, batch_size, seq_len)
+            attn_merge_buffer.copy_(attn_out.transpose(1, 2))
+            attn_out = attn_merge_buffer.view(batch_size, seq_len, hidden_dim)
         return self.proj(attn_out)
 
 

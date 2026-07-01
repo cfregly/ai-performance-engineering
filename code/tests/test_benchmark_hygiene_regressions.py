@@ -18849,6 +18849,12 @@ def test_ch13_precisionmixed_and_kv_cache_defer_verification_clones_outside_hot_
     assert "torch.cat([cached_k, k]" not in flash_source
     assert "torch.cat([cached_v, v]" not in flash_source
     assert "layer.configure_kv_workspace(" in flash_source
+    assert "self._attn_merge_buffer: Optional[torch.Tensor] = None" in flash_source
+    assert "def _attention_merge_buffer_for(" in flash_source
+    assert "attn_merge_buffer.copy_(attn_out.transpose(1, 2))" in flash_forward
+    assert "attn_out = attn_merge_buffer.view(batch_size, seq_len, hidden_dim)" in flash_forward
+    assert "attn_out.transpose(1, 2).contiguous().view" in flash_forward
+    assert "if torch.is_grad_enabled():" in flash_forward
 
 
 def test_ch13_optimized_kv_cache_variants_precompute_request_views() -> None:
@@ -19044,11 +19050,13 @@ def test_flash_blockwise_attention_reuses_workspace_for_cached_kv() -> None:
     with torch.inference_mode():
         out1 = layer(torch.randn(1, 1, 6), kv_cache, "req", 0, cache_pos=2)
         qkv_ptr = layer._qkv_buffer.data_ptr()
+        merge_ptr = layer._attn_merge_buffer.data_ptr()
         out2 = layer(torch.randn(1, 1, 6), kv_cache, "req", 0, cache_pos=3)
 
     assert out1.shape == (1, 1, 6)
     assert out2.shape == (1, 1, 6)
     assert layer._qkv_buffer.data_ptr() == qkv_ptr
+    assert layer._attn_merge_buffer.data_ptr() == merge_ptr
     assert layer._qkv_weight_t is not None
 
 
