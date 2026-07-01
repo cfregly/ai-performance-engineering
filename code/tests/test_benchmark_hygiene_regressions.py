@@ -5234,6 +5234,10 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
 
     for filename in ("baseline_flash_sdp.py", "optimized_flash_sdp.py"):
         flash_source = (REPO_ROOT / "ch16" / filename).read_text(encoding="utf-8")
+        flash_module_section = flash_source.split("class ", maxsplit=1)[1].split(
+            "Benchmark",
+            maxsplit=1,
+        )[0]
         flash_setup = flash_source.split("def setup", maxsplit=1)[1].split(
             "def benchmark_fn",
             maxsplit=1,
@@ -5261,6 +5265,12 @@ def test_attention_baselines_cache_causal_masks_outside_forward() -> None:
         assert "self.output.detach().clone()" not in flash_capture
         assert "parameter_count=self._payload_parameter_count" in flash_capture
         assert "sum(p.numel()" not in flash_capture
+        assert "q, k, v = qkv.unbind(dim=2)" in flash_module_section
+        assert "q = q.transpose(1, 2)" in flash_module_section
+        assert "k = k.transpose(1, 2)" in flash_module_section
+        assert "v = v.transpose(1, 2)" in flash_module_section
+        assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in flash_module_section
+        assert "q, k, v = qkv[0], qkv[1], qkv[2]" not in flash_module_section
 
     optimized_flash_source = (REPO_ROOT / "ch16" / "optimized_flash_sdp.py").read_text(
         encoding="utf-8"

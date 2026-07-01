@@ -66,8 +66,10 @@ class FlashAttentionModule(nn.Module):
             qkv_buffer = self._ensure_qkv_buffer(x, B, T)
             qkv = torch.matmul(x, self._qkv_weight_t, out=qkv_buffer)
         qkv = qkv.view(B, T, 3, self.num_heads, self.hidden_dim // self.num_heads)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = qkv.unbind(dim=2)
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
         with sdpa_kernel(self._flash_backends):
             out = F.scaled_dot_product_attention(q, k, v, is_causal=False)
         out = out.transpose(1, 2).reshape(B, T, self.hidden_dim)

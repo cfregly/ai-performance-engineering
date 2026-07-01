@@ -42,8 +42,10 @@ class NaiveAttentionModule(nn.Module):
         B, T, _ = x.shape
         qkv = self.qkv(x)
         qkv = qkv.view(B, T, 3, self.num_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = qkv.unbind(dim=2)
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
         # Baseline: naive attention with explicit matmul (no Flash)
         # This has O(n^2) memory for attention scores
         scale = self.head_dim ** -0.5
