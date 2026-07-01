@@ -84,6 +84,54 @@ class TinyPrefillDecode(nn.Module):
         seed = logits[:, -1, :].contiguous()
         return kv_cache, seed
 
+    def prefill_into(
+        self,
+        prompts: torch.Tensor,
+        kv_out: torch.Tensor,
+        seed_out: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if kv_out.shape != prompts.shape:
+            raise RuntimeError(
+                f"prefill_into destination shape {tuple(kv_out.shape)} does not match prompt shape {tuple(prompts.shape)}"
+            )
+        if kv_out.device != prompts.device or kv_out.dtype != prompts.dtype:
+            raise RuntimeError("prefill_into destination must match prompt device and dtype")
+
+        with torch.no_grad():
+            x = prompts
+            if self.layers:
+                for layer in self.layers[:-1]:
+                    x = torch.relu_(layer(x))
+                final_layer = self.layers[-1]
+                weight_t = final_layer.weight.t().expand(x.shape[0], -1, -1)
+                torch.bmm(x, weight_t, out=kv_out)
+                if final_layer.bias is not None:
+                    kv_out.add_(final_layer.bias)
+                torch.relu_(kv_out)
+            else:
+                kv_out.copy_(x)
+
+            if seed_out is None:
+                seed_out = torch.empty(
+                    prompts.shape[0],
+                    prompts.shape[2],
+                    device=prompts.device,
+                    dtype=prompts.dtype,
+                )
+            elif (
+                seed_out.shape != (prompts.shape[0], prompts.shape[2])
+                or seed_out.device != prompts.device
+                or seed_out.dtype != prompts.dtype
+            ):
+                raise RuntimeError(
+                    "prefill_into seed destination must match prompt batch, hidden size, device, and dtype"
+                )
+
+            torch.matmul(kv_out[:, -1, :], self.proj.weight.t(), out=seed_out)
+            if self.proj.bias is not None:
+                seed_out.add_(self.proj.bias)
+        return kv_out, seed_out
+
     def decode(self, seed: torch.Tensor, kv_cache: torch.Tensor, decode_tokens: int) -> torch.Tensor:
         x = seed
         context = kv_cache.shape[1]

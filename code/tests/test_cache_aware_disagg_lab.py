@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import torch
 
+from ch17.prefill_decode_disagg_multigpu_common import TinyPrefillDecode
 from core.harness.benchmark_harness import BaseBenchmark
 from labs.cache_aware_disagg_inference.cache_aware_disagg_common import (
     CacheAwareDisaggBenchmark,
@@ -98,6 +99,51 @@ def test_cache_aware_disagg_single_gpu_extend_cache_buffer_reuses_storage() -> N
     assert first.data_ptr() == second.data_ptr()
     torch.testing.assert_close(second[:, :2], first_chunk)
     torch.testing.assert_close(second[:, 2:4], second_chunk)
+
+
+def test_tiny_prefill_decode_prefill_into_writes_kv_destination() -> None:
+    torch.manual_seed(123)
+    model = TinyPrefillDecode(
+        hidden_size=4,
+        num_layers=2,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    ).eval()
+    prompt = torch.randn(2, 3, 4)
+    expected_kv, expected_seed = model.prefill(prompt)
+    destination = torch.full((2, 7, 4), -123.0)
+    kv_view = destination[:, 2:5]
+    seed_buffer = torch.empty(2, 4)
+
+    actual_kv, actual_seed = model.prefill_into(prompt, kv_view, seed_buffer)
+
+    assert actual_kv.data_ptr() == kv_view.data_ptr()
+    assert actual_seed.data_ptr() == seed_buffer.data_ptr()
+    torch.testing.assert_close(actual_kv, expected_kv)
+    torch.testing.assert_close(actual_seed, expected_seed)
+    torch.testing.assert_close(destination[:, :2], torch.full((2, 2, 4), -123.0))
+    torch.testing.assert_close(destination[:, 5:], torch.full((2, 2, 4), -123.0))
+
+
+def test_cache_aware_disagg_single_gpu_prefill_appends_directly_to_kv_cache() -> None:
+    source = (LAB_DIR / "cache_aware_disagg_common.py").read_text(encoding="utf-8")
+    setup_section = source.split("def setup", maxsplit=1)[1].split("def _empty_kv", maxsplit=1)[0]
+    benchmark_section = source.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
+
+    assert "def _reserve_cache_append_buffer(" in source
+    assert "self._prefill_seed_buffer = torch.empty(" in setup_section
+    assert "self.prefill_model.prefill_into(" in setup_section
+    assert "prefix_buffer[:, offset:next_offset]" in setup_section
+    assert "prefix_buffer[:, offset:next_offset].copy_" not in setup_section
+    assert "accumulated_kv, append_kv = _reserve_cache_append_buffer(" in benchmark_section
+    assert "self.prefill_model.prefill_into(" in benchmark_section
+    assert "append_kv" in benchmark_section
+    assert "prefill_seed_buffer" in benchmark_section
+    assert "chunk_kv, seed = self.prefill_model.prefill(chunk)" not in benchmark_section
+    assert "_extend_cache_buffer(" not in benchmark_section
 
 
 def test_cache_aware_disagg_single_gpu_reload_materialization_reuses_storage() -> None:

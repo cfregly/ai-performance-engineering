@@ -84,13 +84,36 @@ def _extend_cache_buffer(
     chunk_kv: torch.Tensor,
     kv_buffers: Dict[int, torch.Tensor],
 ) -> torch.Tensor:
+    prefix, append_view = _reserve_cache_append_buffer(
+        cfg,
+        request_id=request_id,
+        cache=cache,
+        append_tokens=int(chunk_kv.size(1)),
+        append_device=chunk_kv.device,
+        append_dtype=chunk_kv.dtype,
+        kv_buffers=kv_buffers,
+    )
+    append_view.copy_(chunk_kv)
+    return prefix
+
+
+def _reserve_cache_append_buffer(
+    cfg: CacheAwareDisaggConfig,
+    *,
+    request_id: int,
+    cache: torch.Tensor,
+    append_tokens: int,
+    append_device: torch.device,
+    append_dtype: torch.dtype,
+    kv_buffers: Dict[int, torch.Tensor],
+) -> tuple[torch.Tensor, torch.Tensor]:
     current_kv_len = cache.size(1)
-    next_kv_len = current_kv_len + chunk_kv.size(1)
+    next_kv_len = current_kv_len + append_tokens
     kv_buffer = kv_buffers.get(request_id)
     if (
         kv_buffer is None
-        or kv_buffer.device != chunk_kv.device
-        or kv_buffer.dtype != chunk_kv.dtype
+        or kv_buffer.device != append_device
+        or kv_buffer.dtype != append_dtype
         or kv_buffer.size(1) < next_kv_len
     ):
         buffer_tokens = max(cfg.context_window, next_kv_len)
@@ -98,15 +121,14 @@ def _extend_cache_buffer(
             cfg.batch_size,
             buffer_tokens,
             cfg.hidden_size,
-            device=chunk_kv.device,
-            dtype=chunk_kv.dtype,
+            device=append_device,
+            dtype=append_dtype,
         )
         kv_buffers[request_id] = kv_buffer
 
     if current_kv_len and cache.data_ptr() != kv_buffer.data_ptr():
         kv_buffer[:, :current_kv_len].copy_(cache)
-    kv_buffer[:, current_kv_len:next_kv_len].copy_(chunk_kv)
-    return kv_buffer[:, :next_kv_len]
+    return kv_buffer[:, :next_kv_len], kv_buffer[:, current_kv_len:next_kv_len]
 
 
 class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
@@ -180,6 +202,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._decode_chunk_ranges: Dict[int, range] = {}
         self._decode_chunk_range_count = 0
         self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))
+        self._prefill_seed_buffer: Optional[torch.Tensor] = None
 
     def _build_request_plans(self) -> List[RequestPlan]:
         warm_requests = int(round(self.cfg.requests_per_iteration * self.cfg.warm_request_ratio))
@@ -291,6 +314,12 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             for plan in self.request_plans
         }
+        self._prefill_seed_buffer = torch.empty(
+            self.cfg.batch_size,
+            self.cfg.hidden_size,
+            device=self.device,
+            dtype=self.cfg.dtype,
+        )
         self._worker_caches = [{} for _ in range(self._logical_decode_worker_count)]
         self._worker_cache_count = len(self._worker_caches)
         self._owners = {}
@@ -313,9 +342,11 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 seed: Optional[torch.Tensor] = None
                 offset = 0
                 for chunk in warm_chunks:
-                    chunk_kv, seed = self.prefill_model.prefill(chunk)
-                    next_offset = offset + int(chunk_kv.size(1))
-                    prefix_buffer[:, offset:next_offset].copy_(chunk_kv)
+                    next_offset = offset + int(chunk.size(1))
+                    _, seed = self.prefill_model.prefill_into(
+                        chunk,
+                        prefix_buffer[:, offset:next_offset],
+                    )
                     offset = next_offset
                 self.shared_prefix_store[plan.request_idx] = prefix_buffer
                 if seed is not None:
@@ -481,6 +512,9 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         prompt_chunks = self._prompt_chunks
         if self._prompt_chunk_count != request_plan_count:
             raise RuntimeError("Prompt chunk views not initialized")
+        prefill_seed_buffer = self._prefill_seed_buffer
+        if prefill_seed_buffer is None:
+            raise RuntimeError("Prefill seed buffer not initialized")
         request_event_groups = self._request_event_groups
         if self._request_event_group_count != request_plan_count:
             raise RuntimeError("Request event groups not initialized")
@@ -532,13 +566,19 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         owners=owners,
                         metrics=metrics,
                     )
-                    chunk_kv, seed = self.prefill_model.prefill(chunk)
-                    accumulated_kv = _extend_cache_buffer(
+                    accumulated_kv, append_kv = _reserve_cache_append_buffer(
                         self.cfg,
                         request_id=plan.request_idx,
                         cache=accumulated_kv,
-                        chunk_kv=chunk_kv,
+                        append_tokens=int(chunk.size(1)),
+                        append_device=chunk.device,
+                        append_dtype=chunk.dtype,
                         kv_buffers=kv_buffers,
+                    )
+                    _, seed = self.prefill_model.prefill_into(
+                        chunk,
+                        append_kv,
+                        prefill_seed_buffer,
                     )
                     worker_caches[current_worker][plan.request_idx] = accumulated_kv
                     owners[plan.request_idx] = current_worker
@@ -679,6 +719,7 @@ class CacheAwareDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._decode_chunk_ranges = {}
         self._decode_chunk_range_count = 0
         self._decode_token_divisor = float(max(self.cfg.decode_tokens, 1))
+        self._prefill_seed_buffer = None
         torch.cuda.empty_cache()
 
     def get_config(self) -> BenchmarkConfig:
