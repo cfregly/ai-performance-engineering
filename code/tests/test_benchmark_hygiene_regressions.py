@@ -18764,6 +18764,10 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
         "def teardown",
         maxsplit=1,
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config",
+        maxsplit=1,
+    )[0]
 
     assert "self._match_host = torch.empty(" in setup_section
     assert "pin_memory=torch.cuda.is_available()" in setup_section
@@ -18846,6 +18850,12 @@ def test_ch15_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "next_d.view(1, 1)" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(self._output_ids, dtype=torch.float32)" in setup_section
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "self.output.float()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:

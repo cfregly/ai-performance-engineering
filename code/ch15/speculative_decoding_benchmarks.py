@@ -61,6 +61,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._match_host_views: list[torch.Tensor] = []
         self._speculation_step_ranges: list[range] = []
         self.output: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._metrics: Dict[str, float] = {}
         self._payload_parameter_count = 0
 
@@ -97,6 +98,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
             dtype=torch.int64,
         )
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
+        self._verify_output_buffer = torch.empty_like(self._output_ids, dtype=torch.float32)
         self._output_step_views = [
             self._output_ids[:, token_idx : token_idx + 1] for token_idx in range(wl.total_tokens + 1)
         ]
@@ -321,11 +323,12 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         }
 
     def capture_verification_payload(self) -> None:
-        if self.input_ids is None or self.output is None:
+        if self.input_ids is None or self.output is None or self._verify_output_buffer is None:
             raise RuntimeError("benchmark_fn() must run before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output, non_blocking=False)
         self._set_verification_payload(
             inputs={"input_ids": self.input_ids},
-            output=self.output.float(),
+            output=self._verify_output_buffer,
             batch_size=1,
             parameter_count=self._payload_parameter_count,
             output_tolerance=(0.0, 0.0),
@@ -363,6 +366,7 @@ class SpeculativeDecodingBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._match_host_views = []
         self._speculation_step_ranges = []
         self.output = None
+        self._verify_output_buffer = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
