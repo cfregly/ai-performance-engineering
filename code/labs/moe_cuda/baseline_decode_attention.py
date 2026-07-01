@@ -27,6 +27,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.k: Optional[torch.Tensor] = None  # [B, H, S, D]
         self.v: Optional[torch.Tensor] = None  # [B, H, S, D]
         self._k_t: Optional[torch.Tensor] = None
+        self._scores_buffer: Optional[torch.Tensor] = None
         self._attn_layout_buffer: Optional[torch.Tensor] = None
         self._attn_layout_bhld: Optional[torch.Tensor] = None
         self._attn_out_view: Optional[torch.Tensor] = None
@@ -81,6 +82,11 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
             device=self.device,
             dtype=torch.float32,
         )
+        self._scores_buffer = torch.empty(
+            (self.batch, self.num_heads, 1, self.kv_seq),
+            device=self.device,
+            dtype=torch.float32,
+        )
         self._attn_layout_bhld = self._attn_layout_buffer.transpose(1, 2)
         self._attn_out_view = self._attn_layout_buffer.view(self.batch, 1, self.num_heads * self.head_dim)
         self._latency_total_ms = 0.0
@@ -106,7 +112,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> Dict[str, List[float]]:
         if self.q is None or self.k is None or self.v is None or self._k_t is None:
             raise RuntimeError("Decode tensors missing")
-        if self._attn_layout_bhld is None or self._attn_out_view is None:
+        if self._scores_buffer is None or self._attn_layout_bhld is None or self._attn_out_view is None:
             raise RuntimeError("Decode output views missing")
 
         with nvtx_range("moe_cuda_decode_naive", enable=self._enable_nvtx):
@@ -117,9 +123,10 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 start_event.record(current_stream)
                 q = self.q
                 v = self.v
+                scores = self._scores_buffer
                 layout_bhld = self._attn_layout_bhld
                 attn_out = self._attn_out_view
-                scores = torch.matmul(q, self._k_t)
+                torch.matmul(q, self._k_t, out=scores)
                 scores.mul_(self._scale)
                 probs = torch.softmax(scores, dim=-1)
                 attn = torch.matmul(probs, v)
@@ -162,6 +169,7 @@ class BaselineDecodeAttentionBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.k = None
         self.v = None
         self._k_t = None
+        self._scores_buffer = None
         self._attn_layout_buffer = None
         self._attn_layout_bhld = None
         self._attn_out_view = None

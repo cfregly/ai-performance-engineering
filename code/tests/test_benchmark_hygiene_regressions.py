@@ -8032,12 +8032,16 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
         assert attr in baseline_source
         assert attr not in source
     assert "self._attn_layout_buffer = torch.empty(" in baseline_setup
+    assert "self._scores_buffer: Optional[torch.Tensor] = None" in baseline_source
+    assert "self._scores_buffer = torch.empty(" in baseline_setup
     assert "self._attn_layout_bhld = self._attn_layout_buffer.transpose(1, 2)" in baseline_setup
     assert "self._attn_out_view = self._attn_layout_buffer.view(" in baseline_setup
+    assert "scores = self._scores_buffer" in baseline_benchmark
     assert "layout_bhld = self._attn_layout_bhld" in baseline_benchmark
     assert "attn_out = self._attn_out_view" in baseline_benchmark
     assert "layout_bhld.copy_(attn)" in baseline_benchmark
     assert "attn.transpose(1, 2).reshape" not in baseline_benchmark
+    assert "self._scores_buffer = None" in baseline_teardown
     assert "self._attn_layout_buffer = None" in baseline_teardown
     assert "self._attn_layout_bhld = None" in baseline_teardown
     assert "self._attn_out_view = None" in baseline_teardown
@@ -8048,7 +8052,8 @@ def test_moe_cuda_decode_attention_preconverts_bf16_outside_hot_loop() -> None:
     assert "attn_out = attn.transpose(1, 2).reshape(attn.shape[0], attn.shape[2], -1)" in benchmark_section
     assert "self._k_t = self.k.transpose(-2, -1)" in baseline_setup
     assert "self._scale = 1.0 / math.sqrt(self.head_dim)" in baseline_setup
-    assert "scores = torch.matmul(q, self._k_t)" in baseline_benchmark
+    assert "torch.matmul(q, self._k_t, out=scores)" in baseline_benchmark
+    assert "scores = torch.matmul(q, self._k_t)" not in baseline_benchmark
     assert "scores.mul_(self._scale)" in baseline_benchmark
     assert "k.transpose(-2, -1)" not in baseline_benchmark
     assert " * scale" not in baseline_benchmark
