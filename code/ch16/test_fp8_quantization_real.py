@@ -86,8 +86,7 @@ class SimpleTransformerBlock(nn.Module):
         
         batch, seq_len, _ = x.shape
         qkv = self.qkv(x).reshape(batch, seq_len, 3, self.n_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))
         
         with prefer_flash_sdpa():
             attn = torch.nn.functional.scaled_dot_product_attention(q, k, v)

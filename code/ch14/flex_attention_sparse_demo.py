@@ -383,8 +383,7 @@ class SlidingWindowCausalAttention(nn.Module):
         # QKV projection
         qkv = self.qkv_proj(x)
         qkv = qkv.view(batch_size, seq_len, 3, self.num_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, B, H, S, D]
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))
         
         # FlexAttention with sliding window causal mask
         if self._compiled_flex is not None and HAS_FLEX_ATTENTION:

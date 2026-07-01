@@ -2750,6 +2750,7 @@ def test_ch14_optimized_attention_modules_reuse_projection_buffers() -> None:
         )[0]
 
         assert "self._qkv_buffer: Optional[torch.Tensor] = None" in source
+        assert "self._attn_merge_buffer: Optional[torch.Tensor] = None" in source
         assert "self._output_buffer: Optional[torch.Tensor] = None" in source
         assert "self._qkv_weight_t: Optional[torch.Tensor] = None" in source
         assert "self._out_proj_weight_t: Optional[torch.Tensor] = None" in source
@@ -2759,12 +2760,20 @@ def test_ch14_optimized_attention_modules_reuse_projection_buffers() -> None:
         assert "def _ensure_projection_buffers(" in source
         assert "rows = int(batch_size * seq_len)" in source
         assert "or self._qkv_buffer.size(0) < rows" in source
+        assert "or self._attn_merge_buffer.size(0) < rows" in source
         assert "or self._output_buffer.size(0) < rows" in source
         assert "self._qkv_buffer[:rows].view(qkv_shape)" in source
+        assert "self._attn_merge_buffer[:rows].view(merge_shape)" in source
         assert "self._output_buffer[:rows].view(output_shape)" in source
         assert "if torch.is_grad_enabled():" in forward_section
         assert "qkv = torch.matmul(x, self._qkv_weight_t, out=qkv_buffer)" in forward_section
+        assert "q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))" in forward_section
+        assert "attn_merge_buffer.copy_(output.transpose(1, 2))" in forward_section
         assert "return torch.matmul(output, self._out_proj_weight_t, out=output_buffer)" in forward_section
+        assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in forward_section
+        assert "q, k, v = qkv[0], qkv[1], qkv[2]" not in forward_section
+        assert "output.transpose(1, 2).contiguous().view" in forward_section
+        assert "if attn_merge_buffer is None:" in forward_section
         assert "self.qkv_proj.weight.t()" not in forward_section
         assert "self.out_proj.weight.t()" not in forward_section
 
@@ -2772,20 +2781,44 @@ def test_ch14_optimized_attention_modules_reuse_projection_buffers() -> None:
 
     module = OptimizedAttentionModule(embed_dim=8, num_heads=2)
     large = torch.empty(2, 4, 8)
-    qkv_large, out_large = module._ensure_projection_buffers(large, 2, 4)
+    qkv_large, out_large, merge_large = module._ensure_projection_buffers(large, 2, 4)
     qkv_ptr = module._qkv_buffer.data_ptr()
     out_ptr = module._output_buffer.data_ptr()
+    merge_ptr = module._attn_merge_buffer.data_ptr()
     small = torch.empty(1, 2, 8)
-    qkv_small, out_small = module._ensure_projection_buffers(small, 1, 2)
+    qkv_small, out_small, merge_small = module._ensure_projection_buffers(small, 1, 2)
 
     assert qkv_large.shape == (2, 4, 24)
     assert out_large.shape == (2, 4, 8)
+    assert merge_large.shape == (2, 4, 2, 4)
     assert qkv_small.shape == (1, 2, 24)
     assert out_small.shape == (1, 2, 8)
+    assert merge_small.shape == (1, 2, 2, 4)
     assert module._qkv_buffer.data_ptr() == qkv_ptr
     assert module._output_buffer.data_ptr() == out_ptr
+    assert module._attn_merge_buffer.data_ptr() == merge_ptr
     assert qkv_small.data_ptr() == qkv_ptr
     assert out_small.data_ptr() == out_ptr
+    assert merge_small.data_ptr() == merge_ptr
+
+
+def test_ch14_attention_examples_split_qkv_without_full_axis_permute() -> None:
+    for filename in (
+        "baseline_flex_attention_sparse.py",
+        "optimized_flex_attention_sparse.py",
+        "baseline_sliding_window.py",
+        "optimized_sliding_window.py",
+        "flash_attention_sdpa_bench.py",
+        "flex_attention_sparse_demo.py",
+        "sliding_window_demo.py",
+        "torch_compile_large_model.py",
+        "torch_compiler_examples.py",
+        "training_large_model_1_5x.py",
+    ):
+        source = (REPO_ROOT / "ch14" / filename).read_text(encoding="utf-8")
+        assert "q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))" in source
+        assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in source
+        assert "q, k, v = qkv[0], qkv[1], qkv[2]" not in source
 
 
 def test_ch14_flex_attention_sparse_samples_verification_outputs() -> None:
@@ -5964,7 +5997,18 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
         "class StreamingResponse",
         maxsplit=1,
     )[0]
+    quick_block = quick_source.split("class SimpleGPTBlock", maxsplit=1)[1].split(
+        "def benchmark_quick",
+        maxsplit=1,
+    )[0]
+    fp8_block = fp8_test_source.split("class SimpleTransformerBlock", maxsplit=1)[1].split(
+        "class SimpleGPT",
+        maxsplit=1,
+    )[0]
 
+    assert "attn_input = self.ln1(x)" in quick_block
+    assert "self.attn(attn_input, attn_input, attn_input)" in quick_block
+    assert "self.attn(self.ln1(x), self.ln1(x), self.ln1(x))" not in quick_block
     assert quick_benchmark.count("with torch.inference_mode():") == 2
     assert "with torch.no_grad():" not in quick_benchmark
     assert quick_benchmark.count("torch.cuda.Event(enable_timing=True)") == 2
@@ -5983,6 +6027,9 @@ def test_ch16_misc_benchmark_helpers_use_inference_mode() -> None:
     assert "start.record()" not in fp8_benchmark
     assert "end.record()" not in fp8_benchmark
     assert "time.time()" not in fp8_benchmark
+    assert "q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))" in fp8_block
+    assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in fp8_block
+    assert "q, k, v = qkv[0], qkv[1], qkv[2]" not in fp8_block
     assert "with torch.inference_mode():" in te_convert
     assert "with torch.no_grad():" not in te_convert
     assert quantization_manager.count("with torch.inference_mode():") == 3
@@ -14905,6 +14952,26 @@ def test_ch14_compile_tools_use_inference_mode() -> None:
         assert "torch.inference_mode()" in source
         assert "torch.no_grad()" not in source
 
+    large_model_source = (REPO_ROOT / "ch14" / "torch_compile_large_model.py").read_text(
+        encoding="utf-8"
+    )
+    large_block = large_model_source.split("class LargeTransformerBlock", maxsplit=1)[1].split(
+        "def create_model",
+        maxsplit=1,
+    )[0]
+    inspect_source = (REPO_ROOT / "ch14" / "inspect_compiled_code.py").read_text(encoding="utf-8")
+    inspect_block = inspect_source.split("class SimpleLLMBlock", maxsplit=1)[1].split(
+        "def setup_code_dump_directory",
+        maxsplit=1,
+    )[0]
+
+    assert "q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))" in large_block
+    assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in large_block
+    assert "q, k, v = qkv[0], qkv[1], qkv[2]" not in large_block
+    assert "attn_input = self.ln1(x)" in inspect_block
+    assert "self.attn(attn_input, attn_input, attn_input)" in inspect_block
+    assert "self.attn(self.ln1(x), self.ln1(x), self.ln1(x))" not in inspect_block
+
 
 def test_ch14_inspect_compiled_code_streams_debug_file_walks() -> None:
     source = (REPO_ROOT / "ch14" / "inspect_compiled_code.py").read_text(encoding="utf-8")
@@ -14941,6 +15008,9 @@ def test_ch14_flash_attention_sdpa_bench_defers_output_clone_and_host_sync() -> 
 
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._verify_output_buffer = torch.empty_like(self.x)" in setup_section
+    assert "q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))" in source
+    assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in source
+    assert "q, k, v = qkv[0], qkv[1], qkv[2]" not in source
     assert "float(output" not in benchmark_section
     assert ".detach().clone()" not in benchmark_section
     assert "self.output = output" in benchmark_section
@@ -14963,9 +15033,16 @@ def test_ch14_training_large_model_defers_step_loss_sync() -> None:
         "def estimate_memory",
         maxsplit=1,
     )[0]
+    block_section = source.split("class TransformerBlock", maxsplit=1)[1].split(
+        "class LargeLanguageModel",
+        maxsplit=1,
+    )[0]
 
     assert "return loss.item()" not in train_step_section
     assert "return loss.detach()" in train_step_section
+    assert "q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))" in block_section
+    assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in block_section
+    assert "q, k, v = qkv[0], qkv[1], qkv[2]" not in block_section
     assert benchmark_section.count("torch.cuda.Event(enable_timing=True)") == 2
     assert "current_stream = torch.cuda.current_stream(input_ids.device)" in benchmark_section
     assert "start.record(current_stream)" in benchmark_section

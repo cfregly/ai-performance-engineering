@@ -87,8 +87,7 @@ class TransformerBlock(nn.Module):
         head_dim = d_model // n_heads
         
         qkv = self.qkv(x).reshape(batch, seq_len, 3, n_heads, head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))
         
         # Flash Attention
         attn_out = torch.nn.functional.scaled_dot_product_attention(q, k, v)

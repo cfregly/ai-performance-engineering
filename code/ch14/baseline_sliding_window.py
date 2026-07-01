@@ -65,8 +65,7 @@ class NaiveAttentionModule(nn.Module):
         # QKV projection
         qkv = self.qkv_proj(x)
         qkv = qkv.view(B, S, 3, self.num_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, B, H, S, D]
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))
         
         # Explicit O(n²) attention - creates full S×S attention matrix
         scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale

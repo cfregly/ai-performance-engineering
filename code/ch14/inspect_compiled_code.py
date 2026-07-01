@@ -34,7 +34,8 @@ class SimpleLLMBlock(nn.Module):
     
     def forward(self, x):
         # Attention block with residual
-        attn_out, _ = self.attn(self.ln1(x), self.ln1(x), self.ln1(x))
+        attn_input = self.ln1(x)
+        attn_out, _ = self.attn(attn_input, attn_input, attn_input)
         x = x + attn_out
         
         # MLP block with residual

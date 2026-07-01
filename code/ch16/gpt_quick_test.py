@@ -25,7 +25,8 @@ class SimpleGPTBlock(nn.Module):
         self.ln2 = nn.LayerNorm(d_model)
     
     def forward(self, x):
-        x = x + self.attn(self.ln1(x), self.ln1(x), self.ln1(x))[0]
+        attn_input = self.ln1(x)
+        x = x + self.attn(attn_input, attn_input, attn_input)[0]
         x = x + self.mlp(self.ln2(x))
         return x
 

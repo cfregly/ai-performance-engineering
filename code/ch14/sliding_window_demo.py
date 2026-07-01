@@ -200,8 +200,7 @@ class SlidingWindowSelfAttention(nn.Module):
         # QKV projection
         qkv = self.qkv_proj(x)
         qkv = qkv.view(B, S, 3, self.num_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, B, H, S, D]
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))
         
         # Choose attention implementation
         if self._has_flex and self.use_flex_attention:
@@ -389,8 +388,7 @@ class OptimizedSDPAAttention(nn.Module):
         # QKV projection
         qkv = self.qkv_proj(x)
         qkv = qkv.view(B, S, 3, self.num_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, B, H, S, D]
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))
         
         # SDPA with Flash Attention - O(n) memory, fused kernels
         # is_causal=True enables causal masking efficiently

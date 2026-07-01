@@ -47,6 +47,7 @@ class OptimizedAttentionModule(nn.Module):
         self.qkv_proj = nn.Linear(embed_dim, 3 * embed_dim, bias=False)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         self._qkv_buffer: Optional[torch.Tensor] = None
+        self._attn_merge_buffer: Optional[torch.Tensor] = None
         self._output_buffer: Optional[torch.Tensor] = None
         self._qkv_weight_t: Optional[torch.Tensor] = None
         self._out_proj_weight_t: Optional[torch.Tensor] = None
@@ -60,8 +61,9 @@ class OptimizedAttentionModule(nn.Module):
         x: torch.Tensor,
         batch_size: int,
         seq_len: int,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         qkv_shape = (batch_size, seq_len, 3 * self.embed_dim)
+        merge_shape = (batch_size, seq_len, self.num_heads, self.head_dim)
         output_shape = (batch_size, seq_len, self.embed_dim)
         rows = int(batch_size * seq_len)
         if (
@@ -72,13 +74,24 @@ class OptimizedAttentionModule(nn.Module):
         ):
             self._qkv_buffer = torch.empty(rows, qkv_shape[-1], device=x.device, dtype=x.dtype)
         if (
+            self._attn_merge_buffer is None
+            or self._attn_merge_buffer.size(0) < rows
+            or self._attn_merge_buffer.device != x.device
+            or self._attn_merge_buffer.dtype != x.dtype
+        ):
+            self._attn_merge_buffer = torch.empty(rows, output_shape[-1], device=x.device, dtype=x.dtype)
+        if (
             self._output_buffer is None
             or self._output_buffer.size(0) < rows
             or self._output_buffer.device != x.device
             or self._output_buffer.dtype != x.dtype
         ):
             self._output_buffer = torch.empty(rows, output_shape[-1], device=x.device, dtype=x.dtype)
-        return self._qkv_buffer[:rows].view(qkv_shape), self._output_buffer[:rows].view(output_shape)
+        return (
+            self._qkv_buffer[:rows].view(qkv_shape),
+            self._output_buffer[:rows].view(output_shape),
+            self._attn_merge_buffer[:rows].view(merge_shape),
+        )
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Optimized attention forward pass using SDPA/Flash Attention.
@@ -95,14 +108,14 @@ class OptimizedAttentionModule(nn.Module):
         if torch.is_grad_enabled():
             qkv = self.qkv_proj(x)
             output_buffer = None
+            attn_merge_buffer = None
         else:
             if self._qkv_weight_t is None or self._out_proj_weight_t is None:
                 self.cache_weight_views()
-            qkv_buffer, output_buffer = self._ensure_projection_buffers(x, B, S)
+            qkv_buffer, output_buffer, attn_merge_buffer = self._ensure_projection_buffers(x, B, S)
             qkv = torch.matmul(x, self._qkv_weight_t, out=qkv_buffer)
         qkv = qkv.view(B, S, 3, self.num_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, B, H, S, D]
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))
         
         # Use SDPA which leverages Flash Attention kernels
         # This is much faster than naive matmul-based attention
@@ -112,7 +125,11 @@ class OptimizedAttentionModule(nn.Module):
         )
         
         # Reshape and output projection
-        output = output.transpose(1, 2).contiguous().view(B, S, self.embed_dim)
+        if attn_merge_buffer is None:
+            output = output.transpose(1, 2).contiguous().view(B, S, self.embed_dim)
+        else:
+            attn_merge_buffer.copy_(output.transpose(1, 2))
+            output = attn_merge_buffer.view(B, S, self.embed_dim)
         if output_buffer is not None:
             return torch.matmul(output, self._out_proj_weight_t, out=output_buffer)
         return self.out_proj(output)

@@ -33,8 +33,7 @@ class DenseMaskedSlidingWindowAttention(nn.Module):
         batch_size, seq_len, _ = x.shape
         qkv = self.qkv_proj(x)
         qkv = qkv.view(batch_size, seq_len, 3, self.num_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, B, H, S, D]
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))
 
         scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale  # [B, H, S, S]
         scores.masked_fill_(~allowed_mask, float("-inf"))
