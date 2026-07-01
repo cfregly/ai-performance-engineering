@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 from pathlib import Path
 
 import pytest
+import torch
 
 from core.hot_path_checks import (
     check_benchmark_fn_antipatterns,
@@ -119,6 +121,15 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "self._verify_output_stack = self._empty_cpu_staging(verify_shape, torch.bfloat16)" in setup_section
     assert "self._verify_output_buffer = self._empty_cpu_staging(verify_shape, torch.float32)" in setup_section
     assert "self._handoff_staging[staging_key] = torch.empty(" in setup_section
+    assert "def _staging_numel(" in source
+    assert "or buffer.numel() < numel" in source
+    assert "return buffer[:numel].view(shape)" in source
+    assert "decode_buf.shape != prefill_out.shape" not in handoff_section
+    assert "host_buf.shape != prefill_out.shape" not in handoff_section
+    assert (
+        "if not self.use_host_staging and self._device_matches("
+        in handoff_section
+    )
     assert "prefill_out.cpu()" not in handoff_section
     assert "kv_cpu.to(decode_device)" not in handoff_section
     assert "host_buf.copy_(prefill_out, non_blocking=False)" in handoff_section
@@ -160,3 +171,36 @@ def test_prefill_decode_disagg_handoff_reuses_staging_buffers() -> None:
     assert "self._request_output_groups = []" in teardown_section
     assert "self._verify_output_stack = None" in teardown_section
     assert "self._verify_output_buffer = None" in teardown_section
+
+
+def test_prefill_decode_disagg_handoff_reuses_larger_capacity() -> None:
+    module = importlib.import_module("ch15.prefill_decode_disagg_common")
+    bench = module.PrefillDecodeDisaggBenchmark(
+        use_host_staging=True,
+        multi_gpu=False,
+        label="test",
+    )
+    decode_device = torch.device("cpu")
+
+    large = torch.randn((1, 5, 4), dtype=torch.bfloat16)
+    bench._handoff_kv(large, decode_device)
+    decode_ptr = bench._handoff_staging["cpu"].data_ptr()
+    host_ptr = bench._host_staging["cpu"].data_ptr()
+
+    small = torch.randn((1, 2, 4), dtype=torch.bfloat16)
+    out_small = bench._handoff_kv(small, decode_device)
+
+    assert out_small.shape == small.shape
+    torch.testing.assert_close(out_small, small)
+    assert bench._handoff_staging["cpu"].data_ptr() == decode_ptr
+    assert bench._host_staging["cpu"].data_ptr() == host_ptr
+    assert bench._handoff_staging["cpu"].numel() == large.numel()
+    assert bench._host_staging["cpu"].numel() == large.numel()
+
+    grown = torch.randn((1, 6, 4), dtype=torch.bfloat16)
+    out_grown = bench._handoff_kv(grown, decode_device)
+
+    assert out_grown.shape == grown.shape
+    torch.testing.assert_close(out_grown, grown)
+    assert bench._handoff_staging["cpu"].numel() == grown.numel()
+    assert bench._host_staging["cpu"].numel() == grown.numel()

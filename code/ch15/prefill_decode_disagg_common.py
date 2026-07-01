@@ -128,6 +128,65 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
         except RuntimeError:
             return torch.empty(shape, device="cpu", dtype=dtype)
 
+    @staticmethod
+    def _staging_numel(shape: torch.Size) -> int:
+        numel = 1
+        for dim in shape:
+            numel *= int(dim)
+        return numel
+
+    @staticmethod
+    def _device_matches(actual: torch.device, expected: torch.device) -> bool:
+        if actual == expected:
+            return True
+        if actual.type != expected.type:
+            return False
+        if (
+            actual.type == "cuda"
+            and expected.index is None
+            and torch.cuda.is_available()
+        ):
+            return actual.index == torch.cuda.current_device()
+        return False
+
+    def _decode_staging_view(
+        self,
+        staging_key: str,
+        shape: torch.Size,
+        *,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        numel = self._staging_numel(shape)
+        buffer = self._handoff_staging.get(staging_key)
+        if (
+            buffer is None
+            or not self._device_matches(buffer.device, device)
+            or buffer.dtype != dtype
+            or buffer.numel() < numel
+        ):
+            buffer = torch.empty(numel, device=device, dtype=dtype)
+            self._handoff_staging[staging_key] = buffer
+        return buffer[:numel].view(shape)
+
+    def _host_staging_view(
+        self,
+        staging_key: str,
+        shape: torch.Size,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        numel = self._staging_numel(shape)
+        buffer = self._host_staging.get(staging_key)
+        if (
+            buffer is None
+            or buffer.device.type != "cpu"
+            or buffer.dtype != dtype
+            or buffer.numel() < numel
+        ):
+            buffer = self._empty_cpu_staging(torch.Size((numel,)), dtype)
+            self._host_staging[staging_key] = buffer
+        return buffer[:numel].view(shape)
+
     def setup(self) -> None:
         if not torch.cuda.is_available():
             raise RuntimeError("SKIPPED: CUDA required for prefill/decode disaggregation")
@@ -190,14 +249,15 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
             )
             staging_key = str(decode_device)
             staging_shape = torch.Size((1, self.prefill_length, self.hidden_size))
+            staging_numel = self._staging_numel(staging_shape)
             self._handoff_staging[staging_key] = torch.empty(
-                staging_shape,
+                staging_numel,
                 device=decode_device,
                 dtype=torch.bfloat16,
             )
             if self.use_host_staging:
                 self._host_staging[staging_key] = self._empty_cpu_staging(
-                    staging_shape,
+                    torch.Size((staging_numel,)),
                     torch.bfloat16,
                 )
             offset = slice_end
@@ -218,20 +278,27 @@ class PrefillDecodeDisaggBenchmark(VerificationPayloadMixin, BaseBenchmark):
 
     def _handoff_kv(self, prefill_out: torch.Tensor, decode_device: torch.device) -> torch.Tensor:
         staging_key = str(decode_device)
-        decode_buf = self._handoff_staging.get(staging_key)
-        if decode_buf is None or decode_buf.shape != prefill_out.shape:
-            decode_buf = torch.empty_like(prefill_out, device=decode_device)
-            self._handoff_staging[staging_key] = decode_buf
+        if not self.use_host_staging and self._device_matches(
+            prefill_out.device,
+            decode_device,
+        ):
+            return prefill_out
+
+        decode_buf = self._decode_staging_view(
+            staging_key,
+            prefill_out.shape,
+            device=decode_device,
+            dtype=prefill_out.dtype,
+        )
         if self.use_host_staging:
-            host_buf = self._host_staging.get(staging_key)
-            if host_buf is None or host_buf.shape != prefill_out.shape:
-                host_buf = self._empty_cpu_staging(prefill_out.shape, prefill_out.dtype)
-                self._host_staging[staging_key] = host_buf
+            host_buf = self._host_staging_view(
+                staging_key,
+                prefill_out.shape,
+                prefill_out.dtype,
+            )
             host_buf.copy_(prefill_out, non_blocking=False)
             decode_buf.copy_(host_buf, non_blocking=False)
             return decode_buf
-        if prefill_out.device == decode_device:
-            return prefill_out
         decode_buf.copy_(prefill_out, non_blocking=True)
         return decode_buf
 
