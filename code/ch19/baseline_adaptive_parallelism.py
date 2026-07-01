@@ -91,15 +91,16 @@ class BaselineAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchma
             or self._strategy_ids_cpu is None
         ):
             raise RuntimeError("adaptive_parallelism workload not initialized")
-        self.output = classify_baseline(
-            self.workload,
-            device=self.device,
-            feature_rows=self._feature_rows,
-            feature_rows_cpu=self._feature_rows_cpu,
-            refresh_feature_rows=False,
-            strategy_ids_cpu=self._strategy_ids_cpu,
-            result=self._result_buffer,
-        )
+        with torch.inference_mode():
+            self.output = classify_baseline(
+                self.workload,
+                device=self.device,
+                feature_rows=self._feature_rows,
+                feature_rows_cpu=self._feature_rows_cpu,
+                refresh_feature_rows=False,
+                strategy_ids_cpu=self._strategy_ids_cpu,
+                result=self._result_buffer,
+            )
 
     def capture_verification_payload(self) -> None:
         if self.workload is None or self.output is None or self._verify_input_buffers is None:

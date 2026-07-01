@@ -87,17 +87,18 @@ class OptimizedAdaptiveParallelismBenchmark(VerificationPayloadMixin, BaseBenchm
             or self._doubled_decode_tokens is None
         ):
             raise RuntimeError("adaptive_parallelism workload not initialized")
-        self.output = classify_vectorized_out(
-            self.workload,
-            result=self._result_buffer,
-            steady_decode=self._steady_decode_mask,
-            data_mask=self._data_mask,
-            long_prefill=self._long_prefill_mask,
-            heavy_context=self._heavy_context_mask,
-            pipeline_mask=self._pipeline_mask,
-            hybrid_mask=self._hybrid_mask,
-            doubled_decode_tokens=self._doubled_decode_tokens,
-        )
+        with torch.inference_mode():
+            self.output = classify_vectorized_out(
+                self.workload,
+                result=self._result_buffer,
+                steady_decode=self._steady_decode_mask,
+                data_mask=self._data_mask,
+                long_prefill=self._long_prefill_mask,
+                heavy_context=self._heavy_context_mask,
+                pipeline_mask=self._pipeline_mask,
+                hybrid_mask=self._hybrid_mask,
+                doubled_decode_tokens=self._doubled_decode_tokens,
+            )
 
     def capture_verification_payload(self) -> None:
         if self.workload is None or self.output is None or self._verify_input_buffers is None:

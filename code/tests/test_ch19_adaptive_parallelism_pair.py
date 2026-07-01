@@ -191,6 +191,7 @@ def test_adaptive_parallelism_baseline_benchmark_reuses_result_buffers() -> None
     assert "refresh_feature_rows=False" in source
     assert "strategy_ids_cpu=self._strategy_ids_cpu" in source
     assert "result=self._result_buffer" in source
+    assert "with torch.inference_mode():" in source
     assert "self._verify_input_buffers[name].copy_(tensor, non_blocking=False)" in source
     assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in source
     assert "inputs=self._verify_input_buffers" in source
@@ -216,6 +217,7 @@ def test_adaptive_parallelism_optimized_benchmark_reuses_mask_buffers() -> None:
     assert "self._verify_input_buffers = {" in source
     assert "self._verify_output_buffer = torch.empty(" in source
     assert "pin_memory=True" in source
+    assert "with torch.inference_mode():" in source
     assert "self.output = classify_vectorized_out(" in source
     assert "self._verify_input_buffers[name].copy_(tensor, non_blocking=False)" in source
     assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in source

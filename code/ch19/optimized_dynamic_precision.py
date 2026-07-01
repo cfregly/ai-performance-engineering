@@ -68,13 +68,14 @@ class OptimizedDynamicPrecisionBenchmark(VerificationPayloadMixin, BaseBenchmark
     def benchmark_fn(self) -> None:
         if self.model is None or self.prompt is None or self._decode_workspace is None:
             raise RuntimeError("dynamic_precision workload not initialized")
-        self.output, self.stats = decode_dynamic_precision(
-            self.model,
-            self.prompt,
-            max_steps=self.cfg.max_steps,
-            device=self.device,
-            workspace=self._decode_workspace,
-        )
+        with torch.inference_mode():
+            self.output, self.stats = decode_dynamic_precision(
+                self.model,
+                self.prompt,
+                max_steps=self.cfg.max_steps,
+                device=self.device,
+                workspace=self._decode_workspace,
+            )
 
     def capture_verification_payload(self) -> None:
         if (

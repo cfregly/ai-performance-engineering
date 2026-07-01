@@ -68,7 +68,10 @@ class VectorizationBenchmark(VerificationPayloadMixin, BaseBenchmark):
     def benchmark_fn(self) -> None:
         if self.tensor_a is None or self.tensor_b is None or self._work is None:
             raise RuntimeError("setup() must be called before benchmark_fn()")
-        with nvtx_range("baseline_vectorization", enable=self._enable_nvtx):
+        with (
+            nvtx_range("baseline_vectorization", enable=self._enable_nvtx),
+            torch.inference_mode(),
+        ):
             for _ in self._repeat_range:
                 torch.add(self.tensor_a, self.tensor_b, out=self._work)
             self.output = self._work

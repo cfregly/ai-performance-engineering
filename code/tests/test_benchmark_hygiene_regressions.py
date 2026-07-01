@@ -6279,6 +6279,7 @@ def test_ch19_dynamic_precision_benchmarks_reuse_decode_workspaces() -> None:
     assert "self._verify_output_buffer = torch.empty(" in baseline_setup
     assert "pin_memory=True" in baseline_setup
     assert "workspace=self._decode_workspace" in baseline_benchmark
+    assert "with torch.inference_mode():" in baseline_benchmark
     assert "torch.empty(" not in baseline_benchmark
     assert "self._verify_prompt_buffer.copy_(self.prompt, non_blocking=False)" in baseline_capture
     assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in baseline_capture
@@ -6298,6 +6299,7 @@ def test_ch19_dynamic_precision_benchmarks_reuse_decode_workspaces() -> None:
     assert "self._verify_output_buffer = torch.empty(" in optimized_setup
     assert "pin_memory=True" in optimized_setup
     assert "workspace=self._decode_workspace" in optimized_benchmark
+    assert "with torch.inference_mode():" in optimized_benchmark
     assert "torch.empty(" not in optimized_benchmark
     assert "self._verify_prompt_buffer.copy_(self.prompt, non_blocking=False)" in optimized_capture
     assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in optimized_capture
@@ -7763,6 +7765,7 @@ def test_ch19_vectorization_memory_preconverts_fp16_outside_hot_loop() -> None:
         assert "get_config()" not in benchmark
         assert "get_nvtx_enabled(" not in benchmark
         assert "enable=self._enable_nvtx" in benchmark
+        assert "torch.inference_mode()" in benchmark
         assert "self._repeat_range = range(self.repeats)" in setup
         assert "for _ in self._repeat_range:" in benchmark
         assert "for _ in range(self.repeats):" not in benchmark

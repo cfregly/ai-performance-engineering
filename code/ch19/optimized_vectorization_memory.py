@@ -80,7 +80,10 @@ class OptimizedVectorizationMemoryBenchmark(VerificationPayloadMixin, BaseBenchm
     def benchmark_fn(self) -> None:
         if self._work is None or self._tensor_a_fp16 is None or self._tensor_b_fp16 is None:
             raise RuntimeError("setup() must be called before benchmark_fn()")
-        with nvtx_range("optimized_vectorization", enable=self._enable_nvtx):
+        with (
+            nvtx_range("optimized_vectorization", enable=self._enable_nvtx),
+            torch.inference_mode(),
+        ):
             for _ in self._repeat_range:
                 torch.add(self._tensor_a_fp16, self._tensor_b_fp16, out=self._work)
             self.output = self._work
