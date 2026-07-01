@@ -23082,6 +23082,9 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     optimized_capture = optimized_source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
+    optimized_teardown = optimized_source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
 
     assert "def decode_step(" in common_source
     assert "torch.relu_(layer(x))" in common_source
@@ -23091,6 +23094,8 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     assert "buffer[:, token_idx : token_idx + 1, :] = current" in optimized_source
     assert "self._decode_buffer = torch.empty(" in optimized_setup
     assert "(self.batch_size, self.num_tokens, self.model.hidden_dim)" in optimized_setup
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._verify_output_buffer = torch.empty_like(self._decode_buffer, dtype=torch.float32)" in optimized_setup
     assert "self._compiled_inference = torch.compile(_full_inference, mode=\"reduce-overhead\")" in optimized_setup
     assert "_ = self._compiled_inference(self.prompt, self._decode_buffer)" in optimized_setup
     assert "self.output = self._compiled_inference(self.prompt, self._decode_buffer)" in optimized_benchmark
@@ -23100,6 +23105,10 @@ def test_ch15_optimized_monolithic_uses_token_equivalent_decode_steps() -> None:
     assert "self._payload_parameter_count = sum(p.numel() for p in self.model.parameters())" in optimized_setup
     assert "parameter_count=self._payload_parameter_count" in optimized_capture
     assert "sum(p.numel()" not in optimized_capture
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in optimized_capture
+    assert "output=self._verify_output_buffer" in optimized_capture
+    assert "self.output.float()" not in optimized_capture
+    assert "self._verify_output_buffer = None" in optimized_teardown
 
 
 def test_decode_handoff_benchmarks_do_not_allocate_placeholder_outputs_in_hot_path() -> None:
@@ -23282,6 +23291,9 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     capture_section = source.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def teardown", maxsplit=1
     )[0]
+    teardown_section = source.split("def teardown", maxsplit=1)[1].split(
+        "def get_config", maxsplit=1
+    )[0]
     metrics_section = source.split("def get_custom_metrics", maxsplit=1)[1].split(
         "def validate_result", maxsplit=1
     )[0]
@@ -23294,6 +23306,8 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "self._decoded_token_count = len(self._last_decoded_tokens)" in setup_section
     assert "self._decode_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._decode_output_buffer = torch.empty(" in setup_section
+    assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._verify_output_buffer = torch.empty_like(self._decode_output_buffer, dtype=torch.float32)" in setup_section
     assert "self._empty_iteration_result: Dict[str, List[float]] = {}" in source
     assert "self._iteration_metric_payload: Dict[str, List[float]] = {" in source
     assert "self._ttft_metric_values = [0.0]" in source
@@ -23344,6 +23358,10 @@ def test_ch15_baseline_monolithic_uses_harness_timing_not_per_token_cuda_events(
     assert "enable=self._enable_nvtx" in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
+    assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in capture_section
+    assert "output=self._verify_output_buffer" in capture_section
+    assert "self.output.float()" not in capture_section
+    assert "self._verify_output_buffer = None" in teardown_section
 
 
 def test_ch17_single_token_prefill_decode_skips_redundant_tail_views() -> None:

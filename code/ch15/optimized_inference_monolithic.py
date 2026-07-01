@@ -28,6 +28,7 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
         self.output: Optional[torch.Tensor] = None
         self._compiled_inference = None
         self._decode_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._payload_parameter_count = 0
 
         self.batch_size = 1
@@ -49,6 +50,7 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._verify_output_buffer = torch.empty_like(self._decode_buffer, dtype=torch.float32)
         self.output = None
         # The batch=1 request is launch-overhead bound: prefill is one narrow prompt pass,
         # then decode runs num_tokens x num_layers tiny Linears. Compile the whole request
@@ -84,11 +86,17 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
                 self.output = self._compiled_inference(self.prompt, self._decode_buffer)
 
     def capture_verification_payload(self) -> None:
-        if self.model is None or self.prompt is None or self.output is None:
+        if (
+            self.model is None
+            or self.prompt is None
+            or self.output is None
+            or self._verify_output_buffer is None
+        ):
             raise RuntimeError("setup() and benchmark_fn() must be called before capture_verification_payload()")
+        self._verify_output_buffer.copy_(self.output, non_blocking=False)
         self._set_verification_payload(
             inputs={"prompt": self.prompt},
-            output=self.output.float(),
+            output=self._verify_output_buffer,
             batch_size=int(self.prompt.shape[0]),
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -106,6 +114,7 @@ class OptimizedInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchm
         self.output = None
         self._compiled_inference = None
         self._decode_buffer = None
+        self._verify_output_buffer = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 

@@ -45,6 +45,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self._decoded_token_count = 0
         self._decode_token_indices = range(self.num_tokens)
         self._decode_output_buffer: Optional[torch.Tensor] = None
+        self._verify_output_buffer: Optional[torch.Tensor] = None
         self._ttft_metric_values = [0.0]
         self._tpot_metric_values = [0.0] * self.num_tokens
         self._iteration_metric_payload: Dict[str, List[float]] = {
@@ -81,6 +82,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
             device=self.device,
             dtype=torch.bfloat16,
         )
+        self._verify_output_buffer = torch.empty_like(self._decode_output_buffer, dtype=torch.float32)
         if len(self._tpot_metric_values) != self.num_tokens:
             self._tpot_metric_values = [0.0] * self.num_tokens
             self._iteration_metric_payload["tpot_times_ms"] = self._tpot_metric_values
@@ -157,9 +159,12 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
             if token_offset != self._decode_output_buffer.shape[1]:
                 raise RuntimeError("unexpected decode output shape")
             self.output = self._decode_output_buffer
+        if self._verify_output_buffer is None:
+            raise RuntimeError("setup() must initialize verification output buffer")
+        self._verify_output_buffer.copy_(self.output, non_blocking=False)
         self._set_verification_payload(
             inputs={"prompt": self.prompt},
-            output=self.output.float(),
+            output=self._verify_output_buffer,
             batch_size=int(self.prompt.shape[0]),
             parameter_count=self._payload_parameter_count,
             precision_flags={
@@ -170,6 +175,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
             },
             output_tolerance=(1e-3, 1e-3),
         )
+
     def teardown(self) -> None:
         self.model = None
         self.prompt = None
@@ -178,6 +184,7 @@ class BaselineInferenceMonolithicBenchmark(VerificationPayloadMixin, BaseBenchma
         self._last_decoded_tokens = []
         self._decoded_token_count = 0
         self._decode_output_buffer = None
+        self._verify_output_buffer = None
         self._last_elapsed_ms = None
         self._metrics_pending = False
         if torch.cuda.is_available():
