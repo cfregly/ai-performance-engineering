@@ -12232,6 +12232,12 @@ def test_paged_kv_offload_prefetch_event_is_preallocated_outside_hot_loop() -> N
     assert "def _host_page_view(" in source
     assert "torch.cuda.Event(" not in benchmark_section
     assert "current_stream = torch.cuda.current_stream() if self.copy_stream is not None else None" in benchmark_section
+    assert "ctx = prefer_sdpa_backends() if prefer_sdpa_backends is not None else nullcontext()" in benchmark_section
+    assert benchmark_section.count("prefer_sdpa_backends()") == 1
+    assert benchmark_section.index("with ctx:") < benchmark_section.index("for _ in repeat_page_range:")
+    assert benchmark_section.index("for _ in repeat_page_range:") < benchmark_section.index(
+        "attn_out = F.scaled_dot_product_attention(q, k, v)"
+    )
     assert "current_stream.wait_event(self.prefetch_event)" in benchmark_section
     assert "torch.cuda.current_stream().wait_event(self.prefetch_event)" not in benchmark_section
     assert "wait_stream=current_stream" in benchmark_section

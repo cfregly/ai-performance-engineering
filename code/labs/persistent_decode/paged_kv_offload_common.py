@@ -510,18 +510,29 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
         attn_out = None
         use_host_prefetch = bool(self.cfg.use_host_prefetch_thread and self.cfg.prefetch_next_page)
         current_stream = torch.cuda.current_stream() if self.copy_stream is not None else None
-        for _ in repeat_page_range:
-            start = self.page_cursor
-            active_idx = self.active_buf_idx
-            prefetched = self._consume_host_prefetch(start) if use_host_prefetch else self._maybe_use_prefetch(start)
-            if prefetched is not None:
-                staged, slice_len = prefetched
-                if self.prefetch_event is not None and self.prefetch_buf_idx is not None:
-                    if current_stream is None:
-                        raise RuntimeError("Prefetch event requires an async copy stream")
-                    current_stream.wait_event(self.prefetch_event)
-                    active_idx = self.prefetch_buf_idx
+        ctx = prefer_sdpa_backends() if prefer_sdpa_backends is not None else nullcontext()
+        with ctx:
+            for _ in repeat_page_range:
+                start = self.page_cursor
+                active_idx = self.active_buf_idx
+                prefetched = self._consume_host_prefetch(start) if use_host_prefetch else self._maybe_use_prefetch(start)
+                if prefetched is not None:
+                    staged, slice_len = prefetched
+                    if self.prefetch_event is not None and self.prefetch_buf_idx is not None:
+                        if current_stream is None:
+                            raise RuntimeError("Prefetch event requires an async copy stream")
+                        current_stream.wait_event(self.prefetch_event)
+                        active_idx = self.prefetch_buf_idx
+                    else:
+                        self._copy_to_device(
+                            staged,
+                            slice_len,
+                            buffer_idx=active_idx,
+                            wait_for_copy=True,
+                            wait_stream=current_stream,
+                        )
                 else:
+                    staged, slice_len = self._stage_page(start)
                     self._copy_to_device(
                         staged,
                         slice_len,
@@ -529,65 +540,54 @@ class PagedKVOffloadBenchmark(VerificationPayloadMixin, BaseBenchmark):
                         wait_for_copy=True,
                         wait_stream=current_stream,
                     )
-            else:
-                staged, slice_len = self._stage_page(start)
-                self._copy_to_device(
-                    staged,
-                    slice_len,
-                    buffer_idx=active_idx,
-                    wait_for_copy=True,
-                    wait_stream=current_stream,
-                )
 
-            next_start = (start + self.cfg.page_tokens) % self.cfg.max_seq_len
-            if self.cfg.prefetch_next_page and use_host_prefetch:
-                self._schedule_host_prefetch(next_start)
+                next_start = (start + self.cfg.page_tokens) % self.cfg.max_seq_len
+                if self.cfg.prefetch_next_page and use_host_prefetch:
+                    self._schedule_host_prefetch(next_start)
 
-            self.hot_k = self.hot_k_bufs[active_idx]
-            self.hot_v = self.hot_v_bufs[active_idx]
+                self.hot_k = self.hot_k_bufs[active_idx]
+                self.hot_v = self.hot_v_bufs[active_idx]
 
-            # Simple attention step that will pick flash/mathematics based on dtype/backend.
-            q = self.q
-            if q is None:
-                raise RuntimeError("Query tensor not initialized")
-            k = self.hot_k[..., :slice_len, :]
-            v = self.hot_v[..., :slice_len, :]
-            ctx = prefer_sdpa_backends() if prefer_sdpa_backends is not None else nullcontext()
-            with ctx:
+                # Simple attention step that will pick flash/mathematics based on dtype/backend.
+                q = self.q
+                if q is None:
+                    raise RuntimeError("Query tensor not initialized")
+                k = self.hot_k[..., :slice_len, :]
+                v = self.hot_v[..., :slice_len, :]
                 attn_out = F.scaled_dot_product_attention(q, k, v)
 
-            if self.cfg.prefetch_next_page:
-                # Launch next-page prefetch so H2D can overlap attention compute.
-                if use_host_prefetch:
-                    prefetched = self._wait_for_host_prefetch(next_start)
-                    if prefetched is None:
-                        staged_prefetch, pref_len = self._stage_page(next_start, into_prefetch=True)
+                if self.cfg.prefetch_next_page:
+                    # Launch next-page prefetch so H2D can overlap attention compute.
+                    if use_host_prefetch:
+                        prefetched = self._wait_for_host_prefetch(next_start)
+                        if prefetched is None:
+                            staged_prefetch, pref_len = self._stage_page(next_start, into_prefetch=True)
+                        else:
+                            staged_prefetch, pref_len = prefetched
                     else:
-                        staged_prefetch, pref_len = prefetched
+                        staged_prefetch, pref_len = self._stage_page(next_start, into_prefetch=True)
+                    self.prefetched_range = (next_start, next_start + pref_len)
+                    self.prefetch_slice_len = pref_len
+                    if self.copy_stream is not None and self._hot_buffer_count > 1:
+                        prefetch_idx = 1 - active_idx
+                        self.prefetch_buf_idx = prefetch_idx
+                        if self.prefetch_event is None:
+                            raise RuntimeError("Prefetch event not initialized for async two-buffer prefetch")
+                        self._copy_to_device(
+                            staged_prefetch,
+                            pref_len,
+                            buffer_idx=prefetch_idx,
+                            wait_for_copy=False,
+                            record_event=self.prefetch_event,
+                        )
+                    else:
+                        self.prefetch_buf_idx = None
                 else:
-                    staged_prefetch, pref_len = self._stage_page(next_start, into_prefetch=True)
-                self.prefetched_range = (next_start, next_start + pref_len)
-                self.prefetch_slice_len = pref_len
-                if self.copy_stream is not None and self._hot_buffer_count > 1:
-                    prefetch_idx = 1 - active_idx
-                    self.prefetch_buf_idx = prefetch_idx
-                    if self.prefetch_event is None:
-                        raise RuntimeError("Prefetch event not initialized for async two-buffer prefetch")
-                    self._copy_to_device(
-                        staged_prefetch,
-                        pref_len,
-                        buffer_idx=prefetch_idx,
-                        wait_for_copy=False,
-                        record_event=self.prefetch_event,
-                    )
-                else:
+                    self.prefetched_range = None
+                    self.prefetch_slice_len = None
                     self.prefetch_buf_idx = None
-            else:
-                self.prefetched_range = None
-                self.prefetch_slice_len = None
-                self.prefetch_buf_idx = None
 
-            self.page_cursor = next_start
+                self.page_cursor = next_start
 
         if attn_out is None:
             raise RuntimeError("benchmark_fn() did not produce output")
