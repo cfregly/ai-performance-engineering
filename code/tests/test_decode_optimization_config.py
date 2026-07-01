@@ -178,16 +178,25 @@ def test_decode_step_reuses_next_token_buffer() -> None:
     assert "self._decode_next_token_values: Optional[torch.Tensor] = None" in source
     assert "self._decode_next_token: Optional[torch.Tensor] = None" in source
     assert "self._decode_combined: Optional[torch.Tensor] = None" in source
+    assert "self._logits_buffer: Optional[torch.Tensor] = None" in source
+    assert "self._lm_head_weight_t: Optional[torch.Tensor] = None" in source
     assert "self._decode_combined = torch.empty_like(self.state_buffer)" in init_section
+    assert "needs_full_vocab_logits = (" in init_section
+    assert "self._lm_head_weight_t = self.lm_head.weight.t()" in init_section
+    assert "self._logits_buffer = torch.empty(" in init_section
     assert "self._decode_next_token_values = torch.empty((bsz,), device=self.device, dtype=self.dtype)" in init_section
     assert "self._decode_next_token = torch.empty((bsz,), device=self.device, dtype=torch.long)" in init_section
     assert 'raise RuntimeError("Decode buffers must be initialized before _decode_step()")' in decode_step_section
     assert "torch.add(token_hidden, state, out=self._decode_combined)" in decode_step_section
     assert "hidden = self.decode_mlp(self._decode_combined)" in decode_step_section
+    assert "torch.mm(hidden, self._lm_head_weight_t, out=self._logits_buffer)" in decode_step_section
+    assert "logits = self._logits_buffer" in decode_step_section
+    assert "logits = self.lm_head(hidden)" in decode_step_section
     assert "combined = token_hidden + state" not in decode_step_section
     assert "torch.max(logits, dim=-1, out=(self._decode_next_token_values, self._decode_next_token))" in decode_step_section
     assert "torch.argmax(logits, dim=-1)" not in decode_step_section
     assert "self._decode_combined = torch.empty_like(token_hidden)" not in decode_step_section
+    assert "logits = torch.empty(" not in decode_step_section
     assert "self._decode_next_token_values = torch.empty(" not in decode_step_section
     assert "self._decode_next_token = torch.empty(" not in decode_step_section
     assert "tuple(self._decode_combined.shape)" not in decode_step_section
@@ -195,6 +204,60 @@ def test_decode_step_reuses_next_token_buffer() -> None:
     assert "tuple(self._decode_next_token.shape)" not in decode_step_section
     assert "return hidden, self._decode_next_token" in decode_step_section
     assert "return logits, hidden, self._decode_next_token" not in decode_step_section
+
+
+def test_decode_step_reuses_full_vocab_logits_buffer_on_cpu() -> None:
+    cfg = DecodeConfig(
+        batch_size=2,
+        prompt_tokens=4,
+        decode_tokens=1,
+        hidden_size=8,
+        vocab_size=16,
+    )
+    bench = DecodeBenchmark(cfg)
+    bench.device = torch.device("cpu")
+    torch.manual_seed(1234)
+    bench._init_model()
+    bench._init_buffers()
+
+    assert bench._logits_buffer is not None
+    assert bench._lm_head_weight_t is not None
+    logits_ptr = bench._logits_buffer.data_ptr()
+
+    with torch.inference_mode():
+        tokens = torch.tensor([1, 2], dtype=torch.long)
+        state = torch.randn(cfg.batch_size, cfg.hidden_size, dtype=bench.dtype)
+        next_state, next_token = bench._run_decode_step_math(tokens, state)
+        expected_token = torch.argmax(bench.lm_head(next_state), dim=-1)
+
+        assert bench._logits_buffer.data_ptr() == logits_ptr
+        torch.testing.assert_close(next_token, expected_token)
+
+        next_state, next_token = bench._run_decode_step_math(tokens, next_state)
+        expected_token = torch.argmax(bench.lm_head(next_state), dim=-1)
+
+    assert bench._logits_buffer.data_ptr() == logits_ptr
+    torch.testing.assert_close(next_token, expected_token)
+
+
+def test_candidate_logits_only_skips_full_vocab_logits_buffer_on_cpu() -> None:
+    cfg = DecodeConfig(
+        batch_size=2,
+        prompt_tokens=4,
+        decode_tokens=1,
+        hidden_size=8,
+        vocab_size=16,
+        candidate_vocab_size=1,
+        candidate_logits_only=True,
+    )
+    bench = DecodeBenchmark(cfg)
+    bench.device = torch.device("cpu")
+    torch.manual_seed(1234)
+    bench._init_model()
+    bench._init_buffers()
+
+    assert bench._logits_buffer is None
+    assert bench._lm_head_weight_t is None
 
 
 def test_decode_hot_loops_do_not_bind_unused_logits() -> None:
@@ -506,6 +569,8 @@ def test_decode_candidate_logits_path_avoids_full_vocab_projection_when_enabled(
     assert "if self.cfg.candidate_logits_only and candidate_count == 1:" in init_section
     assert "self._forced_candidate_tokens = torch.zeros(" in init_section
     assert "self.lm_head.weight.index_select(0, self._candidate_token_ids).contiguous()" in init_section
+    assert "needs_full_vocab_logits = (" in init_section
+    assert "self._candidate_token_ids is None or not self.cfg.candidate_logits_only" in init_section
     assert 'metrics["candidate_vocab_size"] = float(self.cfg.candidate_vocab_size)' in source
     assert 'metrics["candidate_logits_only"] = float(self.cfg.candidate_logits_only)' in source
     assert 'metrics["effective_logits_vocab_size"] = float(' in source

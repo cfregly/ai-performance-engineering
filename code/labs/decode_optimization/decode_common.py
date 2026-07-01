@@ -133,6 +133,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self.decode_graph: Optional[torch.cuda.CUDAGraph] = None
         self.graph_includes_prefill: bool = False
         self._decode_combined: Optional[torch.Tensor] = None
+        self._logits_buffer: Optional[torch.Tensor] = None
+        self._lm_head_weight_t: Optional[torch.Tensor] = None
         self._decode_next_token_values: Optional[torch.Tensor] = None
         self._decode_next_token: Optional[torch.Tensor] = None
         self._candidate_token_ids: Optional[torch.Tensor] = None
@@ -578,6 +580,20 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self._candidate_lm_weight = (
                     self.lm_head.weight.index_select(0, self._candidate_token_ids).contiguous()
                 )
+        needs_full_vocab_logits = (
+            self._candidate_token_ids is None or not self.cfg.candidate_logits_only
+        )
+        if (
+            needs_full_vocab_logits
+            and isinstance(self.lm_head, nn.Linear)
+            and self.lm_head.bias is None
+        ):
+            self._lm_head_weight_t = self.lm_head.weight.t()
+            self._logits_buffer = torch.empty(
+                (bsz, self.cfg.vocab_size),
+                device=self.device,
+                dtype=self.dtype,
+            )
         self._config_tensor = torch.tensor(
             [
                 self.cfg.batch_size,
@@ -692,7 +708,11 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                     raise RuntimeError("Candidate lm_head weight cache must be initialized")
                 torch.mm(hidden, self._candidate_lm_weight.t(), out=self._candidate_scores)
             else:
-                logits = self.lm_head(hidden)
+                if self._logits_buffer is not None and self._lm_head_weight_t is not None:
+                    torch.mm(hidden, self._lm_head_weight_t, out=self._logits_buffer)
+                    logits = self._logits_buffer
+                else:
+                    logits = self.lm_head(hidden)
                 torch.index_select(
                     logits,
                     1,
@@ -711,7 +731,11 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 out=self._decode_next_token,
             )
             return hidden, self._decode_next_token
-        logits = self.lm_head(hidden)
+        if self._logits_buffer is not None and self._lm_head_weight_t is not None:
+            torch.mm(hidden, self._lm_head_weight_t, out=self._logits_buffer)
+            logits = self._logits_buffer
+        else:
+            logits = self.lm_head(hidden)
         torch.max(logits, dim=-1, out=(self._decode_next_token_values, self._decode_next_token))
         return hidden, self._decode_next_token
 
@@ -1100,6 +1124,8 @@ class DecodeBenchmark(VerificationPayloadMixin, BaseBenchmark):
             "gpu_payloads",
             "state_buffer",
             "_decode_combined",
+            "_logits_buffer",
+            "_lm_head_weight_t",
             "current_tokens",
             "_decode_next_token_values",
             "_decode_next_token",
