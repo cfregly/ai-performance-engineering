@@ -19419,6 +19419,8 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._accept_count_device = torch.empty((1,), device=self.device, dtype=torch.int64)" in setup_section
     assert "self._accept_count_host = torch.empty(" in setup_section
     assert "pin_memory=torch.cuda.is_available()" in setup_section
+    assert "self._input_token_view: Optional[torch.Tensor] = None" in source
+    assert "self._input_token_view = self.input_ids[:, 0]" in setup_section
     assert "self._draft_next_values = torch.empty((1,), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._draft_next_token_view = self._draft_next_tokens.view(1, 1)" in setup_section
     assert "self._target_next_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
@@ -19474,6 +19476,7 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert ".nonzero(" not in benchmark_section
     assert "mismatch =" not in benchmark_section
     assert "or self._view_counts != self._expected_view_counts" in benchmark_section
+    assert "or self._input_token_view is None" in benchmark_section
     assert "or self._accept_count_device_scalar is None" in benchmark_section
     assert "or self._accept_count_host_scalar is None" in benchmark_section
     assert "or self._draft_forward_buffers is None" in benchmark_section
@@ -19502,6 +19505,10 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "output_step_views = self._output_step_views" in benchmark_section
     assert "output_token_views = self._output_token_views" in benchmark_section
     assert "output_write_views = self._output_write_views" in benchmark_section
+    assert "input_token_view = self._input_token_view" in benchmark_section
+    assert "output_token_views[0].copy_(input_token_view)" in benchmark_section
+    assert "input_ids = self.input_ids" not in benchmark_section
+    assert "input_ids[:, 0]" not in benchmark_section
     assert "accept_prefix_views = self._accept_prefix_views" in benchmark_section
     assert "accept_prefix_row_views = self._accept_prefix_row_views" in benchmark_section
     assert "accept_count_device_scalar = self._accept_count_device_scalar" in benchmark_section
@@ -19572,6 +19579,7 @@ def test_labs_speculative_decode_reuses_acceptance_buffers() -> None:
     assert "self._accept_count_host = None" in teardown_section
     assert "self._accept_count_device_scalar = None" in teardown_section
     assert "self._accept_count_host_scalar = None" in teardown_section
+    assert "self._input_token_view = None" in teardown_section
     assert "self._accept_prefix_views = []" in teardown_section
     assert "self._accept_prefix_row_views = []" in teardown_section
     assert "self._speculation_step_ranges = []" in teardown_section
@@ -19733,6 +19741,8 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     assert "self._next_token_ids = torch.empty((1,), device=self.device, dtype=torch.long)" in setup_section
     assert "self._target_logits = torch.empty((1, 1, wl.vocab_size), device=self.device, dtype=wl.dtype)" in setup_section
     assert "self._target_logits_next = self._target_logits[:, 0, :]" in setup_section
+    assert "self._input_token_view: Optional[torch.Tensor] = None" in source
+    assert "self._input_token_view = self.input_ids[:, 0]" in setup_section
     assert "self._output_step_views = [" in setup_section
     assert "self._output_token_views = [" in setup_section
     assert "self._view_counts: tuple[int, int] = (0, 0)" in source
@@ -19743,12 +19753,15 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
     assert "or self._view_counts != self._expected_view_counts" in benchmark_section
+    assert "or self._input_token_view is None" in benchmark_section
     assert "len(self._output_step_views)" not in benchmark_section
     assert "len(self._output_token_views)" not in benchmark_section
     assert "target_forward_into = self.target_model.forward_into" in benchmark_section
     assert "output_step_views = self._output_step_views" in benchmark_section
     assert "output_token_views = self._output_token_views" in benchmark_section
     assert "token_range = self._token_range" in benchmark_section
+    assert "output_token_views[0].copy_(self._input_token_view)" in benchmark_section
+    assert "self.input_ids[:, 0]" not in benchmark_section
     assert "for t in token_range:" in benchmark_section
     assert "for t in range(wl.total_tokens):" not in benchmark_section
     assert "target_forward_into(output_step_views[t], target_logits)" in benchmark_section
@@ -19767,6 +19780,7 @@ def test_labs_baseline_speculative_decode_reuses_next_token_buffer() -> None:
     assert "self.output.float()" not in capture_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
+    assert "self._input_token_view = None" in teardown_section
     assert "self._target_logits = None" in source
     assert "self._target_logits_next = None" in source
     assert "self._view_counts = (0, 0)" in teardown_section

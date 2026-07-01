@@ -23,6 +23,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
 
         self.target_model: Optional[TokenMLP] = None
         self.input_ids: Optional[torch.Tensor] = None
+        self._input_token_view: Optional[torch.Tensor] = None
         self._output_ids: Optional[torch.Tensor] = None
         self._output_step_views: list[torch.Tensor] = []
         self._output_token_views: list[torch.Tensor] = []
@@ -60,6 +61,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())
 
         self.input_ids = torch.randint(0, wl.vocab_size, (1, 1), device=self.device, dtype=torch.int64)
+        self._input_token_view = self.input_ids[:, 0]
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
         self._verify_output_buffer = torch.empty_like(self._output_ids, dtype=torch.float32)
         self._output_step_views = [
@@ -82,6 +84,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         if (
             self.target_model is None
             or self.input_ids is None
+            or self._input_token_view is None
             or self._output_ids is None
             or self._next_token_values is None
             or self._next_token_ids is None
@@ -100,7 +103,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
         target_logits_next = self._target_logits_next
         next_token_values = self._next_token_values
         next_token_ids = self._next_token_ids
-        output_token_views[0].copy_(self.input_ids[:, 0])
+        output_token_views[0].copy_(self._input_token_view)
 
         with torch.inference_mode():
             for t in token_range:
@@ -126,6 +129,7 @@ class BaselineSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmark
     def teardown(self) -> None:
         self.target_model = None
         self.input_ids = None
+        self._input_token_view = None
         self._output_ids = None
         self._output_step_views = []
         self._output_token_views = []

@@ -41,6 +41,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.target_model: Optional[TokenMLP] = None
         self.draft_model: Optional[TokenMLP] = None
         self.input_ids: Optional[torch.Tensor] = None
+        self._input_token_view: Optional[torch.Tensor] = None
         self._output_ids: Optional[torch.Tensor] = None
         self._output_step_views: list[torch.Tensor] = []
         self._output_token_views: list[torch.Tensor] = []
@@ -116,6 +117,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         # Deterministic starting token. Must be created BEFORE draft init so it
         # matches the baseline.
         self.input_ids = torch.randint(0, wl.vocab_size, (1, 1), device=self.device, dtype=torch.int64)
+        self._input_token_view = self.input_ids[:, 0]
 
         self._output_ids = torch.empty((1, wl.total_tokens + 1), device=self.device, dtype=torch.int64)
         self._verify_output_buffer = torch.empty_like(self._output_ids, dtype=torch.float32)
@@ -232,6 +234,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
             self.target_model is None
             or self.draft_model is None
             or self.input_ids is None
+            or self._input_token_view is None
             or self._output_ids is None
             or self._verify_prev_first is None
             or self._draft_ids is None
@@ -258,7 +261,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
 
         wl = self.workload
         out = self._output_ids
-        input_ids = self.input_ids
+        input_token_view = self._input_token_view
         draft_forward_into_prepared = self.draft_model.forward_into_prepared
         target_forward_into_prepared = self.target_model.forward_into_prepared
         draft_forward_buffers = self._draft_forward_buffers
@@ -286,7 +289,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         draft_next_token_view = self._draft_next_token_view
         draft_logits = self._draft_logits
         draft_logits_next = self._draft_logits_next
-        output_token_views[0].copy_(input_ids[:, 0])
+        output_token_views[0].copy_(input_token_view)
 
         draft_tokens = 0
         accepted_draft = 0
@@ -373,6 +376,7 @@ class OptimizedSpeculativeDecodeBenchmark(VerificationPayloadMixin, BaseBenchmar
         self.target_model = None
         self.draft_model = None
         self.input_ids = None
+        self._input_token_view = None
         self._output_ids = None
         self._output_step_views = []
         self._output_token_views = []
