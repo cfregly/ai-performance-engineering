@@ -66,6 +66,7 @@ def main() -> int:
 
     # Stage-specific weight (deterministic across ranks).
     w_stage = _weight_for_stage(rank, hidden, device, dtype)
+    w_stage_t = w_stage.t()
 
     # Buffers for send/recv.
     act = torch.empty(batch, hidden, device=device, dtype=dtype)
@@ -75,25 +76,25 @@ def main() -> int:
     if rank == 0:
         x0 = torch.randn(batch, hidden, device=device, dtype=dtype)
 
-    def stage_forward(x: torch.Tensor, *, is_last: bool) -> torch.Tensor:
-        y = x @ w_stage.t()
-        return y if is_last else torch.relu_(y)
+    def stage_forward_into(x: torch.Tensor, out_buf: torch.Tensor, *, is_last: bool) -> torch.Tensor:
+        torch.mm(x, w_stage_t, out=out_buf)
+        return out_buf if is_last else torch.relu_(out_buf)
 
     # Warmup.
     with torch.inference_mode():
         for _ in range(int(args.warmup)):
             if rank == 0:
                 assert x0 is not None
-                act.copy_(stage_forward(x0, is_last=False))
+                stage_forward_into(x0, act, is_last=False)
                 dist.send(act, dst=1)
                 dist.recv(out, src=world_size - 1)
             elif rank == world_size - 1:
                 dist.recv(act, src=rank - 1)
-                out.copy_(stage_forward(act, is_last=True))
+                stage_forward_into(act, out, is_last=True)
                 dist.send(out, dst=0)
             else:
                 dist.recv(act, src=rank - 1)
-                out.copy_(stage_forward(act, is_last=False))
+                stage_forward_into(act, out, is_last=False)
                 dist.send(out, dst=rank + 1)
         torch.cuda.synchronize(device)
         dist.barrier()
@@ -104,16 +105,16 @@ def main() -> int:
         for _ in range(int(args.iters)):
             if rank == 0:
                 assert x0 is not None
-                act.copy_(stage_forward(x0, is_last=False))
+                stage_forward_into(x0, act, is_last=False)
                 dist.send(act, dst=1)
                 dist.recv(out, src=world_size - 1)
             elif rank == world_size - 1:
                 dist.recv(act, src=rank - 1)
-                out.copy_(stage_forward(act, is_last=True))
+                stage_forward_into(act, out, is_last=True)
                 dist.send(out, dst=0)
             else:
                 dist.recv(act, src=rank - 1)
-                out.copy_(stage_forward(act, is_last=False))
+                stage_forward_into(act, out, is_last=False)
                 dist.send(out, dst=rank + 1)
         torch.cuda.synchronize(device)
         dist.barrier()

@@ -16211,6 +16211,10 @@ def test_ch15_tensor_parallel_demo_avoids_hotpath_readback_and_implicit_events()
 
 def test_ch15_pipeline_parallel_demo_uses_shared_scalar_readbacks() -> None:
     source = (REPO_ROOT / "ch15" / "pipeline_parallel_demo.py").read_text(encoding="utf-8")
+    forward_section = source.split("def stage_forward_into", maxsplit=1)[1].split(
+        "# Warmup.",
+        maxsplit=1,
+    )[0]
     reduce_section = source.split("worst = torch.tensor", maxsplit=1)[1].split(
         "max_diff =",
         maxsplit=1,
@@ -16221,6 +16225,12 @@ def test_ch15_pipeline_parallel_demo_uses_shared_scalar_readbacks() -> None:
     )[0]
 
     assert "from core.benchmark.utils import scalar_tensor_to_float" in source
+    assert "w_stage_t = w_stage.t()" in source
+    assert "torch.mm(x, w_stage_t, out=out_buf)" in forward_section
+    assert "return out_buf if is_last else torch.relu_(out_buf)" in forward_section
+    assert "act.copy_(stage_forward" not in source
+    assert "out.copy_(stage_forward" not in source
+    assert "y = x @ w_stage.t()" not in source
     assert "worst = torch.tensor(elapsed_ms, device=device, dtype=torch.float32)" in source
     assert "worst_ms = scalar_tensor_to_float(worst)" in reduce_section
     assert "scalar_tensor_to_float((out.float() - ref.float()).abs().max())" in verify_section
