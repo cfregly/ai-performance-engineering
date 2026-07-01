@@ -48,6 +48,7 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
         self._q_bhsd: Optional[torch.Tensor] = None
         self._k_bhsd: Optional[torch.Tensor] = None
         self._v_bhsd: Optional[torch.Tensor] = None
+        self._output_buffer: Optional[torch.Tensor] = None
         self._last = 0.0
         self.repeat_passes = 1
         tokens = self.seq_len * self.num_heads * self.repeat_passes
@@ -84,10 +85,37 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
             device=self.device,
             dtype=self.dtype,
         )
+        self._ensure_output_buffer(
+            self.batch,
+            self.seq_len,
+            self.num_heads,
+            self.head_dim,
+            self._q_bhsd.device,
+            self._q_bhsd.dtype,
+        )
         for _ in range(3):
             with torch.inference_mode():
                 _ = self._attention_bhsd(self._q_bhsd, self._k_bhsd, self._v_bhsd)
         torch.cuda.synchronize(self.device)
+
+    def _ensure_output_buffer(
+        self,
+        batch_size: int,
+        seq_len: int,
+        num_heads: int,
+        head_dim: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        output_shape = (batch_size, seq_len, num_heads * head_dim * self.repeat_passes)
+        if (
+            self._output_buffer is None
+            or tuple(self._output_buffer.shape) != output_shape
+            or self._output_buffer.device != device
+            or self._output_buffer.dtype != dtype
+        ):
+            self._output_buffer = torch.empty(output_shape, device=device, dtype=dtype)
+        return self._output_buffer
 
     def _attention(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         q_bhsd = q.transpose(0, 1).unsqueeze(0)
@@ -103,10 +131,24 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
     ) -> torch.Tensor:
         with _flash_sdp_context():
             out = F.scaled_dot_product_attention(q_bhsd, k_bhsd, v_bhsd, dropout_p=0.0, is_causal=False)
-        out = out.transpose(1, 2).contiguous().view(1, self.seq_len, self.embed_dim)
+        batch_size, num_heads, seq_len, head_dim = out.shape
+        embed_dim = num_heads * head_dim
+        output = self._ensure_output_buffer(
+            batch_size,
+            seq_len,
+            num_heads,
+            head_dim,
+            out.device,
+            out.dtype,
+        )
+        output_slice = output[:, :, :embed_dim].view(batch_size, seq_len, num_heads, head_dim)
+        output_slice.copy_(out.transpose(1, 2))
         if self.repeat_passes > 1:
-            out = out.repeat(1, 1, self.repeat_passes)
-        return out
+            for repeat_idx in range(1, self.repeat_passes):
+                start = repeat_idx * embed_dim
+                end = start + embed_dim
+                output[:, :, start:end].copy_(output[:, :, :embed_dim])
+        return output
     
     def benchmark_fn(self) -> None:
         """Benchmark: fused SDPA attention operations."""
@@ -160,6 +202,7 @@ class OptimizedAttentionEagerSDPABenchmark(VerificationPayloadMixin, BaseBenchma
         self._k_bhsd = None
         self._v_bhsd = None
         self.output = None
+        self._output_buffer = None
         self._verify_output_buffer = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

@@ -50,6 +50,23 @@ class FlashAttentionModule(nn.Module):
         
         self.qkv_proj = nn.Linear(embed_dim, 3 * embed_dim, bias=False)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        self._attn_merge_buffer: Optional[torch.Tensor] = None
+
+    def _ensure_attention_merge_buffer(
+        self,
+        x: torch.Tensor,
+        batch_size: int,
+        seq_len: int,
+    ) -> torch.Tensor:
+        rows = int(batch_size * seq_len)
+        if (
+            self._attn_merge_buffer is None
+            or self._attn_merge_buffer.size(0) < rows
+            or self._attn_merge_buffer.device != x.device
+            or self._attn_merge_buffer.dtype != x.dtype
+        ):
+            self._attn_merge_buffer = torch.empty(rows, self.embed_dim, device=x.device, dtype=x.dtype)
+        return self._attn_merge_buffer[:rows].view(batch_size, seq_len, self.num_heads, self.head_dim)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Flash Attention forward pass - O(n) memory, fused kernel."""
@@ -68,7 +85,12 @@ class FlashAttentionModule(nn.Module):
         )
         
         # Output projection
-        output = output.transpose(1, 2).contiguous().view(B, S, self.embed_dim)
+        if torch.is_grad_enabled():
+            output = output.transpose(1, 2).contiguous().view(B, S, self.embed_dim)
+        else:
+            merge_buffer = self._ensure_attention_merge_buffer(x, B, S)
+            merge_buffer.copy_(output.transpose(1, 2))
+            output = merge_buffer.view(B, S, self.embed_dim)
         return self.out_proj(output)
 
 

@@ -14829,13 +14829,20 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "self._expected_attention_view_counts = (0, 0)" in baseline_teardown
     assert "float(out.sum())" not in optimized_benchmark
     assert "self._q_bhsd: Optional[torch.Tensor] = None" in optimized_source
+    assert "self._output_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in optimized_source
     assert "self._q_bhsd = self.q.transpose(0, 1).unsqueeze(0)" in optimized_setup
     assert "self._k_bhsd = self.k.transpose(0, 1).unsqueeze(0)" in optimized_setup
     assert "self._v_bhsd = self.v.transpose(0, 1).unsqueeze(0)" in optimized_setup
+    assert "self._ensure_output_buffer(" in optimized_setup
     assert "self._verify_output_buffer = torch.empty(" in optimized_setup
+    assert "def _ensure_output_buffer(" in optimized_source
     assert "def _attention_bhsd(" in optimized_attention
     assert "return self._attention_bhsd(q_bhsd, k_bhsd, v_bhsd)" in optimized_attention
+    assert "output_slice.copy_(out.transpose(1, 2))" in optimized_attention
+    assert "output[:, :, start:end].copy_(output[:, :, :embed_dim])" in optimized_attention
+    assert "out.transpose(1, 2).contiguous().view" not in optimized_attention
+    assert ".repeat(" not in optimized_attention
     assert "out = self._attention_bhsd(self._q_bhsd, self._k_bhsd, self._v_bhsd)" in optimized_benchmark
     assert "self.output = out" in optimized_benchmark
     assert "out.detach()" not in optimized_benchmark
@@ -14845,6 +14852,7 @@ def test_ch14_attention_eager_sdpa_avoids_hot_path_host_sync_and_stack() -> None
     assert "output=self._verify_output_buffer" in optimized_capture
     assert "output=self.output.detach().clone()" not in optimized_capture
     assert "self._q_bhsd = None" in optimized_teardown
+    assert "self._output_buffer = None" in optimized_teardown
     assert "self._verify_output_buffer = None" in optimized_teardown
 
 
@@ -15005,12 +15013,21 @@ def test_ch14_flash_attention_sdpa_bench_defers_output_clone_and_host_sync() -> 
     teardown_section = source.split("def teardown", maxsplit=1)[1].split(
         "def get_config", maxsplit=1
     )[0]
+    module_forward = source.split("def forward(self, x: torch.Tensor)", maxsplit=1)[1].split(
+        "\n\nclass FlashAttentionSdpaBenchBenchmark",
+        maxsplit=1,
+    )[0]
 
+    assert "self._attn_merge_buffer: Optional[torch.Tensor] = None" in source
+    assert "def _ensure_attention_merge_buffer(" in source
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in source
     assert "self._verify_output_buffer = torch.empty_like(self.x)" in setup_section
     assert "q, k, v = (tensor.transpose(1, 2) for tensor in qkv.unbind(dim=2))" in source
     assert "qkv = qkv.permute(2, 0, 3, 1, 4)" not in source
     assert "q, k, v = qkv[0], qkv[1], qkv[2]" not in source
+    assert "if torch.is_grad_enabled():" in module_forward
+    assert "merge_buffer.copy_(output.transpose(1, 2))" in module_forward
+    assert "output = merge_buffer.view(B, S, self.embed_dim)" in module_forward
     assert "float(output" not in benchmark_section
     assert ".detach().clone()" not in benchmark_section
     assert "self.output = output" in benchmark_section
