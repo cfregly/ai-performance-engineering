@@ -18967,6 +18967,8 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._accept_count_device = torch.empty((1,), device=self.device, dtype=torch.int64)" in setup_section
     assert "self._accept_count_host = torch.empty(" in setup_section
     assert "pin_memory=torch.cuda.is_available()" in setup_section
+    assert "self._view_counts: tuple[int, ...] = ()" in source
+    assert "self._expected_view_counts: tuple[int, ...] = ()" in source
     assert "self._draft_head_offsets = torch.arange(wl.speculative_k, device=self.device, dtype=torch.int64).view(1, -1)" in setup_section
     assert "self._draft_seed_buffer = torch.empty((1, wl.speculative_k), device=self.device, dtype=torch.int64)" in setup_section
     assert "self._draft_block_values = torch.empty((1, wl.speculative_k), device=self.device, dtype=wl.dtype)" in setup_section
@@ -18996,10 +18998,20 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "self._draft_id_views = [" in setup_section
     assert "self._draft_id_column_views = [" in setup_section
     assert "self._accept_prefix[:, :k] for k in range(1, wl.speculative_k + 1)" in setup_section
+    assert "verify_tail_count = wl.speculative_k - 1 if wl.speculative_k > 1 else 0" in setup_section
+    assert "self._view_counts = (" in setup_section
+    assert "self._expected_view_counts = (" in setup_section
     assert "self._match_host" not in source
     assert "self._match_host_views" not in source
     assert "self._payload_parameter_count = sum(p.numel() for p in self.target_model.parameters())" in setup_section
     assert "with torch.inference_mode():" in benchmark_section
+    assert "or self._view_counts != self._expected_view_counts" in benchmark_section
+    assert "len(self._output_step_views)" not in benchmark_section
+    assert "len(self._output_token_views)" not in benchmark_section
+    assert "len(self._output_write_views)" not in benchmark_section
+    assert "len(self._draft_head_offset_views)" not in benchmark_section
+    assert "len(self._verify_prev_tail_views)" not in benchmark_section
+    assert "len(self._draft_id_column_views)" not in benchmark_section
     assert "time.perf_counter" not in benchmark_section
     assert "draft_time_ms=None" in benchmark_section
     assert "verify_time_ms=None" in benchmark_section
@@ -19051,6 +19063,8 @@ def test_medusa_eagle_avoids_inner_loop_wall_clock_timing() -> None:
     assert "out[:, pos" not in benchmark_section
     assert "parameter_count=self._payload_parameter_count" in capture_section
     assert "sum(p.numel()" not in capture_section
+    assert "self._view_counts = ()" in source
+    assert "self._expected_view_counts = ()" in source
 
 
 def test_medusa_eagle_validation_batches_output_bounds_check() -> None:
