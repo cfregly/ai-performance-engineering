@@ -59,6 +59,9 @@ class DensePagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
     def __init__(self) -> None:
         super().__init__()
         self.qkv: Optional[torch.Tensor] = None
+        self._q_view: Optional[torch.Tensor] = None
+        self._k_view: Optional[torch.Tensor] = None
+        self._v_view: Optional[torch.Tensor] = None
         self.output: Optional[torch.Tensor] = None
         self.batch_size = 4
         self.num_heads = 16
@@ -94,26 +97,23 @@ class DensePagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
         b, h, s, d = self.batch_size, self.num_heads, self.seq_len, self.head_dim
         self.qkv = torch.randn(b, h, s, 3, d, device=self.device, dtype=torch.bfloat16)
         self._configure_backend()
-        q = self.qkv[:, :, :, 0]
-        k = self.qkv[:, :, :, 1]
-        v = self.qkv[:, :, :, 2]
+        self._q_view = self.qkv[:, :, :, 0]
+        self._k_view = self.qkv[:, :, :, 1]
+        self._v_view = self.qkv[:, :, :, 2]
         self._verify_input_buffers = {
             "qkv": _empty_cpu_staging(self.qkv.shape, self.qkv.dtype),
         }
-        self._verify_output_buffer = _empty_cpu_staging(q.shape, self.qkv.dtype)
+        self._verify_output_buffer = _empty_cpu_staging(self._q_view.shape, self.qkv.dtype)
         for _ in range(8):
-            _ = F.scaled_dot_product_attention(q, k, v)
+            _ = F.scaled_dot_product_attention(self._q_view, self._k_view, self._v_view)
             torch.cuda.synchronize(self.device)
 
     def benchmark_fn(self) -> Optional[dict]:
-        if self.qkv is None:
+        if self.qkv is None or self._q_view is None or self._k_view is None or self._v_view is None:
             raise RuntimeError("FAIL FAST: QKV not initialized")
-        q = self.qkv[:, :, :, 0]
-        k = self.qkv[:, :, :, 1]
-        v = self.qkv[:, :, :, 2]
 
         with nvtx_range(self.nvtx_label, enable=self._enable_nvtx):
-            self.output = F.scaled_dot_product_attention(q, k, v)
+            self.output = F.scaled_dot_product_attention(self._q_view, self._k_view, self._v_view)
         if self.output is None:
             raise RuntimeError("benchmark_fn() must produce output")
         return self._empty_iteration_result
@@ -149,6 +149,9 @@ class DensePagedAttnBase(VerificationPayloadMixin, BaseBenchmark):
 
     def teardown(self) -> None:
         self.qkv = None
+        self._q_view = None
+        self._k_view = None
+        self._v_view = None
         self.output = None
         self._verify_input_buffers = {}
         self._verify_output_buffer = None

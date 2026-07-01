@@ -7744,6 +7744,10 @@ def test_ch18_paged_attention_uses_real_block_table_sparse_kernel() -> None:
         "def get_workload_metadata",
         maxsplit=1,
     )[0]
+    dense_hot = dense_benchmark.split("def benchmark_fn", maxsplit=1)[1].split(
+        "def capture_verification_payload",
+        maxsplit=1,
+    )[0]
     layout_capture = layout_benchmark.split("def capture_verification_payload", maxsplit=1)[1].split(
         "def get_workload_metadata",
         maxsplit=1,
@@ -7773,13 +7777,27 @@ def test_ch18_paged_attention_uses_real_block_table_sparse_kernel() -> None:
     assert "pin_memory=True" in common_source
     assert "self._verify_input_buffers: dict[str, torch.Tensor] = {}" in dense_benchmark
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in dense_benchmark
+    assert "self._q_view: Optional[torch.Tensor] = None" in dense_benchmark
+    assert "self._k_view: Optional[torch.Tensor] = None" in dense_benchmark
+    assert "self._v_view: Optional[torch.Tensor] = None" in dense_benchmark
+    assert "self._q_view = self.qkv[:, :, :, 0]" in dense_benchmark
+    assert "self._k_view = self.qkv[:, :, :, 1]" in dense_benchmark
+    assert "self._v_view = self.qkv[:, :, :, 2]" in dense_benchmark
     assert '"qkv": _empty_cpu_staging(self.qkv.shape, self.qkv.dtype)' in dense_benchmark
-    assert "self._verify_output_buffer = _empty_cpu_staging(q.shape, self.qkv.dtype)" in dense_benchmark
+    assert "self._verify_output_buffer = _empty_cpu_staging(self._q_view.shape, self.qkv.dtype)" in dense_benchmark
+    assert "F.scaled_dot_product_attention(self._q_view, self._k_view, self._v_view)" in dense_benchmark
+    assert "self.qkv[:, :, :, 0]" not in dense_hot
+    assert "self.qkv[:, :, :, 1]" not in dense_hot
+    assert "self.qkv[:, :, :, 2]" not in dense_hot
+    assert "or self._q_view is None or self._k_view is None or self._v_view is None" in dense_hot
     assert 'self._verify_input_buffers["qkv"].copy_(self.qkv, non_blocking=False)' in dense_capture
     assert "self._verify_output_buffer.copy_(self.output, non_blocking=False)" in dense_capture
     assert "inputs=self._verify_input_buffers" in dense_capture
     assert "output=self._verify_output_buffer" in dense_capture
     assert ".detach().cpu()" not in dense_capture
+    assert "self._q_view = None" in dense_benchmark
+    assert "self._k_view = None" in dense_benchmark
+    assert "self._v_view = None" in dense_benchmark
     assert "self._verify_input_buffers: dict[str, torch.Tensor] = {}" in layout_benchmark
     assert "self._verify_output_buffer: Optional[torch.Tensor] = None" in layout_benchmark
     assert '"q": _empty_cpu_staging(self.q.shape, self.q.dtype)' in layout_benchmark
