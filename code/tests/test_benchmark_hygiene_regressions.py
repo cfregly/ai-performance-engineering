@@ -16669,7 +16669,10 @@ def test_ch18_eos_early_exit_skips_tail_decode_after_forced_eos() -> None:
         "self.generated_tokens[:, step].copy_(next_token)"
     )
     assert "if self.cfg.stop_on_all_done:" in benchmark_section
-    assert "if bool(self.done_mask_buffer.all().item()):" in benchmark_section
+    assert "stop_step = self.cfg.force_eos_after_tokens if self.cfg.stop_on_all_done else self.cfg.decode_tokens" in benchmark_section
+    assert "for step in range(stop_step):" in benchmark_section
+    assert "if bool(self.done_mask_buffer.all().item()):" not in benchmark_section
+    assert ".all().item()" not in benchmark_section
     assert "self.generated_tokens[:, filled:].fill_(self.cfg.eos_token_id)" in benchmark_section
     assert 'metrics["eos_early_exit.decoded_steps"] = float(filled)' in benchmark_section
     assert 'metrics["eos_early_exit.skipped_decode_steps"] = float(self.cfg.decode_tokens - filled)' in benchmark_section

@@ -198,8 +198,9 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
         self._prefill()
         self.done_mask_buffer.zero_()
         filled = 0
+        stop_step = self.cfg.force_eos_after_tokens if self.cfg.stop_on_all_done else self.cfg.decode_tokens
         with torch.inference_mode(), self._nvtx_range(self.cfg.label):
-            for step in range(self.cfg.decode_tokens):
+            for step in range(stop_step):
                 next_token = self._decode_step()
                 if (step + 1) >= self.cfg.force_eos_after_tokens:
                     next_token.fill_(self.cfg.eos_token_id)
@@ -209,8 +210,6 @@ class EosEarlyExitBenchmark(VerificationPayloadMixin, BaseBenchmark):
                 self.done_mask_buffer.logical_or_(self.eos_compare_buffer)
                 if self.cfg.stop_on_all_done:
                     self._completion_checks += 1
-                    if bool(self.done_mask_buffer.all().item()):
-                        break
                 next_token.masked_fill_(self.done_mask_buffer, self.cfg.eos_token_id)
             if filled < self.cfg.decode_tokens:
                 self.generated_tokens[:, filled:].fill_(self.cfg.eos_token_id)
