@@ -19547,6 +19547,8 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "nn.Sequential(" not in setup_section
     assert "self._fc1_buffer: Optional[torch.Tensor] = None" in model_section
     assert "self._fc2_buffer: Optional[torch.Tensor] = None" in model_section
+    assert "self._fc1_forward_view: Optional[torch.Tensor] = None" in model_section
+    assert "self._fc2_forward_view: Optional[torch.Tensor] = None" in model_section
     assert "self._fc1_weight_t: Optional[torch.Tensor] = None" in model_section
     assert "self._fc2_weight_t: Optional[torch.Tensor] = None" in model_section
     assert "def cache_weight_views(self) -> None:" in model_section
@@ -19559,7 +19561,14 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "self._fc1_buffer.shape != fc1_shape" not in model_section
     assert "self._fc2_buffer.shape != fc2_shape" not in model_section
     assert "self.model.cache_weight_views()" in setup_section
+    assert "self.model.prepare_forward_buffers(self.buffer_a)" in setup_section
     assert "def _ensure_forward_buffers(" in model_section
+    assert "def prepare_forward_buffers(self, x: torch.Tensor) -> None:" in model_section
+    assert "self._fc1_forward_view, self._fc2_forward_view = self._ensure_forward_buffers(x)" in model_section
+    assert "def forward_prepared(self, x: torch.Tensor) -> torch.Tensor:" in model_section
+    assert "fc1_out = self._fc1_forward_view" in model_section
+    assert "fc2_out = self._fc2_forward_view" in model_section
+    assert 'raise RuntimeError("forward_prepared() requires prepare_forward_buffers()")' in model_section
     assert "if torch.is_grad_enabled():" in model_section
     assert "torch.matmul(x, self._fc1_weight_t, out=fc1_out)" in model_section
     assert "self.relu(fc1_out)" in model_section
@@ -19598,6 +19607,8 @@ def test_ch19_double_buffering_reuses_copy_events_outside_hot_loop() -> None:
     assert "range(self.micro_batches)" not in benchmark_section
     assert "i % 2" not in benchmark_section
     assert "(i + 1) % 2" not in benchmark_section
+    assert "self.output = self.model.forward_prepared(current_buffer)" in benchmark_section
+    assert "self.output = self.model(current_buffer)" not in benchmark_section
     assert "self.host_batches[next_batch_idx]" in benchmark_section
     assert "copy_events[0].record(self.copy_stream)" in benchmark_section
     assert "next_event.record(self.copy_stream)" in benchmark_section
@@ -19623,6 +19634,8 @@ def test_ch19_buffered_microbatch_mlp_reuses_larger_workspace_capacity() -> None
         fc2_ptr = model._fc2_buffer.data_ptr()
 
         small = model(torch.randn(1, 3, 4))
+        model.prepare_forward_buffers(torch.randn(2, 8, 4))
+        prepared = model.forward_prepared(torch.randn(2, 8, 4))
         assert model._fc1_buffer.data_ptr() == fc1_ptr
         assert model._fc2_buffer.data_ptr() == fc2_ptr
         assert model._fc1_buffer.numel() == 2 * 8 * 16
@@ -19633,6 +19646,8 @@ def test_ch19_buffered_microbatch_mlp_reuses_larger_workspace_capacity() -> None
     assert large.shape == (2, 8, 4)
     assert small.shape == (1, 3, 4)
     assert small.data_ptr() == fc2_ptr
+    assert prepared.shape == (2, 8, 4)
+    assert prepared.data_ptr() == fc2_ptr
     assert grown.shape == (3, 7, 4)
     assert model._fc1_buffer.numel() == 3 * 7 * 16
     assert model._fc2_buffer.numel() == 3 * 7 * 4

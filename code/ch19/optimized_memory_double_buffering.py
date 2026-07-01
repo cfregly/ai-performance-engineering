@@ -33,6 +33,8 @@ class BufferedMicrobatchMlp(nn.Module):
         self.fc2 = nn.Linear(hidden_dim * 4, hidden_dim)
         self._fc1_buffer: Optional[torch.Tensor] = None
         self._fc2_buffer: Optional[torch.Tensor] = None
+        self._fc1_forward_view: Optional[torch.Tensor] = None
+        self._fc2_forward_view: Optional[torch.Tensor] = None
         self._fc1_weight_t: Optional[torch.Tensor] = None
         self._fc2_weight_t: Optional[torch.Tensor] = None
 
@@ -79,6 +81,28 @@ class BufferedMicrobatchMlp(nn.Module):
         if self._fc1_weight_t is None or self._fc2_weight_t is None:
             self.cache_weight_views()
         fc1_out, fc2_out = self._ensure_forward_buffers(x)
+        return self._forward_into_buffers(x, fc1_out, fc2_out)
+
+    def prepare_forward_buffers(self, x: torch.Tensor) -> None:
+        self._fc1_forward_view, self._fc2_forward_view = self._ensure_forward_buffers(x)
+
+    def forward_prepared(self, x: torch.Tensor) -> torch.Tensor:
+        if torch.is_grad_enabled():
+            return self.forward(x)
+        if self._fc1_weight_t is None or self._fc2_weight_t is None:
+            self.cache_weight_views()
+        fc1_out = self._fc1_forward_view
+        fc2_out = self._fc2_forward_view
+        if fc1_out is None or fc2_out is None:
+            raise RuntimeError("forward_prepared() requires prepare_forward_buffers()")
+        return self._forward_into_buffers(x, fc1_out, fc2_out)
+
+    def _forward_into_buffers(
+        self,
+        x: torch.Tensor,
+        fc1_out: torch.Tensor,
+        fc2_out: torch.Tensor,
+    ) -> torch.Tensor:
         torch.matmul(x, self._fc1_weight_t, out=fc1_out)
         if self.fc1.bias is not None:
             fc1_out.add_(self.fc1.bias)
@@ -147,6 +171,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
         )
         self.buffer_b = torch.empty_like(self.buffer_a)
         self.buffers = [self.buffer_a, self.buffer_b]
+        self.model.prepare_forward_buffers(self.buffer_a)
         self.host_batches = [
             torch.randn(
                 self.batch_size,
@@ -200,7 +225,7 @@ class OptimizedMemoryDoubleBufferingBenchmark(VerificationPayloadMixin, BaseBenc
                     with torch.cuda.stream(self.compute_stream):
                         # Ensure the compute stream only waits when the copy has finished.
                         self.compute_stream.wait_event(current_event)
-                        self.output = self.model(current_buffer)
+                        self.output = self.model.forward_prepared(current_buffer)
 
                     if next_batch_idx is not None and next_slot_idx is not None:
                         next_buffer = buffers[next_slot_idx]
