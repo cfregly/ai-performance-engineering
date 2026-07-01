@@ -22,6 +22,11 @@ sf_vec_size = 16
 _GEMM_V3B = None
 _CASE0_OUT_CACHE: dict[tuple[int, int, int, int], torch.Tensor] = {}
 _STREAM_POOL: dict[tuple[int, int], list[torch.cuda.Stream]] = {}
+_PACKED_SCALE_CACHE: dict[
+    tuple[tuple[object, ...], tuple[object, ...], int],
+    tuple[list[torch.Tensor], list[torch.Tensor]],
+] = {}
+_PACKED_SCALE_CACHE_LIMIT = 8
 _MISSING = object()
 
 # GB300 fast path: a torch.compile-fused dequant GEMV. The fp4 (e2m1) matrix is unpacked
@@ -136,6 +141,40 @@ def to_blocked(input_matrix: torch.Tensor) -> torch.Tensor:
     blocks = padded.view(n_row_blocks, 128, n_col_blocks, 4).permute(0, 2, 1, 3)
     rearranged = blocks.reshape(-1, 4, 32, 4).transpose(1, 2).reshape(-1, 32, 16)
     return rearranged.flatten()
+
+
+def _scale_cache_token(tensor: torch.Tensor) -> tuple[object, ...]:
+    return (
+        int(tensor.data_ptr()),
+        tuple(int(dim) for dim in tensor.shape),
+        tuple(int(stride) for stride in tensor.stride()),
+        int(tensor.storage_offset()),
+        str(tensor.device),
+        str(tensor.dtype),
+        int(tensor._version),
+    )
+
+
+def _get_packed_scales(
+    sfa_ref: torch.Tensor,
+    sfb_ref: torch.Tensor,
+    l: int,
+) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+    key = (_scale_cache_token(sfa_ref), _scale_cache_token(sfb_ref), int(l))
+    cached = _PACKED_SCALE_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    packed_scale_a = [
+        to_blocked(sfa_ref[:, :, l_idx]).contiguous() for l_idx in range(int(l))
+    ]
+    packed_scale_b = [
+        to_blocked(sfb_ref[:, :, l_idx]).contiguous() for l_idx in range(int(l))
+    ]
+    if len(_PACKED_SCALE_CACHE) >= _PACKED_SCALE_CACHE_LIMIT:
+        _PACKED_SCALE_CACHE.clear()
+    _PACKED_SCALE_CACHE[key] = (packed_scale_a, packed_scale_b)
+    return packed_scale_a, packed_scale_b
 
 
 def _load_gemm_v3b():
@@ -261,8 +300,7 @@ def _run_scaled_mm(data: input_t) -> torch.Tensor:
     a_ref, b_ref, sfa_ref, sfb_ref, _sfa_permuted, _sfb_permuted, c_ref = data
     _, _, l = c_ref.shape
 
-    packed_scale_a = [to_blocked(sfa_ref[:, :, l_idx]) for l_idx in range(int(l))]
-    packed_scale_b = [to_blocked(sfb_ref[:, :, l_idx]) for l_idx in range(int(l))]
+    packed_scale_a, packed_scale_b = _get_packed_scales(sfa_ref, sfb_ref, int(l))
 
     stream_count = _resolve_stream_count(int(l))
     if stream_count <= 1 or int(l) <= 1:

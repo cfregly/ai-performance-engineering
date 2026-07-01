@@ -4860,6 +4860,45 @@ def test_nvfp4_gemv_dequant_expands_scales_without_repeat_interleave() -> None:
     )
 
 
+def test_nvfp4_gemv_scaled_mm_reuses_packed_scale_cache(monkeypatch) -> None:
+    from labs.nvfp4_gemv import optimized_submission as submission
+
+    run_source = inspect.getsource(submission._run_scaled_mm)
+    cache_source = inspect.getsource(submission._get_packed_scales)
+
+    assert "_get_packed_scales(sfa_ref, sfb_ref, int(l))" in run_source
+    assert "_PACKED_SCALE_CACHE" in cache_source
+    assert "tensor._version" in inspect.getsource(submission._scale_cache_token)
+    assert "to_blocked(sfa_ref[:, :, l_idx]).contiguous()" in cache_source
+    assert "to_blocked(sfb_ref[:, :, l_idx]).contiguous()" in cache_source
+
+    sfa = torch.arange(128 * 4 * 2, dtype=torch.float32).view(128, 4, 2)
+    sfb = torch.arange(128 * 4 * 2, dtype=torch.float32).view(128, 4, 2)
+    calls: list[tuple[int, tuple[int, ...]]] = []
+    original_to_blocked = submission.to_blocked
+
+    def counting_to_blocked(tensor: torch.Tensor) -> torch.Tensor:
+        calls.append((int(tensor.data_ptr()), tuple(int(dim) for dim in tensor.shape)))
+        return original_to_blocked(tensor)
+
+    monkeypatch.setattr(submission, "to_blocked", counting_to_blocked)
+    submission._PACKED_SCALE_CACHE.clear()
+    try:
+        first_a, first_b = submission._get_packed_scales(sfa, sfb, 2)
+        second_a, second_b = submission._get_packed_scales(sfa, sfb, 2)
+        assert len(calls) == 4
+        assert first_a[0].data_ptr() == second_a[0].data_ptr()
+        assert first_b[1].data_ptr() == second_b[1].data_ptr()
+
+        sfa.add_(1)
+        third_a, third_b = submission._get_packed_scales(sfa, sfb, 2)
+        assert len(calls) == 8
+        assert third_a[0].data_ptr() != first_a[0].data_ptr()
+        assert third_b[1].data_ptr() != first_b[1].data_ptr()
+    finally:
+        submission._PACKED_SCALE_CACHE.clear()
+
+
 def test_nvfp4_wrappers_reuse_shape_signature_tensors() -> None:
     for relative, length, label in (
         ("labs/nvfp4_dual_gemm/baseline_nvfp4_dual_gemm.py", 5, "baseline_nvfp4_dual_gemm"),
